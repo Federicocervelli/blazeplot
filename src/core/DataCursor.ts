@@ -1,10 +1,10 @@
-import type { RingBuffer } from "./RingBuffer.js";
+import type { Dataset } from "./types.js";
 
 export class DataCursor {
   private _index: number = -1;
-  private _buffer: RingBuffer | null = null;
+  private _buffer: Dataset | null = null;
 
-  bind(buffer: RingBuffer): void {
+  bind(buffer: Dataset): void {
     this._buffer = buffer;
     this._index = -1;
   }

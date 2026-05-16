@@ -1,5 +1,4 @@
-import type { LODView, Viewport } from "./types.js";
-import { RingBuffer } from "./RingBuffer.js";
+import type { Dataset, LODView, Viewport } from "./types.js";
 
 const MAX_LEVELS = 16;
 
@@ -17,7 +16,7 @@ export class MinMaxPyramid {
     this.levelSampleWidths = new Uint32Array(MAX_LEVELS);
   }
 
-  build(source: RingBuffer): void {
+  build(source: Dataset): void {
     this.levels = [];
     this.levelLengths.fill(0);
     this.levelSampleWidths.fill(0);
