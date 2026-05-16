@@ -5,18 +5,9 @@
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![build](https://img.shields.io/github/actions/workflow/status/Federicocervelli/blazeplot/release.yml?branch=master)](https://github.com/Federicocervelli/blazeplot/actions)
 
-Real-time LOD time series rendering engine for the browser.
+Fast WebGL2 plotting engine for the browser 🔥
 
-BlazePlot is GPU-native plotting engineered for high-frequency streaming data where standard charting libraries (Chart.js, ECharts, uPlot) fall over. Instead of drawing every sample, it keeps a resident ring buffer of millions of points, builds a min/max LOD pyramid, and renders only what each pixel needs — so frame cost is `O(pixels)`, not `O(samples)`.
-
-Built on WebGL2 + [regl](https://github.com/regl-project/regl). No Canvas2D, no SVG, no DOM layout.
-
-## Target
-
-- **10M+** resident points per series
-- **60 Hz** smooth append + render
-- **Zero allocations** in the frame loop
-- **Multi-series** with independent buffers and LOD
+GPU-native, zero DOM. Built on WebGL2 + [regl](https://github.com/regl-project/regl). No Canvas2D, no SVG, no layout thrashing.
 
 ## Installation
 
@@ -44,19 +35,18 @@ const series = chart.addSeries(
 chart.setViewport({ xMin: 0, xMax: 1000, yMin: -2, yMax: 2 });
 chart.start();
 
-// Append data periodically
+const xs = new Float64Array(256);
+const ys = new Float32Array(256);
+let t = 0;
+
 function push() {
-  const n = 256;
-  const xs = new Float64Array(n);
-  const ys = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < 256; i++) {
     xs[i] = t++;
     ys[i] = Math.sin(t * 0.01) * 0.5 + Math.random() * 0.01;
   }
   series.append(xs, ys);
   requestAnimationFrame(push);
 }
-let t = 0;
 push();
 ```
 
@@ -64,12 +54,13 @@ push();
 
 | | |
 |---|---|
-| **LOD downsampling** | Min/max pyramid automatically selects the right detail level for the visible range — sparse viewports show raw points, dense viewports show vertical min/max segments. |
-| **Streaming append** | Fixed-capacity ring buffer wraps silently. No re-allocation. No memory growth. |
-| **Pan & zoom** | Pointer/touch pan and wheel zoom via `Camera2D`. Customizable viewport policies (e.g. live-follow X while Y is free). |
+| **WebGL2 rendering** | GPU-accelerated from the ground up. No Canvas2D fallback, no DOM text nodes. |
+| **Flexible data model** | Streaming ring buffer or static arrays. Bring your own data shape. |
+| **LOD downsampling** | Min/max pyramid for efficient line rendering at any zoom level — sparse views show raw points, dense views show vertical segments. |
+| **Pan & zoom** | Pointer/touch pan and wheel zoom via `Camera2D`. Customizable viewport policies. |
 | **Grid lines** | Data-anchored grid rendered as WebGL line lists. |
 | **Multi-series** | Independent buffers, styles, and visibility per series. |
-| **No DOM** | No axis DOM elements, no SVG overlay. The canvas owns everything. |
+| **Benchmark overlay** | Built-in fps, frame time, vertex count, draw calls. |
 | **ResizeObserver** | Automatic DPR-aware canvas sizing. |
 
 ## API
@@ -111,8 +102,8 @@ push();
 
 | Signature | Description |
 |---|---|
-| `series.append(xs, ys)` | Append typed arrays of X (Float64) and Y (Float32) values. |
-| `series.clear()` | Clear all data and reset LOD state. |
+| `series.append(xs, ys)` | Append typed arrays of X and Y values (streaming). |
+| `series.clear()` | Clear all data and reset. |
 | `series.setVisible(v)` | Toggle visibility. |
 | `series.visible` | Current visibility state. |
 | `series.length` | Number of samples buffered. |
@@ -123,7 +114,7 @@ push();
 |---|---|
 | `mode` | `"line"` / `"envelope"` / `"scatter"` (envelope and scatter roadmap-only). |
 | `capacity` | Ring buffer capacity (samples). |
-| `downsample` | `"minmax"` (the only LOD strategy). |
+| `downsample` | `"minmax"` (LOD for line rendering). |
 
 ### `SeriesStyle`
 
@@ -142,36 +133,15 @@ interface ViewportPolicy {
 }
 ```
 
-Built-in data types: `Viewport`, `PanIntent`, `ZoomIntent`, `ZoomAxis`.
-
 ### Lower-level primitives
 
-`Camera2D`, `RingBuffer`, `MinMaxPyramid`, `AxisController` are exported for advanced use cases (custom pipelines, worker threads, offscreen rendering).
-
-## How it works
-
-```
-Data stream ──► RingBuffer (resident, wraps at capacity)
-                   │
-                   ▼
-              MinMaxPyramid (full rebuild today, incremental roadmap)
-                   │
-                   ▼
-              SeriesStore.query() ──► LODView (buckets for visible range)
-                                    │
-                                    ▼
-                              Renderer (regl / WebGL2)
-```
-
-The render loop decides per-frame:
-- **Few visible samples** → raw line strip from ring buffer
-- **Many visible samples** → min/max vertical segments from the pyramid
+`Camera2D`, `RingBuffer`, `MinMaxPyramid`, `AxisController` are exported for advanced use cases.
 
 ## Architecture
 
 ```
 src/
-  core/          # Data engine — no UI, no GPU
+  core/          # Data model — series, datasets, LOD
   render/        # GPU abstraction + regl backend
   interaction/   # Camera, input, axis ticks
   ui/            # Orchestrator (Chart)
@@ -184,7 +154,7 @@ bun install
 bun run dev          # Vite dev server → preview/
 bun run build        # Package build (JS + declarations)
 bun run build:js     # JS-only build
-bun test             # Core data-structure tests
+bun test             # Tests
 bun run typecheck    # TypeScript strict check
 ```
 
@@ -199,8 +169,8 @@ Output:
 ```
 dist/index.js        ES module
 dist/index.d.ts      TypeScript declarations
-dist/index.js.map    Source map
-dist/*.d.ts.map      Declaration maps
 ```
 
+## Why WebGL2?
 
+Canvas2D and SVG are CPU-bound — every point becomes a draw call or a DOM node. BlazePlot keeps data on the GPU, streams only visible vertices, and avoids DOM entirely. For dense line plots (millions of points), interactive scatter, or real-time streaming, the difference is orders of magnitude.
