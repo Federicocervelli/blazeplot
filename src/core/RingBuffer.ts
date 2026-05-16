@@ -34,6 +34,13 @@ export class RingBuffer {
     if (this._length < this.capacity) this._length++;
   }
 
+  append(x: ArrayLike<number>, y: ArrayLike<number>): void {
+    const n = Math.min(x.length, y.length);
+    for (let i = 0; i < n; i++) {
+      this.push(x[i]!, y[i]!);
+    }
+  }
+
   get(index: number): { x: number; y: number } | null {
     if (index < 0 || index >= this._length) return null;
     return { x: this.getX(index), y: this.getY(index) };
