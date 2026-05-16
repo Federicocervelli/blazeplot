@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
+
+      - name: Build
+        run: bun run build
+
+      - name: Publish to npm
+        run: npm publish --provenance
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "$CURRENT_TAG"^ 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "body=First release: $CURRENT_TAG" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git log "$PREV_TAG".."$CURRENT_TAG" --pretty=format:"%s|%h|%an%n" | sed '/^$/d' > /tmp/commits.txt
+
+          while IFS='|' read -r subject hash author; do
+            echo "- $subject [\`$hash\`](https://github.com/${{ github.repository }}/commit/$hash) $author" >> /tmp/release_body.md
+          done < /tmp/commits.txt
+
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          cat /tmp/release_body.md >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.notes.outputs.body }}
