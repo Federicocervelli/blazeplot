@@ -1,6 +1,7 @@
 import createRegl from "regl";
 import type { AttributeState, Buffer as ReglBuffer, DrawCommand, PrimitiveType, Regl, Uniform } from "regl";
 import type { GpuBackend, GpuBuffer, GpuProgram, GpuResource, BufferSpec, DrawSpec, UniformValue } from "./types.js";
+import { WebGL2Resources } from "./WebGL2Resources.js";
 
 type ReglGpuBuffer = GpuBuffer & {
   readonly buffer: ReglBuffer;
@@ -27,6 +28,7 @@ function toReglContext(gl: WebGL2RenderingContext): WebGLRenderingContext {
 export class ReglBackend implements GpuBackend {
   private gl: WebGL2RenderingContext;
   private regl: Regl;
+  private resources: WebGL2Resources;
   private nextProgramId: number = 1;
   private commandCache: Map<string, DrawCommand> = new Map();
 
@@ -53,18 +55,17 @@ export class ReglBackend implements GpuBackend {
         "ext_disjoint_timer_query_webgl2",
       ],
     });
+
+    this.resources = new WebGL2Resources(this.regl);
+    this.resources.preAllocate();
   }
 
   createBuffer(spec: BufferSpec): GpuBuffer {
-    const bytesPerElement = spec.type === "float" ? 4 : 2;
+    const { buffer } = this.resources.acquire(spec.length, spec.usage);
     return {
       length: spec.length,
       type: spec.type,
-      buffer: this.regl.buffer({
-        length: spec.length * bytesPerElement,
-        usage: spec.usage,
-        type: spec.type === "float" ? "float" : "uint16",
-      }),
+      buffer,
     } as ReglGpuBuffer;
   }
 
@@ -113,7 +114,9 @@ export class ReglBackend implements GpuBackend {
   }
 
   dispose(resource: GpuResource): void {
-    if (this.isReglBuffer(resource)) resource.buffer.destroy();
+    if (this.isReglBuffer(resource)) {
+      this.resources.release(resource.buffer);
+    }
   }
 
   clear(r: number, g: number, b: number, a: number): void {
@@ -125,6 +128,7 @@ export class ReglBackend implements GpuBackend {
   }
 
   destroy(): void {
+    this.resources.destroy();
     this.regl.destroy();
   }
 
