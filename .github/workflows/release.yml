@@ -17,6 +17,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
@@ -37,7 +43,7 @@ jobs:
       - name: Publish to npm
         run: |
           bun pm pack
-          bunx npm publish ./blazeplot-*.tgz --provenance
+          npm publish ./blazeplot-*.tgz --provenance
 
       - name: Generate release notes
         id: notes
