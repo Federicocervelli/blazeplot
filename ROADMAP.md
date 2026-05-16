@@ -51,20 +51,19 @@ Get one end-to-end path working: data → visible extraction → GPU upload → 
 
 ## Phase 2 — Core data engine
 
-**Status: streaming-oriented primitives built, tests passing**
+**Status: dataset abstraction + incremental LOD complete**
 
-Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous streaming data.
-This is one data model, not the only one.
+Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous streaming data, backed by the `Dataset` interface. `StaticDataset` shares the same render path.
 
 - [x] `RingBuffer` — append-only, Float64Array x / Float32Array y, logical index access, ring-wrap aware search
 - [x] `MinMaxPyramid` — min/max per level (bucket size 2), correct higher-level aggregation, ring-wrap aware builds, `query()` returns `LODView`
-- [x] `SeriesStore` — buffer + pyramid + style, dirty tracking
+- [x] `SeriesStore` — dataset + pyramid + style, dirty tracking
 - [x] `Camera2D` — viewport model with pan, zoom, setViewport, clip/screen transforms
 - [x] `DataCursor` — binary search by X value
 - [x] Tests for `RingBuffer`, `MinMaxPyramid`, and `Camera2D`
-- [ ] **General dataset abstraction** — separate data storage from plot type. A `Dataset` holds any typed array and an `Accessor` reads x/y pairs. Streaming (`RingBuffer`), static (`Float64Array`), and generated data all share the same render path.
+- [x] **General dataset abstraction** — `Dataset`/`AppendableDataset` interfaces. `RingBuffer` satisfies `AppendableDataset`. `StaticDataset` wraps any typed arrays. `MinMaxPyramid`/`DataCursor`/`SeriesStore` all accept `Dataset`. Same render path for streaming and static data.
 - [ ] **LOD as a strategy, not a requirement** — lines can use the min/max pyramid when beneficial, but scatter/bar/heatmap skip it entirely.
-- [ ] **Incremental pyramid update** — current: full rebuild on every `build()`. Target: O(log N) per append.
+- [x] **Incremental pyramid update** — current: O(log N) per append instead of full rebuild. Only recomputes the affected tail at each level. Falls back to full rebuild on wrap/clear. Detected via `range.start` change or length decrease.
 
 ---
 
