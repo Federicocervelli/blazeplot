@@ -35,7 +35,9 @@ jobs:
         run: bun run build
 
       - name: Publish to npm
-        run: bun publish
+        run: |
+          bun pm pack
+          bunx npm publish ./blazeplot-*.tgz --provenance
 
       - name: Generate release notes
         id: notes
