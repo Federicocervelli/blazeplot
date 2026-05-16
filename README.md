@@ -203,12 +203,4 @@ dist/index.js.map    Source map
 dist/*.d.ts.map      Declaration maps
 ```
 
-## Why not ImPlot/implotjs?
 
-[implotjs](https://github.com/Federicocervelli/implotjs) wraps Dear ImGui's ImPlot via WebAssembly — a full retained-mode GUI framework compiled from C++. It works well for interactive desktop-style plots inside managed canvases, but:
-
-- **ImPlot draws every visible sample.** At 10M points the CPU cost of traversing and uploading every coordinate is prohibitive, even with WASM.
-- **BlazePlot is GPU-native.** It stores data in a ring buffer, pre-computes a min/max pyramid, and delegates rendering to WebGL2. The CPU only touches what fits in the vertex buffer (~16K points per frame).
-- **Zero DOM overhead.** No ImGui event loop, no style stack, no text layout — just a canvas and WebGL calls.
-
-BlazePlot does less (solid lines only, no markers, no splines, no area fills) but does it at higher throughput for streaming time-series workloads.
