@@ -34,6 +34,9 @@
     "build:js": "vite build --mode js-only",
     "pages:build": "vite build --config vite.pages.config.ts",
     "preview": "vite preview",
+    "release:patch": "node scripts/release.js patch",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
