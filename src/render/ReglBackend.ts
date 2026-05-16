@@ -1,6 +1,6 @@
 import createRegl from "regl";
 import type { AttributeState, Buffer as ReglBuffer, DrawCommand, PrimitiveType, Regl, Uniform } from "regl";
-import type { GpuBackend, GpuBuffer, GpuProgram, GpuResource, BufferSpec, DrawSpec, UniformValue } from "./types.js";
+import type { GpuBackend, GpuBuffer, GpuProgram, GpuResource, BufferSpec, DrawSpec, AttributeSpec, UniformValue } from "./types.js";
 import { WebGL2Resources } from "./WebGL2Resources.js";
 
 type ReglGpuBuffer = GpuBuffer & {
@@ -13,15 +13,21 @@ type ReglGpuProgram = GpuProgram & {
   readonly frag: string;
 };
 
+interface ResolvedAttribute {
+  buffer: ReglBuffer;
+  divisor?: number;
+  stride?: number;
+  offset?: number;
+}
+
 interface DrawProps {
   readonly count: number;
   readonly instances: number;
-  readonly attributes: Readonly<Record<string, ReglBuffer>>;
+  readonly attributes: Readonly<Record<string, ResolvedAttribute | ReglBuffer>>;
   readonly uniforms: Readonly<Record<string, UniformValue>>;
 }
 
 function toReglContext(gl: WebGL2RenderingContext): WebGLRenderingContext {
-  // regl's public types accept WebGLRenderingContext even though regl can run on WebGL2 contexts.
   return gl as unknown as WebGLRenderingContext;
 }
 
@@ -92,17 +98,17 @@ export class ReglBackend implements GpuBackend {
     const program = this.asReglProgram(spec.program);
     const attributeNames = Object.keys(spec.attributes).sort();
     const uniformNames = Object.keys(spec.uniforms).sort();
-    const key = [program.id, spec.primitive, attributeNames.join(","), uniformNames.join(","), spec.instances === undefined ? 0 : 1].join("|");
+    const key = this.buildCacheKey(program, spec, attributeNames, uniformNames);
     let command = this.commandCache.get(key);
 
     if (!command) {
-      command = this.createDrawCommand(program, spec.primitive, attributeNames, uniformNames, spec.instances !== undefined);
+      command = this.createDrawCommand(program, spec, attributeNames, uniformNames);
       this.commandCache.set(key, command);
     }
 
-    const attributes: Record<string, ReglBuffer> = {};
+    const attributes: Record<string, ResolvedAttribute | ReglBuffer> = {};
     for (const name of attributeNames) {
-      attributes[name] = this.asReglBuffer(spec.attributes[name]!).buffer;
+      attributes[name] = this.resolveAttribute(spec, name);
     }
 
     command({
@@ -132,16 +138,31 @@ export class ReglBackend implements GpuBackend {
     this.regl.destroy();
   }
 
-  private createDrawCommand(
+  private buildCacheKey(
     program: ReglGpuProgram,
-    primitive: DrawSpec["primitive"],
+    spec: DrawSpec,
     attributeNames: readonly string[],
     uniformNames: readonly string[],
-    instanced: boolean,
+  ): string {
+    const parts = [String(program.id), spec.primitive];
+    for (const name of attributeNames) {
+      const attr = spec.attributes[name]!;
+      parts.push("divisor" in attr ? `${name}:i${(attr as AttributeSpec).divisor}` : name);
+    }
+    parts.push(uniformNames.join(","));
+    parts.push(spec.instances !== undefined ? "1" : "0");
+    return parts.join("|");
+  }
+
+  private createDrawCommand(
+    program: ReglGpuProgram,
+    spec: DrawSpec,
+    attributeNames: readonly string[],
+    uniformNames: readonly string[],
   ): DrawCommand {
     const attributes: Record<string, (context: object, props: DrawProps) => AttributeState> = {};
     for (const name of attributeNames) {
-      attributes[name] = (_context, props) => props.attributes[name]!;
+      attributes[name] = (_context, props) => props.attributes[name]! as ReglBuffer;
     }
 
     const uniforms: Record<string, (context: object, props: DrawProps) => Uniform> = {};
@@ -149,16 +170,34 @@ export class ReglBackend implements GpuBackend {
       uniforms[name] = (_context, props) => props.uniforms[name] as Uniform;
     }
 
-    return this.regl({
+    const instanced = spec.instances !== undefined;
+
+    const command = this.regl({
       vert: program.vert,
       frag: program.frag,
       attributes,
       uniforms,
-      primitive: this.toReglPrimitive(primitive),
+      primitive: this.toReglPrimitive(spec.primitive),
       count: (_context: object, props: DrawProps) => props.count,
       instances: instanced ? (_context: object, props: DrawProps) => props.instances : undefined,
       depth: { enable: false },
     });
+
+    return command;
+  }
+
+  private resolveAttribute(spec: DrawSpec, name: string): ResolvedAttribute | ReglBuffer {
+    const attr = spec.attributes[name]!;
+    if ("divisor" in attr) {
+      const inst = attr as AttributeSpec;
+      return {
+        buffer: this.asReglBuffer(inst.buffer).buffer,
+        divisor: inst.divisor,
+        stride: inst.stride,
+        offset: inst.offset,
+      };
+    }
+    return this.asReglBuffer(attr).buffer;
   }
 
   private asReglBuffer(buffer: GpuBuffer): ReglGpuBuffer {

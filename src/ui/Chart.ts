@@ -35,6 +35,8 @@ export class Chart {
   private input: InputController;
   private rawLineBuffer: GpuBuffer;
   private rawLineData: Float32Array;
+  private instanceBuffer: GpuBuffer;
+  private instanceData: Float32Array;
   private gridBuffer: GpuBuffer;
   private gridData: Float32Array;
   private gridStyle: SeriesStyle;
@@ -60,6 +62,8 @@ export class Chart {
     this.input = new InputController(canvas, this.camera, options.viewportPolicy);
     this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
     this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
+    this.instanceData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 3);
+    this.instanceBuffer = this.renderer.createFloatBuffer(this.instanceData.length);
     this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
     this.gridBuffer = this.renderer.createFloatBuffer(this.gridData.length);
     this.gridStyle = {
@@ -153,21 +157,29 @@ export class Chart {
       if (!s.visible) continue;
       const visibleSamples = s.visibleSampleCount(viewport);
       const dense = s.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
-      const count = dense
-        ? s.copyMinMaxVisible(viewport, this.rawLineData, Math.min(this.canvas.width, RAW_LINE_VERTEX_CAPACITY >> 1))
-        : s.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
-      if (count < 2) continue;
-      this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
+
       if (dense) {
-        this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, s.style, this.camera);
+        const maxSegments = Math.min(this.canvas.width, RAW_LINE_VERTEX_CAPACITY >> 1);
+        const segCount = s.copyMinMaxInstanced(viewport, this.instanceData, maxSegments);
+        if (segCount < 2) continue;
+
+        this.renderer.updateFloatBuffer(this.instanceBuffer, this.instanceData);
+        this.renderer.drawMinMaxSegmentsInstanced(this.instanceBuffer, segCount, s.style, this.camera);
         this.recordRenderMode("minmax");
+        this.stats.pointsRendered += segCount * 2;
+        this.stats.uploadBytes += this.instanceData.byteLength;
       } else {
+        const count = s.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
+        if (count < 2) continue;
+
+        this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
         this.renderer.drawLineStrip(this.rawLineBuffer, count, s.style, this.camera);
         this.recordRenderMode("raw");
+        this.stats.pointsRendered += count;
+        this.stats.uploadBytes += this.rawLineData.byteLength;
       }
-      this.stats.pointsRendered += count;
+
       this.stats.drawCalls++;
-      this.stats.uploadBytes += this.rawLineData.byteLength;
     }
 
     this.stats.frameMs = performance.now() - frameStartedAt;
