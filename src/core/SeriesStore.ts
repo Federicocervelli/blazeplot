@@ -59,7 +59,7 @@ export class SeriesStore {
 
   rebuildPyramid(): void {
     if (!this._dirty) return;
-    this.pyramid.build(this.dataset);
+    this.pyramid.incrementalBuild(this.dataset);
     this._dirty = false;
   }
 

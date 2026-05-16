@@ -6,6 +6,8 @@ export class MinMaxPyramid {
   private levels: Float32Array[] = [];
   private levelLengths: Uint32Array;
   private levelSampleWidths: Uint32Array;
+  private _builtLen: number = 0;
+  private _lastRangeStart: number = NaN;
 
   constructor(readonly bucketSize: number = 2) {
     if (!Number.isInteger(bucketSize) || bucketSize < 2) {
@@ -22,7 +24,11 @@ export class MinMaxPyramid {
     this.levelSampleWidths.fill(0);
 
     let srcLen = source.length;
-    if (srcLen === 0) return;
+    if (srcLen === 0) {
+      this._builtLen = 0;
+      this._lastRangeStart = NaN;
+      return;
+    }
 
     let prevLevel: Float32Array | null = null;
     let level = 0;
@@ -62,6 +68,95 @@ export class MinMaxPyramid {
       srcLen = nextLen;
       level++;
     }
+
+    this._builtLen = source.length;
+    this._lastRangeStart = source.range?.start ?? NaN;
+  }
+
+  incrementalBuild(source: Dataset): void {
+    const newLen = source.length;
+    const rangeStart = source.range?.start ?? NaN;
+
+    if (newLen === 0) {
+      this.levels = [];
+      this.levelLengths.fill(0);
+      this.levelSampleWidths.fill(0);
+      this._builtLen = 0;
+      this._lastRangeStart = NaN;
+      return;
+    }
+
+    if (newLen < this._builtLen || rangeStart !== this._lastRangeStart) {
+      this.build(source);
+      return;
+    }
+
+    if (newLen === this._builtLen) return;
+
+    this.appendTail(source, newLen - this._builtLen);
+    this._builtLen = newLen;
+  }
+
+  private appendTail(source: Dataset, appendedCount: number): void {
+    const newLen = source.length;
+    const W = this.bucketSize;
+    let changedIdx = newLen - appendedCount;
+
+    for (let L = 0; L < MAX_LEVELS; L++) {
+      const items: number = L === 0 ? newLen : this.levelLengths[L - 1]!;
+      const first = Math.floor(changedIdx / W);
+      const last = Math.ceil(items / W) - 1;
+
+      if (first > last) break;
+
+      this.levelSampleWidths[L] = W ** (L + 1);
+      this.ensureLevelData(L, last + 1);
+
+      for (let b = first; b <= last; b++) {
+        const start = b * W;
+        const end = Math.min((b + 1) * W, items);
+
+        let minY = Infinity;
+        let maxY = -Infinity;
+
+        if (L === 0) {
+          for (let j = start; j < end; j++) {
+            const y = source.getY(j);
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        } else {
+          const prev = this.levels[L - 1]!;
+          for (let j = start; j < end; j++) {
+            const pMin = prev[j * 2]!;
+            const pMax = prev[j * 2 + 1]!;
+            if (pMin < minY) minY = pMin;
+            if (pMax > maxY) maxY = pMax;
+          }
+        }
+
+        const dst = this.levels[L]!;
+        dst[b * 2] = minY;
+        dst[b * 2 + 1] = maxY;
+      }
+
+      this.levelLengths[L] = last + 1;
+      changedIdx = first;
+
+      if (this.levelLengths[L]! <= 1) break;
+    }
+  }
+
+  private ensureLevelData(level: number, minBuckets: number): void {
+    const needed = minBuckets * 2;
+    const current = this.levels[level];
+    if (current && current.length >= needed) return;
+
+    const next = new Float32Array(needed);
+    if (current) {
+      next.set(current.subarray(0, Math.min(current.length, needed)));
+    }
+    this.levels[level] = next;
   }
 
   query(_viewport: Viewport, pixelWidth: number, xRange: { start: number; length: number }): LODView {

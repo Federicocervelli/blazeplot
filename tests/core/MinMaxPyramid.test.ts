@@ -141,3 +141,104 @@ describe("MinMaxPyramid", () => {
     expect(() => new MinMaxPyramid(2.5)).toThrow(RangeError);
   });
 });
+
+describe("MinMaxPyramid incremental", () => {
+  it("produces same result as full build after append", () => {
+    const buf0 = new RingBuffer(100);
+    for (let i = 0; i < 10; i++) buf0.push(i, i * 2);
+
+    const full = new MinMaxPyramid(2);
+    full.build(buf0);
+
+    const buf1 = new RingBuffer(100);
+    for (let i = 0; i < 5; i++) buf1.push(i, i * 2);
+
+    const inc = new MinMaxPyramid(2);
+    inc.build(buf1);
+
+    for (let i = 5; i < 10; i++) buf1.push(i, i * 2);
+    inc.incrementalBuild(buf1);
+
+    for (let level = 0; level <= 3; level++) {
+      const pixelWidth = level === 0 ? 100 : 2 ** level;
+      const fullResult = full.query({ xMin: 0, xMax: 10, yMin: 0, yMax: 30 }, pixelWidth, { start: 0, length: 10 });
+      const incResult = inc.query({ xMin: 0, xMax: 10, yMin: 0, yMax: 30 }, pixelWidth, { start: 0, length: 10 });
+      expect(incResult.bucketCount).toBe(fullResult.bucketCount);
+      expect(Array.from(incResult.buckets)).toEqual(Array.from(fullResult.buckets));
+      expect(incResult.level).toBe(fullResult.level);
+    }
+  });
+
+  it("handles partial bucket extension", () => {
+    const buf = new RingBuffer(100);
+    buf.push(0, 3);
+    buf.push(1, 7);
+    buf.push(2, 1);
+
+    const pyramid = new MinMaxPyramid(2);
+    pyramid.build(buf);
+
+    buf.push(3, 9);
+    pyramid.incrementalBuild(buf);
+
+    const result = pyramid.query({ xMin: 0, xMax: 4, yMin: 0, yMax: 10 }, 100, { start: 0, length: 4 });
+    expect(result.bucketCount).toBe(2);
+    expect(Array.from(result.buckets)).toEqual([3, 7, 1, 9]);
+  });
+
+  it("no-ops when source unchanged", () => {
+    const buf = new RingBuffer(100);
+    buf.push(0, 1);
+    buf.push(1, 2);
+
+    const pyramid = new MinMaxPyramid(2);
+    pyramid.build(buf);
+
+    pyramid.incrementalBuild(buf);
+
+    const result = pyramid.query({ xMin: 0, xMax: 2, yMin: 0, yMax: 3 }, 100, { start: 0, length: 2 });
+    expect(result.bucketCount).toBe(1);
+  });
+
+  it("falls back to full rebuild on wrap", () => {
+    const buf = new RingBuffer(4);
+    buf.push(0, 100);
+    buf.push(1, 200);
+    buf.push(2, 10);
+    buf.push(3, 20);
+
+    const pyramid = new MinMaxPyramid(2);
+    pyramid.build(buf);
+
+    buf.push(4, 30);
+    buf.push(5, 40);
+    pyramid.incrementalBuild(buf);
+
+    const result = pyramid.query({ xMin: 2, xMax: 6, yMin: 0, yMax: 50 }, 100, { start: 0, length: 4 });
+    expect(result.bucketCount).toBe(2);
+    expect(Array.from(result.buckets)).toEqual([10, 20, 30, 40]);
+  });
+
+  it("handles large streaming append correctly", () => {
+    const buf = new RingBuffer(1000);
+    for (let i = 0; i < 200; i++) buf.push(i, Math.sin(i * 0.05));
+
+    const pyramid = new MinMaxPyramid(2);
+    pyramid.build(buf);
+
+    for (let i = 200; i < 400; i++) buf.push(i, Math.cos(i * 0.05));
+    pyramid.incrementalBuild(buf);
+
+    const full = new MinMaxPyramid(2);
+    full.build(buf);
+
+    const pixelWidths = [800, 400, 200, 100, 50, 10, 4];
+    for (const pw of pixelWidths) {
+      const incResult = pyramid.query({ xMin: 0, xMax: 400, yMin: -2, yMax: 2 }, pw, { start: 0, length: 400 });
+      const fullResult = full.query({ xMin: 0, xMax: 400, yMin: -2, yMax: 2 }, pw, { start: 0, length: 400 });
+      expect(incResult.bucketCount).toBe(fullResult.bucketCount);
+      expect(incResult.level).toBe(fullResult.level);
+      expect(Array.from(incResult.buckets)).toEqual(Array.from(fullResult.buckets));
+    }
+  });
+});
