@@ -17,12 +17,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
@@ -41,7 +35,9 @@ jobs:
         run: bun run build
 
       - name: Publish to npm
-        run: npm publish --provenance
+        run: bun publish
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate release notes
         id: notes
