@@ -46,9 +46,11 @@ export interface AppendableDataset extends Dataset {
   clear(): void;
 }
 
+export type LODStrategy = "minmax" | "none";
+
 export interface SeriesConfig {
   readonly mode: SeriesMode;
   readonly capacity: number;
-  readonly downsample: "minmax";
+  readonly downsample?: LODStrategy;
   readonly dataset?: Dataset;
 }

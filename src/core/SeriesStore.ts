@@ -5,7 +5,7 @@ export class SeriesStore {
   readonly config: SeriesConfig;
   readonly style: SeriesStyle;
   private readonly dataset: Dataset;
-  private readonly pyramid: MinMaxPyramid;
+  private readonly pyramid: MinMaxPyramid | null;
 
   private _dirty: boolean = false;
   private _visible: boolean = true;
@@ -13,12 +13,16 @@ export class SeriesStore {
   constructor(dataset: Dataset, config: SeriesConfig, style: SeriesStyle) {
     this.dataset = dataset;
     this.config = config;
-    this.pyramid = new MinMaxPyramid();
+    this.pyramid = config.downsample !== "none" ? new MinMaxPyramid() : null;
     this.style = style;
 
-    if (dataset.length > 0) {
+    if (this.pyramid && dataset.length > 0) {
       this.pyramid.build(dataset);
     }
+  }
+
+  get hasLOD(): boolean {
+    return this.pyramid !== null;
   }
 
   get dirty(): boolean {
@@ -53,17 +57,21 @@ export class SeriesStore {
     }
 
     (this.dataset as AppendableDataset).clear();
-    this.pyramid.build(this.dataset);
+    if (this.pyramid) this.pyramid.build(this.dataset);
     this._dirty = false;
   }
 
   rebuildPyramid(): void {
     if (!this._dirty) return;
-    this.pyramid.incrementalBuild(this.dataset);
+    if (this.pyramid) this.pyramid.incrementalBuild(this.dataset);
     this._dirty = false;
   }
 
   query(viewport: Viewport, pixelWidth: number): LODView {
+    if (!this.pyramid) {
+      return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel: 0 };
+    }
+
     const range = this.dataset.range;
     if (!range) {
       return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel: 0 };
@@ -104,7 +112,7 @@ export class SeriesStore {
   }
 
   copyMinMaxVisible(viewport: Viewport, target: Float32Array, maxSegments: number): number {
-    if (maxSegments <= 0 || target.length < maxSegments * 4) return 0;
+    if (!this.pyramid || maxSegments <= 0 || target.length < maxSegments * 4) return 0;
 
     const start = this.dataset.lowerBoundX(viewport.xMin);
     const end = this.dataset.upperBoundX(viewport.xMax);

@@ -152,7 +152,7 @@ export class Chart {
     for (const s of this.series) {
       if (!s.visible) continue;
       const visibleSamples = s.visibleSampleCount(viewport);
-      const dense = visibleSamples > RAW_LINE_VERTEX_CAPACITY;
+      const dense = s.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
       const count = dense
         ? s.copyMinMaxVisible(viewport, this.rawLineData, Math.min(this.canvas.width, RAW_LINE_VERTEX_CAPACITY >> 1))
         : s.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
