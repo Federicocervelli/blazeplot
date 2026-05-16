@@ -36,8 +36,6 @@ jobs:
 
       - name: Publish to npm
         run: bun publish
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate release notes
         id: notes
