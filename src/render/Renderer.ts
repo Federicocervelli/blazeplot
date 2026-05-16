@@ -1,20 +1,15 @@
 import { ShaderPrograms } from "./ShaderPrograms.js";
 import type { Camera2D } from "../interaction/Camera2D.js";
 import type { GpuBackend, GpuBuffer, GpuProgram } from "./types.js";
-import type { AttributeSpec } from "./types.js";
 import type { SeriesStyle } from "../core/types.js";
-
-const FLOATS_PER_SEGMENT = 3;
 
 export class Renderer {
   private readonly lineProgram: GpuProgram;
-  private readonly segmentProgram: GpuProgram;
   private readonly scaleUniform: Float32Array = new Float32Array(2);
   private readonly offsetUniform: Float32Array = new Float32Array(2);
 
   constructor(private backend: GpuBackend) {
     this.lineProgram = this.backend.createProgram(ShaderPrograms.line.vert, ShaderPrograms.line.frag);
-    this.segmentProgram = this.backend.createProgram(ShaderPrograms.segment.vert, ShaderPrograms.segment.frag);
   }
 
   clear(r: number, g: number, b: number, a: number): void {
@@ -41,40 +36,6 @@ export class Renderer {
     this.drawLinePrimitive("line_strip", positions, count, style, camera);
   }
 
-  drawMinMaxSegments(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
-    this.drawLines(positions, count, style, camera);
-  }
-
-  drawMinMaxSegmentsInstanced(instanceBuffer: GpuBuffer, instanceCount: number, style: SeriesStyle, camera: Camera2D): void {
-    this.scaleUniform[0] = camera.xScale;
-    this.scaleUniform[1] = camera.yScale;
-    this.offsetUniform[0] = camera.xOffset;
-    this.offsetUniform[1] = camera.yOffset;
-
-    const stride = FLOATS_PER_SEGMENT * 4;
-
-    const aX: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride, offset: 0 };
-    const aMinY: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride, offset: 4 };
-    const aMaxY: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride, offset: 8 };
-
-    this.backend.draw({
-      program: this.segmentProgram,
-      primitive: "lines",
-      count: 2,
-      instances: instanceCount,
-      attributes: { aX, aMinY, aMaxY },
-      uniforms: {
-        uScale: this.scaleUniform,
-        uOffset: this.offsetUniform,
-        uColor: style.color,
-      },
-    });
-  }
-
-  dispose(): void {
-    this.backend.destroy();
-  }
-
   private drawLinePrimitive(primitive: "lines" | "line_strip", positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
     this.scaleUniform[0] = camera.xScale;
     this.scaleUniform[1] = camera.yScale;
@@ -92,5 +53,13 @@ export class Renderer {
         uColor: style.color,
       },
     });
+  }
+
+  drawMinMaxSegments(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
+    this.drawLines(positions, count, style, camera);
+  }
+
+  dispose(): void {
+    this.backend.destroy();
   }
 }

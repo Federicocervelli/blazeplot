@@ -32,19 +32,12 @@ export type GpuResource = GpuBuffer | GpuProgram;
 
 export type UniformValue = number | boolean | readonly number[] | Float32Array;
 
-export interface AttributeSpec {
-  readonly buffer: GpuBuffer;
-  readonly divisor: number;
-  readonly stride: number;
-  readonly offset: number;
-}
-
 export interface DrawSpec {
   readonly program: GpuProgram;
   readonly primitive: "lines" | "line_strip" | "triangles" | "triangle_strip";
   readonly count: number;
   readonly instances?: number;
   readonly uniforms: Readonly<Record<string, UniformValue>>;
-  readonly attributes: Readonly<Record<string, GpuBuffer | AttributeSpec>>;
+  readonly attributes: Readonly<Record<string, GpuBuffer>>;
   readonly elements?: GpuBuffer;
 }

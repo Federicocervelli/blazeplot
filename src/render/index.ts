@@ -1,4 +1,4 @@
-export type { GpuBackend, GpuBuffer, GpuProgram, GpuResource, BufferSpec, DrawSpec, AttributeSpec } from "./types.js";
+export type { GpuBackend, GpuBuffer, GpuProgram, GpuResource, BufferSpec, DrawSpec } from "./types.js";
 
 export { Renderer } from "./Renderer.js";
 export { ReglBackend } from "./ReglBackend.js";

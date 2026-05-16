@@ -148,38 +148,4 @@ export class SeriesStore {
 
     return vertexCount;
   }
-
-  copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number): number {
-    if (!this.pyramid || maxSegments <= 0 || target.length < maxSegments * 3) return 0;
-
-    const start = this.dataset.lowerBoundX(viewport.xMin);
-    const end = this.dataset.upperBoundX(viewport.xMax);
-    const visible = end - start;
-    if (visible <= 0) return 0;
-
-    const segmentCount = Math.min(maxSegments, visible);
-    for (let segment = 0; segment < segmentCount; segment++) {
-      const segmentStart = start + Math.floor((segment * visible) / segmentCount);
-      const segmentEnd = start + Math.max(
-        Math.floor(((segment + 1) * visible) / segmentCount),
-        Math.floor((segment * visible) / segmentCount) + 1,
-      );
-      const clampedEnd = Math.min(end, segmentEnd);
-
-      let minY = Infinity;
-      let maxY = -Infinity;
-      for (let i = segmentStart; i < clampedEnd; i++) {
-        const y = this.dataset.getY(i);
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-
-      const x = this.dataset.getX(segmentStart + ((clampedEnd - segmentStart) >> 1));
-      target[segment * 3] = x;
-      target[segment * 3 + 1] = minY;
-      target[segment * 3 + 2] = maxY;
-    }
-
-    return segmentCount;
-  }
 }
