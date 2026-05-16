@@ -1,6 +1,9 @@
-attribute float aX;
-attribute float aMinY;
-attribute float aMaxY;
+#version 300 es
+precision highp float;
+
+in float aX;
+in float aMinY;
+in float aMaxY;
 
 uniform vec2 uScale;
 uniform vec2 uOffset;
