@@ -1,5 +1,6 @@
-import type { SeriesConfig, SeriesStyle } from "../core/types.js";
+import type { SeriesConfig, SeriesStyle, Dataset } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
+import { RingBuffer } from "../core/RingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
 import { ReglBackend } from "../render/ReglBackend.js";
 import type { GpuBuffer } from "../render/types.js";
@@ -72,7 +73,8 @@ export class Chart {
   }
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
-    const s = new SeriesStore(config, {
+    const dataset: Dataset = config.dataset ?? new RingBuffer(config.capacity);
+    const s = new SeriesStore(dataset, config, {
       color: style?.color ?? [0.3, 0.6, 1.0, 1.0],
       lineWidth: style?.lineWidth ?? 1,
     });

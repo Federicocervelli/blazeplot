@@ -1,8 +1,10 @@
 import { describe, it, expect } from "bun:test";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
+import { RingBuffer } from "../../src/core/RingBuffer.ts";
 
 function makeSeries(): SeriesStore {
   return new SeriesStore(
+    new RingBuffer(8),
     { mode: "line", capacity: 8, downsample: "minmax" },
     { color: [1, 1, 1, 1], lineWidth: 1 },
   );

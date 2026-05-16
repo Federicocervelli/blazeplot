@@ -1,21 +1,24 @@
-import type { SeriesConfig, SeriesStyle, LODView, Viewport } from "./types.js";
-import { RingBuffer } from "./RingBuffer.js";
+import type { Dataset, AppendableDataset, LODView, Viewport, SeriesConfig, SeriesStyle } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
 export class SeriesStore {
   readonly config: SeriesConfig;
   readonly style: SeriesStyle;
-  private readonly buffer: RingBuffer;
+  private readonly dataset: Dataset;
   private readonly pyramid: MinMaxPyramid;
 
   private _dirty: boolean = false;
   private _visible: boolean = true;
 
-  constructor(config: SeriesConfig, style: SeriesStyle) {
+  constructor(dataset: Dataset, config: SeriesConfig, style: SeriesStyle) {
+    this.dataset = dataset;
     this.config = config;
-    this.buffer = new RingBuffer(config.capacity);
     this.pyramid = new MinMaxPyramid();
     this.style = style;
+
+    if (dataset.length > 0) {
+      this.pyramid.build(dataset);
+    }
   }
 
   get dirty(): boolean {
@@ -23,7 +26,7 @@ export class SeriesStore {
   }
 
   get length(): number {
-    return this.buffer.length;
+    return this.dataset.length;
   }
 
   get visible(): boolean {
@@ -35,33 +38,39 @@ export class SeriesStore {
   }
 
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
-    const n = Math.min(x.length, y.length);
-    for (let i = 0; i < n; i++) {
-      this.buffer.push(x[i]!, y[i]!);
+    if (!("push" in this.dataset)) {
+      throw new TypeError("SeriesStore dataset is not appendable.");
     }
+
+    const appendable = this.dataset as AppendableDataset;
+    appendable.append(x, y);
     this._dirty = true;
   }
 
   clear(): void {
-    this.buffer.clear();
-    this.pyramid.build(this.buffer);
+    if (!("clear" in this.dataset)) {
+      throw new TypeError("SeriesStore dataset is not clearable.");
+    }
+
+    (this.dataset as AppendableDataset).clear();
+    this.pyramid.build(this.dataset);
     this._dirty = false;
   }
 
   rebuildPyramid(): void {
     if (!this._dirty) return;
-    this.pyramid.build(this.buffer);
+    this.pyramid.build(this.dataset);
     this._dirty = false;
   }
 
   query(viewport: Viewport, pixelWidth: number): LODView {
-    const range = this.buffer.range;
+    const range = this.dataset.range;
     if (!range) {
       return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel: 0 };
     }
 
-    const start = this.buffer.lowerBoundX(viewport.xMin);
-    const end = this.buffer.upperBoundX(viewport.xMax);
+    const start = this.dataset.lowerBoundX(viewport.xMin);
+    const end = this.dataset.upperBoundX(viewport.xMax);
 
     return this.pyramid.query(viewport, pixelWidth, {
       start,
@@ -70,24 +79,24 @@ export class SeriesStore {
   }
 
   visibleSampleCount(viewport: Viewport): number {
-    const start = this.buffer.lowerBoundX(viewport.xMin);
-    const end = this.buffer.upperBoundX(viewport.xMax);
+    const start = this.dataset.lowerBoundX(viewport.xMin);
+    const end = this.dataset.upperBoundX(viewport.xMax);
     return Math.max(0, end - start);
   }
 
   copyRawVisible(viewport: Viewport, target: Float32Array, maxPoints: number): number {
     if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
 
-    const start = this.buffer.lowerBoundX(viewport.xMin);
-    const end = this.buffer.upperBoundX(viewport.xMax);
+    const start = this.dataset.lowerBoundX(viewport.xMin);
+    const end = this.dataset.upperBoundX(viewport.xMax);
     const visible = end - start;
     if (visible <= 0) return 0;
 
     const stride = Math.max(1, Math.ceil(visible / maxPoints));
     let count = 0;
     for (let i = start; i < end && count < maxPoints; i += stride) {
-      target[count * 2] = this.buffer.getX(i);
-      target[count * 2 + 1] = this.buffer.getY(i);
+      target[count * 2] = this.dataset.getX(i);
+      target[count * 2 + 1] = this.dataset.getY(i);
       count++;
     }
 
@@ -97,8 +106,8 @@ export class SeriesStore {
   copyMinMaxVisible(viewport: Viewport, target: Float32Array, maxSegments: number): number {
     if (maxSegments <= 0 || target.length < maxSegments * 4) return 0;
 
-    const start = this.buffer.lowerBoundX(viewport.xMin);
-    const end = this.buffer.upperBoundX(viewport.xMax);
+    const start = this.dataset.lowerBoundX(viewport.xMin);
+    const end = this.dataset.upperBoundX(viewport.xMax);
     const visible = end - start;
     if (visible <= 0) return 0;
 
@@ -115,12 +124,12 @@ export class SeriesStore {
       let minY = Infinity;
       let maxY = -Infinity;
       for (let i = segmentStart; i < clampedEnd; i++) {
-        const y = this.buffer.getY(i);
+        const y = this.dataset.getY(i);
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
       }
 
-      const x = this.buffer.getX(segmentStart + ((clampedEnd - segmentStart) >> 1));
+      const x = this.dataset.getX(segmentStart + ((clampedEnd - segmentStart) >> 1));
       target[vertexCount * 2] = x;
       target[vertexCount * 2 + 1] = minY;
       vertexCount++;
