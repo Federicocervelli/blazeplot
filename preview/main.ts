@@ -2,13 +2,14 @@ import { Chart, OhlcRingBuffer } from "@/index.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
-import type { ChartFrameStats, ChartPickMode, ChartTheme, RgbaColor, SeriesStyle, ViewportPolicy } from "@/index.ts";
+import type { ChartFrameStats, ChartPickGroup, ChartPickMode, ChartTheme, RgbaColor, SeriesStyle, ViewportPolicy } from "@/index.ts";
 
 const chartTarget = requireElement<HTMLElement>("chart");
 const overlayText = document.getElementById("overlayText") as HTMLSpanElement | null;
 const copyIcon = document.getElementById("copyIcon");
 const themeSelect = requireElement<HTMLSelectElement>("themeSelect");
 const hoverModeSelect = requireElement<HTMLSelectElement>("hoverModeSelect");
+const hoverGroupSelect = requireElement<HTMLSelectElement>("hoverGroupSelect");
 const axesSelect = requireElement<HTMLSelectElement>("axesSelect");
 const highlightToggle = requireElement<HTMLInputElement>("highlightToggle");
 const gridToggle = requireElement<HTMLInputElement>("gridToggle");
@@ -112,8 +113,8 @@ let streaming = true;
 let syncX = true;
 let showPerfPanel = true;
 let currentTheme: PreviewTheme = "dark";
-const hoverOptions: { mode: ChartPickMode } = { mode: "nearest-x" };
-const tooltipOptions: { mode: ChartPickMode; highlight: boolean } = { mode: hoverOptions.mode, highlight: true };
+const hoverOptions: { mode: ChartPickMode; group: ChartPickGroup } = { mode: "nearest-x", group: "x" };
+const tooltipOptions: { mode: ChartPickMode; group: ChartPickGroup; highlight: boolean } = { mode: hoverOptions.mode, group: hoverOptions.group, highlight: true };
 const chartStats: ChartFrameStats = {
   fps: 0,
   frameMs: 0,
@@ -201,6 +202,12 @@ hoverModeSelect.addEventListener("change", () => {
   const mode = asHoverMode(hoverModeSelect.value);
   hoverOptions.mode = mode;
   tooltipOptions.mode = mode;
+  chart.setViewport({});
+});
+hoverGroupSelect.addEventListener("change", () => {
+  const group = asHoverGroup(hoverGroupSelect.value);
+  hoverOptions.group = group;
+  tooltipOptions.group = group;
   chart.setViewport({});
 });
 highlightToggle.addEventListener("change", () => {
@@ -406,6 +413,10 @@ function asPreviewTheme(value: string): PreviewTheme {
 
 function asHoverMode(value: string): ChartPickMode {
   return value === "nearest-point" ? "nearest-point" : "nearest-x";
+}
+
+function asHoverGroup(value: string): ChartPickGroup {
+  return value === "none" ? "none" : "x";
 }
 
 requestAnimationFrame(stream);

@@ -28,9 +28,11 @@ export interface AxisConfig {
 }
 
 export type ChartPickMode = "nearest-x" | "nearest-point";
+export type ChartPickGroup = "x" | "none";
 
 export interface ChartPickOptions {
   readonly mode?: ChartPickMode;
+  readonly group?: ChartPickGroup;
   readonly maxDistancePx?: number;
 }
 
@@ -85,6 +87,8 @@ export interface ChartHoverState {
   readonly dataY: number;
   readonly anchorX: number;
   readonly mode: ChartPickMode;
+  readonly group: ChartPickGroup;
+  readonly maxDistancePx: number;
   readonly items: readonly ChartPickItem[];
 }
 
@@ -124,6 +128,12 @@ function normalizeAxesConfig(axes: ChartOptions["axes"]): { x: NormalizedAxisCon
     x: normalizeAxisConfig(axes.x),
     y: normalizeAxisConfig(axes.y),
   };
+}
+
+interface PickCandidate {
+  readonly sample: SeriesSample;
+  readonly series: SeriesStore;
+  readonly seriesIndex: number;
 }
 
 export class Chart {
@@ -448,15 +458,19 @@ export class Chart {
     const dataX = viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin);
     const dataY = viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin);
     const mode = options.mode ?? this.options.hover?.mode ?? "nearest-x";
+    const group = options.group ?? this.options.hover?.group ?? "x";
     const maxDistancePx = options.maxDistancePx ?? this.options.hover?.maxDistancePx ?? Infinity;
-    const anchorX = mode === "nearest-point"
-      ? this.findNearestPointAnchor(dataX, dataY, viewport, rect.width, rect.height, maxDistancePx)
-      : this.findNearestXAnchor(dataX, viewport, rect.width, maxDistancePx);
+    const selected = mode === "nearest-point"
+      ? this.findNearestPointCandidate(dataX, dataY, viewport, rect.width, rect.height, maxDistancePx)
+      : this.findNearestXCandidate(dataX, viewport, rect.width, maxDistancePx);
 
-    if (anchorX === null) return null;
+    if (!selected) return null;
 
-    const items = this.collectPickItems(anchorX, clientX, clientY, viewport, rect);
-    return { clientX, clientY, plotX, plotY, dataX, dataY, anchorX, mode, items };
+    const anchorX = selected.sample.x;
+    const items = group === "none"
+      ? [this.createPickItem(selected.sample, selected.series, selected.seriesIndex, clientX, clientY, rect)]
+      : this.collectPickItems(anchorX, clientX, clientY, viewport, rect);
+    return { clientX, clientY, plotX, plotY, dataX, dataY, anchorX, mode, group, maxDistancePx, items };
   }
 
   async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
@@ -832,51 +846,51 @@ export class Chart {
     this.stats.drawCalls += drawCalls;
   }
 
-  private findNearestXAnchor(
+  private findNearestXCandidate(
     dataX: number,
     viewport: Viewport,
     plotWidth: number,
     maxDistancePx: number,
-  ): number | null {
-    let best: SeriesSample | null = null;
+  ): PickCandidate | null {
+    let best: PickCandidate | null = null;
     let bestDistancePx = Infinity;
     const xScale = plotWidth / (viewport.xMax - viewport.xMin);
 
-    for (const series of this.series) {
+    for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
+      const series = this.series[seriesIndex]!;
       if (!series.visible) continue;
       const sample = series.nearestSampleByX(dataX, viewport);
       if (!sample) continue;
       const distancePx = Math.abs(sample.x - dataX) * xScale;
       if (distancePx < bestDistancePx) {
-        best = sample;
+        best = { sample, series, seriesIndex };
         bestDistancePx = distancePx;
       }
     }
 
-    if (!best || bestDistancePx > maxDistancePx) return null;
-    return best.x;
+    return best && bestDistancePx <= maxDistancePx ? best : null;
   }
 
-  private findNearestPointAnchor(
+  private findNearestPointCandidate(
     dataX: number,
     dataY: number,
     viewport: Viewport,
     plotWidth: number,
     plotHeight: number,
     maxDistancePx: number,
-  ): number | null {
-    let best: SeriesSample | null = null;
-    for (const series of this.series) {
+  ): PickCandidate | null {
+    let best: PickCandidate | null = null;
+    for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
+      const series = this.series[seriesIndex]!;
       if (!series.visible) continue;
-      const sample = series.nearestSampleByPoint(dataX, dataY, viewport, plotWidth, plotHeight);
+      const sample = series.nearestSampleByPoint(dataX, dataY, viewport, plotWidth, plotHeight, maxDistancePx);
       if (!sample) continue;
-      if (!best || (sample.distancePx ?? Infinity) < (best.distancePx ?? Infinity)) {
-        best = sample;
+      if (!best || (sample.distancePx ?? Infinity) < (best.sample.distancePx ?? Infinity)) {
+        best = { sample, series, seriesIndex };
       }
     }
 
-    if (!best || (best.distancePx ?? Infinity) > maxDistancePx) return null;
-    return best.x;
+    return best && (best.sample.distancePx ?? Infinity) <= maxDistancePx ? best : null;
   }
 
   private collectPickItems(
@@ -892,28 +906,38 @@ export class Chart {
       if (!series.visible) continue;
       const sample = series.nearestSampleByX(anchorX, viewport);
       if (!sample) continue;
-
-      const [clipX, clipY] = this.camera.toClip(sample.x, sample.y);
-      const [plotX, plotY] = this.camera.toScreen(clipX, clipY, rect.width, rect.height);
-      const itemClientX = rect.left + plotX;
-      const itemClientY = rect.top + plotY;
-      const dx = itemClientX - clientX;
-      const dy = itemClientY - clientY;
-      items.push({
-        ...sample,
-        distancePx: Math.hypot(dx, dy),
-        series,
-        seriesIndex,
-        id: series.config.id,
-        name: series.config.name,
-        mode: series.config.mode,
-        plotX,
-        plotY,
-        clientX: itemClientX,
-        clientY: itemClientY,
-      });
+      items.push(this.createPickItem(sample, series, seriesIndex, clientX, clientY, rect));
     }
     return items;
+  }
+
+  private createPickItem(
+    sample: SeriesSample,
+    series: SeriesStore,
+    seriesIndex: number,
+    clientX: number,
+    clientY: number,
+    rect: DOMRect,
+  ): ChartPickItem {
+    const [clipX, clipY] = this.camera.toClip(sample.x, sample.y);
+    const [plotX, plotY] = this.camera.toScreen(clipX, clipY, rect.width, rect.height);
+    const itemClientX = rect.left + plotX;
+    const itemClientY = rect.top + plotY;
+    const dx = itemClientX - clientX;
+    const dy = itemClientY - clientY;
+    return {
+      ...sample,
+      distancePx: Math.hypot(dx, dy),
+      series,
+      seriesIndex,
+      id: series.config.id,
+      name: series.config.name,
+      mode: series.config.mode,
+      plotX,
+      plotY,
+      clientX: itemClientX,
+      clientY: itemClientY,
+    };
   }
 
   private refreshHover(): void {

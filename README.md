@@ -77,7 +77,7 @@ bun install blazeplot
 | `chart.getFrameStats(target?)` | Copy per-frame benchmark counters into a reusable object. |
 | `chart.getSeriesState()` | Return public series metadata/state for plugins or custom UI. |
 | `chart.setSeriesVisible(series, visible)` | Toggle visibility and notify series-state subscribers. |
-| `chart.pick(clientX, clientY, options?)` | Raw-data hit test. Supports `"nearest-x"` and `"nearest-point"`; returned items include actual sample X/Y and plot/client coordinates for highlights. |
+| `chart.pick(clientX, clientY, options?)` | Raw-data hit test. Supports `mode: "nearest-x" | "nearest-point"`, `group: "x" | "none"`, and `maxDistancePx`; returned items include actual sample X/Y and plot/client coordinates for highlights. |
 | `chart.subscribe("hover", cb)` / `chart.subscribe("serieschange", cb)` | Subscribe to hover or series state changes. Returns an unsubscribe function. |
 | `await chart.screenshot(options?)` | Export the full chart as an image `Blob`, including the WebGL plot and built-in DOM text overlays. |
 | `chart.dispose()` | Dispose GPU resources, observers, input handlers, and owned DOM layout. |
@@ -87,7 +87,7 @@ bun install blazeplot
 | Property | Default | Description |
 |---|---|---|
 | `viewportPolicy?` | — | Optional `beforeRender` viewport hook. Pass the same policy to `interactionsPlugin({ viewportPolicy })` for pan/zoom hooks. |
-| `hover?` | `{ mode: "nearest-x" }` | Default hover picking behavior. `mode` can be `"nearest-x"` or `"nearest-point"`. |
+| `hover?` | `{ mode: "nearest-x", group: "x" }` | Default hover picking behavior. `mode` can be `"nearest-x"` or `"nearest-point"`; `group: "x"` reports one item per visible series at the selected X, while `group: "none"` reports only the selected point. |
 | `plugins?` | `[]` | Optional `ChartPlugin` instances, e.g. `legendPlugin()` and `tooltipPlugin()`. |
 | `theme?` | built-in dark theme | Override chart, axis, palette, legend, and tooltip colors/fonts. |
 | `grid?` | `true` | Show grid lines. |
@@ -155,16 +155,16 @@ import { legendPlugin } from "blazeplot/plugins/legend";
 import { tooltipPlugin } from "blazeplot/plugins/tooltip";
 
 const chart = new Chart(container, {
-  hover: { mode: "nearest-x" },
+  hover: { mode: "nearest-x", group: "x" },
   plugins: [
     interactionsPlugin({ axis: "xy" }),
     legendPlugin(),
-    tooltipPlugin({ mode: "nearest-point" }),
+    tooltipPlugin({ mode: "nearest-point", group: "none", maxDistancePx: 24 }),
   ],
 });
 ```
 
-Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zoom, Shift+drag plot pan, wheel zoom, double-click reset, and `axis: "x" | "y" | "xy"`. When outside axes are visible, scrolling an axis zooms that axis and dragging an axis pans that axis; the plugin also applies a subtle axis hover color/filter configurable with `axisHover`, `axisHoverColor`, and `axisHoverFilter`. Legend/tooltip consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting.
+Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zoom, Shift+drag plot pan, wheel zoom, double-click reset, and `axis: "x" | "y" | "xy"`. When outside axes are visible, scrolling an axis zooms that axis and dragging an axis pans that axis; the plugin also applies a subtle axis hover color/filter configurable with `axisHover`, `axisHoverColor`, and `axisHoverFilter`. Legend/tooltip consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting. For shared time-series tooltips, use `group: "x"`; for scatter/true point hover, use `group: "none"`.
 
 ### `SeriesStore`
 

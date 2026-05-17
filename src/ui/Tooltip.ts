@@ -1,8 +1,9 @@
-import type { Chart, ChartHoverState, ChartPickItem, ChartPickMode, ChartPlugin } from "./Chart.js";
+import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin } from "./Chart.js";
 
 export interface TooltipPluginOptions {
   readonly className?: string;
   readonly mode?: ChartPickMode;
+  readonly group?: ChartPickGroup;
   readonly maxDistancePx?: number;
   readonly offsetX?: number;
   readonly offsetY?: number;
@@ -146,9 +147,12 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       };
 
       const render = (state: ChartHoverState | null): void => {
-        const effectiveState = state && (options.mode !== undefined || options.maxDistancePx !== undefined)
-          ? chart.pick(state.clientX, state.clientY, options)
-          : state;
+        const shouldRepick = state !== null && (
+          (options.mode !== undefined && options.mode !== state.mode) ||
+          (options.group !== undefined && options.group !== state.group) ||
+          (options.maxDistancePx !== undefined && options.maxDistancePx !== state.maxDistancePx)
+        );
+        const effectiveState = shouldRepick ? chart.pick(state.clientX, state.clientY, options) : state;
 
         renderMarkers(effectiveState);
         if (!effectiveState || effectiveState.items.length === 0) {
