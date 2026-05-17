@@ -17,8 +17,6 @@ type WorkerGlobal = {
 const worker = globalThis as unknown as WorkerGlobal;
 const TAU = Math.PI * 2;
 const OMEGA = TAU / TRACE_PERIOD;
-const LINE_SIN_STEP = Math.sin(OMEGA);
-const LINE_COS_STEP = Math.cos(OMEGA);
 const SPARSE_SIN_STEP = Math.sin(OMEGA * SPARSE_INTERVAL);
 const SPARSE_COS_STEP = Math.cos(OMEGA * SPARSE_INTERVAL);
 const pools = new Map<number, ArrayBuffer[]>();
@@ -39,9 +37,6 @@ function generateBatch(): PreviewDataBatch {
   const start = t;
   const batchSize = t < VIEW_SAMPLES ? Math.min(FILL_BATCH_SIZE, VIEW_SAMPLES - t) : LIVE_BATCH_SIZE;
   const end = start + batchSize;
-  const lineY = acquireFloat32(batchSize);
-  fillLine(start, batchSize, lineY);
-
   const sparseStart = Math.ceil(start / SPARSE_INTERVAL) * SPARSE_INTERVAL;
   const sparseCount = sparseStart < end ? Math.floor((end - 1 - sparseStart) / SPARSE_INTERVAL) + 1 : 0;
   const areaY = sparseCount > 0 ? acquireFloat32(sparseCount) : null;
@@ -70,7 +65,6 @@ function generateBatch(): PreviewDataBatch {
     batchSize,
     sparseCount,
     ohlcCount,
-    lineY: lineY.buffer as ArrayBuffer,
     areaY: areaY ? areaY.buffer as ArrayBuffer : null,
     spikeY: spikeY ? spikeY.buffer as ArrayBuffer : null,
     barY: barY ? barY.buffer as ArrayBuffer : null,
@@ -84,7 +78,7 @@ function generateBatch(): PreviewDataBatch {
 }
 
 function postBatch(batch: PreviewDataBatch): void {
-  const transfer: Transferable[] = [batch.lineY];
+  const transfer: Transferable[] = [];
   appendTransfer(transfer, batch.areaY, batch.spikeY, batch.barY);
   appendTransfer(transfer, batch.ohlcX, batch.ohlcOpen, batch.ohlcHigh, batch.ohlcLow, batch.ohlcClose);
   worker.postMessage(batch, transfer);
@@ -97,17 +91,6 @@ function appendTransfer(transfer: Transferable[], ...buffers: ArrayBufferOrNull[
 }
 
 type ArrayBufferOrNull = ArrayBuffer | null;
-
-function fillLine(start: number, count: number, ys: Float32Array): void {
-  let sin = Math.sin(start * OMEGA);
-  let cos = Math.cos(start * OMEGA);
-  for (let i = 0; i < count; i++) {
-    ys[i] = sin * 0.25 + 0.78 + random01() * 0.01;
-    const nextSin = sin * LINE_COS_STEP + cos * LINE_SIN_STEP;
-    cos = cos * LINE_COS_STEP - sin * LINE_SIN_STEP;
-    sin = nextSin;
-  }
-}
 
 function fillSparse(
   start: number,

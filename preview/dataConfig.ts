@@ -20,7 +20,6 @@ export interface PreviewDataBatch {
   readonly batchSize: number;
   readonly sparseCount: number;
   readonly ohlcCount: number;
-  readonly lineY: ArrayBuffer;
   readonly areaY: ArrayBuffer | null;
   readonly spikeY: ArrayBuffer | null;
   readonly barY: ArrayBuffer | null;

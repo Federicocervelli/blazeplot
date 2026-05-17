@@ -1,5 +1,6 @@
 import { Chart, OhlcRingBuffer } from "@/index.ts";
 import { ContiguousRingDataset } from "./ContiguousRingDataset.ts";
+import { ProceduralLineDataset } from "./ProceduralLineDataset.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
@@ -157,7 +158,7 @@ const chart = new Chart(chartTarget, {
 });
 const canvas = chart.canvas;
 
-const lineDataset = new ContiguousRingDataset(HISTORY_SAMPLES, { blockSize: 64 });
+const lineDataset = new ProceduralLineDataset(HISTORY_SAMPLES);
 const lineSeries = chart.addLine(
   { capacity: HISTORY_SAMPLES, dataset: lineDataset, downsample: "minmax", name: "Wave" },
   { lineWidth: 1 },
@@ -250,8 +251,8 @@ console.info("[blazeplot] chart initialized", {
 });
 
 function appendGeneratedBatch(batch: PreviewDataBatch): void {
-  const release: ArrayBuffer[] = [batch.lineY];
-  lineSeries.append({ length: batch.batchSize }, new Float32Array(batch.lineY));
+  const release: ArrayBuffer[] = [];
+  lineSeries.append({ length: batch.batchSize }, { length: batch.batchSize });
 
   if (batch.sparseCount > 0 && batch.areaY && batch.spikeY && batch.barY) {
     const sparseLength = { length: batch.sparseCount };

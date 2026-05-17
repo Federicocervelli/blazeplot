@@ -1,0 +1,209 @@
+import { TRACE_PERIOD } from "./dataConfig.ts";
+import type { AppendableDataset, RangeMinMaxDataset, TimeRange, Viewport } from "@/index.ts";
+
+const OMEGA = (Math.PI * 2) / TRACE_PERIOD;
+const BASELINE = 0.78;
+const AMPLITUDE = 0.25;
+const NOISE_MAX = 0.01;
+
+type SampleLayout = "points" | "area";
+type MinMaxLayout = "line-list" | "instanced";
+
+export class ProceduralLineDataset implements AppendableDataset, RangeMinMaxDataset {
+  readonly capacity: number;
+  private _length = 0;
+  private _nextX = 0;
+
+  constructor(capacity: number) {
+    if (!Number.isInteger(capacity) || capacity <= 0) {
+      throw new RangeError("ProceduralLineDataset capacity must be a positive integer.");
+    }
+    this.capacity = capacity;
+  }
+
+  get length(): number {
+    return this._length;
+  }
+
+  get range(): TimeRange | null {
+    if (this._length === 0) return null;
+    return { start: this.firstX(), end: this._nextX - 1 };
+  }
+
+  push(_x: number, _y: number): void {
+    this.append({ length: 1 }, { length: 1 });
+  }
+
+  append(x: ArrayLike<number>, y: ArrayLike<number>): void {
+    const requested = Math.min(x.length, y.length);
+    if (requested <= 0) return;
+    this._nextX += requested;
+    this._length = Math.min(this.capacity, this._length + requested);
+  }
+
+  clear(): void {
+    this._length = 0;
+    this._nextX = 0;
+  }
+
+  getX(index: number): number {
+    this.assertValidIndex(index);
+    return this.firstX() + index;
+  }
+
+  getY(index: number): number {
+    return this.yAt(this.getX(index));
+  }
+
+  lowerBoundX(x: number): number {
+    if (this._length === 0) return 0;
+    return Math.max(0, Math.min(this._length, Math.ceil(x - this.firstX())));
+  }
+
+  upperBoundX(x: number): number {
+    if (this._length === 0) return 0;
+    return Math.max(0, Math.min(this._length, Math.floor(x - this.firstX()) + 1));
+  }
+
+  rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this._length, Math.ceil(end));
+    if (to <= from) return null;
+    return this.rangeMinMaxByIndex(from, to);
+  }
+
+  copySamplesRange(
+    start: number,
+    end: number,
+    target: Float32Array,
+    maxPoints: number,
+    layout: SampleLayout,
+    baseline: number,
+    xOrigin: number,
+  ): number {
+    const floatsPerSample = layout === "points" ? 2 : 4;
+    if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
+
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this._length, Math.ceil(end));
+    const count = Math.min(maxPoints, Math.max(0, to - from));
+    const firstX = this.firstX() - xOrigin;
+
+    if (layout === "points") {
+      for (let i = 0; i < count; i++) {
+        const x = firstX + from + i;
+        const offset = i * 2;
+        target[offset] = x;
+        target[offset + 1] = this.yAt(x + xOrigin);
+      }
+    } else {
+      for (let i = 0; i < count; i++) {
+        const x = firstX + from + i;
+        const offset = i * 4;
+        target[offset] = x;
+        target[offset + 1] = baseline;
+        target[offset + 2] = x;
+        target[offset + 3] = this.yAt(x + xOrigin);
+      }
+    }
+
+    return count;
+  }
+
+  copyMinMaxSegments(
+    viewport: Viewport,
+    target: Float32Array,
+    maxSegments: number,
+    layout: MinMaxLayout,
+    xOrigin: number,
+  ): number {
+    const floatsPerSegment = layout === "line-list" ? 4 : 3;
+    if (maxSegments <= 0 || target.length < maxSegments * floatsPerSegment) return 0;
+
+    const start = this.lowerBoundX(viewport.xMin);
+    const end = this.upperBoundX(viewport.xMax);
+    const visible = end - start;
+    if (visible <= 0) return 0;
+
+    const segmentCount = Math.min(maxSegments, visible);
+    const firstX = this.firstX() - xOrigin;
+    for (let segment = 0; segment < segmentCount; segment++) {
+      const segmentStart = start + Math.floor((segment * visible) / segmentCount);
+      const segmentEnd = Math.min(
+        end,
+        start + Math.max(
+          Math.floor(((segment + 1) * visible) / segmentCount),
+          Math.floor((segment * visible) / segmentCount) + 1,
+        ),
+      );
+      const range = this.rangeMinMaxByIndex(segmentStart, segmentEnd)!;
+      const x = firstX + segmentStart + ((segmentEnd - segmentStart) >> 1);
+
+      if (layout === "line-list") {
+        const offset = segment * 4;
+        target[offset] = x;
+        target[offset + 1] = range.minY;
+        target[offset + 2] = x;
+        target[offset + 3] = range.maxY;
+      } else {
+        const offset = segment * 3;
+        target[offset] = x;
+        target[offset + 1] = range.minY;
+        target[offset + 2] = range.maxY;
+      }
+    }
+
+    return segmentCount;
+  }
+
+  private rangeMinMaxByIndex(start: number, end: number): { minY: number; maxY: number } | null {
+    if (end <= start) return null;
+    const x0 = this.firstX() + start;
+    const x1 = this.firstX() + end - 1;
+    const phase0 = x0 * OMEGA;
+    const phase1 = x1 * OMEGA;
+    const sin0 = Math.sin(phase0);
+    const sin1 = Math.sin(phase1);
+    const minSin = this.containsSineMinimum(phase0, phase1) ? -1 : Math.min(sin0, sin1);
+    const maxSin = this.containsSineMaximum(phase0, phase1) ? 1 : Math.max(sin0, sin1);
+    return {
+      minY: BASELINE + minSin * AMPLITUDE,
+      maxY: BASELINE + maxSin * AMPLITUDE + NOISE_MAX,
+    };
+  }
+
+  private yAt(x: number): number {
+    return BASELINE + Math.sin(x * OMEGA) * AMPLITUDE + this.noiseAt(x) * NOISE_MAX;
+  }
+
+  private noiseAt(x: number): number {
+    let value = (Math.floor(x) + 0x9e3779b9) | 0;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
+  }
+
+  private containsSineMaximum(phase0: number, phase1: number): boolean {
+    return this.containsPhase(phase0, phase1, Math.PI * 0.5);
+  }
+
+  private containsSineMinimum(phase0: number, phase1: number): boolean {
+    return this.containsPhase(phase0, phase1, Math.PI * 1.5);
+  }
+
+  private containsPhase(phase0: number, phase1: number, target: number): boolean {
+    const period = Math.PI * 2;
+    const first = target + Math.ceil((phase0 - target) / period) * period;
+    return first <= phase1;
+  }
+
+  private firstX(): number {
+    return this._nextX - this._length;
+  }
+
+  private assertValidIndex(index: number): void {
+    if (!Number.isInteger(index) || index < 0 || index >= this._length) {
+      throw new RangeError(`ProceduralLineDataset index out of range: ${index}`);
+    }
+  }
+}
