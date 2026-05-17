@@ -45,6 +45,38 @@ function renderDefaultTooltip(
   container.innerHTML = html;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function placeTooltip(
+  container: HTMLElement,
+  state: ChartHoverState,
+  chart: Chart,
+  options: TooltipPluginOptions,
+): void {
+  const offsetX = options.offsetX ?? 12;
+  const offsetY = options.offsetY ?? 12;
+  const rootRect = chart.rootElement.getBoundingClientRect();
+  const tooltipRect = container.getBoundingClientRect();
+  const margin = 4;
+  const viewportWidth = Math.max(1, globalThis.innerWidth || document.documentElement.clientWidth || rootRect.right);
+  const viewportHeight = Math.max(1, globalThis.innerHeight || document.documentElement.clientHeight || rootRect.bottom);
+
+  let viewportX = state.clientX + offsetX;
+  let viewportY = state.clientY + offsetY;
+  if (viewportX + tooltipRect.width + margin > viewportWidth) {
+    viewportX = state.clientX - offsetX - tooltipRect.width;
+  }
+  if (viewportY + tooltipRect.height + margin > viewportHeight) {
+    viewportY = state.clientY - offsetY - tooltipRect.height;
+  }
+
+  viewportX = clamp(viewportX, margin, Math.max(margin, viewportWidth - tooltipRect.width - margin));
+  viewportY = clamp(viewportY, margin, Math.max(margin, viewportHeight - tooltipRect.height - margin));
+  container.style.transform = `translate(${viewportX - rootRect.left}px, ${viewportY - rootRect.top}px)`;
+}
+
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
   return {
     install(chart: Chart) {
@@ -112,11 +144,8 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
           renderDefaultTooltip(effectiveState, container, options.formatter);
         }
 
-        const rootRect = chart.rootElement.getBoundingClientRect();
-        const x = effectiveState.clientX - rootRect.left + (options.offsetX ?? 12);
-        const y = effectiveState.clientY - rootRect.top + (options.offsetY ?? 12);
-        container.style.transform = `translate(${x}px, ${y}px)`;
         container.style.display = "block";
+        placeTooltip(container, effectiveState, chart, options);
       };
 
       const unsubscribeHover = chart.subscribe("hover", render);
