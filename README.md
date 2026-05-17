@@ -108,21 +108,30 @@ push();
 
 ### `ChartTheme`
 
+```css
+:root {
+  --plot-bg: #050816;
+  --plot-grid: rgb(148 163 184 / 0.22);
+  --plot-axis: #cbd5e1;
+  --series-a: #38bdf8;
+  --series-b: oklch(70% 0.19 22);
+}
+```
+
 ```ts
 new Chart(container, {
   theme: {
-    backgroundColor: [0.02, 0.03, 0.06, 1],
-    gridColor: [0.25, 0.32, 0.45, 0.35],
-    axisColor: "#cbd5e1",
-    seriesColors: [
-      [0.25, 0.65, 1.0, 1],
-      [1.0, 0.45, 0.45, 1],
-    ],
+    backgroundColor: "var(--plot-bg)",
+    gridColor: "var(--plot-grid)",
+    axisColor: "var(--plot-axis)",
+    seriesColors: ["var(--series-a)", "var(--series-b)"],
+    tooltipBackgroundColor: "rgb(4 8 16 / 0.85)",
+    legendBackgroundColor: "rgb(4 8 16 / 0.85)",
   },
 });
 ```
 
-Theme fields include `backgroundColor`, `gridColor`, `axisColor`, `axisFont`, `seriesColors`, and built-in plugin defaults for tooltip/legend colors and fonts. Per-series styles and plugin options still override theme defaults.
+WebGL-facing colors (`backgroundColor`, `gridColor`, `seriesColors`) accept either normalized RGBA tuples (`[r,g,b,a]`) or CSS colors, including CSS variables inherited by the chart container. BlazePlot resolves CSS colors internally to WebGL-compatible RGBA floats while preserving CSS strings for DOM styling where appropriate. Per-series styles and plugin options still override theme defaults.
 
 ### `AxisConfig`
 

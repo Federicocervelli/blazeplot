@@ -162,7 +162,7 @@ export class Chart {
   };
 
   constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
-    this.resolvedTheme = resolveChartTheme(options.theme);
+    this.resolvedTheme = resolveChartTheme(options.theme, target);
     const axesOpt = options.axes;
     if (axesOpt === false) {
       this.normalizedAxes = { x: { visible: false, position: "inside" }, y: { visible: false, position: "inside" } };
@@ -176,7 +176,7 @@ export class Chart {
     }
 
     this.layout = new ChartLayout(target, this.normalizedAxes);
-    this.layout.root.style.background = rgbaCss(this.resolvedTheme.backgroundColor);
+    this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
     this.applyCanvasSize();
     this.camera = new Camera2D();
     this.axis = new AxisController(this.camera);

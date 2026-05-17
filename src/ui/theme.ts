@@ -1,11 +1,13 @@
 export type RgbaColor = readonly [number, number, number, number];
+export type CssColor = string;
+export type ThemeColor = RgbaColor | CssColor;
 
 export interface ChartTheme {
-  readonly backgroundColor?: RgbaColor;
-  readonly gridColor?: RgbaColor;
+  readonly backgroundColor?: ThemeColor;
+  readonly gridColor?: ThemeColor;
   readonly axisColor?: string;
   readonly axisFont?: string;
-  readonly seriesColors?: readonly RgbaColor[];
+  readonly seriesColors?: readonly ThemeColor[];
   readonly tooltipBackgroundColor?: string;
   readonly tooltipTextColor?: string;
   readonly tooltipFont?: string;
@@ -18,6 +20,7 @@ export interface ChartTheme {
 
 export interface ResolvedChartTheme {
   readonly backgroundColor: RgbaColor;
+  readonly backgroundCssColor: string;
   readonly gridColor: RgbaColor;
   readonly axisColor: string;
   readonly axisFont: string;
@@ -43,6 +46,7 @@ const DEFAULT_SERIES_COLORS: readonly RgbaColor[] = [
 
 export const DEFAULT_CHART_THEME: ResolvedChartTheme = {
   backgroundColor: [0.08, 0.10, 0.16, 1],
+  backgroundCssColor: "rgba(20, 26, 41, 1)",
   gridColor: [0.22, 0.30, 0.44, 0.45],
   axisColor: "#bfd6ff",
   axisFont: "11px ui-monospace, monospace, sans-serif",
@@ -57,15 +61,25 @@ export const DEFAULT_CHART_THEME: ResolvedChartTheme = {
   legendFont: "11px/1.35 ui-monospace, monospace",
 };
 
-export function resolveChartTheme(theme: ChartTheme | undefined): ResolvedChartTheme {
+export function resolveChartTheme(theme: ChartTheme | undefined, context?: Element): ResolvedChartTheme {
   if (!theme) return DEFAULT_CHART_THEME;
 
+  const backgroundColor = resolveThemeColor(theme.backgroundColor, DEFAULT_CHART_THEME.backgroundColor, context);
+  const seriesColors = theme.seriesColors?.length
+    ? theme.seriesColors.map((color, index) => resolveThemeColor(
+      color,
+      DEFAULT_CHART_THEME.seriesColors[index % DEFAULT_CHART_THEME.seriesColors.length]!,
+      context,
+    ))
+    : DEFAULT_CHART_THEME.seriesColors;
+
   return {
-    backgroundColor: theme.backgroundColor ?? DEFAULT_CHART_THEME.backgroundColor,
-    gridColor: theme.gridColor ?? DEFAULT_CHART_THEME.gridColor,
+    backgroundColor,
+    backgroundCssColor: themeColorToCss(theme.backgroundColor, DEFAULT_CHART_THEME.backgroundCssColor),
+    gridColor: resolveThemeColor(theme.gridColor, DEFAULT_CHART_THEME.gridColor, context),
     axisColor: theme.axisColor ?? DEFAULT_CHART_THEME.axisColor,
     axisFont: theme.axisFont ?? DEFAULT_CHART_THEME.axisFont,
-    seriesColors: theme.seriesColors?.length ? theme.seriesColors : DEFAULT_CHART_THEME.seriesColors,
+    seriesColors,
     tooltipBackgroundColor: theme.tooltipBackgroundColor ?? DEFAULT_CHART_THEME.tooltipBackgroundColor,
     tooltipTextColor: theme.tooltipTextColor ?? DEFAULT_CHART_THEME.tooltipTextColor,
     tooltipFont: theme.tooltipFont ?? DEFAULT_CHART_THEME.tooltipFont,
@@ -77,6 +91,132 @@ export function resolveChartTheme(theme: ChartTheme | undefined): ResolvedChartT
   };
 }
 
+export function resolveThemeColor(color: ThemeColor | undefined, fallback: RgbaColor, context?: Element): RgbaColor {
+  if (!color) return fallback;
+  if (typeof color !== "string") return color;
+
+  const resolved = resolveCssColor(color, context);
+  const normalized = normalizeCanvasColor(resolved ?? color, context);
+  return parseCssColor(resolved ?? color) ?? parseCssColor(normalized ?? "") ?? fallback;
+}
+
+export function themeColorToCss(color: ThemeColor | undefined, fallback: string): string {
+  if (!color) return fallback;
+  return typeof color === "string" ? color : rgbaCss(color);
+}
+
 export function rgbaCss(color: RgbaColor): string {
   return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
+}
+
+export function resolveCssColor(color: string, context?: Element): string | null {
+  const doc = context?.ownerDocument ?? globalThis.document;
+  if (!doc?.documentElement || typeof getComputedStyle === "undefined") return null;
+
+  const parent = context instanceof HTMLElement ? context : doc.documentElement;
+  const el = doc.createElement("span");
+  el.style.position = "absolute";
+  el.style.visibility = "hidden";
+  el.style.pointerEvents = "none";
+  el.style.color = color;
+  parent.appendChild(el);
+
+  const resolved = getComputedStyle(el).color;
+  el.remove();
+  return resolved || null;
+}
+
+function parseCssColor(color: string): RgbaColor | null {
+  const trimmed = color.trim();
+  return parseRgbColor(trimmed) ?? parseSrgbColor(trimmed) ?? parseHexColor(trimmed);
+}
+
+function normalizeCanvasColor(color: string, context?: Element): string | null {
+  const doc = context?.ownerDocument ?? globalThis.document;
+  if (!doc?.createElement) return null;
+
+  const canvas = doc.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  const sentinel = "#010203";
+  ctx.fillStyle = sentinel;
+  ctx.fillStyle = color;
+  const normalized = String(ctx.fillStyle);
+  return normalized === sentinel ? null : normalized;
+}
+
+function parseRgbColor(color: string): RgbaColor | null {
+  const match = color.match(/^rgba?\((.*)\)$/i);
+  if (!match) return null;
+
+  const body = match[1]!.trim();
+  const slashParts = body.split("/").map((part) => part.trim());
+  const rgbPart = slashParts[0]!;
+  const alphaPart = slashParts[1];
+  const rgb = rgbPart.includes(",")
+    ? rgbPart.split(",").map((part) => part.trim()).filter(Boolean)
+    : rgbPart.split(/\s+/).filter(Boolean);
+
+  if (rgb.length < 3) return null;
+  const r = parseRgbChannel(rgb[0]!);
+  const g = parseRgbChannel(rgb[1]!);
+  const b = parseRgbChannel(rgb[2]!);
+  const a = parseAlpha(alphaPart ?? (rgb.length > 3 ? rgb[3]! : undefined));
+  if (r === null || g === null || b === null || a === null) return null;
+  return [r, g, b, a];
+}
+
+function parseSrgbColor(color: string): RgbaColor | null {
+  const match = color.match(/^color\(\s*srgb\s+(.+)\)$/i);
+  if (!match) return null;
+
+  const parts = match[1]!.split("/").map((part) => part.trim());
+  const channels = parts[0]!.split(/\s+/).filter(Boolean);
+  if (channels.length < 3) return null;
+
+  const r = parseUnitChannel(channels[0]!);
+  const g = parseUnitChannel(channels[1]!);
+  const b = parseUnitChannel(channels[2]!);
+  const a = parseAlpha(parts[1]);
+  if (r === null || g === null || b === null || a === null) return null;
+  return [r, g, b, a];
+}
+
+function parseHexColor(color: string): RgbaColor | null {
+  const value = color.startsWith("#") ? color.slice(1) : "";
+  if (![3, 4, 6, 8].includes(value.length) || !/^[\da-f]+$/i.test(value)) return null;
+
+  const expanded = value.length <= 4
+    ? [...value].map((char) => char + char).join("")
+    : value;
+  const parsed = Number.parseInt(expanded, 16);
+  if (!Number.isFinite(parsed)) return null;
+
+  const r = ((parsed >> (expanded.length === 8 ? 24 : 16)) & 255) / 255;
+  const g = ((parsed >> (expanded.length === 8 ? 16 : 8)) & 255) / 255;
+  const b = ((parsed >> (expanded.length === 8 ? 8 : 0)) & 255) / 255;
+  const a = expanded.length === 8 ? (parsed & 255) / 255 : 1;
+  return [r, g, b, a];
+}
+
+function parseRgbChannel(value: string): number | null {
+  if (value.endsWith("%")) return clamp01(Number.parseFloat(value) / 100);
+  return clamp01(Number.parseFloat(value) / 255);
+}
+
+function parseUnitChannel(value: string): number | null {
+  if (value.endsWith("%")) return clamp01(Number.parseFloat(value) / 100);
+  return clamp01(Number.parseFloat(value));
+}
+
+function parseAlpha(value: string | undefined): number | null {
+  if (!value) return 1;
+  if (value.endsWith("%")) return clamp01(Number.parseFloat(value) / 100);
+  return clamp01(Number.parseFloat(value));
+}
+
+function clamp01(value: number): number | null {
+  if (!Number.isFinite(value)) return null;
+  return Math.min(1, Math.max(0, value));
 }
