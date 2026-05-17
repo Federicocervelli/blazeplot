@@ -696,7 +696,8 @@ export class Chart {
       return;
     }
 
-    const count = series.copyRawVisible(viewport, this.rawLineData, rawBarCapacity, this.currentXOrigin);
+    const range = series.visibleIndexRange(viewport, 1);
+    const count = series.copyRawRange(range.start, range.end, this.rawLineData, rawBarCapacity, this.currentXOrigin);
     if (count <= 0) return;
 
     if (this.renderer.supportsInstancedBars) {
