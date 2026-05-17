@@ -228,27 +228,6 @@ src/
 bun install
 bun run dev          # Vite dev server → preview/
 bun run build        # Package build (JS + declarations)
-bun run build:js     # JS-only build
 bun test             # Tests
 bun run typecheck    # TypeScript strict check
 ```
-
-## Package build
-
-```bash
-bun run build
-```
-
-Output:
-
-```
-dist/index.js                  ES module
-dist/index.d.ts                TypeScript declarations
-dist/plugins/interactions.js   Optional interactions plugin
-dist/plugins/legend.js         Optional legend plugin
-dist/plugins/tooltip.js        Optional tooltip plugin
-```
-
-## Why WebGL2?
-
-Canvas2D and SVG are CPU-bound — every point becomes a draw call or a DOM node. BlazePlot keeps plot data on the GPU and streams only visible vertices; DOM is limited to chart layout and labels. For dense line plots (millions of points), interactive scatter, or real-time streaming, the difference is orders of magnitude.
