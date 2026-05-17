@@ -698,21 +698,20 @@ export class Chart {
 
     const baseline = series.style.baseline ?? 0;
     if (range.end - range.start > AREA_POINT_CAPACITY) {
-      const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarTriangleBars(), this.currentXOrigin);
-      if (sampledCount > 0) {
-        this.includeBaselineInBarRanges(sampledCount, baseline);
-        const vertexCount = this.writeBarBucketTriangles(sampledCount, viewport);
-        const fillStyle: SeriesStyle = { ...series.style, color: series.style.fillColor ?? series.style.color };
-        this.drawBarTriangles(vertexCount, fillStyle, camera, "area");
-
-        const lineVertexCount = series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
-        if (lineVertexCount >= 2) {
-          this.uploadRawLineData(lineVertexCount);
-          this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, camera);
-          this.recordDraw("area", lineVertexCount);
-        }
-        return;
+      const areaVertexCount = series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, baseline, this.currentXOrigin);
+      if (areaVertexCount >= 4) {
+        this.uploadRawLineData(areaVertexCount);
+        this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, camera);
+        this.recordDraw("area", areaVertexCount);
       }
+
+      const lineVertexCount = series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
+      if (lineVertexCount >= 2) {
+        this.uploadRawLineData(lineVertexCount);
+        this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, camera);
+        this.recordDraw("area", lineVertexCount);
+      }
+      return;
     }
 
     for (let start = range.start; start < range.end;) {
