@@ -49,6 +49,21 @@ describe("StaticOhlcDataset", () => {
       11, 4,
     ]);
   });
+
+  it("copies OHLC tuples for candlestick rendering", () => {
+    const dataset = new StaticOhlcDataset([10], [2], [5], [1], [4]);
+    const series = new SeriesStore(
+      dataset,
+      { mode: "candlestick", capacity: 1, dataset },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+    const target = new Float32Array(5);
+
+    const count = series.copyOhlcTuplesRange(0, 1, target, 1);
+
+    expect(count).toBe(1);
+    expect(Array.from(target)).toEqual([10, 2, 5, 1, 4]);
+  });
 });
 
 describe("OhlcRingBuffer", () => {

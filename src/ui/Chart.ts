@@ -20,6 +20,7 @@ const FLOATS_PER_MINMAX_SEGMENT_INSTANCE = 3;
 const BAR_TRIANGLE_CAPACITY = 4_096;
 const FLOATS_PER_BAR_TRIANGLE = 12;
 const FLOATS_PER_OHLC_CANDLE = 12;
+const FLOATS_PER_OHLC_TUPLE = 5;
 const GRID_LINE_VERTEX_CAPACITY = 64;
 
 export interface AxisConfig {
@@ -300,8 +301,8 @@ export class Chart {
   }
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
-    if (config.mode === "ohlc" && !config.dataset) {
-      throw new TypeError("OHLC series require an OhlcDataset.");
+    if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
+      throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
     const dataset: Dataset = config.dataset ?? new RingBuffer(config.capacity, { overflow: config.overflow });
     const palette = this.resolvedTheme.seriesColors;
@@ -315,6 +316,9 @@ export class Chart {
       baseline: style?.baseline ?? 0,
       fillColor: style?.fillColor ?? [color[0], color[1], color[2], color[3] * 0.25],
       tickWidth: style?.tickWidth ?? style?.barWidth ?? 0.8,
+      upColor: style?.upColor ?? color,
+      downColor: style?.downColor ?? style?.fillColor ?? [color[0], color[1], color[2], color[3] * 0.45],
+      wickColor: style?.wickColor ?? color,
     });
     this.series.push(s);
     this.emitSeriesChange();
@@ -339,6 +343,10 @@ export class Chart {
 
   addOhlc(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     return this.addSeries({ ...config, mode: "ohlc" }, style);
+  }
+
+  addCandlestick(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+    return this.addSeries({ ...config, mode: "candlestick" }, style);
   }
 
   removeSeries(series: SeriesStore): boolean {
@@ -606,6 +614,9 @@ export class Chart {
       case "ohlc":
         this.drawOhlcSeries(series, viewport);
         return;
+      case "candlestick":
+        this.drawCandlestickSeries(series, viewport);
+        return;
       case "scatter":
         this.drawScatterSeries(series, viewport);
         return;
@@ -680,6 +691,34 @@ export class Chart {
       this.uploadRawLineData(vertexCount);
       this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, this.camera);
       this.recordDraw("raw", vertexCount);
+      start += candleCount;
+    }
+  }
+
+  private drawCandlestickSeries(series: SeriesStore, viewport: Viewport): void {
+    const range = series.visibleIndexRange(viewport, 1);
+    const maxCandles = Math.min(
+      Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE),
+      this.maxBarTriangleBars(),
+    );
+    const wickStyle: SeriesStyle = { ...series.style, color: series.style.wickColor ?? series.style.color };
+    const upStyle: SeriesStyle = { ...series.style, color: series.style.upColor ?? series.style.color };
+    const downStyle: SeriesStyle = { ...series.style, color: series.style.downColor ?? series.style.fillColor ?? series.style.color };
+
+    for (let start = range.start; start < range.end;) {
+      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin);
+      if (candleCount <= 0) break;
+
+      const wickVertexCount = this.writeCandlestickWicks(candleCount);
+      if (wickVertexCount > 0) {
+        this.uploadBarTriangleData(wickVertexCount);
+        this.renderer.drawLines(this.barTriangleBuffer, wickVertexCount, wickStyle, this.camera);
+        this.recordDraw("raw", wickVertexCount);
+      }
+
+      const bodyWidth = series.style.barWidth ?? series.style.tickWidth ?? 0.8;
+      this.drawCandlestickBodies(candleCount, bodyWidth, "up", upStyle);
+      this.drawCandlestickBodies(candleCount, bodyWidth, "down", downStyle);
       start += candleCount;
     }
   }
@@ -815,6 +854,44 @@ export class Chart {
       Math.max(viewportXMin, x0),
       Math.min(viewportXMax, x1),
     ];
+  }
+
+  private writeCandlestickWicks(candleCount: number): number {
+    for (let i = 0; i < candleCount; i++) {
+      const src = i * FLOATS_PER_OHLC_TUPLE;
+      const dst = i * 4;
+      const x = this.rawLineData[src]!;
+      const high = this.rawLineData[src + 2]!;
+      const low = this.rawLineData[src + 3]!;
+      this.barTriangleData[dst] = x;
+      this.barTriangleData[dst + 1] = low;
+      this.barTriangleData[dst + 2] = x;
+      this.barTriangleData[dst + 3] = high;
+    }
+    return candleCount * 2;
+  }
+
+  private drawCandlestickBodies(
+    candleCount: number,
+    bodyWidth: number,
+    direction: "up" | "down",
+    style: SeriesStyle,
+  ): void {
+    const halfWidth = bodyWidth * 0.5;
+    let bodyCount = 0;
+    for (let i = 0; i < candleCount && bodyCount < this.maxBarTriangleBars(); i++) {
+      const src = i * FLOATS_PER_OHLC_TUPLE;
+      const x = this.rawLineData[src]!;
+      const open = this.rawLineData[src + 1]!;
+      const close = this.rawLineData[src + 4]!;
+      const isUp = close >= open;
+      if ((direction === "up") !== isUp) continue;
+
+      this.writeBarTriangle(bodyCount, x - halfWidth, x + halfWidth, Math.min(open, close), Math.max(open, close));
+      bodyCount++;
+    }
+
+    this.drawBarTriangles(bodyCount * 6, style);
   }
 
   private writeBarTriangle(index: number, x0: number, x1: number, y0: number, y1: number): void {

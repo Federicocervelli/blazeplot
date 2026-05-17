@@ -32,9 +32,12 @@ export interface SeriesStyle {
   readonly baseline?: number;
   readonly fillColor?: readonly [number, number, number, number];
   readonly tickWidth?: number;
+  readonly upColor?: readonly [number, number, number, number];
+  readonly downColor?: readonly [number, number, number, number];
+  readonly wickColor?: readonly [number, number, number, number];
 }
 
-export type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar" | "ohlc";
+export type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar" | "ohlc" | "candlestick";
 
 export interface Dataset {
   readonly length: number;

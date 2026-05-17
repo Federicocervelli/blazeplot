@@ -320,6 +320,25 @@ export class SeriesStore {
     return count;
   }
 
+  copyOhlcTuplesRange(start: number, end: number, target: Float32Array, maxCandles: number, xOrigin: number = 0): number {
+    if (!isOhlcDataset(this.dataset) || maxCandles <= 0 || target.length < maxCandles * 5) return 0;
+
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this.dataset.length, Math.ceil(end));
+    const count = Math.min(maxCandles, Math.max(0, to - from));
+    for (let i = 0; i < count; i++) {
+      const index = from + i;
+      const offset = i * 5;
+      target[offset] = this.dataset.getX(index) - xOrigin;
+      target[offset + 1] = this.dataset.getOpen(index);
+      target[offset + 2] = this.dataset.getHigh(index);
+      target[offset + 3] = this.dataset.getLow(index);
+      target[offset + 4] = this.dataset.getClose(index);
+    }
+
+    return count;
+  }
+
   visibleIndexRange(viewport: Viewport | undefined, outerPadding: number = 0): { start: number; end: number } {
     if (!viewport) return { start: 0, end: this.dataset.length };
     const pad = Math.max(0, Math.floor(outerPadding));

@@ -62,7 +62,7 @@ bun install blazeplot
 |---|---|
 | `new Chart(container, options?)` | Create a chart inside an HTML container element. The chart owns the plot canvas and axis layout. |
 | `chart.addSeries(config, style?)` | Add a data series. Returns `SeriesStore`. |
-| `chart.addLine(config, style?)` / `addArea` / `addScatter` / `addBar` | Typed helpers that set the series mode for you. |
+| `chart.addLine(config, style?)` / `addArea` / `addScatter` / `addBar` / `addOhlc` / `addCandlestick` | Typed helpers that set the series mode for you. |
 | `chart.removeSeries(series)` | Remove a previously added series. |
 | `chart.setViewport({ xMin, xMax, yMin, yMax })` | Set the visible data range. |
 | `chart.getViewport()` | Return the current visible data range. |
@@ -180,7 +180,7 @@ Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zo
 
 | Property | Description |
 |---|---|
-| `mode` | `"line"` / `"area"` / `"scatter"` / `"bar"` / `"envelope"` (envelope roadmap-only). |
+| `mode` | `"line"` / `"area"` / `"scatter"` / `"bar"` / `"ohlc"` / `"candlestick"` / `"envelope"` (envelope roadmap-only). |
 | `capacity` | Ring buffer capacity (samples). |
 | `id?` / `name?` | Optional metadata exposed to plugins, legend, and tooltip rows. |
 | `downsample` | `"minmax"` or `"none"`. Min/max LOD applies to line and bar rendering; area/scatter skip LOD. |
@@ -195,6 +195,9 @@ Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zo
 | `barWidth` | `0.8` | Bar width in data-space X units. |
 | `baseline` | `0` | Area/bar baseline in data-space Y units. |
 | `fillColor` | line color with 25% alpha | Area fill RGBA color. |
+| `tickWidth` | `barWidth` or `0.8` | OHLC open/close tick width in data-space X units. |
+| `upColor` / `downColor` | series color / translucent fill | Candlestick body colors. |
+| `wickColor` | series color | Candlestick wick color. |
 
 ### `ViewportPolicy`
 
