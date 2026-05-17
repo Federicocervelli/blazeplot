@@ -30,6 +30,8 @@ export interface ChartOptions {
   readonly axes?: boolean | { x?: boolean | AxisConfig; y?: boolean | AxisConfig };
 }
 
+export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
+
 export interface ChartFrameStats {
   fps: number;
   frameMs: number;
@@ -135,6 +137,22 @@ export class Chart {
     });
     this.series.push(s);
     return s;
+  }
+
+  addLine(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+    return this.addSeries({ ...config, mode: "line" }, style);
+  }
+
+  addArea(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+    return this.addSeries({ ...config, mode: "area" }, style);
+  }
+
+  addScatter(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+    return this.addSeries({ ...config, mode: "scatter" }, style);
+  }
+
+  addBar(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+    return this.addSeries({ ...config, mode: "bar" }, style);
   }
 
   removeSeries(series: SeriesStore): boolean {

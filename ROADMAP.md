@@ -142,7 +142,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [ ] Theme system
 - [ ] Legend
 - [ ] Tooltip / hit testing
-- [ ] `chart.addScatter(config)`, `chart.addBar(config)`, etc.
+- [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)` helpers.
 
 Package status:
 - [x] Current npm package version: `0.1.7`

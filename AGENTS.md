@@ -23,7 +23,7 @@
 - `src/core/` is the data engine and should not depend on UI, DOM, or GPU code.
 - `src/render/` owns the GPU abstraction and the WebGL2/regl implementation.
 - `src/interaction/` owns `Camera2D`, input/tick helpers, and viewport policy types; interaction mutates the camera, not series data.
-- `src/ui/Chart.ts` is the orchestrator wiring `SeriesStore`, `Renderer`, `ReglBackend`, `InputController`, `Camera2D`, and optional `ViewportPolicy`.
+- `src/ui/Chart.ts` is the orchestrator wiring `SeriesStore`, `Renderer`, `ReglBackend`, `InputController`, `Camera2D`, and optional `ViewportPolicy`; public typed helpers (`addLine`, `addArea`, `addScatter`, `addBar`) delegate to `addSeries`.
 
 ## Current Implementation Gotchas
 
