@@ -88,6 +88,10 @@ export class Renderer {
     this.drawClipPrimitive("line_strip", positions, count, style);
   }
 
+  drawClipLines(positions: GpuBuffer, count: number, style: SeriesStyle): void {
+    this.drawClipPrimitive("lines", positions, count, style);
+  }
+
   drawMinMaxSegments(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
     this.drawLines(positions, count, style, camera);
   }

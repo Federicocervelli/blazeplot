@@ -531,7 +531,7 @@ export class Chart {
       const gridVertexCount = this.writeGridVertices(viewport);
       if (gridVertexCount > 0) {
         this.uploadGridData(gridVertexCount);
-        this.renderer.drawLines(this.gridBuffer, gridVertexCount, this.gridStyle, this.camera);
+        this.renderer.drawClipLines(this.gridBuffer, gridVertexCount, this.gridStyle);
         this.stats.drawCalls++;
       }
     }
@@ -978,25 +978,33 @@ export class Chart {
     let vertexCount = 0;
     for (const x of this.xTicks) {
       if (vertexCount + 2 > GRID_LINE_VERTEX_CAPACITY) return vertexCount;
-      this.gridData[vertexCount * 2] = x - this.currentXOrigin;
-      this.gridData[vertexCount * 2 + 1] = viewport.yMin;
+      this.gridData[vertexCount * 2] = this.xToClip(x, viewport);
+      this.gridData[vertexCount * 2 + 1] = -1;
       vertexCount++;
-      this.gridData[vertexCount * 2] = x - this.currentXOrigin;
-      this.gridData[vertexCount * 2 + 1] = viewport.yMax;
+      this.gridData[vertexCount * 2] = this.xToClip(x, viewport);
+      this.gridData[vertexCount * 2 + 1] = 1;
       vertexCount++;
     }
 
     for (const y of this.yTicks) {
       if (vertexCount + 2 > GRID_LINE_VERTEX_CAPACITY) return vertexCount;
-      this.gridData[vertexCount * 2] = viewport.xMin - this.currentXOrigin;
-      this.gridData[vertexCount * 2 + 1] = y;
+      this.gridData[vertexCount * 2] = -1;
+      this.gridData[vertexCount * 2 + 1] = this.yToClip(y, viewport);
       vertexCount++;
-      this.gridData[vertexCount * 2] = viewport.xMax - this.currentXOrigin;
-      this.gridData[vertexCount * 2 + 1] = y;
+      this.gridData[vertexCount * 2] = 1;
+      this.gridData[vertexCount * 2 + 1] = this.yToClip(y, viewport);
       vertexCount++;
     }
 
     return vertexCount;
+  }
+
+  private xToClip(x: number, viewport: Viewport): number {
+    return ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * 2 - 1;
+  }
+
+  private yToClip(y: number, viewport: Viewport): number {
+    return ((y - viewport.yMin) / (viewport.yMax - viewport.yMin)) * 2 - 1;
   }
 
   private recordRenderMode(mode: "raw" | "minmax" | "points" | "bars" | "area"): void {
