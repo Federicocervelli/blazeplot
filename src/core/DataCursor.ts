@@ -1,3 +1,4 @@
+import { lowerBound } from "./search.js";
 import type { Dataset } from "./types.js";
 
 export class DataCursor {
@@ -15,14 +16,8 @@ export class DataCursor {
 
   seekTimestamp(x: number): number {
     if (!this._buffer || this._buffer.length === 0) return -1;
-    let lo = 0;
-    let hi = this._buffer.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (this._buffer.getX(mid) < x) lo = mid + 1;
-      else hi = mid;
-    }
-    this._index = lo;
-    return lo;
+    const index = lowerBound(this._buffer.length, (i) => this._buffer!.getX(i), x);
+    this._index = index;
+    return index;
   }
 }

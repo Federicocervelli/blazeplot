@@ -1,3 +1,4 @@
+import { lowerBound, upperBound } from "./search.js";
 import type { TimeRange } from "./types.js";
 
 export type RingBufferOverflow = "wrap" | "drop-new" | "error";
@@ -99,25 +100,11 @@ export class RingBuffer {
   }
 
   lowerBoundX(x: number): number {
-    let lo = 0;
-    let hi = this._length;
-    while (lo < hi) {
-      const mid = lo + ((hi - lo) >> 1);
-      if (this.getX(mid) < x) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
+    return lowerBound(this._length, (index) => this.getX(index), x);
   }
 
   upperBoundX(x: number): number {
-    let lo = 0;
-    let hi = this._length;
-    while (lo < hi) {
-      const mid = lo + ((hi - lo) >> 1);
-      if (this.getX(mid) <= x) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
+    return upperBound(this._length, (index) => this.getX(index), x);
   }
 
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {

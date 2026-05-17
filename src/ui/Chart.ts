@@ -1,4 +1,4 @@
-import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample } from "../core/types.js";
+import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, Viewport } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
@@ -17,7 +17,7 @@ const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 const MINMAX_SEGMENT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 const FLOATS_PER_MINMAX_SEGMENT_INSTANCE = 3;
-const BAR_FALLBACK_CAPACITY = 4_096;
+const BAR_TRIANGLE_CAPACITY = 4_096;
 const FLOATS_PER_BAR_TRIANGLE = 12;
 const FLOATS_PER_OHLC_CANDLE = 12;
 const GRID_LINE_VERTEX_CAPACITY = 64;
@@ -192,7 +192,7 @@ export class Chart {
     this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
     this.minMaxInstanceData = new Float32Array(MINMAX_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
     this.minMaxInstanceBuffer = this.renderer.createFloatBuffer(this.minMaxInstanceData.length);
-    this.barTriangleData = new Float32Array(BAR_FALLBACK_CAPACITY * FLOATS_PER_BAR_TRIANGLE);
+    this.barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLE);
     this.barTriangleBuffer = this.renderer.createFloatBuffer(this.barTriangleData.length);
     this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
     this.gridBuffer = this.renderer.createFloatBuffer(this.gridData.length);
@@ -274,7 +274,7 @@ export class Chart {
     ];
   }
 
-  getViewport(): { xMin: number; xMax: number; yMin: number; yMax: number } {
+  getViewport(): Viewport {
     return this.camera.viewport;
   }
 
@@ -537,52 +537,7 @@ export class Chart {
     for (const s of this.series) {
       if (!s.visible) continue;
       s.rebuildPyramid();
-      if (s.config.mode === "scatter") {
-        this.drawScatterSeries(s, viewport);
-        continue;
-      }
-      if (s.config.mode === "bar") {
-        this.drawBarSeries(s, viewport);
-        continue;
-      }
-      if (s.config.mode === "area") {
-        this.drawAreaSeries(s, viewport);
-        continue;
-      }
-      if (s.config.mode === "ohlc") {
-        this.drawOhlcSeries(s, viewport);
-        continue;
-      }
-
-      const visibleSamples = s.visibleSampleCount(viewport);
-      const dense = s.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
-      if (dense && this.renderer.supportsInstancedSegments) {
-        const segmentCount = s.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments());
-        if (segmentCount <= 0) continue;
-        this.renderer.updateFloatBuffer(this.minMaxInstanceBuffer, this.minMaxInstanceData);
-        this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, s.style, this.camera);
-        this.recordRenderMode("minmax");
-        this.stats.pointsRendered += segmentCount * 2;
-        this.stats.drawCalls++;
-        this.stats.uploadBytes += this.minMaxInstanceData.byteLength;
-        continue;
-      }
-
-      const count = dense
-        ? s.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments())
-        : s.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
-      if (count < 2) continue;
-      this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
-      if (dense) {
-        this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, s.style, this.camera);
-        this.recordRenderMode("minmax");
-      } else {
-        this.renderer.drawLineStrip(this.rawLineBuffer, count, s.style, this.camera);
-        this.recordRenderMode("raw");
-      }
-      this.stats.pointsRendered += count;
-      this.stats.drawCalls++;
-      this.stats.uploadBytes += this.rawLineData.byteLength;
+      this.drawSeries(s, viewport);
     }
 
     this.axisOverlay?.update(this.camera, this.axis);
@@ -624,10 +579,53 @@ export class Chart {
     return true;
   }
 
-  private drawAreaSeries(
-    series: SeriesStore,
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
-  ): void {
+  private drawSeries(series: SeriesStore, viewport: Viewport): void {
+    switch (series.config.mode) {
+      case "area":
+        this.drawAreaSeries(series, viewport);
+        return;
+      case "bar":
+        this.drawBarSeries(series, viewport);
+        return;
+      case "ohlc":
+        this.drawOhlcSeries(series, viewport);
+        return;
+      case "scatter":
+        this.drawScatterSeries(series, viewport);
+        return;
+      default:
+        this.drawLineSeries(series, viewport);
+    }
+  }
+
+  private drawLineSeries(series: SeriesStore, viewport: Viewport): void {
+    const visibleSamples = series.visibleSampleCount(viewport);
+    const dense = series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
+    if (dense && this.renderer.supportsInstancedSegments) {
+      const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments());
+      if (segmentCount <= 0) return;
+      this.uploadMinMaxInstanceData();
+      this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, this.camera);
+      this.recordDraw("minmax", segmentCount * 2);
+      return;
+    }
+
+    const count = dense
+      ? series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments())
+      : series.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
+    if (count < 2) return;
+
+    this.uploadRawLineData();
+    if (dense) {
+      this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, this.camera);
+      this.recordDraw("minmax", count);
+    } else {
+      this.renderer.drawLineStrip(this.rawLineBuffer, count, series.style, this.camera);
+      this.recordDraw("raw", count);
+    }
+  }
+
+  private drawAreaSeries(series: SeriesStore, viewport: Viewport): void {
     const range = series.visibleIndexRange(viewport);
     if (range.end - range.start < 2) return;
 
@@ -636,11 +634,9 @@ export class Chart {
       const areaVertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, baseline);
       if (areaVertexCount < 4) break;
 
-      this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
+      this.uploadRawLineData();
       this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, this.camera);
-      this.stats.pointsRendered += areaVertexCount;
-      this.stats.drawCalls++;
-      this.stats.uploadBytes += this.rawLineData.byteLength;
+      this.recordDraw("area", areaVertexCount);
       start += areaVertexCount >> 1;
     }
 
@@ -648,21 +644,15 @@ export class Chart {
       const lineVertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY);
       if (lineVertexCount < 2) break;
 
-      this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
+      this.uploadRawLineData();
       this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, this.camera);
-      this.stats.pointsRendered += lineVertexCount;
-      this.stats.drawCalls++;
-      this.stats.uploadBytes += this.rawLineData.byteLength;
+      this.recordDraw("area", lineVertexCount);
       start += Math.max(1, lineVertexCount - 1);
     }
 
-    this.recordRenderMode("area");
   }
 
-  private drawOhlcSeries(
-    series: SeriesStore,
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
-  ): void {
+  private drawOhlcSeries(series: SeriesStore, viewport: Viewport): void {
     const range = series.visibleIndexRange(viewport);
     const maxCandles = Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_CANDLE);
     for (let start = range.start; start < range.end;) {
@@ -670,50 +660,36 @@ export class Chart {
       if (candleCount <= 0) break;
 
       const vertexCount = candleCount * 6;
-      this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
+      this.uploadRawLineData();
       this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, this.camera);
-      this.recordRenderMode("raw");
-      this.stats.pointsRendered += vertexCount;
-      this.stats.drawCalls++;
-      this.stats.uploadBytes += this.rawLineData.byteLength;
+      this.recordDraw("raw", vertexCount);
       start += candleCount;
     }
   }
 
-  private drawScatterSeries(
-    series: SeriesStore,
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
-  ): void {
+  private drawScatterSeries(series: SeriesStore, viewport: Viewport): void {
     const range = series.visibleIndexRange(viewport);
     for (let start = range.start; start < range.end;) {
       const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
       if (count <= 0) break;
 
-      this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
-      this.stats.uploadBytes += this.rawLineData.byteLength;
-      if (this.renderer.supportsInstancedPoints) {
-        this.renderer.drawPointsInstanced(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
-      } else {
-        this.renderer.drawPointSprites(this.rawLineBuffer, count, series.style, this.camera);
-      }
-      this.recordInstancedDraw("points", count);
+      this.uploadRawLineData();
+      this.renderer.drawPoints(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
+      this.recordDraw("points", count);
       start += count;
     }
   }
 
-  private drawBarSeries(
-    series: SeriesStore,
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
-  ): void {
+  private drawBarSeries(series: SeriesStore, viewport: Viewport): void {
     const visibleSamples = series.visibleSampleCount(viewport);
     const rawBarCapacity = this.maxRawBarInstances();
     if (series.hasLOD && visibleSamples > rawBarCapacity) {
-      const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarFallbackBars());
+      const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarTriangleBars());
       if (sampledCount <= 0) return;
 
       this.includeBaselineInBarRanges(sampledCount, series.style.baseline ?? 0);
       const vertexCount = this.writeBarBucketTriangles(sampledCount, viewport);
-      this.drawBarTriangleFallback(vertexCount, series.style);
+      this.drawBarTriangles(vertexCount, series.style);
       return;
     }
 
@@ -722,25 +698,35 @@ export class Chart {
 
     if (this.renderer.supportsInstancedBars) {
       this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, this.camera);
-      this.recordInstancedDraw("bars", count);
+      this.recordDraw("bars", count);
       return;
     }
 
     const vertexCount = this.writeBarTriangles(count, series.style.baseline ?? 0, series.style.barWidth ?? 0.8);
-    this.drawBarTriangleFallback(vertexCount, series.style);
+    this.drawBarTriangles(vertexCount, series.style);
   }
 
-  private uploadRawInstances(
-    series: SeriesStore,
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
-    maxPoints: number,
-  ): number {
+  private uploadRawInstances(series: SeriesStore, viewport: Viewport, maxPoints: number): number {
     const count = series.copyRawVisible(viewport, this.rawLineData, maxPoints);
     if (count <= 0) return 0;
 
+    this.uploadRawLineData();
+    return count;
+  }
+
+  private uploadRawLineData(): void {
     this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
     this.stats.uploadBytes += this.rawLineData.byteLength;
-    return count;
+  }
+
+  private uploadMinMaxInstanceData(): void {
+    this.renderer.updateFloatBuffer(this.minMaxInstanceBuffer, this.minMaxInstanceData);
+    this.stats.uploadBytes += this.minMaxInstanceData.byteLength;
+  }
+
+  private uploadBarTriangleData(): void {
+    this.renderer.updateFloatBuffer(this.barTriangleBuffer, this.barTriangleData);
+    this.stats.uploadBytes += this.barTriangleData.byteLength;
   }
 
   private includeBaselineInBarRanges(barCount: number, baseline: number): void {
@@ -754,7 +740,7 @@ export class Chart {
   }
 
   private writeBarTriangles(barCount: number, baseline: number, barWidth: number): number {
-    const count = Math.min(barCount, this.maxBarFallbackBars());
+    const count = Math.min(barCount, this.maxBarTriangleBars());
     for (let i = 0; i < count; i++) {
       const x = this.rawLineData[i * 2]!;
       const y = this.rawLineData[i * 2 + 1]!;
@@ -765,9 +751,9 @@ export class Chart {
 
   private writeBarBucketTriangles(
     barCount: number,
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+    viewport: Viewport,
   ): number {
-    const count = Math.min(barCount, this.maxBarFallbackBars());
+    const count = Math.min(barCount, this.maxBarTriangleBars());
     for (let i = 0; i < count; i++) {
       const minY = this.minMaxInstanceData[i * 3 + 1]!;
       const maxY = this.minMaxInstanceData[i * 3 + 2]!;
@@ -799,9 +785,9 @@ export class Chart {
     let x1 = index + 1 === count ? x + (x - prevX) * 0.5 : (x + nextX) * 0.5;
 
     if (!Number.isFinite(x0) || !Number.isFinite(x1) || x1 <= x0) {
-      const fallbackWidth = viewportWidth / Math.max(1, count);
-      x0 = viewport.xMin + index * fallbackWidth;
-      x1 = index + 1 === count ? viewport.xMax : x0 + fallbackWidth;
+      const bucketWidth = viewportWidth / Math.max(1, count);
+      x0 = viewport.xMin + index * bucketWidth;
+      x1 = index + 1 === count ? viewport.xMax : x0 + bucketWidth;
     }
 
     return [
@@ -826,23 +812,22 @@ export class Chart {
     this.barTriangleData[o + 11] = y1;
   }
 
-  private drawBarTriangleFallback(vertexCount: number, style: SeriesStyle): void {
+  private drawBarTriangles(vertexCount: number, style: SeriesStyle): void {
     if (vertexCount <= 0) return;
-    this.renderer.updateFloatBuffer(this.barTriangleBuffer, this.barTriangleData);
-    this.stats.uploadBytes += this.barTriangleData.byteLength;
+    this.uploadBarTriangleData();
     this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, this.camera);
-    this.recordInstancedDraw("bars", vertexCount);
+    this.recordDraw("bars", vertexCount);
   }
 
-  private recordInstancedDraw(mode: "points" | "bars", count: number): void {
+  private recordDraw(mode: "raw" | "minmax" | "points" | "bars" | "area", points: number, drawCalls: number = 1): void {
     this.recordRenderMode(mode);
-    this.stats.pointsRendered += count;
-    this.stats.drawCalls++;
+    this.stats.pointsRendered += points;
+    this.stats.drawCalls += drawCalls;
   }
 
   private findNearestXAnchor(
     dataX: number,
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+    viewport: Viewport,
     plotWidth: number,
     maxDistancePx: number,
   ): number | null {
@@ -868,7 +853,7 @@ export class Chart {
   private findNearestPointAnchor(
     dataX: number,
     dataY: number,
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+    viewport: Viewport,
     plotWidth: number,
     plotHeight: number,
     maxDistancePx: number,
@@ -891,7 +876,7 @@ export class Chart {
     anchorX: number,
     clientX: number,
     clientY: number,
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+    viewport: Viewport,
     rect: DOMRect,
   ): ChartPickItem[] {
     const items: ChartPickItem[] = [];
@@ -970,17 +955,15 @@ export class Chart {
     return Math.min(this.canvas.width, MINMAX_SEGMENT_CAPACITY);
   }
 
-  private maxBarFallbackBars(): number {
-    return Math.min(BAR_FALLBACK_CAPACITY, RAW_LINE_VERTEX_CAPACITY);
+  private maxBarTriangleBars(): number {
+    return Math.min(BAR_TRIANGLE_CAPACITY, RAW_LINE_VERTEX_CAPACITY);
   }
 
   private maxRawBarInstances(): number {
-    return this.renderer.supportsInstancedBars ? RAW_LINE_VERTEX_CAPACITY : this.maxBarFallbackBars();
+    return this.renderer.supportsInstancedBars ? RAW_LINE_VERTEX_CAPACITY : this.maxBarTriangleBars();
   }
 
-  private writeGridVertices(
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
-  ): number {
+  private writeGridVertices(viewport: Viewport): number {
     const plotW = Math.max(1, this.canvas.clientWidth);
     const plotH = Math.max(1, this.canvas.clientHeight);
     this.axis.getXTickValues(plotW, 12, this.xTicks);

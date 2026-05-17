@@ -1,3 +1,4 @@
+import { lowerBound, upperBound } from "./search.js";
 import type { Dataset, TimeRange } from "./types.js";
 
 export class StaticDataset implements Dataset {
@@ -26,25 +27,11 @@ export class StaticDataset implements Dataset {
   }
 
   lowerBoundX(x: number): number {
-    let lo = 0;
-    let hi = this.length;
-    while (lo < hi) {
-      const mid = lo + ((hi - lo) >> 1);
-      if (this.xData[mid]! < x) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
+    return lowerBound(this.length, (index) => this.xData[index]!, x);
   }
 
   upperBoundX(x: number): number {
-    let lo = 0;
-    let hi = this.length;
-    while (lo < hi) {
-      const mid = lo + ((hi - lo) >> 1);
-      if (this.xData[mid]! <= x) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
+    return upperBound(this.length, (index) => this.xData[index]!, x);
   }
 
   private assertValidIndex(index: number): void {

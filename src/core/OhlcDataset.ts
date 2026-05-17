@@ -1,3 +1,4 @@
+import { lowerBound, upperBound } from "./search.js";
 import type { BufferOverflowStrategy, OhlcDataset, TimeRange } from "./types.js";
 
 export class StaticOhlcDataset implements OhlcDataset {
@@ -200,26 +201,4 @@ export class OhlcRingBuffer implements OhlcDataset {
       throw new RangeError(`OhlcRingBuffer index out of range: ${index}`);
     }
   }
-}
-
-function lowerBound(length: number, getX: (index: number) => number, x: number): number {
-  let lo = 0;
-  let hi = length;
-  while (lo < hi) {
-    const mid = lo + ((hi - lo) >> 1);
-    if (getX(mid) < x) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
-}
-
-function upperBound(length: number, getX: (index: number) => number, x: number): number {
-  let lo = 0;
-  let hi = length;
-  while (lo < hi) {
-    const mid = lo + ((hi - lo) >> 1);
-    if (getX(mid) <= x) lo = mid + 1;
-    else hi = mid;
-  }
-  return lo;
 }

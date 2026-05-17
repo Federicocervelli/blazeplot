@@ -105,7 +105,22 @@ export class Renderer {
     });
   }
 
-  drawPointsInstanced(
+  drawPoints(
+    positions: GpuBuffer,
+    pointCount: number,
+    style: SeriesStyle,
+    camera: Camera2D,
+    canvasWidth: number,
+    canvasHeight: number,
+  ): void {
+    if (this.supportsInstancedPoints) {
+      this.drawPointsInstanced(positions, pointCount, style, camera, canvasWidth, canvasHeight);
+    } else {
+      this.drawPointSprites(positions, pointCount, style, camera);
+    }
+  }
+
+  private drawPointsInstanced(
     instanceBuffer: GpuBuffer,
     pointCount: number,
     style: SeriesStyle,
@@ -137,7 +152,7 @@ export class Renderer {
     });
   }
 
-  drawPointSprites(positions: GpuBuffer, pointCount: number, style: SeriesStyle, camera: Camera2D): void {
+  private drawPointSprites(positions: GpuBuffer, pointCount: number, style: SeriesStyle, camera: Camera2D): void {
     this.writeCameraUniforms(camera);
 
     this.backend.draw({
