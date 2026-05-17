@@ -17,7 +17,7 @@ copyIcon?.addEventListener("click", () => {
 console.info("[blazeplot] preview starting");
 
 const FILL_BATCH_SIZE = 65_536;
-const LIVE_BATCH_SIZE = 16;
+const LIVE_BATCH_SIZE = 65_536;
 const VIEW_SAMPLES = 10_000_000;
 const TRACE_PERIOD = VIEW_SAMPLES / 5;
 const SPARSE_INTERVAL = 512;
