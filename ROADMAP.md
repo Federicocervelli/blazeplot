@@ -144,7 +144,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Plugin API (`ChartPlugin`, `plugins` option, disposable installs)
 - [x] Optional plugin subpath exports (`blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`) so chart-only imports do not need to import built-in UI plugins
 - [x] Legend plugin (`legendPlugin`) built on public series state APIs
-- [x] Tooltip / hit testing (`tooltipPlugin`, `chart.pick`, `chart.subscribe("hover")`)
+- [x] Tooltip / hit testing (`tooltipPlugin`, `chart.pick`, `chart.subscribe("hover")`; actual raw sample X/Y, per-frame live hover refresh, highlighted sample markers)
 - [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)` helpers.
 
 Package status:

@@ -6,6 +6,7 @@ export interface TooltipPluginOptions {
   readonly maxDistancePx?: number;
   readonly offsetX?: number;
   readonly offsetY?: number;
+  readonly highlight?: boolean;
   readonly formatter?: (item: ChartPickItem, state: ChartHoverState) => string;
   readonly render?: (state: ChartHoverState, container: HTMLElement, chart: Chart) => void;
 }
@@ -54,7 +55,7 @@ function renderDefaultTooltip(
     const value = document.createElement("span");
     value.style.color = "#e2e8f0";
     value.style.textAlign = "right";
-    value.textContent = formatter ? formatter(item, state) : formatNumber(item.y);
+    value.textContent = formatter ? formatter(item, state) : `(${formatNumber(item.x)}, ${formatNumber(item.y)})`;
 
     row.append(swatch, label, value);
     container.appendChild(row);
@@ -80,41 +81,62 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       container.style.whiteSpace = "nowrap";
       chart.rootElement.appendChild(container);
 
+      const markerLayer = document.createElement("div");
+      markerLayer.className = "blazeplot-tooltip-markers";
+      markerLayer.style.position = "absolute";
+      markerLayer.style.inset = "0";
+      markerLayer.style.zIndex = "25";
+      markerLayer.style.pointerEvents = "none";
+      chart.plotElement.appendChild(markerLayer);
+
+      const renderMarkers = (state: ChartHoverState | null): void => {
+        markerLayer.replaceChildren();
+        if (options.highlight === false || !state) return;
+
+        for (const item of state.items) {
+          const marker = document.createElement("div");
+          marker.style.position = "absolute";
+          marker.style.left = `${item.plotX}px`;
+          marker.style.top = `${item.plotY}px`;
+          marker.style.width = "10px";
+          marker.style.height = "10px";
+          marker.style.border = "2px solid #f8fafc";
+          marker.style.borderRadius = "999px";
+          marker.style.background = rgba(item.series.style.color);
+          marker.style.boxShadow = "0 0 0 2px rgba(15, 23, 42, 0.85), 0 0 12px rgba(255,255,255,0.35)";
+          marker.style.transform = "translate(-50%, -50%)";
+          markerLayer.appendChild(marker);
+        }
+      };
+
       const render = (state: ChartHoverState | null): void => {
-        if (!state || state.items.length === 0) {
+        const effectiveState = state && (options.mode !== undefined || options.maxDistancePx !== undefined)
+          ? chart.pick(state.clientX, state.clientY, options)
+          : state;
+
+        renderMarkers(effectiveState);
+        if (!effectiveState || effectiveState.items.length === 0) {
           container.style.display = "none";
           return;
         }
 
         if (options.render) {
-          options.render(state, container, chart);
+          options.render(effectiveState, container, chart);
         } else {
-          renderDefaultTooltip(state, container, options.formatter);
+          renderDefaultTooltip(effectiveState, container, options.formatter);
         }
 
         const rootRect = chart.rootElement.getBoundingClientRect();
-        const x = state.clientX - rootRect.left + (options.offsetX ?? 12);
-        const y = state.clientY - rootRect.top + (options.offsetY ?? 12);
+        const x = effectiveState.clientX - rootRect.left + (options.offsetX ?? 12);
+        const y = effectiveState.clientY - rootRect.top + (options.offsetY ?? 12);
         container.style.transform = `translate(${x}px, ${y}px)`;
         container.style.display = "block";
       };
 
-      const usesCustomPick = options.mode !== undefined || options.maxDistancePx !== undefined;
-      if (usesCustomPick) {
-        const onMove = (event: PointerEvent): void => render(chart.pick(event.clientX, event.clientY, options));
-        const onLeave = (): void => render(null);
-        chart.canvas.addEventListener("pointermove", onMove);
-        chart.canvas.addEventListener("pointerleave", onLeave);
-        return () => {
-          chart.canvas.removeEventListener("pointermove", onMove);
-          chart.canvas.removeEventListener("pointerleave", onLeave);
-          container.remove();
-        };
-      }
-
       const unsubscribe = chart.subscribe("hover", render);
       return () => {
         unsubscribe();
+        markerLayer.remove();
         container.remove();
       };
     },

@@ -83,7 +83,7 @@ push();
 | `chart.getFrameStats(target?)` | Copy per-frame benchmark counters into a reusable object. |
 | `chart.getSeriesState()` | Return public series metadata/state for plugins or custom UI. |
 | `chart.setSeriesVisible(series, visible)` | Toggle visibility and notify series-state subscribers. |
-| `chart.pick(clientX, clientY, options?)` | Raw-data hit test. Supports `"nearest-x"` and `"nearest-point"`. |
+| `chart.pick(clientX, clientY, options?)` | Raw-data hit test. Supports `"nearest-x"` and `"nearest-point"`; returned items include actual sample X/Y and plot/client coordinates for highlights. |
 | `chart.subscribe("hover", cb)` / `chart.subscribe("serieschange", cb)` | Subscribe to hover or series state changes. Returns an unsubscribe function. |
 | `await chart.screenshot(options?)` | Export the full chart as an image `Blob`, including the WebGL plot and built-in DOM text overlays. |
 | `chart.dispose()` | Dispose GPU resources, observers, input handlers, and owned DOM layout. |
@@ -140,7 +140,7 @@ const chart = new Chart(container, {
 });
 ```
 
-Built-in plugins are optional. They consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract.
+Built-in plugins are optional. They consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting.
 
 ### `SeriesStore`
 

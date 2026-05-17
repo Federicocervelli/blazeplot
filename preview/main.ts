@@ -80,7 +80,7 @@ const scatterSeries = chart.addSeries(
 // bar series (aggregated buckets)
 const barSeries = chart.addSeries(
   { mode: "bar", capacity: 1_000_000, downsample: "minmax", name: "Power" },
-  { color: [0.2, 0.8, 0.4, 1.0], barWidth: 0.6, baseline: -0.5 },
+  { color: [0.2, 0.8, 0.4, 0.7], barWidth: 48, baseline: -1.45 },
 );
 
 chart.setViewport({ xMin: 0, xMax: VIEW_SAMPLES, yMin: -1.5, yMax: 1.5 });

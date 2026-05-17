@@ -65,6 +65,10 @@ export interface ChartPickItem extends SeriesSample {
   readonly id?: string;
   readonly name?: string;
   readonly mode: SeriesMode;
+  readonly plotX: number;
+  readonly plotY: number;
+  readonly clientX: number;
+  readonly clientY: number;
 }
 
 export interface ChartHoverState {
@@ -135,12 +139,19 @@ export class Chart {
   private readonly hoverSubscribers = new Set<(state: ChartHoverState | null) => void>();
   private readonly seriesSubscribers = new Set<() => void>();
   private currentHover: ChartHoverState | null = null;
+  private lastPointerClientX: number = 0;
+  private lastPointerClientY: number = 0;
+  private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
   private _rafId: number = 0;
   private readonly handlePointerMove = (event: PointerEvent): void => {
-    this.emitHover(this.pick(event.clientX, event.clientY));
+    this.pointerInPlot = true;
+    this.lastPointerClientX = event.clientX;
+    this.lastPointerClientY = event.clientY;
+    this.refreshHover();
   };
   private readonly handlePointerLeave = (): void => {
+    this.pointerInPlot = false;
     this.emitHover(null);
   };
 
@@ -206,6 +217,11 @@ export class Chart {
 
   get plotElement(): HTMLElement {
     return this.layout.plot;
+  }
+
+  dataToPlot(x: number, y: number): [number, number] {
+    const [clipX, clipY] = this.camera.toClip(x, y);
+    return this.camera.toScreen(clipX, clipY, this.canvas.clientWidth, this.canvas.clientHeight);
   }
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
@@ -320,7 +336,7 @@ export class Chart {
     const maxDistancePx = options.maxDistancePx ?? this.options.hover?.maxDistancePx ?? Infinity;
     const anchorX = mode === "nearest-point"
       ? this.findNearestPointAnchor(dataX, dataY, viewport, rect.width, rect.height, maxDistancePx)
-      : dataX;
+      : this.findNearestXAnchor(dataX, viewport, rect.width, maxDistancePx);
 
     if (anchorX === null) return null;
 
@@ -457,6 +473,7 @@ export class Chart {
     this.axisOverlay?.update(this.camera, this.axis);
 
     this.stats.frameMs = performance.now() - frameStartedAt;
+    this.refreshHover();
   }
 
   dispose(): void {
@@ -562,6 +579,31 @@ export class Chart {
     this.stats.drawCalls++;
   }
 
+  private findNearestXAnchor(
+    dataX: number,
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+    plotWidth: number,
+    maxDistancePx: number,
+  ): number | null {
+    let best: SeriesSample | null = null;
+    let bestDistancePx = Infinity;
+    const xScale = plotWidth / (viewport.xMax - viewport.xMin);
+
+    for (const series of this.series) {
+      if (!series.visible) continue;
+      const sample = series.nearestSampleByX(dataX, viewport);
+      if (!sample) continue;
+      const distancePx = Math.abs(sample.x - dataX) * xScale;
+      if (distancePx < bestDistancePx) {
+        best = sample;
+        bestDistancePx = distancePx;
+      }
+    }
+
+    if (!best || bestDistancePx > maxDistancePx) return null;
+    return best.x;
+  }
+
   private findNearestPointAnchor(
     dataX: number,
     dataY: number,
@@ -599,9 +641,11 @@ export class Chart {
       if (!sample) continue;
 
       const [clipX, clipY] = this.camera.toClip(sample.x, sample.y);
-      const [screenX, screenY] = this.camera.toScreen(clipX, clipY, rect.width, rect.height);
-      const dx = rect.left + screenX - clientX;
-      const dy = rect.top + screenY - clientY;
+      const [plotX, plotY] = this.camera.toScreen(clipX, clipY, rect.width, rect.height);
+      const itemClientX = rect.left + plotX;
+      const itemClientY = rect.top + plotY;
+      const dx = itemClientX - clientX;
+      const dy = itemClientY - clientY;
       items.push({
         ...sample,
         distancePx: Math.hypot(dx, dy),
@@ -610,9 +654,18 @@ export class Chart {
         id: series.config.id,
         name: series.config.name,
         mode: series.config.mode,
+        plotX,
+        plotY,
+        clientX: itemClientX,
+        clientY: itemClientY,
       });
     }
     return items;
+  }
+
+  private refreshHover(): void {
+    if (!this.pointerInPlot) return;
+    this.emitHover(this.pick(this.lastPointerClientX, this.lastPointerClientY));
   }
 
   private emitHover(state: ChartHoverState | null): void {
@@ -622,6 +675,7 @@ export class Chart {
 
   private emitSeriesChange(): void {
     for (const callback of this.seriesSubscribers) callback();
+    this.refreshHover();
   }
 
   private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, dpr: number): void {

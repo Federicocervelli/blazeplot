@@ -40,6 +40,7 @@
 - `Chart.render()` calls `SeriesStore.rebuildPyramid()` before drawing visible series and re-extracts visible samples/segments from the current `Camera2D` viewport every frame.
 - `ViewportPolicy` transforms `PanIntent`/`ZoomIntent` and can update `Camera2D` before render. Keep behavior rules there, not in core/rendering.
 - Optional built-ins like legend and tooltip are Chart plugins exported from subpaths (`blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`). `Chart` owns only the lightweight plugin contract and public state/pick APIs; avoid importing built-in plugins into `Chart.ts` or the top-level entry.
+- Hover state refreshes every render while the pointer is inside the plot, so live-follow charts update tooltips even when the cursor is still. `chart.pick()` returns actual raw sample coordinates plus plot/client coordinates for marker overlays.
 - In the preview, synced-X behavior keeps live X follow active while wheel zoom/pan are Y-only.
 
 ## TypeScript Conventions
