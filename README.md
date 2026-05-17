@@ -7,7 +7,7 @@
 
 Fast WebGL2 plotting engine for the browser 🔥
 
-GPU-native, zero DOM. Built on WebGL2 + [regl](https://github.com/regl-project/regl). No Canvas2D, no SVG, no layout thrashing.
+GPU-native, minimal DOM. Built on WebGL2 + [regl](https://github.com/regl-project/regl). No Canvas2D, no SVG, no layout thrashing.
 
 ## Installation
 
@@ -54,11 +54,12 @@ push();
 
 | | |
 |---|---|
-| **WebGL2 rendering** | GPU-accelerated from the ground up. No Canvas2D fallback, no DOM text nodes. |
+| **WebGL2 rendering** | GPU-accelerated from the ground up. No Canvas2D fallback. Axis labels via optional DOM overlay. |
 | **Flexible data model** | Streaming ring buffer or static arrays. Bring your own data shape. |
 | **LOD downsampling** | Min/max pyramid for efficient line rendering at any zoom level — sparse views show raw points, dense views show vertical segments. |
 | **Pan & zoom** | Pointer/touch pan and wheel zoom via `Camera2D`. Customizable viewport policies. |
 | **Grid lines** | Data-anchored grid rendered as WebGL line lists. |
+| **Axis labels** | Smart tick generation with DOM overlay labels. Per-axis `inside`/`outside` positioning. |
 | **Multi-series** | Independent buffers, styles, and visibility per series. |
 | **Benchmark overlay** | Built-in fps, frame time, vertex count, draw calls. |
 | **ResizeObserver** | Automatic DPR-aware canvas sizing. |
@@ -86,6 +87,21 @@ push();
 | `viewportPolicy?` | — | Custom pan/zoom/viewport behavior hooks. |
 | `grid?` | `true` | Show grid lines. |
 | `gridStyle?` | `{ color: [0.22,0.30,0.44,0.45] }` | Grid line color and width. |
+| `axes?` | `true` | Show axis tick labels. `true`/`false`, or per-axis `{ x?: boolean \| AxisConfig, y?: boolean \| AxisConfig }`. |
+
+### `AxisConfig`
+
+| Property | Default | Description |
+|---|---|---|
+| `visible?` | `true` | Show this axis. |
+| `position?` | `"inside"` | `"inside"` draws labels over the plot; `"outside"` reserves a gutter so content is never occluded. |
+
+```ts
+// X labels outside (bottom gutter), Y labels inside
+new Chart(canvas, {
+  axes: { x: { position: "outside" }, y: true }
+});
+```
 
 ### `ChartFrameStats`
 

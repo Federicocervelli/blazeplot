@@ -52,7 +52,10 @@ const previewPolicy: ViewportPolicy = {
   },
 };
 
-const chart = new Chart(canvas, { viewportPolicy: previewPolicy });
+const chart = new Chart(canvas, {
+  viewportPolicy: previewPolicy,
+  axes: { x: { position: "outside" }, y: { position: "outside" } },
+});
 
 const series = chart.addSeries(
   { mode: "line", capacity: 10_000_000, downsample: "minmax" },

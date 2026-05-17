@@ -28,7 +28,10 @@
 ## Current Implementation Gotchas
 
 - `ReglBackend` requires WebGL2. It implements buffer creation/update, program handles, cached draw commands, and resource disposal for current raw-line needs.
-- `Chart.render()` currently renders raw visible line strips. Dense-view min/max segment rendering is not implemented yet.
+- `ReglBackend.viewport()` uses WebGL scissor test to clip draws to the plot area; it does **not** change the GL viewport. `clear()` is unaffected and always clears the full canvas.
+- `Chart.render()` first clears the full canvas, then sets the scissor inset via `viewport()` before drawing grid + series.
+- `AxisOverlay` positions a DOM overlay over the canvas using `getBoundingClientRect`; the parent must be a positioned containing block (the constructor sets `position: relative` if the parent is `static`).
+- Axis `outside` positioning reserves fixed CSS-pixel margins: 52px left for Y, 28px bottom for X. Defined by `LEFT_MARGIN_CSS` / `BOTTOM_MARGIN_CSS` in `Chart.ts`.
 - `MinMaxPyramid.build()` is a full bottom-up rebuild today; incremental pyramid updates are roadmap-only.
 - `RingBuffer` silently wraps at capacity and exposes logical-order access after wrap.
 - LOD queries use sorted logical X values via `RingBuffer.lowerBoundX` / `upperBoundX`; preserve that assumption when changing append/query code.

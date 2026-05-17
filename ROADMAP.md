@@ -97,7 +97,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] Camera uniforms propagated to shaders per frame
 - [x] `AxisController` — smart tick generation and label formatting
 - [x] Grid line rendering
-- [ ] Axis tick labels (DOM overlay or GPU text)
+- [x] Axis tick labels (DOM overlay)
 - [ ] LOD re-query on pan/zoom (viewport change → new LODView for lines)
 - [ ] Box-select / region zoom
 - [ ] Tooltip / hit testing
@@ -137,7 +137,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] `chart.removeSeries(series)`
 - [x] ResizeObserver integration
 - [x] Grid
-- [ ] Axis labels / tick rendering
+- [x] Axis labels / tick rendering (DOM overlay, `axes: false` to disable)
 - [ ] `chart.screenshot()` / export image
 - [ ] Theme system
 - [ ] Legend
