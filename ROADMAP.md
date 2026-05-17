@@ -62,7 +62,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] `DataCursor` — binary search by X value
 - [x] Tests for `RingBuffer`, `MinMaxPyramid`, and `Camera2D`
 - [x] **General dataset abstraction** — `Dataset`/`AppendableDataset` interfaces. `RingBuffer` satisfies `AppendableDataset`. `StaticDataset` wraps any typed arrays. `MinMaxPyramid`/`DataCursor`/`SeriesStore` all accept `Dataset`. Same render path for streaming and static data.
-- [x] **LOD as a strategy, not a requirement** — `SeriesConfig.downsample` accepts `"minmax" | "none"` (optional, defaults to `"minmax"`). Scatter/bar modes skip the pyramid entirely — `SeriesStore` creates no `MinMaxPyramid`, `copyMinMaxVisible` returns `0`, `Chart.render()` always uses raw path when `hasLOD` is `false`.
+- [x] **LOD as a strategy, not a requirement** — `SeriesConfig.downsample` accepts `"minmax" | "none"` (optional, defaults to `"minmax"`). Area/scatter/bar modes skip the pyramid entirely — `SeriesStore` creates no `MinMaxPyramid`, `copyMinMaxVisible` returns `0`, and render paths use raw visible samples when `hasLOD` is `false`.
 - [x] **Incremental pyramid update** — current: O(log N) per append instead of full rebuild. Only recomputes the affected tail at each level. Falls back to full rebuild on wrap/clear. Detected via `range.start` change or length decrease.
 
 ---
