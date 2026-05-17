@@ -92,7 +92,15 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       applyPosition(container, options.position ?? "top-right");
       chart.rootElement.appendChild(container);
 
+      const applyTheme = (): void => {
+        container.style.border = legendBorder(options, chart);
+        container.style.background = options.backgroundColor ?? chart.theme.legendBackgroundColor;
+        container.style.color = options.textColor ?? chart.theme.legendTextColor;
+        container.style.font = options.font ?? chart.theme.legendFont;
+      };
+
       const render = (): void => {
+        applyTheme();
         const state = chart.getSeriesState();
         if (options.render) {
           options.render(state, container, chart);
@@ -101,11 +109,13 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
         }
       };
 
-      const unsubscribe = chart.subscribe("serieschange", render);
+      const unsubscribeSeries = chart.subscribe("serieschange", render);
+      const unsubscribeTheme = chart.subscribe("themechange", render);
       render();
 
       return () => {
-        unsubscribe();
+        unsubscribeSeries();
+        unsubscribeTheme();
         container.remove();
       };
     },

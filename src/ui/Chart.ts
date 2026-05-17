@@ -112,6 +112,19 @@ function normalizeAxisConfig(config: boolean | AxisConfig | undefined): Normaliz
   };
 }
 
+function normalizeAxesConfig(axes: ChartOptions["axes"]): { x: NormalizedAxisConfig; y: NormalizedAxisConfig } {
+  if (axes === false) {
+    return { x: { visible: false, position: "inside" }, y: { visible: false, position: "inside" } };
+  }
+  if (axes === true || axes === undefined) {
+    return { x: { visible: true, position: "inside" }, y: { visible: true, position: "inside" } };
+  }
+  return {
+    x: normalizeAxisConfig(axes.x),
+    y: normalizeAxisConfig(axes.y),
+  };
+}
+
 export class Chart {
   private series: SeriesStore[] = [];
   private camera: Camera2D;
@@ -130,7 +143,8 @@ export class Chart {
   private readonly yTicks: number[] = [];
   private axisOverlay: AxisOverlay | null = null;
   private normalizedAxes: { x: NormalizedAxisConfig; y: NormalizedAxisConfig };
-  private readonly resolvedTheme: ResolvedChartTheme;
+  private resolvedTheme: ResolvedChartTheme;
+  private _gridVisible: boolean;
   private layout: ChartLayout;
   private stats: ChartFrameStats = {
     fps: 0,
@@ -144,6 +158,7 @@ export class Chart {
   private readonly pluginDisposers: Array<() => void> = [];
   private readonly hoverSubscribers = new Set<(state: ChartHoverState | null) => void>();
   private readonly seriesSubscribers = new Set<() => void>();
+  private readonly themeSubscribers = new Set<() => void>();
   private currentHover: ChartHoverState | null = null;
   private lastPointerClientX: number = 0;
   private lastPointerClientY: number = 0;
@@ -163,17 +178,8 @@ export class Chart {
 
   constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
     this.resolvedTheme = resolveChartTheme(options.theme, target);
-    const axesOpt = options.axes;
-    if (axesOpt === false) {
-      this.normalizedAxes = { x: { visible: false, position: "inside" }, y: { visible: false, position: "inside" } };
-    } else if (axesOpt === true || axesOpt === undefined) {
-      this.normalizedAxes = { x: { visible: true, position: "inside" }, y: { visible: true, position: "inside" } };
-    } else {
-      this.normalizedAxes = {
-        x: normalizeAxisConfig(axesOpt.x),
-        y: normalizeAxisConfig(axesOpt.y),
-      };
-    }
+    this.normalizedAxes = normalizeAxesConfig(options.axes);
+    this._gridVisible = options.grid !== false;
 
     this.layout = new ChartLayout(target, this.normalizedAxes);
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
@@ -371,16 +377,53 @@ export class Chart {
 
   subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
   subscribe(event: "serieschange", callback: () => void): () => void;
-  subscribe(event: "hover" | "serieschange", callback: ((state: ChartHoverState | null) => void) | (() => void)): () => void {
+  subscribe(event: "themechange", callback: () => void): () => void;
+  subscribe(event: "hover" | "serieschange" | "themechange", callback: ((state: ChartHoverState | null) => void) | (() => void)): () => void {
     if (event === "hover") {
       const cb = callback as (state: ChartHoverState | null) => void;
       this.hoverSubscribers.add(cb);
       return () => this.hoverSubscribers.delete(cb);
     }
 
+    if (event === "themechange") {
+      const cb = callback as () => void;
+      this.themeSubscribers.add(cb);
+      return () => this.themeSubscribers.delete(cb);
+    }
+
     const cb = callback as () => void;
     this.seriesSubscribers.add(cb);
     return () => this.seriesSubscribers.delete(cb);
+  }
+
+  setTheme(theme?: ChartTheme): void {
+    this.resolvedTheme = resolveChartTheme(theme, this.layout.root);
+    this.applyTheme();
+    this.emitThemeChange();
+    this.refreshHover();
+  }
+
+  setGridVisible(visible: boolean): void {
+    this._gridVisible = visible;
+  }
+
+  getGridVisible(): boolean {
+    return this._gridVisible;
+  }
+
+  setAxes(axes: ChartOptions["axes"]): void {
+    this.normalizedAxes = normalizeAxesConfig(axes);
+    this.layout.update(this.normalizedAxes);
+    this.axisOverlay?.dispose();
+    this.axisOverlay = null;
+    if (this.normalizedAxes.x.visible || this.normalizedAxes.y.visible) {
+      this.axisOverlay = new AxisOverlay(this.layout, this.normalizedAxes, {
+        color: this.resolvedTheme.axisColor,
+        font: this.resolvedTheme.axisFont,
+      });
+    }
+    this.resize();
+    this.refreshHover();
   }
 
   pick(clientX: number, clientY: number, options: ChartPickOptions = {}): ChartHoverState | null {
@@ -472,7 +515,7 @@ export class Chart {
     this.renderer.clear(r, g, b, a);
 
     const viewport = this.camera.viewport;
-    if (this.options.grid !== false) {
+    if (this._gridVisible) {
       const gridVertexCount = this.writeGridVertices(viewport);
       if (gridVertexCount > 0) {
         this.renderer.updateFloatBuffer(this.gridBuffer, this.gridData);
@@ -544,6 +587,17 @@ export class Chart {
     this.axisOverlay?.dispose();
     this.renderer.dispose();
     this.layout.dispose();
+  }
+
+  private applyTheme(): void {
+    this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
+    if (this.options.gridStyle?.color === undefined) {
+      this.gridStyle = { ...this.gridStyle, color: this.resolvedTheme.gridColor };
+    }
+    this.axisOverlay?.setOptions({
+      color: this.resolvedTheme.axisColor,
+      font: this.resolvedTheme.axisFont,
+    });
   }
 
   private applyCanvasSize(dpr: number = globalThis.devicePixelRatio): boolean {
@@ -832,6 +886,10 @@ export class Chart {
   private emitSeriesChange(): void {
     for (const callback of this.seriesSubscribers) callback();
     this.refreshHover();
+  }
+
+  private emitThemeChange(): void {
+    for (const callback of this.themeSubscribers) callback();
   }
 
   private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, dpr: number): void {

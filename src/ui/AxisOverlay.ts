@@ -18,8 +18,20 @@ export class AxisOverlay {
   constructor(
     private readonly layout: ChartLayoutElements,
     private readonly config: AxisOverlayConfig,
-    private readonly options: AxisOverlayOptions = {},
+    private options: AxisOverlayOptions = {},
   ) {}
+
+  setOptions(options: AxisOverlayOptions): void {
+    this.options = options;
+    for (const el of this.xPool) {
+      el.style.font = this.options.font ?? "11px ui-monospace, monospace, sans-serif";
+      el.style.color = this.options.color ?? "#bfd6ff";
+    }
+    for (const el of this.yPool) {
+      el.style.font = this.options.font ?? "11px ui-monospace, monospace, sans-serif";
+      el.style.color = this.options.color ?? "#bfd6ff";
+    }
+  }
 
   update(camera: Camera2D, axis: AxisController): void {
     const plotW = Math.max(1, this.layout.plot.clientWidth);

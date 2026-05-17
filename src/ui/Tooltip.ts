@@ -69,6 +69,12 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       markerLayer.style.pointerEvents = "none";
       chart.plotElement.appendChild(markerLayer);
 
+      const applyTheme = (): void => {
+        container.style.background = options.backgroundColor ?? chart.theme.tooltipBackgroundColor;
+        container.style.color = options.textColor ?? chart.theme.tooltipTextColor;
+        container.style.font = options.font ?? chart.theme.tooltipFont;
+      };
+
       const renderMarkers = (state: ChartHoverState | null): void => {
         markerLayer.replaceChildren();
         if (options.highlight === false || !state) return;
@@ -83,7 +89,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
           marker.style.border = "2px solid #f8fafc";
           marker.style.borderRadius = "999px";
           marker.style.background = rgba(item.series.style.color);
-          marker.style.boxShadow = "0 0 0 2px rgba(4, 8, 16, 0.85)";
+          marker.style.boxShadow = "0 0 0 1px rgba(4, 8, 16, 0.85)";
           marker.style.transform = "translate(-50%, -50%)";
           markerLayer.appendChild(marker);
         }
@@ -113,9 +119,15 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         container.style.display = "block";
       };
 
-      const unsubscribe = chart.subscribe("hover", render);
+      const unsubscribeHover = chart.subscribe("hover", render);
+      const unsubscribeTheme = chart.subscribe("themechange", () => {
+        applyTheme();
+        render(chart.getHoverState());
+      });
+      applyTheme();
       return () => {
-        unsubscribe();
+        unsubscribeHover();
+        unsubscribeTheme();
         markerLayer.remove();
         container.remove();
       };
