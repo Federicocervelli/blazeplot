@@ -237,11 +237,12 @@ export class SeriesStore {
     return count;
   }
 
-  visibleIndexRange(viewport: Viewport | undefined): { start: number; end: number } {
+  visibleIndexRange(viewport: Viewport | undefined, outerPadding: number = 0): { start: number; end: number } {
     if (!viewport) return { start: 0, end: this.dataset.length };
+    const pad = Math.max(0, Math.floor(outerPadding));
     return {
-      start: this.dataset.lowerBoundX(viewport.xMin),
-      end: this.dataset.upperBoundX(viewport.xMax),
+      start: Math.max(0, this.dataset.lowerBoundX(viewport.xMin) - pad),
+      end: Math.min(this.dataset.length, this.dataset.upperBoundX(viewport.xMax) + pad),
     };
   }
 

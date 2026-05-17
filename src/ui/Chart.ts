@@ -609,23 +609,33 @@ export class Chart {
       return;
     }
 
-    const count = dense
-      ? series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments())
-      : series.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
-    if (count < 2) return;
-
-    this.uploadRawLineData(count);
     if (dense) {
+      const count = series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments());
+      if (count < 2) return;
+      this.uploadRawLineData(count);
       this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, this.camera);
       this.recordDraw("minmax", count);
-    } else {
+      return;
+    }
+
+    const range = series.visibleIndexRange(viewport, 1);
+    this.drawLineStripRange(series, range.start, range.end, RAW_LINE_VERTEX_CAPACITY);
+  }
+
+  private drawLineStripRange(series: SeriesStore, start: number, end: number, maxPoints: number): void {
+    for (let chunkStart = start; chunkStart < end;) {
+      const count = series.copyRawRange(chunkStart, end, this.rawLineData, maxPoints);
+      if (count < 2) break;
+
+      this.uploadRawLineData(count);
       this.renderer.drawLineStrip(this.rawLineBuffer, count, series.style, this.camera);
       this.recordDraw("raw", count);
+      chunkStart += Math.max(1, count - 1);
     }
   }
 
   private drawAreaSeries(series: SeriesStore, viewport: Viewport): void {
-    const range = series.visibleIndexRange(viewport);
+    const range = series.visibleIndexRange(viewport, 1);
     if (range.end - range.start < 2) return;
 
     const baseline = series.style.baseline ?? 0;
@@ -636,7 +646,7 @@ export class Chart {
       this.uploadRawLineData(areaVertexCount);
       this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, this.camera);
       this.recordDraw("area", areaVertexCount);
-      start += areaVertexCount >> 1;
+      start += Math.max(1, (areaVertexCount >> 1) - 1);
     }
 
     for (let start = range.start; start < range.end;) {

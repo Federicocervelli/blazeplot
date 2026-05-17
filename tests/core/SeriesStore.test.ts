@@ -190,6 +190,13 @@ describe("SeriesStore", () => {
     expect(series.visibleSampleCount({ xMin: 1, xMax: 2, yMin: 0, yMax: 1 })).toBe(2);
   });
 
+  it("can include immediate outer samples in visible ranges", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([0, 0, 0, 0]));
+
+    expect(series.visibleIndexRange({ xMin: 1, xMax: 2, yMin: 0, yMax: 1 }, 1)).toEqual({ start: 0, end: 4 });
+  });
+
   it("finds nearest raw sample by x within the viewport", () => {
     const series = makeSeries();
     series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([10, 20, 30, 40]));
