@@ -615,21 +615,32 @@ export class Chart {
     series: SeriesStore,
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
   ): void {
+    const range = series.visibleIndexRange(viewport);
+    if (range.end - range.start < 2) return;
+
     const baseline = series.style.baseline ?? 0;
-    const areaVertexCount = series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, baseline);
-    if (areaVertexCount < 4) return;
+    for (let start = range.start; start < range.end;) {
+      const areaVertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, baseline);
+      if (areaVertexCount < 4) break;
 
-    this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
-    this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, this.camera);
-    this.stats.pointsRendered += areaVertexCount;
-    this.stats.drawCalls++;
-    this.stats.uploadBytes += this.rawLineData.byteLength;
+      this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
+      this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, this.camera);
+      this.stats.pointsRendered += areaVertexCount;
+      this.stats.drawCalls++;
+      this.stats.uploadBytes += this.rawLineData.byteLength;
+      start += areaVertexCount >> 1;
+    }
 
-    const lineVertexCount = this.uploadRawInstances(series, viewport, AREA_POINT_CAPACITY);
-    if (lineVertexCount >= 2) {
+    for (let start = range.start; start < range.end;) {
+      const lineVertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY);
+      if (lineVertexCount < 2) break;
+
+      this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
       this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, this.camera);
       this.stats.pointsRendered += lineVertexCount;
       this.stats.drawCalls++;
+      this.stats.uploadBytes += this.rawLineData.byteLength;
+      start += Math.max(1, lineVertexCount - 1);
     }
 
     this.recordRenderMode("area");
@@ -639,15 +650,21 @@ export class Chart {
     series: SeriesStore,
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
   ): void {
-    const count = this.uploadRawInstances(series, viewport, RAW_LINE_VERTEX_CAPACITY);
-    if (count <= 0) return;
+    const range = series.visibleIndexRange(viewport);
+    for (let start = range.start; start < range.end;) {
+      const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
+      if (count <= 0) break;
 
-    if (this.renderer.supportsInstancedPoints) {
-      this.renderer.drawPointsInstanced(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
-    } else {
-      this.renderer.drawPointSprites(this.rawLineBuffer, count, series.style, this.camera);
+      this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
+      this.stats.uploadBytes += this.rawLineData.byteLength;
+      if (this.renderer.supportsInstancedPoints) {
+        this.renderer.drawPointsInstanced(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
+      } else {
+        this.renderer.drawPointSprites(this.rawLineBuffer, count, series.style, this.camera);
+      }
+      this.recordInstancedDraw("points", count);
+      start += count;
     }
-    this.recordInstancedDraw("points", count);
   }
 
   private drawBarSeries(

@@ -351,4 +351,36 @@ describe("SeriesStore no-LOD", () => {
     expect(count).toBe(3);
     expect(Array.from(raw)).toEqual([0, 4, 1, -1, 2, 7]);
   });
+
+  it("copies raw ranges without stride for chunked rendering", () => {
+    const series = new SeriesStore(
+      new RingBuffer(8),
+      { mode: "scatter", capacity: 8, downsample: "none" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([4, -1, 7, 9]));
+
+    const raw = new Float32Array(4);
+    const count = series.copyRawRange(1, 4, raw, 2);
+
+    expect(count).toBe(2);
+    expect(Array.from(raw)).toEqual([1, -1, 2, 7]);
+  });
+
+  it("copies area ranges without stride for chunked rendering", () => {
+    const series = new SeriesStore(
+      new RingBuffer(8),
+      { mode: "area", capacity: 8, downsample: "none" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    series.append(new Float64Array([0, 1, 2]), new Float32Array([4, -1, 7]));
+
+    const area = new Float32Array(8);
+    const vertexCount = series.copyAreaRange(1, 3, area, 2, -2);
+
+    expect(vertexCount).toBe(4);
+    expect(Array.from(area)).toEqual([1, -2, 1, -1, 2, -2, 2, 7]);
+  });
 });

@@ -181,8 +181,16 @@ export class SeriesStore {
     return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0);
   }
 
+  copyRawRange(start: number, end: number, target: Float32Array, maxPoints: number): number {
+    return this.copySampleRange(start, end, target, maxPoints, "points", 0);
+  }
+
   copyAreaVisible(viewport: Viewport, target: Float32Array, maxPoints: number, baseline: number = 0): number {
     return this.copyVisibleSamples(viewport, target, maxPoints, "area", baseline) * 2;
+  }
+
+  copyAreaRange(start: number, end: number, target: Float32Array, maxPoints: number, baseline: number = 0): number {
+    return this.copySampleRange(start, end, target, maxPoints, "area", baseline) * 2;
   }
 
   copyMinMaxVisible(viewport: Viewport, target: Float32Array, maxSegments: number): number {
@@ -193,7 +201,7 @@ export class SeriesStore {
     return this.copyMinMaxSegments(viewport, target, maxSegments, "instanced");
   }
 
-  private visibleIndexRange(viewport: Viewport | undefined): { start: number; end: number } {
+  visibleIndexRange(viewport: Viewport | undefined): { start: number; end: number } {
     if (!viewport) return { start: 0, end: this.dataset.length };
     return {
       start: this.dataset.lowerBoundX(viewport.xMin),
@@ -233,6 +241,40 @@ export class SeriesStore {
         target[offset + 3] = y;
       }
       count++;
+    }
+
+    return count;
+  }
+
+  private copySampleRange(
+    start: number,
+    end: number,
+    target: Float32Array,
+    maxPoints: number,
+    layout: "points" | "area",
+    baseline: number,
+  ): number {
+    const floatsPerSample = layout === "points" ? 2 : 4;
+    if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
+
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this.dataset.length, Math.ceil(end));
+    const count = Math.min(maxPoints, Math.max(0, to - from));
+    for (let i = 0; i < count; i++) {
+      const index = from + i;
+      const x = this.dataset.getX(index);
+      const y = this.dataset.getY(index);
+      if (layout === "points") {
+        const offset = i * 2;
+        target[offset] = x;
+        target[offset + 1] = y;
+      } else {
+        const offset = i * 4;
+        target[offset] = x;
+        target[offset + 1] = baseline;
+        target[offset + 2] = x;
+        target[offset + 3] = y;
+      }
     }
 
     return count;
