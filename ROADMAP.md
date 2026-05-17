@@ -93,7 +93,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 **Status: implemented (camera + optional interactions plugin)**
 
 - [x] `Camera2D` — viewport model with pan, zoom, setViewport
-- [x] Interaction plugin — plain-drag box zoom, Shift+drag pan, wheel zoom, double-click reset, configurable `"x" | "y" | "xy"` axis
+- [x] Interaction plugin — plain-drag box zoom, Shift+drag plot pan, axis drag pan, wheel/axis zoom, double-click reset, configurable `"x" | "y" | "xy"` axis
 - [x] `ViewportPolicy` — transforms plugin pan/zoom intents and can update camera before render
 - [x] Camera uniforms propagated to shaders per frame
 - [x] `AxisController` — smart tick generation and label formatting

@@ -85,6 +85,7 @@ push();
 | `chart.start()` | Start the render loop (rAF). |
 | `chart.stop()` | Stop the render loop. |
 | `chart.canvas` | Read-only access to the internal plot canvas. |
+| `chart.xAxisElement` / `chart.yAxisElement` | Plugin-facing access to outside axis gutter elements. |
 | `chart.theme` | Resolved theme values used by the chart and built-in plugins. |
 | `chart.getFrameStats(target?)` | Copy per-frame benchmark counters into a reusable object. |
 | `chart.getSeriesState()` | Return public series metadata/state for plugins or custom UI. |
@@ -176,7 +177,7 @@ const chart = new Chart(container, {
 });
 ```
 
-Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zoom, Shift+drag pan, wheel zoom, double-click reset, and `axis: "x" | "y" | "xy"`. Legend/tooltip consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting.
+Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zoom, Shift+drag plot pan, wheel zoom, double-click reset, and `axis: "x" | "y" | "xy"`. When outside axes are visible, scrolling an axis zooms that axis and dragging an axis pans that axis. Legend/tooltip consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting.
 
 ### `SeriesStore`
 

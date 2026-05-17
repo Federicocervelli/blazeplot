@@ -7,6 +7,7 @@ export interface InteractionsPluginOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly boxZoom?: boolean;
   readonly wheelZoom?: boolean;
+  readonly axisInteractions?: boolean;
   readonly shiftDragPan?: boolean;
   readonly doubleClickReset?: boolean;
   readonly minDragDistancePx?: number;
@@ -14,16 +15,21 @@ export interface InteractionsPluginOptions {
   readonly selectionStroke?: string;
 }
 
+type InteractionTarget = HTMLCanvasElement | HTMLElement;
+
 type DragState =
   | {
       readonly mode: "pan";
       readonly pointerId: number;
+      readonly axis: ZoomAxis;
+      readonly target: InteractionTarget;
       lastX: number;
       lastY: number;
     }
   | {
       readonly mode: "select";
       readonly pointerId: number;
+      readonly target: HTMLCanvasElement;
       readonly startX: number;
       readonly startY: number;
       currentX: number;
@@ -82,7 +88,13 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const axis = options.axis ?? "xy";
       const minDragDistancePx = options.minDragDistancePx ?? 6;
       const canvas = chart.canvas;
+      const xAxis = chart.xAxisElement;
+      const yAxis = chart.yAxisElement;
       const selection = document.createElement("div");
+      const originalXAxisPointerEvents = xAxis.style.pointerEvents;
+      const originalYAxisPointerEvents = yAxis.style.pointerEvents;
+      const originalXAxisCursor = xAxis.style.cursor;
+      const originalYAxisCursor = yAxis.style.cursor;
       let drag: DragState | null = null;
       let resetViewport: Viewport | null = null;
 
@@ -95,12 +107,19 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       selection.style.background = options.selectionFill ?? "rgba(59, 130, 246, 0.18)";
       chart.plotElement.appendChild(selection);
 
+      if (options.axisInteractions !== false) {
+        xAxis.style.pointerEvents = "auto";
+        yAxis.style.pointerEvents = "auto";
+        xAxis.style.cursor = "ew-resize";
+        yAxis.style.cursor = "ns-resize";
+      }
+
       const captureResetViewport = (): void => {
         resetViewport ??= normalizeViewport(chart.getViewport());
       };
 
-      const applyPanPolicy = (intent: PanIntent): PanIntent | null => {
-        const constrained = constrainPan(intent, axis);
+      const applyPanPolicy = (intent: PanIntent, panAxis: ZoomAxis): PanIntent | null => {
+        const constrained = constrainPan(intent, panAxis);
         return options.viewportPolicy?.beforePan?.(chart.getCamera(), constrained) ?? constrained;
       };
 
@@ -130,14 +149,25 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         selection.style.display = "block";
       };
 
-      const onPointerDown = (event: PointerEvent): void => {
+      const beginPan = (event: PointerEvent, panAxis: ZoomAxis, target: InteractionTarget): void => {
+        captureResetViewport();
+        event.preventDefault();
+        target.setPointerCapture(event.pointerId);
+        drag = {
+          mode: "pan",
+          pointerId: event.pointerId,
+          axis: panAxis,
+          target,
+          lastX: event.clientX,
+          lastY: event.clientY,
+        };
+      };
+
+      const onCanvasPointerDown = (event: PointerEvent): void => {
         if (drag || event.button !== 0) return;
 
         if (event.shiftKey && options.shiftDragPan !== false) {
-          captureResetViewport();
-          event.preventDefault();
-          canvas.setPointerCapture(event.pointerId);
-          drag = { mode: "pan", pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY };
+          beginPan(event, axis, canvas);
           return;
         }
 
@@ -148,12 +178,23 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         drag = {
           mode: "select",
           pointerId: event.pointerId,
+          target: canvas,
           startX: event.clientX,
           startY: event.clientY,
           currentX: event.clientX,
           currentY: event.clientY,
         };
         updateSelection(drag);
+      };
+
+      const onXAxisPointerDown = (event: PointerEvent): void => {
+        if (drag || event.button !== 0 || options.axisInteractions === false) return;
+        beginPan(event, "x", xAxis);
+      };
+
+      const onYAxisPointerDown = (event: PointerEvent): void => {
+        if (drag || event.button !== 0 || options.axisInteractions === false) return;
+        beginPan(event, "y", yAxis);
       };
 
       const onPointerMove = (event: PointerEvent): void => {
@@ -164,7 +205,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           const rect = canvas.getBoundingClientRect();
           const dx = rect.width > 0 ? (drag.lastX - event.clientX) / rect.width : 0;
           const dy = rect.height > 0 ? (event.clientY - drag.lastY) / rect.height : 0;
-          const intent = applyPanPolicy({ dx, dy });
+          const intent = applyPanPolicy({ dx, dy }, drag.axis);
           if (intent) chart.pan(intent);
           drag.lastX = event.clientX;
           drag.lastY = event.clientY;
@@ -182,7 +223,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
 
         const completed = drag;
         drag = null;
-        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+        if (completed.target.hasPointerCapture(event.pointerId)) completed.target.releasePointerCapture(event.pointerId);
         hideSelection();
 
         if (completed.mode !== "select") return;
@@ -203,12 +244,13 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
 
       const onPointerCancel = (event: PointerEvent): void => {
         if (!drag || event.pointerId !== drag.pointerId) return;
+        const completed = drag;
         drag = null;
-        if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+        if (completed.target.hasPointerCapture(event.pointerId)) completed.target.releasePointerCapture(event.pointerId);
         hideSelection();
       };
 
-      const onWheel = (event: WheelEvent): void => {
+      const wheelOnAxis = (event: WheelEvent, zoomAxis: ZoomAxis): void => {
         if (options.wheelZoom === false) return;
         captureResetViewport();
         event.preventDefault();
@@ -216,8 +258,22 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         const rect = canvas.getBoundingClientRect();
         const cx = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
         const cy = rect.height > 0 ? 1 - (event.clientY - rect.top) / rect.height : 0.5;
-        const intent = applyZoomPolicy({ factor, cx, cy, axis });
+        const intent = applyZoomPolicy({ factor, cx, cy, axis: zoomAxis });
         if (intent) chart.zoom(intent);
+      };
+
+      const onCanvasWheel = (event: WheelEvent): void => {
+        wheelOnAxis(event, axis);
+      };
+
+      const onXAxisWheel = (event: WheelEvent): void => {
+        if (options.axisInteractions === false) return;
+        wheelOnAxis(event, "x");
+      };
+
+      const onYAxisWheel = (event: WheelEvent): void => {
+        if (options.axisInteractions === false) return;
+        wheelOnAxis(event, "y");
       };
 
       const onDoubleClick = (event: MouseEvent): void => {
@@ -227,20 +283,45 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         chart.setViewport(target);
       };
 
-      canvas.addEventListener("pointerdown", onPointerDown);
-      canvas.addEventListener("pointermove", onPointerMove);
-      canvas.addEventListener("pointerup", onPointerUp);
-      canvas.addEventListener("pointercancel", onPointerCancel);
-      canvas.addEventListener("wheel", onWheel, { passive: false });
+      const pointerTargets = [canvas, xAxis, yAxis];
+      canvas.addEventListener("pointerdown", onCanvasPointerDown);
+      canvas.addEventListener("wheel", onCanvasWheel, { passive: false });
       canvas.addEventListener("dblclick", onDoubleClick);
 
+      if (options.axisInteractions !== false) {
+        xAxis.addEventListener("pointerdown", onXAxisPointerDown);
+        yAxis.addEventListener("pointerdown", onYAxisPointerDown);
+        xAxis.addEventListener("wheel", onXAxisWheel, { passive: false });
+        yAxis.addEventListener("wheel", onYAxisWheel, { passive: false });
+        xAxis.addEventListener("dblclick", onDoubleClick);
+        yAxis.addEventListener("dblclick", onDoubleClick);
+      }
+
+      for (const target of pointerTargets) {
+        target.addEventListener("pointermove", onPointerMove);
+        target.addEventListener("pointerup", onPointerUp);
+        target.addEventListener("pointercancel", onPointerCancel);
+      }
+
       return () => {
-        canvas.removeEventListener("pointerdown", onPointerDown);
-        canvas.removeEventListener("pointermove", onPointerMove);
-        canvas.removeEventListener("pointerup", onPointerUp);
-        canvas.removeEventListener("pointercancel", onPointerCancel);
-        canvas.removeEventListener("wheel", onWheel);
+        canvas.removeEventListener("pointerdown", onCanvasPointerDown);
+        canvas.removeEventListener("wheel", onCanvasWheel);
         canvas.removeEventListener("dblclick", onDoubleClick);
+        xAxis.removeEventListener("pointerdown", onXAxisPointerDown);
+        yAxis.removeEventListener("pointerdown", onYAxisPointerDown);
+        xAxis.removeEventListener("wheel", onXAxisWheel);
+        yAxis.removeEventListener("wheel", onYAxisWheel);
+        xAxis.removeEventListener("dblclick", onDoubleClick);
+        yAxis.removeEventListener("dblclick", onDoubleClick);
+        for (const target of pointerTargets) {
+          target.removeEventListener("pointermove", onPointerMove);
+          target.removeEventListener("pointerup", onPointerUp);
+          target.removeEventListener("pointercancel", onPointerCancel);
+        }
+        xAxis.style.pointerEvents = originalXAxisPointerEvents;
+        yAxis.style.pointerEvents = originalYAxisPointerEvents;
+        xAxis.style.cursor = originalXAxisCursor;
+        yAxis.style.cursor = originalYAxisCursor;
         selection.remove();
       };
     },

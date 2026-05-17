@@ -231,6 +231,14 @@ export class Chart {
     return this.layout.plot;
   }
 
+  get xAxisElement(): HTMLElement {
+    return this.layout.xAxis;
+  }
+
+  get yAxisElement(): HTMLElement {
+    return this.layout.yAxis;
+  }
+
   get theme(): ResolvedChartTheme {
     return this.resolvedTheme;
   }
