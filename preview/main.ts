@@ -16,12 +16,17 @@ copyIcon?.addEventListener("click", () => {
 
 console.info("[blazeplot] preview starting");
 
-const BATCH_SIZE = 16;
-const VIEW_SAMPLES = 65_536;
-const xBuf = new Float64Array(BATCH_SIZE);
-const yBuf = new Float32Array(BATCH_SIZE);
+const FILL_BATCH_SIZE = 65_536;
+const LIVE_BATCH_SIZE = 16;
+const VIEW_SAMPLES = 10_000_000;
+const TRACE_PERIOD = VIEW_SAMPLES / 5;
+const SPARSE_INTERVAL = 512;
+const TAU = Math.PI * 2;
+const xBuf = new Float64Array(FILL_BATCH_SIZE);
+const yBuf = new Float32Array(FILL_BATCH_SIZE);
 let t = 0;
 let frames = 0;
+let lastBatchSize = 0;
 let lastStatsAt = performance.now();
 let followLive = true;
 const syncX = true;
@@ -67,7 +72,7 @@ const canvas = chart.canvas;
 
 // line series — top band (y ~0.7–1.3)
 const lineSeries = chart.addSeries(
-  { mode: "line", capacity: 10_000_000, downsample: "minmax", name: "Wave" },
+  { mode: "line", capacity: 12_000_000, downsample: "minmax", name: "Wave" },
   { color: [0.3, 0.6, 1.0, 1.0], lineWidth: 1 },
 );
 
@@ -89,33 +94,43 @@ chart.start();
 console.info("[blazeplot] chart initialized", {
   canvasWidth: canvas.width,
   canvasHeight: canvas.height,
-  batchSize: BATCH_SIZE,
+  fillBatchSize: FILL_BATCH_SIZE,
+  liveBatchSize: LIVE_BATCH_SIZE,
 });
 
 function stream(): void {
-  // Wave — top band (centered around y = +0.8)
-  for (let i = 0; i < BATCH_SIZE; i++) {
-    xBuf[i] = t;
-    yBuf[i] = Math.sin(t * 0.01) * 0.25 + 0.8 + Math.random() * 0.01;
-    t++;
-  }
-  lineSeries.append(xBuf, yBuf);
+  const start = t;
+  const batchSize = t < VIEW_SAMPLES ? Math.min(FILL_BATCH_SIZE, VIEW_SAMPLES - t) : LIVE_BATCH_SIZE;
+  lastBatchSize = batchSize;
 
-  // Spikes — middle band (every 64 samples, one spike)
-  if (t % 64 === 0) {
-    const spikeX = new Float64Array(1);
-    const spikeY = new Float32Array(1);
-    spikeX[0] = t - 1;
-    spikeY[0] = 0.15 + Math.random() * 0.35;
+  // Wave — top band. Period is 1/5 of the 10M-sample viewport (~2M samples).
+  for (let i = 0; i < batchSize; i++) {
+    const x = start + i;
+    xBuf[i] = x;
+    yBuf[i] = Math.sin((x / TRACE_PERIOD) * TAU) * 0.25 + 0.8 + Math.random() * 0.01;
+  }
+  t += batchSize;
+  lineSeries.append(xBuf.subarray(0, batchSize), yBuf.subarray(0, batchSize));
+
+  const sparseStart = Math.ceil(start / SPARSE_INTERVAL) * SPARSE_INTERVAL;
+  const sparseCount = sparseStart < t ? Math.floor((t - 1 - sparseStart) / SPARSE_INTERVAL) + 1 : 0;
+  if (sparseCount > 0) {
+    const spikeX = new Float64Array(sparseCount);
+    const spikeY = new Float32Array(sparseCount);
+    const barX = new Float64Array(sparseCount);
+    const barY = new Float32Array(sparseCount);
+
+    for (let i = 0; i < sparseCount; i++) {
+      const x = sparseStart + i * SPARSE_INTERVAL;
+      spikeX[i] = x;
+      spikeY[i] = 0.15 + Math.random() * 0.35;
+
+      barX[i] = x;
+      // Power — bottom band. Uses the same 1/5-view period as the wave.
+      barY[i] = -0.9 + Math.abs(Math.sin((x / TRACE_PERIOD) * TAU)) * 0.5 + 0.1;
+    }
+
     scatterSeries.append(spikeX, spikeY);
-  }
-
-  // Power — bottom band (every 64 samples, one bar from -0.9 up)
-  if (t % 64 === 0) {
-    const barX = new Float64Array(1);
-    const barY = new Float32Array(1);
-    barX[0] = t - 1;
-    barY[0] = -0.9 + Math.abs(Math.sin(t * 0.005)) * 0.5 + 0.1;
     barSeries.append(barX, barY);
   }
 
@@ -132,8 +147,9 @@ function stream(): void {
         `sync x: ${syncX}`,
         `follow live: ${followLive}`,
         `points appended: ${t.toLocaleString()}`,
-        `batch/frame: ${BATCH_SIZE.toLocaleString()}`,
+        `batch/frame: ${lastBatchSize.toLocaleString()}`,
         `view samples: ${VIEW_SAMPLES.toLocaleString()}`,
+        `trace period: ${TRACE_PERIOD.toLocaleString()}`,
         `stream fps: ${fps.toFixed(1)}`,
         `render fps: ${chartStats.fps.toFixed(1)}`,
         `render ms/frame: ${chartStats.frameMs.toFixed(2)}`,
