@@ -2,6 +2,18 @@ import { Chart, OhlcRingBuffer } from "@/index.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
+import {
+  FILL_BATCH_SIZE,
+  HISTORY_SAMPLES,
+  LIVE_BATCH_SIZE,
+  OHLC_HISTORY_CAPACITY,
+  OHLC_INTERVAL,
+  SPARSE_HISTORY_CAPACITY,
+  SPARSE_INTERVAL,
+  VIEW_SAMPLES,
+  Y_VIEW,
+  type PreviewDataBatch,
+} from "./dataConfig.ts";
 import type { ChartFrameStats, ChartPickGroup, ChartPickMode, ChartTheme, RgbaColor, SeriesStyle, ViewportPolicy } from "@/index.ts";
 
 const chartTarget = requireElement<HTMLElement>("chart");
@@ -86,26 +98,11 @@ const SERIES_PALETTES: Record<PreviewTheme, readonly [RgbaColor, RgbaColor, Rgba
 
 console.info("[blazeplot] preview starting");
 
-const FILL_BATCH_SIZE = 65_536;
-const LIVE_BATCH_SIZE = 65_536;
-const VIEW_SAMPLES = 10_000_000;
-const TRACE_PERIOD = VIEW_SAMPLES / 5;
-const SPARSE_INTERVAL = 512;
-const OHLC_INTERVAL = SPARSE_INTERVAL * 8;
-// Keep all streaming series at roughly the same X-history span. Sparse series
-// append one point every SPARSE_INTERVAL samples, so their point capacity must
-// be scaled down or they will stay visible much longer than the dense line.
-const HISTORY_SAMPLES = 12_000_000;
-const SPARSE_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / SPARSE_INTERVAL) + 2;
-const OHLC_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / OHLC_INTERVAL) + 2;
-const TAU = Math.PI * 2;
-const Y_VIEW = { yMin: -1.25, yMax: 1.35 };
-const xBuf = new Float64Array(FILL_BATCH_SIZE);
-const yBuf = new Float32Array(FILL_BATCH_SIZE);
 let t = 0;
 let frames = 0;
 let lastBatchSize = 0;
 let lastStatsAt = performance.now();
+let workerPending = false;
 let followLive = true;
 let streaming = true;
 let syncX = true;
@@ -121,6 +118,9 @@ const chartStats: ChartFrameStats = {
   uploadBytes: 0,
   renderMode: "none",
 };
+
+const dataWorker = new Worker(new URL("./dataWorker.ts", import.meta.url), { type: "module" });
+dataWorker.addEventListener("message", (event: MessageEvent<PreviewDataBatch>) => appendGeneratedBatch(event.data));
 
 const previewPolicy: ViewportPolicy = {
   beforePan(_camera, intent) {
@@ -242,85 +242,48 @@ console.info("[blazeplot] chart initialized", {
   liveBatchSize: LIVE_BATCH_SIZE,
 });
 
-function appendOhlc(start: number, end: number): void {
-  const ohlcStart = Math.ceil(start / OHLC_INTERVAL) * OHLC_INTERVAL;
-  const count = ohlcStart < end ? Math.floor((end - 1 - ohlcStart) / OHLC_INTERVAL) + 1 : 0;
-  if (count <= 0) return;
+function appendGeneratedBatch(batch: PreviewDataBatch): void {
+  const release: ArrayBuffer[] = [batch.lineX, batch.lineY];
+  lineSeries.append(new Float64Array(batch.lineX), new Float32Array(batch.lineY));
 
-  const xs = new Float64Array(count);
-  const opens = new Float32Array(count);
-  const highs = new Float32Array(count);
-  const lows = new Float32Array(count);
-  const closes = new Float32Array(count);
-
-  for (let i = 0; i < count; i++) {
-    const x = ohlcStart + i * OHLC_INTERVAL;
-    const index = Math.floor(x / OHLC_INTERVAL);
-    const previousX = Math.max(0, x - OHLC_INTERVAL);
-    const open = ohlcCloseAt(previousX);
-    const close = ohlcCloseAt(x);
-    const high = Math.max(open, close) + 0.025 + (index % 5) * 0.003;
-    const low = Math.min(open, close) - 0.025 - (index % 7) * 0.002;
-    xs[i] = x;
-    opens[i] = open;
-    highs[i] = high;
-    lows[i] = low;
-    closes[i] = close;
+  if (batch.sparseCount > 0 && batch.sparseX && batch.areaY && batch.spikeY && batch.barY) {
+    const sparseX = new Float64Array(batch.sparseX);
+    areaSeries.append(sparseX, new Float32Array(batch.areaY));
+    scatterSeries.append(sparseX, new Float32Array(batch.spikeY));
+    barSeries.append(sparseX, new Float32Array(batch.barY));
+    release.push(batch.sparseX, batch.areaY, batch.spikeY, batch.barY);
   }
 
-  ohlcDataset.append(xs, opens, highs, lows, closes);
-}
+  if (batch.ohlcCount > 0 && batch.ohlcX && batch.ohlcOpen && batch.ohlcHigh && batch.ohlcLow && batch.ohlcClose) {
+    ohlcDataset.append(
+      new Float64Array(batch.ohlcX),
+      new Float32Array(batch.ohlcOpen),
+      new Float32Array(batch.ohlcHigh),
+      new Float32Array(batch.ohlcLow),
+      new Float32Array(batch.ohlcClose),
+    );
+    release.push(batch.ohlcX, batch.ohlcOpen, batch.ohlcHigh, batch.ohlcLow, batch.ohlcClose);
+  }
 
-function ohlcCloseAt(x: number): number {
-  const index = Math.floor(x / OHLC_INTERVAL);
-  return 1.08 + Math.sin((x / TRACE_PERIOD) * TAU) * 0.035 + Math.cos(index * 0.37) * 0.025;
+  t = batch.end;
+  lastBatchSize = batch.batchSize;
+  frames++;
+  workerPending = false;
+  dataWorker.postMessage({ type: "release", buffers: release }, release);
+  updateOverlay();
 }
 
 function stream(): void {
-  if (!streaming) {
+  if (streaming) {
+    if (!workerPending) {
+      workerPending = true;
+      dataWorker.postMessage({ type: "generate" });
+    }
+  } else {
     lastBatchSize = 0;
     frames++;
     updateOverlay();
-    requestAnimationFrame(stream);
-    return;
   }
-
-  const start = t;
-  const batchSize = t < VIEW_SAMPLES ? Math.min(FILL_BATCH_SIZE, VIEW_SAMPLES - t) : LIVE_BATCH_SIZE;
-  lastBatchSize = batchSize;
-
-  for (let i = 0; i < batchSize; i++) {
-    const x = start + i;
-    xBuf[i] = x;
-    yBuf[i] = Math.sin((x / TRACE_PERIOD) * TAU) * 0.25 + 0.78 + Math.random() * 0.01;
-  }
-  t += batchSize;
-  lineSeries.append(xBuf.subarray(0, batchSize), yBuf.subarray(0, batchSize));
-  appendOhlc(start, t);
-
-  const sparseStart = Math.ceil(start / SPARSE_INTERVAL) * SPARSE_INTERVAL;
-  const sparseCount = sparseStart < t ? Math.floor((t - 1 - sparseStart) / SPARSE_INTERVAL) + 1 : 0;
-  if (sparseCount > 0) {
-    const sparseX = new Float64Array(sparseCount);
-    const areaY = new Float32Array(sparseCount);
-    const spikeY = new Float32Array(sparseCount);
-    const barY = new Float32Array(sparseCount);
-
-    for (let i = 0; i < sparseCount; i++) {
-      const x = sparseStart + i * SPARSE_INTERVAL;
-      sparseX[i] = x;
-      areaY[i] = 0.05 + Math.abs(Math.cos((x / TRACE_PERIOD) * TAU)) * 0.35 + Math.random() * 0.025;
-      spikeY[i] = -0.35 + Math.random() * 0.35;
-      barY[i] = -1.1 + Math.abs(Math.sin((x / TRACE_PERIOD) * TAU)) * 0.48 + 0.08;
-    }
-
-    areaSeries.append(sparseX, areaY);
-    scatterSeries.append(sparseX, spikeY);
-    barSeries.append(sparseX, barY);
-  }
-
-  frames++;
-  updateOverlay();
   requestAnimationFrame(stream);
 }
 
@@ -339,15 +302,15 @@ function updateOverlay(): void {
     }
     overlayText.textContent = "\n" + [
       "BlazePlot preview",
-      "status: running",
+      `status: ${streaming ? workerPending ? "worker pending" : "streaming" : "paused"}`,
       `renderer: ${chartStats.renderMode}`,
       `points appended: ${t.toLocaleString()}`,
-      `batch/frame: ${lastBatchSize.toLocaleString()}`,
+      `last batch: ${lastBatchSize.toLocaleString()}`,
       `view samples: ${VIEW_SAMPLES.toLocaleString()}`,
       `history span: ${HISTORY_SAMPLES.toLocaleString()}`,
       `sparse capacity: ${SPARSE_HISTORY_CAPACITY.toLocaleString()}`,
       `ohlc capacity: ${OHLC_HISTORY_CAPACITY.toLocaleString()}`,
-      `stream fps: ${fps.toFixed(1)}`,
+      `stream ticks/sec: ${fps.toFixed(1)}`,
       `render fps: ${chartStats.fps.toFixed(1)}`,
       `render ms/frame: ${chartStats.frameMs.toFixed(2)}`,
       `points rendered/frame: ${chartStats.pointsRendered.toLocaleString()}`,
