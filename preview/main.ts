@@ -1,4 +1,4 @@
-import { Chart, StaticOhlcDataset } from "@/index.ts";
+import { Chart, OhlcRingBuffer } from "@/index.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
@@ -96,7 +96,7 @@ const OHLC_INTERVAL = SPARSE_INTERVAL * 8;
 // be scaled down or they will stay visible much longer than the dense line.
 const HISTORY_SAMPLES = 12_000_000;
 const SPARSE_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / SPARSE_INTERVAL) + 2;
-const OHLC_HISTORY_SAMPLES = HISTORY_SAMPLES * 6;
+const OHLC_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / OHLC_INTERVAL) + 2;
 const TAU = Math.PI * 2;
 const Y_VIEW = { yMin: -1.25, yMax: 1.35 };
 const xBuf = new Float64Array(FILL_BATCH_SIZE);
@@ -170,9 +170,9 @@ const barSeries = chart.addBar(
   { capacity: SPARSE_HISTORY_CAPACITY, downsample: "minmax", name: "Power" },
   { barWidth: SPARSE_INTERVAL, baseline: -1.1 },
 );
-const ohlcDataset = createOhlcDataset();
+const ohlcDataset = new OhlcRingBuffer(OHLC_HISTORY_CAPACITY);
 const ohlcSeries = chart.addOhlc(
-  { capacity: ohlcDataset.length, dataset: ohlcDataset, downsample: "none", name: "OHLC" },
+  { capacity: OHLC_HISTORY_CAPACITY, dataset: ohlcDataset, downsample: "none", name: "OHLC" },
   { tickWidth: OHLC_INTERVAL * 0.7, lineWidth: 1 },
 );
 const previewSeries = [
@@ -230,31 +230,38 @@ console.info("[blazeplot] chart initialized", {
   liveBatchSize: LIVE_BATCH_SIZE,
 });
 
-function createOhlcDataset(): StaticOhlcDataset {
-  const count = Math.ceil(OHLC_HISTORY_SAMPLES / OHLC_INTERVAL);
+function appendOhlc(start: number, end: number): void {
+  const ohlcStart = Math.ceil(start / OHLC_INTERVAL) * OHLC_INTERVAL;
+  const count = ohlcStart < end ? Math.floor((end - 1 - ohlcStart) / OHLC_INTERVAL) + 1 : 0;
+  if (count <= 0) return;
+
   const xs = new Float64Array(count);
   const opens = new Float32Array(count);
   const highs = new Float32Array(count);
   const lows = new Float32Array(count);
   const closes = new Float32Array(count);
-  let previousClose = 1.08;
 
   for (let i = 0; i < count; i++) {
-    const x = i * OHLC_INTERVAL;
-    const trend = Math.sin((x / TRACE_PERIOD) * TAU) * 0.035;
-    const open = previousClose;
-    const close = 1.08 + trend + Math.cos(i * 0.37) * 0.025;
-    const high = Math.max(open, close) + 0.025 + (i % 5) * 0.003;
-    const low = Math.min(open, close) - 0.025 - (i % 7) * 0.002;
+    const x = ohlcStart + i * OHLC_INTERVAL;
+    const index = Math.floor(x / OHLC_INTERVAL);
+    const previousX = Math.max(0, x - OHLC_INTERVAL);
+    const open = ohlcCloseAt(previousX);
+    const close = ohlcCloseAt(x);
+    const high = Math.max(open, close) + 0.025 + (index % 5) * 0.003;
+    const low = Math.min(open, close) - 0.025 - (index % 7) * 0.002;
     xs[i] = x;
     opens[i] = open;
     highs[i] = high;
     lows[i] = low;
     closes[i] = close;
-    previousClose = close;
   }
 
-  return new StaticOhlcDataset(xs, opens, highs, lows, closes);
+  ohlcDataset.append(xs, opens, highs, lows, closes);
+}
+
+function ohlcCloseAt(x: number): number {
+  const index = Math.floor(x / OHLC_INTERVAL);
+  return 1.08 + Math.sin((x / TRACE_PERIOD) * TAU) * 0.035 + Math.cos(index * 0.37) * 0.025;
 }
 
 function stream(): void {
@@ -269,6 +276,7 @@ function stream(): void {
   }
   t += batchSize;
   lineSeries.append(xBuf.subarray(0, batchSize), yBuf.subarray(0, batchSize));
+  appendOhlc(start, t);
 
   const sparseStart = Math.ceil(start / SPARSE_INTERVAL) * SPARSE_INTERVAL;
   const sparseCount = sparseStart < t ? Math.floor((t - 1 - sparseStart) / SPARSE_INTERVAL) + 1 : 0;
@@ -318,6 +326,7 @@ function updateOverlay(): void {
       `view samples: ${VIEW_SAMPLES.toLocaleString()}`,
       `history span: ${HISTORY_SAMPLES.toLocaleString()}`,
       `sparse capacity: ${SPARSE_HISTORY_CAPACITY.toLocaleString()}`,
+      `ohlc capacity: ${OHLC_HISTORY_CAPACITY.toLocaleString()}`,
       `stream fps: ${fps.toFixed(1)}`,
       `render fps: ${chartStats.fps.toFixed(1)}`,
       `render ms/frame: ${chartStats.frameMs.toFixed(2)}`,

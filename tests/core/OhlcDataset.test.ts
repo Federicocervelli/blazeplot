@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { StaticOhlcDataset } from "../../src/core/OhlcDataset.ts";
+import { OhlcRingBuffer, StaticOhlcDataset } from "../../src/core/OhlcDataset.ts";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
 
 describe("StaticOhlcDataset", () => {
@@ -48,5 +48,27 @@ describe("StaticOhlcDataset", () => {
       10, 4,
       11, 4,
     ]);
+  });
+});
+
+describe("OhlcRingBuffer", () => {
+  it("wraps in logical x order", () => {
+    const dataset = new OhlcRingBuffer(2);
+    dataset.append([1, 2, 3], [10, 20, 30], [11, 21, 31], [9, 19, 29], [10.5, 20.5, 30.5]);
+
+    expect(dataset.length).toBe(2);
+    expect(dataset.range).toEqual({ start: 2, end: 3 });
+    expect(dataset.getOpen(0)).toBe(20);
+    expect(dataset.getClose(1)).toBe(30.5);
+    expect(dataset.lowerBoundX(2.5)).toBe(1);
+  });
+
+  it("supports explicit overflow errors", () => {
+    const dataset = new OhlcRingBuffer(1, { overflow: "error" });
+    dataset.push(1, 10, 11, 9, 10.5);
+
+    expect(() => dataset.push(2, 20, 21, 19, 20.5)).toThrow(RangeError);
+    expect(dataset.length).toBe(1);
+    expect(dataset.getX(0)).toBe(1);
   });
 });
