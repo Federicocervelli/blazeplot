@@ -288,7 +288,7 @@ export class Chart {
   }
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
-    const dataset: Dataset = config.dataset ?? new RingBuffer(config.capacity);
+    const dataset: Dataset = config.dataset ?? new RingBuffer(config.capacity, { overflow: config.overflow });
     const palette = this.resolvedTheme.seriesColors;
     const paletteColor = palette[this.series.length % palette.length] ?? this.resolvedTheme.seriesColors[0]!;
     const color = style?.color ?? paletteColor;

@@ -55,6 +55,7 @@ export interface AppendableDataset extends Dataset {
 }
 
 export type LODStrategy = "minmax" | "none";
+export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
 
 export interface SeriesSample {
   readonly index: number;
@@ -67,6 +68,7 @@ export interface SeriesConfig {
   readonly mode: SeriesMode;
   readonly capacity: number;
   readonly downsample?: LODStrategy;
+  readonly overflow?: BufferOverflowStrategy;
   readonly dataset?: Dataset;
   readonly id?: string;
   readonly name?: string;

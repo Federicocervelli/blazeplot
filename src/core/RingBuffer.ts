@@ -1,5 +1,11 @@
 import type { TimeRange } from "./types.js";
 
+export type RingBufferOverflow = "wrap" | "drop-new" | "error";
+
+export interface RingBufferOptions {
+  readonly overflow?: RingBufferOverflow;
+}
+
 export class RingBuffer {
   readonly capacity: number;
   private _length: number = 0;
@@ -10,13 +16,15 @@ export class RingBuffer {
   private readonly treeBase: number;
   private readonly minTree: Float32Array;
   private readonly maxTree: Float32Array;
+  private readonly overflow: RingBufferOverflow;
 
-  constructor(capacity: number) {
+  constructor(capacity: number, options: RingBufferOptions = {}) {
     if (!Number.isInteger(capacity) || capacity <= 0) {
       throw new RangeError("RingBuffer capacity must be a positive integer.");
     }
 
     this.capacity = capacity;
+    this.overflow = options.overflow ?? "wrap";
     this.xData = new Float64Array(capacity);
     this.yData = new Float32Array(capacity);
     this.treeBase = RingBuffer.nextPowerOfTwo(capacity);
@@ -36,6 +44,11 @@ export class RingBuffer {
   }
 
   push(x: number, y: number): void {
+    if (this._length >= this.capacity) {
+      if (this.overflow === "drop-new") return;
+      if (this.overflow === "error") throw new RangeError("RingBuffer capacity exceeded.");
+    }
+
     this.xData[this._head] = x;
     this.yData[this._head] = y;
     this.setTreeLeaf(this._head, y);
@@ -44,27 +57,30 @@ export class RingBuffer {
   }
 
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
-    const n = Math.min(x.length, y.length);
-    if (n <= 0) return;
+    const requested = Math.min(x.length, y.length);
+    if (requested <= 0) return;
 
-    if (n >= this.capacity) {
-      const sourceOffset = n - this.capacity;
+    if (this.overflow !== "wrap") {
+      const available = this.capacity - this._length;
+      if (requested > available && this.overflow === "error") {
+        throw new RangeError("RingBuffer capacity exceeded.");
+      }
+
+      const n = Math.min(requested, available);
+      if (n <= 0) return;
+      this.appendNoWrap(x, y, 0, n);
+      return;
+    }
+
+    if (requested >= this.capacity) {
+      const sourceOffset = requested - this.capacity;
       this._head = 0;
       this._length = this.capacity;
       this.copyIntoPhysical(0, x, y, sourceOffset, this.capacity);
       return;
     }
 
-    let sourceOffset = 0;
-    let remaining = n;
-    while (remaining > 0) {
-      const count = Math.min(remaining, this.capacity - this._head);
-      this.copyIntoPhysical(this._head, x, y, sourceOffset, count);
-      this._head = (this._head + count) % this.capacity;
-      this._length = Math.min(this.capacity, this._length + count);
-      sourceOffset += count;
-      remaining -= count;
-    }
+    this.appendNoWrap(x, y, 0, requested);
   }
 
   get(index: number): { x: number; y: number } | null {
@@ -130,6 +146,19 @@ export class RingBuffer {
     this._head = 0;
     this.minTree.fill(Infinity);
     this.maxTree.fill(-Infinity);
+  }
+
+  private appendNoWrap(x: ArrayLike<number>, y: ArrayLike<number>, sourceOffset: number, count: number): void {
+    let nextSourceOffset = sourceOffset;
+    let remaining = count;
+    while (remaining > 0) {
+      const chunkCount = Math.min(remaining, this.capacity - this._head);
+      this.copyIntoPhysical(this._head, x, y, nextSourceOffset, chunkCount);
+      this._head = (this._head + chunkCount) % this.capacity;
+      this._length = Math.min(this.capacity, this._length + chunkCount);
+      nextSourceOffset += chunkCount;
+      remaining -= chunkCount;
+    }
   }
 
   private copyIntoPhysical(

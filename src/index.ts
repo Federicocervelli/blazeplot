@@ -5,9 +5,10 @@ export type { ChartTheme, ResolvedChartTheme, RgbaColor, CssColor, ThemeColor } 
 export type { AxisPosition } from "./ui/ChartLayout.js";
 export { SeriesStore } from "./core/SeriesStore.js";
 export { RingBuffer } from "./core/RingBuffer.js";
+export type { RingBufferOptions, RingBufferOverflow } from "./core/RingBuffer.js";
 export { StaticDataset } from "./core/StaticDataset.js";
 export { MinMaxPyramid } from "./core/MinMaxPyramid.js";
 export { Camera2D } from "./interaction/Camera2D.js";
 export { AxisController } from "./interaction/AxisController.js";
-export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesConfig, SeriesSample, LODStrategy, Dataset, RangeMinMaxDataset, AppendableDataset } from "./core/types.js";
+export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesConfig, SeriesSample, LODStrategy, BufferOverflowStrategy, Dataset, RangeMinMaxDataset, AppendableDataset } from "./core/types.js";
 export type { PanIntent, ZoomAxis, ZoomIntent, ViewportPolicy } from "./interaction/types.js";

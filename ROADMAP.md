@@ -180,9 +180,9 @@ regl rules for V1:
 
 ## Overflow semantics
 
-**Status: undecided**
+**Status: complete**
 
-`RingBuffer` wraps silently at capacity. For streaming this is usually correct, but it should be explicit. Deferred until we have a concrete use case.
+`RingBuffer` overflow behavior is explicit. The default remains `"wrap"` for streaming charts, and callers can opt into `"drop-new"` or `"error"` via `new RingBuffer(capacity, { overflow })` or `SeriesConfig.overflow` when Chart creates the backing buffer.
 
 ---
 

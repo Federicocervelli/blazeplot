@@ -25,7 +25,7 @@ describe("RingBuffer", () => {
     expect(buf.get(100)).toBeNull();
   });
 
-  it("wraps around at capacity", () => {
+  it("wraps around at capacity by default", () => {
     const buf = new RingBuffer(3);
     buf.push(1, 10);
     buf.push(2, 20);
@@ -35,6 +35,27 @@ describe("RingBuffer", () => {
     expect(buf.get(0)).toEqual({ x: 2, y: 20 });
     expect(buf.get(1)).toEqual({ x: 3, y: 30 });
     expect(buf.get(2)).toEqual({ x: 4, y: 40 });
+  });
+
+  it("drops new samples when overflow is drop-new", () => {
+    const buf = new RingBuffer(3, { overflow: "drop-new" });
+    buf.append([1, 2, 3, 4], [10, 20, 30, 40]);
+    buf.push(5, 50);
+
+    expect(buf.length).toBe(3);
+    expect(buf.get(0)).toEqual({ x: 1, y: 10 });
+    expect(buf.get(1)).toEqual({ x: 2, y: 20 });
+    expect(buf.get(2)).toEqual({ x: 3, y: 30 });
+  });
+
+  it("throws atomically when overflow is error", () => {
+    const buf = new RingBuffer(3, { overflow: "error" });
+    buf.append([1, 2], [10, 20]);
+
+    expect(() => buf.append([3, 4], [30, 40])).toThrow(RangeError);
+    expect(buf.length).toBe(2);
+    expect(buf.get(0)).toEqual({ x: 1, y: 10 });
+    expect(buf.get(1)).toEqual({ x: 2, y: 20 });
   });
 
   it("handles multiple wraps", () => {
