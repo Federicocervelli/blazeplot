@@ -1,4 +1,6 @@
 import { Chart } from "@/index.ts";
+import { legendPlugin } from "@/plugins/legend.ts";
+import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import type { ChartFrameStats, ViewportPolicy } from "@/index.ts";
 
 const chartTarget = document.getElementById("chart") as HTMLElement;
@@ -55,15 +57,33 @@ const previewPolicy: ViewportPolicy = {
 const chart = new Chart(chartTarget, {
   viewportPolicy: previewPolicy,
   axes: { x: { position: "outside" }, y: { position: "outside" } },
+  hover: { mode: "nearest-x" },
+  plugins: [
+    legendPlugin({ toggleOnClick: true }),
+    tooltipPlugin({ mode: "nearest-x" }),
+  ],
 });
 const canvas = chart.canvas;
 
-const series = chart.addSeries(
-  { mode: "line", capacity: 10_000_000, downsample: "minmax" },
+// line series (fast streaming)
+const lineSeries = chart.addSeries(
+  { mode: "line", capacity: 10_000_000, downsample: "minmax", name: "Wave" },
   { color: [0.3, 0.6, 1.0, 1.0], lineWidth: 1 },
 );
 
-chart.setViewport({ xMin: 0, xMax: VIEW_SAMPLES, yMin: -1, yMax: 1 });
+// scatter series (sparse pulses)
+const scatterSeries = chart.addSeries(
+  { mode: "scatter", capacity: 1_000_000, downsample: "none", name: "Spikes" },
+  { color: [0.95, 0.35, 0.35, 1.0], pointSize: 5 },
+);
+
+// bar series (aggregated buckets)
+const barSeries = chart.addSeries(
+  { mode: "bar", capacity: 1_000_000, downsample: "minmax", name: "Power" },
+  { color: [0.2, 0.8, 0.4, 1.0], barWidth: 0.6, baseline: -0.5 },
+);
+
+chart.setViewport({ xMin: 0, xMax: VIEW_SAMPLES, yMin: -1.5, yMax: 1.5 });
 chart.start();
 
 console.info("[blazeplot] chart initialized", {
@@ -79,7 +99,27 @@ function stream(): void {
     t++;
   }
 
-  series.append(xBuf, yBuf);
+  lineSeries.append(xBuf, yBuf);
+
+  // Append a sparse scatter spike every 64 samples
+  if (t % 64 < BATCH_SIZE) {
+    const spikeX = new Float64Array(BATCH_SIZE);
+    const spikeY = new Float32Array(BATCH_SIZE);
+    for (let i = 0; i < BATCH_SIZE; i++) {
+      spikeX[i] = t + i - (t % 64);
+      spikeY[i] = (t + i) % 64 < BATCH_SIZE ? 0.6 + Math.random() * 0.4 : -1;
+    }
+    scatterSeries.append(spikeX, spikeY);
+  }
+
+  // Append a bar every 64 samples
+  if (t % 64 < BATCH_SIZE) {
+    const barX = new Float64Array(1);
+    const barY = new Float32Array(1);
+    barX[0] = t - (t % 64);
+    barY[0] = Math.abs(Math.sin(t * 0.005)) * 0.8 + 0.2;
+    barSeries.append(barX, barY);
+  }
 
   frames++;
   const now = performance.now();
