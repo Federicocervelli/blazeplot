@@ -72,6 +72,24 @@ export class ProceduralLineDataset implements AppendableDataset, RangeMinMaxData
     return this.rangeMinMaxByIndex(from, to);
   }
 
+  copyVisibleSamples(
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    layout: SampleLayout,
+    baseline: number,
+    xOrigin: number,
+  ): number {
+    const start = this.lowerBoundX(viewport.xMin);
+    const end = this.upperBoundX(viewport.xMax);
+    const visible = end - start;
+    if (visible <= 0) return 0;
+
+    const stride = Math.max(1, Math.ceil(visible / maxPoints));
+    const alignedStart = start + ((stride - (start % stride)) % stride);
+    return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
+  }
+
   copySamplesRange(
     start: number,
     end: number,
@@ -81,24 +99,35 @@ export class ProceduralLineDataset implements AppendableDataset, RangeMinMaxData
     baseline: number,
     xOrigin: number,
   ): number {
+    return this.copyStridedSamples(Math.max(0, Math.floor(start)), Math.min(this._length, Math.ceil(end)), 1, target, maxPoints, layout, baseline, xOrigin);
+  }
+
+  private copyStridedSamples(
+    from: number,
+    to: number,
+    stride: number,
+    target: Float32Array,
+    maxPoints: number,
+    layout: SampleLayout,
+    baseline: number,
+    xOrigin: number,
+  ): number {
     const floatsPerSample = layout === "points" ? 2 : 4;
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
 
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this._length, Math.ceil(end));
-    const count = Math.min(maxPoints, Math.max(0, to - from));
+    const count = Math.min(maxPoints, Math.max(0, Math.ceil((to - from) / stride)));
     const firstX = this.firstX() - xOrigin;
 
     if (layout === "points") {
-      for (let i = 0; i < count; i++) {
-        const x = firstX + from + i;
+      for (let i = 0, index = from; i < count; i++, index += stride) {
+        const x = firstX + index;
         const offset = i * 2;
         target[offset] = x;
         target[offset + 1] = this.yAt(x + xOrigin);
       }
     } else {
-      for (let i = 0; i < count; i++) {
-        const x = firstX + from + i;
+      for (let i = 0, index = from; i < count; i++, index += stride) {
+        const x = firstX + index;
         const offset = i * 4;
         target[offset] = x;
         target[offset + 1] = baseline;

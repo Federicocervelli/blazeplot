@@ -35,6 +35,19 @@ function hasCopyMinMaxSegments(dataset: Dataset): dataset is Dataset & {
   return "copyMinMaxSegments" in dataset;
 }
 
+function hasCopyVisibleSamples(dataset: Dataset): dataset is Dataset & {
+  copyVisibleSamples(
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    layout: "points" | "area",
+    baseline: number,
+    xOrigin: number,
+  ): number;
+} {
+  return "copyVisibleSamples" in dataset;
+}
+
 const NEAREST_POINT_LEAF_SIZE = 64;
 
 type PointSearchInterval = {
@@ -476,6 +489,10 @@ export class SeriesStore {
     baseline: number,
     xOrigin: number,
   ): number {
+    if (hasCopyVisibleSamples(this.dataset)) {
+      return this.dataset.copyVisibleSamples(viewport, target, maxPoints, layout, baseline, xOrigin);
+    }
+
     const floatsPerSample = layout === "points" ? 2 : 4;
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
 

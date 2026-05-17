@@ -131,6 +131,24 @@ export class ContiguousRingDataset implements AppendableDataset, RangeMinMaxData
     return { minY: Math.min(first.minY, second.minY), maxY: Math.max(first.maxY, second.maxY) };
   }
 
+  copyVisibleSamples(
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    layout: SampleLayout,
+    baseline: number,
+    xOrigin: number,
+  ): number {
+    const start = this.lowerBoundX(viewport.xMin);
+    const end = this.upperBoundX(viewport.xMax);
+    const visible = end - start;
+    if (visible <= 0) return 0;
+
+    const stride = Math.max(1, Math.ceil(visible / maxPoints));
+    const alignedStart = start + ((stride - (start % stride)) % stride);
+    return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
+  }
+
   copySamplesRange(
     start: number,
     end: number,
@@ -140,31 +158,39 @@ export class ContiguousRingDataset implements AppendableDataset, RangeMinMaxData
     baseline: number,
     xOrigin: number,
   ): number {
+    return this.copyStridedSamples(Math.max(0, Math.floor(start)), Math.min(this._length, Math.ceil(end)), 1, target, maxPoints, layout, baseline, xOrigin);
+  }
+
+  private copyStridedSamples(
+    from: number,
+    to: number,
+    stride: number,
+    target: Float32Array,
+    maxPoints: number,
+    layout: SampleLayout,
+    baseline: number,
+    xOrigin: number,
+  ): number {
     const floatsPerSample = layout === "points" ? 2 : 4;
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
 
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this._length, Math.ceil(end));
-    const count = Math.min(maxPoints, Math.max(0, to - from));
+    const count = Math.min(maxPoints, Math.max(0, Math.ceil((to - from) / stride)));
     const firstX = this.firstX() - xOrigin;
-    let physical = this.logicalToPhysical(from);
 
     if (layout === "points") {
-      for (let i = 0; i < count; i++) {
+      for (let i = 0, index = from; i < count; i++, index += stride) {
         const offset = i * 2;
-        target[offset] = firstX + (from + i) * this.xStep;
-        target[offset + 1] = this.yData[physical]!;
-        physical = physical + 1 === this.capacity ? 0 : physical + 1;
+        target[offset] = firstX + index * this.xStep;
+        target[offset + 1] = this.yData[this.logicalToPhysical(index)]!;
       }
     } else {
-      for (let i = 0; i < count; i++) {
+      for (let i = 0, index = from; i < count; i++, index += stride) {
         const offset = i * 4;
-        const x = firstX + (from + i) * this.xStep;
+        const x = firstX + index * this.xStep;
         target[offset] = x;
         target[offset + 1] = baseline;
         target[offset + 2] = x;
-        target[offset + 3] = this.yData[physical]!;
-        physical = physical + 1 === this.capacity ? 0 : physical + 1;
+        target[offset + 3] = this.yData[this.logicalToPhysical(index)]!;
       }
     }
 
