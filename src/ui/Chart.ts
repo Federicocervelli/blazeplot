@@ -16,6 +16,8 @@ const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 const MINMAX_SEGMENT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 const FLOATS_PER_MINMAX_SEGMENT_INSTANCE = 3;
+const BAR_FALLBACK_CAPACITY = 4_096;
+const FLOATS_PER_BAR_TRIANGLE = 12;
 const GRID_LINE_VERTEX_CAPACITY = 64;
 
 export interface AxisConfig {
@@ -118,6 +120,8 @@ export class Chart {
   private rawLineData: Float32Array;
   private minMaxInstanceBuffer: GpuBuffer;
   private minMaxInstanceData: Float32Array;
+  private barTriangleBuffer: GpuBuffer;
+  private barTriangleData: Float32Array;
   private gridBuffer: GpuBuffer;
   private gridData: Float32Array;
   private gridStyle: SeriesStyle;
@@ -178,6 +182,8 @@ export class Chart {
     this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
     this.minMaxInstanceData = new Float32Array(MINMAX_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
     this.minMaxInstanceBuffer = this.renderer.createFloatBuffer(this.minMaxInstanceData.length);
+    this.barTriangleData = new Float32Array(BAR_FALLBACK_CAPACITY * FLOATS_PER_BAR_TRIANGLE);
+    this.barTriangleBuffer = this.renderer.createFloatBuffer(this.barTriangleData.length);
     this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
     this.gridBuffer = this.renderer.createFloatBuffer(this.gridData.length);
     this.gridStyle = {
@@ -527,11 +533,14 @@ export class Chart {
     series: SeriesStore,
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
   ): void {
-    if (!this.renderer.supportsInstancedPoints) return;
     const count = this.uploadRawInstances(series, viewport, RAW_LINE_VERTEX_CAPACITY);
     if (count <= 0) return;
 
-    this.renderer.drawPointsInstanced(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
+    if (this.renderer.supportsInstancedPoints) {
+      this.renderer.drawPointsInstanced(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
+    } else {
+      this.renderer.drawPointSprites(this.rawLineBuffer, count, series.style, this.camera);
+    }
     this.recordInstancedDraw("points", count);
   }
 
@@ -539,25 +548,34 @@ export class Chart {
     series: SeriesStore,
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
   ): void {
-    if (!this.renderer.supportsInstancedBars) return;
-
     const visibleSamples = series.visibleSampleCount(viewport);
     if (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY) {
-      const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments());
+      const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarFallbackBars());
       if (sampledCount <= 0) return;
 
-      this.renderer.updateFloatBuffer(this.minMaxInstanceBuffer, this.minMaxInstanceData);
-      this.stats.uploadBytes += this.minMaxInstanceData.byteLength;
-      this.renderer.drawBarRangesInstanced(this.minMaxInstanceBuffer, sampledCount, series.style, this.camera);
-      this.recordInstancedDraw("bars", sampledCount * 2);
+      if (this.renderer.supportsInstancedBars) {
+        this.renderer.updateFloatBuffer(this.minMaxInstanceBuffer, this.minMaxInstanceData);
+        this.stats.uploadBytes += this.minMaxInstanceData.byteLength;
+        this.renderer.drawBarRangesInstanced(this.minMaxInstanceBuffer, sampledCount, series.style, this.camera);
+        this.recordInstancedDraw("bars", sampledCount * 2);
+      } else {
+        const vertexCount = this.writeBarRangeTriangles(sampledCount, series.style.barWidth ?? 0.8);
+        this.drawBarTriangleFallback(vertexCount, series.style);
+      }
       return;
     }
 
-    const count = this.uploadRawInstances(series, viewport, RAW_LINE_VERTEX_CAPACITY);
+    const count = this.uploadRawInstances(series, viewport, this.maxBarFallbackBars());
     if (count <= 0) return;
 
-    this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, this.camera);
-    this.recordInstancedDraw("bars", count);
+    if (this.renderer.supportsInstancedBars) {
+      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, this.camera);
+      this.recordInstancedDraw("bars", count);
+      return;
+    }
+
+    const vertexCount = this.writeBarTriangles(count, series.style.baseline ?? 0, series.style.barWidth ?? 0.8);
+    this.drawBarTriangleFallback(vertexCount, series.style);
   }
 
   private uploadRawInstances(
@@ -571,6 +589,51 @@ export class Chart {
     this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
     this.stats.uploadBytes += this.rawLineData.byteLength;
     return count;
+  }
+
+  private writeBarTriangles(barCount: number, baseline: number, barWidth: number): number {
+    const count = Math.min(barCount, this.maxBarFallbackBars());
+    for (let i = 0; i < count; i++) {
+      const x = this.rawLineData[i * 2]!;
+      const y = this.rawLineData[i * 2 + 1]!;
+      this.writeBarTriangle(i, x - barWidth * 0.5, x + barWidth * 0.5, baseline, y);
+    }
+    return count * 6;
+  }
+
+  private writeBarRangeTriangles(barCount: number, barWidth: number): number {
+    const count = Math.min(barCount, this.maxBarFallbackBars());
+    for (let i = 0; i < count; i++) {
+      const x = this.minMaxInstanceData[i * 3]!;
+      const minY = this.minMaxInstanceData[i * 3 + 1]!;
+      const maxY = this.minMaxInstanceData[i * 3 + 2]!;
+      this.writeBarTriangle(i, x - barWidth * 0.5, x + barWidth * 0.5, minY, maxY);
+    }
+    return count * 6;
+  }
+
+  private writeBarTriangle(index: number, x0: number, x1: number, y0: number, y1: number): void {
+    const o = index * FLOATS_PER_BAR_TRIANGLE;
+    this.barTriangleData[o] = x0;
+    this.barTriangleData[o + 1] = y0;
+    this.barTriangleData[o + 2] = x1;
+    this.barTriangleData[o + 3] = y0;
+    this.barTriangleData[o + 4] = x0;
+    this.barTriangleData[o + 5] = y1;
+    this.barTriangleData[o + 6] = x0;
+    this.barTriangleData[o + 7] = y1;
+    this.barTriangleData[o + 8] = x1;
+    this.barTriangleData[o + 9] = y0;
+    this.barTriangleData[o + 10] = x1;
+    this.barTriangleData[o + 11] = y1;
+  }
+
+  private drawBarTriangleFallback(vertexCount: number, style: SeriesStyle): void {
+    if (vertexCount <= 0) return;
+    this.renderer.updateFloatBuffer(this.barTriangleBuffer, this.barTriangleData);
+    this.stats.uploadBytes += this.barTriangleData.byteLength;
+    this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, this.camera);
+    this.recordInstancedDraw("bars", vertexCount);
   }
 
   private recordInstancedDraw(mode: "points" | "bars", count: number): void {
@@ -703,6 +766,10 @@ export class Chart {
 
   private maxMinMaxSegments(): number {
     return Math.min(this.canvas.width, MINMAX_SEGMENT_CAPACITY);
+  }
+
+  private maxBarFallbackBars(): number {
+    return Math.min(BAR_FALLBACK_CAPACITY, RAW_LINE_VERTEX_CAPACITY);
   }
 
   private writeGridVertices(

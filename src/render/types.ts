@@ -47,7 +47,7 @@ export interface AttributeSpec {
 
 export interface DrawSpec {
   readonly program: GpuProgram;
-  readonly primitive: "lines" | "line_strip" | "triangles" | "triangle_strip";
+  readonly primitive: "points" | "lines" | "line_strip" | "triangles" | "triangle_strip";
   readonly count: number;
   readonly instances?: number;
   readonly uniforms: Readonly<Record<string, UniformValue>>;

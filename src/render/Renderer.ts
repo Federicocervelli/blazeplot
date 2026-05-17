@@ -14,6 +14,7 @@ export class Renderer {
   private readonly lineProgram: GpuProgram;
   private readonly segmentProgram: GpuProgram;
   private readonly pointProgram: GpuProgram;
+  private readonly pointSpriteProgram: GpuProgram;
   private readonly barProgram: GpuProgram;
   private readonly barRangeProgram: GpuProgram;
   private readonly segmentSelectBuffer: GpuBuffer;
@@ -27,6 +28,7 @@ export class Renderer {
     this.lineProgram = this.backend.createProgram(ShaderPrograms.line.vert, ShaderPrograms.line.frag);
     this.segmentProgram = this.backend.createProgram(ShaderPrograms.segment.vert, ShaderPrograms.segment.frag);
     this.pointProgram = this.backend.createProgram(ShaderPrograms.point.vert, ShaderPrograms.point.frag);
+    this.pointSpriteProgram = this.backend.createProgram(ShaderPrograms.pointSprite.vert, ShaderPrograms.pointSprite.frag);
     this.barProgram = this.backend.createProgram(ShaderPrograms.bar.vert, ShaderPrograms.bar.frag);
     this.barRangeProgram = this.backend.createProgram(ShaderPrograms.barRange.vert, ShaderPrograms.barRange.frag);
 
@@ -135,6 +137,23 @@ export class Renderer {
     });
   }
 
+  drawPointSprites(positions: GpuBuffer, pointCount: number, style: SeriesStyle, camera: Camera2D): void {
+    this.writeCameraUniforms(camera);
+
+    this.backend.draw({
+      program: this.pointSpriteProgram,
+      primitive: "points",
+      count: pointCount,
+      attributes: { aPosition: positions },
+      uniforms: {
+        uScale: this.scaleUniform,
+        uOffset: this.offsetUniform,
+        uPointSize: style.pointSize ?? DEFAULT_POINT_SIZE_PX,
+        uColor: style.color,
+      },
+    });
+  }
+
   drawAreaStrip(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
     this.writeCameraUniforms(camera);
 
@@ -208,12 +227,32 @@ export class Renderer {
     });
   }
 
+  drawBarTriangles(positions: GpuBuffer, vertexCount: number, style: SeriesStyle, camera: Camera2D): void {
+    this.drawTrianglePrimitive(positions, vertexCount, style, camera);
+  }
+
   private drawLinePrimitive(primitive: "lines" | "line_strip", positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
     this.writeCameraUniforms(camera);
 
     this.backend.draw({
       program: this.lineProgram,
       primitive,
+      count,
+      attributes: { position: positions },
+      uniforms: {
+        uScale: this.scaleUniform,
+        uOffset: this.offsetUniform,
+        uColor: style.color,
+      },
+    });
+  }
+
+  private drawTrianglePrimitive(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
+    this.writeCameraUniforms(camera);
+
+    this.backend.draw({
+      program: this.lineProgram,
+      primitive: "triangles",
       count,
       attributes: { position: positions },
       uniforms: {

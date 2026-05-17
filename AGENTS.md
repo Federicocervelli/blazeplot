@@ -34,7 +34,7 @@
 - `AxisOverlay` attaches tick label elements either to the plot layer (`inside`) or to the axis gutter layer (`outside`).
 - Axis `outside` positioning reserves fixed CSS-pixel gutters: 52px left for Y, 28px bottom for X. Defined by `LEFT_AXIS_GUTTER_CSS` / `BOTTOM_AXIS_GUTTER_CSS` in `ChartLayout.ts`.
 - `MinMaxPyramid` updates incrementally for tail appends and falls back to full rebuild on wrap/clear.
-- Area and scatter series skip LOD even when `downsample` is omitted. Bar series use min/max LOD by default (unless `downsample: "none"`) and dense bars render as sampled min/max range quads. Scatter/bar render as instanced quads when regl/browser instancing is available; area renders as a triangle strip plus line overlay.
+- Area and scatter series skip LOD even when `downsample` is omitted. Bar series use min/max LOD by default (unless `downsample: "none"`) and dense bars render as sampled min/max range quads. Scatter/bar prefer instanced quads when regl/browser instancing is available, with non-instanced fallbacks (`gl.POINTS` sprites for scatter, expanded triangle quads for bars); area renders as a triangle strip plus line overlay.
 - `RingBuffer` silently wraps at capacity and exposes logical-order access after wrap.
 - LOD queries use sorted logical X values via `RingBuffer.lowerBoundX` / `upperBoundX`; preserve that assumption when changing append/query code.
 - `Chart.render()` calls `SeriesStore.rebuildPyramid()` before drawing visible series and re-extracts visible samples/segments from the current `Camera2D` viewport every frame.
