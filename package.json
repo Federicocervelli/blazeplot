@@ -2,8 +2,10 @@
   "name": "blazeplot",
   "version": "0.1.12",
   "author": {
-    "name": "BlazePlot contributors"
+    "name": "Federico Cervelli",
+    "url": "https://cervelli.dev"
   },
+  "homepage": "https://cervelli.dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/Federicocervelli/blazeplot.git"
