@@ -13,6 +13,7 @@ const axesSelect = requireElement<HTMLSelectElement>("axesSelect");
 const highlightToggle = requireElement<HTMLInputElement>("highlightToggle");
 const gridToggle = requireElement<HTMLInputElement>("gridToggle");
 const followToggle = requireElement<HTMLInputElement>("followToggle");
+const streamToggle = requireElement<HTMLInputElement>("streamToggle");
 const syncXToggle = requireElement<HTMLInputElement>("syncXToggle");
 const perfToggleButton = requireElement<HTMLButtonElement>("perfToggleButton");
 const resetViewButton = requireElement<HTMLButtonElement>("resetViewButton");
@@ -107,6 +108,7 @@ let frames = 0;
 let lastBatchSize = 0;
 let lastStatsAt = performance.now();
 let followLive = true;
+let streaming = true;
 let syncX = true;
 let showPerfPanel = true;
 let currentTheme: PreviewTheme = "dark";
@@ -209,6 +211,9 @@ gridToggle.addEventListener("change", () => chart.setGridVisible(gridToggle.chec
 followToggle.addEventListener("change", () => {
   followLive = followToggle.checked;
 });
+streamToggle.addEventListener("change", () => {
+  streaming = streamToggle.checked;
+});
 syncXToggle.addEventListener("change", () => {
   syncX = syncXToggle.checked;
 });
@@ -272,6 +277,14 @@ function ohlcCloseAt(x: number): number {
 }
 
 function stream(): void {
+  if (!streaming) {
+    lastBatchSize = 0;
+    frames++;
+    updateOverlay();
+    requestAnimationFrame(stream);
+    return;
+  }
+
   const start = t;
   const batchSize = t < VIEW_SAMPLES ? Math.min(FILL_BATCH_SIZE, VIEW_SAMPLES - t) : LIVE_BATCH_SIZE;
   lastBatchSize = batchSize;
@@ -334,6 +347,7 @@ function updateOverlay(): void {
       `grid: ${chart.getGridVisible()}`,
       `sync x: ${syncX}`,
       `follow live: ${followLive}`,
+      `streaming: ${streaming}`,
       `points appended: ${t.toLocaleString()}`,
       `batch/frame: ${lastBatchSize.toLocaleString()}`,
       `view samples: ${VIEW_SAMPLES.toLocaleString()}`,
