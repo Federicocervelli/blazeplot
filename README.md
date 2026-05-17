@@ -5,11 +5,10 @@
 [![npm version](https://img.shields.io/npm/v/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![npm downloads](https://img.shields.io/npm/dt/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![build](https://img.shields.io/github/actions/workflow/status/Federicocervelli/blazeplot/release.yml?branch=master)](https://github.com/Federicocervelli/blazeplot/actions)
 
 Fast WebGL2 plotting engine for the browser 🔥
 
-GPU-native, minimal DOM. Built on WebGL2 + [regl](https://github.com/regl-project/regl). No Canvas2D, no SVG, no layout thrashing.
+GPU-native, minimal DOM. Built on WebGL2 + [regl](https://github.com/regl-project/regl).
 
 ## Installation
 
@@ -21,35 +20,21 @@ bun install blazeplot
 
 ```html
 <div id="chart" style="width:100%;height:400px"></div>
-```
 
-```js
-import { Chart } from "blazeplot";
+<script type="module">
+  import { Chart } from "blazeplot";
 
-const container = document.getElementById("chart");
-const chart = new Chart(container);
+  const chart = new Chart(document.getElementById("chart"));
+  const wave = chart.addLine({ capacity: 10_000, downsample: "minmax" });
 
-const series = chart.addSeries(
-  { mode: "line", capacity: 1_000_000, downsample: "minmax" },
-  { color: [0.3, 0.6, 1.0, 1.0] },
-);
+  wave.append(
+    Float64Array.from({ length: 1000 }, (_, i) => i),
+    Float32Array.from({ length: 1000 }, (_, i) => Math.sin(i * 0.02)),
+  );
 
-chart.setViewport({ xMin: 0, xMax: 1000, yMin: -2, yMax: 2 });
-chart.start();
-
-const xs = new Float64Array(256);
-const ys = new Float32Array(256);
-let t = 0;
-
-function push() {
-  for (let i = 0; i < 256; i++) {
-    xs[i] = t++;
-    ys[i] = Math.sin(t * 0.01) * 0.5 + Math.random() * 0.01;
-  }
-  series.append(xs, ys);
-  requestAnimationFrame(push);
-}
-push();
+  chart.setViewport({ xMin: 0, xMax: 1000, yMin: -1.5, yMax: 1.5 });
+  chart.start();
+</script>
 ```
 
 ## Features
