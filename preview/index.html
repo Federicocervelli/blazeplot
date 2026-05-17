@@ -75,7 +75,6 @@
     }
     button { cursor: pointer; }
     input { accent-color: #60a5fa; }
-    .hint { color: var(--muted); }
   </style>
 </head>
 <body data-preview-theme="dark">
@@ -110,9 +109,9 @@
       <label><input id="gridToggle" type="checkbox" checked /> grid</label>
       <label><input id="followToggle" type="checkbox" checked /> follow live</label>
       <label><input id="syncXToggle" type="checkbox" checked /> sync X / Y-only zoom</label>
+      <button id="perfToggleButton" type="button">hide stats</button>
       <button id="resetViewButton" type="button">reset view</button>
       <button id="screenshotButton" type="button">screenshot</button>
-      <span class="hint">drag = box zoom · shift+drag = pan · wheel = zoom · legend toggles series</span>
     </section>
   </div>
   <script type="module" src="/main.ts"></script>

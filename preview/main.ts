@@ -14,6 +14,7 @@ const highlightToggle = requireElement<HTMLInputElement>("highlightToggle");
 const gridToggle = requireElement<HTMLInputElement>("gridToggle");
 const followToggle = requireElement<HTMLInputElement>("followToggle");
 const syncXToggle = requireElement<HTMLInputElement>("syncXToggle");
+const perfToggleButton = requireElement<HTMLButtonElement>("perfToggleButton");
 const resetViewButton = requireElement<HTMLButtonElement>("resetViewButton");
 const screenshotButton = requireElement<HTMLButtonElement>("screenshotButton");
 function requireElement<T extends HTMLElement>(id: string): T {
@@ -107,6 +108,7 @@ let lastBatchSize = 0;
 let lastStatsAt = performance.now();
 let followLive = true;
 let syncX = true;
+let showPerfPanel = true;
 let currentTheme: PreviewTheme = "dark";
 const hoverOptions: { mode: ChartPickMode } = { mode: "nearest-x" };
 const tooltipOptions: { mode: ChartPickMode; highlight: boolean } = { mode: hoverOptions.mode, highlight: true };
@@ -210,6 +212,11 @@ followToggle.addEventListener("change", () => {
 syncXToggle.addEventListener("change", () => {
   syncX = syncXToggle.checked;
 });
+perfToggleButton.addEventListener("click", () => {
+  showPerfPanel = !showPerfPanel;
+  perfToggleButton.textContent = showPerfPanel ? "hide stats" : "show stats";
+  if (!showPerfPanel && overlayText) overlayText.textContent = "";
+});
 axesSelect.addEventListener("change", () => {
   if (axesSelect.value === "off") {
     chart.setAxes(false);
@@ -311,6 +318,12 @@ function updateOverlay(): void {
   const fps = (frames * 1000) / (now - lastStatsAt);
   chart.getFrameStats(chartStats);
   if (overlayText) {
+    overlayText.parentElement?.toggleAttribute("hidden", !showPerfPanel);
+    if (!showPerfPanel) {
+      frames = 0;
+      lastStatsAt = now;
+      return;
+    }
     overlayText.textContent = "\n" + [
       "BlazePlot preview",
       "status: running",
