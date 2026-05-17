@@ -181,31 +181,31 @@ export class SeriesStore {
     return sample ? { ...sample, distancePx: Math.sqrt(bestDistanceSq) } : null;
   }
 
-  copyRawVisible(viewport: Viewport, target: Float32Array, maxPoints: number): number {
-    return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0);
+  copyRawVisible(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
+    return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0, xOrigin);
   }
 
-  copyRawRange(start: number, end: number, target: Float32Array, maxPoints: number): number {
-    return this.copySampleRange(start, end, target, maxPoints, "points", 0);
+  copyRawRange(start: number, end: number, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
+    return this.copySampleRange(start, end, target, maxPoints, "points", 0, xOrigin);
   }
 
-  copyAreaVisible(viewport: Viewport, target: Float32Array, maxPoints: number, baseline: number = 0): number {
-    return this.copyVisibleSamples(viewport, target, maxPoints, "area", baseline) * 2;
+  copyAreaVisible(viewport: Viewport, target: Float32Array, maxPoints: number, baseline: number = 0, xOrigin: number = 0): number {
+    return this.copyVisibleSamples(viewport, target, maxPoints, "area", baseline, xOrigin) * 2;
   }
 
-  copyAreaRange(start: number, end: number, target: Float32Array, maxPoints: number, baseline: number = 0): number {
-    return this.copySampleRange(start, end, target, maxPoints, "area", baseline) * 2;
+  copyAreaRange(start: number, end: number, target: Float32Array, maxPoints: number, baseline: number = 0, xOrigin: number = 0): number {
+    return this.copySampleRange(start, end, target, maxPoints, "area", baseline, xOrigin) * 2;
   }
 
-  copyMinMaxVisible(viewport: Viewport, target: Float32Array, maxSegments: number): number {
-    return this.copyMinMaxSegments(viewport, target, maxSegments, "line-list") * 2;
+  copyMinMaxVisible(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number = 0): number {
+    return this.copyMinMaxSegments(viewport, target, maxSegments, "line-list", xOrigin) * 2;
   }
 
-  copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number): number {
-    return this.copyMinMaxSegments(viewport, target, maxSegments, "instanced");
+  copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number = 0): number {
+    return this.copyMinMaxSegments(viewport, target, maxSegments, "instanced", xOrigin);
   }
 
-  copyOhlcRange(start: number, end: number, target: Float32Array, maxCandles: number, tickWidth: number): number {
+  copyOhlcRange(start: number, end: number, target: Float32Array, maxCandles: number, tickWidth: number, xOrigin: number = 0): number {
     if (!isOhlcDataset(this.dataset) || maxCandles <= 0 || target.length < maxCandles * 12) return 0;
 
     const from = Math.max(0, Math.floor(start));
@@ -214,7 +214,7 @@ export class SeriesStore {
     const halfTick = tickWidth * 0.5;
     for (let i = 0; i < count; i++) {
       const index = from + i;
-      const x = this.dataset.getX(index);
+      const x = this.dataset.getX(index) - xOrigin;
       const open = this.dataset.getOpen(index);
       const high = this.dataset.getHigh(index);
       const low = this.dataset.getLow(index);
@@ -252,6 +252,7 @@ export class SeriesStore {
     maxPoints: number,
     layout: "points" | "area",
     baseline: number,
+    xOrigin: number,
   ): number {
     const floatsPerSample = layout === "points" ? 2 : 4;
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
@@ -264,7 +265,7 @@ export class SeriesStore {
     const stride = Math.max(1, Math.ceil(visible / maxPoints));
     let count = 0;
     for (let i = start; i < end && count < maxPoints; i += stride) {
-      const x = this.dataset.getX(i);
+      const x = this.dataset.getX(i) - xOrigin;
       const y = this.dataset.getY(i);
       if (layout === "points") {
         const offset = count * 2;
@@ -290,6 +291,7 @@ export class SeriesStore {
     maxPoints: number,
     layout: "points" | "area",
     baseline: number,
+    xOrigin: number,
   ): number {
     const floatsPerSample = layout === "points" ? 2 : 4;
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
@@ -299,7 +301,7 @@ export class SeriesStore {
     const count = Math.min(maxPoints, Math.max(0, to - from));
     for (let i = 0; i < count; i++) {
       const index = from + i;
-      const x = this.dataset.getX(index);
+      const x = this.dataset.getX(index) - xOrigin;
       const y = this.dataset.getY(index);
       if (layout === "points") {
         const offset = i * 2;
@@ -322,6 +324,7 @@ export class SeriesStore {
     target: Float32Array,
     maxSegments: number,
     layout: "line-list" | "instanced",
+    xOrigin: number,
   ): number {
     const floatsPerSegment = layout === "line-list" ? 4 : 3;
     if (!this.pyramid || maxSegments <= 0 || target.length < maxSegments * floatsPerSegment) return 0;
@@ -343,7 +346,7 @@ export class SeriesStore {
       const range = this.minMaxForRange(segmentStart, clampedEnd);
       if (!range) continue;
 
-      const x = this.dataset.getX(segmentStart + ((clampedEnd - segmentStart) >> 1));
+      const x = this.dataset.getX(segmentStart + ((clampedEnd - segmentStart) >> 1)) - xOrigin;
       const { minY, maxY } = range;
       if (layout === "line-list") {
         const offset = segment * 4;

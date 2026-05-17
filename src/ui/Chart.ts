@@ -604,7 +604,7 @@ export class Chart {
     const visibleSamples = series.visibleSampleCount(viewport);
     const dense = series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
     if (dense && this.renderer.supportsInstancedSegments) {
-      const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments());
+      const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (segmentCount <= 0) return;
       this.uploadMinMaxInstanceData(segmentCount);
       this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, this.camera);
@@ -613,7 +613,7 @@ export class Chart {
     }
 
     if (dense) {
-      const count = series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments());
+      const count = series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (count < 2) return;
       this.uploadRawLineData(count);
       this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, this.camera);
@@ -627,7 +627,7 @@ export class Chart {
 
   private drawLineStripRange(series: SeriesStore, start: number, end: number, maxPoints: number): void {
     for (let chunkStart = start; chunkStart < end;) {
-      const count = series.copyRawRange(chunkStart, end, this.rawLineData, maxPoints);
+      const count = series.copyRawRange(chunkStart, end, this.rawLineData, maxPoints, this.currentXOrigin);
       if (count < 2) break;
 
       this.uploadRawLineData(count);
@@ -643,7 +643,7 @@ export class Chart {
 
     const baseline = series.style.baseline ?? 0;
     for (let start = range.start; start < range.end;) {
-      const areaVertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, baseline);
+      const areaVertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, baseline, this.currentXOrigin);
       if (areaVertexCount < 4) break;
 
       this.uploadRawLineData(areaVertexCount);
@@ -653,7 +653,7 @@ export class Chart {
     }
 
     for (let start = range.start; start < range.end;) {
-      const lineVertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY);
+      const lineVertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
       if (lineVertexCount < 2) break;
 
       this.uploadRawLineData(lineVertexCount);
@@ -668,7 +668,7 @@ export class Chart {
     const range = series.visibleIndexRange(viewport);
     const maxCandles = Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_CANDLE);
     for (let start = range.start; start < range.end;) {
-      const candleCount = series.copyOhlcRange(start, range.end, this.rawLineData, maxCandles, series.style.tickWidth ?? series.style.barWidth ?? 0.8);
+      const candleCount = series.copyOhlcRange(start, range.end, this.rawLineData, maxCandles, series.style.tickWidth ?? series.style.barWidth ?? 0.8, this.currentXOrigin);
       if (candleCount <= 0) break;
 
       const vertexCount = candleCount * 6;
@@ -682,7 +682,7 @@ export class Chart {
   private drawScatterSeries(series: SeriesStore, viewport: Viewport): void {
     const range = series.visibleIndexRange(viewport);
     for (let start = range.start; start < range.end;) {
-      const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
+      const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
       if (count <= 0) break;
 
       this.uploadRawLineData(count);
@@ -696,7 +696,7 @@ export class Chart {
     const visibleSamples = series.visibleSampleCount(viewport);
     const rawBarCapacity = this.maxRawBarInstances();
     if (series.hasLOD && visibleSamples > rawBarCapacity) {
-      const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarTriangleBars());
+      const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarTriangleBars(), this.currentXOrigin);
       if (sampledCount <= 0) return;
 
       this.includeBaselineInBarRanges(sampledCount, series.style.baseline ?? 0);
@@ -705,7 +705,7 @@ export class Chart {
       return;
     }
 
-    const count = series.copyRawVisible(viewport, this.rawLineData, rawBarCapacity);
+    const count = series.copyRawVisible(viewport, this.rawLineData, rawBarCapacity, this.currentXOrigin);
     if (count <= 0) return;
 
     if (this.renderer.supportsInstancedBars) {
@@ -720,22 +720,18 @@ export class Chart {
   }
 
   private uploadRawLineData(vertexCount: number): void {
-    this.translateVec2X(this.rawLineData, vertexCount, this.currentXOrigin);
     this.uploadFloatData(this.rawLineBuffer, this.rawLineData, vertexCount * 2);
   }
 
   private uploadMinMaxInstanceData(instanceCount: number): void {
-    this.translateStrideX(this.minMaxInstanceData, instanceCount, FLOATS_PER_MINMAX_SEGMENT_INSTANCE, this.currentXOrigin);
     this.uploadFloatData(this.minMaxInstanceBuffer, this.minMaxInstanceData, instanceCount * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
   }
 
   private uploadBarTriangleData(vertexCount: number): void {
-    this.translateVec2X(this.barTriangleData, vertexCount, this.currentXOrigin);
     this.uploadFloatData(this.barTriangleBuffer, this.barTriangleData, vertexCount * 2);
   }
 
   private uploadGridData(vertexCount: number): void {
-    this.translateVec2X(this.gridData, vertexCount, this.currentXOrigin);
     this.uploadFloatData(this.gridBuffer, this.gridData, vertexCount * 2);
   }
 
@@ -745,13 +741,6 @@ export class Chart {
     this.stats.uploadBytes += count * Float32Array.BYTES_PER_ELEMENT;
   }
 
-  private translateVec2X(data: Float32Array, vertexCount: number, origin: number): void {
-    for (let i = 0; i < vertexCount; i++) data[i * 2] = data[i * 2]! - origin;
-  }
-
-  private translateStrideX(data: Float32Array, itemCount: number, stride: number, origin: number): void {
-    for (let i = 0; i < itemCount; i++) data[i * stride] = data[i * stride]! - origin;
-  }
 
   private includeBaselineInBarRanges(barCount: number, baseline: number): void {
     for (let i = 0; i < barCount; i++) {
@@ -793,13 +782,15 @@ export class Chart {
     viewport: { xMin: number; xMax: number },
   ): [number, number] {
     const x = this.minMaxInstanceData[index * 3]!;
-    const viewportWidth = viewport.xMax - viewport.xMin;
+    const viewportXMin = viewport.xMin - this.currentXOrigin;
+    const viewportXMax = viewport.xMax - this.currentXOrigin;
+    const viewportWidth = viewportXMax - viewportXMin;
 
     if (count <= 1) {
       const halfWidth = Math.max(0, viewportWidth * 0.5);
       return [
-        Math.max(viewport.xMin, x - halfWidth),
-        Math.min(viewport.xMax, x + halfWidth),
+        Math.max(viewportXMin, x - halfWidth),
+        Math.min(viewportXMax, x + halfWidth),
       ];
     }
 
@@ -810,13 +801,13 @@ export class Chart {
 
     if (!Number.isFinite(x0) || !Number.isFinite(x1) || x1 <= x0) {
       const bucketWidth = viewportWidth / Math.max(1, count);
-      x0 = viewport.xMin + index * bucketWidth;
-      x1 = index + 1 === count ? viewport.xMax : x0 + bucketWidth;
+      x0 = viewportXMin + index * bucketWidth;
+      x1 = index + 1 === count ? viewportXMax : x0 + bucketWidth;
     }
 
     return [
-      Math.max(viewport.xMin, x0),
-      Math.min(viewport.xMax, x1),
+      Math.max(viewportXMin, x0),
+      Math.min(viewportXMax, x1),
     ];
   }
 
@@ -996,20 +987,20 @@ export class Chart {
     let vertexCount = 0;
     for (const x of this.xTicks) {
       if (vertexCount + 2 > GRID_LINE_VERTEX_CAPACITY) return vertexCount;
-      this.gridData[vertexCount * 2] = x;
+      this.gridData[vertexCount * 2] = x - this.currentXOrigin;
       this.gridData[vertexCount * 2 + 1] = viewport.yMin;
       vertexCount++;
-      this.gridData[vertexCount * 2] = x;
+      this.gridData[vertexCount * 2] = x - this.currentXOrigin;
       this.gridData[vertexCount * 2 + 1] = viewport.yMax;
       vertexCount++;
     }
 
     for (const y of this.yTicks) {
       if (vertexCount + 2 > GRID_LINE_VERTEX_CAPACITY) return vertexCount;
-      this.gridData[vertexCount * 2] = viewport.xMin;
+      this.gridData[vertexCount * 2] = viewport.xMin - this.currentXOrigin;
       this.gridData[vertexCount * 2 + 1] = y;
       vertexCount++;
-      this.gridData[vertexCount * 2] = viewport.xMax;
+      this.gridData[vertexCount * 2] = viewport.xMax - this.currentXOrigin;
       this.gridData[vertexCount * 2 + 1] = y;
       vertexCount++;
     }
