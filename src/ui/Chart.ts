@@ -13,6 +13,8 @@ import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
 
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
+const MINMAX_SEGMENT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
+const FLOATS_PER_MINMAX_SEGMENT_INSTANCE = 3;
 const GRID_LINE_VERTEX_CAPACITY = 64;
 
 export interface AxisConfig {
@@ -53,6 +55,8 @@ export class Chart {
   private input: InputController;
   private rawLineBuffer: GpuBuffer;
   private rawLineData: Float32Array;
+  private minMaxInstanceBuffer: GpuBuffer;
+  private minMaxInstanceData: Float32Array;
   private gridBuffer: GpuBuffer;
   private gridData: Float32Array;
   private gridStyle: SeriesStyle;
@@ -94,6 +98,8 @@ export class Chart {
     this.input = new InputController(this.layout.canvas, this.camera, options.viewportPolicy);
     this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
     this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
+    this.minMaxInstanceData = new Float32Array(MINMAX_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
+    this.minMaxInstanceBuffer = this.renderer.createFloatBuffer(this.minMaxInstanceData.length);
     this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
     this.gridBuffer = this.renderer.createFloatBuffer(this.gridData.length);
     this.gridStyle = {
@@ -194,8 +200,20 @@ export class Chart {
       if (!s.visible) continue;
       const visibleSamples = s.visibleSampleCount(viewport);
       const dense = s.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
+      if (dense && this.renderer.supportsInstancedSegments) {
+        const segmentCount = s.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments());
+        if (segmentCount <= 0) continue;
+        this.renderer.updateFloatBuffer(this.minMaxInstanceBuffer, this.minMaxInstanceData);
+        this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, s.style, this.camera);
+        this.recordRenderMode("minmax");
+        this.stats.pointsRendered += segmentCount * 2;
+        this.stats.drawCalls++;
+        this.stats.uploadBytes += this.minMaxInstanceData.byteLength;
+        continue;
+      }
+
       const count = dense
-        ? s.copyMinMaxVisible(viewport, this.rawLineData, Math.min(this.canvas.width, RAW_LINE_VERTEX_CAPACITY >> 1))
+        ? s.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments())
         : s.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
       if (count < 2) continue;
       this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
@@ -234,6 +252,10 @@ export class Chart {
     this.canvas.width = width;
     this.canvas.height = height;
     return true;
+  }
+
+  private maxMinMaxSegments(): number {
+    return Math.min(this.canvas.width, MINMAX_SEGMENT_CAPACITY);
   }
 
   private writeGridVertices(

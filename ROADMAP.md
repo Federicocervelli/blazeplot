@@ -77,7 +77,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] Camera transform as uniforms (scale/offset getters on Camera2D)
 - [x] `Renderer.drawMinMaxSegments`
 - [x] Persistent buffer pool — `WebGL2Resources` manages pre-allocated `Float32Array` + `regl.Buffer` pairs. Pre-allocates common sizes (1K–128K floats) at init. `ReglBackend.createBuffer` pulls from pool — no `regl.buffer()` calls at runtime. `dispose` returns to pool; `destroy` cleans up all entries.
-- [ ] Instanced draw for segment mode
+- [x] Instanced draw for segment mode (with line-list fallback when regl/browser instancing is unavailable)
 - [ ] Scatter / point rendering (instanced quads)
 - [ ] Bar rendering
 - [ ] Area fill (line + polygon below)

@@ -112,7 +112,21 @@ export class SeriesStore {
   }
 
   copyMinMaxVisible(viewport: Viewport, target: Float32Array, maxSegments: number): number {
-    if (!this.pyramid || maxSegments <= 0 || target.length < maxSegments * 4) return 0;
+    return this.copyMinMaxSegments(viewport, target, maxSegments, "line-list") * 2;
+  }
+
+  copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number): number {
+    return this.copyMinMaxSegments(viewport, target, maxSegments, "instanced");
+  }
+
+  private copyMinMaxSegments(
+    viewport: Viewport,
+    target: Float32Array,
+    maxSegments: number,
+    layout: "line-list" | "instanced",
+  ): number {
+    const floatsPerSegment = layout === "line-list" ? 4 : 3;
+    if (!this.pyramid || maxSegments <= 0 || target.length < maxSegments * floatsPerSegment) return 0;
 
     const start = this.dataset.lowerBoundX(viewport.xMin);
     const end = this.dataset.upperBoundX(viewport.xMax);
@@ -120,7 +134,6 @@ export class SeriesStore {
     if (visible <= 0) return 0;
 
     const segmentCount = Math.min(maxSegments, visible);
-    let vertexCount = 0;
     for (let segment = 0; segment < segmentCount; segment++) {
       const segmentStart = start + Math.floor((segment * visible) / segmentCount);
       const segmentEnd = start + Math.max(
@@ -138,14 +151,20 @@ export class SeriesStore {
       }
 
       const x = this.dataset.getX(segmentStart + ((clampedEnd - segmentStart) >> 1));
-      target[vertexCount * 2] = x;
-      target[vertexCount * 2 + 1] = minY;
-      vertexCount++;
-      target[vertexCount * 2] = x;
-      target[vertexCount * 2 + 1] = maxY;
-      vertexCount++;
+      if (layout === "line-list") {
+        const offset = segment * 4;
+        target[offset] = x;
+        target[offset + 1] = minY;
+        target[offset + 2] = x;
+        target[offset + 3] = maxY;
+      } else {
+        const offset = segment * 3;
+        target[offset] = x;
+        target[offset + 1] = minY;
+        target[offset + 2] = maxY;
+      }
     }
 
-    return vertexCount;
+    return segmentCount;
   }
 }

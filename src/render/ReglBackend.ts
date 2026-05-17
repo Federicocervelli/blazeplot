@@ -1,6 +1,6 @@
 import createRegl from "regl";
 import type { AttributeState, Buffer as ReglBuffer, DrawCommand, PrimitiveType, Regl, Uniform } from "regl";
-import type { GpuBackend, GpuBuffer, GpuProgram, GpuResource, BufferSpec, DrawSpec, UniformValue } from "./types.js";
+import type { GpuBackend, GpuBuffer, GpuProgram, GpuResource, BufferSpec, DrawSpec, AttributeSpec, UniformValue } from "./types.js";
 import { WebGL2Resources } from "./WebGL2Resources.js";
 
 type ReglGpuBuffer = GpuBuffer & {
@@ -16,7 +16,7 @@ type ReglGpuProgram = GpuProgram & {
 interface DrawProps {
   readonly count: number;
   readonly instances: number;
-  readonly attributes: Readonly<Record<string, ReglBuffer>>;
+  readonly attributes: Readonly<Record<string, AttributeState>>;
   readonly uniforms: Readonly<Record<string, UniformValue>>;
 }
 
@@ -37,6 +37,7 @@ export class ReglBackend implements GpuBackend {
   private nextProgramId: number = 1;
   private commandCache: Map<string, DrawCommand> = new Map();
   private scissorBox: { x: number; y: number; w: number; h: number } | null = null;
+  readonly capabilities: GpuBackend["capabilities"];
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", {
@@ -58,9 +59,14 @@ export class ReglBackend implements GpuBackend {
       gl: toReglContext(this.gl),
       extensions: [],
       optionalExtensions: [
+        "angle_instanced_arrays",
         "ext_disjoint_timer_query_webgl2",
       ],
     });
+
+    this.capabilities = {
+      instancing: this.regl.hasExtension("angle_instanced_arrays"),
+    };
 
     this.resources = new WebGL2Resources(this.regl);
     this.resources.preAllocate();
@@ -106,9 +112,9 @@ export class ReglBackend implements GpuBackend {
       this.commandCache.set(key, command);
     }
 
-    const attributes: Record<string, ReglBuffer> = {};
+    const attributes: Record<string, AttributeState> = {};
     for (const name of attributeNames) {
-      attributes[name] = this.asReglBuffer(spec.attributes[name]!).buffer;
+      attributes[name] = this.resolveAttribute(spec.attributes[name]!);
     }
 
     const props: DrawProps & ScissorProps = {
@@ -182,6 +188,20 @@ export class ReglBackend implements GpuBackend {
           props.scissorBox ?? { x: 0, y: 0, width: 0, height: 0 },
       },
     });
+  }
+
+  private resolveAttribute(attribute: GpuBuffer | AttributeSpec): AttributeState {
+    if ("divisor" in attribute) {
+      return {
+        buffer: this.asReglBuffer(attribute.buffer).buffer,
+        divisor: attribute.divisor,
+        stride: attribute.stride,
+        offset: attribute.offset,
+        size: attribute.size,
+      } as AttributeState;
+    }
+
+    return this.asReglBuffer(attribute).buffer;
   }
 
   private asReglBuffer(buffer: GpuBuffer): ReglGpuBuffer {
