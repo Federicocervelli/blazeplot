@@ -22,22 +22,23 @@ function formatNumber(value: number): string {
   return Number(value.toPrecision(6)).toString();
 }
 
+function rgba(color: readonly [number, number, number, number]): string {
+  return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
+}
+
 function renderDefaultTooltip(
   state: ChartHoverState,
   container: HTMLElement,
   formatter: TooltipPluginOptions["formatter"],
 ): void {
-  const lines: string[] = [`x ${formatNumber(state.anchorX)}`];
   const pad = Math.max(1, ...state.items.map((item) => labelOf(item).length));
+  let html = `x ${formatNumber(state.anchorX)}`;
   for (const item of state.items) {
     const value = formatter ? formatter(item, state) : `(${formatNumber(item.x)}, ${formatNumber(item.y)})`;
-    lines.push(`${labelOf(item).padEnd(pad)}  ${value}`);
+    const color = rgba(item.series.style.color);
+    html += `<br><span style="color:${color}">\u2588</span>${labelOf(item).padEnd(pad)}  ${value}`;
   }
-  container.textContent = lines.join("\n");
-}
-
-function rgba(color: readonly [number, number, number, number]): string {
-  return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
+  container.innerHTML = html;
 }
 
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
