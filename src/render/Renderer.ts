@@ -7,13 +7,17 @@ const FLOATS_PER_SEGMENT_INSTANCE = 3;
 const FLOATS_PER_POINT_INSTANCE = 2;
 const BYTES_PER_FLOAT = 4;
 const DEFAULT_POINT_SIZE_PX = 4;
+const DEFAULT_BAR_WIDTH_DATA = 0.8;
+const DEFAULT_BASELINE = 0;
 
 export class Renderer {
   private readonly lineProgram: GpuProgram;
   private readonly segmentProgram: GpuProgram;
   private readonly pointProgram: GpuProgram;
+  private readonly barProgram: GpuProgram;
   private readonly segmentSelectBuffer: GpuBuffer;
   private readonly pointCornerBuffer: GpuBuffer;
+  private readonly barCornerBuffer: GpuBuffer;
   private readonly scaleUniform: Float32Array = new Float32Array(2);
   private readonly offsetUniform: Float32Array = new Float32Array(2);
   private readonly canvasSizeUniform: Float32Array = new Float32Array(2);
@@ -22,12 +26,16 @@ export class Renderer {
     this.lineProgram = this.backend.createProgram(ShaderPrograms.line.vert, ShaderPrograms.line.frag);
     this.segmentProgram = this.backend.createProgram(ShaderPrograms.segment.vert, ShaderPrograms.segment.frag);
     this.pointProgram = this.backend.createProgram(ShaderPrograms.point.vert, ShaderPrograms.point.frag);
+    this.barProgram = this.backend.createProgram(ShaderPrograms.bar.vert, ShaderPrograms.bar.frag);
 
     this.segmentSelectBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 2 });
     this.backend.updateBuffer(this.segmentSelectBuffer, new Float32Array([0, 1]));
 
     this.pointCornerBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 8 });
     this.backend.updateBuffer(this.pointCornerBuffer, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]));
+
+    this.barCornerBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 8 });
+    this.backend.updateBuffer(this.barCornerBuffer, new Float32Array([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]));
   }
 
   get supportsInstancedSegments(): boolean {
@@ -35,6 +43,10 @@ export class Renderer {
   }
 
   get supportsInstancedPoints(): boolean {
+    return this.backend.capabilities.instancing;
+  }
+
+  get supportsInstancedBars(): boolean {
     return this.backend.capabilities.instancing;
   }
 
@@ -116,6 +128,34 @@ export class Renderer {
         uOffset: this.offsetUniform,
         uCanvasSize: this.canvasSizeUniform,
         uPointSize: style.pointSize ?? DEFAULT_POINT_SIZE_PX,
+        uColor: style.color,
+      },
+    });
+  }
+
+  drawBarsInstanced(
+    instanceBuffer: GpuBuffer,
+    barCount: number,
+    style: SeriesStyle,
+    camera: Camera2D,
+  ): void {
+    this.writeCameraUniforms(camera);
+
+    const instanceStride = FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT;
+    const aPosition: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0, size: 2 };
+    const aCorner: AttributeSpec = { buffer: this.barCornerBuffer, divisor: 0, stride: FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT, offset: 0, size: 2 };
+
+    this.backend.draw({
+      program: this.barProgram,
+      primitive: "triangle_strip",
+      count: 4,
+      instances: barCount,
+      attributes: { aCorner, aPosition },
+      uniforms: {
+        uScale: this.scaleUniform,
+        uOffset: this.offsetUniform,
+        uBarWidth: style.barWidth ?? DEFAULT_BAR_WIDTH_DATA,
+        uBaseline: style.baseline ?? DEFAULT_BASELINE,
         uColor: style.color,
       },
     });

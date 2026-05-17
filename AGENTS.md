@@ -33,7 +33,7 @@
 - `AxisOverlay` attaches tick label elements either to the plot layer (`inside`) or to the axis gutter layer (`outside`).
 - Axis `outside` positioning reserves fixed CSS-pixel gutters: 52px left for Y, 28px bottom for X. Defined by `LEFT_AXIS_GUTTER_CSS` / `BOTTOM_AXIS_GUTTER_CSS` in `ChartLayout.ts`.
 - `MinMaxPyramid` updates incrementally for tail appends and falls back to full rebuild on wrap/clear.
-- Scatter series skip LOD even when `downsample` is omitted; they render as instanced quads when regl/browser instancing is available.
+- Scatter and bar series skip LOD even when `downsample` is omitted; they render as instanced quads when regl/browser instancing is available.
 - `RingBuffer` silently wraps at capacity and exposes logical-order access after wrap.
 - LOD queries use sorted logical X values via `RingBuffer.lowerBoundX` / `upperBoundX`; preserve that assumption when changing append/query code.
 - `ViewportPolicy` transforms `PanIntent`/`ZoomIntent` and can update `Camera2D` before render. Keep behavior rules there, not in core/rendering.

@@ -35,7 +35,7 @@ export interface ChartFrameStats {
   pointsRendered: number;
   drawCalls: number;
   uploadBytes: number;
-  renderMode: "none" | "raw" | "minmax" | "points" | "mixed";
+  renderMode: "none" | "raw" | "minmax" | "points" | "bars" | "mixed";
 }
 
 function normalizeAxisConfig(config: boolean | AxisConfig | undefined): NormalizedAxisConfig {
@@ -127,6 +127,8 @@ export class Chart {
       color: style?.color ?? [0.3, 0.6, 1.0, 1.0],
       lineWidth: style?.lineWidth ?? 1,
       pointSize: style?.pointSize ?? 4,
+      barWidth: style?.barWidth ?? 0.8,
+      baseline: style?.baseline ?? 0,
     });
     this.series.push(s);
     return s;
@@ -203,6 +205,10 @@ export class Chart {
         this.drawScatterSeries(s, viewport);
         continue;
       }
+      if (s.config.mode === "bar") {
+        this.drawBarSeries(s, viewport);
+        continue;
+      }
 
       const visibleSamples = s.visibleSampleCount(viewport);
       const dense = s.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
@@ -265,16 +271,41 @@ export class Chart {
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
   ): void {
     if (!this.renderer.supportsInstancedPoints) return;
-
-    const count = series.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
+    const count = this.uploadRawInstances(series, viewport);
     if (count <= 0) return;
 
-    this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
     this.renderer.drawPointsInstanced(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
-    this.recordRenderMode("points");
+    this.recordInstancedDraw("points", count);
+  }
+
+  private drawBarSeries(
+    series: SeriesStore,
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+  ): void {
+    if (!this.renderer.supportsInstancedBars) return;
+    const count = this.uploadRawInstances(series, viewport);
+    if (count <= 0) return;
+
+    this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, this.camera);
+    this.recordInstancedDraw("bars", count);
+  }
+
+  private uploadRawInstances(
+    series: SeriesStore,
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+  ): number {
+    const count = series.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
+    if (count <= 0) return 0;
+
+    this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
+    this.stats.uploadBytes += this.rawLineData.byteLength;
+    return count;
+  }
+
+  private recordInstancedDraw(mode: "points" | "bars", count: number): void {
+    this.recordRenderMode(mode);
     this.stats.pointsRendered += count;
     this.stats.drawCalls++;
-    this.stats.uploadBytes += this.rawLineData.byteLength;
   }
 
   private maxMinMaxSegments(): number {
@@ -313,7 +344,7 @@ export class Chart {
     return vertexCount;
   }
 
-  private recordRenderMode(mode: "raw" | "minmax" | "points"): void {
+  private recordRenderMode(mode: "raw" | "minmax" | "points" | "bars"): void {
     if (this.stats.renderMode === "none") {
       this.stats.renderMode = mode;
     } else if (this.stats.renderMode !== mode) {
