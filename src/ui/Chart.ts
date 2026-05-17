@@ -697,6 +697,17 @@ export class Chart {
     if (range.end - range.start < 2) return;
 
     const baseline = series.style.baseline ?? 0;
+    if (range.end - range.start > AREA_POINT_CAPACITY) {
+      const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarTriangleBars(), this.currentXOrigin);
+      if (sampledCount > 0) {
+        this.includeBaselineInBarRanges(sampledCount, baseline);
+        const vertexCount = this.writeBarBucketTriangles(sampledCount, viewport);
+        const fillStyle: SeriesStyle = { ...series.style, color: series.style.fillColor ?? series.style.color };
+        this.drawBarTriangles(vertexCount, fillStyle, camera, "area");
+        return;
+      }
+    }
+
     for (let start = range.start; start < range.end;) {
       const areaVertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, baseline, this.currentXOrigin);
       if (areaVertexCount < 4) break;
@@ -763,6 +774,17 @@ export class Chart {
   }
 
   private drawScatterSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+    const visibleSamples = series.visibleSampleCount(viewport);
+    if (visibleSamples > RAW_LINE_VERTEX_CAPACITY) {
+      const count = series.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+      if (count <= 0) return;
+
+      this.uploadRawLineData(count);
+      this.renderer.drawPoints(this.rawLineBuffer, count, series.style, camera, this.canvas.width, this.canvas.height);
+      this.recordDraw("points", count);
+      return;
+    }
+
     const range = series.visibleIndexRange(viewport);
     for (let start = range.start; start < range.end;) {
       const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
@@ -950,11 +972,16 @@ export class Chart {
     this.barTriangleData[o + 11] = y1;
   }
 
-  private drawBarTriangles(vertexCount: number, style: SeriesStyle, camera: Camera2D): void {
+  private drawBarTriangles(
+    vertexCount: number,
+    style: SeriesStyle,
+    camera: Camera2D,
+    mode: "bars" | "area" = "bars",
+  ): void {
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount);
     this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, camera);
-    this.recordDraw("bars", vertexCount);
+    this.recordDraw(mode, vertexCount);
   }
 
   private recordDraw(mode: "raw" | "minmax" | "points" | "bars" | "area", points: number, drawCalls: number = 1): void {
