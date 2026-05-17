@@ -7,6 +7,9 @@ export interface TooltipPluginOptions {
   readonly offsetX?: number;
   readonly offsetY?: number;
   readonly highlight?: boolean;
+  readonly backgroundColor?: string;
+  readonly textColor?: string;
+  readonly font?: string;
   readonly formatter?: (item: ChartPickItem, state: ChartHoverState) => string;
   readonly render?: (state: ChartHoverState, container: HTMLElement, chart: Chart) => void;
 }
@@ -51,9 +54,9 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       container.style.zIndex = "30";
       container.style.display = "none";
       container.style.pointerEvents = "none";
-      container.style.background = "rgba(4, 8, 16, 0.85)";
-      container.style.color = "#bfd6ff";
-      container.style.font = "11px/1.35 ui-monospace, monospace";
+      container.style.background = options.backgroundColor ?? chart.theme.tooltipBackgroundColor;
+      container.style.color = options.textColor ?? chart.theme.tooltipTextColor;
+      container.style.font = options.font ?? chart.theme.tooltipFont;
       container.style.padding = "8px 10px";
       container.style.whiteSpace = "pre";
       chart.rootElement.appendChild(container);

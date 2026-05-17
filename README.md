@@ -82,6 +82,7 @@ push();
 | `chart.start()` | Start the render loop (rAF). |
 | `chart.stop()` | Stop the render loop. |
 | `chart.canvas` | Read-only access to the internal plot canvas. |
+| `chart.theme` | Resolved theme values used by the chart and built-in plugins. |
 | `chart.getFrameStats(target?)` | Copy per-frame benchmark counters into a reusable object. |
 | `chart.getSeriesState()` | Return public series metadata/state for plugins or custom UI. |
 | `chart.setSeriesVisible(series, visible)` | Toggle visibility and notify series-state subscribers. |
@@ -97,9 +98,28 @@ push();
 | `viewportPolicy?` | — | Custom pan/zoom/viewport behavior hooks. |
 | `hover?` | `{ mode: "nearest-x" }` | Default hover picking behavior. `mode` can be `"nearest-x"` or `"nearest-point"`. |
 | `plugins?` | `[]` | Optional `ChartPlugin` instances, e.g. `legendPlugin()` and `tooltipPlugin()`. |
+| `theme?` | built-in dark theme | Override chart, axis, palette, legend, and tooltip colors/fonts. |
 | `grid?` | `true` | Show grid lines. |
-| `gridStyle?` | `{ color: [0.22,0.30,0.44,0.45] }` | Grid line color and width. |
+| `gridStyle?` | `{ color: theme.gridColor }` | Grid line color and width; overrides the theme grid color. |
 | `axes?` | `true` | Show axis tick labels. `true`/`false`, or per-axis `{ x?: boolean \| AxisConfig, y?: boolean \| AxisConfig }`. |
+
+### `ChartTheme`
+
+```ts
+new Chart(container, {
+  theme: {
+    backgroundColor: [0.02, 0.03, 0.06, 1],
+    gridColor: [0.25, 0.32, 0.45, 0.35],
+    axisColor: "#cbd5e1",
+    seriesColors: [
+      [0.25, 0.65, 1.0, 1],
+      [1.0, 0.45, 0.45, 1],
+    ],
+  },
+});
+```
+
+Theme fields include `backgroundColor`, `gridColor`, `axisColor`, `axisFont`, `seriesColors`, and built-in plugin defaults for tooltip/legend colors and fonts. Per-series styles and plugin options still override theme defaults.
 
 ### `AxisConfig`
 

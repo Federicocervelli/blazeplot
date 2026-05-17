@@ -4,6 +4,11 @@ export interface LegendPluginOptions {
   readonly className?: string;
   readonly position?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
   readonly toggleOnClick?: boolean;
+  readonly backgroundColor?: string;
+  readonly borderColor?: string;
+  readonly textColor?: string;
+  readonly mutedTextColor?: string;
+  readonly font?: string;
   readonly render?: (state: readonly ChartSeriesState[], container: HTMLElement, chart: Chart) => void;
 }
 
@@ -23,6 +28,7 @@ function renderDefaultLegend(
   container: HTMLElement,
   chart: Chart,
   toggleOnClick: boolean,
+  options: LegendPluginOptions,
 ): void {
   container.replaceChildren();
 
@@ -36,8 +42,10 @@ function renderDefaultLegend(
     row.style.border = "0";
     row.style.padding = "2px 4px";
     row.style.background = "transparent";
-    row.style.color = item.visible ? "#dbeafe" : "#789";
-    row.style.font = "11px ui-monospace, monospace, sans-serif";
+    row.style.color = item.visible
+      ? options.textColor ?? chart.theme.legendTextColor
+      : options.mutedTextColor ?? chart.theme.legendMutedTextColor;
+    row.style.font = options.font ?? chart.theme.legendFont;
     row.style.textAlign = "left";
     row.style.cursor = toggleOnClick ? "pointer" : "default";
     row.style.opacity = item.visible ? "1" : "0.45";
@@ -71,9 +79,9 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.style.zIndex = "20";
       container.style.pointerEvents = "auto";
       container.style.padding = "6px";
-      container.style.border = "1px solid rgba(148, 163, 184, 0.22)";
+      container.style.border = `1px solid ${options.borderColor ?? chart.theme.legendBorderColor}`;
       container.style.borderRadius = "6px";
-      container.style.background = "rgba(15, 23, 42, 0.72)";
+      container.style.background = options.backgroundColor ?? chart.theme.legendBackgroundColor;
       container.style.backdropFilter = "blur(4px)";
       container.style.userSelect = "none";
       applyPosition(container, options.position ?? "top-right");
@@ -84,7 +92,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
         if (options.render) {
           options.render(state, container, chart);
         } else {
-          renderDefaultLegend(state, container, chart, options.toggleOnClick !== false);
+          renderDefaultLegend(state, container, chart, options.toggleOnClick !== false, options);
         }
       };
 

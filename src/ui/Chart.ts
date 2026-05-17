@@ -11,6 +11,8 @@ import type { ViewportPolicy } from "../interaction/types.js";
 import { AxisOverlay } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
+import { resolveChartTheme, rgbaCss } from "./theme.js";
+import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
@@ -47,6 +49,7 @@ export interface ChartOptions {
   readonly axes?: boolean | { x?: boolean | AxisConfig; y?: boolean | AxisConfig };
   readonly hover?: ChartPickOptions;
   readonly plugins?: readonly ChartPlugin[];
+  readonly theme?: ChartTheme;
 }
 
 export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
@@ -129,6 +132,7 @@ export class Chart {
   private readonly yTicks: number[] = [];
   private axisOverlay: AxisOverlay | null = null;
   private normalizedAxes: { x: NormalizedAxisConfig; y: NormalizedAxisConfig };
+  private readonly resolvedTheme: ResolvedChartTheme;
   private layout: ChartLayout;
   private stats: ChartFrameStats = {
     fps: 0,
@@ -160,6 +164,7 @@ export class Chart {
   };
 
   constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
+    this.resolvedTheme = resolveChartTheme(options.theme);
     const axesOpt = options.axes;
     if (axesOpt === false) {
       this.normalizedAxes = { x: { visible: false, position: "inside" }, y: { visible: false, position: "inside" } };
@@ -173,6 +178,7 @@ export class Chart {
     }
 
     this.layout = new ChartLayout(target, this.normalizedAxes);
+    this.layout.root.style.background = rgbaCss(this.resolvedTheme.backgroundColor);
     this.applyCanvasSize();
     this.camera = new Camera2D();
     this.axis = new AxisController(this.camera);
@@ -187,12 +193,15 @@ export class Chart {
     this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
     this.gridBuffer = this.renderer.createFloatBuffer(this.gridData.length);
     this.gridStyle = {
-      color: options.gridStyle?.color ?? [0.22, 0.30, 0.44, 0.45],
+      color: options.gridStyle?.color ?? this.resolvedTheme.gridColor,
       lineWidth: options.gridStyle?.lineWidth ?? 1,
     };
 
     if (this.normalizedAxes.x.visible || this.normalizedAxes.y.visible) {
-      this.axisOverlay = new AxisOverlay(this.layout, this.normalizedAxes);
+      this.axisOverlay = new AxisOverlay(this.layout, this.normalizedAxes, {
+        color: this.resolvedTheme.axisColor,
+        font: this.resolvedTheme.axisFont,
+      });
     }
 
     this.canvas.addEventListener("pointermove", this.handlePointerMove);
@@ -225,6 +234,10 @@ export class Chart {
     return this.layout.plot;
   }
 
+  get theme(): ResolvedChartTheme {
+    return this.resolvedTheme;
+  }
+
   dataToPlot(x: number, y: number): [number, number] {
     const [clipX, clipY] = this.camera.toClip(x, y);
     return this.camera.toScreen(clipX, clipY, this.canvas.clientWidth, this.canvas.clientHeight);
@@ -232,7 +245,9 @@ export class Chart {
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     const dataset: Dataset = config.dataset ?? new RingBuffer(config.capacity);
-    const color = style?.color ?? [0.3, 0.6, 1.0, 1.0];
+    const palette = this.resolvedTheme.seriesColors;
+    const paletteColor = palette[this.series.length % palette.length] ?? this.resolvedTheme.seriesColors[0]!;
+    const color = style?.color ?? paletteColor;
     const s = new SeriesStore(dataset, config, {
       color,
       lineWidth: style?.lineWidth ?? 1,
@@ -367,12 +382,8 @@ export class Chart {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Unable to create a 2D canvas context for screenshot export.");
 
-    if (options.background) {
-      ctx.fillStyle = options.background;
-      ctx.fillRect(0, 0, width, height);
-    } else {
-      ctx.clearRect(0, 0, width, height);
-    }
+    ctx.fillStyle = options.background ?? rgbaCss(this.resolvedTheme.backgroundColor);
+    ctx.fillRect(0, 0, width, height);
 
     ctx.drawImage(
       this.canvas,
@@ -417,8 +428,9 @@ export class Chart {
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
 
+    const [r, g, b, a] = this.resolvedTheme.backgroundColor;
     this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
-    this.renderer.clear(0.08, 0.10, 0.16, 1);
+    this.renderer.clear(r, g, b, a);
 
     const viewport = this.camera.viewport;
     if (this.options.grid !== false) {
