@@ -3,5 +3,7 @@ export type { ChartFrameStats, ChartOptions, ChartScreenshotOptions, AxisConfig,
 export type { AxisPosition } from "./ChartLayout.js";
 export { Axis } from "./Axis.js";
 export { Grid } from "./Grid.js";
-export { Legend } from "./Legend.js";
-export { Tooltip } from "./Tooltip.js";
+export { legendPlugin } from "./Legend.js";
+export type { LegendPluginOptions } from "./Legend.js";
+export { tooltipPlugin } from "./Tooltip.js";
+export type { TooltipPluginOptions } from "./Tooltip.js";

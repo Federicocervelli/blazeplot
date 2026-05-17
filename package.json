@@ -20,6 +20,14 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./plugins/legend": {
+      "types": "./dist/plugins/legend.d.ts",
+      "import": "./dist/plugins/legend.js"
+    },
+    "./plugins/tooltip": {
+      "types": "./dist/plugins/tooltip.d.ts",
+      "import": "./dist/plugins/tooltip.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

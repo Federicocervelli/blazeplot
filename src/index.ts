@@ -1,5 +1,5 @@
 export { Chart } from "./ui/Chart.js";
-export type { ChartFrameStats, ChartOptions, ChartScreenshotOptions, AxisConfig, TypedSeriesConfig } from "./ui/Chart.js";
+export type { ChartFrameStats, ChartOptions, ChartScreenshotOptions, AxisConfig, TypedSeriesConfig, ChartHoverState, ChartPickItem, ChartPickMode, ChartPickOptions, ChartPlugin, ChartPluginHandle, ChartSeriesState } from "./ui/Chart.js";
 export type { AxisPosition } from "./ui/ChartLayout.js";
 export { SeriesStore } from "./core/SeriesStore.js";
 export { RingBuffer } from "./core/RingBuffer.js";
@@ -7,5 +7,5 @@ export { StaticDataset } from "./core/StaticDataset.js";
 export { MinMaxPyramid } from "./core/MinMaxPyramid.js";
 export { Camera2D } from "./interaction/Camera2D.js";
 export { AxisController } from "./interaction/AxisController.js";
-export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesConfig, LODStrategy, Dataset, AppendableDataset } from "./core/types.js";
+export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesConfig, SeriesSample, LODStrategy, Dataset, AppendableDataset } from "./core/types.js";
 export type { PanIntent, ZoomAxis, ZoomIntent, ViewportPolicy } from "./interaction/types.js";

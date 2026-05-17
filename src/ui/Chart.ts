@@ -1,4 +1,4 @@
-import type { SeriesConfig, SeriesStyle, Dataset } from "../core/types.js";
+import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
@@ -23,14 +23,61 @@ export interface AxisConfig {
   readonly position?: AxisPosition;
 }
 
+export type ChartPickMode = "nearest-x" | "nearest-point";
+
+export interface ChartPickOptions {
+  readonly mode?: ChartPickMode;
+  readonly maxDistancePx?: number;
+}
+
+export interface ChartPluginHandle {
+  dispose(): void;
+}
+
+export interface ChartPlugin {
+  install(chart: Chart): void | (() => void) | ChartPluginHandle;
+}
+
 export interface ChartOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly grid?: boolean;
   readonly gridStyle?: Partial<SeriesStyle>;
   readonly axes?: boolean | { x?: boolean | AxisConfig; y?: boolean | AxisConfig };
+  readonly hover?: ChartPickOptions;
+  readonly plugins?: readonly ChartPlugin[];
 }
 
 export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
+
+export interface ChartSeriesState {
+  readonly series: SeriesStore;
+  readonly index: number;
+  readonly id?: string;
+  readonly name?: string;
+  readonly mode: SeriesMode;
+  readonly visible: boolean;
+  readonly color: readonly [number, number, number, number];
+}
+
+export interface ChartPickItem extends SeriesSample {
+  readonly series: SeriesStore;
+  readonly seriesIndex: number;
+  readonly id?: string;
+  readonly name?: string;
+  readonly mode: SeriesMode;
+}
+
+export interface ChartHoverState {
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly plotX: number;
+  readonly plotY: number;
+  readonly dataX: number;
+  readonly dataY: number;
+  readonly anchorX: number;
+  readonly mode: ChartPickMode;
+  readonly items: readonly ChartPickItem[];
+}
 
 export interface ChartScreenshotOptions {
   readonly type?: string;
@@ -84,8 +131,18 @@ export class Chart {
     renderMode: "none",
   };
   private resizeObserver: ResizeObserver | null = null;
+  private readonly pluginDisposers: Array<() => void> = [];
+  private readonly hoverSubscribers = new Set<(state: ChartHoverState | null) => void>();
+  private readonly seriesSubscribers = new Set<() => void>();
+  private currentHover: ChartHoverState | null = null;
   private lastFrameAt: number = 0;
   private _rafId: number = 0;
+  private readonly handlePointerMove = (event: PointerEvent): void => {
+    this.emitHover(this.pick(event.clientX, event.clientY));
+  };
+  private readonly handlePointerLeave = (): void => {
+    this.emitHover(null);
+  };
 
   constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
     const axesOpt = options.axes;
@@ -121,14 +178,34 @@ export class Chart {
       this.axisOverlay = new AxisOverlay(this.layout, this.normalizedAxes);
     }
 
+    this.canvas.addEventListener("pointermove", this.handlePointerMove);
+    this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
+
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.resize());
       this.resizeObserver.observe(this.layout.plot);
+    }
+
+    for (const plugin of options.plugins ?? []) {
+      const installed = plugin.install(this);
+      if (typeof installed === "function") {
+        this.pluginDisposers.push(installed);
+      } else if (installed) {
+        this.pluginDisposers.push(() => installed.dispose());
+      }
     }
   }
 
   get canvas(): HTMLCanvasElement {
     return this.layout.canvas;
+  }
+
+  get rootElement(): HTMLElement {
+    return this.layout.root;
+  }
+
+  get plotElement(): HTMLElement {
+    return this.layout.plot;
   }
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
@@ -143,6 +220,7 @@ export class Chart {
       fillColor: style?.fillColor ?? [color[0], color[1], color[2], color[3] * 0.25],
     });
     this.series.push(s);
+    this.emitSeriesChange();
     return s;
   }
 
@@ -167,7 +245,28 @@ export class Chart {
     if (index === -1) return false;
 
     this.series.splice(index, 1);
+    this.emitSeriesChange();
     return true;
+  }
+
+  setSeriesVisible(series: SeriesStore, visible: boolean): boolean {
+    if (!this.series.includes(series)) return false;
+    if (series.visible === visible) return true;
+    series.setVisible(visible);
+    this.emitSeriesChange();
+    return true;
+  }
+
+  getSeriesState(): ChartSeriesState[] {
+    return this.series.map((series, index) => ({
+      series,
+      index,
+      id: series.config.id,
+      name: series.config.name,
+      mode: series.config.mode,
+      visible: series.visible,
+      color: series.style.color,
+    }));
   }
 
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void {
@@ -186,6 +285,47 @@ export class Chart {
     target.uploadBytes = this.stats.uploadBytes;
     target.renderMode = this.stats.renderMode;
     return target;
+  }
+
+  getHoverState(): ChartHoverState | null {
+    return this.currentHover;
+  }
+
+  subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
+  subscribe(event: "serieschange", callback: () => void): () => void;
+  subscribe(event: "hover" | "serieschange", callback: ((state: ChartHoverState | null) => void) | (() => void)): () => void {
+    if (event === "hover") {
+      const cb = callback as (state: ChartHoverState | null) => void;
+      this.hoverSubscribers.add(cb);
+      return () => this.hoverSubscribers.delete(cb);
+    }
+
+    const cb = callback as () => void;
+    this.seriesSubscribers.add(cb);
+    return () => this.seriesSubscribers.delete(cb);
+  }
+
+  pick(clientX: number, clientY: number, options: ChartPickOptions = {}): ChartHoverState | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    const plotX = clientX - rect.left;
+    const plotY = clientY - rect.top;
+    if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
+
+    const viewport = this.camera.viewport;
+    const dataX = viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin);
+    const dataY = viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin);
+    const mode = options.mode ?? this.options.hover?.mode ?? "nearest-x";
+    const maxDistancePx = options.maxDistancePx ?? this.options.hover?.maxDistancePx ?? Infinity;
+    const anchorX = mode === "nearest-point"
+      ? this.findNearestPointAnchor(dataX, dataY, viewport, rect.width, rect.height, maxDistancePx)
+      : dataX;
+
+    if (anchorX === null) return null;
+
+    const items = this.collectPickItems(anchorX, clientX, clientY, viewport, rect);
+    return { clientX, clientY, plotX, plotY, dataX, dataY, anchorX, mode, items };
   }
 
   async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
@@ -322,6 +462,9 @@ export class Chart {
   dispose(): void {
     this.stop();
     this.resizeObserver?.disconnect();
+    this.canvas.removeEventListener("pointermove", this.handlePointerMove);
+    this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
+    for (const dispose of this.pluginDisposers.splice(0)) dispose();
     this.input.dispose();
     this.axisOverlay?.dispose();
     this.renderer.dispose();
@@ -417,6 +560,68 @@ export class Chart {
     this.recordRenderMode(mode);
     this.stats.pointsRendered += count;
     this.stats.drawCalls++;
+  }
+
+  private findNearestPointAnchor(
+    dataX: number,
+    dataY: number,
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+    plotWidth: number,
+    plotHeight: number,
+    maxDistancePx: number,
+  ): number | null {
+    let best: SeriesSample | null = null;
+    for (const series of this.series) {
+      if (!series.visible) continue;
+      const sample = series.nearestSampleByPoint(dataX, dataY, viewport, plotWidth, plotHeight);
+      if (!sample) continue;
+      if (!best || (sample.distancePx ?? Infinity) < (best.distancePx ?? Infinity)) {
+        best = sample;
+      }
+    }
+
+    if (!best || (best.distancePx ?? Infinity) > maxDistancePx) return null;
+    return best.x;
+  }
+
+  private collectPickItems(
+    anchorX: number,
+    clientX: number,
+    clientY: number,
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+    rect: DOMRect,
+  ): ChartPickItem[] {
+    const items: ChartPickItem[] = [];
+    for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
+      const series = this.series[seriesIndex]!;
+      if (!series.visible) continue;
+      const sample = series.nearestSampleByX(anchorX, viewport);
+      if (!sample) continue;
+
+      const [clipX, clipY] = this.camera.toClip(sample.x, sample.y);
+      const [screenX, screenY] = this.camera.toScreen(clipX, clipY, rect.width, rect.height);
+      const dx = rect.left + screenX - clientX;
+      const dy = rect.top + screenY - clientY;
+      items.push({
+        ...sample,
+        distancePx: Math.hypot(dx, dy),
+        series,
+        seriesIndex,
+        id: series.config.id,
+        name: series.config.name,
+        mode: series.config.mode,
+      });
+    }
+    return items;
+  }
+
+  private emitHover(state: ChartHoverState | null): void {
+    this.currentHover = state;
+    for (const callback of this.hoverSubscribers) callback(state);
+  }
+
+  private emitSeriesChange(): void {
+    for (const callback of this.seriesSubscribers) callback();
   }
 
   private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, dpr: number): void {

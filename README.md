@@ -61,6 +61,7 @@ push();
 | **Grid lines** | Data-anchored grid rendered as WebGL line lists. |
 | **Axis labels** | Smart tick generation with DOM labels. Per-axis `inside`/`outside` positioning; outside axes reserve real layout gutters. |
 | **Multi-series** | Independent buffers, styles, and visibility per series. Line, area, scatter, and bar modes are supported. |
+| **Plugin-ready UI** | Optional built-in `legendPlugin()` and `tooltipPlugin()` use the same public state and hover APIs available to custom plugins. |
 | **Benchmark overlay** | Built-in fps, frame time, vertex count, draw calls. |
 | **ResizeObserver** | Automatic DPR-aware canvas sizing. |
 
@@ -80,6 +81,10 @@ push();
 | `chart.stop()` | Stop the render loop. |
 | `chart.canvas` | Read-only access to the internal plot canvas. |
 | `chart.getFrameStats(target?)` | Copy per-frame benchmark counters into a reusable object. |
+| `chart.getSeriesState()` | Return public series metadata/state for plugins or custom UI. |
+| `chart.setSeriesVisible(series, visible)` | Toggle visibility and notify series-state subscribers. |
+| `chart.pick(clientX, clientY, options?)` | Raw-data hit test. Supports `"nearest-x"` and `"nearest-point"`. |
+| `chart.subscribe("hover", cb)` / `chart.subscribe("serieschange", cb)` | Subscribe to hover or series state changes. Returns an unsubscribe function. |
 | `await chart.screenshot(options?)` | Export the full chart as an image `Blob`, including the WebGL plot and built-in DOM text overlays. |
 | `chart.dispose()` | Dispose GPU resources, observers, input handlers, and owned DOM layout. |
 
@@ -88,6 +93,8 @@ push();
 | Property | Default | Description |
 |---|---|---|
 | `viewportPolicy?` | — | Custom pan/zoom/viewport behavior hooks. |
+| `hover?` | `{ mode: "nearest-x" }` | Default hover picking behavior. `mode` can be `"nearest-x"` or `"nearest-point"`. |
+| `plugins?` | `[]` | Optional `ChartPlugin` instances, e.g. `legendPlugin()` and `tooltipPlugin()`. |
 | `grid?` | `true` | Show grid lines. |
 | `gridStyle?` | `{ color: [0.22,0.30,0.44,0.45] }` | Grid line color and width. |
 | `axes?` | `true` | Show axis tick labels. `true`/`false`, or per-axis `{ x?: boolean \| AxisConfig, y?: boolean \| AxisConfig }`. |
@@ -117,6 +124,24 @@ new Chart(canvas, {
 | `uploadBytes` | Bytes uploaded to GPU this frame. |
 | `renderMode` | `"none"` / `"raw"` / `"minmax"` / `"points"` / `"bars"` / `"area"` / `"mixed"`. |
 
+### Plugins
+
+```js
+import { Chart } from "blazeplot";
+import { legendPlugin } from "blazeplot/plugins/legend";
+import { tooltipPlugin } from "blazeplot/plugins/tooltip";
+
+const chart = new Chart(container, {
+  hover: { mode: "nearest-x" },
+  plugins: [
+    legendPlugin(),
+    tooltipPlugin({ mode: "nearest-point" }),
+  ],
+});
+```
+
+Built-in plugins are optional. They consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract.
+
 ### `SeriesStore`
 
 | Signature | Description |
@@ -133,6 +158,7 @@ new Chart(canvas, {
 |---|---|
 | `mode` | `"line"` / `"area"` / `"scatter"` / `"bar"` / `"envelope"` (envelope roadmap-only). |
 | `capacity` | Ring buffer capacity (samples). |
+| `id?` / `name?` | Optional metadata exposed to plugins, legend, and tooltip rows. |
 | `downsample` | `"minmax"` or `"none"`. Min/max LOD applies to line and bar rendering; area/scatter skip LOD. |
 
 ### `SeriesStyle`

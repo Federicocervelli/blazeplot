@@ -1,4 +1,4 @@
-import type { Dataset, AppendableDataset, LODView, Viewport, SeriesConfig, SeriesStyle } from "./types.js";
+import type { Dataset, AppendableDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
 export class SeriesStore {
@@ -92,6 +92,57 @@ export class SeriesStore {
     return Math.max(0, end - start);
   }
 
+  sampleAt(index: number): SeriesSample | null {
+    if (index < 0 || index >= this.dataset.length) return null;
+    return { index, x: this.dataset.getX(index), y: this.dataset.getY(index) };
+  }
+
+  nearestSampleByX(x: number, viewport?: Viewport): SeriesSample | null {
+    const range = this.visibleIndexRange(viewport);
+    if (range.start >= range.end) return null;
+
+    const lower = this.dataset.lowerBoundX(x);
+    let bestIndex = Math.min(Math.max(lower, range.start), range.end - 1);
+    const prevIndex = bestIndex - 1;
+    if (prevIndex >= range.start) {
+      const bestDx = Math.abs(this.dataset.getX(bestIndex) - x);
+      const prevDx = Math.abs(this.dataset.getX(prevIndex) - x);
+      if (prevDx <= bestDx) bestIndex = prevIndex;
+    }
+
+    return this.sampleAt(bestIndex);
+  }
+
+  nearestSampleByPoint(
+    x: number,
+    y: number,
+    viewport: Viewport,
+    plotWidth: number,
+    plotHeight: number,
+  ): SeriesSample | null {
+    const range = this.visibleIndexRange(viewport);
+    if (range.start >= range.end || plotWidth <= 0 || plotHeight <= 0) return null;
+
+    const xScale = plotWidth / (viewport.xMax - viewport.xMin);
+    const yScale = plotHeight / (viewport.yMax - viewport.yMin);
+    let bestIndex = -1;
+    let bestDistanceSq = Infinity;
+
+    for (let i = range.start; i < range.end; i++) {
+      const dx = (this.dataset.getX(i) - x) * xScale;
+      const dy = (this.dataset.getY(i) - y) * yScale;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestDistanceSq) {
+        bestDistanceSq = d2;
+        bestIndex = i;
+      }
+    }
+
+    if (bestIndex < 0) return null;
+    const sample = this.sampleAt(bestIndex);
+    return sample ? { ...sample, distancePx: Math.sqrt(bestDistanceSq) } : null;
+  }
+
   copyRawVisible(viewport: Viewport, target: Float32Array, maxPoints: number): number {
     return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0);
   }
@@ -106,6 +157,14 @@ export class SeriesStore {
 
   copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number): number {
     return this.copyMinMaxSegments(viewport, target, maxSegments, "instanced");
+  }
+
+  private visibleIndexRange(viewport: Viewport | undefined): { start: number; end: number } {
+    if (!viewport) return { start: 0, end: this.dataset.length };
+    return {
+      start: this.dataset.lowerBoundX(viewport.xMin),
+      end: this.dataset.upperBoundX(viewport.xMax),
+    };
   }
 
   private copyVisibleSamples(

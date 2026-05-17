@@ -26,9 +26,13 @@ export default defineConfig(({ command, mode }) => {
       emptyOutDir: true,
       outDir: resolve(__dirname, "dist"),
       lib: {
-        entry: resolve(__dirname, "src/index.ts"),
+        entry: {
+          index: resolve(__dirname, "src/index.ts"),
+          "plugins/legend": resolve(__dirname, "src/plugins/legend.ts"),
+          "plugins/tooltip": resolve(__dirname, "src/plugins/tooltip.ts"),
+        },
         formats: ["es"],
-        fileName: "index",
+        fileName: (_format, entryName) => `${entryName}.js`,
       },
       rollupOptions: {
         external: ["regl"],

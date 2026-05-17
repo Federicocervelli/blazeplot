@@ -39,11 +39,13 @@
 - LOD queries use sorted logical X values via `RingBuffer.lowerBoundX` / `upperBoundX`; preserve that assumption when changing append/query code.
 - `Chart.render()` calls `SeriesStore.rebuildPyramid()` before drawing visible series and re-extracts visible samples/segments from the current `Camera2D` viewport every frame.
 - `ViewportPolicy` transforms `PanIntent`/`ZoomIntent` and can update `Camera2D` before render. Keep behavior rules there, not in core/rendering.
+- Optional built-ins like legend and tooltip are Chart plugins exported from subpaths (`blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`). `Chart` owns only the lightweight plugin contract and public state/pick APIs; avoid importing built-in plugins into `Chart.ts` or the top-level entry.
 - In the preview, synced-X behavior keeps live X follow active while wheel zoom/pan are Y-only.
 
 ## TypeScript Conventions
 
 - Package source under `src/` uses ESM-style `.js` relative import specifiers so emitted JS and declarations line up for npm consumers.
+- Optional plugin subpath entries live under `src/plugins/` and are configured as separate Vite library entries plus `package.json` subpath exports to keep chart-only imports lean.
 - Use the `@/*` alias for `src/*` when it improves clarity; it is configured in both `tsconfig.json` and `vite.config.ts`.
 - Prefer relative imports inside `src/` package code so declaration output does not leak the `@/*` alias. `preview/` can use `@/*`.
 - `tsconfig.json` is strict and enables `noUncheckedIndexedAccess`, `noUnusedLocals`, and `noUnusedParameters`; unused placeholders are usually prefixed with `_`.
@@ -51,5 +53,5 @@
 
 ## Tests
 
-- Tests currently cover core data structures and `Camera2D` only (`tests/core`, `tests/interaction`).
+- Tests currently cover core data structures (including raw sample picking helpers) and `Camera2D`/axis behavior only (`tests/core`, `tests/interaction`).
 - There is no DOM/WebGL test harness; rendering behavior is best checked through `bun run dev`, `bun run build`, and manual preview checks unless a test harness is added.

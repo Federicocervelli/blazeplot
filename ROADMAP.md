@@ -13,7 +13,8 @@ src/
   core/          # Data model — series, datasets, LOD
   render/        # GPU abstraction + regl V1 backend
   interaction/   # Camera, input, axis ticks
-  ui/            # Orchestrator (Chart)
+  ui/            # Orchestrator (Chart) + optional DOM plugin implementations
+  plugins/       # Optional plugin subpath entrypoints
 tests/            # bun test — core, interaction
 preview/          # Dev preview harness, detached from package build
 ```
@@ -100,8 +101,8 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] Axis tick labels (DOM overlay)
 - [x] LOD re-query on pan/zoom (viewport change → current camera viewport is used for line visible extraction each frame; dirty pyramids rebuild before draw)
 - [ ] Box-select / region zoom
-- [ ] Tooltip / hit testing
-- [ ] Legend
+- [x] Tooltip / hit testing API (`chart.pick`, hover subscription, raw-data nearest-X/nearest-point modes)
+- [x] Legend plugin (built-in DOM plugin backed by public series metadata/state APIs)
 
 Camera modifies `Camera2D`, renderer reads it. No direct data access from interaction layer.
 
@@ -140,13 +141,16 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Axis labels / tick rendering (DOM layout, `axes: false` to disable)
 - [x] `chart.screenshot()` / export image (full chart composite: WebGL plot + built-in DOM text overlays)
 - [ ] Theme system
-- [ ] Legend
-- [ ] Tooltip / hit testing
+- [x] Plugin API (`ChartPlugin`, `plugins` option, disposable installs)
+- [x] Optional plugin subpath exports (`blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`) so chart-only imports do not need to import built-in UI plugins
+- [x] Legend plugin (`legendPlugin`) built on public series state APIs
+- [x] Tooltip / hit testing (`tooltipPlugin`, `chart.pick`, `chart.subscribe("hover")`)
 - [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)` helpers.
 
 Package status:
 - [x] Current npm package version: `0.1.7`
 - [x] `exports`, `main`, `module`, and `types` point at `dist/`
+- [x] Optional plugin subpath exports point at separate `dist/plugins/*` chunks
 - [x] Vite library build from `src/index.ts`
 - [x] Declaration emit via `vite-plugin-dts`
 - [x] CI release workflow with npm publish and provenance

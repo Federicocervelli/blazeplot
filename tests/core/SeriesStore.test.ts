@@ -90,6 +90,27 @@ describe("SeriesStore", () => {
     expect(series.visibleSampleCount({ xMin: 1, xMax: 2, yMin: 0, yMax: 1 })).toBe(2);
   });
 
+  it("finds nearest raw sample by x within the viewport", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([10, 20, 30, 40]));
+
+    const sample = series.nearestSampleByX(1.8, { xMin: 0, xMax: 3, yMin: 0, yMax: 50 });
+
+    expect(sample).toEqual({ index: 2, x: 2, y: 30 });
+  });
+
+  it("finds nearest raw sample by screen-space point", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 1, 2]), new Float32Array([0, 10, 0]));
+
+    const sample = series.nearestSampleByPoint(1.1, 9, { xMin: 0, xMax: 2, yMin: 0, yMax: 10 }, 200, 100);
+
+    expect(sample?.index).toBe(1);
+    expect(sample?.x).toBe(1);
+    expect(sample?.y).toBe(10);
+    expect(sample?.distancePx).toBeGreaterThan(0);
+  });
+
   it("clears buffered data and rebuilt LOD state", () => {
     const series = makeSeries();
     series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([10, 20, 30, 40]));

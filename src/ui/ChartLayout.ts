@@ -93,6 +93,7 @@ export class ChartLayout implements ChartLayoutElements {
   }
 
   private applyBaseStyles(): void {
+    this.root.style.position = "relative";
     this.root.style.display = "grid";
     this.root.style.width = "100%";
     this.root.style.height = "100%";
