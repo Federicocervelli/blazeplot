@@ -30,6 +30,7 @@
 - `ReglBackend` requires WebGL2. It implements buffer creation/update, program handles, cached draw commands, instanced attributes, and resource disposal for current line, min/max segment, scatter, bar, and area rendering needs.
 - `ReglBackend.viewport()` uses WebGL scissor test to clip draws; it does **not** change the GL viewport. `clear()` is unaffected and always clears the full canvas.
 - `ChartLayout` owns the DOM layout. Outside axes reserve real grid gutters, while the WebGL canvas is sized to the plot area only.
+- `chart.screenshot()` composites the plot WebGL canvas plus built-in DOM text overlays into one exported image; keep DOM overlay text under the chart root for inclusion.
 - `AxisOverlay` attaches tick label elements either to the plot layer (`inside`) or to the axis gutter layer (`outside`).
 - Axis `outside` positioning reserves fixed CSS-pixel gutters: 52px left for Y, 28px bottom for X. Defined by `LEFT_AXIS_GUTTER_CSS` / `BOTTOM_AXIS_GUTTER_CSS` in `ChartLayout.ts`.
 - `MinMaxPyramid` updates incrementally for tail appends and falls back to full rebuild on wrap/clear.

@@ -32,6 +32,13 @@ export interface ChartOptions {
 
 export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
 
+export interface ChartScreenshotOptions {
+  readonly type?: string;
+  readonly quality?: number;
+  readonly background?: string;
+  readonly dpr?: number;
+}
+
 export interface ChartFrameStats {
   fps: number;
   frameMs: number;
@@ -179,6 +186,46 @@ export class Chart {
     target.uploadBytes = this.stats.uploadBytes;
     target.renderMode = this.stats.renderMode;
     return target;
+  }
+
+  async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
+    this.render();
+
+    const rootRect = this.layout.root.getBoundingClientRect();
+    const plotRect = this.layout.plot.getBoundingClientRect();
+    const dpr = Number.isFinite(options.dpr) ? Math.max(1, options.dpr!) : Math.max(1, globalThis.devicePixelRatio || 1);
+    const width = Math.max(1, Math.round(rootRect.width * dpr));
+    const height = Math.max(1, Math.round(rootRect.height * dpr));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Unable to create a 2D canvas context for screenshot export.");
+
+    if (options.background) {
+      ctx.fillStyle = options.background;
+      ctx.fillRect(0, 0, width, height);
+    } else {
+      ctx.clearRect(0, 0, width, height);
+    }
+
+    ctx.drawImage(
+      this.canvas,
+      (plotRect.left - rootRect.left) * dpr,
+      (plotRect.top - rootRect.top) * dpr,
+      plotRect.width * dpr,
+      plotRect.height * dpr,
+    );
+    this.drawDomTextForScreenshot(ctx, rootRect, dpr);
+
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => blob ? resolve(blob) : reject(new Error("Unable to encode chart screenshot.")),
+        options.type ?? "image/png",
+        options.quality,
+      );
+    });
   }
 
   start(): void {
@@ -370,6 +417,29 @@ export class Chart {
     this.recordRenderMode(mode);
     this.stats.pointsRendered += count;
     this.stats.drawCalls++;
+  }
+
+  private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, dpr: number): void {
+    const elements = this.layout.root.querySelectorAll<HTMLElement>("div");
+    for (const el of elements) {
+      const text = el.textContent;
+      if (!text || el.children.length > 0) continue;
+
+      const style = getComputedStyle(el);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.font = style.font;
+      ctx.fillStyle = style.color;
+      ctx.textBaseline = "top";
+      ctx.textAlign = "left";
+      ctx.fillText(text, rect.left - rootRect.left, rect.top - rootRect.top);
+      ctx.restore();
+    }
   }
 
   private maxMinMaxSegments(): number {

@@ -1,5 +1,5 @@
 export { Chart } from "./Chart.js";
-export type { ChartFrameStats, ChartOptions, AxisConfig, TypedSeriesConfig } from "./Chart.js";
+export type { ChartFrameStats, ChartOptions, ChartScreenshotOptions, AxisConfig, TypedSeriesConfig } from "./Chart.js";
 export type { AxisPosition } from "./ChartLayout.js";
 export { Axis } from "./Axis.js";
 export { Grid } from "./Grid.js";

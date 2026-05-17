@@ -72,6 +72,7 @@ push();
 |---|---|
 | `new Chart(container, options?)` | Create a chart inside an HTML container element. The chart owns the plot canvas and axis layout. |
 | `chart.addSeries(config, style?)` | Add a data series. Returns `SeriesStore`. |
+| `chart.addLine(config, style?)` / `addArea` / `addScatter` / `addBar` | Typed helpers that set the series mode for you. |
 | `chart.removeSeries(series)` | Remove a previously added series. |
 | `chart.setViewport({ xMin, xMax, yMin, yMax })` | Set the visible data range. |
 | `chart.resize(dpr?)` | Resize the internal plot canvas to match its CSS size × DPR. |
@@ -79,6 +80,7 @@ push();
 | `chart.stop()` | Stop the render loop. |
 | `chart.canvas` | Read-only access to the internal plot canvas. |
 | `chart.getFrameStats(target?)` | Copy per-frame benchmark counters into a reusable object. |
+| `await chart.screenshot(options?)` | Export the full chart as an image `Blob`, including the WebGL plot and built-in DOM text overlays. |
 | `chart.dispose()` | Dispose GPU resources, observers, input handlers, and owned DOM layout. |
 
 ### `ChartOptions`
@@ -131,7 +133,7 @@ new Chart(canvas, {
 |---|---|
 | `mode` | `"line"` / `"area"` / `"scatter"` / `"bar"` / `"envelope"` (envelope roadmap-only). |
 | `capacity` | Ring buffer capacity (samples). |
-| `downsample` | `"minmax"` or `"none"`. Min/max LOD applies to line rendering; area/scatter/bar skip LOD. |
+| `downsample` | `"minmax"` or `"none"`. Min/max LOD applies to line and bar rendering; area/scatter skip LOD. |
 
 ### `SeriesStyle`
 

@@ -138,7 +138,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] ResizeObserver integration
 - [x] Grid
 - [x] Axis labels / tick rendering (DOM layout, `axes: false` to disable)
-- [ ] `chart.screenshot()` / export image
+- [x] `chart.screenshot()` / export image (full chart composite: WebGL plot + built-in DOM text overlays)
 - [ ] Theme system
 - [ ] Legend
 - [ ] Tooltip / hit testing
