@@ -17,7 +17,8 @@ copyIcon?.addEventListener("click", () => {
 console.info("[blazeplot] preview starting");
 
 const BATCH_SIZE = 16;
-const VIEW_SAMPLES = 65_536;
+const VIEW_SAMPLES = 10_000_000;
+const PREPOPULATE_CHUNK = 100_000;
 const xBuf = new Float64Array(BATCH_SIZE);
 const yBuf = new Float32Array(BATCH_SIZE);
 let t = 0;
@@ -25,6 +26,7 @@ let frames = 0;
 let lastStatsAt = performance.now();
 let followLive = true;
 const syncX = true;
+let streaming = false;
 const chartStats: ChartFrameStats = {
   fps: 0,
   frameMs: 0,
@@ -67,56 +69,78 @@ const canvas = chart.canvas;
 
 // line series — top band (y ~0.7–1.3)
 const lineSeries = chart.addSeries(
-  { mode: "line", capacity: 10_000_000, downsample: "minmax", name: "Wave" },
+  { mode: "line", capacity: 12_000_000, downsample: "minmax", name: "Wave" },
   { color: [0.3, 0.6, 1.0, 1.0], lineWidth: 1 },
 );
 
 // scatter series — middle band (y ~0–0.5)
 const scatterSeries = chart.addSeries(
-  { mode: "scatter", capacity: 1_000_000, downsample: "none", name: "Spikes" },
+  { mode: "scatter", capacity: 100_000, downsample: "none", name: "Spikes" },
   { color: [0.95, 0.35, 0.35, 1.0], pointSize: 5 },
 );
 
 // bar series — bottom band (baseline -0.9, bars up to -0.3)
 const barSeries = chart.addSeries(
-  { mode: "bar", capacity: 1_000_000, downsample: "minmax", name: "Power" },
+  { mode: "bar", capacity: 100_000, downsample: "minmax", name: "Power" },
   { color: [0.2, 0.8, 0.4, 0.7], barWidth: 48, baseline: -0.9 },
 );
 
 chart.setViewport({ xMin: 0, xMax: VIEW_SAMPLES, yMin: -1.5, yMax: 1.5 });
-chart.start();
 
-console.info("[blazeplot] chart initialized", {
-  canvasWidth: canvas.width,
-  canvasHeight: canvas.height,
-  batchSize: BATCH_SIZE,
-});
+console.info("[blazeplot] pre-populating 10M wave points...");
 
-function stream(): void {
-  // Wave — top band (centered around y = +0.8)
-  for (let i = 0; i < BATCH_SIZE; i++) {
-    xBuf[i] = t;
-    yBuf[i] = Math.sin(t * 0.01) * 0.25 + 0.8 + Math.random() * 0.01;
+let frameCount = 0;
+
+function prepopulate(): boolean {
+  const count = Math.min(PREPOPULATE_CHUNK, VIEW_SAMPLES - t);
+  if (count <= 0) return true;
+
+  const px = new Float64Array(count);
+  const py = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    px[i] = t;
+    py[i] = Math.sin(t * 0.01) * 0.25 + 0.8 + Math.random() * 0.01;
     t++;
   }
-  lineSeries.append(xBuf, yBuf);
+  lineSeries.append(px, py);
 
-  // Spikes — middle band (every 64 samples, one spike)
-  if (t % 64 === 0) {
-    const spikeX = new Float64Array(1);
-    const spikeY = new Float32Array(1);
-    spikeX[0] = t - 1;
-    spikeY[0] = 0.15 + Math.random() * 0.35;
-    scatterSeries.append(spikeX, spikeY);
+  if (overlayText) {
+    overlayText.textContent = `Pre-populating ${(t / 1_000_000).toFixed(1)}M / 10M`;
   }
+  return t >= VIEW_SAMPLES;
+}
 
-  // Power — bottom band (every 64 samples, one bar from -0.9 up)
-  if (t % 64 === 0) {
-    const barX = new Float64Array(1);
-    const barY = new Float32Array(1);
-    barX[0] = t - 1;
-    barY[0] = -0.9 + Math.abs(Math.sin(t * 0.005)) * 0.5 + 0.1;
-    barSeries.append(barX, barY);
+function stream(): void {
+  if (!streaming) return;
+  frameCount++;
+
+  // Slow streaming: only add data every 4 frames
+  if (frameCount % 4 === 0) {
+    // Wave
+    for (let i = 0; i < BATCH_SIZE; i++) {
+      xBuf[i] = t;
+      yBuf[i] = Math.sin(t * 0.01) * 0.25 + 0.8 + Math.random() * 0.01;
+      t++;
+    }
+    lineSeries.append(xBuf, yBuf);
+
+    // Spikes + Power every 512 samples
+    if (t % 512 < BATCH_SIZE) {
+      if (scatterSeries.length < scatterSeries.config.capacity) {
+        const spikeX = new Float64Array(1);
+        const spikeY = new Float32Array(1);
+        spikeX[0] = t - 1;
+        spikeY[0] = 0.15 + Math.random() * 0.35;
+        scatterSeries.append(spikeX, spikeY);
+      }
+      if (barSeries.length < barSeries.config.capacity) {
+        const barX = new Float64Array(1);
+        const barY = new Float32Array(1);
+        barX[0] = t - 1;
+        barY[0] = -0.9 + Math.abs(Math.sin(t * 0.005)) * 0.5 + 0.1;
+        barSeries.append(barX, barY);
+      }
+    }
   }
 
   frames++;
@@ -132,7 +156,6 @@ function stream(): void {
         `sync x: ${syncX}`,
         `follow live: ${followLive}`,
         `points appended: ${t.toLocaleString()}`,
-        `batch/frame: ${BATCH_SIZE.toLocaleString()}`,
         `view samples: ${VIEW_SAMPLES.toLocaleString()}`,
         `stream fps: ${fps.toFixed(1)}`,
         `render fps: ${chartStats.fps.toFixed(1)}`,
@@ -150,4 +173,17 @@ function stream(): void {
   requestAnimationFrame(stream);
 }
 
-requestAnimationFrame(stream);
+// Pre-populate loop — yields via rAF so the page stays responsive
+function prepopLoop(): void {
+  const done = prepopulate();
+  if (done) {
+    console.info("[blazeplot] pre-population done, starting render loop");
+    streaming = true;
+    stream();
+  } else {
+    requestAnimationFrame(prepopLoop);
+  }
+}
+
+chart.start();
+prepopLoop();
