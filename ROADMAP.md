@@ -72,6 +72,8 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 
 **Status: line, min/max, scatter, bar, and area rendering done; advanced modes and batching pending**
 
+Raw scatter and area rendering now chunk through all visible samples instead of stride-sampling at the upload-buffer limit, so no-LOD visual density remains stable for point/area traces.
+
 - [x] `ReglBackend` — createBuffer, updateBuffer (subdata), createProgram, draw command cache
 - [x] Raw line strip for few visible points
 - [x] `MinMaxSegmentRenderer` — vertical min/max segments for dense viewports
@@ -93,7 +95,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 **Status: implemented (camera + optional interactions plugin)**
 
 - [x] `Camera2D` — viewport model with pan, zoom, setViewport
-- [x] Interaction plugin — plain-drag box zoom, Shift+drag plot pan, axis drag pan, wheel/axis zoom, double-click reset, configurable `"x" | "y" | "xy"` axis
+- [x] Interaction plugin — plain-drag box zoom, Shift+drag plot pan, axis drag pan, wheel/axis zoom, double-click reset, configurable `"x" | "y" | "xy"` axis, including dynamic axis callbacks for runtime policies
 - [x] `ViewportPolicy` — transforms plugin pan/zoom intents and can update camera before render
 - [x] Camera uniforms propagated to shaders per frame
 - [x] `AxisController` — smart tick generation and label formatting
@@ -117,7 +119,8 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Color/style per-series
 - [x] Series visibility toggle
 - [ ] Batched draw calls (same shader → one draw per series group)
-- [ ] Mixed chart types (line + scatter + bar + area supported; OHLC pending)
+- [x] Mixed chart types (line + scatter + bar + area supported)
+- [ ] OHLC / candlestick mixed chart support
 - [ ] Shared X axis optional, independent Y per series
 - [ ] Secondary axis
 
@@ -137,10 +140,10 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] `series.clear()`
 - [x] `chart.removeSeries(series)`
 - [x] ResizeObserver integration
-- [x] Grid
-- [x] Axis labels / tick rendering (DOM layout, `axes: false` to disable)
+- [x] Grid, including runtime `chart.setGridVisible()` / `chart.getGridVisible()`
+- [x] Axis labels / tick rendering (DOM layout, `axes: false` to disable, runtime `chart.setAxes()`)
 - [x] `chart.screenshot()` / export image (full chart composite: WebGL plot + built-in DOM text overlays)
-- [x] Theme system (`theme` option, resolved `chart.theme`, themed plot background/grid/axes/default palette plus built-in legend/tooltip defaults)
+- [x] Theme system (`theme` option, `chart.setTheme()`, resolved `chart.theme`, themed plot background/grid/axes/default palette plus built-in legend/tooltip defaults)
 - [x] Plugin API (`ChartPlugin`, `plugins` option, disposable installs)
 - [x] Optional plugin subpath exports (`blazeplot/plugins/interactions`, `blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`) so chart-only imports do not need to import built-in UI plugins
 - [x] Legend plugin (`legendPlugin`) built on public series state APIs
@@ -148,7 +151,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)` helpers.
 
 Package status:
-- [x] Current npm package version: `0.1.10`
+- [x] Current npm package version: `0.1.12`
 - [x] `exports`, `main`, `module`, and `types` point at `dist/`
 - [x] Optional plugin subpath exports point at separate `dist/plugins/*` chunks
 - [x] Vite library build from `src/index.ts`
