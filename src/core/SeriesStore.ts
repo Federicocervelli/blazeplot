@@ -1,12 +1,8 @@
-import type { Dataset, AppendableDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, RangeMinMaxDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
-type MinMaxYDataset = Dataset & {
-  minMaxY(start: number, end: number): { minY: number; maxY: number } | null;
-};
-
-function hasMinMaxY(dataset: Dataset): dataset is MinMaxYDataset {
-  return "minMaxY" in dataset;
+function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
+  return "rangeMinMaxY" in dataset;
 }
 
 export class SeriesStore {
@@ -285,7 +281,7 @@ export class SeriesStore {
   }
 
   private rawMinMaxForRange(start: number, end: number): { minY: number; maxY: number } | null {
-    if (hasMinMaxY(this.dataset)) return this.dataset.minMaxY(start, end);
+    if (hasRangeMinMaxY(this.dataset)) return this.dataset.rangeMinMaxY(start, end);
 
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.dataset.length, Math.ceil(end));

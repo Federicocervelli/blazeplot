@@ -64,7 +64,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] Tests for `RingBuffer`, `MinMaxPyramid`, and `Camera2D`
 - [x] **General dataset abstraction** — `Dataset`/`AppendableDataset` interfaces. `RingBuffer` satisfies `AppendableDataset`. `StaticDataset` wraps any typed arrays. `MinMaxPyramid`/`DataCursor`/`SeriesStore` all accept `Dataset`. Same render path for streaming and static data.
 - [x] **LOD as a strategy, not a requirement** — `SeriesConfig.downsample` accepts `"minmax" | "none"` (optional, defaults to `"minmax"`). Area/scatter modes skip the pyramid entirely; line/bar use min/max when enabled, and render paths use raw visible samples when `hasLOD` is `false`.
-- [x] **Incremental pyramid update** — current: O(log N) per append instead of full rebuild. Only recomputes the affected tail at each level. `SeriesStore` avoids repeated full rebuilds after fixed-capacity ring shifts and uses a raw min/max scan fallback for dense extraction until a full rebuild is explicitly needed.
+- [x] **Incremental pyramid update** — current: O(log N) per append instead of full rebuild. Only recomputes the affected tail at each level. `SeriesStore` avoids repeated full rebuilds after fixed-capacity ring shifts and uses the generic `RangeMinMaxDataset.rangeMinMaxY()` capability for dense extraction; `RingBuffer` implements it with a physical segment tree for wrapped streaming queries.
 
 ---
 
@@ -99,7 +99,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] `AxisController` — smart tick generation and label formatting
 - [x] Grid line rendering
 - [x] Axis tick labels (DOM overlay)
-- [x] LOD re-query on pan/zoom (viewport change → current camera viewport is used for visible extraction each frame; dirty pyramids rebuild before draw when append-only, and use a no-rebuild raw scan fallback after fixed-capacity ring shifts)
+- [x] LOD re-query on pan/zoom (viewport change → current camera viewport is used for visible extraction each frame; dirty pyramids rebuild before draw when append-only, and use `RangeMinMaxDataset` aggregation after fixed-capacity ring shifts)
 - [ ] Box-select / region zoom
 - [x] Tooltip / hit testing API (`chart.pick`, hover subscription, raw-data nearest-X/nearest-point modes)
 - [x] Legend plugin (built-in DOM plugin backed by public series metadata/state APIs)

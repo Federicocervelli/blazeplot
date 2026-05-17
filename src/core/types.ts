@@ -44,6 +44,10 @@ export interface Dataset {
   upperBoundX(x: number): number;
 }
 
+export interface RangeMinMaxDataset extends Dataset {
+  rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null;
+}
+
 export interface AppendableDataset extends Dataset {
   push(x: number, y: number): void;
   append(x: ArrayLike<number>, y: ArrayLike<number>): void;

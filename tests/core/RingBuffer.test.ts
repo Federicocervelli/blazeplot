@@ -88,4 +88,20 @@ describe("RingBuffer", () => {
     expect(buf.lowerBoundX(3.5)).toBe(2);
     expect(buf.upperBoundX(4)).toBe(3);
   });
+
+  it("returns min/max y over logical ranges", () => {
+    const buf = new RingBuffer(6);
+    buf.append([0, 1, 2, 3, 4, 5], [5, -1, 8, 3, 2, 7]);
+
+    expect(buf.rangeMinMaxY(1, 5)).toEqual({ minY: -1, maxY: 8 });
+  });
+
+  it("returns min/max y over wrapped logical ranges", () => {
+    const buf = new RingBuffer(4);
+    buf.append([0, 1, 2, 3, 4, 5], [10, 20, -5, 7, 4, 12]);
+
+    expect(Array.from({ length: buf.length }, (_, i) => buf.getY(i))).toEqual([-5, 7, 4, 12]);
+    expect(buf.rangeMinMaxY(0, 4)).toEqual({ minY: -5, maxY: 12 });
+    expect(buf.rangeMinMaxY(1, 3)).toEqual({ minY: 4, maxY: 7 });
+  });
 });
