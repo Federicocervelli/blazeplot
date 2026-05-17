@@ -243,6 +243,17 @@ describe("SeriesStore", () => {
     expect(sample?.distancePx).toBeGreaterThan(0);
   });
 
+  it("respects nearest-point max screen-space distance", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 1, 2]), new Float32Array([0, 10, 0]));
+
+    const sample = series.nearestSampleByPoint(1.1, 9, { xMin: 0, xMax: 2, yMin: 0, yMax: 10 }, 200, 100, 15);
+    const outOfRange = series.nearestSampleByPoint(1.1, 9, { xMin: 0, xMax: 2, yMin: 0, yMax: 10 }, 200, 100, 5);
+
+    expect(sample?.index).toBe(1);
+    expect(outOfRange).toBeNull();
+  });
+
   it("clears buffered data and rebuilt LOD state", () => {
     const series = makeSeries();
     series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([10, 20, 30, 40]));

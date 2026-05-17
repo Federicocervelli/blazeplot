@@ -9,6 +9,14 @@ function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
   return "getOpen" in dataset && "getHigh" in dataset && "getLow" in dataset && "getClose" in dataset;
 }
 
+const NEAREST_POINT_LEAF_SIZE = 64;
+
+type PointSearchInterval = {
+  readonly start: number;
+  readonly end: number;
+  readonly lowerBoundSq: number;
+};
+
 function interpolateY(x0: number, y0: number, x1: number, y1: number, x: number): number {
   if (x1 === x0) return y0;
   const t = (x - x0) / (x1 - x0);
@@ -163,22 +171,83 @@ export class SeriesStore {
     viewport: Viewport,
     plotWidth: number,
     plotHeight: number,
+    maxDistancePx: number = Infinity,
   ): SeriesSample | null {
     const range = this.visibleIndexRange(viewport);
-    if (range.start >= range.end || plotWidth <= 0 || plotHeight <= 0) return null;
+    const xRange = viewport.xMax - viewport.xMin;
+    const yRange = viewport.yMax - viewport.yMin;
+    if (range.start >= range.end || plotWidth <= 0 || plotHeight <= 0 || xRange <= 0 || yRange <= 0) return null;
 
-    const xScale = plotWidth / (viewport.xMax - viewport.xMin);
-    const yScale = plotHeight / (viewport.yMax - viewport.yMin);
+    const xScale = plotWidth / xRange;
+    const yScale = plotHeight / yRange;
     let bestIndex = -1;
-    let bestDistanceSq = Infinity;
+    let bestDistanceSq = maxDistancePx < 0
+      ? -1
+      : Number.isFinite(maxDistancePx)
+        ? maxDistancePx * maxDistancePx
+        : Infinity;
 
-    for (let i = range.start; i < range.end; i++) {
-      const dx = (this.dataset.getX(i) - x) * xScale;
-      const dy = (this.dataset.getY(i) - y) * yScale;
+    const visitSample = (index: number): void => {
+      const dx = (this.dataset.getX(index) - x) * xScale;
+      const dy = (this.dataset.getY(index) - y) * yScale;
       const d2 = dx * dx + dy * dy;
-      if (d2 < bestDistanceSq) {
+      if (d2 < bestDistanceSq || (bestIndex < 0 && d2 <= bestDistanceSq)) {
         bestDistanceSq = d2;
-        bestIndex = i;
+        bestIndex = index;
+      }
+    };
+
+    const lower = this.dataset.lowerBoundX(x);
+    const nearest = Math.min(Math.max(lower, range.start), range.end - 1);
+    visitSample(nearest);
+    if (nearest > range.start) visitSample(nearest - 1);
+    if (nearest + 1 < range.end) visitSample(nearest + 1);
+
+    if (this.hasPointIntervalBounds() && range.end - range.start > NEAREST_POINT_LEAF_SIZE) {
+      const rootBound = this.pointIntervalDistanceSq(range.start, range.end, x, y, xScale, yScale);
+      const stack: PointSearchInterval[] = rootBound <= bestDistanceSq
+        ? [{ start: range.start, end: range.end, lowerBoundSq: rootBound }]
+        : [];
+
+      while (stack.length > 0) {
+        const interval = stack.pop()!;
+        if (interval.lowerBoundSq > bestDistanceSq) continue;
+
+        const length = interval.end - interval.start;
+        if (length <= NEAREST_POINT_LEAF_SIZE) {
+          for (let i = interval.start; i < interval.end; i++) visitSample(i);
+          continue;
+        }
+
+        const mid = interval.start + (length >> 1);
+        const leftBound = this.pointIntervalDistanceSq(interval.start, mid, x, y, xScale, yScale);
+        const rightBound = this.pointIntervalDistanceSq(mid, interval.end, x, y, xScale, yScale);
+        const left: PointSearchInterval = { start: interval.start, end: mid, lowerBoundSq: leftBound };
+        const right: PointSearchInterval = { start: mid, end: interval.end, lowerBoundSq: rightBound };
+
+        if (leftBound < rightBound) {
+          if (rightBound <= bestDistanceSq) stack.push(right);
+          if (leftBound <= bestDistanceSq) stack.push(left);
+        } else {
+          if (leftBound <= bestDistanceSq) stack.push(left);
+          if (rightBound <= bestDistanceSq) stack.push(right);
+        }
+      }
+    } else {
+      let left = Math.min(lower - 1, range.end - 1);
+      let right = Math.max(lower, range.start);
+      while (left >= range.start || right < range.end) {
+        const leftDxSq = left >= range.start ? this.pointXDistanceSq(left, x, xScale) : Infinity;
+        const rightDxSq = right < range.end ? this.pointXDistanceSq(right, x, xScale) : Infinity;
+        if (leftDxSq > bestDistanceSq && rightDxSq > bestDistanceSq) break;
+
+        if (leftDxSq <= rightDxSq) {
+          if (leftDxSq <= bestDistanceSq) visitSample(left);
+          left--;
+        } else {
+          if (rightDxSq <= bestDistanceSq) visitSample(right);
+          right++;
+        }
       }
     }
 
@@ -258,6 +327,42 @@ export class SeriesStore {
       start: Math.max(0, this.dataset.lowerBoundX(viewport.xMin) - pad),
       end: Math.min(this.dataset.length, this.dataset.upperBoundX(viewport.xMax) + pad),
     };
+  }
+
+  private pointXDistanceSq(index: number, x: number, xScale: number): number {
+    const dx = (this.dataset.getX(index) - x) * xScale;
+    return dx * dx;
+  }
+
+  private pointIntervalDistanceSq(
+    start: number,
+    end: number,
+    x: number,
+    y: number,
+    xScale: number,
+    yScale: number,
+  ): number {
+    if (end <= start) return Infinity;
+
+    const x0 = this.dataset.getX(start);
+    const x1 = this.dataset.getX(end - 1);
+    const dx = x < x0 ? (x0 - x) * xScale : x > x1 ? (x - x1) * xScale : 0;
+
+    const range = this.pointIntervalMinMaxY(start, end);
+    if (!range) return Infinity;
+
+    const dy = y < range.minY ? (range.minY - y) * yScale : y > range.maxY ? (y - range.maxY) * yScale : 0;
+    return dx * dx + dy * dy;
+  }
+
+  private hasPointIntervalBounds(): boolean {
+    return hasRangeMinMaxY(this.dataset) || (this.pyramid !== null && !this._dirty && !this._useRawMinMaxScan);
+  }
+
+  private pointIntervalMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
+    if (hasRangeMinMaxY(this.dataset)) return this.dataset.rangeMinMaxY(start, end);
+    if (this.pyramid && !this._dirty && !this._useRawMinMaxScan) return this.pyramid.rangeMinMax(this.dataset, start, end);
+    return null;
   }
 
   private copyClippedVisibleLine(
