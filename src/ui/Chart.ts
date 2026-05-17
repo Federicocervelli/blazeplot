@@ -4,10 +4,9 @@ import { RingBuffer } from "../core/RingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
 import { ReglBackend } from "../render/ReglBackend.js";
 import type { GpuBuffer } from "../render/types.js";
-import { InputController } from "../interaction/InputController.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
-import type { ViewportPolicy } from "../interaction/types.js";
+import type { PanIntent, ViewportPolicy, ZoomIntent } from "../interaction/types.js";
 import { AxisOverlay } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
@@ -118,7 +117,6 @@ export class Chart {
   private camera: Camera2D;
   private axis: AxisController;
   private renderer: Renderer;
-  private input: InputController;
   private rawLineBuffer: GpuBuffer;
   private rawLineData: Float32Array;
   private minMaxInstanceBuffer: GpuBuffer;
@@ -183,7 +181,6 @@ export class Chart {
     this.camera = new Camera2D();
     this.axis = new AxisController(this.camera);
     this.renderer = new Renderer(new ReglBackend(this.layout.canvas));
-    this.input = new InputController(this.layout.canvas, this.camera, options.viewportPolicy);
     this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
     this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
     this.minMaxInstanceData = new Float32Array(MINMAX_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
@@ -238,9 +235,42 @@ export class Chart {
     return this.resolvedTheme;
   }
 
+  getCamera(): Camera2D {
+    return this.camera;
+  }
+
   dataToPlot(x: number, y: number): [number, number] {
     const [clipX, clipY] = this.camera.toClip(x, y);
     return this.camera.toScreen(clipX, clipY, this.canvas.clientWidth, this.canvas.clientHeight);
+  }
+
+  clientToData(clientX: number, clientY: number): [number, number] | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    const plotX = clientX - rect.left;
+    const plotY = clientY - rect.top;
+    if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
+
+    const viewport = this.camera.viewport;
+    return [
+      viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin),
+      viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin),
+    ];
+  }
+
+  getViewport(): { xMin: number; xMax: number; yMin: number; yMax: number } {
+    return this.camera.viewport;
+  }
+
+  pan(intent: PanIntent): void {
+    this.camera.pan(intent);
+    this.refreshHover();
+  }
+
+  zoom(intent: ZoomIntent): void {
+    this.camera.zoom(intent);
+    this.refreshHover();
   }
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
@@ -308,6 +338,7 @@ export class Chart {
 
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void {
     this.camera.setViewport(v);
+    this.refreshHover();
   }
 
   resize(dpr: number = globalThis.devicePixelRatio): boolean {
@@ -502,7 +533,6 @@ export class Chart {
     this.canvas.removeEventListener("pointermove", this.handlePointerMove);
     this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
     for (const dispose of this.pluginDisposers.splice(0)) dispose();
-    this.input.dispose();
     this.axisOverlay?.dispose();
     this.renderer.dispose();
     this.layout.dispose();

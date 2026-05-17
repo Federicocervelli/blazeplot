@@ -78,6 +78,9 @@ push();
 | `chart.addLine(config, style?)` / `addArea` / `addScatter` / `addBar` | Typed helpers that set the series mode for you. |
 | `chart.removeSeries(series)` | Remove a previously added series. |
 | `chart.setViewport({ xMin, xMax, yMin, yMax })` | Set the visible data range. |
+| `chart.getViewport()` | Return the current visible data range. |
+| `chart.pan(intent)` / `chart.zoom(intent)` | Plugin-facing camera interaction helpers. |
+| `chart.clientToData(clientX, clientY)` / `chart.dataToPlot(x, y)` | Convert between client/plot coordinates and data coordinates. |
 | `chart.resize(dpr?)` | Resize the internal plot canvas to match its CSS size × DPR. |
 | `chart.start()` | Start the render loop (rAF). |
 | `chart.stop()` | Stop the render loop. |
@@ -95,7 +98,7 @@ push();
 
 | Property | Default | Description |
 |---|---|---|
-| `viewportPolicy?` | — | Custom pan/zoom/viewport behavior hooks. |
+| `viewportPolicy?` | — | Optional `beforeRender` viewport hook. Pass the same policy to `interactionsPlugin({ viewportPolicy })` for pan/zoom hooks. |
 | `hover?` | `{ mode: "nearest-x" }` | Default hover picking behavior. `mode` can be `"nearest-x"` or `"nearest-point"`. |
 | `plugins?` | `[]` | Optional `ChartPlugin` instances, e.g. `legendPlugin()` and `tooltipPlugin()`. |
 | `theme?` | built-in dark theme | Override chart, axis, palette, legend, and tooltip colors/fonts. |
@@ -150,19 +153,21 @@ new Chart(canvas, {
 
 ```js
 import { Chart } from "blazeplot";
+import { interactionsPlugin } from "blazeplot/plugins/interactions";
 import { legendPlugin } from "blazeplot/plugins/legend";
 import { tooltipPlugin } from "blazeplot/plugins/tooltip";
 
 const chart = new Chart(container, {
   hover: { mode: "nearest-x" },
   plugins: [
+    interactionsPlugin({ axis: "xy" }),
     legendPlugin(),
     tooltipPlugin({ mode: "nearest-point" }),
   ],
 });
 ```
 
-Built-in plugins are optional. They consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting.
+Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zoom, Shift+drag pan, wheel zoom, double-click reset, and `axis: "x" | "y" | "xy"`. Legend/tooltip consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting.
 
 ### `SeriesStore`
 
@@ -196,6 +201,8 @@ Built-in plugins are optional. They consume public APIs (`getSeriesState`, `setS
 
 ### `ViewportPolicy`
 
+`beforeRender` is consumed by `Chart`; `beforePan` and `beforeZoom` are consumed by `interactionsPlugin({ viewportPolicy })`.
+
 ```ts
 interface ViewportPolicy {
   beforePan?(camera: Camera2D, intent: PanIntent): PanIntent | null;
@@ -214,7 +221,7 @@ interface ViewportPolicy {
 src/
   core/          # Data model — series, datasets, LOD
   render/        # GPU abstraction + regl backend
-  interaction/   # Camera, input, axis ticks
+  interaction/   # Camera, axis ticks, interaction intent types
   ui/            # Orchestrator (Chart)
 ```
 
@@ -238,8 +245,11 @@ bun run build
 Output:
 
 ```
-dist/index.js        ES module
-dist/index.d.ts      TypeScript declarations
+dist/index.js                  ES module
+dist/index.d.ts                TypeScript declarations
+dist/plugins/interactions.js   Optional interactions plugin
+dist/plugins/legend.js         Optional legend plugin
+dist/plugins/tooltip.js        Optional tooltip plugin
 ```
 
 ## Why WebGL2?

@@ -90,17 +90,17 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 
 ## Phase 4 — Interaction
 
-**Status: implemented (camera + input)**
+**Status: implemented (camera + optional interactions plugin)**
 
 - [x] `Camera2D` — viewport model with pan, zoom, setViewport
-- [x] `InputController` — pointer pan, wheel zoom, touch via Pointer Events
-- [x] `ViewportPolicy` — transforms pan/zoom intents and can update camera before render
+- [x] Interaction plugin — plain-drag box zoom, Shift+drag pan, wheel zoom, double-click reset, configurable `"x" | "y" | "xy"` axis
+- [x] `ViewportPolicy` — transforms plugin pan/zoom intents and can update camera before render
 - [x] Camera uniforms propagated to shaders per frame
 - [x] `AxisController` — smart tick generation and label formatting
 - [x] Grid line rendering
 - [x] Axis tick labels (DOM overlay)
 - [x] LOD re-query on pan/zoom (viewport change → current camera viewport is used for visible extraction each frame; dirty pyramids rebuild before draw when append-only, and use `RangeMinMaxDataset` aggregation after fixed-capacity ring shifts)
-- [ ] Box-select / region zoom
+- [x] Box-select / region zoom (via optional `interactionsPlugin`)
 - [x] Tooltip / hit testing API (`chart.pick`, hover subscription, raw-data nearest-X/nearest-point modes)
 - [x] Legend plugin (built-in DOM plugin backed by public series metadata/state APIs)
 
@@ -142,7 +142,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] `chart.screenshot()` / export image (full chart composite: WebGL plot + built-in DOM text overlays)
 - [x] Theme system (`theme` option, resolved `chart.theme`, themed plot background/grid/axes/default palette plus built-in legend/tooltip defaults)
 - [x] Plugin API (`ChartPlugin`, `plugins` option, disposable installs)
-- [x] Optional plugin subpath exports (`blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`) so chart-only imports do not need to import built-in UI plugins
+- [x] Optional plugin subpath exports (`blazeplot/plugins/interactions`, `blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`) so chart-only imports do not need to import built-in UI plugins
 - [x] Legend plugin (`legendPlugin`) built on public series state APIs
 - [x] Tooltip / hit testing (`tooltipPlugin`, `chart.pick`, `chart.subscribe("hover")`; actual raw sample X/Y, per-frame live hover refresh, highlighted sample markers)
 - [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)` helpers.

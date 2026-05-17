@@ -1,6 +1,7 @@
 import { Chart } from "@/index.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
+import { interactionsPlugin } from "@/plugins/interactions.ts";
 import type { ChartFrameStats, ViewportPolicy } from "@/index.ts";
 
 const chartTarget = document.getElementById("chart") as HTMLElement;
@@ -64,6 +65,7 @@ const chart = new Chart(chartTarget, {
   axes: { x: { position: "outside" }, y: { position: "outside" } },
   hover: { mode: "nearest-x" },
   plugins: [
+    interactionsPlugin({ axis: "y", viewportPolicy: previewPolicy }),
     legendPlugin({ toggleOnClick: true }),
     tooltipPlugin({ mode: "nearest-x" }),
   ],

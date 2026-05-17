@@ -28,6 +28,10 @@
       "types": "./dist/plugins/tooltip.d.ts",
       "import": "./dist/plugins/tooltip.js"
     },
+    "./plugins/interactions": {
+      "types": "./dist/plugins/interactions.d.ts",
+      "import": "./dist/plugins/interactions.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

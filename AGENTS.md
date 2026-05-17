@@ -22,8 +22,8 @@
 - `preview/main.ts` streams data into `Chart` and reports `renderer: ${chartStats.renderMode}`.
 - `src/core/` is the data engine and should not depend on UI, DOM, or GPU code.
 - `src/render/` owns the GPU abstraction and the WebGL2/regl implementation.
-- `src/interaction/` owns `Camera2D`, input/tick helpers, and viewport policy types; interaction mutates the camera, not series data.
-- `src/ui/Chart.ts` is the orchestrator wiring `SeriesStore`, `Renderer`, `ReglBackend`, `InputController`, `Camera2D`, and optional `ViewportPolicy`; public typed helpers (`addLine`, `addArea`, `addScatter`, `addBar`) delegate to `addSeries`.
+- `src/interaction/` owns `Camera2D`, tick helpers, and viewport policy/intent types; interaction mutates the camera, not series data.
+- `src/ui/Chart.ts` is the orchestrator wiring `SeriesStore`, `Renderer`, `ReglBackend`, `Camera2D`, and optional `ViewportPolicy.beforeRender`; public typed helpers (`addLine`, `addArea`, `addScatter`, `addBar`) delegate to `addSeries`. Pointer/wheel interactions live in the optional interactions plugin.
 
 ## Current Implementation Gotchas
 
@@ -39,7 +39,7 @@
 - LOD queries use sorted logical X values via `RingBuffer.lowerBoundX` / `upperBoundX`; preserve that assumption when changing append/query code.
 - `Chart.render()` calls `SeriesStore.rebuildPyramid()` before drawing visible series and re-extracts visible samples/segments from the current `Camera2D` viewport every frame.
 - `ViewportPolicy` transforms `PanIntent`/`ZoomIntent` and can update `Camera2D` before render. Keep behavior rules there, not in core/rendering.
-- Optional built-ins like legend and tooltip are Chart plugins exported from subpaths (`blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`). `Chart` owns only the lightweight plugin contract and public state/pick APIs; avoid importing built-in plugins into `Chart.ts` or the top-level entry.
+- Optional built-ins like interactions, legend, and tooltip are Chart plugins exported from subpaths (`blazeplot/plugins/interactions`, `blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`). `Chart` owns only the lightweight plugin contract and public state/pick/camera APIs; avoid importing built-in plugins into `Chart.ts` or the top-level entry.
 - Hover state refreshes every render while the pointer is inside the plot, so live-follow charts update tooltips even when the cursor is still. `chart.pick()` returns actual raw sample coordinates plus plot/client coordinates for marker overlays.
 - In the preview, synced-X behavior keeps live X follow active while wheel zoom/pan are Y-only.
 
