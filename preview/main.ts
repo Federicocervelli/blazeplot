@@ -84,7 +84,7 @@ const scatterSeries = chart.addSeries(
 
 // bar series — bottom band (baseline -0.9, bars up to -0.3)
 const barSeries = chart.addSeries(
-  { mode: "bar", capacity: 1_000_000, downsample: "minmax", name: "Power" },
+  { mode: "bar", capacity: 100_000, downsample: "minmax", name: "Power" },
   { color: [0.2, 0.8, 0.4, 0.7], barWidth: SPARSE_INTERVAL, baseline: -0.9 },
 );
 

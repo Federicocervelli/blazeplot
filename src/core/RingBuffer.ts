@@ -78,6 +78,25 @@ export class RingBuffer {
     return lo;
   }
 
+  minMaxY(start: number, end: number): { minY: number; maxY: number } | null {
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this._length, Math.ceil(end));
+    if (to <= from) return null;
+
+    let physical = this.logicalToPhysical(from);
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = from; i < to; i++) {
+      const y = this.yData[physical]!;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      physical++;
+      if (physical === this.capacity) physical = 0;
+    }
+
+    return { minY, maxY };
+  }
+
   clear(): void {
     this._length = 0;
     this._head = 0;

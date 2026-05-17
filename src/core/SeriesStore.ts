@@ -1,6 +1,14 @@
 import type { Dataset, AppendableDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
+type MinMaxYDataset = Dataset & {
+  minMaxY(start: number, end: number): { minY: number; maxY: number } | null;
+};
+
+function hasMinMaxY(dataset: Dataset): dataset is MinMaxYDataset {
+  return "minMaxY" in dataset;
+}
+
 export class SeriesStore {
   readonly config: SeriesConfig;
   readonly style: SeriesStyle;
@@ -8,6 +16,9 @@ export class SeriesStore {
   private readonly pyramid: MinMaxPyramid | null;
 
   private _dirty: boolean = false;
+  private _useRawMinMaxScan: boolean = false;
+  private _lastBuildLength: number = 0;
+  private _lastBuildRangeStart: number = NaN;
   private _visible: boolean = true;
 
   constructor(dataset: Dataset, config: SeriesConfig, style: SeriesStyle) {
@@ -19,6 +30,8 @@ export class SeriesStore {
     if (this.pyramid && dataset.length > 0) {
       this.pyramid.build(dataset);
     }
+    this._lastBuildLength = dataset.length;
+    this._lastBuildRangeStart = dataset.range?.start ?? NaN;
   }
 
   get hasLOD(): boolean {
@@ -58,12 +71,27 @@ export class SeriesStore {
 
     (this.dataset as AppendableDataset).clear();
     if (this.pyramid) this.pyramid.build(this.dataset);
+    this._useRawMinMaxScan = false;
+    this._lastBuildLength = this.dataset.length;
+    this._lastBuildRangeStart = this.dataset.range?.start ?? NaN;
     this._dirty = false;
   }
 
   rebuildPyramid(): void {
     if (!this._dirty) return;
-    if (this.pyramid) this.pyramid.incrementalBuild(this.dataset);
+    if (this.pyramid) {
+      const length = this.dataset.length;
+      const rangeStart = this.dataset.range?.start ?? NaN;
+      const shiftedAtCapacity = length === this._lastBuildLength && rangeStart !== this._lastBuildRangeStart;
+      if (shiftedAtCapacity) {
+        this._useRawMinMaxScan = true;
+      } else {
+        this.pyramid.incrementalBuild(this.dataset);
+        this._useRawMinMaxScan = false;
+      }
+      this._lastBuildLength = length;
+      this._lastBuildRangeStart = rangeStart;
+    }
     this._dirty = false;
   }
 
@@ -227,7 +255,7 @@ export class SeriesStore {
       );
       const clampedEnd = Math.min(end, segmentEnd);
 
-      const range = this.pyramid.rangeMinMax(this.dataset, segmentStart, clampedEnd);
+      const range = this.minMaxForRange(segmentStart, clampedEnd);
       if (!range) continue;
 
       const x = this.dataset.getX(segmentStart + ((clampedEnd - segmentStart) >> 1));
@@ -247,5 +275,29 @@ export class SeriesStore {
     }
 
     return segmentCount;
+  }
+
+  private minMaxForRange(start: number, end: number): { minY: number; maxY: number } | null {
+    if (!this.pyramid || this._useRawMinMaxScan) {
+      return this.rawMinMaxForRange(start, end);
+    }
+    return this.pyramid.rangeMinMax(this.dataset, start, end);
+  }
+
+  private rawMinMaxForRange(start: number, end: number): { minY: number; maxY: number } | null {
+    if (hasMinMaxY(this.dataset)) return this.dataset.minMaxY(start, end);
+
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this.dataset.length, Math.ceil(end));
+    if (to <= from) return null;
+
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = from; i < to; i++) {
+      const y = this.dataset.getY(i);
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    return { minY, maxY };
   }
 }
