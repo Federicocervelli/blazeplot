@@ -39,9 +39,8 @@ function generateBatch(): PreviewDataBatch {
   const start = t;
   const batchSize = t < VIEW_SAMPLES ? Math.min(FILL_BATCH_SIZE, VIEW_SAMPLES - t) : LIVE_BATCH_SIZE;
   const end = start + batchSize;
-  const lineX = acquireFloat64(batchSize);
   const lineY = acquireFloat32(batchSize);
-  fillLine(start, batchSize, lineX, lineY);
+  fillLine(start, batchSize, lineY);
 
   const sparseStart = Math.ceil(start / SPARSE_INTERVAL) * SPARSE_INTERVAL;
   const sparseCount = sparseStart < end ? Math.floor((end - 1 - sparseStart) / SPARSE_INTERVAL) + 1 : 0;
@@ -72,7 +71,6 @@ function generateBatch(): PreviewDataBatch {
     batchSize,
     sparseCount,
     ohlcCount,
-    lineX: lineX.buffer as ArrayBuffer,
     lineY: lineY.buffer as ArrayBuffer,
     sparseX: sparseX ? sparseX.buffer as ArrayBuffer : null,
     areaY: areaY ? areaY.buffer as ArrayBuffer : null,
@@ -87,7 +85,7 @@ function generateBatch(): PreviewDataBatch {
 }
 
 function postBatch(batch: PreviewDataBatch): void {
-  const transfer: Transferable[] = [batch.lineX, batch.lineY];
+  const transfer: Transferable[] = [batch.lineY];
   appendTransfer(transfer, batch.sparseX, batch.areaY, batch.spikeY, batch.barY);
   appendTransfer(transfer, batch.ohlcX, batch.ohlcOpen, batch.ohlcHigh, batch.ohlcLow, batch.ohlcClose);
   worker.postMessage(batch, transfer);
@@ -101,11 +99,10 @@ function appendTransfer(transfer: Transferable[], ...buffers: ArrayBufferOrNull[
 
 type ArrayBufferOrNull = ArrayBuffer | null;
 
-function fillLine(start: number, count: number, xs: Float64Array, ys: Float32Array): void {
+function fillLine(start: number, count: number, ys: Float32Array): void {
   let sin = Math.sin(start * OMEGA);
   let cos = Math.cos(start * OMEGA);
   for (let i = 0; i < count; i++) {
-    xs[i] = start + i;
     ys[i] = sin * 0.25 + 0.78 + random01() * 0.01;
     const nextSin = sin * LINE_COS_STEP + cos * LINE_SIN_STEP;
     cos = cos * LINE_COS_STEP - sin * LINE_SIN_STEP;

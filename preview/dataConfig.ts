@@ -8,7 +8,7 @@ export const OHLC_INTERVAL = SPARSE_INTERVAL * 8;
 // Keep all streaming series at roughly the same X-history span. Sparse series
 // append one point every SPARSE_INTERVAL samples, so their point capacity must
 // be scaled down or they will stay visible much longer than the dense line.
-export const HISTORY_SAMPLES = 12_000_000;
+export const HISTORY_SAMPLES = 100_000_000;
 export const SPARSE_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / SPARSE_INTERVAL) + 2;
 export const OHLC_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / OHLC_INTERVAL) + 2;
 export const Y_VIEW = { yMin: -1.25, yMax: 1.35 } as const;
@@ -20,7 +20,6 @@ export interface PreviewDataBatch {
   readonly batchSize: number;
   readonly sparseCount: number;
   readonly ohlcCount: number;
-  readonly lineX: ArrayBuffer;
   readonly lineY: ArrayBuffer;
   readonly sparseX: ArrayBuffer | null;
   readonly areaY: ArrayBuffer | null;
