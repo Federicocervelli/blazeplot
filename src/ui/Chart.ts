@@ -165,6 +165,7 @@ export class Chart {
   private lastPointerClientY: number = 0;
   private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
+  private currentXOrigin: number = 0;
   private _rafId: number = 0;
   private readonly handlePointerMove = (event: PointerEvent): void => {
     this.pointerInPlot = true;
@@ -524,6 +525,8 @@ export class Chart {
     this.renderer.clear(r, g, b, a);
 
     const viewport = this.camera.viewport;
+    this.currentXOrigin = viewport.xMin;
+    this.renderer.setXOrigin(this.currentXOrigin);
     if (this._gridVisible) {
       const gridVertexCount = this.writeGridVertices(viewport);
       if (gridVertexCount > 0) {
@@ -702,10 +705,11 @@ export class Chart {
       return;
     }
 
-    const count = this.uploadRawInstances(series, viewport, rawBarCapacity);
+    const count = series.copyRawVisible(viewport, this.rawLineData, rawBarCapacity);
     if (count <= 0) return;
 
     if (this.renderer.supportsInstancedBars) {
+      this.uploadRawLineData(count);
       this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, this.camera);
       this.recordDraw("bars", count);
       return;
@@ -715,27 +719,23 @@ export class Chart {
     this.drawBarTriangles(vertexCount, series.style);
   }
 
-  private uploadRawInstances(series: SeriesStore, viewport: Viewport, maxPoints: number): number {
-    const count = series.copyRawVisible(viewport, this.rawLineData, maxPoints);
-    if (count <= 0) return 0;
-
-    this.uploadRawLineData(count);
-    return count;
-  }
-
   private uploadRawLineData(vertexCount: number): void {
+    this.translateVec2X(this.rawLineData, vertexCount, this.currentXOrigin);
     this.uploadFloatData(this.rawLineBuffer, this.rawLineData, vertexCount * 2);
   }
 
   private uploadMinMaxInstanceData(instanceCount: number): void {
+    this.translateStrideX(this.minMaxInstanceData, instanceCount, FLOATS_PER_MINMAX_SEGMENT_INSTANCE, this.currentXOrigin);
     this.uploadFloatData(this.minMaxInstanceBuffer, this.minMaxInstanceData, instanceCount * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
   }
 
   private uploadBarTriangleData(vertexCount: number): void {
+    this.translateVec2X(this.barTriangleData, vertexCount, this.currentXOrigin);
     this.uploadFloatData(this.barTriangleBuffer, this.barTriangleData, vertexCount * 2);
   }
 
   private uploadGridData(vertexCount: number): void {
+    this.translateVec2X(this.gridData, vertexCount, this.currentXOrigin);
     this.uploadFloatData(this.gridBuffer, this.gridData, vertexCount * 2);
   }
 
@@ -743,6 +743,14 @@ export class Chart {
     const count = Math.max(0, Math.min(floatCount, data.length));
     this.renderer.updateFloatBuffer(buffer, data, count);
     this.stats.uploadBytes += count * Float32Array.BYTES_PER_ELEMENT;
+  }
+
+  private translateVec2X(data: Float32Array, vertexCount: number, origin: number): void {
+    for (let i = 0; i < vertexCount; i++) data[i * 2] = data[i * 2]! - origin;
+  }
+
+  private translateStrideX(data: Float32Array, itemCount: number, stride: number, origin: number): void {
+    for (let i = 0; i < itemCount; i++) data[i * stride] = data[i * stride]! - origin;
   }
 
   private includeBaselineInBarRanges(barCount: number, baseline: number): void {

@@ -23,6 +23,7 @@ export class Renderer {
   private readonly scaleUniform: Float32Array = new Float32Array(2);
   private readonly offsetUniform: Float32Array = new Float32Array(2);
   private readonly canvasSizeUniform: Float32Array = new Float32Array(2);
+  private xOrigin: number = 0;
 
   constructor(private backend: GpuBackend) {
     this.lineProgram = this.backend.createProgram(ShaderPrograms.line.vert, ShaderPrograms.line.frag);
@@ -69,6 +70,10 @@ export class Renderer {
 
   viewport(x: number, y: number, width: number, height: number): void {
     this.backend.viewport(x, y, width, height);
+  }
+
+  setXOrigin(origin: number): void {
+    this.xOrigin = Number.isFinite(origin) ? origin : 0;
   }
 
   drawLines(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
@@ -280,9 +285,11 @@ export class Renderer {
   }
 
   private writeCameraUniforms(camera: Camera2D): void {
+    const shiftedXMin = camera.xMin - this.xOrigin;
+    const shiftedXMax = camera.xMax - this.xOrigin;
     this.scaleUniform[0] = camera.xScale;
     this.scaleUniform[1] = camera.yScale;
-    this.offsetUniform[0] = camera.xOffset;
+    this.offsetUniform[0] = -(shiftedXMin + shiftedXMax) / (shiftedXMax - shiftedXMin);
     this.offsetUniform[1] = camera.yOffset;
   }
 
