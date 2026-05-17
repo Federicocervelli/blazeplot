@@ -11,8 +11,6 @@ const themeSelect = requireElement<HTMLSelectElement>("themeSelect");
 const hoverModeSelect = requireElement<HTMLSelectElement>("hoverModeSelect");
 const hoverGroupSelect = requireElement<HTMLSelectElement>("hoverGroupSelect");
 const axesSelect = requireElement<HTMLSelectElement>("axesSelect");
-const highlightToggle = requireElement<HTMLInputElement>("highlightToggle");
-const gridToggle = requireElement<HTMLInputElement>("gridToggle");
 const followToggle = requireElement<HTMLInputElement>("followToggle");
 const streamToggle = requireElement<HTMLInputElement>("streamToggle");
 const syncXToggle = requireElement<HTMLInputElement>("syncXToggle");
@@ -210,11 +208,6 @@ hoverGroupSelect.addEventListener("change", () => {
   tooltipOptions.group = group;
   chart.setViewport({});
 });
-highlightToggle.addEventListener("change", () => {
-  tooltipOptions.highlight = highlightToggle.checked;
-  chart.setViewport({});
-});
-gridToggle.addEventListener("change", () => chart.setGridVisible(gridToggle.checked));
 followToggle.addEventListener("change", () => {
   followLive = followToggle.checked;
 });
