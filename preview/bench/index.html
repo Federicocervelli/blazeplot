@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlazePlot Benchmark</title>
+    <style>
+      html,
+      body,
+      #chart {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #08111f;
+      }
+
+      #status {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 10;
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        white-space: pre;
+        color: #dbeafe;
+        background: rgb(2 6 23 / 0.72);
+        border: 1px solid rgb(148 163 184 / 0.25);
+        border-radius: 6px;
+        padding: 8px 10px;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="chart"></div>
+    <div id="status">benchmark: loading</div>
+    <script type="module" src="/bench/main.ts"></script>
+  </body>
+</html>

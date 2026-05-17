@@ -39,7 +39,7 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     server: {
-      open: true,
+      open: process.env.BLAZEPLOT_BENCH !== "1",
     },
   };
 });
