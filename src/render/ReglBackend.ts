@@ -25,12 +25,18 @@ function toReglContext(gl: WebGL2RenderingContext): WebGLRenderingContext {
   return gl as unknown as WebGLRenderingContext;
 }
 
+interface ScissorProps {
+  scissorEnable?: boolean;
+  scissorBox?: { x: number; y: number; width: number; height: number };
+}
+
 export class ReglBackend implements GpuBackend {
   private gl: WebGL2RenderingContext;
   private regl: Regl;
   private resources: WebGL2Resources;
   private nextProgramId: number = 1;
   private commandCache: Map<string, DrawCommand> = new Map();
+  private scissorBox: { x: number; y: number; w: number; h: number } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", {
@@ -105,12 +111,24 @@ export class ReglBackend implements GpuBackend {
       attributes[name] = this.asReglBuffer(spec.attributes[name]!).buffer;
     }
 
-    command({
+    const props: DrawProps & ScissorProps = {
       count: spec.count,
       instances: spec.instances ?? 0,
       attributes,
       uniforms: spec.uniforms,
-    });
+    };
+
+    if (this.scissorBox) {
+      props.scissorEnable = true;
+      props.scissorBox = {
+        x: this.scissorBox.x,
+        y: this.scissorBox.y,
+        width: this.scissorBox.w,
+        height: this.scissorBox.h,
+      };
+    }
+
+    command(props);
   }
 
   dispose(resource: GpuResource): void {
@@ -123,8 +141,8 @@ export class ReglBackend implements GpuBackend {
     this.regl.clear({ color: [r, g, b, a] });
   }
 
-  viewport(_x: number, _y: number, _w: number, _h: number): void {
-    // Handled by regl internally via canvas size
+  viewport(x: number, y: number, w: number, h: number): void {
+    this.scissorBox = { x, y, w, h };
   }
 
   destroy(): void {
@@ -158,6 +176,11 @@ export class ReglBackend implements GpuBackend {
       count: (_context: object, props: DrawProps) => props.count,
       instances: instanced ? (_context: object, props: DrawProps) => props.instances : undefined,
       depth: { enable: false },
+      scissor: {
+        enable: (_context: object, props: DrawProps & ScissorProps) => props.scissorEnable ?? false,
+        box: (_context: object, props: DrawProps & ScissorProps) =>
+          props.scissorBox ?? { x: 0, y: 0, width: 0, height: 0 },
+      },
     });
   }
 

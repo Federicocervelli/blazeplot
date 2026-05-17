@@ -8,14 +8,23 @@ import { InputController } from "../interaction/InputController.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { ViewportPolicy } from "../interaction/types.js";
+import { AxisOverlay } from "./AxisOverlay.js";
 
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const GRID_LINE_VERTEX_CAPACITY = 64;
+const LEFT_MARGIN_CSS = 52;
+const BOTTOM_MARGIN_CSS = 28;
+
+export interface AxisConfig {
+  readonly visible?: boolean;
+  readonly position?: "inside" | "outside";
+}
 
 export interface ChartOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly grid?: boolean;
   readonly gridStyle?: Partial<SeriesStyle>;
+  readonly axes?: boolean | { x?: boolean | AxisConfig; y?: boolean | AxisConfig };
 }
 
 export interface ChartFrameStats {
@@ -25,6 +34,17 @@ export interface ChartFrameStats {
   drawCalls: number;
   uploadBytes: number;
   renderMode: "none" | "raw" | "minmax" | "mixed";
+}
+
+type NormalizedAxisConfig = { visible: boolean; position: "inside" | "outside" };
+
+function normalizeAxisConfig(config: boolean | AxisConfig | undefined): NormalizedAxisConfig {
+  if (config === false) return { visible: false, position: "inside" };
+  if (config === true || config === undefined) return { visible: true, position: "inside" };
+  return {
+    visible: config.visible !== false,
+    position: config.position ?? "inside",
+  };
 }
 
 export class Chart {
@@ -40,6 +60,8 @@ export class Chart {
   private gridStyle: SeriesStyle;
   private readonly xTicks: number[] = [];
   private readonly yTicks: number[] = [];
+  private axisOverlay: AxisOverlay | null = null;
+  private normalizedAxes: { x: NormalizedAxisConfig; y: NormalizedAxisConfig };
   private stats: ChartFrameStats = {
     fps: 0,
     frameMs: 0,
@@ -66,6 +88,23 @@ export class Chart {
       color: options.gridStyle?.color ?? [0.22, 0.30, 0.44, 0.45],
       lineWidth: options.gridStyle?.lineWidth ?? 1,
     };
+
+    const axesOpt = options.axes;
+    if (axesOpt === false) {
+      this.normalizedAxes = { x: { visible: false, position: "inside" }, y: { visible: false, position: "inside" } };
+    } else if (axesOpt === true || axesOpt === undefined) {
+      this.normalizedAxes = { x: { visible: true, position: "inside" }, y: { visible: true, position: "inside" } };
+    } else {
+      this.normalizedAxes = {
+        x: normalizeAxisConfig(axesOpt.x),
+        y: normalizeAxisConfig(axesOpt.y),
+      };
+    }
+
+    if (this.normalizedAxes.x.visible || this.normalizedAxes.y.visible) {
+      this.axisOverlay = new AxisOverlay(canvas, this.normalizedAxes);
+    }
+
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.resize());
       this.resizeObserver.observe(this.canvas);
@@ -95,11 +134,7 @@ export class Chart {
   }
 
   resize(dpr: number = globalThis.devicePixelRatio): boolean {
-    const resized = this.applyCanvasSize(dpr);
-    if (resized) {
-      this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
-    }
-    return resized;
+    return this.applyCanvasSize(dpr);
   }
 
   getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): ChartFrameStats {
@@ -124,6 +159,13 @@ export class Chart {
     cancelAnimationFrame(this._rafId);
   }
 
+  private getMargins(): { left: number; bottom: number } {
+    return {
+      left: this.normalizedAxes.y.visible && this.normalizedAxes.y.position === "outside" ? LEFT_MARGIN_CSS : 0,
+      bottom: this.normalizedAxes.x.visible && this.normalizedAxes.x.position === "outside" ? BOTTOM_MARGIN_CSS : 0,
+    };
+  }
+
   private render(): void {
     const frameStartedAt = performance.now();
     if (this.lastFrameAt > 0) {
@@ -135,12 +177,23 @@ export class Chart {
     this.stats.uploadBytes = 0;
     this.stats.renderMode = "none";
 
+    const margins = this.getMargins();
+    const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);
+    const physLeft = Math.floor(margins.left * dpr);
+    const physBottom = Math.floor(margins.bottom * dpr);
+
     this.options.viewportPolicy?.beforeRender?.(this.camera);
+
+    // Clear full canvas
+    this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
     this.renderer.clear(0.08, 0.10, 0.16, 1);
+
+    // Draw content in inset viewport
+    this.renderer.viewport(physLeft, physBottom, this.canvas.width - physLeft, this.canvas.height - physBottom);
 
     const viewport = this.camera.viewport;
     if (this.options.grid !== false) {
-      const gridVertexCount = this.writeGridVertices(viewport);
+      const gridVertexCount = this.writeGridVertices(viewport, margins);
       if (gridVertexCount > 0) {
         this.renderer.updateFloatBuffer(this.gridBuffer, this.gridData);
         this.renderer.drawLines(this.gridBuffer, gridVertexCount, this.gridStyle, this.camera);
@@ -170,6 +223,8 @@ export class Chart {
       this.stats.uploadBytes += this.rawLineData.byteLength;
     }
 
+    this.axisOverlay?.update(this.camera, this.axis, margins.left, margins.bottom);
+
     this.stats.frameMs = performance.now() - frameStartedAt;
   }
 
@@ -177,6 +232,7 @@ export class Chart {
     this.stop();
     this.resizeObserver?.disconnect();
     this.input.dispose();
+    this.axisOverlay?.dispose();
     this.renderer.dispose();
   }
 
@@ -191,9 +247,14 @@ export class Chart {
     return true;
   }
 
-  private writeGridVertices(viewport: { xMin: number; xMax: number; yMin: number; yMax: number }): number {
-    this.axis.getXTickValues(this.canvas.width, 12, this.xTicks);
-    this.axis.getYTickValues(this.canvas.height, 8, this.yTicks);
+  private writeGridVertices(
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+    margins: { left: number; bottom: number },
+  ): number {
+    const plotW = Math.max(1, this.canvas.clientWidth - margins.left);
+    const plotH = Math.max(1, this.canvas.clientHeight - margins.bottom);
+    this.axis.getXTickValues(plotW, 12, this.xTicks);
+    this.axis.getYTickValues(plotH, 8, this.yTicks);
 
     let vertexCount = 0;
     for (const x of this.xTicks) {

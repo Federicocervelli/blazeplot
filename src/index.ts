@@ -1,5 +1,5 @@
 export { Chart } from "./ui/Chart.js";
-export type { ChartFrameStats, ChartOptions } from "./ui/Chart.js";
+export type { ChartFrameStats, ChartOptions, AxisConfig } from "./ui/Chart.js";
 export { SeriesStore } from "./core/SeriesStore.js";
 export { RingBuffer } from "./core/RingBuffer.js";
 export { StaticDataset } from "./core/StaticDataset.js";
