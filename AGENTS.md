@@ -36,6 +36,7 @@
 - Area, scatter, and bar series skip LOD even when `downsample` is omitted. Scatter/bar render as instanced quads when regl/browser instancing is available; area renders as a triangle strip plus line overlay.
 - `RingBuffer` silently wraps at capacity and exposes logical-order access after wrap.
 - LOD queries use sorted logical X values via `RingBuffer.lowerBoundX` / `upperBoundX`; preserve that assumption when changing append/query code.
+- `Chart.render()` calls `SeriesStore.rebuildPyramid()` before drawing visible series and re-extracts visible samples/segments from the current `Camera2D` viewport every frame.
 - `ViewportPolicy` transforms `PanIntent`/`ZoomIntent` and can update `Camera2D` before render. Keep behavior rules there, not in core/rendering.
 - In the preview, synced-X behavior keeps live X follow active while wheel zoom/pan are Y-only.
 

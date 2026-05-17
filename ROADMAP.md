@@ -98,7 +98,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] `AxisController` — smart tick generation and label formatting
 - [x] Grid line rendering
 - [x] Axis tick labels (DOM overlay)
-- [ ] LOD re-query on pan/zoom (viewport change → new LODView for lines)
+- [x] LOD re-query on pan/zoom (viewport change → current camera viewport is used for line visible extraction each frame; dirty pyramids rebuild before draw)
 - [ ] Box-select / region zoom
 - [ ] Tooltip / hit testing
 - [ ] Legend

@@ -222,6 +222,7 @@ export class Chart {
 
     for (const s of this.series) {
       if (!s.visible) continue;
+      s.rebuildPyramid();
       if (s.config.mode === "scatter") {
         this.drawScatterSeries(s, viewport);
         continue;
