@@ -108,12 +108,16 @@ async function main(): Promise<void> {
       await cdp.send("Runtime.enable");
       await cdp.send("Profiler.enable");
       await cdp.send("Performance.enable");
-      attachConsoleLogging(cdp);
+      const pageErrors: string[] = [];
+      attachConsoleLogging(cdp, pageErrors);
 
       await waitForBenchmarkState(cdp, "ready", options.setupTimeoutMs);
+      throwIfPageErrored(pageErrors);
       await cdp.send("Profiler.start");
       const benchmarkResult = await evaluate(cdp, "window.__blazeplotBench.start()", true);
       const profileResponse = await cdp.send("Profiler.stop") as { profile: CpuProfile };
+      throwIfPageErrored(pageErrors);
+      assertRenderableBenchmarkResult(benchmarkResult);
       const metricsResponse = await cdp.send("Performance.getMetrics") as { metrics: PerformanceMetric[] };
 
       const report = {
@@ -226,7 +230,7 @@ function readPositiveInteger(flag: string, raw: string): number {
 }
 
 function printHelpAndExit(): never {
-  process.stdout.write(`Usage: bun run bench [options]\n\nOptions:\n  --scenario <name>          Benchmark scene scenario (default: mixed-1m-live)\n  --measure-ms <ms>          Override scenario measurement duration\n  --warmup-ms <ms>           Override scenario warmup duration\n  --width <px>               Browser viewport width (default: 1280)\n  --height <px>              Browser viewport height (default: 720)\n  --port <port>              Vite server port (default: 41731)\n  --debug-port <port>        Chrome DevTools port (default: 9223)\n  --setup-timeout-ms <ms>    Max time for data load + warmup (default: 120000)\n  --top <n>                  Number of bottom-up CPU frames to emit (default: 40)\n  --out <path>               Also write JSON report to this path\n  --url <url>                Use an already-running Vite server instead of starting one\n  --chrome <path>            Chrome/Chromium executable path\n  --headed                   Run browser visibly instead of headless\n  --keep-browser             Leave browser profile/process around for debugging\n`);
+  process.stdout.write(`Usage: bun run bench [options]\n\nOptions:\n  --scenario <name>          Benchmark scene scenario (default: mixed-1m-live)\n  --measure-ms <ms>          Override scenario measurement duration\n  --warmup-ms <ms>           Override scenario warmup duration\n  --width <px>               Browser viewport width (default: 1280)\n  --height <px>              Browser viewport height (default: 720)\n  --port <port>              Vite server port (default: 41731)\n  --debug-port <port>        Chrome DevTools port (default: 9223)\n  --setup-timeout-ms <ms>    Max time for data load + warmup (default: 120000)\n  --top <n>                  Number of bottom-up CPU frames to emit (default: 40)\n  --out <path>               Also write JSON report to this path\n  --url <url>                Use an already-running Vite server instead of starting one\n  --chrome <path>            Chrome/Chromium/Brave executable path\n  --headed                   Run browser visibly instead of headless\n  --keep-browser             Leave browser profile/process around for debugging\n`);
   process.exit(0);
 }
 
@@ -255,7 +259,7 @@ function launchChrome(chromePath: string, userDataDir: string, opts: Options): B
     "--no-sandbox",
     "--ignore-gpu-blocklist",
     "--enable-unsafe-swiftshader",
-    "--use-gl=swiftshader",
+    "--use-angle=swiftshader",
     "about:blank",
   ];
   if (opts.headless) cmd.splice(1, 0, "--headless=new");
@@ -316,15 +320,32 @@ async function evaluate(cdp: CdpClient, expression: string, awaitPromise: boolea
   return response.result?.value;
 }
 
-function attachConsoleLogging(cdp: CdpClient): void {
+function attachConsoleLogging(cdp: CdpClient, pageErrors: string[]): void {
   cdp.on("Runtime.consoleAPICalled", (params) => {
     const event = params as { type?: string; args?: Array<{ value?: unknown; description?: string }> };
     const text = event.args?.map((arg) => String(arg.value ?? arg.description ?? "")).join(" ") ?? "";
     if (text) process.stderr.write(`[page:${event.type ?? "log"}] ${text}\n`);
   });
   cdp.on("Runtime.exceptionThrown", (params) => {
-    process.stderr.write(`[page:exception] ${JSON.stringify(params)}\n`);
+    const text = JSON.stringify(params);
+    pageErrors.push(text);
+    process.stderr.write(`[page:exception] ${text}\n`);
   });
+}
+
+function throwIfPageErrored(pageErrors: readonly string[]): void {
+  if (pageErrors.length === 0) return;
+  throw new Error(`Benchmark page threw ${pageErrors.length} exception(s). First exception: ${pageErrors[0]}`);
+}
+
+function assertRenderableBenchmarkResult(value: unknown): void {
+  if (!value || typeof value !== "object") throw new Error("Benchmark did not return an object result");
+  const result = value as { finalStats?: { renderMode?: unknown; drawCalls?: unknown; pointsRendered?: unknown } };
+  const finalStats = result.finalStats;
+  if (!finalStats || typeof finalStats !== "object") throw new Error("Benchmark result is missing finalStats");
+  if (finalStats.renderMode === "none") throw new Error("Benchmark completed without rendering any chart content");
+  if (typeof finalStats.drawCalls !== "number" || finalStats.drawCalls <= 0) throw new Error("Benchmark completed with zero draw calls");
+  if (typeof finalStats.pointsRendered !== "number" || finalStats.pointsRendered <= 0) throw new Error("Benchmark completed with zero rendered points");
 }
 
 function summarizeProfile(profile: CpuProfile, top: number): { durationMs: number; sampleCount: number; bottomUp: BottomUpFrame[] } {
@@ -421,6 +442,9 @@ function resolveChrome(explicit: string | undefined): string {
     "chromium-browser",
     "chromium",
     "chrome",
+    "brave-browser",
+    "brave-browser-stable",
+    "brave",
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
   ];
@@ -433,7 +457,7 @@ function resolveChrome(explicit: string | undefined): string {
     }
   }
 
-  throw new Error("Could not find Chrome/Chromium. Pass --chrome <path> or set BLAZEPLOT_BENCH_CHROME.");
+  throw new Error("Could not find Chrome/Chromium/Brave. Pass --chrome <path> or set BLAZEPLOT_BENCH_CHROME.");
 }
 
 function which(command: string): string | null {

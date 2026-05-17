@@ -249,12 +249,12 @@ async function measure(): Promise<BenchmarkResult> {
   const drawCalls: number[] = [];
   const uploadBytes: number[] = [];
   const startMs = performance.now();
-  let lastFrameMs = startMs;
+  let lastFrameMs: number | null = null;
   let liveSamplesAppended = 0;
 
   while (performance.now() - startMs < config.measureMs) {
     const now = await animationFrame();
-    rafDeltas.push(now - lastFrameMs);
+    if (lastFrameMs !== null) rafDeltas.push(Math.max(0, now - lastFrameMs));
     lastFrameMs = now;
 
     if (config.liveBatchSize > 0) {

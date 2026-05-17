@@ -16,7 +16,11 @@ bun run bench --scenario line-5m-static --measure-ms 10000 --top 80
 bun run bench --scenario mixed-10m-live --setup-timeout-ms 240000 --out bench-10m.json
 ```
 
-If Chrome is not on `PATH`, pass `--chrome /path/to/chrome` or set `BLAZEPLOT_BENCH_CHROME`.
+If Chrome/Chromium/Brave is not on `PATH`, pass `--chrome /path/to/browser` or set `BLAZEPLOT_BENCH_CHROME`. For Brave installed at `/usr/bin/brave`:
+
+```sh
+bun run bench --scenario mixed-1m-live --chrome /usr/bin/brave --out bench-result.json
+```
 
 Built-in scenarios live in `preview/bench/main.ts`:
 
