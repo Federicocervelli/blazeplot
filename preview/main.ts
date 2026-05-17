@@ -65,22 +65,22 @@ const chart = new Chart(chartTarget, {
 });
 const canvas = chart.canvas;
 
-// line series (fast streaming)
+// line series — top band (y ~0.7–1.3)
 const lineSeries = chart.addSeries(
   { mode: "line", capacity: 10_000_000, downsample: "minmax", name: "Wave" },
   { color: [0.3, 0.6, 1.0, 1.0], lineWidth: 1 },
 );
 
-// scatter series (sparse pulses)
+// scatter series — middle band (y ~0–0.5)
 const scatterSeries = chart.addSeries(
   { mode: "scatter", capacity: 1_000_000, downsample: "none", name: "Spikes" },
   { color: [0.95, 0.35, 0.35, 1.0], pointSize: 5 },
 );
 
-// bar series (aggregated buckets)
+// bar series — bottom band (baseline -0.9, bars up to -0.3)
 const barSeries = chart.addSeries(
   { mode: "bar", capacity: 1_000_000, downsample: "minmax", name: "Power" },
-  { color: [0.2, 0.8, 0.4, 0.7], barWidth: 48, baseline: -1.45 },
+  { color: [0.2, 0.8, 0.4, 0.7], barWidth: 48, baseline: -0.9 },
 );
 
 chart.setViewport({ xMin: 0, xMax: VIEW_SAMPLES, yMin: -1.5, yMax: 1.5 });
@@ -93,31 +93,29 @@ console.info("[blazeplot] chart initialized", {
 });
 
 function stream(): void {
+  // Wave — top band (centered around y = +0.8)
   for (let i = 0; i < BATCH_SIZE; i++) {
     xBuf[i] = t;
-    yBuf[i] = Math.sin(t * 0.01) * 0.5 + Math.random() * 0.01;
+    yBuf[i] = Math.sin(t * 0.01) * 0.25 + 0.8 + Math.random() * 0.01;
     t++;
   }
-
   lineSeries.append(xBuf, yBuf);
 
-  // Append a sparse scatter spike every 64 samples
-  if (t % 64 < BATCH_SIZE) {
-    const spikeX = new Float64Array(BATCH_SIZE);
-    const spikeY = new Float32Array(BATCH_SIZE);
-    for (let i = 0; i < BATCH_SIZE; i++) {
-      spikeX[i] = t + i - (t % 64);
-      spikeY[i] = (t + i) % 64 < BATCH_SIZE ? 0.6 + Math.random() * 0.4 : -1;
-    }
+  // Spikes — middle band (every 64 samples, one spike)
+  if (t % 64 === 0) {
+    const spikeX = new Float64Array(1);
+    const spikeY = new Float32Array(1);
+    spikeX[0] = t - 1;
+    spikeY[0] = 0.15 + Math.random() * 0.35;
     scatterSeries.append(spikeX, spikeY);
   }
 
-  // Append a bar every 64 samples
-  if (t % 64 < BATCH_SIZE) {
+  // Power — bottom band (every 64 samples, one bar from -0.9 up)
+  if (t % 64 === 0) {
     const barX = new Float64Array(1);
     const barY = new Float32Array(1);
-    barX[0] = t - (t % 64);
-    barY[0] = Math.abs(Math.sin(t * 0.005)) * 0.8 + 0.2;
+    barX[0] = t - 1;
+    barY[0] = -0.9 + Math.abs(Math.sin(t * 0.005)) * 0.5 + 0.1;
     barSeries.append(barX, barY);
   }
 
