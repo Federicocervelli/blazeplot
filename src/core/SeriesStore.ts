@@ -13,7 +13,7 @@ export class SeriesStore {
   constructor(dataset: Dataset, config: SeriesConfig, style: SeriesStyle) {
     this.dataset = dataset;
     this.config = config;
-    this.pyramid = config.mode === "line" && config.downsample !== "none" ? new MinMaxPyramid() : null;
+    this.pyramid = (config.mode === "line" || config.mode === "bar") && config.downsample !== "none" ? new MinMaxPyramid() : null;
     this.style = style;
 
     if (this.pyramid && dataset.length > 0) {

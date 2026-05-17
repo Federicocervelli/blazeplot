@@ -333,6 +333,19 @@ export class Chart {
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
   ): void {
     if (!this.renderer.supportsInstancedBars) return;
+
+    const visibleSamples = series.visibleSampleCount(viewport);
+    if (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY) {
+      const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments());
+      if (sampledCount <= 0) return;
+
+      this.renderer.updateFloatBuffer(this.minMaxInstanceBuffer, this.minMaxInstanceData);
+      this.stats.uploadBytes += this.minMaxInstanceData.byteLength;
+      this.renderer.drawBarRangesInstanced(this.minMaxInstanceBuffer, sampledCount, series.style, this.camera);
+      this.recordInstancedDraw("bars", sampledCount * 2);
+      return;
+    }
+
     const count = this.uploadRawInstances(series, viewport, RAW_LINE_VERTEX_CAPACITY);
     if (count <= 0) return;
 

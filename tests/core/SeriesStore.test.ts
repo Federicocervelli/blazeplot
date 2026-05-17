@@ -146,10 +146,20 @@ describe("SeriesStore no-LOD", () => {
     expect(series.hasLOD).toBe(false);
   });
 
-  it("skips pyramid for bar series when downsample is omitted", () => {
+  it("has pyramid for bar series when downsample is omitted", () => {
     const series = new SeriesStore(
       new RingBuffer(8),
       { mode: "bar", capacity: 8 },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    expect(series.hasLOD).toBe(true);
+  });
+
+  it("skips pyramid for bar series when downsample is none", () => {
+    const series = new SeriesStore(
+      new RingBuffer(8),
+      { mode: "bar", capacity: 8, downsample: "none" },
       { color: [1, 1, 1, 1], lineWidth: 1 },
     );
 

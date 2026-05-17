@@ -80,8 +80,8 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] Instanced draw for segment mode (with line-list fallback when regl/browser instancing is unavailable)
 - [x] Scatter / point rendering (instanced quads)
 - [x] Bar rendering (instanced quads, data-space width, configurable baseline)
+- [x] Bar sampling for dense views (min/max range buckets using the same visible bucketing strategy as dense line rendering)
 - [x] Area fill (triangle-strip fill to baseline + line overlay)
-- [ ] Heatmap (texture-based)
 - [ ] OHLC / candlestick
 - [ ] Draw call batching per shader mode
 

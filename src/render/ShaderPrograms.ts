@@ -5,6 +5,7 @@ import segmentFrag from "./shaders/segment.frag?raw";
 import pointVert from "./shaders/point.vert?raw";
 import pointFrag from "./shaders/point.frag?raw";
 import barVert from "./shaders/bar.vert?raw";
+import barRangeVert from "./shaders/bar-range.vert?raw";
 import barFrag from "./shaders/bar.frag?raw";
 
 export const ShaderPrograms = {
@@ -12,4 +13,5 @@ export const ShaderPrograms = {
   segment: { vert: segmentVert, frag: segmentFrag },
   point: { vert: pointVert, frag: pointFrag },
   bar: { vert: barVert, frag: barFrag },
+  barRange: { vert: barRangeVert, frag: barFrag },
 } as const;

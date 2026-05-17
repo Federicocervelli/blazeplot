@@ -15,6 +15,7 @@ export class Renderer {
   private readonly segmentProgram: GpuProgram;
   private readonly pointProgram: GpuProgram;
   private readonly barProgram: GpuProgram;
+  private readonly barRangeProgram: GpuProgram;
   private readonly segmentSelectBuffer: GpuBuffer;
   private readonly pointCornerBuffer: GpuBuffer;
   private readonly barCornerBuffer: GpuBuffer;
@@ -27,6 +28,7 @@ export class Renderer {
     this.segmentProgram = this.backend.createProgram(ShaderPrograms.segment.vert, ShaderPrograms.segment.frag);
     this.pointProgram = this.backend.createProgram(ShaderPrograms.point.vert, ShaderPrograms.point.frag);
     this.barProgram = this.backend.createProgram(ShaderPrograms.bar.vert, ShaderPrograms.bar.frag);
+    this.barRangeProgram = this.backend.createProgram(ShaderPrograms.barRange.vert, ShaderPrograms.barRange.frag);
 
     this.segmentSelectBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 2 });
     this.backend.updateBuffer(this.segmentSelectBuffer, new Float32Array([0, 1]));
@@ -172,6 +174,35 @@ export class Renderer {
         uOffset: this.offsetUniform,
         uBarWidth: style.barWidth ?? DEFAULT_BAR_WIDTH_DATA,
         uBaseline: style.baseline ?? DEFAULT_BASELINE,
+        uColor: style.color,
+      },
+    });
+  }
+
+  drawBarRangesInstanced(
+    instanceBuffer: GpuBuffer,
+    barCount: number,
+    style: SeriesStyle,
+    camera: Camera2D,
+  ): void {
+    this.writeCameraUniforms(camera);
+
+    const instanceStride = FLOATS_PER_SEGMENT_INSTANCE * BYTES_PER_FLOAT;
+    const aX: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0 };
+    const aMinY: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: BYTES_PER_FLOAT };
+    const aMaxY: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: BYTES_PER_FLOAT * 2 };
+    const aCorner: AttributeSpec = { buffer: this.barCornerBuffer, divisor: 0, stride: FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT, offset: 0, size: 2 };
+
+    this.backend.draw({
+      program: this.barRangeProgram,
+      primitive: "triangle_strip",
+      count: 4,
+      instances: barCount,
+      attributes: { aCorner, aMaxY, aMinY, aX },
+      uniforms: {
+        uScale: this.scaleUniform,
+        uOffset: this.offsetUniform,
+        uBarWidth: style.barWidth ?? DEFAULT_BAR_WIDTH_DATA,
         uColor: style.color,
       },
     });
