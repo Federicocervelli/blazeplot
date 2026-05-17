@@ -50,11 +50,11 @@ export const DEFAULT_CHART_THEME: ResolvedChartTheme = {
   tooltipBackgroundColor: "rgba(4, 8, 16, 0.85)",
   tooltipTextColor: "#bfd6ff",
   tooltipFont: "11px/1.35 ui-monospace, monospace",
-  legendBackgroundColor: "rgba(15, 23, 42, 0.72)",
-  legendBorderColor: "rgba(148, 163, 184, 0.22)",
-  legendTextColor: "#dbeafe",
+  legendBackgroundColor: "rgba(4, 8, 16, 0.85)",
+  legendBorderColor: "transparent",
+  legendTextColor: "#bfd6ff",
   legendMutedTextColor: "#789",
-  legendFont: "11px ui-monospace, monospace, sans-serif",
+  legendFont: "11px/1.35 ui-monospace, monospace",
 };
 
 export function resolveChartTheme(theme: ChartTheme | undefined): ResolvedChartTheme {

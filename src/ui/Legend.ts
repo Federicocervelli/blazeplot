@@ -23,6 +23,11 @@ function applyPosition(el: HTMLElement, position: NonNullable<LegendPluginOption
   el.style.right = position.endsWith("right") ? "8px" : "auto";
 }
 
+function legendBorder(options: LegendPluginOptions, chart: Chart): string {
+  const color = options.borderColor ?? chart.theme.legendBorderColor;
+  return color === "transparent" ? "0" : `1px solid ${color}`;
+}
+
 function renderDefaultLegend(
   state: readonly ChartSeriesState[],
   container: HTMLElement,
@@ -38,23 +43,22 @@ function renderDefaultLegend(
     row.style.display = "flex";
     row.style.alignItems = "center";
     row.style.gap = "6px";
-    row.style.width = "100%";
     row.style.border = "0";
-    row.style.padding = "2px 4px";
+    row.style.margin = "0";
+    row.style.padding = "0";
+    row.style.appearance = "none";
     row.style.background = "transparent";
     row.style.color = item.visible
       ? options.textColor ?? chart.theme.legendTextColor
       : options.mutedTextColor ?? chart.theme.legendMutedTextColor;
-    row.style.font = options.font ?? chart.theme.legendFont;
+    row.style.font = "inherit";
     row.style.textAlign = "left";
     row.style.cursor = toggleOnClick ? "pointer" : "default";
     row.style.opacity = item.visible ? "1" : "0.45";
 
     const swatch = document.createElement("span");
-    swatch.style.width = "10px";
-    swatch.style.height = "10px";
-    swatch.style.borderRadius = "2px";
-    swatch.style.background = rgba(item.color);
+    swatch.textContent = "\u2588";
+    swatch.style.color = rgba(item.color);
     swatch.style.flex = "0 0 auto";
 
     const label = document.createElement("span");
@@ -78,11 +82,12 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.style.position = "absolute";
       container.style.zIndex = "20";
       container.style.pointerEvents = "auto";
-      container.style.padding = "6px";
-      container.style.border = `1px solid ${options.borderColor ?? chart.theme.legendBorderColor}`;
-      container.style.borderRadius = "6px";
+      container.style.padding = "8px 10px";
+      container.style.border = legendBorder(options, chart);
       container.style.background = options.backgroundColor ?? chart.theme.legendBackgroundColor;
-      container.style.backdropFilter = "blur(4px)";
+      container.style.color = options.textColor ?? chart.theme.legendTextColor;
+      container.style.font = options.font ?? chart.theme.legendFont;
+      container.style.whiteSpace = "pre";
       container.style.userSelect = "none";
       applyPosition(container, options.position ?? "top-right");
       chart.rootElement.appendChild(container);
