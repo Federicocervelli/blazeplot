@@ -72,6 +72,17 @@ describe("SeriesStore", () => {
     }
   });
 
+  it("copies visible samples as an area strip", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 1, 2]), new Float32Array([4, -1, 7]));
+
+    const area = new Float32Array(12);
+    const count = series.copyAreaVisible({ xMin: 0, xMax: 2, yMin: -10, yMax: 10 }, area, 3, -2);
+
+    expect(count).toBe(6);
+    expect(Array.from(area)).toEqual([0, -2, 0, 4, 1, -2, 1, -1, 2, -2, 2, 7]);
+  });
+
   it("counts visible samples", () => {
     const series = makeSeries();
     series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([0, 0, 0, 0]));
@@ -139,6 +150,16 @@ describe("SeriesStore no-LOD", () => {
     const series = new SeriesStore(
       new RingBuffer(8),
       { mode: "bar", capacity: 8 },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    expect(series.hasLOD).toBe(false);
+  });
+
+  it("skips pyramid for area series when downsample is omitted", () => {
+    const series = new SeriesStore(
+      new RingBuffer(8),
+      { mode: "area", capacity: 8 },
       { color: [1, 1, 1, 1], lineWidth: 1 },
     );
 

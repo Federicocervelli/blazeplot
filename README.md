@@ -60,7 +60,7 @@ push();
 | **Pan & zoom** | Pointer/touch pan and wheel zoom via `Camera2D`. Customizable viewport policies. |
 | **Grid lines** | Data-anchored grid rendered as WebGL line lists. |
 | **Axis labels** | Smart tick generation with DOM labels. Per-axis `inside`/`outside` positioning; outside axes reserve real layout gutters. |
-| **Multi-series** | Independent buffers, styles, and visibility per series. Line, scatter, and bar modes are supported. |
+| **Multi-series** | Independent buffers, styles, and visibility per series. Line, area, scatter, and bar modes are supported. |
 | **Benchmark overlay** | Built-in fps, frame time, vertex count, draw calls. |
 | **ResizeObserver** | Automatic DPR-aware canvas sizing. |
 
@@ -113,7 +113,7 @@ new Chart(canvas, {
 | `pointsRendered` | Number of vertices drawn this frame. |
 | `drawCalls` | Number of GPU draw calls this frame. |
 | `uploadBytes` | Bytes uploaded to GPU this frame. |
-| `renderMode` | `"none"` / `"raw"` / `"minmax"` / `"points"` / `"bars"` / `"mixed"`. |
+| `renderMode` | `"none"` / `"raw"` / `"minmax"` / `"points"` / `"bars"` / `"area"` / `"mixed"`. |
 
 ### `SeriesStore`
 
@@ -129,9 +129,9 @@ new Chart(canvas, {
 
 | Property | Description |
 |---|---|
-| `mode` | `"line"` / `"scatter"` / `"bar"` / `"envelope"` (envelope roadmap-only). |
+| `mode` | `"line"` / `"area"` / `"scatter"` / `"bar"` / `"envelope"` (envelope roadmap-only). |
 | `capacity` | Ring buffer capacity (samples). |
-| `downsample` | `"minmax"` or `"none"`. Min/max LOD applies to line rendering; scatter/bar skip LOD. |
+| `downsample` | `"minmax"` or `"none"`. Min/max LOD applies to line rendering; area/scatter/bar skip LOD. |
 
 ### `SeriesStyle`
 
@@ -141,7 +141,8 @@ new Chart(canvas, {
 | `lineWidth` | `1` | Line width in pixels. |
 | `pointSize` | `4` | Scatter point size in CSS pixels. |
 | `barWidth` | `0.8` | Bar width in data-space X units. |
-| `baseline` | `0` | Bar baseline in data-space Y units. |
+| `baseline` | `0` | Area/bar baseline in data-space Y units. |
+| `fillColor` | line color with 25% alpha | Area fill RGBA color. |
 
 ### `ViewportPolicy`
 

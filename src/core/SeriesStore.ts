@@ -93,7 +93,30 @@ export class SeriesStore {
   }
 
   copyRawVisible(viewport: Viewport, target: Float32Array, maxPoints: number): number {
-    if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
+    return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0);
+  }
+
+  copyAreaVisible(viewport: Viewport, target: Float32Array, maxPoints: number, baseline: number = 0): number {
+    return this.copyVisibleSamples(viewport, target, maxPoints, "area", baseline) * 2;
+  }
+
+  copyMinMaxVisible(viewport: Viewport, target: Float32Array, maxSegments: number): number {
+    return this.copyMinMaxSegments(viewport, target, maxSegments, "line-list") * 2;
+  }
+
+  copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number): number {
+    return this.copyMinMaxSegments(viewport, target, maxSegments, "instanced");
+  }
+
+  private copyVisibleSamples(
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    layout: "points" | "area",
+    baseline: number,
+  ): number {
+    const floatsPerSample = layout === "points" ? 2 : 4;
+    if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
 
     const start = this.dataset.lowerBoundX(viewport.xMin);
     const end = this.dataset.upperBoundX(viewport.xMax);
@@ -103,20 +126,23 @@ export class SeriesStore {
     const stride = Math.max(1, Math.ceil(visible / maxPoints));
     let count = 0;
     for (let i = start; i < end && count < maxPoints; i += stride) {
-      target[count * 2] = this.dataset.getX(i);
-      target[count * 2 + 1] = this.dataset.getY(i);
+      const x = this.dataset.getX(i);
+      const y = this.dataset.getY(i);
+      if (layout === "points") {
+        const offset = count * 2;
+        target[offset] = x;
+        target[offset + 1] = y;
+      } else {
+        const offset = count * 4;
+        target[offset] = x;
+        target[offset + 1] = baseline;
+        target[offset + 2] = x;
+        target[offset + 3] = y;
+      }
       count++;
     }
 
     return count;
-  }
-
-  copyMinMaxVisible(viewport: Viewport, target: Float32Array, maxSegments: number): number {
-    return this.copyMinMaxSegments(viewport, target, maxSegments, "line-list") * 2;
-  }
-
-  copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number): number {
-    return this.copyMinMaxSegments(viewport, target, maxSegments, "instanced");
   }
 
   private copyMinMaxSegments(

@@ -13,6 +13,7 @@ import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
 
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
+const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 const MINMAX_SEGMENT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 const FLOATS_PER_MINMAX_SEGMENT_INSTANCE = 3;
 const GRID_LINE_VERTEX_CAPACITY = 64;
@@ -35,7 +36,7 @@ export interface ChartFrameStats {
   pointsRendered: number;
   drawCalls: number;
   uploadBytes: number;
-  renderMode: "none" | "raw" | "minmax" | "points" | "bars" | "mixed";
+  renderMode: "none" | "raw" | "minmax" | "points" | "bars" | "area" | "mixed";
 }
 
 function normalizeAxisConfig(config: boolean | AxisConfig | undefined): NormalizedAxisConfig {
@@ -123,12 +124,14 @@ export class Chart {
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     const dataset: Dataset = config.dataset ?? new RingBuffer(config.capacity);
+    const color = style?.color ?? [0.3, 0.6, 1.0, 1.0];
     const s = new SeriesStore(dataset, config, {
-      color: style?.color ?? [0.3, 0.6, 1.0, 1.0],
+      color,
       lineWidth: style?.lineWidth ?? 1,
       pointSize: style?.pointSize ?? 4,
       barWidth: style?.barWidth ?? 0.8,
       baseline: style?.baseline ?? 0,
+      fillColor: style?.fillColor ?? [color[0], color[1], color[2], color[3] * 0.25],
     });
     this.series.push(s);
     return s;
@@ -209,6 +212,10 @@ export class Chart {
         this.drawBarSeries(s, viewport);
         continue;
       }
+      if (s.config.mode === "area") {
+        this.drawAreaSeries(s, viewport);
+        continue;
+      }
 
       const visibleSamples = s.visibleSampleCount(viewport);
       const dense = s.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
@@ -266,12 +273,36 @@ export class Chart {
     return true;
   }
 
+  private drawAreaSeries(
+    series: SeriesStore,
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+  ): void {
+    const baseline = series.style.baseline ?? 0;
+    const areaVertexCount = series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, baseline);
+    if (areaVertexCount < 4) return;
+
+    this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
+    this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, this.camera);
+    this.stats.pointsRendered += areaVertexCount;
+    this.stats.drawCalls++;
+    this.stats.uploadBytes += this.rawLineData.byteLength;
+
+    const lineVertexCount = this.uploadRawInstances(series, viewport, AREA_POINT_CAPACITY);
+    if (lineVertexCount >= 2) {
+      this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, this.camera);
+      this.stats.pointsRendered += lineVertexCount;
+      this.stats.drawCalls++;
+    }
+
+    this.recordRenderMode("area");
+  }
+
   private drawScatterSeries(
     series: SeriesStore,
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
   ): void {
     if (!this.renderer.supportsInstancedPoints) return;
-    const count = this.uploadRawInstances(series, viewport);
+    const count = this.uploadRawInstances(series, viewport, RAW_LINE_VERTEX_CAPACITY);
     if (count <= 0) return;
 
     this.renderer.drawPointsInstanced(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
@@ -283,7 +314,7 @@ export class Chart {
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
   ): void {
     if (!this.renderer.supportsInstancedBars) return;
-    const count = this.uploadRawInstances(series, viewport);
+    const count = this.uploadRawInstances(series, viewport, RAW_LINE_VERTEX_CAPACITY);
     if (count <= 0) return;
 
     this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, this.camera);
@@ -293,8 +324,9 @@ export class Chart {
   private uploadRawInstances(
     series: SeriesStore,
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+    maxPoints: number,
   ): number {
-    const count = series.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
+    const count = series.copyRawVisible(viewport, this.rawLineData, maxPoints);
     if (count <= 0) return 0;
 
     this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
@@ -344,7 +376,7 @@ export class Chart {
     return vertexCount;
   }
 
-  private recordRenderMode(mode: "raw" | "minmax" | "points" | "bars"): void {
+  private recordRenderMode(mode: "raw" | "minmax" | "points" | "bars" | "area"): void {
     if (this.stats.renderMode === "none") {
       this.stats.renderMode = mode;
     } else if (this.stats.renderMode !== mode) {

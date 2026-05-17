@@ -133,6 +133,22 @@ export class Renderer {
     });
   }
 
+  drawAreaStrip(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
+    this.writeCameraUniforms(camera);
+
+    this.backend.draw({
+      program: this.lineProgram,
+      primitive: "triangle_strip",
+      count,
+      attributes: { position: positions },
+      uniforms: {
+        uScale: this.scaleUniform,
+        uOffset: this.offsetUniform,
+        uColor: style.fillColor ?? style.color,
+      },
+    });
+  }
+
   drawBarsInstanced(
     instanceBuffer: GpuBuffer,
     barCount: number,

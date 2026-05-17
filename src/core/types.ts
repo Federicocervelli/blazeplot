@@ -30,9 +30,10 @@ export interface SeriesStyle {
   readonly pointSize?: number;
   readonly barWidth?: number;
   readonly baseline?: number;
+  readonly fillColor?: readonly [number, number, number, number];
 }
 
-export type SeriesMode = "line" | "envelope" | "scatter" | "bar";
+export type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar";
 
 export interface Dataset {
   readonly length: number;

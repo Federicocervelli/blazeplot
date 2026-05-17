@@ -80,7 +80,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] Instanced draw for segment mode (with line-list fallback when regl/browser instancing is unavailable)
 - [x] Scatter / point rendering (instanced quads)
 - [x] Bar rendering (instanced quads, data-space width, configurable baseline)
-- [ ] Area fill (line + polygon below)
+- [x] Area fill (triangle-strip fill to baseline + line overlay)
 - [ ] Heatmap (texture-based)
 - [ ] OHLC / candlestick
 - [ ] Draw call batching per shader mode
@@ -116,7 +116,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Color/style per-series
 - [x] Series visibility toggle
 - [ ] Batched draw calls (same shader → one draw per series group)
-- [ ] Mixed chart types (line + scatter + bar supported; area/OHLC pending)
+- [ ] Mixed chart types (line + scatter + bar + area supported; OHLC pending)
 - [ ] Shared X axis optional, independent Y per series
 - [ ] Secondary axis
 
