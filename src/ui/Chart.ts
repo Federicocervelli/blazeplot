@@ -296,7 +296,9 @@ export class Chart {
   }
 
   resize(dpr: number = globalThis.devicePixelRatio): boolean {
-    return this.applyCanvasSize(dpr);
+    const resized = this.applyCanvasSize(dpr);
+    if (resized) this.refreshHover();
+    return resized;
   }
 
   getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): ChartFrameStats {

@@ -148,6 +148,11 @@ export class ReglBackend implements GpuBackend {
   }
 
   viewport(x: number, y: number, w: number, h: number): void {
+    // This backend's viewport API intentionally maps to a scissor box for plot clipping,
+    // but regl must still be polled after canvas resizes so its full-drawing-buffer GL
+    // viewport matches the new backing store. Otherwise WebGL content is rasterized with
+    // stale dimensions while DOM hover markers use the current CSS rect.
+    this.regl.poll();
     this.scissorBox = { x, y, w, h };
   }
 
