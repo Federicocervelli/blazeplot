@@ -207,16 +207,9 @@ Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zo
 
 ### High-performance dataset capabilities
 
-`Dataset` only requires `getX/getY` and X binary search, but large or procedural data sources can opt into additional exported capability interfaces:
+`Dataset` only requires `getX/getY` and X binary search. For maximum performance with huge, procedural, remote, or memory-mapped data, implement `AcceleratedDataset`.
 
-| Interface | Purpose |
-|---|---|
-| `RangeMinMaxDataset` | Fast min/max Y queries for arbitrary logical index ranges. |
-| `RangeSampleCopyDataset` | Fast contiguous sample extraction without repeated `getX/getY` calls. |
-| `VisibleSampleCopyDataset` | Stable viewport sampling for dense scatter/line overlays; samples should be anchored to data coordinates to avoid jitter while streaming. |
-| `MinMaxSegmentCopyDataset` | Renderer-ready min/max bucket extraction for billion-sample dense views. |
-
-`SeriesStore` detects these methods structurally, so custom datasets can implement only the capabilities they can accelerate.
+`AcceleratedDataset` is the convenience contract for all fast paths: range min/max, exact range copying, stable viewport sampling, and renderer-ready min/max buckets. BlazePlot still exports the smaller capability interfaces (`RangeMinMaxDataset`, `RangeSampleCopyDataset`, `VisibleSampleCopyDataset`, `MinMaxSegmentCopyDataset`) for advanced partial acceleration, but most high-performance custom datasets should target `AcceleratedDataset`.
 
 ### `ViewportPolicy`
 

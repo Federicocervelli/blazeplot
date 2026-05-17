@@ -1,4 +1,4 @@
-export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, LODStrategy, Dataset, AppendableDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout } from "./types.js";
+export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, LODStrategy, Dataset, AcceleratedDataset, AppendableDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout } from "./types.js";
 
 export { RingBuffer } from "./RingBuffer.js";
 export { StaticDataset } from "./StaticDataset.js";

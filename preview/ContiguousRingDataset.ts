@@ -1,4 +1,4 @@
-import type { AppendableDataset, MinMaxSegmentCopyDataset, MinMaxSegmentLayout, RangeMinMaxDataset, RangeSampleCopyDataset, SampleCopyLayout, TimeRange, Viewport, VisibleSampleCopyDataset } from "@/index.ts";
+import type { AcceleratedDataset, AppendableDataset, MinMaxSegmentLayout, SampleCopyLayout, TimeRange, Viewport } from "@/index.ts";
 
 function positiveModulo(value: number, modulo: number): number {
   return ((value % modulo) + modulo) % modulo;
@@ -12,7 +12,7 @@ export interface ContiguousRingDatasetOptions {
 type SampleLayout = SampleCopyLayout;
 type MinMaxLayout = MinMaxSegmentLayout;
 
-export class ContiguousRingDataset implements AppendableDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, MinMaxSegmentCopyDataset {
+export class ContiguousRingDataset implements AppendableDataset, AcceleratedDataset {
   readonly capacity: number;
   private readonly blockSize: number;
   private readonly xStep: number;

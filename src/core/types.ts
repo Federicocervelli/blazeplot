@@ -105,6 +105,18 @@ export interface MinMaxSegmentCopyDataset extends Dataset {
   ): number;
 }
 
+/**
+ * Convenience contract for maximum-performance custom datasets. Implement this
+ * when a dataset can provide fast exact sample copies, stable viewport sampling,
+ * range min/max queries, and renderer-ready min/max buckets.
+ */
+export interface AcceleratedDataset extends
+  Dataset,
+  RangeMinMaxDataset,
+  RangeSampleCopyDataset,
+  VisibleSampleCopyDataset,
+  MinMaxSegmentCopyDataset {}
+
 export interface OhlcDataset extends Dataset {
   getOpen(index: number): number;
   getHigh(index: number): number;
