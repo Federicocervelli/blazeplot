@@ -122,8 +122,8 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [ ] Batched draw calls (same shader → one draw per series group)
 - [x] Mixed chart types (line + scatter + bar + area + OHLC supported)
 - [x] Candlestick body mixed chart support
-- [ ] Shared X axis optional, independent Y per series
-- [ ] Secondary axis
+- [x] Shared X axis optional, independent Y per series (`SeriesConfig.yAxis`, left/right cameras share X)
+- [x] Secondary axis (`axes.y2`, right-side gutter/overlay, `chart.setYViewport`)
 
 ---
 

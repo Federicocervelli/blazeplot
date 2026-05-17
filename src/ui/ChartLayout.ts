@@ -8,6 +8,7 @@ export interface NormalizedAxisConfig {
 export interface ChartLayoutConfig {
   readonly x: NormalizedAxisConfig;
   readonly y: NormalizedAxisConfig;
+  readonly y2: NormalizedAxisConfig;
 }
 
 export interface ChartLayoutElements {
@@ -16,10 +17,13 @@ export interface ChartLayoutElements {
   readonly canvas: HTMLCanvasElement;
   readonly xAxis: HTMLDivElement;
   readonly yAxis: HTMLDivElement;
+  readonly y2Axis: HTMLDivElement;
   readonly corner: HTMLDivElement;
+  readonly cornerRight: HTMLDivElement;
 }
 
 export const LEFT_AXIS_GUTTER_CSS = 52;
+export const RIGHT_AXIS_GUTTER_CSS = 52;
 export const BOTTOM_AXIS_GUTTER_CSS = 28;
 
 export class ChartLayout implements ChartLayoutElements {
@@ -28,7 +32,9 @@ export class ChartLayout implements ChartLayoutElements {
   readonly canvas: HTMLCanvasElement;
   readonly xAxis: HTMLDivElement;
   readonly yAxis: HTMLDivElement;
+  readonly y2Axis: HTMLDivElement;
   readonly corner: HTMLDivElement;
+  readonly cornerRight: HTMLDivElement;
 
   private readonly externalCanvas: boolean;
   private readonly originalCanvasCssText: string;
@@ -45,14 +51,18 @@ export class ChartLayout implements ChartLayoutElements {
     this.canvas = canvasTarget ?? document.createElement("canvas");
     this.xAxis = document.createElement("div");
     this.yAxis = document.createElement("div");
+    this.y2Axis = document.createElement("div");
     this.corner = document.createElement("div");
+    this.cornerRight = document.createElement("div");
 
     this.root.className = "blazeplot-root";
     this.plot.className = "blazeplot-plot";
     this.canvas.classList.add("blazeplot-canvas");
     this.xAxis.className = "blazeplot-axis blazeplot-axis-x";
     this.yAxis.className = "blazeplot-axis blazeplot-axis-y";
+    this.y2Axis.className = "blazeplot-axis blazeplot-axis-y2";
     this.corner.className = "blazeplot-axis-corner";
+    this.cornerRight.className = "blazeplot-axis-corner blazeplot-axis-corner-right";
 
     this.applyBaseStyles();
     this.mount(target);
@@ -61,13 +71,16 @@ export class ChartLayout implements ChartLayoutElements {
 
   update(config: ChartLayoutConfig): void {
     const hasOutsideY = config.y.visible && config.y.position === "outside";
+    const hasOutsideY2 = config.y2.visible && config.y2.position === "outside";
     const hasOutsideX = config.x.visible && config.x.position === "outside";
 
-    this.root.style.gridTemplateColumns = `${hasOutsideY ? LEFT_AXIS_GUTTER_CSS : 0}px minmax(0, 1fr)`;
+    this.root.style.gridTemplateColumns = `${hasOutsideY ? LEFT_AXIS_GUTTER_CSS : 0}px minmax(0, 1fr) ${hasOutsideY2 ? RIGHT_AXIS_GUTTER_CSS : 0}px`;
     this.root.style.gridTemplateRows = `minmax(0, 1fr) ${hasOutsideX ? BOTTOM_AXIS_GUTTER_CSS : 0}px`;
     this.yAxis.style.display = hasOutsideY ? "block" : "none";
+    this.y2Axis.style.display = hasOutsideY2 ? "block" : "none";
     this.xAxis.style.display = hasOutsideX ? "block" : "none";
     this.corner.style.display = hasOutsideX && hasOutsideY ? "block" : "none";
+    this.cornerRight.style.display = hasOutsideX && hasOutsideY2 ? "block" : "none";
   }
 
   dispose(): void {
@@ -87,8 +100,10 @@ export class ChartLayout implements ChartLayoutElements {
 
     this.root.appendChild(this.yAxis);
     this.root.appendChild(this.plot);
+    this.root.appendChild(this.y2Axis);
     this.root.appendChild(this.corner);
     this.root.appendChild(this.xAxis);
+    this.root.appendChild(this.cornerRight);
     this.plot.appendChild(this.canvas);
   }
 
@@ -123,6 +138,14 @@ export class ChartLayout implements ChartLayoutElements {
     this.yAxis.style.overflow = "hidden";
     this.yAxis.style.pointerEvents = "none";
 
+    this.y2Axis.style.position = "relative";
+    this.y2Axis.style.gridColumn = "3";
+    this.y2Axis.style.gridRow = "1";
+    this.y2Axis.style.minWidth = "0";
+    this.y2Axis.style.minHeight = "0";
+    this.y2Axis.style.overflow = "hidden";
+    this.y2Axis.style.pointerEvents = "none";
+
     this.xAxis.style.position = "relative";
     this.xAxis.style.gridColumn = "2";
     this.xAxis.style.gridRow = "2";
@@ -136,5 +159,11 @@ export class ChartLayout implements ChartLayoutElements {
     this.corner.style.minWidth = "0";
     this.corner.style.minHeight = "0";
     this.corner.style.pointerEvents = "none";
+
+    this.cornerRight.style.gridColumn = "3";
+    this.cornerRight.style.gridRow = "2";
+    this.cornerRight.style.minWidth = "0";
+    this.cornerRight.style.minHeight = "0";
+    this.cornerRight.style.pointerEvents = "none";
   }
 }

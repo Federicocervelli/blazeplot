@@ -9,11 +9,15 @@ export interface AxisOverlayOptions {
 
 export type AxisOverlayConfig = ChartLayoutConfig;
 
+type RenderAxis = "x" | "y" | "y2";
+
 export class AxisOverlay {
   private xPool: HTMLDivElement[] = [];
   private yPool: HTMLDivElement[] = [];
+  private y2Pool: HTMLDivElement[] = [];
   private readonly xTicks: number[] = [];
   private readonly yTicks: number[] = [];
+  private readonly y2Ticks: number[] = [];
 
   constructor(
     private readonly layout: ChartLayoutElements,
@@ -23,17 +27,13 @@ export class AxisOverlay {
 
   setOptions(options: AxisOverlayOptions): void {
     this.options = options;
-    for (const el of this.xPool) {
-      el.style.font = this.options.font ?? "11px ui-monospace, monospace, sans-serif";
-      el.style.color = this.options.color ?? "#bfd6ff";
-    }
-    for (const el of this.yPool) {
+    for (const el of [...this.xPool, ...this.yPool, ...this.y2Pool]) {
       el.style.font = this.options.font ?? "11px ui-monospace, monospace, sans-serif";
       el.style.color = this.options.color ?? "#bfd6ff";
     }
   }
 
-  update(camera: Camera2D, axis: AxisController): void {
+  update(camera: Camera2D, axis: AxisController, rightCamera: Camera2D = camera, rightAxis: AxisController = axis): void {
     const plotW = Math.max(1, this.layout.plot.clientWidth);
     const plotH = Math.max(1, this.layout.plot.clientHeight);
 
@@ -49,20 +49,32 @@ export class AxisOverlay {
       this.yTicks.length = 0;
     }
 
+    if (this.config.y2.visible) {
+      rightAxis.getYTickValues(plotH, 8, this.y2Ticks);
+    } else {
+      this.y2Ticks.length = 0;
+    }
+
     this.updateAxis(this.xPool, this.xTicks, "x", camera, plotW, plotH, axis);
     this.updateAxis(this.yPool, this.yTicks, "y", camera, plotW, plotH, axis);
+    this.updateAxis(this.y2Pool, this.y2Ticks, "y2", rightCamera, plotW, plotH, rightAxis);
   }
 
   dispose(): void {
     for (const el of this.xPool) el.remove();
     for (const el of this.yPool) el.remove();
+    for (const el of this.y2Pool) el.remove();
     this.xPool = [];
     this.yPool = [];
+    this.y2Pool = [];
   }
 
-  private parentForAxis(axis: "x" | "y"): HTMLElement {
+  private parentForAxis(axis: RenderAxis): HTMLElement {
     if (axis === "x") {
       return this.config.x.position === "outside" ? this.layout.xAxis : this.layout.plot;
+    }
+    if (axis === "y2") {
+      return this.config.y2.position === "outside" ? this.layout.y2Axis : this.layout.plot;
     }
     return this.config.y.position === "outside" ? this.layout.yAxis : this.layout.plot;
   }
@@ -70,7 +82,7 @@ export class AxisOverlay {
   private updateAxis(
     pool: HTMLDivElement[],
     values: number[],
-    axis: "x" | "y",
+    axis: RenderAxis,
     camera: Camera2D,
     plotW: number,
     plotH: number,
@@ -121,17 +133,19 @@ export class AxisOverlay {
           el.style.bottom = "4px";
         }
       } else {
+        const isRight = axis === "y2";
+        const config = isRight ? this.config.y2 : this.config.y;
         const [, clipY] = camera.toClip(camera.xMin, value);
         const screenY = (1 - clipY) * 0.5 * plotH;
         el.style.top = `${screenY}px`;
         el.style.bottom = "auto";
         el.style.transform = "translateY(-50%)";
-        if (this.config.y.position === "outside") {
-          el.style.left = "auto";
-          el.style.right = "4px";
+        if (config.position === "outside") {
+          el.style.left = isRight ? "4px" : "auto";
+          el.style.right = isRight ? "auto" : "4px";
         } else {
-          el.style.left = "4px";
-          el.style.right = "auto";
+          el.style.left = isRight ? "auto" : "4px";
+          el.style.right = isRight ? "4px" : "auto";
         }
       }
     }

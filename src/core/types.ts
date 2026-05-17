@@ -38,6 +38,7 @@ export interface SeriesStyle {
 }
 
 export type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar" | "ohlc" | "candlestick";
+export type SeriesYAxis = "left" | "right";
 
 export interface Dataset {
   readonly length: number;
@@ -81,6 +82,7 @@ export interface SeriesConfig {
   readonly downsample?: LODStrategy;
   readonly overflow?: BufferOverflowStrategy;
   readonly dataset?: Dataset;
+  readonly yAxis?: SeriesYAxis;
   readonly id?: string;
   readonly name?: string;
 }

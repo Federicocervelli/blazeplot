@@ -1,4 +1,4 @@
-import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, Viewport } from "../core/types.js";
+import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, SeriesYAxis, Viewport } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
@@ -49,7 +49,7 @@ export interface ChartOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly grid?: boolean;
   readonly gridStyle?: Partial<SeriesStyle>;
-  readonly axes?: boolean | { x?: boolean | AxisConfig; y?: boolean | AxisConfig };
+  readonly axes?: boolean | { x?: boolean | AxisConfig; y?: boolean | AxisConfig; y2?: boolean | AxisConfig };
   readonly hover?: ChartPickOptions;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
@@ -65,6 +65,7 @@ export interface ChartSeriesState {
   readonly mode: SeriesMode;
   readonly visible: boolean;
   readonly color: readonly [number, number, number, number];
+  readonly yAxis: SeriesYAxis;
 }
 
 export interface ChartPickItem extends SeriesSample {
@@ -118,16 +119,25 @@ function normalizeAxisConfig(config: boolean | AxisConfig | undefined): Normaliz
   };
 }
 
-function normalizeAxesConfig(axes: ChartOptions["axes"]): { x: NormalizedAxisConfig; y: NormalizedAxisConfig } {
+function normalizeAxesConfig(axes: ChartOptions["axes"]): { x: NormalizedAxisConfig; y: NormalizedAxisConfig; y2: NormalizedAxisConfig } {
   if (axes === false) {
-    return { x: { visible: false, position: "inside" }, y: { visible: false, position: "inside" } };
+    return {
+      x: { visible: false, position: "inside" },
+      y: { visible: false, position: "inside" },
+      y2: { visible: false, position: "inside" },
+    };
   }
   if (axes === true || axes === undefined) {
-    return { x: { visible: true, position: "inside" }, y: { visible: true, position: "inside" } };
+    return {
+      x: { visible: true, position: "inside" },
+      y: { visible: true, position: "inside" },
+      y2: { visible: false, position: "inside" },
+    };
   }
   return {
     x: normalizeAxisConfig(axes.x),
     y: normalizeAxisConfig(axes.y),
+    y2: normalizeAxisConfig(axes.y2 ?? false),
   };
 }
 
@@ -140,7 +150,9 @@ interface PickCandidate {
 export class Chart {
   private series: SeriesStore[] = [];
   private camera: Camera2D;
+  private rightCamera: Camera2D;
   private axis: AxisController;
+  private rightAxis: AxisController;
   private renderer: Renderer;
   private rawLineBuffer: GpuBuffer;
   private rawLineData: Float32Array;
@@ -154,7 +166,7 @@ export class Chart {
   private readonly xTicks: number[] = [];
   private readonly yTicks: number[] = [];
   private axisOverlay: AxisOverlay | null = null;
-  private normalizedAxes: { x: NormalizedAxisConfig; y: NormalizedAxisConfig };
+  private normalizedAxes: { x: NormalizedAxisConfig; y: NormalizedAxisConfig; y2: NormalizedAxisConfig };
   private resolvedTheme: ResolvedChartTheme;
   private _gridVisible: boolean;
   private layout: ChartLayout;
@@ -198,7 +210,9 @@ export class Chart {
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
     this.applyCanvasSize();
     this.camera = new Camera2D();
+    this.rightCamera = new Camera2D();
     this.axis = new AxisController(this.camera);
+    this.rightAxis = new AxisController(this.rightCamera);
     this.renderer = new Renderer(new ReglBackend(this.layout.canvas));
     this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
     this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
@@ -213,7 +227,7 @@ export class Chart {
       lineWidth: options.gridStyle?.lineWidth ?? 1,
     };
 
-    if (this.normalizedAxes.x.visible || this.normalizedAxes.y.visible) {
+    if (this.normalizedAxes.x.visible || this.normalizedAxes.y.visible || this.normalizedAxes.y2.visible) {
       this.axisOverlay = new AxisOverlay(this.layout, this.normalizedAxes, {
         color: this.resolvedTheme.axisColor,
         font: this.resolvedTheme.axisFont,
@@ -258,20 +272,25 @@ export class Chart {
     return this.layout.yAxis;
   }
 
+  get y2AxisElement(): HTMLElement {
+    return this.layout.y2Axis;
+  }
+
   get theme(): ResolvedChartTheme {
     return this.resolvedTheme;
   }
 
-  getCamera(): Camera2D {
-    return this.camera;
+  getCamera(yAxis: SeriesYAxis = "left"): Camera2D {
+    return yAxis === "right" ? this.rightCamera : this.camera;
   }
 
-  dataToPlot(x: number, y: number): [number, number] {
-    const [clipX, clipY] = this.camera.toClip(x, y);
-    return this.camera.toScreen(clipX, clipY, this.canvas.clientWidth, this.canvas.clientHeight);
+  dataToPlot(x: number, y: number, yAxis: SeriesYAxis = "left"): [number, number] {
+    const camera = this.getCamera(yAxis);
+    const [clipX, clipY] = camera.toClip(x, y);
+    return camera.toScreen(clipX, clipY, this.canvas.clientWidth, this.canvas.clientHeight);
   }
 
-  clientToData(clientX: number, clientY: number): [number, number] | null {
+  clientToData(clientX: number, clientY: number, yAxis: SeriesYAxis = "left"): [number, number] | null {
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
 
@@ -279,24 +298,26 @@ export class Chart {
     const plotY = clientY - rect.top;
     if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
 
-    const viewport = this.camera.viewport;
+    const viewport = this.getCamera(yAxis).viewport;
     return [
       viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin),
       viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin),
     ];
   }
 
-  getViewport(): Viewport {
-    return this.camera.viewport;
+  getViewport(yAxis: SeriesYAxis = "left"): Viewport {
+    return this.getCamera(yAxis).viewport;
   }
 
   pan(intent: PanIntent): void {
     this.camera.pan(intent);
+    this.syncRightCameraX();
     this.refreshHover();
   }
 
   zoom(intent: ZoomIntent): void {
     this.camera.zoom(intent);
+    this.syncRightCameraX();
     this.refreshHover();
   }
 
@@ -375,11 +396,18 @@ export class Chart {
       mode: series.config.mode,
       visible: series.visible,
       color: series.style.color,
+      yAxis: series.config.yAxis ?? "left",
     }));
   }
 
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void {
     this.camera.setViewport(v);
+    this.rightCamera.setViewport(v);
+    this.refreshHover();
+  }
+
+  setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number }): void {
+    this.getCamera(yAxis).setViewport(v);
     this.refreshHover();
   }
 
@@ -444,7 +472,7 @@ export class Chart {
     this.layout.update(this.normalizedAxes);
     this.axisOverlay?.dispose();
     this.axisOverlay = null;
-    if (this.normalizedAxes.x.visible || this.normalizedAxes.y.visible) {
+    if (this.normalizedAxes.x.visible || this.normalizedAxes.y.visible || this.normalizedAxes.y2.visible) {
       this.axisOverlay = new AxisOverlay(this.layout, this.normalizedAxes, {
         color: this.resolvedTheme.axisColor,
         font: this.resolvedTheme.axisFont,
@@ -469,15 +497,15 @@ export class Chart {
     const group = options.group ?? this.options.hover?.group ?? "x";
     const maxDistancePx = options.maxDistancePx ?? this.options.hover?.maxDistancePx ?? Infinity;
     const selected = mode === "nearest-point"
-      ? this.findNearestPointCandidate(dataX, dataY, viewport, rect.width, rect.height, maxDistancePx)
-      : this.findNearestXCandidate(dataX, viewport, rect.width, maxDistancePx);
+      ? this.findNearestPointCandidate(dataX, plotY, rect.width, rect.height, maxDistancePx)
+      : this.findNearestXCandidate(dataX, rect.width, maxDistancePx);
 
     if (!selected) return null;
 
     const anchorX = selected.sample.x;
     const items = group === "none"
       ? [this.createPickItem(selected.sample, selected.series, selected.seriesIndex, clientX, clientY, rect)]
-      : this.collectPickItems(anchorX, clientX, clientY, viewport, rect);
+      : this.collectPickItems(anchorX, clientX, clientY, rect);
     return { clientX, clientY, plotX, plotY, dataX, dataY, anchorX, mode, group, maxDistancePx, items };
   }
 
@@ -541,6 +569,7 @@ export class Chart {
     this.stats.renderMode = "none";
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
+    this.syncRightCameraX();
 
     const [r, g, b, a] = this.resolvedTheme.backgroundColor;
     this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -561,10 +590,10 @@ export class Chart {
     for (const s of this.series) {
       if (!s.visible) continue;
       s.rebuildPyramid();
-      this.drawSeries(s, viewport);
+      this.drawSeries(s);
     }
 
-    this.axisOverlay?.update(this.camera, this.axis);
+    this.axisOverlay?.update(this.camera, this.axis, this.rightCamera, this.rightAxis);
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     this.refreshHover();
@@ -603,36 +632,46 @@ export class Chart {
     return true;
   }
 
-  private drawSeries(series: SeriesStore, viewport: Viewport): void {
+  private cameraForSeries(series: SeriesStore): Camera2D {
+    return series.config.yAxis === "right" ? this.rightCamera : this.camera;
+  }
+
+  private syncRightCameraX(): void {
+    this.rightCamera.setViewport({ xMin: this.camera.xMin, xMax: this.camera.xMax });
+  }
+
+  private drawSeries(series: SeriesStore): void {
+    const camera = this.cameraForSeries(series);
+    const viewport = camera.viewport;
     switch (series.config.mode) {
       case "area":
-        this.drawAreaSeries(series, viewport);
+        this.drawAreaSeries(series, viewport, camera);
         return;
       case "bar":
-        this.drawBarSeries(series, viewport);
+        this.drawBarSeries(series, viewport, camera);
         return;
       case "ohlc":
-        this.drawOhlcSeries(series, viewport);
+        this.drawOhlcSeries(series, viewport, camera);
         return;
       case "candlestick":
-        this.drawCandlestickSeries(series, viewport);
+        this.drawCandlestickSeries(series, viewport, camera);
         return;
       case "scatter":
-        this.drawScatterSeries(series, viewport);
+        this.drawScatterSeries(series, viewport, camera);
         return;
       default:
-        this.drawLineSeries(series, viewport);
+        this.drawLineSeries(series, viewport, camera);
     }
   }
 
-  private drawLineSeries(series: SeriesStore, viewport: Viewport): void {
+  private drawLineSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
     const visibleSamples = series.visibleSampleCount(viewport);
     const dense = series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2;
     if (dense && this.renderer.supportsInstancedSegments) {
       const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (segmentCount <= 0) return;
       this.uploadMinMaxInstanceData(segmentCount);
-      this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, this.camera);
+      this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, camera);
       this.recordDraw("minmax", segmentCount * 2);
       return;
     }
@@ -641,7 +680,7 @@ export class Chart {
       const count = series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (count < 2) return;
       this.uploadRawLineData(count);
-      this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, this.camera);
+      this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, camera);
       this.recordDraw("minmax", count);
       return;
     }
@@ -653,7 +692,7 @@ export class Chart {
     this.recordDraw("raw", count);
   }
 
-  private drawAreaSeries(series: SeriesStore, viewport: Viewport): void {
+  private drawAreaSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
     const range = series.visibleIndexRange(viewport, 1);
     if (range.end - range.start < 2) return;
 
@@ -663,7 +702,7 @@ export class Chart {
       if (areaVertexCount < 4) break;
 
       this.uploadRawLineData(areaVertexCount);
-      this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, this.camera);
+      this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, camera);
       this.recordDraw("area", areaVertexCount);
       start += Math.max(1, (areaVertexCount >> 1) - 1);
     }
@@ -673,14 +712,14 @@ export class Chart {
       if (lineVertexCount < 2) break;
 
       this.uploadRawLineData(lineVertexCount);
-      this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, this.camera);
+      this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, camera);
       this.recordDraw("area", lineVertexCount);
       start += Math.max(1, lineVertexCount - 1);
     }
 
   }
 
-  private drawOhlcSeries(series: SeriesStore, viewport: Viewport): void {
+  private drawOhlcSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
     const range = series.visibleIndexRange(viewport);
     const maxCandles = Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_CANDLE);
     for (let start = range.start; start < range.end;) {
@@ -689,13 +728,13 @@ export class Chart {
 
       const vertexCount = candleCount * 6;
       this.uploadRawLineData(vertexCount);
-      this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, this.camera);
+      this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, camera);
       this.recordDraw("raw", vertexCount);
       start += candleCount;
     }
   }
 
-  private drawCandlestickSeries(series: SeriesStore, viewport: Viewport): void {
+  private drawCandlestickSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
     const range = series.visibleIndexRange(viewport, 1);
     const maxCandles = Math.min(
       Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE),
@@ -712,31 +751,31 @@ export class Chart {
       const wickVertexCount = this.writeCandlestickWicks(candleCount);
       if (wickVertexCount > 0) {
         this.uploadBarTriangleData(wickVertexCount);
-        this.renderer.drawLines(this.barTriangleBuffer, wickVertexCount, wickStyle, this.camera);
+        this.renderer.drawLines(this.barTriangleBuffer, wickVertexCount, wickStyle, camera);
         this.recordDraw("raw", wickVertexCount);
       }
 
       const bodyWidth = series.style.barWidth ?? series.style.tickWidth ?? 0.8;
-      this.drawCandlestickBodies(candleCount, bodyWidth, "up", upStyle);
-      this.drawCandlestickBodies(candleCount, bodyWidth, "down", downStyle);
+      this.drawCandlestickBodies(candleCount, bodyWidth, "up", upStyle, camera);
+      this.drawCandlestickBodies(candleCount, bodyWidth, "down", downStyle, camera);
       start += candleCount;
     }
   }
 
-  private drawScatterSeries(series: SeriesStore, viewport: Viewport): void {
+  private drawScatterSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
     const range = series.visibleIndexRange(viewport);
     for (let start = range.start; start < range.end;) {
       const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
       if (count <= 0) break;
 
       this.uploadRawLineData(count);
-      this.renderer.drawPoints(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
+      this.renderer.drawPoints(this.rawLineBuffer, count, series.style, camera, this.canvas.width, this.canvas.height);
       this.recordDraw("points", count);
       start += count;
     }
   }
 
-  private drawBarSeries(series: SeriesStore, viewport: Viewport): void {
+  private drawBarSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
     const visibleSamples = series.visibleSampleCount(viewport);
     const rawBarCapacity = this.maxRawBarInstances();
     if (series.hasLOD && visibleSamples > rawBarCapacity) {
@@ -745,7 +784,7 @@ export class Chart {
 
       this.includeBaselineInBarRanges(sampledCount, series.style.baseline ?? 0);
       const vertexCount = this.writeBarBucketTriangles(sampledCount, viewport);
-      this.drawBarTriangles(vertexCount, series.style);
+      this.drawBarTriangles(vertexCount, series.style, camera);
       return;
     }
 
@@ -755,13 +794,13 @@ export class Chart {
 
     if (this.renderer.supportsInstancedBars) {
       this.uploadRawLineData(count);
-      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, this.camera);
+      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, camera);
       this.recordDraw("bars", count);
       return;
     }
 
     const vertexCount = this.writeBarTriangles(count, series.style.baseline ?? 0, series.style.barWidth ?? 0.8);
-    this.drawBarTriangles(vertexCount, series.style);
+    this.drawBarTriangles(vertexCount, series.style, camera);
   }
 
   private uploadRawLineData(vertexCount: number): void {
@@ -876,6 +915,7 @@ export class Chart {
     bodyWidth: number,
     direction: "up" | "down",
     style: SeriesStyle,
+    camera: Camera2D,
   ): void {
     const halfWidth = bodyWidth * 0.5;
     let bodyCount = 0;
@@ -891,7 +931,7 @@ export class Chart {
       bodyCount++;
     }
 
-    this.drawBarTriangles(bodyCount * 6, style);
+    this.drawBarTriangles(bodyCount * 6, style, camera);
   }
 
   private writeBarTriangle(index: number, x0: number, x1: number, y0: number, y1: number): void {
@@ -910,10 +950,10 @@ export class Chart {
     this.barTriangleData[o + 11] = y1;
   }
 
-  private drawBarTriangles(vertexCount: number, style: SeriesStyle): void {
+  private drawBarTriangles(vertexCount: number, style: SeriesStyle, camera: Camera2D): void {
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount);
-    this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, this.camera);
+    this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, camera);
     this.recordDraw("bars", vertexCount);
   }
 
@@ -925,17 +965,17 @@ export class Chart {
 
   private findNearestXCandidate(
     dataX: number,
-    viewport: Viewport,
     plotWidth: number,
     maxDistancePx: number,
   ): PickCandidate | null {
     let best: PickCandidate | null = null;
     let bestDistancePx = Infinity;
-    const xScale = plotWidth / (viewport.xMax - viewport.xMin);
 
     for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
       const series = this.series[seriesIndex]!;
       if (!series.visible) continue;
+      const viewport = this.cameraForSeries(series).viewport;
+      const xScale = plotWidth / (viewport.xMax - viewport.xMin);
       const sample = series.nearestSampleByX(dataX, viewport);
       if (!sample) continue;
       const distancePx = Math.abs(sample.x - dataX) * xScale;
@@ -950,8 +990,7 @@ export class Chart {
 
   private findNearestPointCandidate(
     dataX: number,
-    dataY: number,
-    viewport: Viewport,
+    plotY: number,
     plotWidth: number,
     plotHeight: number,
     maxDistancePx: number,
@@ -960,6 +999,8 @@ export class Chart {
     for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
       const series = this.series[seriesIndex]!;
       if (!series.visible) continue;
+      const viewport = this.cameraForSeries(series).viewport;
+      const dataY = viewport.yMax - (plotY / plotHeight) * (viewport.yMax - viewport.yMin);
       const sample = series.nearestSampleByPoint(dataX, dataY, viewport, plotWidth, plotHeight, maxDistancePx);
       if (!sample) continue;
       if (!best || (sample.distancePx ?? Infinity) < (best.sample.distancePx ?? Infinity)) {
@@ -974,14 +1015,13 @@ export class Chart {
     anchorX: number,
     clientX: number,
     clientY: number,
-    viewport: Viewport,
     rect: DOMRect,
   ): ChartPickItem[] {
     const items: ChartPickItem[] = [];
     for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
       const series = this.series[seriesIndex]!;
       if (!series.visible) continue;
-      const sample = series.nearestSampleByX(anchorX, viewport);
+      const sample = series.nearestSampleByX(anchorX, this.cameraForSeries(series).viewport);
       if (!sample) continue;
       items.push(this.createPickItem(sample, series, seriesIndex, clientX, clientY, rect));
     }
@@ -996,8 +1036,9 @@ export class Chart {
     clientY: number,
     rect: DOMRect,
   ): ChartPickItem {
-    const [clipX, clipY] = this.camera.toClip(sample.x, sample.y);
-    const [plotX, plotY] = this.camera.toScreen(clipX, clipY, rect.width, rect.height);
+    const camera = this.cameraForSeries(series);
+    const [clipX, clipY] = camera.toClip(sample.x, sample.y);
+    const [plotX, plotY] = camera.toScreen(clipX, clipY, rect.width, rect.height);
     const itemClientX = rect.left + plotX;
     const itemClientY = rect.top + plotY;
     const dx = itemClientX - clientX;

@@ -62,12 +62,13 @@ bun install blazeplot
 |---|---|
 | `new Chart(container, options?)` | Create a chart inside an HTML container element. The chart owns the plot canvas and axis layout. |
 | `chart.addSeries(config, style?)` | Add a data series. Returns `SeriesStore`. |
-| `chart.addLine(config, style?)` / `addArea` / `addScatter` / `addBar` / `addOhlc` / `addCandlestick` | Typed helpers that set the series mode for you. |
+| `chart.addLine(config, style?)` / `addArea` / `addScatter` / `addBar` / `addOhlc` / `addCandlestick` | Typed helpers that set the series mode for you. `config.yAxis: "right"` maps a series to the secondary Y axis. |
 | `chart.removeSeries(series)` | Remove a previously added series. |
-| `chart.setViewport({ xMin, xMax, yMin, yMax })` | Set the visible data range. |
-| `chart.getViewport()` | Return the current visible data range. |
+| `chart.setViewport({ xMin, xMax, yMin, yMax })` | Set the visible data range on both Y axes and the shared X range. |
+| `chart.setYViewport("left" | "right", { yMin, yMax })` | Set one Y-axis viewport while preserving the shared X range. |
+| `chart.getViewport(yAxis?)` | Return the current visible data range for `"left"` or `"right"` Y axis. |
 | `chart.pan(intent)` / `chart.zoom(intent)` | Plugin-facing camera interaction helpers. |
-| `chart.clientToData(clientX, clientY)` / `chart.dataToPlot(x, y)` | Convert between client/plot coordinates and data coordinates. |
+| `chart.clientToData(clientX, clientY, yAxis?)` / `chart.dataToPlot(x, y, yAxis?)` | Convert between client/plot coordinates and data coordinates for the selected Y axis. |
 | `chart.resize(dpr?)` | Resize the internal plot canvas to match its CSS size × DPR. |
 | `chart.start()` | Start the render loop (rAF). |
 | `chart.stop()` | Stop the render loop. |
@@ -92,7 +93,7 @@ bun install blazeplot
 | `theme?` | built-in dark theme | Override chart, axis, palette, legend, and tooltip colors/fonts. |
 | `grid?` | `true` | Show grid lines. |
 | `gridStyle?` | `{ color: theme.gridColor }` | Grid line color and width; overrides the theme grid color. |
-| `axes?` | `true` | Show axis tick labels. `true`/`false`, or per-axis `{ x?: boolean \| AxisConfig, y?: boolean \| AxisConfig }`. |
+| `axes?` | `true` | Show axis tick labels. `true`/`false`, or per-axis `{ x?: boolean \| AxisConfig, y?: boolean \| AxisConfig, y2?: boolean \| AxisConfig }`. `y2` is the right-side secondary Y axis and is hidden by default. |
 
 ### `ChartTheme`
 
@@ -129,10 +130,14 @@ WebGL-facing colors (`backgroundColor`, `gridColor`, `seriesColors`) accept eith
 | `position?` | `"inside"` | `"inside"` draws labels over the plot; `"outside"` reserves a real DOM gutter and shrinks the plot canvas. |
 
 ```ts
-// X labels outside (bottom gutter), Y labels inside
-new Chart(canvas, {
-  axes: { x: { position: "outside" }, y: true }
+// X labels outside (bottom gutter), left Y inside, right Y outside.
+const chart = new Chart(canvas, {
+  axes: { x: { position: "outside" }, y: true, y2: { position: "outside" } }
 });
+
+chart.addLine({ capacity: 10_000, yAxis: "left" });
+chart.addLine({ capacity: 10_000, yAxis: "right" });
+chart.setYViewport("right", { yMin: 0, yMax: 100 });
 ```
 
 ### `ChartFrameStats`
@@ -183,6 +188,7 @@ Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zo
 | `mode` | `"line"` / `"area"` / `"scatter"` / `"bar"` / `"ohlc"` / `"candlestick"` / `"envelope"` (envelope roadmap-only). |
 | `capacity` | Ring buffer capacity (samples). |
 | `id?` / `name?` | Optional metadata exposed to plugins, legend, and tooltip rows. |
+| `yAxis?` | `"left"` or `"right"`; selects the primary or secondary Y viewport/axis for this series. |
 | `downsample` | `"minmax"` or `"none"`. Min/max LOD applies to line and bar rendering; area/scatter skip LOD. |
 
 ### `SeriesStyle`
