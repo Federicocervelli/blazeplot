@@ -1,5 +1,9 @@
 import type { AppendableDataset, RangeMinMaxDataset, TimeRange, Viewport } from "@/index.ts";
 
+function positiveModulo(value: number, modulo: number): number {
+  return ((value % modulo) + modulo) % modulo;
+}
+
 export interface ContiguousRingDatasetOptions {
   readonly blockSize?: number;
   readonly xStep?: number;
@@ -141,11 +145,13 @@ export class ContiguousRingDataset implements AppendableDataset, RangeMinMaxData
   ): number {
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);
-    const visible = end - start;
-    if (visible <= 0) return 0;
+    if (end <= start) return 0;
 
-    const stride = Math.max(1, Math.ceil(visible / maxPoints));
-    const alignedStart = start + ((stride - (start % stride)) % stride);
+    const viewportSamples = Math.max(1, Math.ceil((viewport.xMax - viewport.xMin) / this.xStep));
+    const stride = Math.max(1, Math.ceil(viewportSamples / maxPoints));
+    const firstOrdinal = Math.round(this.firstX() / this.xStep);
+    const remainder = positiveModulo(firstOrdinal + start, stride);
+    const alignedStart = start + positiveModulo(-remainder, stride);
     return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
   }
 

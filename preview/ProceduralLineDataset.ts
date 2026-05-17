@@ -6,6 +6,10 @@ const BASELINE = 0.78;
 const AMPLITUDE = 0.25;
 const NOISE_MAX = 0.01;
 
+function positiveModulo(value: number, modulo: number): number {
+  return ((value % modulo) + modulo) % modulo;
+}
+
 type SampleLayout = "points" | "area";
 type MinMaxLayout = "line-list" | "instanced";
 
@@ -82,11 +86,13 @@ export class ProceduralLineDataset implements AppendableDataset, RangeMinMaxData
   ): number {
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);
-    const visible = end - start;
-    if (visible <= 0) return 0;
+    if (end <= start) return 0;
 
-    const stride = Math.max(1, Math.ceil(visible / maxPoints));
-    const alignedStart = start + ((stride - (start % stride)) % stride);
+    const viewportSamples = Math.max(1, Math.ceil(viewport.xMax - viewport.xMin));
+    const stride = Math.max(1, Math.ceil(viewportSamples / maxPoints));
+    const firstOrdinal = this.firstX();
+    const remainder = positiveModulo(firstOrdinal + start, stride);
+    const alignedStart = start + positiveModulo(-remainder, stride);
     return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
   }
 
