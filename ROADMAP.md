@@ -78,7 +78,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] `Renderer.drawMinMaxSegments`
 - [x] Persistent buffer pool — `WebGL2Resources` manages pre-allocated `Float32Array` + `regl.Buffer` pairs. Pre-allocates common sizes (1K–128K floats) at init. `ReglBackend.createBuffer` pulls from pool — no `regl.buffer()` calls at runtime. `dispose` returns to pool; `destroy` cleans up all entries.
 - [x] Instanced draw for segment mode (with line-list fallback when regl/browser instancing is unavailable)
-- [ ] Scatter / point rendering (instanced quads)
+- [x] Scatter / point rendering (instanced quads)
 - [ ] Bar rendering
 - [ ] Area fill (line + polygon below)
 - [ ] Heatmap (texture-based)
@@ -116,7 +116,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Color/style per-series
 - [x] Series visibility toggle
 - [ ] Batched draw calls (same shader → one draw per series group)
-- [ ] Mixed chart types (line + scatter + bar in one chart)
+- [ ] Mixed chart types (line + scatter supported; bar pending)
 - [ ] Shared X axis optional, independent Y per series
 - [ ] Secondary axis
 

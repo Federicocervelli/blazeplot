@@ -35,7 +35,7 @@ export interface ChartFrameStats {
   pointsRendered: number;
   drawCalls: number;
   uploadBytes: number;
-  renderMode: "none" | "raw" | "minmax" | "mixed";
+  renderMode: "none" | "raw" | "minmax" | "points" | "mixed";
 }
 
 function normalizeAxisConfig(config: boolean | AxisConfig | undefined): NormalizedAxisConfig {
@@ -126,6 +126,7 @@ export class Chart {
     const s = new SeriesStore(dataset, config, {
       color: style?.color ?? [0.3, 0.6, 1.0, 1.0],
       lineWidth: style?.lineWidth ?? 1,
+      pointSize: style?.pointSize ?? 4,
     });
     this.series.push(s);
     return s;
@@ -198,6 +199,11 @@ export class Chart {
 
     for (const s of this.series) {
       if (!s.visible) continue;
+      if (s.config.mode === "scatter") {
+        this.drawScatterSeries(s, viewport);
+        continue;
+      }
+
       const visibleSamples = s.visibleSampleCount(viewport);
       const dense = s.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
       if (dense && this.renderer.supportsInstancedSegments) {
@@ -254,6 +260,23 @@ export class Chart {
     return true;
   }
 
+  private drawScatterSeries(
+    series: SeriesStore,
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+  ): void {
+    if (!this.renderer.supportsInstancedPoints) return;
+
+    const count = series.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
+    if (count <= 0) return;
+
+    this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
+    this.renderer.drawPointsInstanced(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
+    this.recordRenderMode("points");
+    this.stats.pointsRendered += count;
+    this.stats.drawCalls++;
+    this.stats.uploadBytes += this.rawLineData.byteLength;
+  }
+
   private maxMinMaxSegments(): number {
     return Math.min(this.canvas.width, MINMAX_SEGMENT_CAPACITY);
   }
@@ -290,7 +313,7 @@ export class Chart {
     return vertexCount;
   }
 
-  private recordRenderMode(mode: "raw" | "minmax"): void {
+  private recordRenderMode(mode: "raw" | "minmax" | "points"): void {
     if (this.stats.renderMode === "none") {
       this.stats.renderMode = mode;
     } else if (this.stats.renderMode !== mode) {

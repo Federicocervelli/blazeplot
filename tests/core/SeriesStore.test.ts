@@ -115,7 +115,7 @@ describe("SeriesStore no-LOD", () => {
     expect(series.hasLOD).toBe(false);
   });
 
-  it("has pyramid when downsample is omitted (defaults to minmax)", () => {
+  it("has pyramid for line series when downsample is omitted (defaults to minmax)", () => {
     const series = new SeriesStore(
       new RingBuffer(8),
       { mode: "line", capacity: 8 },
@@ -123,6 +123,16 @@ describe("SeriesStore no-LOD", () => {
     );
 
     expect(series.hasLOD).toBe(true);
+  });
+
+  it("skips pyramid for scatter series when downsample is omitted", () => {
+    const series = new SeriesStore(
+      new RingBuffer(8),
+      { mode: "scatter", capacity: 8 },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    expect(series.hasLOD).toBe(false);
   });
 
   it("copyMinMaxVisible returns 0 without LOD", () => {

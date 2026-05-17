@@ -27,6 +27,7 @@ export interface TimeRange {
 export interface SeriesStyle {
   readonly color: readonly [number, number, number, number];
   readonly lineWidth: number;
+  readonly pointSize?: number;
 }
 
 export type SeriesMode = "line" | "envelope" | "scatter";

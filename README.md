@@ -60,7 +60,7 @@ push();
 | **Pan & zoom** | Pointer/touch pan and wheel zoom via `Camera2D`. Customizable viewport policies. |
 | **Grid lines** | Data-anchored grid rendered as WebGL line lists. |
 | **Axis labels** | Smart tick generation with DOM labels. Per-axis `inside`/`outside` positioning; outside axes reserve real layout gutters. |
-| **Multi-series** | Independent buffers, styles, and visibility per series. |
+| **Multi-series** | Independent buffers, styles, and visibility per series. Line and scatter modes are supported. |
 | **Benchmark overlay** | Built-in fps, frame time, vertex count, draw calls. |
 | **ResizeObserver** | Automatic DPR-aware canvas sizing. |
 
@@ -113,7 +113,7 @@ new Chart(canvas, {
 | `pointsRendered` | Number of vertices drawn this frame. |
 | `drawCalls` | Number of GPU draw calls this frame. |
 | `uploadBytes` | Bytes uploaded to GPU this frame. |
-| `renderMode` | `"none"` / `"raw"` / `"minmax"` / `"mixed"`. |
+| `renderMode` | `"none"` / `"raw"` / `"minmax"` / `"points"` / `"mixed"`. |
 
 ### `SeriesStore`
 
@@ -129,9 +129,9 @@ new Chart(canvas, {
 
 | Property | Description |
 |---|---|
-| `mode` | `"line"` / `"envelope"` / `"scatter"` (envelope and scatter roadmap-only). |
+| `mode` | `"line"` / `"scatter"` / `"envelope"` (envelope roadmap-only). |
 | `capacity` | Ring buffer capacity (samples). |
-| `downsample` | `"minmax"` (LOD for line rendering). |
+| `downsample` | `"minmax"` or `"none"`. Min/max LOD applies to line rendering; scatter skips LOD. |
 
 ### `SeriesStyle`
 
@@ -139,6 +139,7 @@ new Chart(canvas, {
 |---|---|---|
 | `color` | `[0.3, 0.6, 1.0, 1.0]` | RGBA float color. |
 | `lineWidth` | `1` | Line width in pixels. |
+| `pointSize` | `4` | Scatter point size in CSS pixels. |
 
 ### `ViewportPolicy`
 

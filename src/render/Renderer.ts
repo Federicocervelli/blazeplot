@@ -4,23 +4,37 @@ import type { AttributeSpec, GpuBackend, GpuBuffer, GpuProgram } from "./types.j
 import type { SeriesStyle } from "../core/types.js";
 
 const FLOATS_PER_SEGMENT_INSTANCE = 3;
+const FLOATS_PER_POINT_INSTANCE = 2;
 const BYTES_PER_FLOAT = 4;
+const DEFAULT_POINT_SIZE_PX = 4;
 
 export class Renderer {
   private readonly lineProgram: GpuProgram;
   private readonly segmentProgram: GpuProgram;
+  private readonly pointProgram: GpuProgram;
   private readonly segmentSelectBuffer: GpuBuffer;
+  private readonly pointCornerBuffer: GpuBuffer;
   private readonly scaleUniform: Float32Array = new Float32Array(2);
   private readonly offsetUniform: Float32Array = new Float32Array(2);
+  private readonly canvasSizeUniform: Float32Array = new Float32Array(2);
 
   constructor(private backend: GpuBackend) {
     this.lineProgram = this.backend.createProgram(ShaderPrograms.line.vert, ShaderPrograms.line.frag);
     this.segmentProgram = this.backend.createProgram(ShaderPrograms.segment.vert, ShaderPrograms.segment.frag);
+    this.pointProgram = this.backend.createProgram(ShaderPrograms.point.vert, ShaderPrograms.point.frag);
+
     this.segmentSelectBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 2 });
     this.backend.updateBuffer(this.segmentSelectBuffer, new Float32Array([0, 1]));
+
+    this.pointCornerBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 8 });
+    this.backend.updateBuffer(this.pointCornerBuffer, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]));
   }
 
   get supportsInstancedSegments(): boolean {
+    return this.backend.capabilities.instancing;
+  }
+
+  get supportsInstancedPoints(): boolean {
     return this.backend.capabilities.instancing;
   }
 
@@ -70,6 +84,38 @@ export class Renderer {
       uniforms: {
         uScale: this.scaleUniform,
         uOffset: this.offsetUniform,
+        uColor: style.color,
+      },
+    });
+  }
+
+  drawPointsInstanced(
+    instanceBuffer: GpuBuffer,
+    pointCount: number,
+    style: SeriesStyle,
+    camera: Camera2D,
+    canvasWidth: number,
+    canvasHeight: number,
+  ): void {
+    this.writeCameraUniforms(camera);
+    this.canvasSizeUniform[0] = Math.max(1, canvasWidth);
+    this.canvasSizeUniform[1] = Math.max(1, canvasHeight);
+
+    const instanceStride = FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT;
+    const aPosition: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0, size: 2 };
+    const aCorner: AttributeSpec = { buffer: this.pointCornerBuffer, divisor: 0, stride: FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT, offset: 0, size: 2 };
+
+    this.backend.draw({
+      program: this.pointProgram,
+      primitive: "triangle_strip",
+      count: 4,
+      instances: pointCount,
+      attributes: { aCorner, aPosition },
+      uniforms: {
+        uScale: this.scaleUniform,
+        uOffset: this.offsetUniform,
+        uCanvasSize: this.canvasSizeUniform,
+        uPointSize: style.pointSize ?? DEFAULT_POINT_SIZE_PX,
         uColor: style.color,
       },
     });

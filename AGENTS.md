@@ -27,12 +27,13 @@
 
 ## Current Implementation Gotchas
 
-- `ReglBackend` requires WebGL2. It implements buffer creation/update, program handles, cached draw commands, and resource disposal for current raw-line needs.
+- `ReglBackend` requires WebGL2. It implements buffer creation/update, program handles, cached draw commands, instanced attributes, and resource disposal for current line/scatter needs.
 - `ReglBackend.viewport()` uses WebGL scissor test to clip draws; it does **not** change the GL viewport. `clear()` is unaffected and always clears the full canvas.
 - `ChartLayout` owns the DOM layout. Outside axes reserve real grid gutters, while the WebGL canvas is sized to the plot area only.
 - `AxisOverlay` attaches tick label elements either to the plot layer (`inside`) or to the axis gutter layer (`outside`).
 - Axis `outside` positioning reserves fixed CSS-pixel gutters: 52px left for Y, 28px bottom for X. Defined by `LEFT_AXIS_GUTTER_CSS` / `BOTTOM_AXIS_GUTTER_CSS` in `ChartLayout.ts`.
 - `MinMaxPyramid` updates incrementally for tail appends and falls back to full rebuild on wrap/clear.
+- Scatter series skip LOD even when `downsample` is omitted; they render as instanced quads when regl/browser instancing is available.
 - `RingBuffer` silently wraps at capacity and exposes logical-order access after wrap.
 - LOD queries use sorted logical X values via `RingBuffer.lowerBoundX` / `upperBoundX`; preserve that assumption when changing append/query code.
 - `ViewportPolicy` transforms `PanIntent`/`ZoomIntent` and can update `Camera2D` before render. Keep behavior rules there, not in core/rendering.
