@@ -27,14 +27,13 @@ if (type === "major") {
 const prevTag = `v${oldVersion}`;
 let changelog = "";
 try {
-  // Check if the previous tag exists
   execSync(`git rev-parse --verify --quiet "${prevTag}"`, { stdio: "pipe" });
   const log = execSync(
     `git log --oneline --format="%h - %s - %an" "${prevTag}..HEAD"`,
     { encoding: "utf-8" },
   ).trim();
   if (log) {
-    changelog = `\n\n${log}`;
+    changelog = log;
   }
 } catch {
   // No previous tag — no changelog
@@ -44,7 +43,11 @@ pkg.version = newVersion;
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
 execSync(`git add package.json`);
-execSync(`git commit -m "chore(release): v${newVersion}" -m "${changelog}"`);
+
+// Build the commit message and pipe it through stdin to avoid shell quoting issues
+const message = `chore(release): v${newVersion}\n\n${changelog}`;
+execSync(`git commit -F -`, { input: message });
+
 execSync(`git tag v${newVersion}`);
 execSync(`git push origin HEAD`);
 execSync(`git push origin v${newVersion}`);
