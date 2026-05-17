@@ -85,7 +85,8 @@ Raw scatter and area rendering now chunk through all visible samples instead of 
 - [x] Bar rendering (instanced quads with expanded-triangle fallback, data-space width, configurable baseline)
 - [x] Bar sampling for dense views (min/max range buckets using the same visible bucketing strategy as dense line rendering; sampled bars span the full bucket, include the baseline, and avoid visual gaps)
 - [x] Area fill (triangle-strip fill to baseline + line overlay)
-- [ ] OHLC / candlestick
+- [x] OHLC glyph rendering (`StaticOhlcDataset` + `chart.addOhlc`)
+- [ ] Candlestick body rendering
 - [ ] Draw call batching per shader mode
 
 ---
@@ -119,8 +120,8 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Color/style per-series
 - [x] Series visibility toggle
 - [ ] Batched draw calls (same shader → one draw per series group)
-- [x] Mixed chart types (line + scatter + bar + area supported)
-- [ ] OHLC / candlestick mixed chart support
+- [x] Mixed chart types (line + scatter + bar + area + OHLC supported)
+- [ ] Candlestick body mixed chart support
 - [ ] Shared X axis optional, independent Y per series
 - [ ] Secondary axis
 
@@ -148,7 +149,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Optional plugin subpath exports (`blazeplot/plugins/interactions`, `blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`) so chart-only imports do not need to import built-in UI plugins
 - [x] Legend plugin (`legendPlugin`) built on public series state APIs
 - [x] Tooltip / hit testing (`tooltipPlugin`, `chart.pick`, `chart.subscribe("hover")`; actual raw sample X/Y, per-frame live hover refresh, highlighted sample markers)
-- [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)` helpers.
+- [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)`, `chart.addOhlc(config)` helpers.
 
 Package status:
 - [x] Current npm package version: `0.1.12`

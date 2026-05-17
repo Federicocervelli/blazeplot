@@ -1,4 +1,4 @@
-import { Chart } from "@/index.ts";
+import { Chart, StaticOhlcDataset } from "@/index.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
@@ -59,24 +59,27 @@ const THEMES = {
 
 type PreviewTheme = keyof typeof THEMES;
 
-const SERIES_PALETTES: Record<PreviewTheme, readonly [RgbaColor, RgbaColor, RgbaColor, RgbaColor]> = {
+const SERIES_PALETTES: Record<PreviewTheme, readonly [RgbaColor, RgbaColor, RgbaColor, RgbaColor, RgbaColor]> = {
   dark: [
     [0.3, 0.6, 1.0, 1.0],
     [0.72, 0.45, 0.95, 0.95],
     [0.95, 0.35, 0.35, 1.0],
     [0.2, 0.8, 0.4, 0.75],
+    [0.95, 0.72, 0.25, 1.0],
   ],
   light: [
     [0.1, 0.35, 0.8, 1.0],
     [0.55, 0.25, 0.75, 0.9],
     [0.82, 0.18, 0.18, 1.0],
     [0.05, 0.55, 0.28, 0.75],
+    [0.72, 0.42, 0.05, 1.0],
   ],
   terminal: [
     [0.34, 0.90, 0.56, 1.0],
     [0.74, 0.95, 0.44, 0.9],
     [0.25, 0.85, 0.95, 1.0],
     [0.16, 0.70, 0.36, 0.75],
+    [0.95, 0.85, 0.35, 1.0],
   ],
 };
 
@@ -87,13 +90,15 @@ const LIVE_BATCH_SIZE = 65_536;
 const VIEW_SAMPLES = 10_000_000;
 const TRACE_PERIOD = VIEW_SAMPLES / 5;
 const SPARSE_INTERVAL = 512;
+const OHLC_INTERVAL = SPARSE_INTERVAL * 8;
 // Keep all streaming series at roughly the same X-history span. Sparse series
 // append one point every SPARSE_INTERVAL samples, so their point capacity must
 // be scaled down or they will stay visible much longer than the dense line.
 const HISTORY_SAMPLES = 12_000_000;
 const SPARSE_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / SPARSE_INTERVAL) + 2;
+const OHLC_HISTORY_SAMPLES = HISTORY_SAMPLES * 6;
 const TAU = Math.PI * 2;
-const Y_VIEW = { yMin: -1.25, yMax: 1.25 };
+const Y_VIEW = { yMin: -1.25, yMax: 1.35 };
 const xBuf = new Float64Array(FILL_BATCH_SIZE);
 const yBuf = new Float32Array(FILL_BATCH_SIZE);
 let t = 0;
@@ -165,11 +170,17 @@ const barSeries = chart.addBar(
   { capacity: SPARSE_HISTORY_CAPACITY, downsample: "minmax", name: "Power" },
   { barWidth: SPARSE_INTERVAL, baseline: -1.1 },
 );
+const ohlcDataset = createOhlcDataset();
+const ohlcSeries = chart.addOhlc(
+  { capacity: ohlcDataset.length, dataset: ohlcDataset, downsample: "none", name: "OHLC" },
+  { tickWidth: OHLC_INTERVAL * 0.7, lineWidth: 1 },
+);
 const previewSeries = [
   { label: "line", series: lineSeries },
   { label: "area", series: areaSeries },
   { label: "scatter", series: scatterSeries },
   { label: "bar", series: barSeries },
+  { label: "ohlc", series: ohlcSeries },
 ] as const;
 
 applyTheme("dark");
@@ -218,6 +229,33 @@ console.info("[blazeplot] chart initialized", {
   fillBatchSize: FILL_BATCH_SIZE,
   liveBatchSize: LIVE_BATCH_SIZE,
 });
+
+function createOhlcDataset(): StaticOhlcDataset {
+  const count = Math.ceil(OHLC_HISTORY_SAMPLES / OHLC_INTERVAL);
+  const xs = new Float64Array(count);
+  const opens = new Float32Array(count);
+  const highs = new Float32Array(count);
+  const lows = new Float32Array(count);
+  const closes = new Float32Array(count);
+  let previousClose = 1.08;
+
+  for (let i = 0; i < count; i++) {
+    const x = i * OHLC_INTERVAL;
+    const trend = Math.sin((x / TRACE_PERIOD) * TAU) * 0.035;
+    const open = previousClose;
+    const close = 1.08 + trend + Math.cos(i * 0.37) * 0.025;
+    const high = Math.max(open, close) + 0.025 + (i % 5) * 0.003;
+    const low = Math.min(open, close) - 0.025 - (i % 7) * 0.002;
+    xs[i] = x;
+    opens[i] = open;
+    highs[i] = high;
+    lows[i] = low;
+    closes[i] = close;
+    previousClose = close;
+  }
+
+  return new StaticOhlcDataset(xs, opens, highs, lows, closes);
+}
 
 function stream(): void {
   const start = t;
@@ -301,11 +339,12 @@ function applyTheme(name: PreviewTheme): void {
 }
 
 function applySeriesPalette(name: PreviewTheme): void {
-  const [line, area, scatter, bar] = SERIES_PALETTES[name];
+  const [line, area, scatter, bar, ohlc] = SERIES_PALETTES[name];
   setSeriesStyle(lineSeries, { color: line });
   setSeriesStyle(areaSeries, { color: area, fillColor: [area[0], area[1], area[2], 0.20] });
   setSeriesStyle(scatterSeries, { color: scatter });
   setSeriesStyle(barSeries, { color: bar });
+  setSeriesStyle(ohlcSeries, { color: ohlc });
 }
 
 function setSeriesStyle(series: (typeof previewSeries)[number]["series"], style: Partial<SeriesStyle>): void {

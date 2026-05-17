@@ -31,9 +31,10 @@ export interface SeriesStyle {
   readonly barWidth?: number;
   readonly baseline?: number;
   readonly fillColor?: readonly [number, number, number, number];
+  readonly tickWidth?: number;
 }
 
-export type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar";
+export type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar" | "ohlc";
 
 export interface Dataset {
   readonly length: number;
@@ -46,6 +47,13 @@ export interface Dataset {
 
 export interface RangeMinMaxDataset extends Dataset {
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null;
+}
+
+export interface OhlcDataset extends Dataset {
+  getOpen(index: number): number;
+  getHigh(index: number): number;
+  getLow(index: number): number;
+  getClose(index: number): number;
 }
 
 export interface AppendableDataset extends Dataset {

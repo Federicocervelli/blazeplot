@@ -1,8 +1,12 @@
-import type { Dataset, AppendableDataset, RangeMinMaxDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, OhlcDataset, RangeMinMaxDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
 function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
   return "rangeMinMaxY" in dataset;
+}
+
+function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
+  return "getOpen" in dataset && "getHigh" in dataset && "getLow" in dataset && "getClose" in dataset;
 }
 
 export class SeriesStore {
@@ -199,6 +203,38 @@ export class SeriesStore {
 
   copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number): number {
     return this.copyMinMaxSegments(viewport, target, maxSegments, "instanced");
+  }
+
+  copyOhlcRange(start: number, end: number, target: Float32Array, maxCandles: number, tickWidth: number): number {
+    if (!isOhlcDataset(this.dataset) || maxCandles <= 0 || target.length < maxCandles * 12) return 0;
+
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this.dataset.length, Math.ceil(end));
+    const count = Math.min(maxCandles, Math.max(0, to - from));
+    const halfTick = tickWidth * 0.5;
+    for (let i = 0; i < count; i++) {
+      const index = from + i;
+      const x = this.dataset.getX(index);
+      const open = this.dataset.getOpen(index);
+      const high = this.dataset.getHigh(index);
+      const low = this.dataset.getLow(index);
+      const close = this.dataset.getClose(index);
+      const offset = i * 12;
+      target[offset] = x;
+      target[offset + 1] = low;
+      target[offset + 2] = x;
+      target[offset + 3] = high;
+      target[offset + 4] = x - halfTick;
+      target[offset + 5] = open;
+      target[offset + 6] = x;
+      target[offset + 7] = open;
+      target[offset + 8] = x;
+      target[offset + 9] = close;
+      target[offset + 10] = x + halfTick;
+      target[offset + 11] = close;
+    }
+
+    return count;
   }
 
   visibleIndexRange(viewport: Viewport | undefined): { start: number; end: number } {

@@ -19,6 +19,7 @@ const MINMAX_SEGMENT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 const FLOATS_PER_MINMAX_SEGMENT_INSTANCE = 3;
 const BAR_FALLBACK_CAPACITY = 4_096;
 const FLOATS_PER_BAR_TRIANGLE = 12;
+const FLOATS_PER_OHLC_CANDLE = 12;
 const GRID_LINE_VERTEX_CAPACITY = 64;
 
 export interface AxisConfig {
@@ -288,6 +289,9 @@ export class Chart {
   }
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+    if (config.mode === "ohlc" && !config.dataset) {
+      throw new TypeError("OHLC series require an OhlcDataset.");
+    }
     const dataset: Dataset = config.dataset ?? new RingBuffer(config.capacity, { overflow: config.overflow });
     const palette = this.resolvedTheme.seriesColors;
     const paletteColor = palette[this.series.length % palette.length] ?? this.resolvedTheme.seriesColors[0]!;
@@ -299,6 +303,7 @@ export class Chart {
       barWidth: style?.barWidth ?? 0.8,
       baseline: style?.baseline ?? 0,
       fillColor: style?.fillColor ?? [color[0], color[1], color[2], color[3] * 0.25],
+      tickWidth: style?.tickWidth ?? style?.barWidth ?? 0.8,
     });
     this.series.push(s);
     this.emitSeriesChange();
@@ -319,6 +324,10 @@ export class Chart {
 
   addBar(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     return this.addSeries({ ...config, mode: "bar" }, style);
+  }
+
+  addOhlc(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+    return this.addSeries({ ...config, mode: "ohlc" }, style);
   }
 
   removeSeries(series: SeriesStore): boolean {
@@ -540,6 +549,10 @@ export class Chart {
         this.drawAreaSeries(s, viewport);
         continue;
       }
+      if (s.config.mode === "ohlc") {
+        this.drawOhlcSeries(s, viewport);
+        continue;
+      }
 
       const visibleSamples = s.visibleSampleCount(viewport);
       const dense = s.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
@@ -644,6 +657,27 @@ export class Chart {
     }
 
     this.recordRenderMode("area");
+  }
+
+  private drawOhlcSeries(
+    series: SeriesStore,
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+  ): void {
+    const range = series.visibleIndexRange(viewport);
+    const maxCandles = Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_CANDLE);
+    for (let start = range.start; start < range.end;) {
+      const candleCount = series.copyOhlcRange(start, range.end, this.rawLineData, maxCandles, series.style.tickWidth ?? series.style.barWidth ?? 0.8);
+      if (candleCount <= 0) break;
+
+      const vertexCount = candleCount * 6;
+      this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
+      this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, this.camera);
+      this.recordRenderMode("raw");
+      this.stats.pointsRendered += vertexCount;
+      this.stats.drawCalls++;
+      this.stats.uploadBytes += this.rawLineData.byteLength;
+      start += candleCount;
+    }
   }
 
   private drawScatterSeries(
