@@ -16,8 +16,6 @@ const followToggle = requireElement<HTMLInputElement>("followToggle");
 const syncXToggle = requireElement<HTMLInputElement>("syncXToggle");
 const resetViewButton = requireElement<HTMLButtonElement>("resetViewButton");
 const screenshotButton = requireElement<HTMLButtonElement>("screenshotButton");
-const seriesControls = requireElement<HTMLSpanElement>("seriesControls");
-
 function requireElement<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`No #${id} element found`);
@@ -144,7 +142,7 @@ const chart = new Chart(chartTarget, {
   hover: hoverOptions,
   theme: THEMES.dark,
   plugins: [
-    interactionsPlugin({ axis: "xy", viewportPolicy: previewPolicy }),
+    interactionsPlugin({ axis: () => syncX ? "y" : "xy", viewportPolicy: previewPolicy }),
     legendPlugin({ toggleOnClick: true }),
     tooltipPlugin(tooltipOptions),
   ],
@@ -212,25 +210,6 @@ axesSelect.addEventListener("change", () => {
 resetViewButton.addEventListener("click", resetView);
 screenshotButton.addEventListener("click", () => {
   void downloadScreenshot();
-});
-
-for (const { label, series } of previewSeries) {
-  const labelEl = document.createElement("label");
-  const checkbox = document.createElement("input");
-  checkbox.type = "checkbox";
-  checkbox.checked = true;
-  checkbox.addEventListener("change", () => chart.setSeriesVisible(series, checkbox.checked));
-  labelEl.append(checkbox, label);
-  seriesControls.appendChild(labelEl);
-}
-
-chart.subscribe("serieschange", () => {
-  const state = chart.getSeriesState();
-  for (let i = 0; i < previewSeries.length; i++) {
-    const control = seriesControls.querySelectorAll<HTMLInputElement>("input")[i];
-    const item = state[i];
-    if (control && item) control.checked = item.visible;
-  }
 });
 
 console.info("[blazeplot] chart initialized", {

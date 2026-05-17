@@ -2,8 +2,10 @@ import type { Viewport } from "../core/types.js";
 import type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "../interaction/types.js";
 import type { Chart, ChartPlugin } from "./Chart.js";
 
+export type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
+
 export interface InteractionsPluginOptions {
-  readonly axis?: ZoomAxis;
+  readonly axis?: InteractionAxisOption;
   readonly viewportPolicy?: ViewportPolicy;
   readonly boxZoom?: boolean;
   readonly wheelZoom?: boolean;
@@ -40,6 +42,10 @@ type DragState =
       currentX: number;
       currentY: number;
     };
+
+function resolveAxis(axis: InteractionAxisOption | undefined): ZoomAxis {
+  return typeof axis === "function" ? axis() : axis ?? "xy";
+}
 
 function constrainPan(intent: PanIntent, axis: ZoomAxis): PanIntent {
   return {
@@ -90,7 +96,6 @@ function applySelectionAxis(
 export function interactionsPlugin(options: InteractionsPluginOptions = {}): ChartPlugin {
   return {
     install(chart: Chart) {
-      const axis = options.axis ?? "xy";
       const minDragDistancePx = options.minDragDistancePx ?? 6;
       const canvas = chart.canvas;
       const xAxis = chart.xAxisElement;
@@ -167,10 +172,11 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         const y0 = Math.max(0, Math.min(state.startY - rect.top, rect.height));
         const x1 = Math.max(0, Math.min(state.currentX - rect.left, rect.width));
         const y1 = Math.max(0, Math.min(state.currentY - rect.top, rect.height));
-        const left = axis === "y" ? 0 : Math.min(x0, x1);
-        const top = axis === "x" ? 0 : Math.min(y0, y1);
-        const width = axis === "y" ? rect.width : Math.abs(x1 - x0);
-        const height = axis === "x" ? rect.height : Math.abs(y1 - y0);
+        const selectionAxis = resolveAxis(options.axis);
+        const left = selectionAxis === "y" ? 0 : Math.min(x0, x1);
+        const top = selectionAxis === "x" ? 0 : Math.min(y0, y1);
+        const width = selectionAxis === "y" ? rect.width : Math.abs(x1 - x0);
+        const height = selectionAxis === "x" ? rect.height : Math.abs(y1 - y0);
 
         selection.style.left = `${left}px`;
         selection.style.top = `${top}px`;
@@ -198,7 +204,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         if (drag || event.button !== 0) return;
 
         if (event.shiftKey && options.shiftDragPan !== false) {
-          beginPan(event, axis, canvas);
+          beginPan(event, resolveAxis(options.axis), canvas);
           return;
         }
 
@@ -269,7 +275,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         const end = clientToDataClamped(event.clientX, event.clientY, rect, current);
         if (!start || !end) return;
 
-        const next = applySelectionAxis(current, start, end, axis);
+        const next = applySelectionAxis(current, start, end, resolveAxis(options.axis));
         if (next.xMax > next.xMin && next.yMax > next.yMin) chart.setViewport(next);
       };
 
@@ -294,7 +300,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       const onCanvasWheel = (event: WheelEvent): void => {
-        wheelOnAxis(event, axis);
+        wheelOnAxis(event, resolveAxis(options.axis));
       };
 
       const onXAxisWheel = (event: WheelEvent): void => {
