@@ -197,6 +197,17 @@ describe("SeriesStore", () => {
     expect(series.visibleIndexRange({ xMin: 1, xMax: 2, yMin: 0, yMax: 1 }, 1)).toEqual({ start: 0, end: 4 });
   });
 
+  it("clips raw visible line segments to the viewport", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 10]), new Float32Array([0, 10]));
+
+    const raw = new Float32Array(4);
+    const count = series.copyRawVisibleClipped({ xMin: 4, xMax: 6, yMin: 0, yMax: 10 }, raw, 2, 4);
+
+    expect(count).toBe(2);
+    expect(Array.from(raw)).toEqual([0, 4, 2, 6]);
+  });
+
   it("finds nearest raw sample by x within the viewport", () => {
     const series = makeSeries();
     series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([10, 20, 30, 40]));

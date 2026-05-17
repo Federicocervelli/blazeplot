@@ -9,6 +9,12 @@ function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
   return "getOpen" in dataset && "getHigh" in dataset && "getLow" in dataset && "getClose" in dataset;
 }
 
+function interpolateY(x0: number, y0: number, x1: number, y1: number, x: number): number {
+  if (x1 === x0) return y0;
+  const t = (x - x0) / (x1 - x0);
+  return y0 + (y1 - y0) * t;
+}
+
 export class SeriesStore {
   readonly config: SeriesConfig;
   readonly style: SeriesStyle;
@@ -185,6 +191,10 @@ export class SeriesStore {
     return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0, xOrigin);
   }
 
+  copyRawVisibleClipped(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
+    return this.copyClippedVisibleLine(viewport, target, maxPoints, xOrigin);
+  }
+
   copyRawRange(start: number, end: number, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
     return this.copySampleRange(start, end, target, maxPoints, "points", 0, xOrigin);
   }
@@ -244,6 +254,53 @@ export class SeriesStore {
       start: Math.max(0, this.dataset.lowerBoundX(viewport.xMin) - pad),
       end: Math.min(this.dataset.length, this.dataset.upperBoundX(viewport.xMax) + pad),
     };
+  }
+
+  private copyClippedVisibleLine(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number): number {
+    if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
+
+    const start = Math.max(0, this.dataset.lowerBoundX(viewport.xMin) - 1);
+    const end = Math.min(this.dataset.length, this.dataset.upperBoundX(viewport.xMax) + 1);
+    if (end - start <= 0) return 0;
+    if (end - start === 1) {
+      const x = this.dataset.getX(start);
+      if (x < viewport.xMin || x > viewport.xMax) return 0;
+      target[0] = x - xOrigin;
+      target[1] = this.dataset.getY(start);
+      return 1;
+    }
+
+    let count = 0;
+    let lastX = NaN;
+    let lastY = NaN;
+    const addPoint = (x: number, y: number): boolean => {
+      if (count > 0 && x === lastX && y === lastY) return true;
+      if (count >= maxPoints) return false;
+      const offset = count * 2;
+      target[offset] = x - xOrigin;
+      target[offset + 1] = y;
+      count++;
+      lastX = x;
+      lastY = y;
+      return true;
+    };
+
+    for (let i = start; i + 1 < end; i++) {
+      const x0 = this.dataset.getX(i);
+      const y0 = this.dataset.getY(i);
+      const x1 = this.dataset.getX(i + 1);
+      const y1 = this.dataset.getY(i + 1);
+      if (x1 < viewport.xMin || x0 > viewport.xMax) continue;
+
+      const clippedX0 = Math.max(x0, viewport.xMin);
+      const clippedX1 = Math.min(x1, viewport.xMax);
+      if (clippedX1 < clippedX0) continue;
+      const clippedY0 = interpolateY(x0, y0, x1, y1, clippedX0);
+      const clippedY1 = interpolateY(x0, y0, x1, y1, clippedX1);
+      if (!addPoint(clippedX0, clippedY0) || !addPoint(clippedX1, clippedY1)) break;
+    }
+
+    return count;
   }
 
   private copyVisibleSamples(

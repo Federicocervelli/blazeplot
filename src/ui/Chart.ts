@@ -602,7 +602,7 @@ export class Chart {
 
   private drawLineSeries(series: SeriesStore, viewport: Viewport): void {
     const visibleSamples = series.visibleSampleCount(viewport);
-    const dense = series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY;
+    const dense = series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2;
     if (dense && this.renderer.supportsInstancedSegments) {
       const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (segmentCount <= 0) return;
@@ -621,20 +621,11 @@ export class Chart {
       return;
     }
 
-    const range = series.visibleIndexRange(viewport, 1);
-    this.drawLineStripRange(series, range.start, range.end, RAW_LINE_VERTEX_CAPACITY);
-  }
-
-  private drawLineStripRange(series: SeriesStore, start: number, end: number, maxPoints: number): void {
-    for (let chunkStart = start; chunkStart < end;) {
-      const count = series.copyRawRange(chunkStart, end, this.rawLineData, maxPoints, this.currentXOrigin);
-      if (count < 2) break;
-
-      this.uploadRawLineData(count);
-      this.renderer.drawLineStrip(this.rawLineBuffer, count, series.style, this.camera);
-      this.recordDraw("raw", count);
-      chunkStart += Math.max(1, count - 1);
-    }
+    const count = series.copyRawVisibleClipped(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+    if (count < 2) return;
+    this.uploadRawLineData(count);
+    this.renderer.drawLineStrip(this.rawLineBuffer, count, series.style, this.camera);
+    this.recordDraw("raw", count);
   }
 
   private drawAreaSeries(series: SeriesStore, viewport: Viewport): void {
