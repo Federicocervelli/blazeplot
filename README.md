@@ -177,7 +177,7 @@ const chart = new Chart(container, {
 });
 ```
 
-Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zoom, Shift+drag plot pan, wheel zoom, double-click reset, and `axis: "x" | "y" | "xy"`. When outside axes are visible, scrolling an axis zooms that axis and dragging an axis pans that axis. Legend/tooltip consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting.
+Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zoom, Shift+drag plot pan, wheel zoom, double-click reset, and `axis: "x" | "y" | "xy"`. When outside axes are visible, scrolling an axis zooms that axis and dragging an axis pans that axis; the plugin also applies a subtle axis hover filter configurable with `axisHover` / `axisHoverFilter`. Legend/tooltip consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting.
 
 ### `SeriesStore`
 

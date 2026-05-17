@@ -8,6 +8,8 @@ export interface InteractionsPluginOptions {
   readonly boxZoom?: boolean;
   readonly wheelZoom?: boolean;
   readonly axisInteractions?: boolean;
+  readonly axisHover?: boolean;
+  readonly axisHoverFilter?: string;
   readonly shiftDragPan?: boolean;
   readonly doubleClickReset?: boolean;
   readonly minDragDistancePx?: number;
@@ -95,6 +97,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const originalYAxisPointerEvents = yAxis.style.pointerEvents;
       const originalXAxisCursor = xAxis.style.cursor;
       const originalYAxisCursor = yAxis.style.cursor;
+      const originalXAxisFilter = xAxis.style.filter;
+      const originalYAxisFilter = yAxis.style.filter;
       let drag: DragState | null = null;
       let resetViewport: Viewport | null = null;
 
@@ -131,6 +135,21 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         selection.style.display = "none";
       };
 
+      const setAxisHovered = (target: HTMLElement, hovered: boolean): void => {
+        if (options.axisHover === false) return;
+        const filter = hovered ? options.axisHoverFilter ?? "brightness(1.22) saturate(1.15)" : null;
+        if (target === xAxis) {
+          xAxis.style.filter = filter ?? originalXAxisFilter;
+        } else if (target === yAxis) {
+          yAxis.style.filter = filter ?? originalYAxisFilter;
+        }
+      };
+
+      const onXAxisPointerEnter = (): void => setAxisHovered(xAxis, true);
+      const onXAxisPointerLeave = (): void => setAxisHovered(xAxis, false);
+      const onYAxisPointerEnter = (): void => setAxisHovered(yAxis, true);
+      const onYAxisPointerLeave = (): void => setAxisHovered(yAxis, false);
+
       const updateSelection = (state: Extract<DragState, { mode: "select" }>): void => {
         const rect = canvas.getBoundingClientRect();
         const x0 = Math.max(0, Math.min(state.startX - rect.left, rect.width));
@@ -152,6 +171,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const beginPan = (event: PointerEvent, panAxis: ZoomAxis, target: InteractionTarget): void => {
         captureResetViewport();
         event.preventDefault();
+        if (target !== canvas) setAxisHovered(target, true);
         target.setPointerCapture(event.pointerId);
         drag = {
           mode: "pan",
@@ -291,6 +311,10 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       if (options.axisInteractions !== false) {
         xAxis.addEventListener("pointerdown", onXAxisPointerDown);
         yAxis.addEventListener("pointerdown", onYAxisPointerDown);
+        xAxis.addEventListener("pointerenter", onXAxisPointerEnter);
+        xAxis.addEventListener("pointerleave", onXAxisPointerLeave);
+        yAxis.addEventListener("pointerenter", onYAxisPointerEnter);
+        yAxis.addEventListener("pointerleave", onYAxisPointerLeave);
         xAxis.addEventListener("wheel", onXAxisWheel, { passive: false });
         yAxis.addEventListener("wheel", onYAxisWheel, { passive: false });
         xAxis.addEventListener("dblclick", onDoubleClick);
@@ -309,6 +333,10 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         canvas.removeEventListener("dblclick", onDoubleClick);
         xAxis.removeEventListener("pointerdown", onXAxisPointerDown);
         yAxis.removeEventListener("pointerdown", onYAxisPointerDown);
+        xAxis.removeEventListener("pointerenter", onXAxisPointerEnter);
+        xAxis.removeEventListener("pointerleave", onXAxisPointerLeave);
+        yAxis.removeEventListener("pointerenter", onYAxisPointerEnter);
+        yAxis.removeEventListener("pointerleave", onYAxisPointerLeave);
         xAxis.removeEventListener("wheel", onXAxisWheel);
         yAxis.removeEventListener("wheel", onYAxisWheel);
         xAxis.removeEventListener("dblclick", onDoubleClick);
@@ -322,6 +350,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         yAxis.style.pointerEvents = originalYAxisPointerEvents;
         xAxis.style.cursor = originalXAxisCursor;
         yAxis.style.cursor = originalYAxisCursor;
+        xAxis.style.filter = originalXAxisFilter;
+        yAxis.style.filter = originalYAxisFilter;
         selection.remove();
       };
     },
