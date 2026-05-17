@@ -84,6 +84,10 @@ export class Renderer {
     this.drawLinePrimitive("line_strip", positions, count, style, camera);
   }
 
+  drawClipLineStrip(positions: GpuBuffer, count: number, style: SeriesStyle): void {
+    this.drawClipPrimitive("line_strip", positions, count, style);
+  }
+
   drawMinMaxSegments(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
     this.drawLines(positions, count, style, camera);
   }
@@ -274,6 +278,25 @@ export class Renderer {
     this.backend.draw({
       program: this.lineProgram,
       primitive: "triangles",
+      count,
+      attributes: { position: positions },
+      uniforms: {
+        uScale: this.scaleUniform,
+        uOffset: this.offsetUniform,
+        uColor: style.color,
+      },
+    });
+  }
+
+  private drawClipPrimitive(primitive: "lines" | "line_strip" | "triangles" | "triangle_strip", positions: GpuBuffer, count: number, style: SeriesStyle): void {
+    this.scaleUniform[0] = 1;
+    this.scaleUniform[1] = 1;
+    this.offsetUniform[0] = 0;
+    this.offsetUniform[1] = 0;
+
+    this.backend.draw({
+      program: this.lineProgram,
+      primitive,
       count,
       attributes: { position: positions },
       uniforms: {

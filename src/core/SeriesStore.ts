@@ -192,7 +192,11 @@ export class SeriesStore {
   }
 
   copyRawVisibleClipped(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
-    return this.copyClippedVisibleLine(viewport, target, maxPoints, xOrigin);
+    return this.copyClippedVisibleLine(viewport, target, maxPoints, xOrigin, "data");
+  }
+
+  copyRawVisibleClipSpace(viewport: Viewport, target: Float32Array, maxPoints: number): number {
+    return this.copyClippedVisibleLine(viewport, target, maxPoints, 0, "clip");
   }
 
   copyRawRange(start: number, end: number, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
@@ -256,34 +260,45 @@ export class SeriesStore {
     };
   }
 
-  private copyClippedVisibleLine(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number): number {
+  private copyClippedVisibleLine(
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    xOrigin: number,
+    output: "data" | "clip",
+  ): number {
     if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
+
+    const xRange = viewport.xMax - viewport.xMin;
+    const yRange = viewport.yMax - viewport.yMin;
+    if (output === "clip" && (xRange <= 0 || yRange <= 0)) return 0;
 
     const start = Math.max(0, this.dataset.lowerBoundX(viewport.xMin) - 1);
     const end = Math.min(this.dataset.length, this.dataset.upperBoundX(viewport.xMax) + 1);
     if (end - start <= 0) return 0;
-    if (end - start === 1) {
-      const x = this.dataset.getX(start);
-      if (x < viewport.xMin || x > viewport.xMax) return 0;
-      target[0] = x - xOrigin;
-      target[1] = this.dataset.getY(start);
-      return 1;
-    }
 
     let count = 0;
     let lastX = NaN;
     let lastY = NaN;
     const addPoint = (x: number, y: number): boolean => {
-      if (count > 0 && x === lastX && y === lastY) return true;
+      const outX = output === "clip" ? ((x - viewport.xMin) / xRange) * 2 - 1 : x - xOrigin;
+      const outY = output === "clip" ? ((y - viewport.yMin) / yRange) * 2 - 1 : y;
+      if (count > 0 && outX === lastX && outY === lastY) return true;
       if (count >= maxPoints) return false;
       const offset = count * 2;
-      target[offset] = x - xOrigin;
-      target[offset + 1] = y;
+      target[offset] = outX;
+      target[offset + 1] = outY;
       count++;
-      lastX = x;
-      lastY = y;
+      lastX = outX;
+      lastY = outY;
       return true;
     };
+
+    if (end - start === 1) {
+      const x = this.dataset.getX(start);
+      if (x < viewport.xMin || x > viewport.xMax) return 0;
+      return addPoint(x, this.dataset.getY(start)) ? count : 0;
+    }
 
     for (let i = start; i + 1 < end; i++) {
       const x0 = this.dataset.getX(i);

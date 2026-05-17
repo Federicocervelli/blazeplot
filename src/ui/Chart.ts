@@ -621,10 +621,10 @@ export class Chart {
       return;
     }
 
-    const count = series.copyRawVisibleClipped(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+    const count = series.copyRawVisibleClipSpace(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
     if (count < 2) return;
     this.uploadRawLineData(count);
-    this.renderer.drawLineStrip(this.rawLineBuffer, count, series.style, this.camera);
+    this.renderer.drawClipLineStrip(this.rawLineBuffer, count, series.style);
     this.recordDraw("raw", count);
   }
 

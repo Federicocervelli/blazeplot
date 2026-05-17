@@ -208,6 +208,20 @@ describe("SeriesStore", () => {
     expect(Array.from(raw)).toEqual([0, 4, 2, 6]);
   });
 
+  it("can copy clipped raw line segments directly in clip space", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 10]), new Float32Array([0, 10]));
+
+    const raw = new Float32Array(4);
+    const count = series.copyRawVisibleClipSpace({ xMin: 4, xMax: 6, yMin: 0, yMax: 10 }, raw, 2);
+
+    expect(count).toBe(2);
+    expect(raw[0]).toBe(-1);
+    expect(raw[1]!).toBeCloseTo(-0.2);
+    expect(raw[2]).toBe(1);
+    expect(raw[3]!).toBeCloseTo(0.2);
+  });
+
   it("finds nearest raw sample by x within the viewport", () => {
     const series = makeSeries();
     series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([10, 20, 30, 40]));
