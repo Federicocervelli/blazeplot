@@ -527,10 +527,9 @@ export class Chart {
     if (this._gridVisible) {
       const gridVertexCount = this.writeGridVertices(viewport);
       if (gridVertexCount > 0) {
-        this.renderer.updateFloatBuffer(this.gridBuffer, this.gridData);
+        this.uploadGridData(gridVertexCount);
         this.renderer.drawLines(this.gridBuffer, gridVertexCount, this.gridStyle, this.camera);
         this.stats.drawCalls++;
-        this.stats.uploadBytes += this.gridData.byteLength;
       }
     }
 
@@ -604,7 +603,7 @@ export class Chart {
     if (dense && this.renderer.supportsInstancedSegments) {
       const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments());
       if (segmentCount <= 0) return;
-      this.uploadMinMaxInstanceData();
+      this.uploadMinMaxInstanceData(segmentCount);
       this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, this.camera);
       this.recordDraw("minmax", segmentCount * 2);
       return;
@@ -615,7 +614,7 @@ export class Chart {
       : series.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
     if (count < 2) return;
 
-    this.uploadRawLineData();
+    this.uploadRawLineData(count);
     if (dense) {
       this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, this.camera);
       this.recordDraw("minmax", count);
@@ -634,7 +633,7 @@ export class Chart {
       const areaVertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, baseline);
       if (areaVertexCount < 4) break;
 
-      this.uploadRawLineData();
+      this.uploadRawLineData(areaVertexCount);
       this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, this.camera);
       this.recordDraw("area", areaVertexCount);
       start += areaVertexCount >> 1;
@@ -644,7 +643,7 @@ export class Chart {
       const lineVertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY);
       if (lineVertexCount < 2) break;
 
-      this.uploadRawLineData();
+      this.uploadRawLineData(lineVertexCount);
       this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, this.camera);
       this.recordDraw("area", lineVertexCount);
       start += Math.max(1, lineVertexCount - 1);
@@ -660,7 +659,7 @@ export class Chart {
       if (candleCount <= 0) break;
 
       const vertexCount = candleCount * 6;
-      this.uploadRawLineData();
+      this.uploadRawLineData(vertexCount);
       this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, this.camera);
       this.recordDraw("raw", vertexCount);
       start += candleCount;
@@ -673,7 +672,7 @@ export class Chart {
       const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
       if (count <= 0) break;
 
-      this.uploadRawLineData();
+      this.uploadRawLineData(count);
       this.renderer.drawPoints(this.rawLineBuffer, count, series.style, this.camera, this.canvas.width, this.canvas.height);
       this.recordDraw("points", count);
       start += count;
@@ -710,23 +709,30 @@ export class Chart {
     const count = series.copyRawVisible(viewport, this.rawLineData, maxPoints);
     if (count <= 0) return 0;
 
-    this.uploadRawLineData();
+    this.uploadRawLineData(count);
     return count;
   }
 
-  private uploadRawLineData(): void {
-    this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
-    this.stats.uploadBytes += this.rawLineData.byteLength;
+  private uploadRawLineData(vertexCount: number): void {
+    this.uploadFloatData(this.rawLineBuffer, this.rawLineData, vertexCount * 2);
   }
 
-  private uploadMinMaxInstanceData(): void {
-    this.renderer.updateFloatBuffer(this.minMaxInstanceBuffer, this.minMaxInstanceData);
-    this.stats.uploadBytes += this.minMaxInstanceData.byteLength;
+  private uploadMinMaxInstanceData(instanceCount: number): void {
+    this.uploadFloatData(this.minMaxInstanceBuffer, this.minMaxInstanceData, instanceCount * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
   }
 
-  private uploadBarTriangleData(): void {
-    this.renderer.updateFloatBuffer(this.barTriangleBuffer, this.barTriangleData);
-    this.stats.uploadBytes += this.barTriangleData.byteLength;
+  private uploadBarTriangleData(vertexCount: number): void {
+    this.uploadFloatData(this.barTriangleBuffer, this.barTriangleData, vertexCount * 2);
+  }
+
+  private uploadGridData(vertexCount: number): void {
+    this.uploadFloatData(this.gridBuffer, this.gridData, vertexCount * 2);
+  }
+
+  private uploadFloatData(buffer: GpuBuffer, data: Float32Array, floatCount: number): void {
+    const count = Math.max(0, Math.min(floatCount, data.length));
+    this.renderer.updateFloatBuffer(buffer, data, count);
+    this.stats.uploadBytes += count * Float32Array.BYTES_PER_ELEMENT;
   }
 
   private includeBaselineInBarRanges(barCount: number, baseline: number): void {
@@ -814,7 +820,7 @@ export class Chart {
 
   private drawBarTriangles(vertexCount: number, style: SeriesStyle): void {
     if (vertexCount <= 0) return;
-    this.uploadBarTriangleData();
+    this.uploadBarTriangleData(vertexCount);
     this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, this.camera);
     this.recordDraw("bars", vertexCount);
   }

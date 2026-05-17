@@ -62,8 +62,9 @@ export class Renderer {
     return this.backend.createBuffer({ usage: "stream", type: "float", length: floatCount });
   }
 
-  updateFloatBuffer(buffer: GpuBuffer, data: Float32Array): void {
-    this.backend.updateBuffer(buffer, data);
+  updateFloatBuffer(buffer: GpuBuffer, data: Float32Array, floatCount: number = data.length): void {
+    const count = Math.max(0, Math.min(floatCount, data.length));
+    this.backend.updateBuffer(buffer, count === data.length ? data : data.subarray(0, count));
   }
 
   viewport(x: number, y: number, width: number, height: number): void {
