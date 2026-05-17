@@ -23,6 +23,7 @@ const themeSelect = requireElement<HTMLSelectElement>("themeSelect");
 const hoverModeSelect = requireElement<HTMLSelectElement>("hoverModeSelect");
 const hoverGroupSelect = requireElement<HTMLSelectElement>("hoverGroupSelect");
 const axesSelect = requireElement<HTMLSelectElement>("axesSelect");
+const viewSamplesInput = requireElement<HTMLInputElement>("viewSamplesInput");
 const followToggle = requireElement<HTMLInputElement>("followToggle");
 const streamToggle = requireElement<HTMLInputElement>("streamToggle");
 const syncXToggle = requireElement<HTMLInputElement>("syncXToggle");
@@ -99,6 +100,7 @@ const SERIES_PALETTES: Record<PreviewTheme, readonly [RgbaColor, RgbaColor, Rgba
 console.info("[blazeplot] preview starting");
 
 let t = 0;
+let viewSamples = VIEW_SAMPLES;
 let frames = 0;
 let lastBatchSize = 0;
 let lastStatsAt = performance.now();
@@ -137,10 +139,7 @@ const previewPolicy: ViewportPolicy = {
   },
   beforeRender(camera) {
     if (!followLive) return;
-    camera.setViewport({
-      xMin: Math.max(0, t - VIEW_SAMPLES),
-      xMax: Math.max(VIEW_SAMPLES, t),
-    });
+    camera.setViewport(liveXViewport());
   },
 };
 
@@ -186,8 +185,10 @@ const previewSeries = [
   { label: "ohlc", series: ohlcSeries },
 ] as const;
 
+viewSamplesInput.max = String(HISTORY_SAMPLES);
+viewSamplesInput.value = String(viewSamples);
 applyTheme("dark");
-chart.setViewport({ xMin: 0, xMax: VIEW_SAMPLES, ...Y_VIEW });
+chart.setViewport({ ...liveXViewport(), ...Y_VIEW });
 chart.start();
 
 copyIcon?.addEventListener("click", () => {
@@ -208,6 +209,7 @@ hoverGroupSelect.addEventListener("change", () => {
   tooltipOptions.group = group;
   chart.setViewport({});
 });
+viewSamplesInput.addEventListener("change", () => setViewSamples(viewSamplesInput.value));
 followToggle.addEventListener("change", () => {
   followLive = followToggle.checked;
 });
@@ -306,7 +308,7 @@ function updateOverlay(): void {
       `renderer: ${chartStats.renderMode}`,
       `points appended: ${t.toLocaleString()}`,
       `last batch: ${lastBatchSize.toLocaleString()}`,
-      `view samples: ${VIEW_SAMPLES.toLocaleString()}`,
+      `view samples: ${viewSamples.toLocaleString()}`,
       `history span: ${HISTORY_SAMPLES.toLocaleString()}`,
       `sparse capacity: ${SPARSE_HISTORY_CAPACITY.toLocaleString()}`,
       `ohlc capacity: ${OHLC_HISTORY_CAPACITY.toLocaleString()}`,
@@ -347,10 +349,25 @@ function resetView(): void {
   followLive = true;
   followToggle.checked = true;
   chart.setViewport({
-    xMin: Math.max(0, t - VIEW_SAMPLES),
-    xMax: Math.max(VIEW_SAMPLES, t),
+    ...liveXViewport(),
     ...Y_VIEW,
   });
+}
+
+function setViewSamples(value: string): void {
+  const parsed = Number(value.replaceAll(",", ""));
+  viewSamples = Number.isFinite(parsed) ? Math.round(Math.min(HISTORY_SAMPLES, Math.max(1_000, parsed))) : VIEW_SAMPLES;
+  viewSamplesInput.value = String(viewSamples);
+  const current = chart.getViewport();
+  const xMax = followLive ? Math.max(viewSamples, t) : current.xMax;
+  chart.setViewport({ xMin: Math.max(0, xMax - viewSamples), xMax });
+}
+
+function liveXViewport(): { xMin: number; xMax: number } {
+  return {
+    xMin: Math.max(0, t - viewSamples),
+    xMax: Math.max(viewSamples, t),
+  };
 }
 
 async function downloadScreenshot(): Promise<void> {
