@@ -1,5 +1,5 @@
 import { TRACE_PERIOD } from "./dataConfig.ts";
-import type { AppendableDataset, RangeMinMaxDataset, TimeRange, Viewport } from "@/index.ts";
+import type { AppendableDataset, MinMaxSegmentCopyDataset, MinMaxSegmentLayout, RangeMinMaxDataset, RangeSampleCopyDataset, SampleCopyLayout, TimeRange, Viewport, VisibleSampleCopyDataset } from "@/index.ts";
 
 const OMEGA = (Math.PI * 2) / TRACE_PERIOD;
 const BASELINE = 0.78;
@@ -10,10 +10,10 @@ function positiveModulo(value: number, modulo: number): number {
   return ((value % modulo) + modulo) % modulo;
 }
 
-type SampleLayout = "points" | "area";
-type MinMaxLayout = "line-list" | "instanced";
+type SampleLayout = SampleCopyLayout;
+type MinMaxLayout = MinMaxSegmentLayout;
 
-export class ProceduralLineDataset implements AppendableDataset, RangeMinMaxDataset {
+export class ProceduralLineDataset implements AppendableDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, MinMaxSegmentCopyDataset {
   readonly capacity: number;
   private _length = 0;
   private _nextX = 0;

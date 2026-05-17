@@ -53,6 +53,58 @@ export interface RangeMinMaxDataset extends Dataset {
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null;
 }
 
+export type SampleCopyLayout = "points" | "area";
+export type MinMaxSegmentLayout = "line-list" | "instanced";
+
+/**
+ * Optional high-performance extraction capability for datasets that can copy raw
+ * samples without going through repeated getX/getY calls. Implement this for
+ * very large datasets, implicit-X datasets, or remote/memory-mapped sources.
+ */
+export interface RangeSampleCopyDataset extends Dataset {
+  copySamplesRange(
+    start: number,
+    end: number,
+    target: Float32Array,
+    maxPoints: number,
+    layout: SampleCopyLayout,
+    baseline: number,
+    xOrigin: number,
+  ): number;
+}
+
+/**
+ * Optional high-performance stable visible sampling capability. Unlike
+ * copySamplesRange, this method may stride/downsample, but should choose samples
+ * anchored to data coordinates so streamed appends do not make existing sampled
+ * points jitter.
+ */
+export interface VisibleSampleCopyDataset extends Dataset {
+  copyVisibleSamples(
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    layout: SampleCopyLayout,
+    baseline: number,
+    xOrigin: number,
+  ): number;
+}
+
+/**
+ * Optional high-performance min/max extraction capability for dense rendering.
+ * Implementations can use pyramids, segment trees, database aggregates, or
+ * analytic/procedural envelopes to emit renderer-ready min/max buckets.
+ */
+export interface MinMaxSegmentCopyDataset extends Dataset {
+  copyMinMaxSegments(
+    viewport: Viewport,
+    target: Float32Array,
+    maxSegments: number,
+    layout: MinMaxSegmentLayout,
+    xOrigin: number,
+  ): number;
+}
+
 export interface OhlcDataset extends Dataset {
   getOpen(index: number): number;
   getHigh(index: number): number;

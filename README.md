@@ -205,6 +205,19 @@ Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zo
 | `upColor` / `downColor` | series color / translucent fill | Candlestick body colors. |
 | `wickColor` | series color | Candlestick wick color. |
 
+### High-performance dataset capabilities
+
+`Dataset` only requires `getX/getY` and X binary search, but large or procedural data sources can opt into additional exported capability interfaces:
+
+| Interface | Purpose |
+|---|---|
+| `RangeMinMaxDataset` | Fast min/max Y queries for arbitrary logical index ranges. |
+| `RangeSampleCopyDataset` | Fast contiguous sample extraction without repeated `getX/getY` calls. |
+| `VisibleSampleCopyDataset` | Stable viewport sampling for dense scatter/line overlays; samples should be anchored to data coordinates to avoid jitter while streaming. |
+| `MinMaxSegmentCopyDataset` | Renderer-ready min/max bucket extraction for billion-sample dense views. |
+
+`SeriesStore` detects these methods structurally, so custom datasets can implement only the capabilities they can accelerate.
+
 ### `ViewportPolicy`
 
 `beforeRender` is consumed by `Chart`; `beforePan` and `beforeZoom` are consumed by `interactionsPlugin({ viewportPolicy })`.

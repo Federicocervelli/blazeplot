@@ -1,4 +1,4 @@
-import type { Dataset, AppendableDataset, OhlcDataset, RangeMinMaxDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
 function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
@@ -9,42 +9,15 @@ function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
   return "getOpen" in dataset && "getHigh" in dataset && "getLow" in dataset && "getClose" in dataset;
 }
 
-function hasCopySamplesRange(dataset: Dataset): dataset is Dataset & {
-  copySamplesRange(
-    start: number,
-    end: number,
-    target: Float32Array,
-    maxPoints: number,
-    layout: "points" | "area",
-    baseline: number,
-    xOrigin: number,
-  ): number;
-} {
+function hasCopySamplesRange(dataset: Dataset): dataset is RangeSampleCopyDataset {
   return "copySamplesRange" in dataset;
 }
 
-function hasCopyMinMaxSegments(dataset: Dataset): dataset is Dataset & {
-  copyMinMaxSegments(
-    viewport: Viewport,
-    target: Float32Array,
-    maxSegments: number,
-    layout: "line-list" | "instanced",
-    xOrigin: number,
-  ): number;
-} {
+function hasCopyMinMaxSegments(dataset: Dataset): dataset is MinMaxSegmentCopyDataset {
   return "copyMinMaxSegments" in dataset;
 }
 
-function hasCopyVisibleSamples(dataset: Dataset): dataset is Dataset & {
-  copyVisibleSamples(
-    viewport: Viewport,
-    target: Float32Array,
-    maxPoints: number,
-    layout: "points" | "area",
-    baseline: number,
-    xOrigin: number,
-  ): number;
-} {
+function hasCopyVisibleSamples(dataset: Dataset): dataset is VisibleSampleCopyDataset {
   return "copyVisibleSamples" in dataset;
 }
 
