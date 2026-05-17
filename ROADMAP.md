@@ -2,7 +2,7 @@
 
 **BlazePlot is a fast WebGL2 plotting engine for the browser.**
 
-GPU-native, zero-DOM rendering. Built on WebGL2 + [regl](https://github.com/regl-project/regl).
+GPU-native plot rendering with lightweight DOM layout for axes. Built on WebGL2 + [regl](https://github.com/regl-project/regl).
 
 ---
 
@@ -137,7 +137,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] `chart.removeSeries(series)`
 - [x] ResizeObserver integration
 - [x] Grid
-- [x] Axis labels / tick rendering (DOM overlay, `axes: false` to disable)
+- [x] Axis labels / tick rendering (DOM layout, `axes: false` to disable)
 - [ ] `chart.screenshot()` / export image
 - [ ] Theme system
 - [ ] Legend

@@ -9,15 +9,15 @@ import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { ViewportPolicy } from "../interaction/types.js";
 import { AxisOverlay } from "./AxisOverlay.js";
+import { ChartLayout } from "./ChartLayout.js";
+import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
 
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const GRID_LINE_VERTEX_CAPACITY = 64;
-const LEFT_MARGIN_CSS = 52;
-const BOTTOM_MARGIN_CSS = 28;
 
 export interface AxisConfig {
   readonly visible?: boolean;
-  readonly position?: "inside" | "outside";
+  readonly position?: AxisPosition;
 }
 
 export interface ChartOptions {
@@ -35,8 +35,6 @@ export interface ChartFrameStats {
   uploadBytes: number;
   renderMode: "none" | "raw" | "minmax" | "mixed";
 }
-
-type NormalizedAxisConfig = { visible: boolean; position: "inside" | "outside" };
 
 function normalizeAxisConfig(config: boolean | AxisConfig | undefined): NormalizedAxisConfig {
   if (config === false) return { visible: false, position: "inside" };
@@ -62,6 +60,7 @@ export class Chart {
   private readonly yTicks: number[] = [];
   private axisOverlay: AxisOverlay | null = null;
   private normalizedAxes: { x: NormalizedAxisConfig; y: NormalizedAxisConfig };
+  private layout: ChartLayout;
   private stats: ChartFrameStats = {
     fps: 0,
     frameMs: 0,
@@ -74,21 +73,7 @@ export class Chart {
   private lastFrameAt: number = 0;
   private _rafId: number = 0;
 
-  constructor(private readonly canvas: HTMLCanvasElement, private readonly options: ChartOptions = {}) {
-    this.applyCanvasSize();
-    this.camera = new Camera2D();
-    this.axis = new AxisController(this.camera);
-    this.renderer = new Renderer(new ReglBackend(canvas));
-    this.input = new InputController(canvas, this.camera, options.viewportPolicy);
-    this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
-    this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
-    this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
-    this.gridBuffer = this.renderer.createFloatBuffer(this.gridData.length);
-    this.gridStyle = {
-      color: options.gridStyle?.color ?? [0.22, 0.30, 0.44, 0.45],
-      lineWidth: options.gridStyle?.lineWidth ?? 1,
-    };
-
+  constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
     const axesOpt = options.axes;
     if (axesOpt === false) {
       this.normalizedAxes = { x: { visible: false, position: "inside" }, y: { visible: false, position: "inside" } };
@@ -101,14 +86,33 @@ export class Chart {
       };
     }
 
+    this.layout = new ChartLayout(target, this.normalizedAxes);
+    this.applyCanvasSize();
+    this.camera = new Camera2D();
+    this.axis = new AxisController(this.camera);
+    this.renderer = new Renderer(new ReglBackend(this.layout.canvas));
+    this.input = new InputController(this.layout.canvas, this.camera, options.viewportPolicy);
+    this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
+    this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
+    this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
+    this.gridBuffer = this.renderer.createFloatBuffer(this.gridData.length);
+    this.gridStyle = {
+      color: options.gridStyle?.color ?? [0.22, 0.30, 0.44, 0.45],
+      lineWidth: options.gridStyle?.lineWidth ?? 1,
+    };
+
     if (this.normalizedAxes.x.visible || this.normalizedAxes.y.visible) {
-      this.axisOverlay = new AxisOverlay(canvas, this.normalizedAxes);
+      this.axisOverlay = new AxisOverlay(this.layout, this.normalizedAxes);
     }
 
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.resize());
-      this.resizeObserver.observe(this.canvas);
+      this.resizeObserver.observe(this.layout.plot);
     }
+  }
+
+  get canvas(): HTMLCanvasElement {
+    return this.layout.canvas;
   }
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
@@ -159,13 +163,6 @@ export class Chart {
     cancelAnimationFrame(this._rafId);
   }
 
-  private getMargins(): { left: number; bottom: number } {
-    return {
-      left: this.normalizedAxes.y.visible && this.normalizedAxes.y.position === "outside" ? LEFT_MARGIN_CSS : 0,
-      bottom: this.normalizedAxes.x.visible && this.normalizedAxes.x.position === "outside" ? BOTTOM_MARGIN_CSS : 0,
-    };
-  }
-
   private render(): void {
     const frameStartedAt = performance.now();
     if (this.lastFrameAt > 0) {
@@ -177,23 +174,14 @@ export class Chart {
     this.stats.uploadBytes = 0;
     this.stats.renderMode = "none";
 
-    const margins = this.getMargins();
-    const dpr = this.canvas.width / Math.max(1, this.canvas.clientWidth);
-    const physLeft = Math.floor(margins.left * dpr);
-    const physBottom = Math.floor(margins.bottom * dpr);
-
     this.options.viewportPolicy?.beforeRender?.(this.camera);
 
-    // Clear full canvas
     this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
     this.renderer.clear(0.08, 0.10, 0.16, 1);
 
-    // Draw content in inset viewport
-    this.renderer.viewport(physLeft, physBottom, this.canvas.width - physLeft, this.canvas.height - physBottom);
-
     const viewport = this.camera.viewport;
     if (this.options.grid !== false) {
-      const gridVertexCount = this.writeGridVertices(viewport, margins);
+      const gridVertexCount = this.writeGridVertices(viewport);
       if (gridVertexCount > 0) {
         this.renderer.updateFloatBuffer(this.gridBuffer, this.gridData);
         this.renderer.drawLines(this.gridBuffer, gridVertexCount, this.gridStyle, this.camera);
@@ -223,7 +211,7 @@ export class Chart {
       this.stats.uploadBytes += this.rawLineData.byteLength;
     }
 
-    this.axisOverlay?.update(this.camera, this.axis, margins.left, margins.bottom);
+    this.axisOverlay?.update(this.camera, this.axis);
 
     this.stats.frameMs = performance.now() - frameStartedAt;
   }
@@ -234,6 +222,7 @@ export class Chart {
     this.input.dispose();
     this.axisOverlay?.dispose();
     this.renderer.dispose();
+    this.layout.dispose();
   }
 
   private applyCanvasSize(dpr: number = globalThis.devicePixelRatio): boolean {
@@ -249,10 +238,9 @@ export class Chart {
 
   private writeGridVertices(
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
-    margins: { left: number; bottom: number },
   ): number {
-    const plotW = Math.max(1, this.canvas.clientWidth - margins.left);
-    const plotH = Math.max(1, this.canvas.clientHeight - margins.bottom);
+    const plotW = Math.max(1, this.canvas.clientWidth);
+    const plotH = Math.max(1, this.canvas.clientHeight);
     this.axis.getXTickValues(plotW, 12, this.xTicks);
     this.axis.getYTickValues(plotH, 8, this.yTicks);
 

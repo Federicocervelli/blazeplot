@@ -1,8 +1,8 @@
 import { Chart } from "@/index.ts";
 import type { ChartFrameStats, ViewportPolicy } from "@/index.ts";
 
-const canvas = document.getElementById("chart") as HTMLCanvasElement;
-if (!canvas) throw new Error("No #chart canvas found");
+const chartTarget = document.getElementById("chart") as HTMLElement;
+if (!chartTarget) throw new Error("No #chart container found");
 
 const overlayText = document.getElementById("overlayText") as HTMLSpanElement | null;
 
@@ -52,10 +52,11 @@ const previewPolicy: ViewportPolicy = {
   },
 };
 
-const chart = new Chart(canvas, {
+const chart = new Chart(chartTarget, {
   viewportPolicy: previewPolicy,
   axes: { x: { position: "outside" }, y: { position: "outside" } },
 });
+const canvas = chart.canvas;
 
 const series = chart.addSeries(
   { mode: "line", capacity: 10_000_000, downsample: "minmax" },

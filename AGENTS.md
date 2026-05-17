@@ -19,7 +19,7 @@
 - Public API exports live in `src/index.ts`.
 - npm package output is `dist/index.js` and `dist/index.d.ts`; package metadata points `exports`, `main`, `module`, and `types` at `dist/`.
 - `preview/` is detached from package output and is the only app served by `bun run dev`.
-- `preview/main.ts` streams data into `Chart` and currently reports `renderer: raw line strip`.
+- `preview/main.ts` streams data into `Chart` and reports `renderer: ${chartStats.renderMode}`.
 - `src/core/` is the data engine and should not depend on UI, DOM, or GPU code.
 - `src/render/` owns the GPU abstraction and the WebGL2/regl implementation.
 - `src/interaction/` owns `Camera2D`, input/tick helpers, and viewport policy types; interaction mutates the camera, not series data.
@@ -28,11 +28,11 @@
 ## Current Implementation Gotchas
 
 - `ReglBackend` requires WebGL2. It implements buffer creation/update, program handles, cached draw commands, and resource disposal for current raw-line needs.
-- `ReglBackend.viewport()` uses WebGL scissor test to clip draws to the plot area; it does **not** change the GL viewport. `clear()` is unaffected and always clears the full canvas.
-- `Chart.render()` first clears the full canvas, then sets the scissor inset via `viewport()` before drawing grid + series.
-- `AxisOverlay` positions a DOM overlay over the canvas using `getBoundingClientRect`; the parent must be a positioned containing block (the constructor sets `position: relative` if the parent is `static`).
-- Axis `outside` positioning reserves fixed CSS-pixel margins: 52px left for Y, 28px bottom for X. Defined by `LEFT_MARGIN_CSS` / `BOTTOM_MARGIN_CSS` in `Chart.ts`.
-- `MinMaxPyramid.build()` is a full bottom-up rebuild today; incremental pyramid updates are roadmap-only.
+- `ReglBackend.viewport()` uses WebGL scissor test to clip draws; it does **not** change the GL viewport. `clear()` is unaffected and always clears the full canvas.
+- `ChartLayout` owns the DOM layout. Outside axes reserve real grid gutters, while the WebGL canvas is sized to the plot area only.
+- `AxisOverlay` attaches tick label elements either to the plot layer (`inside`) or to the axis gutter layer (`outside`).
+- Axis `outside` positioning reserves fixed CSS-pixel gutters: 52px left for Y, 28px bottom for X. Defined by `LEFT_AXIS_GUTTER_CSS` / `BOTTOM_AXIS_GUTTER_CSS` in `ChartLayout.ts`.
+- `MinMaxPyramid` updates incrementally for tail appends and falls back to full rebuild on wrap/clear.
 - `RingBuffer` silently wraps at capacity and exposes logical-order access after wrap.
 - LOD queries use sorted logical X values via `RingBuffer.lowerBoundX` / `upperBoundX`; preserve that assumption when changing append/query code.
 - `ViewportPolicy` transforms `PanIntent`/`ZoomIntent` and can update `Camera2D` before render. Keep behavior rules there, not in core/rendering.

@@ -18,14 +18,14 @@ bun install blazeplot
 ## Quick start
 
 ```html
-<canvas id="chart" style="width:100%;height:400px"></canvas>
+<div id="chart" style="width:100%;height:400px"></div>
 ```
 
 ```js
 import { Chart } from "blazeplot";
 
-const canvas = document.getElementById("chart");
-const chart = new Chart(canvas);
+const container = document.getElementById("chart");
+const chart = new Chart(container);
 
 const series = chart.addSeries(
   { mode: "line", capacity: 1_000_000, downsample: "minmax" },
@@ -54,12 +54,12 @@ push();
 
 | | |
 |---|---|
-| **WebGL2 rendering** | GPU-accelerated from the ground up. No Canvas2D fallback. Axis labels via optional DOM overlay. |
+| **WebGL2 rendering** | GPU-accelerated plot rendering from the ground up. No Canvas2D fallback. Axis labels use lightweight DOM layers. |
 | **Flexible data model** | Streaming ring buffer or static arrays. Bring your own data shape. |
 | **LOD downsampling** | Min/max pyramid for efficient line rendering at any zoom level — sparse views show raw points, dense views show vertical segments. |
 | **Pan & zoom** | Pointer/touch pan and wheel zoom via `Camera2D`. Customizable viewport policies. |
 | **Grid lines** | Data-anchored grid rendered as WebGL line lists. |
-| **Axis labels** | Smart tick generation with DOM overlay labels. Per-axis `inside`/`outside` positioning. |
+| **Axis labels** | Smart tick generation with DOM labels. Per-axis `inside`/`outside` positioning; outside axes reserve real layout gutters. |
 | **Multi-series** | Independent buffers, styles, and visibility per series. |
 | **Benchmark overlay** | Built-in fps, frame time, vertex count, draw calls. |
 | **ResizeObserver** | Automatic DPR-aware canvas sizing. |
@@ -70,15 +70,16 @@ push();
 
 | Signature | Description |
 |---|---|
-| `new Chart(canvas, options?)` | Create a chart from an HTML canvas element. |
+| `new Chart(container, options?)` | Create a chart inside an HTML container element. The chart owns the plot canvas and axis layout. |
 | `chart.addSeries(config, style?)` | Add a data series. Returns `SeriesStore`. |
 | `chart.removeSeries(series)` | Remove a previously added series. |
 | `chart.setViewport({ xMin, xMax, yMin, yMax })` | Set the visible data range. |
-| `chart.resize(dpr?)` | Resize the canvas to match its CSS size × DPR. |
+| `chart.resize(dpr?)` | Resize the internal plot canvas to match its CSS size × DPR. |
 | `chart.start()` | Start the render loop (rAF). |
 | `chart.stop()` | Stop the render loop. |
+| `chart.canvas` | Read-only access to the internal plot canvas. |
 | `chart.getFrameStats(target?)` | Copy per-frame benchmark counters into a reusable object. |
-| `chart.dispose()` | Dispose GPU resources, observers, and input handlers. |
+| `chart.dispose()` | Dispose GPU resources, observers, input handlers, and owned DOM layout. |
 
 ### `ChartOptions`
 
@@ -94,7 +95,7 @@ push();
 | Property | Default | Description |
 |---|---|---|
 | `visible?` | `true` | Show this axis. |
-| `position?` | `"inside"` | `"inside"` draws labels over the plot; `"outside"` reserves a gutter so content is never occluded. |
+| `position?` | `"inside"` | `"inside"` draws labels over the plot; `"outside"` reserves a real DOM gutter and shrinks the plot canvas. |
 
 ```ts
 // X labels outside (bottom gutter), Y labels inside
@@ -189,4 +190,4 @@ dist/index.d.ts      TypeScript declarations
 
 ## Why WebGL2?
 
-Canvas2D and SVG are CPU-bound — every point becomes a draw call or a DOM node. BlazePlot keeps data on the GPU, streams only visible vertices, and avoids DOM entirely. For dense line plots (millions of points), interactive scatter, or real-time streaming, the difference is orders of magnitude.
+Canvas2D and SVG are CPU-bound — every point becomes a draw call or a DOM node. BlazePlot keeps plot data on the GPU and streams only visible vertices; DOM is limited to chart layout and labels. For dense line plots (millions of points), interactive scatter, or real-time streaming, the difference is orders of magnitude.

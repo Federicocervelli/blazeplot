@@ -1,54 +1,29 @@
 import type { Camera2D } from "../interaction/Camera2D.js";
 import type { AxisController } from "../interaction/AxisController.js";
+import type { ChartLayoutElements, ChartLayoutConfig } from "./ChartLayout.js";
 
 export interface AxisOverlayOptions {
   readonly font?: string;
   readonly color?: string;
 }
 
-export interface AxisOverlayAxisConfig {
-  readonly visible: boolean;
-  readonly position: "inside" | "outside";
-}
-
-export interface AxisOverlayConfig {
-  readonly x: AxisOverlayAxisConfig;
-  readonly y: AxisOverlayAxisConfig;
-}
+export type AxisOverlayConfig = ChartLayoutConfig;
 
 export class AxisOverlay {
-  private container: HTMLDivElement;
   private xPool: HTMLDivElement[] = [];
   private yPool: HTMLDivElement[] = [];
   private readonly xTicks: number[] = [];
   private readonly yTicks: number[] = [];
 
   constructor(
-    private readonly canvas: HTMLCanvasElement,
+    private readonly layout: ChartLayoutElements,
     private readonly config: AxisOverlayConfig,
     private readonly options: AxisOverlayOptions = {},
-  ) {
-    this.container = document.createElement("div");
-    this.container.style.position = "absolute";
-    this.container.style.pointerEvents = "none";
-    this.container.style.overflow = "hidden";
+  ) {}
 
-    const parent = canvas.parentElement;
-    if (parent && getComputedStyle(parent).position === "static") {
-      parent.style.position = "relative";
-    }
-
-    this.syncPosition();
-    parent?.appendChild(this.container);
-  }
-
-  update(camera: Camera2D, axis: AxisController, leftMargin: number, bottomMargin: number): void {
-    this.syncPosition();
-
-    const cssW = this.canvas.clientWidth;
-    const cssH = this.canvas.clientHeight;
-    const plotW = Math.max(1, cssW - leftMargin);
-    const plotH = Math.max(1, cssH - bottomMargin);
+  update(camera: Camera2D, axis: AxisController): void {
+    const plotW = Math.max(1, this.layout.plot.clientWidth);
+    const plotH = Math.max(1, this.layout.plot.clientHeight);
 
     if (this.config.x.visible) {
       axis.getXTickValues(plotW, 12, this.xTicks);
@@ -62,39 +37,22 @@ export class AxisOverlay {
       this.yTicks.length = 0;
     }
 
-    this.updateAxis(this.xPool, this.xTicks, "x", camera, cssW, cssH, axis, leftMargin, bottomMargin);
-    this.updateAxis(this.yPool, this.yTicks, "y", camera, cssW, cssH, axis, leftMargin, bottomMargin);
+    this.updateAxis(this.xPool, this.xTicks, "x", camera, plotW, plotH, axis);
+    this.updateAxis(this.yPool, this.yTicks, "y", camera, plotW, plotH, axis);
   }
 
   dispose(): void {
-    this.container.remove();
+    for (const el of this.xPool) el.remove();
+    for (const el of this.yPool) el.remove();
+    this.xPool = [];
+    this.yPool = [];
   }
 
-  private syncPosition(): void {
-    const parent = this.canvas.parentElement;
-    if (!parent) return;
-    const canvasRect = this.canvas.getBoundingClientRect();
-    const parentRect = parent.getBoundingClientRect();
-    this.container.style.top = `${Math.round(canvasRect.top - parentRect.top)}px`;
-    this.container.style.left = `${Math.round(canvasRect.left - parentRect.left)}px`;
-    this.container.style.width = `${this.canvas.clientWidth}px`;
-    this.container.style.height = `${this.canvas.clientHeight}px`;
-  }
-
-  private toCssScreen(
-    clipX: number,
-    clipY: number,
-    cssW: number,
-    cssH: number,
-    leftMargin: number,
-    bottomMargin: number,
-  ): [number, number] {
-    const plotW = Math.max(1, cssW - leftMargin);
-    const plotH = Math.max(1, cssH - bottomMargin);
-    return [
-      (clipX + 1) * 0.5 * plotW + leftMargin,
-      (1 - clipY) * 0.5 * plotH,
-    ];
+  private parentForAxis(axis: "x" | "y"): HTMLElement {
+    if (axis === "x") {
+      return this.config.x.position === "outside" ? this.layout.xAxis : this.layout.plot;
+    }
+    return this.config.y.position === "outside" ? this.layout.yAxis : this.layout.plot;
   }
 
   private updateAxis(
@@ -102,12 +60,12 @@ export class AxisOverlay {
     values: number[],
     axis: "x" | "y",
     camera: Camera2D,
-    cssW: number,
-    cssH: number,
+    plotW: number,
+    plotH: number,
     controller: AxisController,
-    leftMargin: number,
-    bottomMargin: number,
   ): void {
+    const parent = this.parentForAxis(axis);
+
     while (pool.length < values.length) {
       const el = document.createElement("div");
       el.style.position = "absolute";
@@ -116,8 +74,12 @@ export class AxisOverlay {
       el.style.font = this.options.font ?? "11px ui-monospace, monospace, sans-serif";
       el.style.color = this.options.color ?? "#bfd6ff";
       el.style.userSelect = "none";
-      this.container.appendChild(el);
+      parent.appendChild(el);
       pool.push(el);
+    }
+
+    for (const el of pool) {
+      if (el.parentElement !== parent) parent.appendChild(el);
     }
 
     for (let i = values.length; i < pool.length; i++) {
@@ -133,30 +95,30 @@ export class AxisOverlay {
       }
       el.style.display = "block";
 
-      const [clipX, clipY] =
-        axis === "x"
-          ? camera.toClip(value, camera.yMin)
-          : camera.toClip(camera.xMin, value);
-      const [screenX, screenY] = this.toCssScreen(clipX, clipY, cssW, cssH, leftMargin, bottomMargin);
-
       if (axis === "x") {
+        const [clipX] = camera.toClip(value, camera.yMin);
+        const screenX = (clipX + 1) * 0.5 * plotW;
         el.style.left = `${screenX}px`;
+        el.style.right = "auto";
         el.style.transform = "translateX(-50%)";
         if (this.config.x.position === "outside") {
-          el.style.top = `${screenY + 4}px`;
+          el.style.top = "4px";
           el.style.bottom = "auto";
         } else {
           el.style.top = "auto";
-          el.style.bottom = `${cssH - screenY + 4}px`;
+          el.style.bottom = "4px";
         }
       } else {
+        const [, clipY] = camera.toClip(camera.xMin, value);
+        const screenY = (1 - clipY) * 0.5 * plotH;
         el.style.top = `${screenY}px`;
+        el.style.bottom = "auto";
         el.style.transform = "translateY(-50%)";
         if (this.config.y.position === "outside") {
           el.style.left = "auto";
-          el.style.right = `${cssW - screenX + 4}px`;
+          el.style.right = "4px";
         } else {
-          el.style.left = `${screenX + 4}px`;
+          el.style.left = "4px";
           el.style.right = "auto";
         }
       }
