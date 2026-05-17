@@ -9,6 +9,7 @@ export interface InteractionsPluginOptions {
   readonly wheelZoom?: boolean;
   readonly axisInteractions?: boolean;
   readonly axisHover?: boolean;
+  readonly axisHoverColor?: string;
   readonly axisHoverFilter?: string;
   readonly shiftDragPan?: boolean;
   readonly doubleClickReset?: boolean;
@@ -16,6 +17,8 @@ export interface InteractionsPluginOptions {
   readonly selectionFill?: string;
   readonly selectionStroke?: string;
 }
+
+let nextInteractionsPluginId = 1;
 
 type InteractionTarget = HTMLCanvasElement | HTMLElement;
 
@@ -93,6 +96,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const xAxis = chart.xAxisElement;
       const yAxis = chart.yAxisElement;
       const selection = document.createElement("div");
+      const axisHoverClass = `blazeplot-axis-hover-${nextInteractionsPluginId++}`;
+      const axisHoverStyle = document.createElement("style");
       const originalXAxisPointerEvents = xAxis.style.pointerEvents;
       const originalYAxisPointerEvents = yAxis.style.pointerEvents;
       const originalXAxisCursor = xAxis.style.cursor;
@@ -110,6 +115,11 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       selection.style.border = `1px solid ${options.selectionStroke ?? "rgba(147, 197, 253, 0.95)"}`;
       selection.style.background = options.selectionFill ?? "rgba(59, 130, 246, 0.18)";
       chart.plotElement.appendChild(selection);
+
+      axisHoverStyle.textContent = `.${axisHoverClass} > div { color: ${options.axisHoverColor ?? "#f8fafc"} !important; }`;
+      if (options.axisInteractions !== false && options.axisHover !== false) {
+        chart.rootElement.appendChild(axisHoverStyle);
+      }
 
       if (options.axisInteractions !== false) {
         xAxis.style.pointerEvents = "auto";
@@ -137,7 +147,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
 
       const setAxisHovered = (target: HTMLElement, hovered: boolean): void => {
         if (options.axisHover === false) return;
-        const filter = hovered ? options.axisHoverFilter ?? "brightness(1.22) saturate(1.15)" : null;
+        const filter = hovered ? options.axisHoverFilter ?? "brightness(1.18)" : null;
+        target.classList.toggle(axisHoverClass, hovered);
         if (target === xAxis) {
           xAxis.style.filter = filter ?? originalXAxisFilter;
         } else if (target === yAxis) {
@@ -352,6 +363,9 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         yAxis.style.cursor = originalYAxisCursor;
         xAxis.style.filter = originalXAxisFilter;
         yAxis.style.filter = originalYAxisFilter;
+        xAxis.classList.remove(axisHoverClass);
+        yAxis.classList.remove(axisHoverClass);
+        axisHoverStyle.remove();
         selection.remove();
       };
     },
