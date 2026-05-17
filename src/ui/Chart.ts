@@ -549,7 +549,8 @@ export class Chart {
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
   ): void {
     const visibleSamples = series.visibleSampleCount(viewport);
-    if (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY) {
+    const rawBarCapacity = this.maxRawBarInstances();
+    if (series.hasLOD && visibleSamples > rawBarCapacity) {
       const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarFallbackBars());
       if (sampledCount <= 0) return;
 
@@ -559,7 +560,7 @@ export class Chart {
       return;
     }
 
-    const count = this.uploadRawInstances(series, viewport, this.maxBarFallbackBars());
+    const count = this.uploadRawInstances(series, viewport, rawBarCapacity);
     if (count <= 0) return;
 
     if (this.renderer.supportsInstancedBars) {
@@ -610,15 +611,46 @@ export class Chart {
     viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
   ): number {
     const count = Math.min(barCount, this.maxBarFallbackBars());
-    const width = (viewport.xMax - viewport.xMin) / Math.max(1, count);
     for (let i = 0; i < count; i++) {
       const minY = this.minMaxInstanceData[i * 3 + 1]!;
       const maxY = this.minMaxInstanceData[i * 3 + 2]!;
-      const x0 = viewport.xMin + i * width;
-      const x1 = i === count - 1 ? viewport.xMax : x0 + width;
+      const [x0, x1] = this.barBucketBounds(i, count, viewport);
       this.writeBarTriangle(i, x0, x1, minY, maxY);
     }
     return count * 6;
+  }
+
+  private barBucketBounds(
+    index: number,
+    count: number,
+    viewport: { xMin: number; xMax: number },
+  ): [number, number] {
+    const x = this.minMaxInstanceData[index * 3]!;
+    const viewportWidth = viewport.xMax - viewport.xMin;
+
+    if (count <= 1) {
+      const halfWidth = Math.max(0, viewportWidth * 0.5);
+      return [
+        Math.max(viewport.xMin, x - halfWidth),
+        Math.min(viewport.xMax, x + halfWidth),
+      ];
+    }
+
+    const prevX = index > 0 ? this.minMaxInstanceData[(index - 1) * 3]! : NaN;
+    const nextX = index + 1 < count ? this.minMaxInstanceData[(index + 1) * 3]! : NaN;
+    let x0 = index === 0 ? x - (nextX - x) * 0.5 : (prevX + x) * 0.5;
+    let x1 = index + 1 === count ? x + (x - prevX) * 0.5 : (x + nextX) * 0.5;
+
+    if (!Number.isFinite(x0) || !Number.isFinite(x1) || x1 <= x0) {
+      const fallbackWidth = viewportWidth / Math.max(1, count);
+      x0 = viewport.xMin + index * fallbackWidth;
+      x1 = index + 1 === count ? viewport.xMax : x0 + fallbackWidth;
+    }
+
+    return [
+      Math.max(viewport.xMin, x0),
+      Math.min(viewport.xMax, x1),
+    ];
   }
 
   private writeBarTriangle(index: number, x0: number, x1: number, y0: number, y1: number): void {
@@ -779,6 +811,10 @@ export class Chart {
 
   private maxBarFallbackBars(): number {
     return Math.min(BAR_FALLBACK_CAPACITY, RAW_LINE_VERTEX_CAPACITY);
+  }
+
+  private maxRawBarInstances(): number {
+    return this.renderer.supportsInstancedBars ? RAW_LINE_VERTEX_CAPACITY : this.maxBarFallbackBars();
   }
 
   private writeGridVertices(

@@ -12,6 +12,7 @@ export class SeriesStore {
   private readonly pyramid: MinMaxPyramid | null;
 
   private _dirty: boolean = false;
+  private _useDatasetRangeMinMax: boolean = false;
   private _useRawMinMaxScan: boolean = false;
   private _lastBuildLength: number = 0;
   private _lastBuildRangeStart: number = NaN;
@@ -21,9 +22,10 @@ export class SeriesStore {
     this.dataset = dataset;
     this.config = config;
     this.pyramid = (config.mode === "line" || config.mode === "bar") && config.downsample !== "none" ? new MinMaxPyramid() : null;
+    this._useDatasetRangeMinMax = hasRangeMinMaxY(dataset);
     this.style = style;
 
-    if (this.pyramid && dataset.length > 0) {
+    if (this.pyramid && dataset.length > 0 && !this._useDatasetRangeMinMax) {
       this.pyramid.build(dataset);
     }
     this._lastBuildLength = dataset.length;
@@ -66,8 +68,9 @@ export class SeriesStore {
     }
 
     (this.dataset as AppendableDataset).clear();
-    if (this.pyramid) this.pyramid.build(this.dataset);
+    this._useDatasetRangeMinMax = hasRangeMinMaxY(this.dataset);
     this._useRawMinMaxScan = false;
+    if (this.pyramid && !this._useDatasetRangeMinMax) this.pyramid.build(this.dataset);
     this._lastBuildLength = this.dataset.length;
     this._lastBuildRangeStart = this.dataset.range?.start ?? NaN;
     this._dirty = false;
@@ -79,10 +82,15 @@ export class SeriesStore {
       const length = this.dataset.length;
       const rangeStart = this.dataset.range?.start ?? NaN;
       const shiftedAtCapacity = length === this._lastBuildLength && rangeStart !== this._lastBuildRangeStart;
-      if (shiftedAtCapacity) {
+      if (hasRangeMinMaxY(this.dataset)) {
+        this._useDatasetRangeMinMax = true;
+        this._useRawMinMaxScan = false;
+      } else if (shiftedAtCapacity) {
+        this._useDatasetRangeMinMax = false;
         this._useRawMinMaxScan = true;
       } else {
         this.pyramid.incrementalBuild(this.dataset);
+        this._useDatasetRangeMinMax = false;
         this._useRawMinMaxScan = false;
       }
       this._lastBuildLength = length;
@@ -104,10 +112,12 @@ export class SeriesStore {
     const start = this.dataset.lowerBoundX(viewport.xMin);
     const end = this.dataset.upperBoundX(viewport.xMax);
 
-    return this.pyramid.query(viewport, pixelWidth, {
-      start,
-      length: Math.max(0, end - start),
-    });
+    const length = Math.max(0, end - start);
+    if (this._useDatasetRangeMinMax) {
+      return this.queryRangeMinMax(start, length, pixelWidth);
+    }
+
+    return this.pyramid.query(viewport, pixelWidth, { start, length });
   }
 
   visibleSampleCount(viewport: Viewport): number {
@@ -274,10 +284,42 @@ export class SeriesStore {
   }
 
   private minMaxForRange(start: number, end: number): { minY: number; maxY: number } | null {
+    if (this._useDatasetRangeMinMax && hasRangeMinMaxY(this.dataset)) {
+      return this.dataset.rangeMinMaxY(start, end);
+    }
     if (!this.pyramid || this._useRawMinMaxScan) {
       return this.rawMinMaxForRange(start, end);
     }
     return this.pyramid.rangeMinMax(this.dataset, start, end);
+  }
+
+  private queryRangeMinMax(start: number, length: number, pixelWidth: number): LODView {
+    if (pixelWidth <= 0 || length <= 0 || !hasRangeMinMaxY(this.dataset)) {
+      return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel: 0 };
+    }
+
+    const samplesPerPixel = Math.max(1, length / pixelWidth);
+    const level = Math.max(0, Math.ceil(Math.log2(samplesPerPixel)) - 1);
+    const bucketSampleWidth = 2 ** (level + 1);
+    const queryStart = Math.max(0, start);
+    const queryEnd = queryStart + length;
+    const maxBucketCount = Math.ceil(this.dataset.length / bucketSampleWidth);
+    const bucketStart = Math.max(0, Math.floor(queryStart / bucketSampleWidth));
+    const bucketEnd = Math.min(maxBucketCount, Math.ceil(queryEnd / bucketSampleWidth));
+    const bucketCount = Math.max(0, bucketEnd - bucketStart);
+    const buckets = new Float32Array(bucketCount * 2);
+
+    for (let bucket = 0; bucket < bucketCount; bucket++) {
+      const sourceBucket = bucketStart + bucket;
+      const rangeStart = sourceBucket * bucketSampleWidth;
+      const rangeEnd = Math.min(this.dataset.length, rangeStart + bucketSampleWidth);
+      const range = this.dataset.rangeMinMaxY(rangeStart, rangeEnd);
+      if (!range) continue;
+      buckets[bucket * 2] = range.minY;
+      buckets[bucket * 2 + 1] = range.maxY;
+    }
+
+    return { buckets, bucketCount, level, samplesPerPixel };
   }
 
   private rawMinMaxForRange(start: number, end: number): { minY: number; maxY: number } | null {

@@ -152,9 +152,18 @@ export class MinMaxPyramid {
     const current = this.levels[level];
     if (current && current.length >= needed) return;
 
-    const next = new Float32Array(needed);
+    let nextLength = current?.length ?? 0;
+    if (nextLength <= 0) {
+      nextLength = needed;
+    } else {
+      while (nextLength < needed) {
+        nextLength = Math.max(needed, Math.ceil(nextLength * 1.5));
+      }
+    }
+
+    const next = new Float32Array(nextLength);
     if (current) {
-      next.set(current.subarray(0, Math.min(current.length, needed)));
+      next.set(current);
     }
     this.levels[level] = next;
   }

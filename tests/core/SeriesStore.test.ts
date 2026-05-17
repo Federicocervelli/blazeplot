@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
 import { RingBuffer } from "../../src/core/RingBuffer.ts";
+import type { RangeMinMaxDataset, TimeRange } from "../../src/core/types.ts";
 
 function makeSeries(): SeriesStore {
   return new SeriesStore(
@@ -8,6 +9,72 @@ function makeSeries(): SeriesStore {
     { mode: "line", capacity: 8, downsample: "minmax" },
     { color: [1, 1, 1, 1], lineWidth: 1 },
   );
+}
+
+class TrackingRangeDataset implements RangeMinMaxDataset {
+  rangeCalls = 0;
+  getYCalls = 0;
+
+  constructor(
+    private readonly xData: readonly number[],
+    private readonly yData: readonly number[],
+  ) {}
+
+  get length(): number {
+    return Math.min(this.xData.length, this.yData.length);
+  }
+
+  get range(): TimeRange | null {
+    if (this.length === 0) return null;
+    return { start: this.xData[0]!, end: this.xData[this.length - 1]! };
+  }
+
+  getX(index: number): number {
+    return this.xData[index]!;
+  }
+
+  getY(index: number): number {
+    this.getYCalls++;
+    return this.yData[index]!;
+  }
+
+  lowerBoundX(x: number): number {
+    let lo = 0;
+    let hi = this.length;
+    while (lo < hi) {
+      const mid = lo + ((hi - lo) >> 1);
+      if (this.xData[mid]! < x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  upperBoundX(x: number): number {
+    let lo = 0;
+    let hi = this.length;
+    while (lo < hi) {
+      const mid = lo + ((hi - lo) >> 1);
+      if (this.xData[mid]! <= x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
+    this.rangeCalls++;
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this.length, Math.ceil(end));
+    if (to <= from) return null;
+
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = from; i < to; i++) {
+      const y = this.yData[i]!;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    return { minY, maxY };
+  }
 }
 
 describe("SeriesStore", () => {
@@ -50,6 +117,39 @@ describe("SeriesStore", () => {
 
     expect(count).toBe(2);
     expect(Array.from(instances)).toEqual([1, 1, 7, 4, 2, 9]);
+  });
+
+  it("uses dataset range min/max aggregation when available", () => {
+    const dataset = new TrackingRangeDataset([0, 1, 2, 3, 4, 5], [3, 7, 1, 9, 5, 2]);
+    const series = new SeriesStore(
+      dataset,
+      { mode: "line", capacity: 6, downsample: "minmax" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    const instances = new Float32Array(6);
+    const count = series.copyMinMaxInstanced({ xMin: 0, xMax: 5, yMin: 0, yMax: 10 }, instances, 2);
+
+    expect(count).toBe(2);
+    expect(Array.from(instances)).toEqual([1, 1, 7, 4, 2, 9]);
+    expect(dataset.rangeCalls).toBe(2);
+    expect(dataset.getYCalls).toBe(0);
+  });
+
+  it("queries LOD buckets through dataset range min/max aggregation when available", () => {
+    const dataset = new TrackingRangeDataset([0, 1, 2, 3, 4, 5], [3, 7, 1, 9, 5, 2]);
+    const series = new SeriesStore(
+      dataset,
+      { mode: "line", capacity: 6, downsample: "minmax" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    const lod = series.query({ xMin: 0, xMax: 5, yMin: 0, yMax: 10 }, 2);
+
+    expect(lod.bucketCount).toBe(2);
+    expect(Array.from(lod.buckets)).toEqual([1, 9, 2, 5]);
+    expect(dataset.rangeCalls).toBe(2);
+    expect(dataset.getYCalls).toBe(0);
   });
 
   it("uses equivalent buckets for line-list and instanced min/max layouts", () => {
