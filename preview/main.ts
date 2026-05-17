@@ -350,9 +350,9 @@ function updateOverlay(): void {
       `stream fps: ${fps.toFixed(1)}`,
       `render fps: ${chartStats.fps.toFixed(1)}`,
       `render ms/frame: ${chartStats.frameMs.toFixed(2)}`,
-      `points rendered: ${chartStats.pointsRendered.toLocaleString()}`,
-      `draw calls: ${chartStats.drawCalls}`,
-      `upload bytes: ${chartStats.uploadBytes.toLocaleString()}`,
+      `points rendered/frame: ${chartStats.pointsRendered.toLocaleString()}`,
+      `draw calls/frame: ${chartStats.drawCalls}`,
+      `upload bytes/frame: ${chartStats.uploadBytes.toLocaleString()}`,
       `canvas: ${canvas.width} x ${canvas.height}`,
     ].join("\n");
   }
