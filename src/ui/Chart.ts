@@ -553,14 +553,14 @@ export class Chart {
       const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarFallbackBars());
       if (sampledCount <= 0) return;
 
+      const sampledStyle = { ...series.style, barWidth: this.sampledBarWidth(viewport, sampledCount) };
+      this.includeBaselineInBarRanges(sampledCount, sampledStyle.baseline ?? 0);
       if (this.renderer.supportsInstancedBars) {
-        const sampledStyle = { ...series.style, barWidth: this.sampledBarWidth(viewport, sampledCount) };
         this.renderer.updateFloatBuffer(this.minMaxInstanceBuffer, this.minMaxInstanceData);
         this.stats.uploadBytes += this.minMaxInstanceData.byteLength;
         this.renderer.drawBarRangesInstanced(this.minMaxInstanceBuffer, sampledCount, sampledStyle, this.camera);
         this.recordInstancedDraw("bars", sampledCount * 2);
       } else {
-        const sampledStyle = { ...series.style, barWidth: this.sampledBarWidth(viewport, sampledCount) };
         const vertexCount = this.writeBarRangeTriangles(sampledCount, sampledStyle.barWidth);
         this.drawBarTriangleFallback(vertexCount, sampledStyle);
       }
@@ -591,6 +591,16 @@ export class Chart {
     this.renderer.updateFloatBuffer(this.rawLineBuffer, this.rawLineData);
     this.stats.uploadBytes += this.rawLineData.byteLength;
     return count;
+  }
+
+  private includeBaselineInBarRanges(barCount: number, baseline: number): void {
+    for (let i = 0; i < barCount; i++) {
+      const offset = i * FLOATS_PER_MINMAX_SEGMENT_INSTANCE;
+      const minY = this.minMaxInstanceData[offset + 1]!;
+      const maxY = this.minMaxInstanceData[offset + 2]!;
+      this.minMaxInstanceData[offset + 1] = Math.min(baseline, minY);
+      this.minMaxInstanceData[offset + 2] = Math.max(baseline, maxY);
+    }
   }
 
   private writeBarTriangles(barCount: number, baseline: number, barWidth: number): number {
