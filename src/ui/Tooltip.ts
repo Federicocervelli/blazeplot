@@ -10,6 +10,7 @@ export interface TooltipPluginOptions {
   readonly backgroundColor?: string;
   readonly textColor?: string;
   readonly font?: string;
+  readonly zIndex?: number;
   readonly formatter?: (item: ChartPickItem, state: ChartHoverState) => string;
   readonly render?: (state: ChartHoverState, container: HTMLElement, chart: Chart) => void;
 }
@@ -52,16 +53,15 @@ function clamp(value: number, min: number, max: number): number {
 function placeTooltip(
   container: HTMLElement,
   state: ChartHoverState,
-  chart: Chart,
   options: TooltipPluginOptions,
 ): void {
   const offsetX = options.offsetX ?? 12;
   const offsetY = options.offsetY ?? 12;
-  const rootRect = chart.rootElement.getBoundingClientRect();
   const tooltipRect = container.getBoundingClientRect();
   const margin = 4;
-  const viewportWidth = Math.max(1, globalThis.innerWidth || document.documentElement.clientWidth || rootRect.right);
-  const viewportHeight = Math.max(1, globalThis.innerHeight || document.documentElement.clientHeight || rootRect.bottom);
+  const doc = container.ownerDocument;
+  const viewportWidth = Math.max(1, globalThis.innerWidth || doc.documentElement.clientWidth);
+  const viewportHeight = Math.max(1, globalThis.innerHeight || doc.documentElement.clientHeight);
 
   let viewportX = state.clientX + offsetX;
   let viewportY = state.clientY + offsetY;
@@ -74,7 +74,7 @@ function placeTooltip(
 
   viewportX = clamp(viewportX, margin, Math.max(margin, viewportWidth - tooltipRect.width - margin));
   viewportY = clamp(viewportY, margin, Math.max(margin, viewportHeight - tooltipRect.height - margin));
-  container.style.transform = `translate(${viewportX - rootRect.left}px, ${viewportY - rootRect.top}px)`;
+  container.style.transform = `translate(${viewportX}px, ${viewportY}px)`;
 }
 
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
@@ -82,8 +82,10 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
     install(chart: Chart) {
       const container = document.createElement("div");
       container.className = options.className ?? "blazeplot-tooltip";
-      container.style.position = "absolute";
-      container.style.zIndex = "30";
+      container.style.position = "fixed";
+      container.style.left = "0";
+      container.style.top = "0";
+      container.style.zIndex = String(options.zIndex ?? 10_000);
       container.style.display = "none";
       container.style.pointerEvents = "none";
       container.style.background = options.backgroundColor ?? chart.theme.tooltipBackgroundColor;
@@ -91,7 +93,8 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       container.style.font = options.font ?? chart.theme.tooltipFont;
       container.style.padding = "8px 10px";
       container.style.whiteSpace = "pre";
-      chart.rootElement.appendChild(container);
+      const tooltipParent = chart.rootElement.ownerDocument.body ?? chart.rootElement;
+      tooltipParent.appendChild(container);
 
       const markerLayer = document.createElement("div");
       markerLayer.className = "blazeplot-tooltip-markers";
@@ -145,7 +148,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         }
 
         container.style.display = "block";
-        placeTooltip(container, effectiveState, chart, options);
+        placeTooltip(container, effectiveState, options);
       };
 
       const unsubscribeHover = chart.subscribe("hover", render);
