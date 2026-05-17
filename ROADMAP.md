@@ -69,7 +69,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 
 ## Phase 3 — regl renderer (full)
 
-**Status: basic line rendering done**
+**Status: line, min/max, scatter, bar, and area rendering done; advanced modes and batching pending**
 
 - [x] `ReglBackend` — createBuffer, updateBuffer (subdata), createProgram, draw command cache
 - [x] Raw line strip for few visible points
@@ -145,6 +145,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [ ] `chart.addScatter(config)`, `chart.addBar(config)`, etc.
 
 Package status:
+- [x] Current npm package version: `0.1.7`
 - [x] `exports`, `main`, `module`, and `types` point at `dist/`
 - [x] Vite library build from `src/index.ts`
 - [x] Declaration emit via `vite-plugin-dts`
