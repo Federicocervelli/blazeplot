@@ -11,6 +11,7 @@ export interface TooltipPluginOptions {
   readonly textColor?: string;
   readonly font?: string;
   readonly zIndex?: number;
+  readonly lockWidth?: boolean;
   readonly formatter?: (item: ChartPickItem, state: ChartHoverState) => string;
   readonly render?: (state: ChartHoverState, container: HTMLElement, chart: Chart) => void;
 }
@@ -63,17 +64,16 @@ function placeTooltip(
   const viewportWidth = Math.max(1, globalThis.innerWidth || doc.documentElement.clientWidth);
   const viewportHeight = Math.max(1, globalThis.innerHeight || doc.documentElement.clientHeight);
 
-  let viewportX = state.clientX + offsetX;
-  let viewportY = state.clientY + offsetY;
-  if (viewportX + tooltipRect.width + margin > viewportWidth) {
-    viewportX = state.clientX - offsetX - tooltipRect.width;
-  }
-  if (viewportY + tooltipRect.height + margin > viewportHeight) {
-    viewportY = state.clientY - offsetY - tooltipRect.height;
-  }
-
-  viewportX = clamp(viewportX, margin, Math.max(margin, viewportWidth - tooltipRect.width - margin));
-  viewportY = clamp(viewportY, margin, Math.max(margin, viewportHeight - tooltipRect.height - margin));
+  const viewportX = clamp(
+    state.clientX + offsetX,
+    margin,
+    Math.max(margin, viewportWidth - tooltipRect.width - margin),
+  );
+  const viewportY = clamp(
+    state.clientY + offsetY,
+    margin,
+    Math.max(margin, viewportHeight - tooltipRect.height - margin),
+  );
   container.style.transform = `translate(${viewportX}px, ${viewportY}px)`;
 }
 
@@ -103,6 +103,21 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       markerLayer.style.zIndex = "25";
       markerLayer.style.pointerEvents = "none";
       chart.plotElement.appendChild(markerLayer);
+
+      let lockedTooltipWidth = 0;
+
+      const lockTooltipWidth = (): void => {
+        if (options.lockWidth === false) return;
+        const width = Math.ceil(container.getBoundingClientRect().width);
+        if (width <= lockedTooltipWidth) return;
+        lockedTooltipWidth = width;
+        container.style.minWidth = `${lockedTooltipWidth}px`;
+      };
+
+      const resetTooltipWidth = (): void => {
+        lockedTooltipWidth = 0;
+        container.style.minWidth = "";
+      };
 
       const applyTheme = (): void => {
         container.style.background = options.backgroundColor ?? chart.theme.tooltipBackgroundColor;
@@ -138,6 +153,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         renderMarkers(effectiveState);
         if (!effectiveState || effectiveState.items.length === 0) {
           container.style.display = "none";
+          resetTooltipWidth();
           return;
         }
 
@@ -148,6 +164,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         }
 
         container.style.display = "block";
+        lockTooltipWidth();
         placeTooltip(container, effectiveState, options);
       };
 
