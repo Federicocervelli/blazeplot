@@ -554,13 +554,15 @@ export class Chart {
       if (sampledCount <= 0) return;
 
       if (this.renderer.supportsInstancedBars) {
+        const sampledStyle = { ...series.style, barWidth: this.sampledBarWidth(viewport, sampledCount) };
         this.renderer.updateFloatBuffer(this.minMaxInstanceBuffer, this.minMaxInstanceData);
         this.stats.uploadBytes += this.minMaxInstanceData.byteLength;
-        this.renderer.drawBarRangesInstanced(this.minMaxInstanceBuffer, sampledCount, series.style, this.camera);
+        this.renderer.drawBarRangesInstanced(this.minMaxInstanceBuffer, sampledCount, sampledStyle, this.camera);
         this.recordInstancedDraw("bars", sampledCount * 2);
       } else {
-        const vertexCount = this.writeBarRangeTriangles(sampledCount, series.style.barWidth ?? 0.8);
-        this.drawBarTriangleFallback(vertexCount, series.style);
+        const sampledStyle = { ...series.style, barWidth: this.sampledBarWidth(viewport, sampledCount) };
+        const vertexCount = this.writeBarRangeTriangles(sampledCount, sampledStyle.barWidth);
+        this.drawBarTriangleFallback(vertexCount, sampledStyle);
       }
       return;
     }
@@ -770,6 +772,13 @@ export class Chart {
 
   private maxBarFallbackBars(): number {
     return Math.min(BAR_FALLBACK_CAPACITY, RAW_LINE_VERTEX_CAPACITY);
+  }
+
+  private sampledBarWidth(
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+    sampledCount: number,
+  ): number {
+    return sampledCount > 0 ? (viewport.xMax - viewport.xMin) / sampledCount : 0.8;
   }
 
   private writeGridVertices(

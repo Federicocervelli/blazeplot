@@ -159,6 +159,52 @@ export class MinMaxPyramid {
     this.levels[level] = next;
   }
 
+  rangeMinMax(source: Dataset, start: number, end: number): { minY: number; maxY: number } | null {
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(source.length, Math.ceil(end));
+    if (to <= from) return null;
+
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let i = from;
+
+    while (i < to) {
+      let level = -1;
+      let width = 1;
+      for (let L = this.levels.length - 1; L >= 0; L--) {
+        const sampleWidth = this.levelSampleWidths[L]!;
+        const bucket = Math.floor(i / sampleWidth);
+        if (
+          sampleWidth > 0 &&
+          i % sampleWidth === 0 &&
+          i + sampleWidth <= to &&
+          bucket < this.levelLengths[L]!
+        ) {
+          level = L;
+          width = sampleWidth;
+          break;
+        }
+      }
+
+      if (level >= 0) {
+        const bucket = Math.floor(i / width);
+        const data = this.levels[level]!;
+        const pMin = data[bucket * 2]!;
+        const pMax = data[bucket * 2 + 1]!;
+        if (pMin < minY) minY = pMin;
+        if (pMax > maxY) maxY = pMax;
+        i += width;
+      } else {
+        const y = source.getY(i);
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        i++;
+      }
+    }
+
+    return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
+  }
+
   query(_viewport: Viewport, pixelWidth: number, xRange: { start: number; length: number }): LODView {
     if (pixelWidth <= 0 || xRange.length <= 0) {
       return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel: 0 };

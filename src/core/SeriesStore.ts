@@ -227,15 +227,11 @@ export class SeriesStore {
       );
       const clampedEnd = Math.min(end, segmentEnd);
 
-      let minY = Infinity;
-      let maxY = -Infinity;
-      for (let i = segmentStart; i < clampedEnd; i++) {
-        const y = this.dataset.getY(i);
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
+      const range = this.pyramid.rangeMinMax(this.dataset, segmentStart, clampedEnd);
+      if (!range) continue;
 
       const x = this.dataset.getX(segmentStart + ((clampedEnd - segmentStart) >> 1));
+      const { minY, maxY } = range;
       if (layout === "line-list") {
         const offset = segment * 4;
         target[offset] = x;
