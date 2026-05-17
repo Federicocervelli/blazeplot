@@ -146,12 +146,14 @@ export class Chart {
   private lastPointerClientX: number = 0;
   private lastPointerClientY: number = 0;
   private pointerInPlot: boolean = false;
+  private hoverSkipRemaining: number = 0;
   private lastFrameAt: number = 0;
   private _rafId: number = 0;
   private readonly handlePointerMove = (event: PointerEvent): void => {
     this.pointerInPlot = true;
     this.lastPointerClientX = event.clientX;
     this.lastPointerClientY = event.clientY;
+    this.hoverSkipRemaining = 0;
     this.refreshHover();
   };
   private readonly handlePointerLeave = (): void => {
@@ -479,7 +481,12 @@ export class Chart {
     this.axisOverlay?.update(this.camera, this.axis);
 
     this.stats.frameMs = performance.now() - frameStartedAt;
-    this.refreshHover();
+    if (this.hoverSkipRemaining > 0) {
+      this.hoverSkipRemaining--;
+    } else {
+      this.hoverSkipRemaining = 3;
+      this.refreshHover();
+    }
   }
 
   dispose(): void {
