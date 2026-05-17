@@ -553,17 +553,9 @@ export class Chart {
       const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarFallbackBars());
       if (sampledCount <= 0) return;
 
-      const sampledStyle = { ...series.style, barWidth: this.sampledBarWidth(viewport, sampledCount) };
-      this.includeBaselineInBarRanges(sampledCount, sampledStyle.baseline ?? 0);
-      if (this.renderer.supportsInstancedBars) {
-        this.renderer.updateFloatBuffer(this.minMaxInstanceBuffer, this.minMaxInstanceData);
-        this.stats.uploadBytes += this.minMaxInstanceData.byteLength;
-        this.renderer.drawBarRangesInstanced(this.minMaxInstanceBuffer, sampledCount, sampledStyle, this.camera);
-        this.recordInstancedDraw("bars", sampledCount * 2);
-      } else {
-        const vertexCount = this.writeBarRangeTriangles(sampledCount, sampledStyle.barWidth);
-        this.drawBarTriangleFallback(vertexCount, sampledStyle);
-      }
+      this.includeBaselineInBarRanges(sampledCount, series.style.baseline ?? 0);
+      const vertexCount = this.writeBarBucketTriangles(sampledCount, viewport);
+      this.drawBarTriangleFallback(vertexCount, series.style);
       return;
     }
 
@@ -613,13 +605,18 @@ export class Chart {
     return count * 6;
   }
 
-  private writeBarRangeTriangles(barCount: number, barWidth: number): number {
+  private writeBarBucketTriangles(
+    barCount: number,
+    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
+  ): number {
     const count = Math.min(barCount, this.maxBarFallbackBars());
+    const width = (viewport.xMax - viewport.xMin) / Math.max(1, count);
     for (let i = 0; i < count; i++) {
-      const x = this.minMaxInstanceData[i * 3]!;
       const minY = this.minMaxInstanceData[i * 3 + 1]!;
       const maxY = this.minMaxInstanceData[i * 3 + 2]!;
-      this.writeBarTriangle(i, x - barWidth * 0.5, x + barWidth * 0.5, minY, maxY);
+      const x0 = viewport.xMin + i * width;
+      const x1 = i === count - 1 ? viewport.xMax : x0 + width;
+      this.writeBarTriangle(i, x0, x1, minY, maxY);
     }
     return count * 6;
   }
@@ -782,13 +779,6 @@ export class Chart {
 
   private maxBarFallbackBars(): number {
     return Math.min(BAR_FALLBACK_CAPACITY, RAW_LINE_VERTEX_CAPACITY);
-  }
-
-  private sampledBarWidth(
-    viewport: { xMin: number; xMax: number; yMin: number; yMax: number },
-    sampledCount: number,
-  ): number {
-    return sampledCount > 0 ? (viewport.xMax - viewport.xMin) / sampledCount : 0.8;
   }
 
   private writeGridVertices(
