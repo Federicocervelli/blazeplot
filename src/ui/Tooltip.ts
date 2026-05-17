@@ -36,7 +36,7 @@ function renderDefaultTooltip(
   for (const item of state.items) {
     const value = formatter ? formatter(item, state) : `(${formatNumber(item.x)}, ${formatNumber(item.y)})`;
     const color = rgba(item.series.style.color);
-    html += `<br><span style="color:${color}">\u2588</span>${labelOf(item).padEnd(pad)}  ${value}`;
+    html += `<br><span style="color:${color}">\u2588</span> ${labelOf(item).padEnd(pad)}  ${value}`;
   }
   container.innerHTML = html;
 }
