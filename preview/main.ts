@@ -157,14 +157,14 @@ const chart = new Chart(chartTarget, {
 });
 const canvas = chart.canvas;
 
-const lineDataset = new ContiguousRingDataset(HISTORY_SAMPLES);
+const lineDataset = new ContiguousRingDataset(HISTORY_SAMPLES, { blockSize: 64 });
 const lineSeries = chart.addLine(
   { capacity: HISTORY_SAMPLES, dataset: lineDataset, downsample: "minmax", name: "Wave" },
   { lineWidth: 1 },
 );
 const areaDataset = new ContiguousRingDataset(SPARSE_HISTORY_CAPACITY, { xStep: SPARSE_INTERVAL });
 const spikeDataset = new ContiguousRingDataset(SPARSE_HISTORY_CAPACITY, { xStep: SPARSE_INTERVAL });
-const barDataset = new ContiguousRingDataset(SPARSE_HISTORY_CAPACITY, { xStep: SPARSE_INTERVAL });
+const barDataset = new ContiguousRingDataset(SPARSE_HISTORY_CAPACITY, { blockSize: 16, xStep: SPARSE_INTERVAL });
 const areaSeries = chart.addArea(
   { capacity: SPARSE_HISTORY_CAPACITY, dataset: areaDataset, downsample: "none", name: "Area" },
   { baseline: -0.05, lineWidth: 1 },

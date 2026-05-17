@@ -15,6 +15,9 @@ export class ContiguousRingDataset implements AppendableDataset, RangeMinMaxData
   private readonly yData: Float32Array;
   private readonly blockMin: Float32Array;
   private readonly blockMax: Float32Array;
+  private readonly blockTreeBase: number;
+  private readonly minTree: Float32Array;
+  private readonly maxTree: Float32Array;
   private _length = 0;
   private _head = 0;
   private _nextX = 0;
@@ -25,14 +28,19 @@ export class ContiguousRingDataset implements AppendableDataset, RangeMinMaxData
     }
 
     this.capacity = capacity;
-    this.blockSize = options.blockSize ?? 1024;
+    this.blockSize = options.blockSize ?? 64;
     this.xStep = options.xStep ?? 1;
     this.yData = new Float32Array(capacity);
     const blockCount = Math.ceil(capacity / this.blockSize);
     this.blockMin = new Float32Array(blockCount);
     this.blockMax = new Float32Array(blockCount);
+    this.blockTreeBase = ContiguousRingDataset.nextPowerOfTwo(blockCount);
+    this.minTree = new Float32Array(this.blockTreeBase * 2);
+    this.maxTree = new Float32Array(this.blockTreeBase * 2);
     this.blockMin.fill(Infinity);
     this.blockMax.fill(-Infinity);
+    this.minTree.fill(Infinity);
+    this.maxTree.fill(-Infinity);
   }
 
   get length(): number {
@@ -83,6 +91,8 @@ export class ContiguousRingDataset implements AppendableDataset, RangeMinMaxData
     this._nextX = 0;
     this.blockMin.fill(Infinity);
     this.blockMax.fill(-Infinity);
+    this.minTree.fill(Infinity);
+    this.maxTree.fill(-Infinity);
   }
 
   getX(index: number): number {
@@ -212,21 +222,32 @@ export class ContiguousRingDataset implements AppendableDataset, RangeMinMaxData
     let minY = Infinity;
     let maxY = -Infinity;
     let i = start;
-    while (i < end) {
-      if (i % this.blockSize === 0 && i + this.blockSize <= end) {
-        const block = i / this.blockSize;
-        const bMin = this.blockMin[block]!;
-        const bMax = this.blockMax[block]!;
-        if (bMin < minY) minY = bMin;
-        if (bMax > maxY) maxY = bMax;
-        i += this.blockSize;
-      } else {
-        const value = this.yData[i]!;
-        if (value < minY) minY = value;
-        if (value > maxY) maxY = value;
-        i++;
-      }
+
+    while (i < end && i % this.blockSize !== 0) {
+      const value = this.yData[i]!;
+      if (value < minY) minY = value;
+      if (value > maxY) maxY = value;
+      i++;
     }
+
+    const blockStart = i / this.blockSize;
+    const blockEnd = Math.floor(end / this.blockSize);
+    if (blockEnd > blockStart) {
+      const blockRange = this.queryBlockMinMax(blockStart, blockEnd);
+      if (blockRange) {
+        if (blockRange.minY < minY) minY = blockRange.minY;
+        if (blockRange.maxY > maxY) maxY = blockRange.maxY;
+      }
+      i = blockEnd * this.blockSize;
+    }
+
+    while (i < end) {
+      const value = this.yData[i]!;
+      if (value < minY) minY = value;
+      if (value > maxY) maxY = value;
+      i++;
+    }
+
     return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
   }
 
@@ -253,6 +274,51 @@ export class ContiguousRingDataset implements AppendableDataset, RangeMinMaxData
     }
     this.blockMin[block] = minY;
     this.blockMax[block] = maxY;
+    this.updateBlockTreeLeaf(block, minY, maxY);
+  }
+
+  private queryBlockMinMax(start: number, end: number): { minY: number; maxY: number } | null {
+    let left = this.blockTreeBase + start;
+    let right = this.blockTreeBase + end;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    while (left < right) {
+      if (left & 1) {
+        const yMin = this.minTree[left]!;
+        const yMax = this.maxTree[left]!;
+        if (yMin < minY) minY = yMin;
+        if (yMax > maxY) maxY = yMax;
+        left++;
+      }
+      if (right & 1) {
+        right--;
+        const yMin = this.minTree[right]!;
+        const yMax = this.maxTree[right]!;
+        if (yMin < minY) minY = yMin;
+        if (yMax > maxY) maxY = yMax;
+      }
+      left >>= 1;
+      right >>= 1;
+    }
+    return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
+  }
+
+  private updateBlockTreeLeaf(block: number, minY: number, maxY: number): void {
+    let index = this.blockTreeBase + block;
+    this.minTree[index] = minY;
+    this.maxTree[index] = maxY;
+    index >>= 1;
+    while (index >= 1) {
+      const left = index << 1;
+      const right = left + 1;
+      const leftMin = this.minTree[left]!;
+      const rightMin = this.minTree[right]!;
+      const leftMax = this.maxTree[left]!;
+      const rightMax = this.maxTree[right]!;
+      this.minTree[index] = leftMin < rightMin ? leftMin : rightMin;
+      this.maxTree[index] = leftMax > rightMax ? leftMax : rightMax;
+      index >>= 1;
+    }
   }
 
   private isPhysicalValid(index: number): boolean {
@@ -271,5 +337,9 @@ export class ContiguousRingDataset implements AppendableDataset, RangeMinMaxData
     if (!Number.isInteger(index) || index < 0 || index >= this._length) {
       throw new RangeError(`ContiguousRingDataset index out of range: ${index}`);
     }
+  }
+
+  private static nextPowerOfTwo(value: number): number {
+    return 2 ** Math.ceil(Math.log2(value));
   }
 }
