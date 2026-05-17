@@ -9,6 +9,32 @@ function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
   return "getOpen" in dataset && "getHigh" in dataset && "getLow" in dataset && "getClose" in dataset;
 }
 
+function hasCopySamplesRange(dataset: Dataset): dataset is Dataset & {
+  copySamplesRange(
+    start: number,
+    end: number,
+    target: Float32Array,
+    maxPoints: number,
+    layout: "points" | "area",
+    baseline: number,
+    xOrigin: number,
+  ): number;
+} {
+  return "copySamplesRange" in dataset;
+}
+
+function hasCopyMinMaxSegments(dataset: Dataset): dataset is Dataset & {
+  copyMinMaxSegments(
+    viewport: Viewport,
+    target: Float32Array,
+    maxSegments: number,
+    layout: "line-list" | "instanced",
+    xOrigin: number,
+  ): number;
+} {
+  return "copyMinMaxSegments" in dataset;
+}
+
 const NEAREST_POINT_LEAF_SIZE = 64;
 
 type PointSearchInterval = {
@@ -489,6 +515,10 @@ export class SeriesStore {
     baseline: number,
     xOrigin: number,
   ): number {
+    if (hasCopySamplesRange(this.dataset)) {
+      return this.dataset.copySamplesRange(start, end, target, maxPoints, layout, baseline, xOrigin);
+    }
+
     const floatsPerSample = layout === "points" ? 2 : 4;
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
 
@@ -522,6 +552,10 @@ export class SeriesStore {
     layout: "line-list" | "instanced",
     xOrigin: number,
   ): number {
+    if (hasCopyMinMaxSegments(this.dataset)) {
+      return this.dataset.copyMinMaxSegments(viewport, target, maxSegments, layout, xOrigin);
+    }
+
     const floatsPerSegment = layout === "line-list" ? 4 : 3;
     if (!this.pyramid || maxSegments <= 0 || target.length < maxSegments * floatsPerSegment) return 0;
 

@@ -44,12 +44,11 @@ function generateBatch(): PreviewDataBatch {
 
   const sparseStart = Math.ceil(start / SPARSE_INTERVAL) * SPARSE_INTERVAL;
   const sparseCount = sparseStart < end ? Math.floor((end - 1 - sparseStart) / SPARSE_INTERVAL) + 1 : 0;
-  const sparseX = sparseCount > 0 ? acquireFloat64(sparseCount) : null;
   const areaY = sparseCount > 0 ? acquireFloat32(sparseCount) : null;
   const spikeY = sparseCount > 0 ? acquireFloat32(sparseCount) : null;
   const barY = sparseCount > 0 ? acquireFloat32(sparseCount) : null;
-  if (sparseCount > 0 && sparseX && areaY && spikeY && barY) {
-    fillSparse(sparseStart, sparseCount, sparseX, areaY, spikeY, barY);
+  if (sparseCount > 0 && areaY && spikeY && barY) {
+    fillSparse(sparseStart, sparseCount, areaY, spikeY, barY);
   }
 
   const ohlcStart = Math.ceil(start / OHLC_INTERVAL) * OHLC_INTERVAL;
@@ -72,7 +71,6 @@ function generateBatch(): PreviewDataBatch {
     sparseCount,
     ohlcCount,
     lineY: lineY.buffer as ArrayBuffer,
-    sparseX: sparseX ? sparseX.buffer as ArrayBuffer : null,
     areaY: areaY ? areaY.buffer as ArrayBuffer : null,
     spikeY: spikeY ? spikeY.buffer as ArrayBuffer : null,
     barY: barY ? barY.buffer as ArrayBuffer : null,
@@ -81,12 +79,13 @@ function generateBatch(): PreviewDataBatch {
     ohlcHigh: ohlcHigh ? ohlcHigh.buffer as ArrayBuffer : null,
     ohlcLow: ohlcLow ? ohlcLow.buffer as ArrayBuffer : null,
     ohlcClose: ohlcClose ? ohlcClose.buffer as ArrayBuffer : null,
+    sparseStart,
   };
 }
 
 function postBatch(batch: PreviewDataBatch): void {
   const transfer: Transferable[] = [batch.lineY];
-  appendTransfer(transfer, batch.sparseX, batch.areaY, batch.spikeY, batch.barY);
+  appendTransfer(transfer, batch.areaY, batch.spikeY, batch.barY);
   appendTransfer(transfer, batch.ohlcX, batch.ohlcOpen, batch.ohlcHigh, batch.ohlcLow, batch.ohlcClose);
   worker.postMessage(batch, transfer);
 }
@@ -113,7 +112,6 @@ function fillLine(start: number, count: number, ys: Float32Array): void {
 function fillSparse(
   start: number,
   count: number,
-  xs: Float64Array,
   areaY: Float32Array,
   spikeY: Float32Array,
   barY: Float32Array,
@@ -121,7 +119,6 @@ function fillSparse(
   let sin = Math.sin(start * OMEGA);
   let cos = Math.cos(start * OMEGA);
   for (let i = 0; i < count; i++) {
-    xs[i] = start + i * SPARSE_INTERVAL;
     areaY[i] = 0.05 + Math.abs(cos) * 0.35 + random01() * 0.025;
     spikeY[i] = -0.35 + random01() * 0.35;
     barY[i] = -1.1 + Math.abs(sin) * 0.48 + 0.08;

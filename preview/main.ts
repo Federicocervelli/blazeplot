@@ -162,16 +162,19 @@ const lineSeries = chart.addLine(
   { capacity: HISTORY_SAMPLES, dataset: lineDataset, downsample: "minmax", name: "Wave" },
   { lineWidth: 1 },
 );
+const areaDataset = new ContiguousRingDataset(SPARSE_HISTORY_CAPACITY, { xStep: SPARSE_INTERVAL });
+const spikeDataset = new ContiguousRingDataset(SPARSE_HISTORY_CAPACITY, { xStep: SPARSE_INTERVAL });
+const barDataset = new ContiguousRingDataset(SPARSE_HISTORY_CAPACITY, { xStep: SPARSE_INTERVAL });
 const areaSeries = chart.addArea(
-  { capacity: SPARSE_HISTORY_CAPACITY, downsample: "none", name: "Area" },
+  { capacity: SPARSE_HISTORY_CAPACITY, dataset: areaDataset, downsample: "none", name: "Area" },
   { baseline: -0.05, lineWidth: 1 },
 );
 const scatterSeries = chart.addScatter(
-  { capacity: SPARSE_HISTORY_CAPACITY, downsample: "none", name: "Spikes" },
+  { capacity: SPARSE_HISTORY_CAPACITY, dataset: spikeDataset, downsample: "none", name: "Spikes" },
   { pointSize: 5 },
 );
 const barSeries = chart.addBar(
-  { capacity: SPARSE_HISTORY_CAPACITY, downsample: "minmax", name: "Power" },
+  { capacity: SPARSE_HISTORY_CAPACITY, dataset: barDataset, downsample: "minmax", name: "Power" },
   { barWidth: SPARSE_INTERVAL, baseline: -1.1 },
 );
 const ohlcDataset = new OhlcRingBuffer(OHLC_HISTORY_CAPACITY);
@@ -250,12 +253,12 @@ function appendGeneratedBatch(batch: PreviewDataBatch): void {
   const release: ArrayBuffer[] = [batch.lineY];
   lineSeries.append({ length: batch.batchSize }, new Float32Array(batch.lineY));
 
-  if (batch.sparseCount > 0 && batch.sparseX && batch.areaY && batch.spikeY && batch.barY) {
-    const sparseX = new Float64Array(batch.sparseX);
-    areaSeries.append(sparseX, new Float32Array(batch.areaY));
-    scatterSeries.append(sparseX, new Float32Array(batch.spikeY));
-    barSeries.append(sparseX, new Float32Array(batch.barY));
-    release.push(batch.sparseX, batch.areaY, batch.spikeY, batch.barY);
+  if (batch.sparseCount > 0 && batch.areaY && batch.spikeY && batch.barY) {
+    const sparseLength = { length: batch.sparseCount };
+    areaSeries.append(sparseLength, new Float32Array(batch.areaY));
+    scatterSeries.append(sparseLength, new Float32Array(batch.spikeY));
+    barSeries.append(sparseLength, new Float32Array(batch.barY));
+    release.push(batch.areaY, batch.spikeY, batch.barY);
   }
 
   if (batch.ohlcCount > 0 && batch.ohlcX && batch.ohlcOpen && batch.ohlcHigh && batch.ohlcLow && batch.ohlcClose) {

@@ -21,7 +21,6 @@ export interface PreviewDataBatch {
   readonly sparseCount: number;
   readonly ohlcCount: number;
   readonly lineY: ArrayBuffer;
-  readonly sparseX: ArrayBuffer | null;
   readonly areaY: ArrayBuffer | null;
   readonly spikeY: ArrayBuffer | null;
   readonly barY: ArrayBuffer | null;
@@ -30,6 +29,7 @@ export interface PreviewDataBatch {
   readonly ohlcHigh: ArrayBuffer | null;
   readonly ohlcLow: ArrayBuffer | null;
   readonly ohlcClose: ArrayBuffer | null;
+  readonly sparseStart: number;
 }
 
 export type PreviewDataWorkerRequest =
