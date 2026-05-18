@@ -11,6 +11,8 @@ import {
   LIVE_BATCH_SIZE,
   OHLC_HISTORY_CAPACITY,
   OHLC_INTERVAL,
+  PREVIEW_START_TIME,
+  PREVIEW_X_STEP_MS,
   SPARSE_HISTORY_CAPACITY,
   SPARSE_INTERVAL,
   VIEW_SAMPLES,
@@ -94,8 +96,8 @@ const annotations = annotationsPlugin({
     {
       id: "release-window",
       type: "x-range",
-      xMin: VIEW_SAMPLES * 0.18,
-      xMax: VIEW_SAMPLES * 0.24,
+      xMin: sampleToTime(VIEW_SAMPLES * 0.18),
+      xMax: sampleToTime(VIEW_SAMPLES * 0.24),
       fillColor: "rgba(250, 204, 21, 0.10)",
       borderColor: "rgba(250, 204, 21, 0.35)",
       label: "event window",
@@ -111,7 +113,7 @@ const annotations = annotationsPlugin({
     {
       id: "marker",
       type: "point",
-      x: VIEW_SAMPLES * 0.5,
+      x: sampleToTime(VIEW_SAMPLES * 0.5),
       y: 0.82,
       radius: 6,
       color: "rgba(34, 211, 238, 0.95)",
@@ -142,7 +144,7 @@ const previewPolicy: ViewportPolicy = {
 
 const chart = new Chart(chartTarget, {
   viewportPolicy: previewPolicy,
-  axes: { x: { position: "outside" }, y: { position: "outside" } },
+  axes: { x: { position: "outside", scale: "time", timezone: "local" }, y: { position: "outside" } },
   hover: hoverOptions,
   plugins: [
     interactionsPlugin({ axis: () => syncX ? "y" : "xy", viewportPolicy: previewPolicy }),
@@ -222,7 +224,7 @@ axesSelect.addEventListener("change", () => {
     chart.setAxes(false);
   } else {
     const position = axesSelect.value === "inside" ? "inside" : "outside";
-    chart.setAxes({ x: { position }, y: { position } });
+    chart.setAxes({ x: { position, scale: "time", timezone: "local" }, y: { position } });
   }
 });
 resetViewButton.addEventListener("click", resetView);
@@ -338,15 +340,20 @@ function setViewSamples(value: string): void {
   viewSamples = Number.isFinite(parsed) ? Math.round(Math.min(HISTORY_SAMPLES, Math.max(1_000, parsed))) : VIEW_SAMPLES;
   viewSamplesInput.value = String(viewSamples);
   const current = chart.getViewport();
-  const xMax = followLive ? Math.max(viewSamples, t) : current.xMax;
-  chart.setViewport({ xMin: Math.max(0, xMax - viewSamples), xMax });
+  const xMax = followLive ? sampleToTime(Math.max(viewSamples, t)) : current.xMax;
+  chart.setViewport({ xMin: Math.max(sampleToTime(0), xMax - viewSamples * PREVIEW_X_STEP_MS), xMax });
 }
 
 function liveXViewport(): { xMin: number; xMax: number } {
+  const sampleMax = Math.max(viewSamples, t);
   return {
-    xMin: Math.max(0, t - viewSamples),
-    xMax: Math.max(viewSamples, t),
+    xMin: sampleToTime(Math.max(0, sampleMax - viewSamples)),
+    xMax: sampleToTime(sampleMax),
   };
+}
+
+function sampleToTime(sample: number): number {
+  return PREVIEW_START_TIME + sample * PREVIEW_X_STEP_MS;
 }
 
 async function downloadScreenshot(): Promise<void> {

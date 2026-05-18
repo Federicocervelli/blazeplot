@@ -1,3 +1,4 @@
+import { PREVIEW_START_TIME, PREVIEW_X_STEP_MS } from "./dataConfig.ts";
 import type { AcceleratedDataset, AppendableDataset, MinMaxSegmentLayout, SampleCopyLayout, TimeRange, Viewport } from "@/index.ts";
 
 function positiveModulo(value: number, modulo: number): number {
@@ -53,7 +54,7 @@ export class ContiguousRingDataset implements AppendableDataset, AcceleratedData
 
   get range(): TimeRange | null {
     if (this._length === 0) return null;
-    return { start: this.firstX(), end: this.getX(this._length - 1) };
+    return { start: this.toTime(this.firstX()), end: this.getX(this._length - 1) };
   }
 
   push(_x: number, y: number): void {
@@ -101,7 +102,7 @@ export class ContiguousRingDataset implements AppendableDataset, AcceleratedData
 
   getX(index: number): number {
     this.assertValidIndex(index);
-    return this.firstX() + index * this.xStep;
+    return this.toTime(this.firstX() + index * this.xStep);
   }
 
   getY(index: number): number {
@@ -111,12 +112,12 @@ export class ContiguousRingDataset implements AppendableDataset, AcceleratedData
 
   lowerBoundX(x: number): number {
     if (this._length === 0) return 0;
-    return Math.max(0, Math.min(this._length, Math.ceil((x - this.firstX()) / this.xStep)));
+    return Math.max(0, Math.min(this._length, Math.ceil((this.fromTime(x) - this.firstX()) / this.xStep)));
   }
 
   upperBoundX(x: number): number {
     if (this._length === 0) return 0;
-    return Math.max(0, Math.min(this._length, Math.floor((x - this.firstX()) / this.xStep) + 1));
+    return Math.max(0, Math.min(this._length, Math.floor((this.fromTime(x) - this.firstX()) / this.xStep) + 1));
   }
 
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
@@ -181,18 +182,18 @@ export class ContiguousRingDataset implements AppendableDataset, AcceleratedData
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
 
     const count = Math.min(maxPoints, Math.max(0, Math.ceil((to - from) / stride)));
-    const firstX = this.firstX() - xOrigin;
+    const firstOrdinal = this.firstX();
 
     if (layout === "points") {
       for (let i = 0, index = from; i < count; i++, index += stride) {
         const offset = i * 2;
-        target[offset] = firstX + index * this.xStep;
+        target[offset] = this.toTime(firstOrdinal + index * this.xStep) - xOrigin;
         target[offset + 1] = this.yData[this.logicalToPhysical(index)]!;
       }
     } else {
       for (let i = 0, index = from; i < count; i++, index += stride) {
         const offset = i * 4;
-        const x = firstX + index * this.xStep;
+        const x = this.toTime(firstOrdinal + index * this.xStep) - xOrigin;
         target[offset] = x;
         target[offset + 1] = baseline;
         target[offset + 2] = x;
@@ -219,7 +220,7 @@ export class ContiguousRingDataset implements AppendableDataset, AcceleratedData
     if (visible <= 0) return 0;
 
     const segmentCount = Math.min(maxSegments, visible);
-    const firstX = this.firstX() - xOrigin;
+    const firstOrdinal = this.firstX();
     for (let segment = 0; segment < segmentCount; segment++) {
       const segmentStart = start + Math.floor((segment * visible) / segmentCount);
       const segmentEnd = Math.min(
@@ -232,7 +233,7 @@ export class ContiguousRingDataset implements AppendableDataset, AcceleratedData
       const range = this.rangeMinMaxY(segmentStart, segmentEnd);
       if (!range) continue;
 
-      const x = firstX + (segmentStart + ((segmentEnd - segmentStart) >> 1)) * this.xStep;
+      const x = this.toTime(firstOrdinal + (segmentStart + ((segmentEnd - segmentStart) >> 1)) * this.xStep) - xOrigin;
       if (layout === "line-list") {
         const offset = segment * 4;
         target[offset] = x;
@@ -359,6 +360,14 @@ export class ContiguousRingDataset implements AppendableDataset, AcceleratedData
 
   private firstX(): number {
     return this._nextX - this._length * this.xStep;
+  }
+
+  private toTime(ordinal: number): number {
+    return PREVIEW_START_TIME + ordinal * PREVIEW_X_STEP_MS;
+  }
+
+  private fromTime(time: number): number {
+    return (time - PREVIEW_START_TIME) / PREVIEW_X_STEP_MS;
   }
 
   private logicalToPhysical(index: number): number {

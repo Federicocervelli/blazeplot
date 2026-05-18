@@ -2,6 +2,8 @@ import {
   FILL_BATCH_SIZE,
   LIVE_BATCH_SIZE,
   OHLC_INTERVAL,
+  PREVIEW_START_TIME,
+  PREVIEW_X_STEP_MS,
   SPARSE_INTERVAL,
   TRACE_PERIOD,
   VIEW_SAMPLES,
@@ -132,7 +134,7 @@ function fillOhlc(
     const previousX = Math.max(0, x - OHLC_INTERVAL);
     const open = ohlcCloseAt(previousX);
     const close = ohlcCloseAt(x);
-    xs[i] = x;
+    xs[i] = PREVIEW_START_TIME + x * PREVIEW_X_STEP_MS;
     opens[i] = open;
     highs[i] = Math.max(open, close) + 0.025 + (index % 5) * 0.003;
     lows[i] = Math.min(open, close) - 0.025 - (index % 7) * 0.002;

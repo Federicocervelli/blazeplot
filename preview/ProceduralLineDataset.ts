@@ -1,4 +1,4 @@
-import { TRACE_PERIOD } from "./dataConfig.ts";
+import { PREVIEW_START_TIME, PREVIEW_X_STEP_MS, TRACE_PERIOD } from "./dataConfig.ts";
 import type { AcceleratedDataset, AppendableDataset, MinMaxSegmentLayout, SampleCopyLayout, TimeRange, Viewport } from "@/index.ts";
 
 const OMEGA = (Math.PI * 2) / TRACE_PERIOD;
@@ -31,7 +31,7 @@ export class ProceduralLineDataset implements AppendableDataset, AcceleratedData
 
   get range(): TimeRange | null {
     if (this._length === 0) return null;
-    return { start: this.firstX(), end: this._nextX - 1 };
+    return { start: this.toTime(this.firstX()), end: this.toTime(this._nextX - 1) };
   }
 
   push(_x: number, _y: number): void {
@@ -52,21 +52,21 @@ export class ProceduralLineDataset implements AppendableDataset, AcceleratedData
 
   getX(index: number): number {
     this.assertValidIndex(index);
-    return this.firstX() + index;
+    return this.toTime(this.firstX() + index);
   }
 
   getY(index: number): number {
-    return this.yAt(this.getX(index));
+    return this.yAt(this.firstX() + index);
   }
 
   lowerBoundX(x: number): number {
     if (this._length === 0) return 0;
-    return Math.max(0, Math.min(this._length, Math.ceil(x - this.firstX())));
+    return Math.max(0, Math.min(this._length, Math.ceil(this.fromTime(x) - this.firstX())));
   }
 
   upperBoundX(x: number): number {
     if (this._length === 0) return 0;
-    return Math.max(0, Math.min(this._length, Math.floor(x - this.firstX()) + 1));
+    return Math.max(0, Math.min(this._length, Math.floor(this.fromTime(x) - this.firstX()) + 1));
   }
 
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
@@ -122,23 +122,25 @@ export class ProceduralLineDataset implements AppendableDataset, AcceleratedData
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
 
     const count = Math.min(maxPoints, Math.max(0, Math.ceil((to - from) / stride)));
-    const firstX = this.firstX() - xOrigin;
+    const firstOrdinal = this.firstX();
 
     if (layout === "points") {
       for (let i = 0, index = from; i < count; i++, index += stride) {
-        const x = firstX + index;
+        const ordinal = firstOrdinal + index;
+        const x = this.toTime(ordinal) - xOrigin;
         const offset = i * 2;
         target[offset] = x;
-        target[offset + 1] = this.yAt(x + xOrigin);
+        target[offset + 1] = this.yAt(ordinal);
       }
     } else {
       for (let i = 0, index = from; i < count; i++, index += stride) {
-        const x = firstX + index;
+        const ordinal = firstOrdinal + index;
+        const x = this.toTime(ordinal) - xOrigin;
         const offset = i * 4;
         target[offset] = x;
         target[offset + 1] = baseline;
         target[offset + 2] = x;
-        target[offset + 3] = this.yAt(x + xOrigin);
+        target[offset + 3] = this.yAt(ordinal);
       }
     }
 
@@ -161,7 +163,7 @@ export class ProceduralLineDataset implements AppendableDataset, AcceleratedData
     if (visible <= 0) return 0;
 
     const segmentCount = Math.min(maxSegments, visible);
-    const firstX = this.firstX() - xOrigin;
+    const firstOrdinal = this.firstX();
     for (let segment = 0; segment < segmentCount; segment++) {
       const segmentStart = start + Math.floor((segment * visible) / segmentCount);
       const segmentEnd = Math.min(
@@ -172,7 +174,7 @@ export class ProceduralLineDataset implements AppendableDataset, AcceleratedData
         ),
       );
       const range = this.rangeMinMaxByIndex(segmentStart, segmentEnd)!;
-      const x = firstX + segmentStart + ((segmentEnd - segmentStart) >> 1);
+      const x = this.toTime(firstOrdinal + segmentStart + ((segmentEnd - segmentStart) >> 1)) - xOrigin;
 
       if (layout === "line-list") {
         const offset = segment * 4;
@@ -234,6 +236,14 @@ export class ProceduralLineDataset implements AppendableDataset, AcceleratedData
 
   private firstX(): number {
     return this._nextX - this._length;
+  }
+
+  private toTime(ordinal: number): number {
+    return PREVIEW_START_TIME + ordinal * PREVIEW_X_STEP_MS;
+  }
+
+  private fromTime(time: number): number {
+    return (time - PREVIEW_START_TIME) / PREVIEW_X_STEP_MS;
   }
 
   private assertValidIndex(index: number): void {
