@@ -33,5 +33,5 @@ export interface PreviewDataBatch {
 }
 
 export type PreviewDataWorkerRequest =
-  | { readonly type: "generate" }
+  | { readonly type: "generate"; readonly batchSize?: number }
   | { readonly type: "release"; readonly buffers: readonly ArrayBuffer[] };

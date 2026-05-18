@@ -63,6 +63,7 @@ let frames = 0;
 let lastBatchSize = 0;
 let lastStatsAt = performance.now();
 let workerPending = false;
+let lastLiveGeneratedAt = PREVIEW_START_TIME + VIEW_SAMPLES * PREVIEW_X_STEP_MS;
 let followLive = true;
 let streaming = true;
 let syncX = true;
@@ -263,6 +264,9 @@ function appendGeneratedBatch(batch: PreviewDataBatch): void {
   }
 
   t = batch.end;
+  if (batch.start < VIEW_SAMPLES && t >= VIEW_SAMPLES) {
+    lastLiveGeneratedAt = PREVIEW_START_TIME + VIEW_SAMPLES * PREVIEW_X_STEP_MS;
+  }
   lastBatchSize = batch.batchSize;
   frames++;
   workerPending = false;
@@ -272,9 +276,10 @@ function appendGeneratedBatch(batch: PreviewDataBatch): void {
 
 function stream(): void {
   if (streaming) {
-    if (!workerPending) {
+    const batchSize = nextBatchSize();
+    if (!workerPending && batchSize !== 0) {
       workerPending = true;
-      dataWorker.postMessage({ type: "generate" });
+      dataWorker.postMessage(batchSize === undefined ? { type: "generate" } : { type: "generate", batchSize });
     }
   } else {
     lastBatchSize = 0;
@@ -282,6 +287,18 @@ function stream(): void {
     updateOverlay();
   }
   requestAnimationFrame(stream);
+}
+
+function nextBatchSize(): number | undefined {
+  if (t < VIEW_SAMPLES) return undefined;
+
+  const now = Date.now();
+  const due = Math.floor((now - lastLiveGeneratedAt) / PREVIEW_X_STEP_MS);
+  if (due <= 0) return 0;
+
+  const batchSize = Math.min(LIVE_BATCH_SIZE, due);
+  lastLiveGeneratedAt += batchSize * PREVIEW_X_STEP_MS;
+  return batchSize;
 }
 
 function updateOverlay(): void {

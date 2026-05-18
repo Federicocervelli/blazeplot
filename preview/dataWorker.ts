@@ -32,12 +32,13 @@ worker.addEventListener("message", (event) => {
     return;
   }
 
-  postBatch(generateBatch());
+  postBatch(generateBatch(message.batchSize));
 });
 
-function generateBatch(): PreviewDataBatch {
+function generateBatch(requestedBatchSize?: number): PreviewDataBatch {
   const start = t;
-  const batchSize = t < VIEW_SAMPLES ? Math.min(FILL_BATCH_SIZE, VIEW_SAMPLES - t) : LIVE_BATCH_SIZE;
+  const defaultBatchSize = t < VIEW_SAMPLES ? Math.min(FILL_BATCH_SIZE, VIEW_SAMPLES - t) : LIVE_BATCH_SIZE;
+  const batchSize = Math.max(1, Math.floor(requestedBatchSize ?? defaultBatchSize));
   const end = start + batchSize;
   const sparseStart = Math.ceil(start / SPARSE_INTERVAL) * SPARSE_INTERVAL;
   const sparseCount = sparseStart < end ? Math.floor((end - 1 - sparseStart) / SPARSE_INTERVAL) + 1 : 0;
