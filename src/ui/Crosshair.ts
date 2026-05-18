@@ -41,6 +41,8 @@ export interface CrosshairPluginOptions {
   readonly formatY?: (value: number) => string;
   readonly formatter?: (item: ChartPickItem, position: CrosshairPosition) => string;
   readonly render?: (position: CrosshairPosition, container: HTMLElement, chart: Chart) => void;
+  readonly measurementFormatter?: (measurement: RulerMeasurement) => string;
+  readonly renderMeasurement?: (measurement: RulerMeasurement, container: HTMLElement, chart: Chart) => void;
   readonly onMove?: (position: CrosshairPosition | null) => void;
   readonly onMeasure?: (measurement: RulerMeasurement) => void;
 }
@@ -133,6 +135,25 @@ function renderDefaultLabel(
   container.innerHTML = html;
 }
 
+function renderDefaultMeasurement(
+  measurement: RulerMeasurement,
+  container: HTMLElement,
+  formatX: (value: number) => string,
+  formatY: (value: number) => string,
+  formatter: CrosshairPluginOptions["measurementFormatter"],
+): void {
+  if (formatter) {
+    container.textContent = formatter(measurement);
+    return;
+  }
+  container.innerHTML = [
+    `Δx ${formatX(measurement.deltaX)}`,
+    `Δy ${formatY(measurement.deltaY)}`,
+    `slope ${Number.isFinite(measurement.slope) ? formatNumber(measurement.slope) : "∞"}`,
+    `samples ${measurement.sampleCount.toLocaleString()}`,
+  ].join("<br>");
+}
+
 export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlugin {
   const axis = options.axis ?? "xy";
   const yAxis = options.yAxis ?? "left";
@@ -201,13 +222,40 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
     }
   };
 
+  const measurementFrom = (start: CrosshairPosition, end: CrosshairPosition, chart: Chart): RulerMeasurement => {
+    const deltaX = end.dataX - start.dataX;
+    const deltaY = end.dataY - start.dataY;
+    return {
+      start,
+      end,
+      deltaX,
+      deltaY,
+      slope: deltaX === 0 ? Infinity : deltaY / deltaX,
+      sampleCount: countSamplesInRange(chart, Math.min(start.dataX, end.dataX), Math.max(start.dataX, end.dataX)),
+    };
+  };
+
+  const renderMeasurementLabel = (measurement: RulerMeasurement): void => {
+    const chart = chartRef;
+    if (!chart || !label) return;
+    label.style.display = "block";
+    if (options.renderMeasurement) {
+      options.renderMeasurement(measurement, label, chart);
+    } else {
+      renderDefaultMeasurement(measurement, label, formatX, formatY, options.measurementFormatter);
+    }
+    placeLabel(measurement.end);
+  };
+
   const renderRuler = (end: CrosshairPosition | null): void => {
-    if (!rulerSvg || !rulerLine || !rulerStart || !end) return;
+    const chart = chartRef;
+    if (!chart || !rulerSvg || !rulerLine || !rulerStart || !end) return;
     rulerSvg.style.display = "block";
     rulerLine.setAttribute("x1", String(rulerStart.plotX));
     rulerLine.setAttribute("y1", String(rulerStart.plotY));
     rulerLine.setAttribute("x2", String(end.plotX));
     rulerLine.setAttribute("y2", String(end.plotY));
+    renderMeasurementLabel(measurementFrom(rulerStart, end, chart));
   };
 
   const emitShared = (position: CrosshairPosition): void => {
@@ -329,18 +377,10 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
         event.stopImmediatePropagation();
         const end = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         if (!end) return;
-        const deltaX = end.dataX - rulerStart.dataX;
-        const deltaY = end.dataY - rulerStart.dataY;
-        options.onMeasure?.({
-          start: rulerStart,
-          end,
-          deltaX,
-          deltaY,
-          slope: deltaX === 0 ? Infinity : deltaY / deltaX,
-          sampleCount: countSamplesInRange(chart, Math.min(rulerStart.dataX, end.dataX), Math.max(rulerStart.dataX, end.dataX)),
-        });
+        const measurement = measurementFrom(rulerStart, end, chart);
+        renderMeasurementLabel(measurement);
+        options.onMeasure?.(measurement);
         rulerStart = null;
-        if (rulerSvg) rulerSvg.style.display = "none";
       };
 
       chart.canvas.addEventListener("pointermove", onPointerMove);
