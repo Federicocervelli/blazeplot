@@ -25,8 +25,7 @@ const incidents = Float32Array.from({ length: count }, (_, i) => i % 53 === 0 ? 
 let logLines: string[] = [];
 
 const hero = new Chart(heroTarget, {
-  title: { text: "Production telemetry", align: "left", offsetX: 8 },
-  subtitle: { text: "Time axis + selection + crosshair + navigator", align: "left", offsetX: 8 },
+
   axes: {
     x: { position: "outside", scale: "time", timezone: "utc", tickFormat: "%b %d %H:%M", title: "UTC time" },
     y: { position: "outside", title: "CPU / throughput" },
@@ -45,7 +44,7 @@ const hero = new Chart(heroTarget, {
     crosshairPlugin({ group: "feature-preview", snap: "nearest-x" }),
     navigatorPlugin({ height: 58, placement: "bottom", followLive: false }),
     legendPlugin({ toggleOnClick: true }),
-    tooltipPlugin({ mode: "nearest-x", group: "x", maxDistancePx: 48 }),
+    tooltipPlugin({ mode: "nearest-x", group: "x", maxDistancePx: 48, formatter: formatTooltipItem }),
   ],
 });
 
@@ -81,16 +80,14 @@ const linked = createLinkedCharts(linkedTarget, {
   panels: [
     {
       options: {
-        title: "Linked panel A",
-        axes: { x: { position: "outside", scale: "time", timezone: "utc", title: "shared X" }, y: { position: "outside", title: "linear" } },
-        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x" }), tooltipPlugin()],
+        axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
+        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x" }), tooltipPlugin({ formatter: formatTooltipItem })],
       },
     },
     {
       options: {
-        title: "Linked panel B with log tick axis",
-        axes: { x: { position: "outside", scale: "time", timezone: "utc", title: "shared X" }, y: { position: "outside", scale: "log", logBase: 10, title: "log ticks" } },
-        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x" }), tooltipPlugin()],
+        axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside", scale: "log", logBase: 10 } },
+        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x" }), tooltipPlugin({ formatter: formatTooltipItem })],
       },
     },
   ],
@@ -124,6 +121,14 @@ function requireElement<T extends HTMLElement>(id: string): T {
 function pushLog(line: string): void {
   logLines = [`${new Date().toLocaleTimeString()}  ${line}`, ...logLines].slice(0, 12);
   eventLog.textContent = logLines.join("\n");
+}
+
+function formatTooltipItem(item: { readonly x: number; readonly y: number }): string {
+  return `(${formatDate(item.x)}, ${formatValue(item.y)})`;
+}
+
+function formatValue(value: number): string {
+  return Number(value.toPrecision(5)).toString();
 }
 
 function formatDate(value: number): string {
