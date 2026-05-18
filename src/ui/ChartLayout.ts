@@ -140,6 +140,7 @@ export class ChartLayout implements ChartLayoutElements {
     this.root.style.minWidth = "0";
     this.root.style.minHeight = "0";
     this.root.style.overflow = "hidden";
+    this.root.style.boxSizing = "border-box";
 
     this.plot.style.position = "relative";
     this.plot.style.gridColumn = "2";

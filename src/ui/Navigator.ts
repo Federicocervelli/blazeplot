@@ -16,6 +16,9 @@ export interface NavigatorPluginOptions {
   readonly windowStroke?: string;
   readonly handleWidth?: number;
   readonly zIndex?: number;
+  readonly reserveSpace?: boolean;
+  readonly margin?: number;
+  readonly align?: "plot" | "chart";
   readonly onRangeChange?: (range: { readonly xMin: number; readonly xMax: number }) => void;
 }
 
@@ -98,8 +101,11 @@ function pathForSeries(series: SeriesStore, domain: Domain, width: number, heigh
 
 export function navigatorPlugin(options: NavigatorPluginOptions = {}): NavigatorPlugin {
   const height = Math.max(24, options.height ?? 56);
+  const margin = Math.max(0, options.margin ?? 8);
+  const placement = options.placement ?? "bottom";
   const maxSamplesPerSeries = Math.max(16, options.maxSamplesPerSeries ?? 512);
   const handleWidth = Math.max(4, options.handleWidth ?? 8);
+  const reservationId = `navigator-${Math.random().toString(36).slice(2)}`;
   let chartRef: Chart | null = null;
   let root: HTMLDivElement | null = null;
   let overlay: SVGSVGElement | null = null;
@@ -114,9 +120,19 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
   const dataToX = (x: number, width: number): number => domain ? ((x - domain.xMin) / (domain.xMax - domain.xMin)) * width : 0;
   const xToData = (x: number, width: number): number => domain ? domain.xMin + (x / width) * (domain.xMax - domain.xMin) : 0;
 
+  const updateRootPosition = (): void => {
+    const chart = chartRef;
+    if (!chart || !root) return;
+    const rootRect = chart.rootElement.getBoundingClientRect();
+    const alignRect = options.align === "chart" ? rootRect : chart.plotElement.getBoundingClientRect();
+    root.style.left = `${Math.max(0, alignRect.left - rootRect.left)}px`;
+    root.style.width = `${Math.max(1, alignRect.width)}px`;
+  };
+
   const render = (): void => {
     const chart = chartRef;
     if (!chart || !root || !overlay || !windowRect || !leftHandle || !rightHandle) return;
+    updateRootPosition();
     const selectedSeries = seriesList(chart, options.series);
     domain = computeDomain(selectedSeries, maxSamplesPerSeries);
     if (!domain) {
@@ -199,14 +215,18 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       root = document.createElement("div");
       root.className = options.className ?? "blazeplot-navigator";
       root.style.position = "absolute";
-      root.style.left = "8px";
-      root.style.right = "8px";
-      root.style[options.placement === "top" ? "top" : "bottom"] = "8px";
+      root.style.left = "0";
+      root.style.width = "100%";
+      root.style[placement] = `${margin}px`;
       root.style.height = `${height}px`;
       root.style.background = options.background ?? "rgb(15 23 42 / 0.78)";
       root.style.border = "1px solid rgb(148 163 184 / 0.3)";
       root.style.zIndex = String(options.zIndex ?? 30);
       root.style.touchAction = "none";
+
+      if (options.reserveSpace !== false) {
+        chart.setLayoutReservation(reservationId, placement === "top" ? { top: height + margin * 2 } : { bottom: height + margin * 2 });
+      }
 
       overlay = svg("svg");
       overlay.style.width = "100%";
@@ -277,6 +297,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         root?.removeEventListener("pointerup", onPointerUp);
         root?.removeEventListener("pointercancel", onPointerUp);
         root?.removeEventListener("dblclick", onDoubleClick);
+        if (options.reserveSpace !== false) chart.setLayoutReservation(reservationId, null);
         root?.remove();
         root = null;
         overlay = null;

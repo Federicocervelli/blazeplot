@@ -157,6 +157,13 @@ export interface ChartScreenshotOptions {
   readonly dpr?: number;
 }
 
+export interface ChartLayoutReservation {
+  readonly top?: number;
+  readonly right?: number;
+  readonly bottom?: number;
+  readonly left?: number;
+}
+
 export interface ChartFrameStats {
   fps: number;
   frameMs: number;
@@ -264,6 +271,7 @@ export class Chart {
   private readonly seriesSubscribers = new Set<() => void>();
   private readonly themeSubscribers = new Set<() => void>();
   private readonly renderSubscribers = new Set<(chart: Chart) => void>();
+  private readonly layoutReservations = new Map<string, ChartLayoutReservation>();
   private readonly viewportSubscribers = new Set<(event: ChartViewportChangeEvent) => void>();
   private readonly selectSubscribers = new Set<(event: ChartSelectEvent) => void>();
   private readonly seriesClickSubscribers = new Set<(event: ChartSeriesClickEvent) => void>();
@@ -548,6 +556,16 @@ export class Chart {
 
   getHoverState(): ChartHoverState | null {
     return this.currentHover;
+  }
+
+  setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void {
+    if (reservation) {
+      this.layoutReservations.set(id, reservation);
+    } else {
+      this.layoutReservations.delete(id);
+    }
+    this.applyLayoutReservations();
+    this.resize();
   }
 
   subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
@@ -856,6 +874,20 @@ export class Chart {
       el.style.top = `calc(50% + ${textOverlayOffsetY(config)}px)`;
       el.style.transform = "translateY(-50%) rotate(90deg)";
     }
+  }
+
+  private applyLayoutReservations(): void {
+    let top = 0;
+    let right = 0;
+    let bottom = 0;
+    let left = 0;
+    for (const reservation of this.layoutReservations.values()) {
+      top += Math.max(0, reservation.top ?? 0);
+      right += Math.max(0, reservation.right ?? 0);
+      bottom += Math.max(0, reservation.bottom ?? 0);
+      left += Math.max(0, reservation.left ?? 0);
+    }
+    this.layout.root.style.padding = `${top}px ${right}px ${bottom}px ${left}px`;
   }
 
   private applyCanvasSize(dpr: number = globalThis.devicePixelRatio): boolean {
