@@ -99,13 +99,13 @@ const linked = createLinkedCharts(linkedTarget, {
     {
       options: {
         axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
-        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x", formatX: formatDate, formatY: formatValue }), tooltipPlugin({ formatter: formatTooltipItem })],
+        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x", formatX: formatDate, formatY: formatValue })],
       },
     },
     {
       options: {
         axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside", scale: "log", logBase: 10 } },
-        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x", formatX: formatDate, formatY: formatValue }), tooltipPlugin({ formatter: formatTooltipItem })],
+        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x", formatX: formatDate, formatY: formatValue })],
       },
     },
   ],
