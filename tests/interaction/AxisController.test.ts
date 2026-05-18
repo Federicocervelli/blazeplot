@@ -99,4 +99,41 @@ describe("AxisController", () => {
 
     expect(axis.formatValue(42, "y")).toBe("y:42");
   });
+
+  it("generates log scale ticks", () => {
+    const camera = new Camera2D();
+    camera.setViewport({ xMin: 1, xMax: 1000, yMin: -1, yMax: 1 });
+
+    const axis = new AxisController(camera, { x: { scale: "log", logBase: 10 } });
+
+    expect(axis.getXTickValues(800, 10)).toEqual([1, 10, 100, 1000]);
+  });
+
+  it("formats categorical ticks from labels", () => {
+    const camera = new Camera2D();
+    camera.setViewport({ xMin: 0, xMax: 3, yMin: -1, yMax: 1 });
+
+    const axis = new AxisController(camera, { x: { scale: "categorical", categories: ["A", "B", "C", "D"] } });
+
+    expect(axis.getXTickValues(800, 10)).toEqual([0, 1, 2, 3]);
+    expect(axis.formatValue(2, "x")).toBe("C");
+  });
+
+  it("uses custom scale tick and format hooks", () => {
+    const camera = new Camera2D();
+    camera.setViewport({ xMin: 0, xMax: 100, yMin: -1, yMax: 1 });
+
+    const axis = new AxisController(camera, {
+      x: {
+        scale: {
+          type: "custom",
+          ticks: () => [0, 50, 100],
+          formatTick: (value) => `v${value}`,
+        },
+      },
+    });
+
+    expect(axis.getXTickValues(800, 10)).toEqual([0, 50, 100]);
+    expect(axis.formatValue(50, "x")).toBe("v50");
+  });
 });

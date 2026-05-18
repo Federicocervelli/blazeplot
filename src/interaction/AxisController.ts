@@ -1,7 +1,17 @@
 import type { Camera2D } from "./Camera2D.js";
 
 export type AxisRenderTarget = "x" | "y";
-export type AxisScale = "linear" | "time";
+export type BuiltInAxisScale = "linear" | "time" | "log" | "symlog" | "categorical";
+
+export interface CustomAxisScale {
+  readonly type: "custom";
+  ticks?(min: number, max: number, maxTicks: number): readonly number[];
+  formatTick?(value: number, axis: AxisRenderTarget): string;
+  toScreen?(value: number): number;
+  fromScreen?(value: number): number;
+}
+
+export type AxisScale = BuiltInAxisScale | CustomAxisScale;
 export type AxisTimeZone = "local" | "utc";
 export type AxisTickFormatter = (value: number, axis: AxisRenderTarget) => string;
 export type AxisTickFormat = string | AxisTickFormatter;
@@ -10,6 +20,9 @@ export interface AxisControllerAxisOptions {
   readonly scale?: AxisScale;
   readonly tickFormat?: AxisTickFormat;
   readonly timezone?: AxisTimeZone;
+  readonly logBase?: number;
+  readonly symlogConstant?: number;
+  readonly categories?: readonly string[];
 }
 
 export interface AxisControllerOptions {
@@ -92,7 +105,7 @@ export class AxisController {
       return result;
     }
     this.lastXTimeInterval = null;
-    return this.getLinearTickValues(this.camera.xMin, this.camera.xMax, canvasWidth, maxTicks, 80, target);
+    return this.getScaledTickValues(this.camera.xMin, this.camera.xMax, canvasWidth, maxTicks, 80, target, axisOptions, "x");
   }
 
   getYTickValues(canvasHeight: number, maxTicks: number = 10, target: number[] = []): number[] {
@@ -103,7 +116,7 @@ export class AxisController {
       return result;
     }
     this.lastYTimeInterval = null;
-    return this.getLinearTickValues(this.camera.yMin, this.camera.yMax, canvasHeight, maxTicks, 48, target);
+    return this.getScaledTickValues(this.camera.yMin, this.camera.yMax, canvasHeight, maxTicks, 48, target, axisOptions, "y");
   }
 
   formatValue(value: number, axis: AxisRenderTarget = "y"): string {
@@ -111,11 +124,84 @@ export class AxisController {
     const tickFormat = axisOptions?.tickFormat;
     if (typeof tickFormat === "function") return tickFormat(value, axis);
 
+    if (axisOptions?.scale && typeof axisOptions.scale === "object") {
+      return axisOptions.scale.formatTick?.(value, axis) ?? this.formatLinearValue(value);
+    }
+
+    if (axisOptions?.scale === "categorical") {
+      const index = Math.round(value);
+      return axisOptions.categories?.[index] ?? String(index);
+    }
+
     if (axisOptions?.scale === "time") {
       const interval = axis === "x" ? this.lastXTimeInterval : this.lastYTimeInterval;
       return this.formatTimeValue(value, tickFormat, axisOptions.timezone ?? "local", interval);
     }
 
+    return this.formatLinearValue(value);
+  }
+
+  private lastTimeInterval: TimeInterval | null = null;
+
+  private getScaledTickValues(
+    min: number,
+    max: number,
+    pixelSize: number,
+    maxTicks: number,
+    minPixelSpacing: number,
+    target: number[],
+    options: AxisControllerAxisOptions | undefined,
+    axis: AxisRenderTarget,
+  ): number[] {
+    const scale = options?.scale;
+    if (scale && typeof scale === "object") {
+      target.length = 0;
+      const values = scale.ticks?.(min, max, maxTicks) ?? [];
+      for (const value of values) target.push(value);
+      return target;
+    }
+    if (scale === "log") return this.getLogTickValues(min, max, pixelSize, maxTicks, minPixelSpacing, target, options?.logBase);
+    if (scale === "categorical") return this.getCategoricalTickValues(min, max, maxTicks, target, options?.categories);
+    if (scale === "symlog") return this.getSymlogTickValues(min, max, pixelSize, maxTicks, minPixelSpacing, target, options?.symlogConstant);
+    void axis;
+    return this.getLinearTickValues(min, max, pixelSize, maxTicks, minPixelSpacing, target);
+  }
+
+  private getLogTickValues(min: number, max: number, pixelSize: number, maxTicks: number, minPixelSpacing: number, target: number[], base: number = 10): number[] {
+    target.length = 0;
+    const safeBase = Number.isFinite(base) && base > 1 ? base : 10;
+    if (pixelSize <= 0 || maxTicks <= 0 || min <= 0 || max <= min) return target;
+    const targetTicks = Math.max(2, Math.min(maxTicks, Math.floor(pixelSize / minPixelSpacing)));
+    const firstExp = Math.floor(Math.log(min) / Math.log(safeBase));
+    const lastExp = Math.ceil(Math.log(max) / Math.log(safeBase));
+    const expStep = Math.max(1, Math.ceil((lastExp - firstExp) / Math.max(1, targetTicks - 1)));
+    for (let exp = firstExp; exp <= lastExp && target.length < maxTicks + 2; exp += expStep) {
+      const value = safeBase ** exp;
+      if (value >= min / safeBase && value <= max * safeBase) target.push(value);
+    }
+    return target;
+  }
+
+  private getSymlogTickValues(min: number, max: number, pixelSize: number, maxTicks: number, minPixelSpacing: number, target: number[], constant: number = 1): number[] {
+    const c = Number.isFinite(constant) && constant > 0 ? constant : 1;
+    const transform = (value: number): number => Math.sign(value) * Math.log1p(Math.abs(value) / c);
+    const inverse = (value: number): number => Math.sign(value) * c * Math.expm1(Math.abs(value));
+    const scaled = this.getLinearTickValues(transform(min), transform(max), pixelSize, maxTicks, minPixelSpacing, target);
+    for (let i = 0; i < scaled.length; i++) scaled[i] = this.normalizeTick(inverse(scaled[i]!), Math.abs(inverse(scaled[1] ?? scaled[0] ?? 1) - inverse(scaled[0] ?? 0)) || 1);
+    return scaled;
+  }
+
+  private getCategoricalTickValues(min: number, max: number, maxTicks: number, target: number[], categories: readonly string[] | undefined): number[] {
+    target.length = 0;
+    const lower = Math.max(0, Math.ceil(min));
+    const upper = Math.min(categories ? categories.length - 1 : Math.floor(max), Math.floor(max));
+    if (upper < lower || maxTicks <= 0) return target;
+    const step = Math.max(1, Math.ceil((upper - lower + 1) / maxTicks));
+    for (let index = lower; index <= upper && target.length < maxTicks; index += step) target.push(index);
+    return target;
+  }
+
+  private formatLinearValue(value: number): string {
     if (Math.abs(value) < 1e-12) return "0";
     const abs = Math.abs(value);
     if (abs >= 1e6 || abs < 1e-3) return value.toExponential(2);
@@ -123,8 +209,6 @@ export class AxisController {
     if (abs >= 10) return value.toFixed(1);
     return value.toFixed(2);
   }
-
-  private lastTimeInterval: TimeInterval | null = null;
 
   private getLinearTickValues(min: number, max: number, pixelSize: number, maxTicks: number, minPixelSpacing: number, target: number[]): number[] {
     target.length = 0;
