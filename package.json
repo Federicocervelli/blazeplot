@@ -26,6 +26,10 @@
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
     },
+    "./linked": {
+      "types": "./dist/linked.d.ts",
+      "import": "./dist/linked.js"
+    },
     "./plugins/legend": {
       "types": "./dist/plugins/legend.d.ts",
       "import": "./dist/plugins/legend.js"

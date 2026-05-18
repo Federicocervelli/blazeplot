@@ -214,10 +214,10 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [ ] Ensure LOD/query paths remain data-space based and scale transforms are applied only at interaction/render mapping boundaries.
 
 11. **Linked multi-chart layout**
-   - [ ] Add a layout helper for stacked/side-by-side charts with shared X and independent Y axes.
+   - [x] Add a layout helper for stacked/side-by-side charts with shared X and independent Y axes.
    - [ ] Support synchronized camera ranges, cursor/crosshair, selections, and tooltips.
-   - [ ] Allow configurable spacing/gutters between linked plot areas.
-   - [ ] Support per-panel titles, axes, legends, and series groups.
+   - [x] Allow configurable spacing/gutters between linked plot areas.
+   - [x] Support per-panel titles, axes, legends, and series groups.
 
 ---
 

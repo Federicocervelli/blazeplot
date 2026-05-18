@@ -29,6 +29,7 @@ export default defineConfig(({ command, mode }) => {
         entry: {
           index: resolve(__dirname, "src/index.ts"),
           react: resolve(__dirname, "src/react.ts"),
+          linked: resolve(__dirname, "src/linked.ts"),
           "plugins/legend": resolve(__dirname, "src/plugins/legend.ts"),
           "plugins/tooltip": resolve(__dirname, "src/plugins/tooltip.ts"),
           "plugins/interactions": resolve(__dirname, "src/plugins/interactions.ts"),
