@@ -99,23 +99,38 @@ function hasModifier(event: PointerEvent, modifier: CrosshairPluginOptions["rule
   return event.metaKey;
 }
 
+function positionFromPick(chart: Chart, clientX: number, clientY: number, mode: ChartPickMode): CrosshairPosition | null {
+  const picked = chart.pick(clientX, clientY, { mode, group: "none" });
+  const item = picked?.items[0];
+  return item ? { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: [item] } : null;
+}
+
 function resolvePosition(chart: Chart, clientX: number, clientY: number, yAxis: SeriesYAxis, snap: CrosshairSnapMode): CrosshairPosition | null {
   const rect = chart.canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
 
   const pickMode: ChartPickMode = snap === "nearest-point" ? "nearest-point" : "nearest-x";
   if (snap !== "none") {
-    const picked = chart.pick(clientX, clientY, { mode: pickMode, group: snap === "nearest-x" ? "x" : "none" });
-    const item = picked?.items[0];
-    if (item) {
-      return { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: [item] };
-    }
+    const picked = positionFromPick(chart, clientX, clientY, pickMode);
+    if (picked) return picked;
   }
 
   const data = chart.clientToData(clientX, clientY, yAxis);
   if (!data) return null;
   const [plotX, plotY] = chart.dataToPlot(data[0], data[1], yAxis);
   return { dataX: data[0], dataY: data[1], plotX, plotY, items: [] };
+}
+
+function resolveSharedPosition(chart: Chart, dataX: number, yAxis: SeriesYAxis): CrosshairPosition | null {
+  const rect = chart.canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+
+  const viewport = chart.getViewport(yAxis);
+  const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
+  const [plotX, plotY] = chart.dataToPlot(dataX, dataY, yAxis);
+  const picked = positionFromPick(chart, rect.left + plotX, rect.top + plotY, "nearest-x");
+  if (picked) return picked;
+  return { dataX, dataY, plotX, plotY, items: [] };
 }
 
 function renderDefaultLabel(
@@ -274,10 +289,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
   const peer: Peer = {
     showShared(dataX: number, source: Peer): void {
       if (source === peer || !chartRef) return;
-      const viewport = chartRef.getViewport(yAxis);
-      const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
-      const [plotX, plotY] = chartRef.dataToPlot(dataX, dataY, yAxis);
-      renderPosition({ dataX, dataY, plotX, plotY, items: [] });
+      renderPosition(resolveSharedPosition(chartRef, dataX, yAxis));
     },
     hideShared(source: Peer): void {
       if (source === peer) return;
