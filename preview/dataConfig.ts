@@ -1,7 +1,7 @@
 export const FILL_BATCH_SIZE = 4_096;
 export const LIVE_BATCH_SIZE = 256;
 export const VIEW_SAMPLES = 86_400;
-export const PREVIEW_X_STEP_MS = 10;
+export const PREVIEW_X_STEP_MS = 1;
 export const PREVIEW_START_TIME = Date.now() - VIEW_SAMPLES * PREVIEW_X_STEP_MS;
 export const TRACE_PERIOD = VIEW_SAMPLES;
 export const SPARSE_INTERVAL = 60; // one sparse point per minute
