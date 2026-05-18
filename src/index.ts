@@ -6,6 +6,8 @@ export type { AxisPosition } from "./ui/ChartLayout.js";
 export { SeriesStore } from "./core/SeriesStore.js";
 export { RingBuffer } from "./core/RingBuffer.js";
 export type { RingBufferOptions, RingBufferOverflow } from "./core/RingBuffer.js";
+export { UniformRingBuffer } from "./core/UniformRingBuffer.js";
+export type { UniformRingBufferOptions } from "./core/UniformRingBuffer.js";
 export { StaticDataset } from "./core/StaticDataset.js";
 export { OhlcRingBuffer, StaticOhlcDataset } from "./core/OhlcDataset.js";
 export type { OhlcRingBufferOptions } from "./core/OhlcDataset.js";
