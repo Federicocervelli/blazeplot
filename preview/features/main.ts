@@ -35,7 +35,7 @@ const valueFormatter = new Intl.NumberFormat(undefined, { maximumSignificantDigi
 const hero = new Chart(heroTarget, {
 
   axes: {
-    x: { position: "outside", scale: "time", timezone: "utc", tickFormat: "%b %d %H:%M", title: "UTC time" },
+    x: { position: "outside", scale: "time", timezone: "utc", tickFormat: "%b %d %H:%M" },
     y: { position: "outside", title: "CPU / throughput" },
     y2: { position: "outside", title: "Latency (ms)" },
   },
@@ -49,7 +49,7 @@ const hero = new Chart(heroTarget, {
         { type: "x-range", xMin: xs[120]!, xMax: xs[150]!, fillColor: "rgba(250,204,21,0.10)", borderColor: "rgba(250,204,21,0.35)", label: "deploy window" },
       ],
     }),
-    crosshairPlugin({ group: "feature-preview", snap: "nearest-x" }),
+    crosshairPlugin({ group: "feature-preview", snap: "nearest-x", formatX: formatDate, formatY: formatValue }),
     navigatorPlugin({ height: 58, placement: "bottom", followLive: false }),
     legendPlugin({ toggleOnClick: true }),
     tooltipPlugin({ mode: "nearest-x", group: "x", maxDistancePx: 48, formatter: formatTooltipItem }),
@@ -89,13 +89,13 @@ const linked = createLinkedCharts(linkedTarget, {
     {
       options: {
         axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
-        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x" }), tooltipPlugin({ formatter: formatTooltipItem })],
+        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x", formatX: formatDate, formatY: formatValue }), tooltipPlugin({ formatter: formatTooltipItem })],
       },
     },
     {
       options: {
         axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside", scale: "log", logBase: 10 } },
-        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x" }), tooltipPlugin({ formatter: formatTooltipItem })],
+        plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x", formatX: formatDate, formatY: formatValue }), tooltipPlugin({ formatter: formatTooltipItem })],
       },
     },
   ],

@@ -118,7 +118,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
     horizontal.style.display = axis === "x" ? "none" : "block";
     vertical.style.left = `${position.plotX}px`;
     horizontal.style.top = `${position.plotY}px`;
-    if (options.label === true) {
+    if (options.label !== false) {
       label.style.display = "block";
       label.style.left = `${Math.min(position.plotX + 8, Math.max(0, chartRef!.canvas.clientWidth - 96))}px`;
       label.style.top = `${Math.max(0, position.plotY - 24)}px`;
@@ -196,11 +196,11 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
 
       label = document.createElement("div");
       label.style.position = "absolute";
-      label.style.padding = "2px 6px";
-      label.style.borderRadius = "4px";
-      label.style.background = options.labelBackground ?? "rgb(15 23 42 / 0.86)";
-      label.style.color = options.labelColor ?? "#e2e8f0";
-      label.style.font = options.labelFont ?? "11px ui-monospace, monospace";
+      label.style.padding = "4px 6px";
+      label.style.borderRadius = "3px";
+      label.style.background = options.labelBackground ?? chart.theme.tooltipBackgroundColor;
+      label.style.color = options.labelColor ?? chart.theme.tooltipTextColor;
+      label.style.font = options.labelFont ?? chart.theme.tooltipFont;
       label.style.whiteSpace = "nowrap";
 
       rulerSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
