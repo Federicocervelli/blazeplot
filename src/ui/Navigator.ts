@@ -9,6 +9,7 @@ export interface NavigatorPluginOptions {
   readonly followLive?: boolean;
   readonly className?: string;
   readonly background?: string;
+  readonly borderColor?: string;
   readonly stroke?: string;
   readonly strokeWidth?: number;
   readonly fill?: string;
@@ -47,6 +48,10 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 function svg<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
   return document.createElementNS(SVG_NS, tag);
+}
+
+function rgba(color: readonly [number, number, number, number]): string {
+  return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
 }
 
 function seriesList(chart: Chart, option: NavigatorPluginOptions["series"]): SeriesStore[] {
@@ -174,8 +179,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       }
       path.style.display = "block";
       path.setAttribute("d", pathForSeries(series, domain, width, height, maxSamplesPerSeries));
-      path.setAttribute("stroke", options.stroke ?? "rgba(125, 211, 252, 0.9)");
-      path.setAttribute("stroke-width", String(options.strokeWidth ?? 1));
+      path.setAttribute("stroke", options.stroke ?? rgba(series.style.color));
+      path.setAttribute("stroke-width", String(options.strokeWidth ?? Math.max(1, series.style.lineWidth)));
       path.setAttribute("fill", options.fill ?? "none");
     }
 
@@ -240,10 +245,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       root.style.width = "100%";
       root.style[placement] = `${margin}px`;
       root.style.height = `${height}px`;
-      root.style.background = options.background ?? "rgb(15 23 42 / 0.78)";
       root.style.boxSizing = "border-box";
       root.style.border = "0";
-      root.style.outline = "1px solid rgb(148 163 184 / 0.3)";
       root.style.zIndex = String(options.zIndex ?? 30);
       root.style.touchAction = "none";
 
@@ -256,14 +259,11 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       overlay.style.height = "100%";
       overlay.style.display = "block";
       windowRect = svg("rect");
-      windowRect.setAttribute("fill", options.windowFill ?? "rgba(59, 130, 246, 0.20)");
-      windowRect.setAttribute("stroke", options.windowStroke ?? "rgba(191, 219, 254, 0.95)");
       leftHandle = svg("rect");
       rightHandle = svg("rect");
       leftHandleHit = svg("rect");
       rightHandleHit = svg("rect");
       for (const handle of [leftHandle, rightHandle]) {
-        handle.setAttribute("fill", options.windowStroke ?? "rgba(191, 219, 254, 0.95)");
         handle.style.cursor = "ew-resize";
         handle.style.pointerEvents = "none";
       }
@@ -280,9 +280,25 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       root.appendChild(overlay);
       chart.rootElement.appendChild(root);
 
+      const applyTheme = (): void => {
+        if (!root || !windowRect || !leftHandle || !rightHandle) return;
+        const windowStroke = options.windowStroke ?? chart.theme.axisColor;
+        root.style.background = options.background ?? chart.theme.legendBackgroundColor;
+        root.style.outline = `1px solid ${options.borderColor ?? chart.theme.legendBorderColor}`;
+        windowRect.setAttribute("fill", options.windowFill ?? rgba(chart.theme.gridColor));
+        windowRect.setAttribute("stroke", windowStroke);
+        leftHandle.setAttribute("fill", windowStroke);
+        rightHandle.setAttribute("fill", windowStroke);
+      };
+
       const onRender = (): void => render();
       const unsubscribeRender = chart.subscribe("render", onRender);
       const unsubscribeViewport = chart.subscribe("viewportchange", onRender);
+      const unsubscribeTheme = chart.subscribe("themechange", () => {
+        applyTheme();
+        render();
+      });
+      applyTheme();
 
       const onPointerDown = (event: PointerEvent): void => {
         if (!root || !domain || event.button !== 0) return;
@@ -332,6 +348,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       return () => {
         unsubscribeRender();
         unsubscribeViewport();
+        unsubscribeTheme();
         root?.removeEventListener("pointerdown", onPointerDown);
         root?.removeEventListener("pointermove", onPointerMove);
         root?.removeEventListener("pointerup", onPointerUp);
