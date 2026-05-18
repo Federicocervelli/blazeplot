@@ -36,6 +36,10 @@ export interface CrosshairPluginOptions {
   readonly labelColor?: string;
   readonly labelFont?: string;
   readonly zIndex?: number;
+  readonly highlight?: boolean;
+  readonly markerSize?: number;
+  readonly markerStrokeColor?: string;
+  readonly markerStrokeWidth?: number;
   readonly rulerModifier?: "none" | "ctrl" | "shift" | "alt" | "meta";
   readonly formatX?: (value: number) => string;
   readonly formatY?: (value: number) => string;
@@ -146,6 +150,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
   let root: HTMLDivElement | null = null;
   let vertical: HTMLDivElement | null = null;
   let horizontal: HTMLDivElement | null = null;
+  let markerLayer: HTMLDivElement | null = null;
   let label: HTMLDivElement | null = null;
   let rulerSvg: SVGSVGElement | null = null;
   let rulerLine: SVGLineElement | null = null;
@@ -181,7 +186,31 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
     label.style.top = `${top}px`;
   };
 
+  const renderMarkers = (position: CrosshairPosition | null): void => {
+    if (!markerLayer) return;
+    markerLayer.replaceChildren();
+    if (options.highlight === false || !position) return;
+
+    const size = Math.max(2, options.markerSize ?? 10);
+    const strokeWidth = Math.max(0, options.markerStrokeWidth ?? 2);
+    for (const item of position.items) {
+      const marker = document.createElement("div");
+      marker.style.position = "absolute";
+      marker.style.left = `${item.plotX}px`;
+      marker.style.top = `${item.plotY}px`;
+      marker.style.width = `${size}px`;
+      marker.style.height = `${size}px`;
+      marker.style.border = `${strokeWidth}px solid ${options.markerStrokeColor ?? "#f8fafc"}`;
+      marker.style.borderRadius = "999px";
+      marker.style.background = rgba(item.series.style.color);
+      marker.style.boxShadow = "0 0 0 1px rgba(4, 8, 16, 0.85)";
+      marker.style.transform = "translate(-50%, -50%)";
+      markerLayer.appendChild(marker);
+    }
+  };
+
   const renderPosition = (position: CrosshairPosition | null): void => {
+    renderMarkers(position);
     if (!position || !root || !vertical || !horizontal || !label) {
       setVisible(false);
       return;
@@ -275,6 +304,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
       vertical.style.position = "absolute";
       vertical.style.top = "0";
       vertical.style.bottom = "0";
+      vertical.style.zIndex = "1";
       vertical.style.borderLeft = `${width} solid ${color}`;
       if (dash) vertical.style.borderLeftStyle = "dashed";
 
@@ -282,11 +312,20 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
       horizontal.style.position = "absolute";
       horizontal.style.left = "0";
       horizontal.style.right = "0";
+      horizontal.style.zIndex = "1";
       horizontal.style.borderTop = `${width} solid ${color}`;
       if (dash) horizontal.style.borderTopStyle = "dashed";
 
+      markerLayer = document.createElement("div");
+      markerLayer.className = "blazeplot-crosshair-markers";
+      markerLayer.style.position = "absolute";
+      markerLayer.style.inset = "0";
+      markerLayer.style.zIndex = "2";
+      markerLayer.style.pointerEvents = "none";
+
       label = document.createElement("div");
       label.style.position = "absolute";
+      label.style.zIndex = "3";
       label.style.padding = "4px 6px";
       label.style.borderRadius = "3px";
       label.style.background = options.labelBackground ?? chart.theme.tooltipBackgroundColor;
@@ -301,6 +340,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
       rulerSvg.style.height = "100%";
       rulerSvg.style.display = "none";
       rulerSvg.style.overflow = "hidden";
+      rulerSvg.style.zIndex = "1";
       rulerLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
       rulerLine.setAttribute("stroke", color);
       rulerLine.setAttribute("stroke-width", String(options.width ?? 1));
@@ -310,6 +350,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
       root.appendChild(vertical);
       root.appendChild(horizontal);
       root.appendChild(rulerSvg);
+      root.appendChild(markerLayer);
       root.appendChild(label);
       chart.plotElement.appendChild(root);
 
@@ -373,6 +414,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
         root = null;
         vertical = null;
         horizontal = null;
+        markerLayer = null;
         label = null;
         rulerSvg = null;
         rulerLine = null;
