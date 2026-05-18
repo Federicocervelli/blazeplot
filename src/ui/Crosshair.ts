@@ -118,7 +118,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
     horizontal.style.display = axis === "x" ? "none" : "block";
     vertical.style.left = `${position.plotX}px`;
     horizontal.style.top = `${position.plotY}px`;
-    if (options.label !== false) {
+    if (options.label === true) {
       label.style.display = "block";
       label.style.left = `${Math.min(position.plotX + 8, Math.max(0, chartRef!.canvas.clientWidth - 96))}px`;
       label.style.top = `${Math.max(0, position.plotY - 24)}px`;
