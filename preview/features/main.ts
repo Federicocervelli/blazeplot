@@ -49,7 +49,17 @@ const hero = new Chart(heroTarget, {
         { type: "x-range", xMin: xs[120]!, xMax: xs[150]!, fillColor: "rgba(250,204,21,0.10)", borderColor: "rgba(250,204,21,0.35)", label: "deploy window" },
       ],
     }),
-    crosshairPlugin({ group: "feature-preview", snap: "nearest-x", mode: "ruler", rulerModifier: "ctrl", formatX: formatDate, formatY: formatValue }),
+    crosshairPlugin({
+      group: "feature-preview",
+      snap: "nearest-x",
+      mode: "ruler",
+      rulerModifier: "ctrl",
+      formatX: formatDate,
+      formatY: formatValue,
+      onMeasureStart: (position) => pushLog(`ruler start: ${formatDate(position.dataX)}, ${formatValue(position.dataY)}`),
+      onMeasureChange: (measurement) => pushLog(`ruler Δx ${formatDuration(measurement.deltaX)}  Δy ${formatValue(measurement.deltaY)}`),
+      onMeasureEnd: (measurement) => pushLog(`ruler end: Δx ${formatDuration(measurement.deltaX)}  Δy ${formatValue(measurement.deltaY)}  samples ${measurement.sampleCount.toLocaleString()}`),
+    }),
     navigatorPlugin({ height: 58, placement: "bottom", followLive: false }),
     legendPlugin({ toggleOnClick: true }),
     tooltipPlugin({ mode: "nearest-x", group: "x", maxDistancePx: 48, formatter: formatTooltipItem }),
@@ -133,6 +143,11 @@ function pushLog(line: string): void {
 
 function formatTooltipItem(item: { readonly x: number; readonly y: number }): string {
   return `(${formatDate(item.x)}, ${formatValue(item.y)})`;
+}
+
+function formatDuration(ms: number): string {
+  const hours = ms / HOUR;
+  return `${valueFormatter.format(hours)}h`;
 }
 
 function formatValue(value: number): string {
