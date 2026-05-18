@@ -1,5 +1,6 @@
 import type { SeriesYAxis } from "../core/types.js";
 import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin } from "./Chart.js";
+import { formatCompactNumber, placeAbsoluteWithinBox, renderPickItems, rgba } from "./OverlayUtils.js";
 
 export type CrosshairAxis = "x" | "y" | "xy";
 export type CrosshairSnapMode = "none" | "nearest-x" | "nearest-point";
@@ -21,6 +22,8 @@ export interface RulerMeasurement {
   readonly slope: number;
   readonly sampleCount: number;
 }
+
+export type CrosshairEventType = "move" | "measurestart" | "measurechange" | "measureend";
 
 export interface CrosshairPluginOptions {
   readonly mode?: CrosshairMode;
@@ -59,25 +62,13 @@ interface Peer {
 
 const groups = new Map<string, Set<Peer>>();
 
-function formatNumber(value: number): string {
-  if (Math.abs(value) < 1e-12) return "0";
-  const abs = Math.abs(value);
-  if (abs >= 1e6 || abs < 1e-3) return value.toExponential(2);
-  if (abs >= 100) return value.toFixed(0);
-  if (abs >= 10) return value.toFixed(2);
-  return value.toFixed(3);
-}
-
-function labelOf(item: ChartPickItem): string {
-  return item.name ?? item.id ?? `${item.mode} ${item.seriesIndex + 1}`;
-}
-
-function rgba(color: readonly [number, number, number, number]): string {
-  return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+export interface CrosshairPlugin extends ChartPlugin {
+  getPosition(): CrosshairPosition | null;
+  getMeasurement(): RulerMeasurement | null;
+  clearMeasurement(): void;
+  subscribe(event: "move", callback: (position: CrosshairPosition | null) => void): () => void;
+  subscribe(event: "measurestart", callback: (position: CrosshairPosition) => void): () => void;
+  subscribe(event: "measurechange" | "measureend", callback: (measurement: RulerMeasurement) => void): () => void;
 }
 
 function countSamplesInRange(chart: Chart, xMin: number, xMax: number): number {
@@ -145,17 +136,16 @@ function renderDefaultLabel(
     return;
   }
 
-  const pad = Math.max(1, ...position.items.map((item) => labelOf(item).length));
-  let html = "";
-  for (const item of position.items) {
-    const value = formatter ? formatter(item, position) : `(${formatX(item.x)}, ${formatY(item.y)})`;
-    if (html) html += "<br>";
-    html += `<span style="color:${rgba(item.series.style.color)}">\u2588</span> ${labelOf(item).padEnd(pad)}  ${value}`;
-  }
-  container.innerHTML = html;
+  renderPickItems(
+    container,
+    position.items,
+    position,
+    formatter,
+    (item) => `(${formatX(item.x)}, ${formatY(item.y)})`,
+  );
 }
 
-export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlugin {
+export function crosshairPlugin(options: CrosshairPluginOptions = {}): CrosshairPlugin {
   const axis = options.axis ?? "xy";
   const yAxis = options.yAxis ?? "left";
   const snap = options.snap ?? "none";
@@ -171,34 +161,50 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
   let rulerLine: SVGLineElement | null = null;
   let rulerStart: CrosshairPosition | null = null;
 
-  const formatX = options.formatX ?? formatNumber;
-  const formatY = options.formatY ?? formatNumber;
+  const formatX = options.formatX ?? formatCompactNumber;
+  const formatY = options.formatY ?? formatCompactNumber;
+  let currentPosition: CrosshairPosition | null = null;
+  let currentMeasurement: RulerMeasurement | null = null;
+  const moveSubscribers = new Set<(position: CrosshairPosition | null) => void>();
+  const measureStartSubscribers = new Set<(position: CrosshairPosition) => void>();
+  const measureChangeSubscribers = new Set<(measurement: RulerMeasurement) => void>();
+  const measureEndSubscribers = new Set<(measurement: RulerMeasurement) => void>();
 
   const setVisible = (visible: boolean): void => {
     if (root) root.style.display = visible ? "block" : "none";
   };
 
+  const emitMove = (position: CrosshairPosition | null): void => {
+    currentPosition = position;
+    options.onMove?.(position);
+    for (const callback of moveSubscribers) callback(position);
+  };
+
+  const emitMeasureStart = (position: CrosshairPosition): void => {
+    options.onMeasureStart?.(position);
+    for (const callback of measureStartSubscribers) callback(position);
+  };
+
+  const emitMeasureChange = (measurement: RulerMeasurement): void => {
+    currentMeasurement = measurement;
+    options.onMeasureChange?.(measurement);
+    for (const callback of measureChangeSubscribers) callback(measurement);
+  };
+
+  const emitMeasureEnd = (measurement: RulerMeasurement): void => {
+    currentMeasurement = measurement;
+    options.onMeasureEnd?.(measurement);
+    options.onMeasure?.(measurement);
+    for (const callback of measureEndSubscribers) callback(measurement);
+  };
+
   const placeLabel = (position: CrosshairPosition): void => {
     const chart = chartRef;
     if (!chart || !label) return;
-    const offsetX = 12;
-    const offsetY = 12;
-    const labelRect = label.getBoundingClientRect();
-    const margin = 4;
-    const plotWidth = Math.max(1, chart.canvas.clientWidth);
-    const plotHeight = Math.max(1, chart.canvas.clientHeight);
-    const left = clamp(
-      position.plotX + offsetX,
-      margin,
-      Math.max(margin, plotWidth - labelRect.width - margin),
-    );
-    const top = clamp(
-      position.plotY + offsetY,
-      margin,
-      Math.max(margin, plotHeight - labelRect.height - margin),
-    );
-    label.style.left = `${left}px`;
-    label.style.top = `${top}px`;
+    placeAbsoluteWithinBox(label, position.plotX, position.plotY, chart.canvas.clientWidth, chart.canvas.clientHeight, {
+      offsetX: 12,
+      offsetY: 12,
+    });
   };
 
   const renderMarkers = (position: CrosshairPosition | null): void => {
@@ -269,7 +275,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
     rulerLine.setAttribute("y1", String(rulerStart.plotY));
     rulerLine.setAttribute("x2", String(end.plotX));
     rulerLine.setAttribute("y2", String(end.plotY));
-    options.onMeasureChange?.(measurementFrom(rulerStart, end, chart));
+    emitMeasureChange(measurementFrom(rulerStart, end, chart));
   };
 
   const emitShared = (position: CrosshairPosition): void => {
@@ -289,11 +295,14 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
   const peer: Peer = {
     showShared(dataX: number, source: Peer): void {
       if (source === peer || !chartRef) return;
-      renderPosition(resolveSharedPosition(chartRef, dataX, yAxis));
+      const position = resolveSharedPosition(chartRef, dataX, yAxis);
+      renderPosition(position);
+      emitMove(position);
     },
     hideShared(source: Peer): void {
       if (source === peer) return;
       renderPosition(null);
+      emitMove(null);
     },
   };
 
@@ -375,14 +384,14 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
       const onPointerMove = (event: PointerEvent): void => {
         const position = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         renderPosition(position);
-        options.onMove?.(position);
+        emitMove(position);
         if (position) emitShared(position);
         if (mode === "ruler") renderRuler(position);
       };
 
       const onPointerLeave = (): void => {
         if (!rulerStart) renderPosition(null);
-        options.onMove?.(null);
+        emitMove(null);
         emitHideShared();
       };
 
@@ -390,7 +399,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
         if (mode !== "ruler" || event.button !== 0 || !hasModifier(event, rulerModifier)) return;
         rulerStart = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         if (rulerStart) {
-          options.onMeasureStart?.(rulerStart);
+          emitMeasureStart(rulerStart);
           event.preventDefault();
           event.stopImmediatePropagation();
         }
@@ -402,8 +411,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
         const end = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         if (!end) return;
         const measurement = measurementFrom(rulerStart, end, chart);
-        options.onMeasureEnd?.(measurement);
-        options.onMeasure?.(measurement);
+        emitMeasureEnd(measurement);
         rulerStart = null;
       };
 
@@ -433,6 +441,37 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
         rulerStart = null;
         chartRef = null;
       };
+    },
+    getPosition(): CrosshairPosition | null {
+      return currentPosition;
+    },
+    getMeasurement(): RulerMeasurement | null {
+      return currentMeasurement;
+    },
+    clearMeasurement(): void {
+      currentMeasurement = null;
+      rulerStart = null;
+      if (rulerSvg) rulerSvg.style.display = "none";
+    },
+    subscribe(event: CrosshairEventType, callback: ((position: CrosshairPosition | null) => void) | ((position: CrosshairPosition) => void) | ((measurement: RulerMeasurement) => void)): () => void {
+      if (event === "move") {
+        const cb = callback as (position: CrosshairPosition | null) => void;
+        moveSubscribers.add(cb);
+        return () => moveSubscribers.delete(cb);
+      }
+      if (event === "measurestart") {
+        const cb = callback as (position: CrosshairPosition) => void;
+        measureStartSubscribers.add(cb);
+        return () => measureStartSubscribers.delete(cb);
+      }
+      if (event === "measurechange") {
+        const cb = callback as (measurement: RulerMeasurement) => void;
+        measureChangeSubscribers.add(cb);
+        return () => measureChangeSubscribers.delete(cb);
+      }
+      const cb = callback as (measurement: RulerMeasurement) => void;
+      measureEndSubscribers.add(cb);
+      return () => measureEndSubscribers.delete(cb);
     },
   };
 }

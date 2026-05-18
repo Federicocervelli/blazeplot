@@ -1,4 +1,5 @@
 import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin } from "./Chart.js";
+import { formatCompactNumber, placeFixedWithinViewport, renderPickItems, rgba } from "./OverlayUtils.js";
 
 export interface TooltipPluginOptions {
   readonly className?: string;
@@ -17,65 +18,21 @@ export interface TooltipPluginOptions {
   readonly render?: (state: ChartHoverState, container: HTMLElement, chart: Chart) => void;
 }
 
-function labelOf(item: ChartPickItem): string {
-  return item.name ?? item.id ?? `${item.mode} ${item.seriesIndex + 1}`;
-}
-
-function formatNumber(value: number): string {
-  if (!Number.isFinite(value)) return String(value);
-  const abs = Math.abs(value);
-  if (abs > 0 && (abs < 1e-3 || abs >= 1e6)) return value.toExponential(3);
-  return Number(value.toPrecision(6)).toString();
-}
-
-function rgba(color: readonly [number, number, number, number]): string {
-  return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
-}
-
-function renderDefaultTooltip(
-  state: ChartHoverState,
-  container: HTMLElement,
-  formatter: TooltipPluginOptions["formatter"],
-): void {
-  const pad = Math.max(1, ...state.items.map((item) => labelOf(item).length));
-  let html = "";
-  for (const item of state.items) {
-    const value = formatter ? formatter(item, state) : `(${formatNumber(item.x)}, ${formatNumber(item.y)})`;
-    const color = rgba(item.series.style.color);
-    if (html) html += "<br>";
-    html += `<span style="color:${color}">\u2588</span> ${labelOf(item).padEnd(pad)}  ${value}`;
-  }
-  container.innerHTML = html;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function placeTooltip(
-  container: HTMLElement,
-  state: ChartHoverState,
-  options: TooltipPluginOptions,
-): void {
-  const offsetX = options.offsetX ?? 12;
-  const offsetY = options.offsetY ?? 12;
-  const tooltipRect = container.getBoundingClientRect();
-  const margin = 4;
-  const doc = container.ownerDocument;
-  const viewportWidth = Math.max(1, globalThis.innerWidth || doc.documentElement.clientWidth);
-  const viewportHeight = Math.max(1, globalThis.innerHeight || doc.documentElement.clientHeight);
-
-  const viewportX = clamp(
-    state.clientX + offsetX,
-    margin,
-    Math.max(margin, viewportWidth - tooltipRect.width - margin),
+function renderDefaultTooltip(state: ChartHoverState, container: HTMLElement, formatter: TooltipPluginOptions["formatter"]): void {
+  renderPickItems(
+    container,
+    state.items,
+    state,
+    formatter,
+    (item) => `(${formatCompactNumber(item.x)}, ${formatCompactNumber(item.y)})`,
   );
-  const viewportY = clamp(
-    state.clientY + offsetY,
-    margin,
-    Math.max(margin, viewportHeight - tooltipRect.height - margin),
-  );
-  container.style.transform = `translate(${viewportX}px, ${viewportY}px)`;
+}
+
+function placeTooltip(container: HTMLElement, state: ChartHoverState, options: TooltipPluginOptions): void {
+  placeFixedWithinViewport(container, state.clientX, state.clientY, {
+    offsetX: options.offsetX ?? 12,
+    offsetY: options.offsetY ?? 12,
+  });
 }
 
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
