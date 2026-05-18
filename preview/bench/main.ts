@@ -1,5 +1,6 @@
 import { Chart } from "@/index.ts";
 import type { ChartFrameStats, SeriesStore } from "@/index.ts";
+import { ProceduralLineDataset } from "../ProceduralLineDataset.ts";
 
 interface ScenarioConfig {
   readonly name: string;
@@ -15,6 +16,7 @@ interface ScenarioConfig {
   readonly yMax: number;
   readonly measureMs: number;
   readonly warmupMs: number;
+  readonly proceduralLine?: boolean;
 }
 
 interface NumericSummary {
@@ -120,6 +122,22 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     measureMs: 5_000,
     warmupMs: 1_000,
   },
+  "line-1b-procedural": {
+    name: "line-1b-procedural",
+    initialSamples: 1_000_000_000,
+    viewportSamples: 1_000_000_000,
+    capacity: 1_000_000_000,
+    fillBatchSize: 1_000_000_000,
+    liveBatchSize: 0,
+    sparseInterval: 512,
+    includeScatter: false,
+    includeBars: false,
+    yMin: -1.5,
+    yMax: 1.5,
+    measureMs: 5_000,
+    warmupMs: 1_000,
+    proceduralLine: true,
+  },
 };
 
 const params = new URLSearchParams(window.location.search);
@@ -141,8 +159,9 @@ const chart = new Chart(chartTarget, {
   axes: { x: { position: "outside" }, y: { position: "outside" } },
 });
 
+const lineDataset = config.proceduralLine ? new ProceduralLineDataset(config.capacity) : undefined;
 const lineSeries = chart.addSeries(
-  { mode: "line", capacity: config.capacity, downsample: "minmax", name: "Benchmark wave" },
+  { mode: "line", capacity: config.capacity, dataset: lineDataset, downsample: "minmax", name: "Benchmark wave" },
   { color: [0.3, 0.6, 1.0, 1.0], lineWidth: 1 },
 );
 
@@ -304,6 +323,11 @@ async function measure(): Promise<BenchmarkResult> {
 }
 
 function appendRange(startX: number, count: number): void {
+  if (config.proceduralLine) {
+    lineSeries.append({ length: count }, { length: count });
+    return;
+  }
+
   const xValues = new Float64Array(count);
   const yValues = new Float32Array(count);
   const period = config.viewportSamples / 5;

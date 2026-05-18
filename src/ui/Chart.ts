@@ -185,6 +185,7 @@ export class Chart {
   private readonly hoverSubscribers = new Set<(state: ChartHoverState | null) => void>();
   private readonly seriesSubscribers = new Set<() => void>();
   private readonly themeSubscribers = new Set<() => void>();
+  private readonly renderSubscribers = new Set<(chart: Chart) => void>();
   private currentHover: ChartHoverState | null = null;
   private lastPointerClientX: number = 0;
   private lastPointerClientY: number = 0;
@@ -280,6 +281,10 @@ export class Chart {
 
   get theme(): ResolvedChartTheme {
     return this.resolvedTheme;
+  }
+
+  getWebGLContext(): WebGL2RenderingContext | null {
+    return this.renderer.getWebGLContext();
   }
 
   getCamera(yAxis: SeriesYAxis = "left"): Camera2D {
@@ -436,7 +441,8 @@ export class Chart {
   subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
   subscribe(event: "serieschange", callback: () => void): () => void;
   subscribe(event: "themechange", callback: () => void): () => void;
-  subscribe(event: "hover" | "serieschange" | "themechange", callback: ((state: ChartHoverState | null) => void) | (() => void)): () => void {
+  subscribe(event: "render", callback: (chart: Chart) => void): () => void;
+  subscribe(event: "hover" | "serieschange" | "themechange" | "render", callback: ((state: ChartHoverState | null) => void) | (() => void) | ((chart: Chart) => void)): () => void {
     if (event === "hover") {
       const cb = callback as (state: ChartHoverState | null) => void;
       this.hoverSubscribers.add(cb);
@@ -447,6 +453,12 @@ export class Chart {
       const cb = callback as () => void;
       this.themeSubscribers.add(cb);
       return () => this.themeSubscribers.delete(cb);
+    }
+
+    if (event === "render") {
+      const cb = callback as (chart: Chart) => void;
+      this.renderSubscribers.add(cb);
+      return () => this.renderSubscribers.delete(cb);
     }
 
     const cb = callback as () => void;
@@ -596,6 +608,7 @@ export class Chart {
     }
 
     this.axisOverlay?.update(this.camera, this.axis, this.rightCamera, this.rightAxis);
+    this.emitRender();
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     this.refreshHover();
@@ -1128,6 +1141,10 @@ export class Chart {
 
   private emitThemeChange(): void {
     for (const callback of this.themeSubscribers) callback();
+  }
+
+  private emitRender(): void {
+    for (const callback of this.renderSubscribers) callback(this);
   }
 
   private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, dpr: number): void {

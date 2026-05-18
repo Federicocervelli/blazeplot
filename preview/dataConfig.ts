@@ -1,14 +1,13 @@
-export const FILL_BATCH_SIZE = 65_536;
-export const LIVE_BATCH_SIZE = 65_536;
-export const VIEW_SAMPLES = 1_000_000_000;
-export const TRACE_PERIOD = VIEW_SAMPLES / 5;
-export const SPARSE_INTERVAL = 512;
-export const OHLC_INTERVAL = SPARSE_INTERVAL * 8;
+export const FILL_BATCH_SIZE = 4_096;
+export const LIVE_BATCH_SIZE = 256;
+export const VIEW_SAMPLES = 86_400; // one day at one sample per second
+export const TRACE_PERIOD = VIEW_SAMPLES;
+export const SPARSE_INTERVAL = 60; // one sparse point per minute
+export const OHLC_INTERVAL = SPARSE_INTERVAL * 5; // five-minute candles
 
-// Keep all streaming series at roughly the same X-history span. Sparse series
-// append one point every SPARSE_INTERVAL samples, so their point capacity must
-// be scaled down or they will stay visible much longer than the dense line.
-export const HISTORY_SAMPLES = 1_000_000_000;
+// Keep the interactive preview realistic. Billion-point stress belongs in the
+// benchmark harness, while the preview models a rolling week of per-second data.
+export const HISTORY_SAMPLES = VIEW_SAMPLES * 7;
 export const SPARSE_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / SPARSE_INTERVAL) + 2;
 export const OHLC_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / OHLC_INTERVAL) + 2;
 export const Y_VIEW = { yMin: -1.25, yMax: 1.35 } as const;

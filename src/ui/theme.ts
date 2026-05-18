@@ -45,19 +45,19 @@ const DEFAULT_SERIES_COLORS: readonly RgbaColor[] = [
 ];
 
 export const DEFAULT_CHART_THEME: ResolvedChartTheme = {
-  backgroundColor: [0.08, 0.10, 0.16, 1],
-  backgroundCssColor: "rgba(20, 26, 41, 1)",
-  gridColor: [0.22, 0.30, 0.44, 0.45],
-  axisColor: "#bfd6ff",
+  backgroundColor: [0.02, 0.02, 0.02, 1],
+  backgroundCssColor: "rgba(5, 5, 5, 1)",
+  gridColor: [0.22, 0.22, 0.22, 0.45],
+  axisColor: "#d4d4d4",
   axisFont: "11px ui-monospace, monospace, sans-serif",
   seriesColors: DEFAULT_SERIES_COLORS,
-  tooltipBackgroundColor: "rgba(4, 8, 16, 0.85)",
-  tooltipTextColor: "#bfd6ff",
+  tooltipBackgroundColor: "rgba(10, 10, 10, 0.88)",
+  tooltipTextColor: "#e5e5e5",
   tooltipFont: "11px/1.35 ui-monospace, monospace",
-  legendBackgroundColor: "rgba(4, 8, 16, 0.85)",
+  legendBackgroundColor: "rgba(10, 10, 10, 0.88)",
   legendBorderColor: "transparent",
-  legendTextColor: "#bfd6ff",
-  legendMutedTextColor: "#789",
+  legendTextColor: "#e5e5e5",
+  legendMutedTextColor: "#888",
   legendFont: "11px/1.35 ui-monospace, monospace",
 };
 

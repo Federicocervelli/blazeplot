@@ -10,6 +10,7 @@ export interface GpuBackend {
   dispose(resource: GpuResource): void;
   clear(r: number, g: number, b: number, a: number): void;
   viewport(x: number, y: number, w: number, h: number): void;
+  getContext?(): WebGL2RenderingContext | null;
   destroy(): void;
 }
 

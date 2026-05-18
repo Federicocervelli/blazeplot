@@ -34,6 +34,10 @@
       "types": "./dist/plugins/interactions.d.ts",
       "import": "./dist/plugins/interactions.js"
     },
+    "./plugins/annotations": {
+      "types": "./dist/plugins/annotations.d.ts",
+      "import": "./dist/plugins/annotations.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -49,6 +53,7 @@
     "preview": "vite preview",
     "bench": "bun scripts/benchmark.ts",
     "bench:scatter": "bun scripts/scatter-profile.ts",
+    "bench:report": "bun scripts/benchmark-report.ts",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major",

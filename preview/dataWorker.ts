@@ -102,9 +102,15 @@ function fillSparse(
   let sin = Math.sin(start * OMEGA);
   let cos = Math.cos(start * OMEGA);
   for (let i = 0; i < count; i++) {
-    areaY[i] = 0.05 + Math.abs(cos) * 0.35 + random01() * 0.025;
-    spikeY[i] = -0.35 + random01() * 0.35;
-    barY[i] = -1.1 + Math.abs(sin) * 0.48 + 0.08;
+    const x = start + i * SPARSE_INTERVAL;
+    const minute = Math.floor(x / SPARSE_INTERVAL);
+    const workdayPulse = Math.max(0, sin);
+    const batchPulse = minute % 90 < 8 ? 0.14 : 0;
+    const incident = minute % 677 < 6 ? 1 : 0;
+
+    areaY[i] = 0.10 + workdayPulse * 0.42 + batchPulse + random01() * 0.025;
+    spikeY[i] = -0.58 + random01() * 0.16 + incident * (0.18 + random01() * 0.20);
+    barY[i] = -1.08 + workdayPulse * 0.48 + (minute % 30 < 4 ? 0.08 : 0) + random01() * 0.025;
     const nextSin = sin * SPARSE_COS_STEP + cos * SPARSE_SIN_STEP;
     cos = cos * SPARSE_COS_STEP - sin * SPARSE_SIN_STEP;
     sin = nextSin;
@@ -136,7 +142,10 @@ function fillOhlc(
 
 function ohlcCloseAt(x: number): number {
   const index = Math.floor(x / OHLC_INTERVAL);
-  return 1.08 + Math.sin(x * OMEGA) * 0.035 + Math.cos(index * 0.37) * 0.025;
+  const slowTrend = Math.sin(x * OMEGA * 0.5) * 0.025;
+  const intraday = Math.sin(x * OMEGA) * 0.045;
+  const micro = Math.cos(index * 0.37) * 0.018;
+  return 1.02 + slowTrend + intraday + micro;
 }
 
 function random01(): number {

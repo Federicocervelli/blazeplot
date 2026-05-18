@@ -156,6 +156,10 @@ export class ReglBackend implements GpuBackend {
     this.scissorBox = { x, y, w, h };
   }
 
+  getContext(): WebGL2RenderingContext {
+    return this.gl;
+  }
+
   destroy(): void {
     this.resources.destroy();
     this.regl.destroy();

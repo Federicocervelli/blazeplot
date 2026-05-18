@@ -76,6 +76,10 @@ export class Renderer {
     this.xOrigin = Number.isFinite(origin) ? origin : 0;
   }
 
+  getWebGLContext(): WebGL2RenderingContext | null {
+    return this.backend.getContext?.() ?? null;
+  }
+
   drawLines(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
     this.drawLinePrimitive("lines", positions, count, style, camera);
   }

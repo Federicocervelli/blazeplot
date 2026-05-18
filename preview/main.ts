@@ -4,6 +4,7 @@ import { ProceduralLineDataset } from "./ProceduralLineDataset.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
+import { annotationsPlugin } from "@/plugins/annotations.ts";
 import {
   FILL_BATCH_SIZE,
   HISTORY_SAMPLES,
@@ -16,7 +17,7 @@ import {
   Y_VIEW,
   type PreviewDataBatch,
 } from "./dataConfig.ts";
-import type { ChartFrameStats, ChartPickGroup, ChartPickMode, ChartTheme, RgbaColor, SeriesStyle, ViewportPolicy } from "@/index.ts";
+import type { ChartFrameStats, ChartPickGroup, ChartPickMode, ChartTheme, ViewportPolicy } from "@/index.ts";
 
 const chartTarget = requireElement<HTMLElement>("chart");
 const overlayText = document.getElementById("overlayText") as HTMLSpanElement | null;
@@ -38,65 +39,18 @@ function requireElement<T extends HTMLElement>(id: string): T {
   return el as T;
 }
 
-const THEMES = {
-  dark: {
-    backgroundColor: [0.08, 0.10, 0.16, 1],
-    gridColor: [0.22, 0.30, 0.44, 0.45],
-    axisColor: "#bfd6ff",
-    tooltipBackgroundColor: "rgba(4, 8, 16, 0.85)",
-    tooltipTextColor: "#bfd6ff",
-    legendBackgroundColor: "rgba(4, 8, 16, 0.85)",
-    legendTextColor: "#bfd6ff",
-    legendMutedTextColor: "#789",
-  },
-  light: {
-    backgroundColor: "#f8fafc",
-    gridColor: "rgba(15, 23, 42, 0.16)",
-    axisColor: "#334155",
-    tooltipBackgroundColor: "rgba(255, 255, 255, 0.94)",
-    tooltipTextColor: "#0f172a",
-    legendBackgroundColor: "rgba(255, 255, 255, 0.88)",
-    legendBorderColor: "rgba(15, 23, 42, 0.16)",
-    legendTextColor: "#0f172a",
-    legendMutedTextColor: "#64748b",
-  },
-  terminal: {
-    backgroundColor: "#020403",
-    gridColor: "rgba(74, 222, 128, 0.20)",
-    axisColor: "#86efac",
-    tooltipBackgroundColor: "rgba(1, 18, 8, 0.92)",
-    tooltipTextColor: "#bbf7d0",
-    legendBackgroundColor: "rgba(1, 18, 8, 0.88)",
-    legendBorderColor: "rgba(34, 197, 94, 0.45)",
-    legendTextColor: "#bbf7d0",
-    legendMutedTextColor: "#4ade80",
-  },
-} satisfies Record<string, ChartTheme>;
+type PreviewTheme = "default" | "light";
 
-type PreviewTheme = keyof typeof THEMES;
-
-const SERIES_PALETTES: Record<PreviewTheme, readonly [RgbaColor, RgbaColor, RgbaColor, RgbaColor, RgbaColor]> = {
-  dark: [
-    [0.3, 0.6, 1.0, 1.0],
-    [0.72, 0.45, 0.95, 0.95],
-    [0.95, 0.35, 0.35, 1.0],
-    [0.2, 0.8, 0.4, 0.75],
-    [0.95, 0.72, 0.25, 1.0],
-  ],
-  light: [
-    [0.1, 0.35, 0.8, 1.0],
-    [0.55, 0.25, 0.75, 0.9],
-    [0.82, 0.18, 0.18, 1.0],
-    [0.05, 0.55, 0.28, 0.75],
-    [0.72, 0.42, 0.05, 1.0],
-  ],
-  terminal: [
-    [0.34, 0.90, 0.56, 1.0],
-    [0.74, 0.95, 0.44, 0.9],
-    [0.25, 0.85, 0.95, 1.0],
-    [0.16, 0.70, 0.36, 0.75],
-    [0.95, 0.85, 0.35, 1.0],
-  ],
+const LIGHT_THEME: ChartTheme = {
+  backgroundColor: "#ffffff",
+  gridColor: "rgba(0, 0, 0, 0.14)",
+  axisColor: "#222",
+  tooltipBackgroundColor: "rgba(255, 255, 255, 0.94)",
+  tooltipTextColor: "#111",
+  legendBackgroundColor: "rgba(255, 255, 255, 0.88)",
+  legendBorderColor: "rgba(0, 0, 0, 0.16)",
+  legendTextColor: "#111",
+  legendMutedTextColor: "#666",
 };
 
 console.info("[blazeplot] preview starting");
@@ -111,7 +65,7 @@ let followLive = true;
 let streaming = true;
 let syncX = true;
 let showPerfPanel = true;
-let currentTheme: PreviewTheme = "dark";
+let currentTheme: PreviewTheme = "default";
 const hoverOptions: { mode: ChartPickMode; group: ChartPickGroup } = { mode: "nearest-x", group: "x" };
 const tooltipOptions: { mode: ChartPickMode; group: ChartPickGroup; highlight: boolean } = { mode: hoverOptions.mode, group: hoverOptions.group, highlight: true };
 const chartStats: ChartFrameStats = {
@@ -125,6 +79,47 @@ const chartStats: ChartFrameStats = {
 
 const dataWorker = new Worker(new URL("./dataWorker.ts", import.meta.url), { type: "module" });
 dataWorker.addEventListener("message", (event: MessageEvent<PreviewDataBatch>) => appendGeneratedBatch(event.data));
+
+const annotations = annotationsPlugin({
+  annotations: [
+    {
+      id: "target-band",
+      type: "y-range",
+      yMin: 0.95,
+      yMax: 1.18,
+      fillColor: "rgba(96, 165, 250, 0.10)",
+      borderColor: "rgba(147, 197, 253, 0.35)",
+      label: "target zone",
+    },
+    {
+      id: "release-window",
+      type: "x-range",
+      xMin: VIEW_SAMPLES * 0.18,
+      xMax: VIEW_SAMPLES * 0.24,
+      fillColor: "rgba(250, 204, 21, 0.10)",
+      borderColor: "rgba(250, 204, 21, 0.35)",
+      label: "event window",
+    },
+    {
+      id: "threshold",
+      type: "y-line",
+      y: -0.25,
+      color: "rgba(248, 113, 113, 0.85)",
+      dash: "5 4",
+      label: "spike threshold",
+    },
+    {
+      id: "marker",
+      type: "point",
+      x: VIEW_SAMPLES * 0.5,
+      y: 0.82,
+      radius: 6,
+      color: "rgba(34, 211, 238, 0.95)",
+      shape: "diamond",
+      label: "marker",
+    },
+  ],
+});
 
 const previewPolicy: ViewportPolicy = {
   beforePan(_camera, intent) {
@@ -149,9 +144,9 @@ const chart = new Chart(chartTarget, {
   viewportPolicy: previewPolicy,
   axes: { x: { position: "outside" }, y: { position: "outside" } },
   hover: hoverOptions,
-  theme: THEMES.dark,
   plugins: [
     interactionsPlugin({ axis: () => syncX ? "y" : "xy", viewportPolicy: previewPolicy }),
+    annotations,
     legendPlugin({ toggleOnClick: true }),
     tooltipPlugin(tooltipOptions),
   ],
@@ -179,21 +174,13 @@ const barSeries = chart.addBar(
   { barWidth: SPARSE_INTERVAL, baseline: -1.1 },
 );
 const ohlcDataset = new OhlcRingBuffer(OHLC_HISTORY_CAPACITY);
-const ohlcSeries = chart.addOhlc(
+chart.addOhlc(
   { capacity: OHLC_HISTORY_CAPACITY, dataset: ohlcDataset, downsample: "none", name: "OHLC" },
   { tickWidth: OHLC_INTERVAL * 0.7, lineWidth: 1 },
 );
-const previewSeries = [
-  { label: "line", series: lineSeries },
-  { label: "area", series: areaSeries },
-  { label: "scatter", series: scatterSeries },
-  { label: "bar", series: barSeries },
-  { label: "ohlc", series: ohlcSeries },
-] as const;
-
 viewSamplesInput.max = String(HISTORY_SAMPLES);
 viewSamplesInput.value = String(viewSamples);
-applyTheme("dark");
+applyTheme("default");
 chart.setViewport({ ...liveXViewport(), ...Y_VIEW });
 chart.start();
 
@@ -308,7 +295,7 @@ function updateOverlay(): void {
       lastStatsAt = now;
       return;
     }
-    overlayText.textContent = "\n" + [
+    overlayText.textContent = [
       "BlazePlot preview",
       `status: ${streaming ? workerPending ? "worker pending" : "streaming" : "paused"}`,
       `renderer: ${chartStats.renderMode}`,
@@ -334,21 +321,7 @@ function updateOverlay(): void {
 function applyTheme(name: PreviewTheme): void {
   currentTheme = name;
   document.body.dataset.previewTheme = name;
-  applySeriesPalette(name);
-  chart.setTheme(THEMES[name]);
-}
-
-function applySeriesPalette(name: PreviewTheme): void {
-  const [line, area, scatter, bar, ohlc] = SERIES_PALETTES[name];
-  setSeriesStyle(lineSeries, { color: line });
-  setSeriesStyle(areaSeries, { color: area, fillColor: [area[0], area[1], area[2], 0.20] });
-  setSeriesStyle(scatterSeries, { color: scatter });
-  setSeriesStyle(barSeries, { color: bar });
-  setSeriesStyle(ohlcSeries, { color: ohlc });
-}
-
-function setSeriesStyle(series: (typeof previewSeries)[number]["series"], style: Partial<SeriesStyle>): void {
-  Object.assign(series.style, style);
+  chart.setTheme(name === "light" ? LIGHT_THEME : undefined);
 }
 
 function resetView(): void {
@@ -387,7 +360,7 @@ async function downloadScreenshot(): Promise<void> {
 }
 
 function asPreviewTheme(value: string): PreviewTheme {
-  return value === "light" || value === "terminal" ? value : "dark";
+  return value === "light" ? "light" : "default";
 }
 
 function asHoverMode(value: string): ChartPickMode {

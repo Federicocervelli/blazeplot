@@ -159,18 +159,26 @@ import { Chart } from "blazeplot";
 import { interactionsPlugin } from "blazeplot/plugins/interactions";
 import { legendPlugin } from "blazeplot/plugins/legend";
 import { tooltipPlugin } from "blazeplot/plugins/tooltip";
+import { annotationsPlugin } from "blazeplot/plugins/annotations";
 
 const chart = new Chart(container, {
   hover: { mode: "nearest-x", group: "x" },
   plugins: [
     interactionsPlugin({ axis: "xy" }),
+    annotationsPlugin({
+      annotations: [
+        { type: "y-line", y: 0, label: "baseline" },
+        { type: "x-range", xMin: 10, xMax: 20, label: "event" },
+        { type: "point", x: 42, y: 1.2, shape: "diamond", label: "marker" },
+      ],
+    }),
     legendPlugin(),
     tooltipPlugin({ mode: "nearest-point", group: "none", maxDistancePx: 24 }),
   ],
 });
 ```
 
-Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zoom, Shift+drag plot pan, wheel zoom, double-click reset, and `axis: "x" | "y" | "xy"`. When outside axes are visible, scrolling an axis zooms that axis and dragging an axis pans that axis; the plugin also applies a subtle axis hover color/filter configurable with `axisHover`, `axisHoverColor`, and `axisHoverFilter`. Legend/tooltip consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting. For shared time-series tooltips, use `group: "x"`; for scatter/true point hover, use `group: "none"`.
+Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zoom, Shift+drag plot pan, wheel zoom, double-click reset, and `axis: "x" | "y" | "xy"`. When outside axes are visible, scrolling an axis zooms that axis and dragging an axis pans that axis; the plugin also applies a subtle axis hover color/filter configurable with `axisHover`, `axisHoverColor`, and `axisHoverFilter`. `annotationsPlugin()` supports common plot annotations: vertical/horizontal lines, X/Y bands, boxes, point markers, and labels. Legend/tooltip consume public APIs (`getSeriesState`, `setSeriesVisible`, `pick`, and `subscribe`) so custom UI can use the same contract. The default tooltip updates while the cursor is still on live charts and highlights the raw sample(s) it is reporting. For shared time-series tooltips, use `group: "x"`; for scatter/true point hover, use `group: "none"`.
 
 ### `SeriesStore`
 
