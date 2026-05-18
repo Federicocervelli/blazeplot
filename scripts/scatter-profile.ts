@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { SeriesStore } from "../src/core/SeriesStore.ts";
-import { ContiguousRingDataset } from "../preview/ContiguousRingDataset.ts";
+import { UniformRingBuffer } from "../src/core/UniformRingBuffer.ts";
 import type { Viewport } from "../src/core/types.ts";
 
 const SPARSE_INTERVAL = 512;
@@ -10,8 +10,8 @@ const WIDTH = 1228;
 const HEIGHT = 611;
 const POINT_SIZE = 5;
 
-function fillDataset(): ContiguousRingDataset {
-  const dataset = new ContiguousRingDataset(POINTS + 2, { xStep: SPARSE_INTERVAL });
+function fillDataset(): UniformRingBuffer {
+  const dataset = new UniformRingBuffer(POINTS + 2, { xStep: SPARSE_INTERVAL });
   const batch = 65_536;
   let remaining = POINTS;
   let seed = 0x9e3779b9;
@@ -26,7 +26,7 @@ function fillDataset(): ContiguousRingDataset {
       const random01 = ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
       y[i] = -0.35 + random01 * 0.35;
     }
-    dataset.append({ length: n }, y);
+    dataset.appendY(y);
     remaining -= n;
   }
   return dataset;

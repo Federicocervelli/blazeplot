@@ -1,5 +1,5 @@
 import { PREVIEW_START_TIME, PREVIEW_X_STEP_MS, TRACE_PERIOD } from "./dataConfig.ts";
-import type { AcceleratedDataset, AppendableDataset, MinMaxSegmentLayout, SampleCopyLayout, TimeRange, Viewport } from "@/index.ts";
+import type { AcceleratedDataset, AppendableDataset, MinMaxSegmentLayout, SampleCopyLayout, TimeRange, Viewport, YAppendableDataset } from "@/index.ts";
 
 const OMEGA = (Math.PI * 2) / TRACE_PERIOD;
 const BASELINE = 0.78;
@@ -13,7 +13,7 @@ function positiveModulo(value: number, modulo: number): number {
 type SampleLayout = SampleCopyLayout;
 type MinMaxLayout = MinMaxSegmentLayout;
 
-export class ProceduralLineDataset implements AppendableDataset, AcceleratedDataset {
+export class ProceduralLineDataset implements AppendableDataset, YAppendableDataset, AcceleratedDataset {
   readonly capacity: number;
   private _length = 0;
   private _nextX = 0;
@@ -39,7 +39,14 @@ export class ProceduralLineDataset implements AppendableDataset, AcceleratedData
   }
 
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
-    const requested = Math.min(x.length, y.length);
+    this.appendCount(Math.min(x.length, y.length));
+  }
+
+  appendY(y: ArrayLike<number>): void {
+    this.appendCount(y.length);
+  }
+
+  private appendCount(requested: number): void {
     if (requested <= 0) return;
     this._nextX += requested;
     this._length = Math.min(this.capacity, this._length + requested);

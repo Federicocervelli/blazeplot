@@ -1,5 +1,4 @@
-import { Chart, OhlcRingBuffer } from "@/index.ts";
-import { ContiguousRingDataset } from "./ContiguousRingDataset.ts";
+import { Chart, OhlcRingBuffer, UniformRingBuffer } from "@/index.ts";
 import { ProceduralLineDataset } from "./ProceduralLineDataset.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
@@ -172,27 +171,27 @@ const canvas = chart.canvas;
 
 const lineDataset = new ProceduralLineDataset(HISTORY_SAMPLES);
 const lineSeries = chart.addLine(
-  { capacity: HISTORY_SAMPLES, dataset: lineDataset, downsample: "minmax", name: "Wave" },
+  { dataset: lineDataset, downsample: "minmax", name: "Wave" },
   { lineWidth: 1 },
 );
-const areaDataset = new ContiguousRingDataset(SPARSE_HISTORY_CAPACITY, { xStep: SPARSE_INTERVAL });
-const spikeDataset = new ContiguousRingDataset(SPARSE_HISTORY_CAPACITY, { xStep: SPARSE_INTERVAL });
-const barDataset = new ContiguousRingDataset(SPARSE_HISTORY_CAPACITY, { blockSize: 16, xStep: SPARSE_INTERVAL });
+const areaDataset = new UniformRingBuffer(SPARSE_HISTORY_CAPACITY, { xStart: PREVIEW_START_TIME, xStep: SPARSE_INTERVAL * PREVIEW_X_STEP_MS });
+const spikeDataset = new UniformRingBuffer(SPARSE_HISTORY_CAPACITY, { xStart: PREVIEW_START_TIME, xStep: SPARSE_INTERVAL * PREVIEW_X_STEP_MS });
+const barDataset = new UniformRingBuffer(SPARSE_HISTORY_CAPACITY, { xStart: PREVIEW_START_TIME, xStep: SPARSE_INTERVAL * PREVIEW_X_STEP_MS, blockSize: 16 });
 const areaSeries = chart.addArea(
-  { capacity: SPARSE_HISTORY_CAPACITY, dataset: areaDataset, downsample: "none", name: "Area" },
+  { dataset: areaDataset, downsample: "none", name: "Area" },
   { baseline: -0.05, lineWidth: 1 },
 );
 const scatterSeries = chart.addScatter(
-  { capacity: SPARSE_HISTORY_CAPACITY, dataset: spikeDataset, downsample: "none", name: "Spikes" },
+  { dataset: spikeDataset, downsample: "none", name: "Spikes" },
   { pointSize: 5 },
 );
 const barSeries = chart.addBar(
-  { capacity: SPARSE_HISTORY_CAPACITY, dataset: barDataset, downsample: "minmax", name: "Power" },
+  { dataset: barDataset, downsample: "minmax", name: "Power" },
   { barWidth: SPARSE_INTERVAL * PREVIEW_X_STEP_MS, baseline: -1.1 },
 );
 const ohlcDataset = new OhlcRingBuffer(OHLC_HISTORY_CAPACITY);
 chart.addOhlc(
-  { capacity: OHLC_HISTORY_CAPACITY, dataset: ohlcDataset, downsample: "none", name: "OHLC" },
+  { dataset: ohlcDataset, downsample: "none", name: "OHLC" },
   { tickWidth: OHLC_INTERVAL * PREVIEW_X_STEP_MS * 0.7, lineWidth: 1 },
 );
 viewSamplesInput.max = String(HISTORY_SAMPLES);
@@ -256,13 +255,12 @@ console.info("[blazeplot] chart initialized", {
 
 function appendGeneratedBatch(batch: PreviewDataBatch): void {
   const release: ArrayBuffer[] = [];
-  lineSeries.append({ length: batch.batchSize }, { length: batch.batchSize });
+  lineSeries.appendY({ length: batch.batchSize });
 
   if (batch.sparseCount > 0 && batch.areaY && batch.spikeY && batch.barY) {
-    const sparseLength = { length: batch.sparseCount };
-    areaSeries.append(sparseLength, new Float32Array(batch.areaY));
-    scatterSeries.append(sparseLength, new Float32Array(batch.spikeY));
-    barSeries.append(sparseLength, new Float32Array(batch.barY));
+    areaSeries.appendY(new Float32Array(batch.areaY));
+    scatterSeries.appendY(new Float32Array(batch.spikeY));
+    barSeries.appendY(new Float32Array(batch.barY));
     release.push(batch.areaY, batch.spikeY, batch.barY);
   }
 
