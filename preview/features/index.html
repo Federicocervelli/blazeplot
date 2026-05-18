@@ -5,33 +5,51 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BlazePlot Feature Preview</title>
   <style>
-    * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 100%; background: #050505; color: #e5e5e5; }
-    body { font: 13px/1.4 system-ui, sans-serif; }
-    header { padding: 10px 12px; border-bottom: 1px solid #333; display: flex; gap: 12px; align-items: center; }
-    h1, h2, p { margin: 0; }
-    h1 { font-size: 16px; }
-    h2 { font-size: 14px; margin-bottom: 4px; }
-    a { color: #93c5fd; }
-    main { padding: 12px; display: grid; gap: 12px; }
-    section { border: 1px solid #333; padding: 10px; background: #0a0a0a; }
-    .hint { color: #aaa; margin-bottom: 8px; }
-    #heroChart { height: 560px; }
-    #linkedCharts { height: 340px; }
-    #eventLog { white-space: pre-wrap; font: 12px/1.4 ui-monospace, monospace; color: #ccc; margin: 8px 0 0; }
-    button { font: inherit; padding: 4px 8px; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root { color-scheme: dark; --page-bg: #000; --panel-bg: #0a0a0a; --panel-border: #222; --text: #e5e5e5; --muted: #888; --control-bg: #111; --control-border: #333; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--page-bg); color: var(--text); }
+    body { height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr); font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    #topbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 5px 10px; background: var(--panel-bg); color: var(--text); justify-content: space-between; border-bottom: 1px solid var(--panel-border); }
+    #topbar .left { display: inline-flex; align-items: center; gap: 8px; }
+    #topbar .brand { font-weight: 700; letter-spacing: 0.02em; }
+    #topbar nav { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    #topbar a { display: inline-flex; align-items: center; color: var(--text); text-decoration: none; padding: 0; line-height: 0; }
+    #topbar a:hover { filter: brightness(1.15); }
+    #topbar img { display: block; height: 20px; }
+    main { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) 104px 340px; gap: 6px; }
+    section { min-height: 0; overflow: hidden; background: var(--panel-bg); padding: 6px 8px; }
+    h2 { height: 16px; font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+    #heroChart { height: calc(100% - 20px); min-height: 0; }
+    #linkedCharts { height: calc(100% - 20px); min-height: 0; }
+    #eventLog { white-space: pre-wrap; font: 11px/1.4 ui-monospace, monospace; color: var(--muted); margin-top: 6px; }
+    button { background: var(--control-bg); border: 1px solid var(--control-border); border-radius: 4px; color: var(--text); font: inherit; padding: 2px 6px; cursor: pointer; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>BlazePlot feature preview</h1>
-    <a href="/">streaming preview</a>
+  <header id="topbar" aria-label="Project links">
+    <div class="left">
+      <span class="brand">BlazePlot feature preview</span>
+    </div>
+    <nav>
+      <a href="/" style="line-height:1.2;padding:2px 6px;border:1px solid var(--panel-border);border-radius:4px;">main preview</a>
+      <a href="https://github.com/Federicocervelli/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot on GitHub">
+        <img src="https://img.shields.io/github/stars/Federicocervelli/blazeplot?style=flat&logo=github&logoColor=white&label=GitHub&labelColor=111111&color=444444" alt="GitHub stars: blazeplot" />
+      </a>
+      <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot on npm">
+        <img src="https://img.shields.io/npm/v/blazeplot?style=flat&logo=npm&logoColor=CB3837&label=npm&labelColor=111111&color=444444" alt="npm: blazeplot" />
+      </a>
+      <a href="https://cervelli.dev" target="_blank" rel="noreferrer" aria-label="Federico Cervelli portfolio">
+        <img src="https://img.shields.io/badge/Portfolio-cervelli.dev-444444?style=flat&logo=googlechrome&logoColor=4285F4&labelColor=111111" alt="Portfolio: cervelli.dev" />
+      </a>
+      <a href="https://liberapay.com/cervelli/donate" target="_blank" rel="noreferrer" aria-label="Donate on Liberapay">
+        <img src="https://img.shields.io/badge/Donate-Liberapay-444444?style=flat&logo=liberapay&logoColor=F6C915&labelColor=111111" alt="Donate: Liberapay" />
+      </a>
+    </nav>
   </header>
 
   <main>
     <section>
       <h2>Main feature chart</h2>
-      <p class="hint">Drag to box zoom. Wheel to zoom. Shift-drag to pan. Use the navigator at the bottom.</p>
       <div id="heroChart"></div>
     </section>
 
@@ -43,7 +61,6 @@
 
     <section>
       <h2>Linked charts</h2>
-      <p class="hint">Two charts with synchronized X range.</p>
       <div id="linkedCharts"></div>
     </section>
   </main>
