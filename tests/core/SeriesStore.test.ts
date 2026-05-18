@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
 import { RingBuffer } from "../../src/core/RingBuffer.ts";
+import { StaticDataset } from "../../src/core/StaticDataset.ts";
 import type { RangeMinMaxDataset, TimeRange } from "../../src/core/types.ts";
 
 function makeSeries(): SeriesStore {
@@ -190,6 +191,57 @@ describe("SeriesStore", () => {
     expect(series.visibleSampleCount({ xMin: 1, xMax: 2, yMin: 0, yMax: 1 })).toBe(2);
   });
 
+  it("copies scatter samples clipped to the y viewport", () => {
+    const series = new SeriesStore(
+      new StaticDataset([0, 1, 2, 3, 4], [0, 100, 1, 200, 2]),
+      { mode: "scatter", capacity: 5 },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    const raw = new Float32Array(10);
+    const count = series.copyScatterVisible({ xMin: 0, xMax: 4, yMin: 0, yMax: 10 }, raw, 5, 100, 100, 0);
+
+    expect(count).toBe(3);
+    expect(Array.from(raw.subarray(0, count * 2))).toEqual([0, 0, 2, 1, 4, 2]);
+  });
+
+  it("samples dense scatter using both x and y viewport bounds", () => {
+    const x = Array.from({ length: 100 }, (_, i) => i);
+    const y = Array.from({ length: 100 }, (_, i) => (i === 55 ? 100 : 0));
+    const series = new SeriesStore(
+      new StaticDataset(x, y),
+      { mode: "scatter", capacity: 100 },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    const raw = new Float32Array(20);
+    const count = series.copyScatterVisible({ xMin: 0, xMax: 99, yMin: 90, yMax: 110 }, raw, 10, 100, 100, 0);
+
+    expect(count).toBe(1);
+    expect(Array.from(raw.subarray(0, count * 2))).toEqual([55, 100]);
+  });
+
+  it("anchors dense scatter buckets to data indices so panning does not resample every point", () => {
+    const x = Array.from({ length: 120 }, (_, i) => i);
+    const y = Array.from({ length: 120 }, () => 1);
+    const series = new SeriesStore(
+      new StaticDataset(x, y),
+      { mode: "scatter", capacity: 120 },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    const first = new Float32Array(20);
+    const second = new Float32Array(20);
+    const firstCount = series.copyScatterVisible({ xMin: 0, xMax: 99, yMin: 0, yMax: 2 }, first, 10, 100, 100, 0);
+    const secondCount = series.copyScatterVisible({ xMin: 1, xMax: 100, yMin: 0, yMax: 2 }, second, 10, 100, 100, 0);
+
+    const firstX = Array.from(first.subarray(0, firstCount * 2)).filter((_, index) => index % 2 === 0);
+    const secondX = Array.from(second.subarray(0, secondCount * 2)).filter((_, index) => index % 2 === 0);
+
+    expect(firstX.slice(0, 6)).toEqual([8, 24, 40, 56, 72, 88]);
+    expect(secondX.slice(0, 6)).toEqual(firstX.slice(0, 6));
+  });
+
   it("can include immediate outer samples in visible ranges", () => {
     const series = makeSeries();
     series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([0, 0, 0, 0]));
@@ -300,14 +352,14 @@ describe("SeriesStore no-LOD", () => {
     expect(series.hasLOD).toBe(true);
   });
 
-  it("skips pyramid for scatter series when downsample is omitted", () => {
+  it("has pyramid for scatter series when downsample is omitted", () => {
     const series = new SeriesStore(
       new RingBuffer(8),
       { mode: "scatter", capacity: 8 },
       { color: [1, 1, 1, 1], lineWidth: 1 },
     );
 
-    expect(series.hasLOD).toBe(false);
+    expect(series.hasLOD).toBe(true);
   });
 
   it("has pyramid for bar series when downsample is omitted", () => {

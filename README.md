@@ -190,7 +190,7 @@ Built-in plugins are optional. `interactionsPlugin()` provides plain-drag box zo
 | `capacity` | Ring buffer capacity (samples). |
 | `id?` / `name?` | Optional metadata exposed to plugins, legend, and tooltip rows. |
 | `yAxis?` | `"left"` or `"right"`; selects the primary or secondary Y viewport/axis for this series. |
-| `downsample` | `"minmax"` or `"none"`. Min/max LOD applies to line and bar rendering; area/scatter skip LOD. |
+| `downsample` | `"minmax"` or `"none"`. Min/max LOD applies to line/bar rendering. Scatter with LOD uses a 2D viewport-aware point sampler; scatter with `"none"` renders exact 2D-culled chunks. Area renders raw sampled strips. |
 
 ### `SeriesStyle`
 

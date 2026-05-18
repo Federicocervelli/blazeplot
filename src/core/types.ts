@@ -91,6 +91,23 @@ export interface VisibleSampleCopyDataset extends Dataset {
 }
 
 /**
+ * Optional high-performance extraction capability for point/scatter datasets.
+ * Implementations should cull against the full 2D viewport and may sample in
+ * screen space so dense point clouds respond to both X and Y zoom.
+ */
+export interface VisiblePointCopyDataset extends Dataset {
+  copyVisiblePoints(
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    xOrigin: number,
+    pixelWidth: number,
+    pixelHeight: number,
+    pointSize: number,
+  ): number;
+}
+
+/**
  * Optional high-performance min/max extraction capability for dense rendering.
  * Implementations can use pyramids, segment trees, database aggregates, or
  * analytic/procedural envelopes to emit renderer-ready min/max buckets.

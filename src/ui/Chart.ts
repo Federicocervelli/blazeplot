@@ -22,6 +22,8 @@ const FLOATS_PER_BAR_TRIANGLE = 12;
 const FLOATS_PER_OHLC_CANDLE = 12;
 const FLOATS_PER_OHLC_TUPLE = 5;
 const GRID_LINE_VERTEX_CAPACITY = 64;
+const DEFAULT_POINT_SIZE_PX = 4;
+const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
 
 export interface AxisConfig {
   readonly visible?: boolean;
@@ -780,27 +782,45 @@ export class Chart {
   }
 
   private drawScatterSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
-    const visibleSamples = series.visibleSampleCount(viewport);
-    if (visibleSamples > RAW_LINE_VERTEX_CAPACITY) {
-      const count = series.copyRawVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
-      if (count <= 0) return;
+    const pointSize = series.style.pointSize ?? DEFAULT_POINT_SIZE_PX;
 
-      this.uploadRawLineData(count);
-      this.renderer.drawPoints(this.rawLineBuffer, count, series.style, camera, this.canvas.width, this.canvas.height);
-      this.recordDraw("points", count);
+    const visibleSamples = series.visibleSampleCount(viewport);
+    if (series.config.downsample === "none" && visibleSamples <= MAX_EXACT_SCATTER_POINTS) {
+      const range = series.visibleIndexRange(viewport);
+      for (let start = range.start; start < range.end; start += RAW_LINE_VERTEX_CAPACITY) {
+        const count = series.copyScatterRange(
+          start,
+          Math.min(range.end, start + RAW_LINE_VERTEX_CAPACITY),
+          viewport,
+          this.rawLineData,
+          RAW_LINE_VERTEX_CAPACITY,
+          this.currentXOrigin,
+          this.canvas.height,
+          pointSize,
+        );
+        if (count <= 0) continue;
+
+        this.uploadRawLineData(count);
+        this.renderer.drawPoints(this.rawLineBuffer, count, series.style, camera, this.canvas.width, this.canvas.height);
+        this.recordDraw("points", count);
+      }
       return;
     }
 
-    const range = series.visibleIndexRange(viewport);
-    for (let start = range.start; start < range.end;) {
-      const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
-      if (count <= 0) break;
+    const count = series.copyScatterVisible(
+      viewport,
+      this.rawLineData,
+      RAW_LINE_VERTEX_CAPACITY,
+      this.canvas.width,
+      this.canvas.height,
+      pointSize,
+      this.currentXOrigin,
+    );
+    if (count <= 0) return;
 
-      this.uploadRawLineData(count);
-      this.renderer.drawPoints(this.rawLineBuffer, count, series.style, camera, this.canvas.width, this.canvas.height);
-      this.recordDraw("points", count);
-      start += count;
-    }
+    this.uploadRawLineData(count);
+    this.renderer.drawPoints(this.rawLineBuffer, count, series.style, camera, this.canvas.width, this.canvas.height);
+    this.recordDraw("points", count);
   }
 
   private drawBarSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {

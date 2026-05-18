@@ -1,4 +1,4 @@
-import type { Dataset, AppendableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
 function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
@@ -21,7 +21,13 @@ function hasCopyVisibleSamples(dataset: Dataset): dataset is VisibleSampleCopyDa
   return "copyVisibleSamples" in dataset;
 }
 
+function hasCopyVisiblePoints(dataset: Dataset): dataset is VisiblePointCopyDataset {
+  return "copyVisiblePoints" in dataset;
+}
+
 const NEAREST_POINT_LEAF_SIZE = 64;
+const SCATTER_INTERVAL_LEAF_SIZE = 64;
+const SCATTER_BUCKET_RANGE_PRUNE_SIZE = 1024;
 
 type PointSearchInterval = {
   readonly start: number;
@@ -51,7 +57,7 @@ export class SeriesStore {
   constructor(dataset: Dataset, config: SeriesConfig, style: SeriesStyle) {
     this.dataset = dataset;
     this.config = config;
-    this.pyramid = (config.mode === "line" || config.mode === "bar") && config.downsample !== "none" ? new MinMaxPyramid() : null;
+    this.pyramid = (config.mode === "line" || config.mode === "bar" || config.mode === "scatter") && config.downsample !== "none" ? new MinMaxPyramid() : null;
     this._useDatasetRangeMinMax = hasRangeMinMaxY(dataset);
     this.style = style;
 
@@ -272,6 +278,55 @@ export class SeriesStore {
     return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0, xOrigin);
   }
 
+  copyScatterVisible(
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    pixelWidth: number,
+    pixelHeight: number,
+    pointSize: number,
+    xOrigin: number = 0,
+  ): number {
+    return this.copyVisiblePoints(viewport, target, maxPoints, pixelWidth, pixelHeight, pointSize, xOrigin);
+  }
+
+  copyScatterRange(
+    start: number,
+    end: number,
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    xOrigin: number = 0,
+    pixelHeight: number = 0,
+    pointSize: number = 0,
+  ): number {
+    if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
+
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this.dataset.length, Math.ceil(end));
+    if (to <= from) return 0;
+
+    const yRange = viewport.yMax - viewport.yMin;
+    const height = Math.max(0, Math.floor(pixelHeight));
+    const safePointSize = Number.isFinite(pointSize) ? Math.max(0, pointSize) : 0;
+    const yPad = yRange > 0 && height > 0 ? ((safePointSize * 0.5) / height) * yRange : 0;
+    const yMin = viewport.yMin - yPad;
+    const yMax = viewport.yMax + yPad;
+
+    let count = 0;
+    for (let i = from; i < to && count < maxPoints; i++) {
+      const y = this.dataset.getY(i);
+      if (y < yMin || y > yMax) continue;
+
+      const offset = count * 2;
+      target[offset] = this.dataset.getX(i) - xOrigin;
+      target[offset + 1] = y;
+      count++;
+    }
+
+    return count;
+  }
+
   copyRawVisibleClipped(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
     return this.copyClippedVisibleLine(viewport, target, maxPoints, xOrigin, "data");
   }
@@ -452,6 +507,197 @@ export class SeriesStore {
     }
 
     return count;
+  }
+
+  private copyVisiblePoints(
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    pixelWidth: number,
+    pixelHeight: number,
+    pointSize: number,
+    xOrigin: number,
+  ): number {
+    if (hasCopyVisiblePoints(this.dataset)) {
+      return this.dataset.copyVisiblePoints(viewport, target, maxPoints, xOrigin, pixelWidth, pixelHeight, pointSize);
+    }
+
+    if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
+
+    const xRange = viewport.xMax - viewport.xMin;
+    const yRange = viewport.yMax - viewport.yMin;
+    const width = Math.max(1, Math.floor(pixelWidth));
+    const height = Math.max(1, Math.floor(pixelHeight));
+    if (xRange <= 0 || yRange <= 0) return 0;
+
+    const safePointSize = Number.isFinite(pointSize) ? Math.max(0, pointSize) : 0;
+    const pointRadius = safePointSize * 0.5;
+    const xPad = (pointRadius / width) * xRange;
+    const yPad = (pointRadius / height) * yRange;
+    const xMin = viewport.xMin - xPad;
+    const xMax = viewport.xMax + xPad;
+    const yMin = viewport.yMin - yPad;
+    const yMax = viewport.yMax + yPad;
+
+    const start = this.dataset.lowerBoundX(xMin);
+    const end = this.dataset.upperBoundX(xMax);
+    if (end <= start) return 0;
+
+    if (end - start <= maxPoints) {
+      return this.copyVisiblePointRange(start, end, yMin, yMax, target, maxPoints, xOrigin);
+    }
+
+    const hasIntervalBounds = this.hasPointIntervalBounds();
+    const fullRange = hasIntervalBounds ? this.pointIntervalMinMaxY(start, end) : null;
+    if (fullRange && (fullRange.maxY < yMin || fullRange.minY > yMax)) return 0;
+
+    if (end - start <= maxPoints * 4) {
+      const exact = this.copyVisiblePointsExact(start, end, yMin, yMax, target, maxPoints, xOrigin);
+      if (!exact.overflow) return exact.count;
+    }
+
+    const fullRangeInside = fullRange !== null && fullRange.minY >= yMin && fullRange.maxY <= yMax;
+    return this.copyVisiblePointBuckets(start, end, yMin, yMax, target, maxPoints, xOrigin, fullRangeInside, hasIntervalBounds);
+  }
+
+  private copyVisiblePointRange(
+    start: number,
+    end: number,
+    yMin: number,
+    yMax: number,
+    target: Float32Array,
+    maxPoints: number,
+    xOrigin: number,
+  ): number {
+    let count = 0;
+    for (let i = start; i < end && count < maxPoints; i++) {
+      const y = this.dataset.getY(i);
+      if (y < yMin || y > yMax) continue;
+
+      const offset = count * 2;
+      target[offset] = this.dataset.getX(i) - xOrigin;
+      target[offset + 1] = y;
+      count++;
+    }
+    return count;
+  }
+
+  private copyVisiblePointBuckets(
+    start: number,
+    end: number,
+    yMin: number,
+    yMax: number,
+    target: Float32Array,
+    maxPoints: number,
+    xOrigin: number,
+    fullRangeInside: boolean,
+    hasIntervalBounds: boolean,
+  ): number {
+    const sourceCount = end - start;
+    const bucketWidth = this.stableScatterBucketWidth(sourceCount, maxPoints);
+    const alignedStart = Math.floor(start / bucketWidth) * bucketWidth;
+    let count = 0;
+
+    const writeIndex = (index: number): void => {
+      const offset = count * 2;
+      target[offset] = this.dataset.getX(index) - xOrigin;
+      target[offset + 1] = this.dataset.getY(index);
+      count++;
+    };
+
+    for (let bucketStart = alignedStart; bucketStart < end && count < maxPoints; bucketStart += bucketWidth) {
+      const bucketEnd = Math.min(end, bucketStart + bucketWidth);
+      const visibleStart = Math.max(start, bucketStart);
+      if (bucketEnd <= visibleStart) continue;
+
+      const representative = Math.max(
+        visibleStart,
+        Math.min(bucketEnd - 1, bucketStart + (bucketWidth >> 1)),
+      );
+
+      if (fullRangeInside) {
+        writeIndex(representative);
+        continue;
+      }
+
+      const range = hasIntervalBounds && bucketEnd - visibleStart >= SCATTER_BUCKET_RANGE_PRUNE_SIZE
+        ? this.pointIntervalMinMaxY(visibleStart, bucketEnd)
+        : null;
+      if (range && (range.maxY < yMin || range.minY > yMax)) continue;
+      if (range && range.minY >= yMin && range.maxY <= yMax) {
+        writeIndex(representative);
+        continue;
+      }
+
+      for (let i = visibleStart; i < bucketEnd; i++) {
+        const y = this.dataset.getY(i);
+        if (y < yMin || y > yMax) continue;
+
+        const offset = count * 2;
+        target[offset] = this.dataset.getX(i) - xOrigin;
+        target[offset + 1] = y;
+        count++;
+        break;
+      }
+    }
+
+    return count;
+  }
+
+  private stableScatterBucketWidth(sourceCount: number, maxPoints: number): number {
+    const targetWidth = Math.max(1, Math.ceil(sourceCount / Math.max(1, maxPoints)));
+    if (targetWidth <= 8) return targetWidth;
+    return Math.ceil(targetWidth / 8) * 8;
+  }
+
+  private copyVisiblePointsExact(
+    start: number,
+    end: number,
+    yMin: number,
+    yMax: number,
+    target: Float32Array,
+    maxPoints: number,
+    xOrigin: number,
+  ): { count: number; overflow: boolean } {
+    let count = 0;
+    let overflow = false;
+    const hasIntervalBounds = this.hasPointIntervalBounds();
+
+    const writePoint = (index: number): boolean => {
+      const y = this.dataset.getY(index);
+      if (y < yMin || y > yMax) return true;
+      if (count >= maxPoints) {
+        overflow = true;
+        return false;
+      }
+
+      const offset = count * 2;
+      target[offset] = this.dataset.getX(index) - xOrigin;
+      target[offset + 1] = y;
+      count++;
+      return true;
+    };
+
+    const visitLinear = (from: number, to: number): boolean => {
+      for (let i = from; i < to; i++) {
+        if (!writePoint(i)) return false;
+      }
+      return true;
+    };
+
+    const visitInterval = (from: number, to: number): boolean => {
+      if (to <= from) return true;
+
+      const range = hasIntervalBounds ? this.pointIntervalMinMaxY(from, to) : null;
+      if (range && (range.maxY < yMin || range.minY > yMax)) return true;
+      if (to - from <= SCATTER_INTERVAL_LEAF_SIZE || !hasIntervalBounds) return visitLinear(from, to);
+
+      const mid = from + ((to - from) >> 1);
+      return visitInterval(from, mid) && visitInterval(mid, to);
+    };
+
+    visitInterval(start, end);
+    return { count, overflow };
   }
 
   private copyVisibleSamples(

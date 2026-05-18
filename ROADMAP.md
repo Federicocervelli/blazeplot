@@ -63,7 +63,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] `DataCursor` — binary search by X value
 - [x] Tests for `RingBuffer`, `MinMaxPyramid`, and `Camera2D`
 - [x] **General dataset abstraction** — `Dataset`/`AppendableDataset` interfaces. `RingBuffer` satisfies `AppendableDataset`. `StaticDataset` wraps any typed arrays. `MinMaxPyramid`/`DataCursor`/`SeriesStore` all accept `Dataset`. Same render path for streaming and static data.
-- [x] **LOD as a strategy, not a requirement** — `SeriesConfig.downsample` accepts `"minmax" | "none"` (optional, defaults to `"minmax"`). Area/scatter modes skip the pyramid entirely; line/bar use min/max when enabled, and render paths use raw visible samples when `hasLOD` is `false`.
+- [x] **LOD as a strategy, not a requirement** — `SeriesConfig.downsample` accepts `"minmax" | "none"` (optional, defaults to `"minmax"`). Line/bar use min/max when enabled, scatter uses exact 2D-culled chunks for `"none"` and a 2D viewport-aware point sampler with min/max interval pruning for LOD, and area renders raw sampled strips.
 - [x] **Incremental pyramid update** — current: O(log N) per append instead of full rebuild. Only recomputes the affected tail at each level. `SeriesStore` avoids repeated full rebuilds after fixed-capacity ring shifts and uses the generic `RangeMinMaxDataset.rangeMinMaxY()` capability for dense extraction; `RingBuffer` implements it with a physical segment tree for wrapped streaming queries.
 
 ---
@@ -72,7 +72,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 
 **Status: line, min/max, scatter, bar, and area rendering done; advanced modes and batching pending**
 
-Raw scatter and area rendering now chunk through all visible samples instead of stride-sampling at the upload-buffer limit, so no-LOD visual density remains stable for point/area traces.
+Scatter rendering now separates exact 2D visibility from decimation: `downsample: "none"` draws exact 2D-culled chunks, while LOD scatter first tries exact visible extraction and only falls back to screen-space cells when the visible point budget is exceeded. Area rendering samples raw strips for dense traces.
 
 - [x] `ReglBackend` — createBuffer, updateBuffer (subdata), createProgram, draw command cache
 - [x] Raw line strip for few visible points
