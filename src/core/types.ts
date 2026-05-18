@@ -147,6 +147,11 @@ export interface AppendableDataset extends Dataset {
   clear(): void;
 }
 
+export interface YAppendableDataset extends Dataset {
+  appendY(y: ArrayLike<number>): void;
+  clear(): void;
+}
+
 export type LODStrategy = "minmax" | "none";
 export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
 

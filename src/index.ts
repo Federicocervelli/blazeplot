@@ -15,5 +15,5 @@ export { MinMaxPyramid } from "./core/MinMaxPyramid.js";
 export { Camera2D } from "./interaction/Camera2D.js";
 export { AxisController } from "./interaction/AxisController.js";
 export type { AxisControllerAxisOptions, AxisControllerOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
-export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, SeriesSample, LODStrategy, BufferOverflowStrategy, Dataset, AcceleratedDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout, AppendableDataset } from "./core/types.js";
+export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, SeriesSample, LODStrategy, BufferOverflowStrategy, Dataset, AcceleratedDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout, AppendableDataset, YAppendableDataset } from "./core/types.js";
 export type { PanIntent, ZoomAxis, ZoomIntent, ViewportPolicy } from "./interaction/types.js";

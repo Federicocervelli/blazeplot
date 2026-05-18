@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
 import { RingBuffer } from "../../src/core/RingBuffer.ts";
 import { StaticDataset } from "../../src/core/StaticDataset.ts";
+import { UniformRingBuffer } from "../../src/core/UniformRingBuffer.ts";
 import type { RangeMinMaxDataset, TimeRange } from "../../src/core/types.ts";
 
 function makeSeries(): SeriesStore {
@@ -90,6 +91,22 @@ describe("SeriesStore", () => {
 
     expect(count).toBe(3);
     expect(Array.from(raw)).toEqual([0, 4, 1, -1, 2, 7]);
+  });
+
+  it("appends y-only batches to datasets that support implicit x", () => {
+    const series = new SeriesStore(
+      new UniformRingBuffer(4, { xStart: 10, xStep: 5 }),
+      { mode: "line", capacity: 4, downsample: "minmax" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    series.appendY(new Float32Array([4, -1, 7]));
+
+    expect(series.length).toBe(3);
+    const raw = new Float32Array(6);
+    const count = series.copyRawVisible({ xMin: 10, xMax: 20, yMin: -10, yMax: 10 }, raw, 3);
+    expect(count).toBe(3);
+    expect(Array.from(raw)).toEqual([10, 4, 15, -1, 20, 7]);
   });
 
   it("copies visible min/max segments", () => {

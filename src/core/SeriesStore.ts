@@ -1,4 +1,4 @@
-import type { Dataset, AppendableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, YAppendableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
 function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
@@ -7,6 +7,10 @@ function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
 
 function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
   return "getOpen" in dataset && "getHigh" in dataset && "getLow" in dataset && "getClose" in dataset;
+}
+
+function hasAppendY(dataset: Dataset): dataset is YAppendableDataset {
+  return "appendY" in dataset;
 }
 
 function hasCopySamplesRange(dataset: Dataset): dataset is RangeSampleCopyDataset {
@@ -95,6 +99,19 @@ export class SeriesStore {
 
     const appendable = this.dataset as AppendableDataset;
     appendable.append(x, y);
+    this._dirty = true;
+  }
+
+  appendY(y: ArrayLike<number>): void {
+    if (!hasAppendY(this.dataset)) {
+      throw new TypeError("SeriesStore dataset does not support appendY.");
+    }
+
+    this.dataset.appendY(y);
+    this._dirty = true;
+  }
+
+  markDirty(): void {
     this._dirty = true;
   }
 
