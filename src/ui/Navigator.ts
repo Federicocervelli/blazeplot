@@ -15,6 +15,7 @@ export interface NavigatorPluginOptions {
   readonly windowFill?: string;
   readonly windowStroke?: string;
   readonly handleWidth?: number;
+  readonly handleHitWidth?: number;
   readonly zIndex?: number;
   readonly reserveSpace?: boolean;
   readonly margin?: number;
@@ -114,6 +115,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
   const placement = options.placement ?? "bottom";
   const maxSamplesPerSeries = Math.max(16, options.maxSamplesPerSeries ?? 512);
   const handleWidth = Math.max(4, options.handleWidth ?? 8);
+  const handleHitWidth = Math.max(handleWidth, options.handleHitWidth ?? 18);
   const reservationId = `navigator-${Math.random().toString(36).slice(2)}`;
   let chartRef: Chart | null = null;
   let root: HTMLDivElement | null = null;
@@ -121,6 +123,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
   let windowRect: SVGRectElement | null = null;
   let leftHandle: SVGRectElement | null = null;
   let rightHandle: SVGRectElement | null = null;
+  let leftHandleHit: SVGRectElement | null = null;
+  let rightHandleHit: SVGRectElement | null = null;
   let paths: SVGPathElement[] = [];
   let domain: Domain | null = null;
   let drag: DragState | null = null;
@@ -140,7 +144,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
 
   const render = (): void => {
     const chart = chartRef;
-    if (!chart || !root || !overlay || !windowRect || !leftHandle || !rightHandle) return;
+    if (!chart || !root || !overlay || !windowRect || !leftHandle || !rightHandle || !leftHandleHit || !rightHandleHit) return;
     updateRootPosition();
     const selectedSeries = seriesList(chart, options.series);
     domain = computeDomain(selectedSeries, maxSamplesPerSeries);
@@ -197,6 +201,13 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       handle.setAttribute("width", String(handleWidth));
       handle.setAttribute("height", String(height));
     }
+    leftHandleHit.setAttribute("x", String(left - handleHitWidth * 0.5));
+    rightHandleHit.setAttribute("x", String(right - handleHitWidth * 0.5));
+    for (const handle of [leftHandleHit, rightHandleHit]) {
+      handle.setAttribute("y", "0");
+      handle.setAttribute("width", String(handleHitWidth));
+      handle.setAttribute("height", String(height));
+    }
   };
 
   const applyRange = (xMin: number, xMax: number): void => {
@@ -249,13 +260,23 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       windowRect.setAttribute("stroke", options.windowStroke ?? "rgba(191, 219, 254, 0.95)");
       leftHandle = svg("rect");
       rightHandle = svg("rect");
+      leftHandleHit = svg("rect");
+      rightHandleHit = svg("rect");
       for (const handle of [leftHandle, rightHandle]) {
         handle.setAttribute("fill", options.windowStroke ?? "rgba(191, 219, 254, 0.95)");
         handle.style.cursor = "ew-resize";
+        handle.style.pointerEvents = "none";
       }
+      for (const handle of [leftHandleHit, rightHandleHit]) {
+        handle.setAttribute("fill", "transparent");
+        handle.style.cursor = "ew-resize";
+      }
+      windowRect.style.cursor = "grab";
       overlay.appendChild(windowRect);
       overlay.appendChild(leftHandle);
       overlay.appendChild(rightHandle);
+      overlay.appendChild(leftHandleHit);
+      overlay.appendChild(rightHandleHit);
       root.appendChild(overlay);
       chart.rootElement.appendChild(root);
 
@@ -270,8 +291,14 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         const viewport = chart.getViewport();
         const left = dataToX(viewport.xMin, rect.width);
         const right = dataToX(viewport.xMax, rect.width);
-        const mode: DragMode = Math.abs(x - left) <= handleWidth ? "left" : Math.abs(x - right) <= handleWidth ? "right" : x >= left && x <= right ? "pan" : "pan";
+        const target = event.target;
+        const mode: DragMode = target === leftHandleHit || Math.abs(x - left) <= handleHitWidth * 0.5
+          ? "left"
+          : target === rightHandleHit || Math.abs(x - right) <= handleHitWidth * 0.5
+            ? "right"
+            : "pan";
         drag = { mode, startClientX: event.clientX, startXMin: viewport.xMin, startXMax: viewport.xMax };
+        if (windowRect) windowRect.style.cursor = mode === "pan" ? "grabbing" : "ew-resize";
         root.setPointerCapture(event.pointerId);
         event.preventDefault();
       };
@@ -287,6 +314,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
 
       const onPointerUp = (event: PointerEvent): void => {
         if (root?.hasPointerCapture(event.pointerId)) root.releasePointerCapture(event.pointerId);
+        if (windowRect) windowRect.style.cursor = "grab";
         drag = null;
       };
 
@@ -316,6 +344,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         windowRect = null;
         leftHandle = null;
         rightHandle = null;
+        leftHandleHit = null;
+        rightHandleHit = null;
         paths = [];
         domain = null;
         drag = null;
