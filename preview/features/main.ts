@@ -23,6 +23,14 @@ const throughput = Float32Array.from({ length: count }, (_, i) => 90 + Math.sin(
 const incidents = Float32Array.from({ length: count }, (_, i) => i % 53 === 0 ? 96 : -999);
 
 let logLines: string[] = [];
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "UTC",
+});
+const valueFormatter = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 5 });
 
 const hero = new Chart(heroTarget, {
 
@@ -128,10 +136,9 @@ function formatTooltipItem(item: { readonly x: number; readonly y: number }): st
 }
 
 function formatValue(value: number): string {
-  return Number(value.toPrecision(5)).toString();
+  return valueFormatter.format(value);
 }
 
 function formatDate(value: number): string {
-  const date = new Date(value);
-  return `${date.getUTCMonth() + 1}/${date.getUTCDate()} ${String(date.getUTCHours()).padStart(2, "0")}:00`;
+  return dateFormatter.format(new Date(value));
 }
