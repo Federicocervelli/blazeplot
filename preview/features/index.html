@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BlazePlot Feature Preview</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root { color-scheme: dark; }
+    html, body { margin: 0; width: 100%; min-height: 100%; background: #020617; color: #e2e8f0; }
+    body { font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    a { color: #7dd3fc; }
+    #app { min-height: 100vh; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 12px 16px;
+      background: rgb(15 23 42 / 0.92);
+      border-bottom: 1px solid rgb(148 163 184 / 0.2);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    h1 { font-size: 16px; margin: 0; }
+    main { min-height: 0; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr); gap: 12px; padding: 12px; }
+    .panel {
+      min-height: 0;
+      background: rgb(15 23 42 / 0.72);
+      border: 1px solid rgb(148 163 184 / 0.18);
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+    .panelHeader { padding: 10px 12px; border-bottom: 1px solid rgb(148 163 184 / 0.15); }
+    .panelHeader h2 { margin: 0 0 3px; font-size: 13px; }
+    .panelHeader p { margin: 0; color: #94a3b8; font-size: 12px; }
+    #heroChart { height: 58vh; min-height: 440px; }
+    #linkedCharts { height: 34vh; min-height: 280px; }
+    #side { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 12px; }
+    #events, #notes { padding: 12px; }
+    #events pre {
+      margin: 8px 0 0;
+      white-space: pre-wrap;
+      color: #cbd5e1;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; }
+    .chip { border: 1px solid rgb(125 211 252 / 0.28); color: #bae6fd; border-radius: 999px; padding: 4px 8px; background: rgb(14 165 233 / 0.10); font-size: 12px; }
+    ul { margin: 8px 0 0 18px; padding: 0; color: #cbd5e1; }
+    button {
+      background: #0f172a;
+      border: 1px solid rgb(148 163 184 / 0.35);
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 5px 8px;
+      cursor: pointer;
+    }
+    @media (max-width: 980px) {
+      main { grid-template-columns: 1fr; }
+      #heroChart { height: 520px; }
+      #linkedCharts { height: 360px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>BlazePlot feature preview</h1>
+      <nav><a href="/">streaming preview</a></nav>
+    </header>
+    <main>
+      <section class="panel">
+        <div class="panelHeader">
+          <h2>New chart features</h2>
+          <p>Drag to brush-select. Wheel zoom. Shift-drag pan. Move cursor for crosshair/ruler and tooltip. Use the navigator handles at the bottom.</p>
+        </div>
+        <div id="heroChart"></div>
+      </section>
+
+      <aside id="side">
+        <section class="panel">
+          <div class="panelHeader"><h2>Included on this page</h2></div>
+          <div class="chips">
+            <span class="chip">time axis</span>
+            <span class="chip">tick formatter</span>
+            <span class="chip">titles</span>
+            <span class="chip">selection</span>
+            <span class="chip">events</span>
+            <span class="chip">crosshair</span>
+            <span class="chip">navigator</span>
+            <span class="chip">linked charts</span>
+            <span class="chip">log scale ticks</span>
+          </div>
+        </section>
+        <section id="events" class="panel">
+          <strong>Live event log</strong>
+          <button id="resetButton" type="button">reset views</button>
+          <pre id="eventLog">waiting for interaction…</pre>
+        </section>
+        <section id="notes" class="panel">
+          <strong>Try this</strong>
+          <ul>
+            <li>Drag on the main chart to create a selection.</li>
+            <li>Drag navigator window/handles to browse history.</li>
+            <li>Scroll to zoom, Shift-drag to pan.</li>
+            <li>Move across linked panels: their X view stays synchronized.</li>
+          </ul>
+        </section>
+      </aside>
+
+      <section class="panel" style="grid-column: 1 / -1;">
+        <div class="panelHeader">
+          <h2>Linked multi-chart layout</h2>
+          <p>Two independent Y ranges with shared X camera synchronization and per-panel titles.</p>
+        </div>
+        <div id="linkedCharts"></div>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="/features/main.ts"></script>
+</body>
+</html>
