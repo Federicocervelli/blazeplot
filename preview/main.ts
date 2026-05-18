@@ -6,7 +6,6 @@ import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import {
   DEFAULT_APPEND_RATE,
-  AUXILIARY_HISTORY_SAMPLES,
   HISTORY_SAMPLES,
   LIVE_BATCH_SIZE,
   OHLC_HISTORY_CAPACITY,
@@ -352,8 +351,7 @@ function updateOverlay(): void {
       `target append rate: ${appendRate.toLocaleString()} points/sec`,
       `actual append rate: ${actualAppendRate.toFixed(0)} points/sec`,
       `view samples: ${viewSamples.toLocaleString()}`,
-      `line history span: ${HISTORY_SAMPLES.toLocaleString()}`,
-      `aux history span: ${AUXILIARY_HISTORY_SAMPLES.toLocaleString()}`,
+      `history span: ${HISTORY_SAMPLES.toLocaleString()}`,
       `sparse capacity: ${SPARSE_HISTORY_CAPACITY.toLocaleString()}`,
       `ohlc capacity: ${OHLC_HISTORY_CAPACITY.toLocaleString()}`,
       `stream ticks/sec: ${fps.toFixed(1)}`,

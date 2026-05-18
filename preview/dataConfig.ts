@@ -8,12 +8,10 @@ export const TRACE_PERIOD = VIEW_SAMPLES;
 export const SPARSE_INTERVAL = 60; // one sparse point per minute
 export const OHLC_INTERVAL = SPARSE_INTERVAL * 5; // five-minute candles
 
-// Dense line data is procedural and can expose a billion-sample logical history
-// cheaply. Stored auxiliary series keep a smaller rolling window so the preview
-// remains lightweight while the main line still demonstrates huge view spans.
-export const AUXILIARY_HISTORY_SAMPLES = VIEW_SAMPLES * 7;
-export const SPARSE_HISTORY_CAPACITY = Math.ceil(AUXILIARY_HISTORY_SAMPLES / SPARSE_INTERVAL) + 2;
-export const OHLC_HISTORY_CAPACITY = Math.ceil(AUXILIARY_HISTORY_SAMPLES / OHLC_INTERVAL) + 2;
+// One billion logical samples; sparse and OHLC series allocate proportionally
+// to their lower sample rates so they cover the same full history span.
+export const SPARSE_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / SPARSE_INTERVAL) + 2;
+export const OHLC_HISTORY_CAPACITY = Math.ceil(HISTORY_SAMPLES / OHLC_INTERVAL) + 2;
 export const Y_VIEW = { yMin: -1.25, yMax: 1.35 } as const;
 
 export interface PreviewDataBatch {
