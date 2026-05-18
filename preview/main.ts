@@ -63,8 +63,6 @@ let frames = 0;
 let lastBatchSize = 0;
 let lastStatsAt = performance.now();
 let workerPending = false;
-let lastLiveGeneratedAt = Date.now();
-let liveTimeOffset = lastLiveGeneratedAt - (PREVIEW_START_TIME + VIEW_SAMPLES * PREVIEW_X_STEP_MS);
 let followLive = true;
 let streaming = true;
 let syncX = true;
@@ -272,10 +270,6 @@ function appendGeneratedBatch(batch: PreviewDataBatch): void {
   }
 
   t = batch.end;
-  if (batch.start < VIEW_SAMPLES && t >= VIEW_SAMPLES) {
-    lastLiveGeneratedAt = Date.now();
-    liveTimeOffset = lastLiveGeneratedAt - (PREVIEW_START_TIME + VIEW_SAMPLES * PREVIEW_X_STEP_MS);
-  }
   lastBatchSize = batch.batchSize;
   frames++;
   workerPending = false;
@@ -306,9 +300,7 @@ function nextBatchSize(): number | undefined {
   const due = Math.floor((now - latestGeneratedTime) / PREVIEW_X_STEP_MS);
   if (due <= 0) return 0;
 
-  const batchSize = Math.min(LIVE_BATCH_SIZE, due);
-  lastLiveGeneratedAt = latestGeneratedTime + batchSize * PREVIEW_X_STEP_MS;
-  return batchSize;
+  return Math.min(LIVE_BATCH_SIZE, due);
 }
 
 function updateOverlay(): void {
@@ -380,7 +372,7 @@ function liveXViewport(): { xMin: number; xMax: number } {
 }
 
 function sampleToTime(sample: number): number {
-  return PREVIEW_START_TIME + sample * PREVIEW_X_STEP_MS + liveTimeOffset;
+  return PREVIEW_START_TIME + sample * PREVIEW_X_STEP_MS;
 }
 
 async function downloadScreenshot(): Promise<void> {
