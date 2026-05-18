@@ -68,6 +68,10 @@ function rgba(color: readonly [number, number, number, number]): string {
   return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
 function countSamplesInRange(chart: Chart, xMin: number, xMax: number): number {
   const viewport = { xMin, xMax, yMin: -Infinity, yMax: Infinity };
   let total = 0;
@@ -141,6 +145,29 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
     if (root) root.style.display = visible ? "block" : "none";
   };
 
+  const placeLabel = (position: CrosshairPosition): void => {
+    const chart = chartRef;
+    if (!chart || !label) return;
+    const offsetX = 12;
+    const offsetY = 12;
+    const labelRect = label.getBoundingClientRect();
+    const margin = 4;
+    const plotWidth = Math.max(1, chart.canvas.clientWidth);
+    const plotHeight = Math.max(1, chart.canvas.clientHeight);
+    const left = clamp(
+      position.plotX + offsetX,
+      margin,
+      Math.max(margin, plotWidth - labelRect.width - margin),
+    );
+    const top = clamp(
+      position.plotY + offsetY,
+      margin,
+      Math.max(margin, plotHeight - labelRect.height - margin),
+    );
+    label.style.left = `${left}px`;
+    label.style.top = `${top}px`;
+  };
+
   const renderPosition = (position: CrosshairPosition | null): void => {
     if (!position || !root || !vertical || !horizontal || !label) {
       setVisible(false);
@@ -153,13 +180,12 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
     horizontal.style.top = `${position.plotY}px`;
     if (options.label !== false) {
       label.style.display = "block";
-      label.style.left = `${Math.min(position.plotX + 8, Math.max(0, chartRef!.canvas.clientWidth - 96))}px`;
-      label.style.top = `${Math.max(0, position.plotY - 24)}px`;
       if (options.render) {
         options.render(position, label, chartRef!);
       } else {
         renderDefaultLabel(position, label, formatX, formatY, options.formatter);
       }
+      placeLabel(position);
     } else {
       label.style.display = "none";
     }
@@ -215,7 +241,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
       root.style.inset = "0";
       root.style.display = "none";
       root.style.pointerEvents = "none";
-      root.style.zIndex = String(options.zIndex ?? 20);
+      root.style.zIndex = String(options.zIndex ?? 10_000);
 
       vertical = document.createElement("div");
       vertical.style.position = "absolute";
