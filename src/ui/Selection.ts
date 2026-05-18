@@ -282,6 +282,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         committedSelection = selection;
         setOverlay(selection.plotBounds);
         notifySeriesSelection(chart, selection);
+        chart.emitSelect(selection);
         emit("commit", selection, event);
       };
 
@@ -292,6 +293,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         committedSelection = null;
         setOverlay(null);
         notifySeriesSelection(chart, null);
+        chart.emitSelect(null);
         emit("clear", null, event);
       };
 
@@ -317,6 +319,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     clear(): void {
       committedSelection = null;
       setOverlay(null);
+      chartRef?.emitSelect(null);
       notifySeriesSelection(chartRef, null);
       emit("clear", null);
     },

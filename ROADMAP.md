@@ -190,9 +190,9 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Theme title fonts, colors, spacing, and alignment.
 
 5. **Richer event API**
-   - [ ] Add typed subscriptions for `click`, `dblclick`, `pointerdown`, `pointerup`, `pointermove`, `viewportchange`, `select`, and `seriesclick`.
-   - [ ] Include data coordinates, plot/client coordinates, target series, nearest sample, and active modifier keys where relevant.
-   - [ ] Keep plugin-facing events stable and avoid DOM implementation leaks.
+   - [x] Add typed subscriptions for `click`, `dblclick`, `pointerdown`, `pointerup`, `pointermove`, `viewportchange`, `select`, and `seriesclick`.
+   - [x] Include data coordinates, plot/client coordinates, target series, nearest sample, and active modifier keys where relevant.
+   - [x] Keep plugin-facing events stable and avoid DOM implementation leaks.
 
 8. **Navigator / overview mini-map plugin**
    - [ ] Add a small overview plot with draggable visible-window handles.

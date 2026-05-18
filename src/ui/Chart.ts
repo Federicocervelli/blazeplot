@@ -104,6 +104,38 @@ export interface ChartPickItem extends SeriesSample {
   readonly clientY: number;
 }
 
+export type ChartPointerEventType = "click" | "dblclick" | "pointerdown" | "pointerup" | "pointermove";
+
+export interface ChartPointerEventState {
+  readonly type: ChartPointerEventType;
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly plotX: number;
+  readonly plotY: number;
+  readonly dataX: number;
+  readonly dataY: number;
+  readonly button: number;
+  readonly buttons: number;
+  readonly altKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly metaKey: boolean;
+  readonly shiftKey: boolean;
+  readonly items: readonly ChartPickItem[];
+}
+
+export interface ChartSeriesClickEvent extends ChartPointerEventState {
+  readonly item: ChartPickItem;
+}
+
+export interface ChartViewportChangeEvent {
+  readonly viewport: Viewport;
+  readonly rightViewport: Viewport;
+}
+
+export interface ChartSelectEvent<T = unknown> {
+  readonly selection: T;
+}
+
 export interface ChartHoverState {
   readonly clientX: number;
   readonly clientY: number;
@@ -232,6 +264,16 @@ export class Chart {
   private readonly seriesSubscribers = new Set<() => void>();
   private readonly themeSubscribers = new Set<() => void>();
   private readonly renderSubscribers = new Set<(chart: Chart) => void>();
+  private readonly viewportSubscribers = new Set<(event: ChartViewportChangeEvent) => void>();
+  private readonly selectSubscribers = new Set<(event: ChartSelectEvent) => void>();
+  private readonly seriesClickSubscribers = new Set<(event: ChartSeriesClickEvent) => void>();
+  private readonly pointerSubscribers: Record<ChartPointerEventType, Set<(event: ChartPointerEventState) => void>> = {
+    click: new Set(),
+    dblclick: new Set(),
+    pointerdown: new Set(),
+    pointerup: new Set(),
+    pointermove: new Set(),
+  };
   private currentHover: ChartHoverState | null = null;
   private lastPointerClientX: number = 0;
   private lastPointerClientY: number = 0;
@@ -244,6 +286,21 @@ export class Chart {
     this.lastPointerClientX = event.clientX;
     this.lastPointerClientY = event.clientY;
     this.refreshHover();
+    this.emitPointerEvent("pointermove", event);
+  };
+  private readonly handlePointerDown = (event: PointerEvent): void => {
+    this.emitPointerEvent("pointerdown", event);
+  };
+  private readonly handlePointerUp = (event: PointerEvent): void => {
+    this.emitPointerEvent("pointerup", event);
+  };
+  private readonly handleClick = (event: MouseEvent): void => {
+    const pointerEvent = this.emitPointerEvent("click", event);
+    const item = pointerEvent?.items[0];
+    if (pointerEvent && item) this.emitSeriesClick({ ...pointerEvent, item });
+  };
+  private readonly handleDoubleClick = (event: MouseEvent): void => {
+    this.emitPointerEvent("dblclick", event);
   };
   private readonly handlePointerLeave = (): void => {
     this.pointerInPlot = false;
@@ -285,7 +342,11 @@ export class Chart {
     this.updateTextOverlays();
 
     this.canvas.addEventListener("pointermove", this.handlePointerMove);
+    this.canvas.addEventListener("pointerdown", this.handlePointerDown);
+    this.canvas.addEventListener("pointerup", this.handlePointerUp);
     this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
+    this.canvas.addEventListener("click", this.handleClick);
+    this.canvas.addEventListener("dblclick", this.handleDoubleClick);
 
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -366,12 +427,14 @@ export class Chart {
   pan(intent: PanIntent): void {
     this.camera.pan(intent);
     this.syncRightCameraX();
+    this.emitViewportChange();
     this.refreshHover();
   }
 
   zoom(intent: ZoomIntent): void {
     this.camera.zoom(intent);
     this.syncRightCameraX();
+    this.emitViewportChange();
     this.refreshHover();
   }
 
@@ -457,11 +520,13 @@ export class Chart {
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void {
     this.camera.setViewport(v);
     this.rightCamera.setViewport(v);
+    this.emitViewportChange();
     this.refreshHover();
   }
 
   setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number }): void {
     this.getCamera(yAxis).setViewport(v);
+    this.emitViewportChange();
     this.refreshHover();
   }
 
@@ -489,7 +554,21 @@ export class Chart {
   subscribe(event: "serieschange", callback: () => void): () => void;
   subscribe(event: "themechange", callback: () => void): () => void;
   subscribe(event: "render", callback: (chart: Chart) => void): () => void;
-  subscribe(event: "hover" | "serieschange" | "themechange" | "render", callback: ((state: ChartHoverState | null) => void) | (() => void) | ((chart: Chart) => void)): () => void {
+  subscribe(event: "viewportchange", callback: (event: ChartViewportChangeEvent) => void): () => void;
+  subscribe(event: "select", callback: (event: ChartSelectEvent) => void): () => void;
+  subscribe(event: "seriesclick", callback: (event: ChartSeriesClickEvent) => void): () => void;
+  subscribe(event: ChartPointerEventType, callback: (event: ChartPointerEventState) => void): () => void;
+  subscribe(
+    event: "hover" | "serieschange" | "themechange" | "render" | "viewportchange" | "select" | "seriesclick" | ChartPointerEventType,
+    callback:
+      | ((state: ChartHoverState | null) => void)
+      | (() => void)
+      | ((chart: Chart) => void)
+      | ((event: ChartViewportChangeEvent) => void)
+      | ((event: ChartSelectEvent) => void)
+      | ((event: ChartSeriesClickEvent) => void)
+      | ((event: ChartPointerEventState) => void),
+  ): () => void {
     if (event === "hover") {
       const cb = callback as (state: ChartHoverState | null) => void;
       this.hoverSubscribers.add(cb);
@@ -508,9 +587,38 @@ export class Chart {
       return () => this.renderSubscribers.delete(cb);
     }
 
+    if (event === "viewportchange") {
+      const cb = callback as (event: ChartViewportChangeEvent) => void;
+      this.viewportSubscribers.add(cb);
+      return () => this.viewportSubscribers.delete(cb);
+    }
+
+    if (event === "select") {
+      const cb = callback as (event: ChartSelectEvent) => void;
+      this.selectSubscribers.add(cb);
+      return () => this.selectSubscribers.delete(cb);
+    }
+
+    if (event === "seriesclick") {
+      const cb = callback as (event: ChartSeriesClickEvent) => void;
+      this.seriesClickSubscribers.add(cb);
+      return () => this.seriesClickSubscribers.delete(cb);
+    }
+
+    if (event in this.pointerSubscribers) {
+      const cb = callback as (event: ChartPointerEventState) => void;
+      this.pointerSubscribers[event as ChartPointerEventType].add(cb);
+      return () => this.pointerSubscribers[event as ChartPointerEventType].delete(cb);
+    }
+
     const cb = callback as () => void;
     this.seriesSubscribers.add(cb);
     return () => this.seriesSubscribers.delete(cb);
+  }
+
+  emitSelect(selection: unknown): void {
+    const event: ChartSelectEvent = { selection };
+    for (const callback of this.selectSubscribers) callback(event);
   }
 
   setTheme(theme?: ChartTheme): void {
@@ -668,7 +776,11 @@ export class Chart {
     this.stop();
     this.resizeObserver?.disconnect();
     this.canvas.removeEventListener("pointermove", this.handlePointerMove);
+    this.canvas.removeEventListener("pointerdown", this.handlePointerDown);
+    this.canvas.removeEventListener("pointerup", this.handlePointerUp);
     this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
+    this.canvas.removeEventListener("click", this.handleClick);
+    this.canvas.removeEventListener("dblclick", this.handleDoubleClick);
     for (const dispose of this.pluginDisposers.splice(0)) dispose();
     this.axisOverlay?.dispose();
     this.renderer.dispose();
@@ -1242,6 +1354,50 @@ export class Chart {
   private emitHover(state: ChartHoverState | null): void {
     this.currentHover = state;
     for (const callback of this.hoverSubscribers) callback(state);
+  }
+
+  private emitPointerEvent(type: ChartPointerEventType, source: MouseEvent | PointerEvent): ChartPointerEventState | null {
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    const plotX = source.clientX - rect.left;
+    const plotY = source.clientY - rect.top;
+    if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
+
+    const viewport = this.camera.viewport;
+    const dataX = viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin);
+    const dataY = viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin);
+    const hover = this.pick(source.clientX, source.clientY, this.options.hover);
+    const event: ChartPointerEventState = {
+      type,
+      clientX: source.clientX,
+      clientY: source.clientY,
+      plotX,
+      plotY,
+      dataX,
+      dataY,
+      button: source.button,
+      buttons: source.buttons,
+      altKey: source.altKey,
+      ctrlKey: source.ctrlKey,
+      metaKey: source.metaKey,
+      shiftKey: source.shiftKey,
+      items: hover?.items ?? [],
+    };
+    for (const callback of this.pointerSubscribers[type]) callback(event);
+    return event;
+  }
+
+  private emitSeriesClick(event: ChartSeriesClickEvent): void {
+    for (const callback of this.seriesClickSubscribers) callback(event);
+  }
+
+  private emitViewportChange(): void {
+    const event: ChartViewportChangeEvent = {
+      viewport: this.camera.viewport,
+      rightViewport: this.rightCamera.viewport,
+    };
+    for (const callback of this.viewportSubscribers) callback(event);
   }
 
   private emitSeriesChange(): void {
