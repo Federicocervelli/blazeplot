@@ -46,6 +46,10 @@
       "types": "./dist/plugins/crosshair.d.ts",
       "import": "./dist/plugins/crosshair.js"
     },
+    "./plugins/navigator": {
+      "types": "./dist/plugins/navigator.d.ts",
+      "import": "./dist/plugins/navigator.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

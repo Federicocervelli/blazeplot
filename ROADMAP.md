@@ -195,10 +195,10 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Keep plugin-facing events stable and avoid DOM implementation leaks.
 
 8. **Navigator / overview mini-map plugin**
-   - [ ] Add a small overview plot with draggable visible-window handles.
-   - [ ] Support live streaming follow mode and manual historical browsing.
-   - [ ] Reuse existing LOD paths for large overview datasets.
-   - [ ] Allow height, placement, styles, and linked series configuration.
+   - [x] Add a small overview plot with draggable visible-window handles.
+   - [x] Support live streaming follow mode and manual historical browsing.
+   - [x] Reuse existing LOD paths for large overview datasets.
+   - [x] Allow height, placement, styles, and linked series configuration.
 
 9. **React wrapper package**
    - [ ] Add first-party `@blazeplot/react` package or subpath.

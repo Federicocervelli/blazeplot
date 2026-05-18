@@ -34,6 +34,7 @@ export default defineConfig(({ command, mode }) => {
           "plugins/annotations": resolve(__dirname, "src/plugins/annotations.ts"),
           "plugins/selection": resolve(__dirname, "src/plugins/selection.ts"),
           "plugins/crosshair": resolve(__dirname, "src/plugins/crosshair.ts"),
+          "plugins/navigator": resolve(__dirname, "src/plugins/navigator.ts"),
         },
         formats: ["es"],
         fileName: (_format, entryName) => `${entryName}.js`,
