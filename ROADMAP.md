@@ -161,6 +161,66 @@ Package status:
 
 ---
 
+## Competitive feature roadmap
+
+Prioritized additions based on gaps versus mature plotting libraries while preserving BlazePlot's fast WebGL2 streaming focus.
+
+1. **Time axis + tick formatters**
+   - [ ] Add `scale: "time"` support for X/Y axes where appropriate.
+   - [ ] Automatic time tick unit selection: ms, seconds, minutes, hours, days, months, years.
+   - [ ] Built-in timestamp/date formatters with local/UTC options.
+   - [ ] User-provided tick formatter callback per axis.
+
+2. **Brush / range selection plugin**
+   - [ ] Add drag-to-select X range, Y range, and XY rectangle selection modes.
+   - [ ] Expose selected data-space bounds and matching raw samples.
+   - [ ] Add configurable selected/unselected styling hooks.
+   - [ ] Emit selection lifecycle events: start, update, commit, clear.
+
+3. **Crosshair / ruler plugin**
+   - [ ] Add vertical/horizontal crosshair lines independent of tooltip rendering.
+   - [ ] Support shared crosshair across synced charts.
+   - [ ] Add measurement/ruler mode for delta X, delta Y, slope, and sample count.
+   - [ ] Allow styling, snapping mode, and axis readout configuration.
+
+4. **Chart titles and axis titles**
+   - [ ] Add chart title/subtitle DOM overlays inside `ChartLayout`.
+   - [ ] Add X/Y/Y2 axis title support for inside/outside axis layouts.
+   - [ ] Include titles in `chart.screenshot()` composition.
+   - [ ] Theme title fonts, colors, spacing, and alignment.
+
+5. **Richer event API**
+   - [ ] Add typed subscriptions for `click`, `dblclick`, `pointerdown`, `pointerup`, `pointermove`, `viewportchange`, `select`, and `seriesclick`.
+   - [ ] Include data coordinates, plot/client coordinates, target series, nearest sample, and active modifier keys where relevant.
+   - [ ] Keep plugin-facing events stable and avoid DOM implementation leaks.
+
+8. **Navigator / overview mini-map plugin**
+   - [ ] Add a small overview plot with draggable visible-window handles.
+   - [ ] Support live streaming follow mode and manual historical browsing.
+   - [ ] Reuse existing LOD paths for large overview datasets.
+   - [ ] Allow height, placement, styles, and linked series configuration.
+
+9. **React wrapper package**
+   - [ ] Add first-party `@blazeplot/react` package or subpath.
+   - [ ] Provide `BlazeChart` component with ref access to the underlying `Chart`.
+   - [ ] Handle mount/dispose, prop updates, plugin lifecycle, and resize automatically.
+   - [ ] Include examples for streaming data, tooltips, legends, and custom plugins.
+
+10. **More scales: built-in and configurable**
+   - [ ] Add built-in `linear`, `time`, `log`, and `symlog` scale implementations.
+   - [ ] Add optional built-in categorical/ordinal axis support for bar-like views.
+   - [ ] Provide a configurable/custom scale interface with `toScreen`, `fromScreen`, `ticks`, and `formatTick` hooks where feasible.
+   - [ ] Support reversed axes, log base configuration, symlog constant configuration, and domain validation.
+   - [ ] Ensure LOD/query paths remain data-space based and scale transforms are applied only at interaction/render mapping boundaries.
+
+11. **Linked multi-chart layout**
+   - [ ] Add a layout helper for stacked/side-by-side charts with shared X and independent Y axes.
+   - [ ] Support synchronized camera ranges, cursor/crosshair, selections, and tooltips.
+   - [ ] Allow configurable spacing/gutters between linked plot areas.
+   - [ ] Support per-panel titles, axes, legends, and series groups.
+
+---
+
 ## Backend strategy
 
 ```
