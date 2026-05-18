@@ -63,14 +63,22 @@ let frames = 0;
 let lastBatchSize = 0;
 let lastStatsAt = performance.now();
 let workerPending = false;
-let lastLiveGeneratedAt = PREVIEW_START_TIME + VIEW_SAMPLES * PREVIEW_X_STEP_MS;
+let lastLiveGeneratedAt = Date.now();
+let liveTimeOffset = lastLiveGeneratedAt - (PREVIEW_START_TIME + VIEW_SAMPLES * PREVIEW_X_STEP_MS);
 let followLive = true;
 let streaming = true;
 let syncX = true;
 let showPerfPanel = true;
 let currentTheme: PreviewTheme = "default";
+const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
+const numberFormatter = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 6 });
 const hoverOptions: { mode: ChartPickMode; group: ChartPickGroup } = { mode: "nearest-x", group: "x" };
-const tooltipOptions: { mode: ChartPickMode; group: ChartPickGroup; highlight: boolean } = { mode: hoverOptions.mode, group: hoverOptions.group, highlight: true };
+const tooltipOptions: { mode: ChartPickMode; group: ChartPickGroup; highlight: boolean; formatter: (item: { readonly x: number; readonly y: number }) => string } = {
+  mode: hoverOptions.mode,
+  group: hoverOptions.group,
+  highlight: true,
+  formatter: (item) => `(${dateFormatter.format(new Date(item.x))}, ${numberFormatter.format(item.y)})`,
+};
 const chartStats: ChartFrameStats = {
   fps: 0,
   frameMs: 0,
@@ -265,7 +273,8 @@ function appendGeneratedBatch(batch: PreviewDataBatch): void {
 
   t = batch.end;
   if (batch.start < VIEW_SAMPLES && t >= VIEW_SAMPLES) {
-    lastLiveGeneratedAt = PREVIEW_START_TIME + VIEW_SAMPLES * PREVIEW_X_STEP_MS;
+    lastLiveGeneratedAt = Date.now();
+    liveTimeOffset = lastLiveGeneratedAt - (PREVIEW_START_TIME + VIEW_SAMPLES * PREVIEW_X_STEP_MS);
   }
   lastBatchSize = batch.batchSize;
   frames++;
@@ -293,11 +302,12 @@ function nextBatchSize(): number | undefined {
   if (t < VIEW_SAMPLES) return undefined;
 
   const now = Date.now();
-  const due = Math.floor((now - lastLiveGeneratedAt) / PREVIEW_X_STEP_MS);
+  const latestGeneratedTime = sampleToTime(t);
+  const due = Math.floor((now - latestGeneratedTime) / PREVIEW_X_STEP_MS);
   if (due <= 0) return 0;
 
   const batchSize = Math.min(LIVE_BATCH_SIZE, due);
-  lastLiveGeneratedAt += batchSize * PREVIEW_X_STEP_MS;
+  lastLiveGeneratedAt = latestGeneratedTime + batchSize * PREVIEW_X_STEP_MS;
   return batchSize;
 }
 
@@ -370,7 +380,7 @@ function liveXViewport(): { xMin: number; xMax: number } {
 }
 
 function sampleToTime(sample: number): number {
-  return PREVIEW_START_TIME + sample * PREVIEW_X_STEP_MS;
+  return PREVIEW_START_TIME + sample * PREVIEW_X_STEP_MS + liveTimeOffset;
 }
 
 async function downloadScreenshot(): Promise<void> {
