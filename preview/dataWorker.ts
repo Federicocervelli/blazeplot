@@ -1,12 +1,10 @@
 import {
-  FILL_BATCH_SIZE,
   LIVE_BATCH_SIZE,
   OHLC_INTERVAL,
   PREVIEW_START_TIME,
   PREVIEW_X_STEP_MS,
   SPARSE_INTERVAL,
   TRACE_PERIOD,
-  VIEW_SAMPLES,
   type PreviewDataBatch,
   type PreviewDataWorkerRequest,
 } from "./dataConfig.ts";
@@ -37,8 +35,7 @@ worker.addEventListener("message", (event) => {
 
 function generateBatch(requestedBatchSize?: number): PreviewDataBatch {
   const start = t;
-  const defaultBatchSize = t < VIEW_SAMPLES ? Math.min(FILL_BATCH_SIZE, VIEW_SAMPLES - t) : LIVE_BATCH_SIZE;
-  const batchSize = Math.max(1, Math.floor(requestedBatchSize ?? defaultBatchSize));
+  const batchSize = Math.max(1, Math.floor(requestedBatchSize ?? LIVE_BATCH_SIZE));
   const end = start + batchSize;
   const sparseStart = Math.ceil(start / SPARSE_INTERVAL) * SPARSE_INTERVAL;
   const sparseCount = sparseStart < end ? Math.floor((end - 1 - sparseStart) / SPARSE_INTERVAL) + 1 : 0;

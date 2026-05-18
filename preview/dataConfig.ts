@@ -1,4 +1,3 @@
-export const FILL_BATCH_SIZE = 4_096;
 export const LIVE_BATCH_SIZE = 256;
 export const VIEW_SAMPLES = 86_400;
 export const PREVIEW_X_STEP_MS = 1;

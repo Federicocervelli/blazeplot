@@ -5,7 +5,6 @@ import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import {
-  FILL_BATCH_SIZE,
   HISTORY_SAMPLES,
   LIVE_BATCH_SIZE,
   OHLC_HISTORY_CAPACITY,
@@ -65,6 +64,8 @@ let lastStatsAt = performance.now();
 let workerPending = false;
 let followLive = true;
 let streaming = true;
+let streamClockStartedAt = performance.now();
+let streamPausedAt: number | null = null;
 let syncX = true;
 let showPerfPanel = true;
 let currentTheme: PreviewTheme = "default";
@@ -223,7 +224,17 @@ followToggle.addEventListener("change", () => {
   followLive = followToggle.checked;
 });
 streamToggle.addEventListener("change", () => {
-  streaming = streamToggle.checked;
+  const nextStreaming = streamToggle.checked;
+  if (nextStreaming === streaming) return;
+
+  const now = performance.now();
+  if (nextStreaming) {
+    if (streamPausedAt !== null) streamClockStartedAt += now - streamPausedAt;
+    streamPausedAt = null;
+  } else {
+    streamPausedAt = now;
+  }
+  streaming = nextStreaming;
 });
 syncXToggle.addEventListener("change", () => {
   syncX = syncXToggle.checked;
@@ -249,7 +260,6 @@ screenshotButton.addEventListener("click", () => {
 console.info("[blazeplot] chart initialized", {
   canvasWidth: canvas.width,
   canvasHeight: canvas.height,
-  fillBatchSize: FILL_BATCH_SIZE,
   liveBatchSize: LIVE_BATCH_SIZE,
 });
 
@@ -289,7 +299,7 @@ function stream(): void {
     const batchSize = nextBatchSize();
     if (!workerPending && batchSize !== 0) {
       workerPending = true;
-      dataWorker.postMessage(batchSize === undefined ? { type: "generate" } : { type: "generate", batchSize });
+      dataWorker.postMessage({ type: "generate", batchSize });
     }
   } else {
     lastBatchSize = 0;
@@ -299,12 +309,9 @@ function stream(): void {
   requestAnimationFrame(stream);
 }
 
-function nextBatchSize(): number | undefined {
-  if (t < VIEW_SAMPLES) return undefined;
-
-  const now = Date.now();
-  const latestGeneratedTime = sampleToTime(t);
-  const due = Math.floor((now - latestGeneratedTime) / PREVIEW_X_STEP_MS);
+function nextBatchSize(): number {
+  const targetSamples = Math.floor((performance.now() - streamClockStartedAt) / PREVIEW_X_STEP_MS);
+  const due = targetSamples - t;
   if (due <= 0) return 0;
 
   return Math.min(LIVE_BATCH_SIZE, due);
