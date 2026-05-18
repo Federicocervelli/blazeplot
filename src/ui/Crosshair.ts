@@ -41,9 +41,10 @@ export interface CrosshairPluginOptions {
   readonly formatY?: (value: number) => string;
   readonly formatter?: (item: ChartPickItem, position: CrosshairPosition) => string;
   readonly render?: (position: CrosshairPosition, container: HTMLElement, chart: Chart) => void;
-  readonly measurementFormatter?: (measurement: RulerMeasurement) => string;
-  readonly renderMeasurement?: (measurement: RulerMeasurement, container: HTMLElement, chart: Chart) => void;
   readonly onMove?: (position: CrosshairPosition | null) => void;
+  readonly onMeasureStart?: (position: CrosshairPosition) => void;
+  readonly onMeasureChange?: (measurement: RulerMeasurement) => void;
+  readonly onMeasureEnd?: (measurement: RulerMeasurement) => void;
   readonly onMeasure?: (measurement: RulerMeasurement) => void;
 }
 
@@ -135,25 +136,6 @@ function renderDefaultLabel(
   container.innerHTML = html;
 }
 
-function renderDefaultMeasurement(
-  measurement: RulerMeasurement,
-  container: HTMLElement,
-  formatX: (value: number) => string,
-  formatY: (value: number) => string,
-  formatter: CrosshairPluginOptions["measurementFormatter"],
-): void {
-  if (formatter) {
-    container.textContent = formatter(measurement);
-    return;
-  }
-  container.innerHTML = [
-    `Δx ${formatX(measurement.deltaX)}`,
-    `Δy ${formatY(measurement.deltaY)}`,
-    `slope ${Number.isFinite(measurement.slope) ? formatNumber(measurement.slope) : "∞"}`,
-    `samples ${measurement.sampleCount.toLocaleString()}`,
-  ].join("<br>");
-}
-
 export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlugin {
   const axis = options.axis ?? "xy";
   const yAxis = options.yAxis ?? "left";
@@ -235,18 +217,6 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
     };
   };
 
-  const renderMeasurementLabel = (measurement: RulerMeasurement): void => {
-    const chart = chartRef;
-    if (!chart || !label) return;
-    label.style.display = "block";
-    if (options.renderMeasurement) {
-      options.renderMeasurement(measurement, label, chart);
-    } else {
-      renderDefaultMeasurement(measurement, label, formatX, formatY, options.measurementFormatter);
-    }
-    placeLabel(measurement.end);
-  };
-
   const renderRuler = (end: CrosshairPosition | null): void => {
     const chart = chartRef;
     if (!chart || !rulerSvg || !rulerLine || !rulerStart || !end) return;
@@ -255,7 +225,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
     rulerLine.setAttribute("y1", String(rulerStart.plotY));
     rulerLine.setAttribute("x2", String(end.plotX));
     rulerLine.setAttribute("y2", String(end.plotY));
-    renderMeasurementLabel(measurementFrom(rulerStart, end, chart));
+    options.onMeasureChange?.(measurementFrom(rulerStart, end, chart));
   };
 
   const emitShared = (position: CrosshairPosition): void => {
@@ -367,6 +337,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
         if (mode !== "ruler" || event.button !== 0 || !hasModifier(event, rulerModifier)) return;
         rulerStart = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         if (rulerStart) {
+          options.onMeasureStart?.(rulerStart);
           event.preventDefault();
           event.stopImmediatePropagation();
         }
@@ -378,7 +349,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
         const end = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         if (!end) return;
         const measurement = measurementFrom(rulerStart, end, chart);
-        renderMeasurementLabel(measurement);
+        options.onMeasureEnd?.(measurement);
         options.onMeasure?.(measurement);
         rulerStart = null;
       };
