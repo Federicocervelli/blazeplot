@@ -33,6 +33,7 @@ export default defineConfig(({ command, mode }) => {
           "plugins/interactions": resolve(__dirname, "src/plugins/interactions.ts"),
           "plugins/annotations": resolve(__dirname, "src/plugins/annotations.ts"),
           "plugins/selection": resolve(__dirname, "src/plugins/selection.ts"),
+          "plugins/crosshair": resolve(__dirname, "src/plugins/crosshair.ts"),
         },
         formats: ["es"],
         fileName: (_format, entryName) => `${entryName}.js`,

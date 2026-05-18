@@ -42,6 +42,10 @@
       "types": "./dist/plugins/selection.d.ts",
       "import": "./dist/plugins/selection.js"
     },
+    "./plugins/crosshair": {
+      "types": "./dist/plugins/crosshair.d.ts",
+      "import": "./dist/plugins/crosshair.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

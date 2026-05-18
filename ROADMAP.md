@@ -178,10 +178,10 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Emit selection lifecycle events: start, update, commit, clear.
 
 3. **Crosshair / ruler plugin**
-   - [ ] Add vertical/horizontal crosshair lines independent of tooltip rendering.
-   - [ ] Support shared crosshair across synced charts.
-   - [ ] Add measurement/ruler mode for delta X, delta Y, slope, and sample count.
-   - [ ] Allow styling, snapping mode, and axis readout configuration.
+   - [x] Add vertical/horizontal crosshair lines independent of tooltip rendering.
+   - [x] Support shared crosshair across synced charts.
+   - [x] Add measurement/ruler mode for delta X, delta Y, slope, and sample count.
+   - [x] Allow styling, snapping mode, and axis readout configuration.
 
 4. **Chart titles and axis titles**
    - [ ] Add chart title/subtitle DOM overlays inside `ChartLayout`.
