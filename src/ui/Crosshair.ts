@@ -1,5 +1,5 @@
 import type { SeriesYAxis } from "../core/types.js";
-import type { Chart, ChartPickMode, ChartPlugin } from "./Chart.js";
+import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin } from "./Chart.js";
 
 export type CrosshairAxis = "x" | "y" | "xy";
 export type CrosshairSnapMode = "none" | "nearest-x" | "nearest-point";
@@ -10,6 +10,7 @@ export interface CrosshairPosition {
   readonly dataY: number;
   readonly plotX: number;
   readonly plotY: number;
+  readonly items: readonly ChartPickItem[];
 }
 
 export interface RulerMeasurement {
@@ -37,6 +38,8 @@ export interface CrosshairPluginOptions {
   readonly zIndex?: number;
   readonly formatX?: (value: number) => string;
   readonly formatY?: (value: number) => string;
+  readonly formatter?: (item: ChartPickItem, position: CrosshairPosition) => string;
+  readonly render?: (position: CrosshairPosition, container: HTMLElement, chart: Chart) => void;
   readonly onMove?: (position: CrosshairPosition | null) => void;
   readonly onMeasure?: (measurement: RulerMeasurement) => void;
 }
@@ -55,6 +58,14 @@ function formatNumber(value: number): string {
   if (abs >= 100) return value.toFixed(0);
   if (abs >= 10) return value.toFixed(2);
   return value.toFixed(3);
+}
+
+function labelOf(item: ChartPickItem): string {
+  return item.name ?? item.id ?? `${item.mode} ${item.seriesIndex + 1}`;
+}
+
+function rgba(color: readonly [number, number, number, number]): string {
+  return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
 }
 
 function countSamplesInRange(chart: Chart, xMin: number, xMax: number): number {
@@ -77,14 +88,36 @@ function resolvePosition(chart: Chart, clientX: number, clientY: number, yAxis: 
     const picked = chart.pick(clientX, clientY, { mode: pickMode, group: snap === "nearest-x" ? "x" : "none" });
     const item = picked?.items[0];
     if (item) {
-      return { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY };
+      return { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: picked.items };
     }
   }
 
   const data = chart.clientToData(clientX, clientY, yAxis);
   if (!data) return null;
   const [plotX, plotY] = chart.dataToPlot(data[0], data[1], yAxis);
-  return { dataX: data[0], dataY: data[1], plotX, plotY };
+  return { dataX: data[0], dataY: data[1], plotX, plotY, items: [] };
+}
+
+function renderDefaultLabel(
+  position: CrosshairPosition,
+  container: HTMLElement,
+  formatX: (value: number) => string,
+  formatY: (value: number) => string,
+  formatter: CrosshairPluginOptions["formatter"],
+): void {
+  if (position.items.length === 0) {
+    container.textContent = `x ${formatX(position.dataX)}  y ${formatY(position.dataY)}`;
+    return;
+  }
+
+  const pad = Math.max(1, ...position.items.map((item) => labelOf(item).length));
+  let html = "";
+  for (const item of position.items) {
+    const value = formatter ? formatter(item, position) : `(${formatX(item.x)}, ${formatY(item.y)})`;
+    if (html) html += "<br>";
+    html += `<span style="color:${rgba(item.series.style.color)}">\u2588</span> ${labelOf(item).padEnd(pad)}  ${value}`;
+  }
+  container.innerHTML = html;
 }
 
 export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlugin {
@@ -122,7 +155,11 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
       label.style.display = "block";
       label.style.left = `${Math.min(position.plotX + 8, Math.max(0, chartRef!.canvas.clientWidth - 96))}px`;
       label.style.top = `${Math.max(0, position.plotY - 24)}px`;
-      label.textContent = `x ${formatX(position.dataX)}  y ${formatY(position.dataY)}`;
+      if (options.render) {
+        options.render(position, label, chartRef!);
+      } else {
+        renderDefaultLabel(position, label, formatX, formatY, options.formatter);
+      }
     } else {
       label.style.display = "none";
     }
@@ -157,7 +194,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
       const viewport = chartRef.getViewport(yAxis);
       const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
       const [plotX, plotY] = chartRef.dataToPlot(dataX, dataY, yAxis);
-      renderPosition({ dataX, dataY, plotX, plotY });
+      renderPosition({ dataX, dataY, plotX, plotY, items: [] });
     },
     hideShared(source: Peer): void {
       if (source === peer) return;
