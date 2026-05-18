@@ -88,14 +88,23 @@ function pathForSeries(series: SeriesStore, domain: Domain, width: number, heigh
   const stride = Math.max(1, Math.ceil(series.length / maxSamples));
   const xRange = domain.xMax - domain.xMin;
   const yRange = domain.yMax - domain.yMin;
+  const xScale = (width - 1) / xRange;
+  const yScale = (height - 1) / yRange;
   let path = "";
-  for (let i = 0; i < series.length; i += stride) {
-    const sample = series.sampleAt(i);
-    if (!sample) continue;
-    const x = ((sample.x - domain.xMin) / xRange) * width;
-    const y = height - ((sample.y - domain.yMin) / yRange) * height;
+  let lastIndex = -1;
+  const appendSample = (index: number): void => {
+    if (index === lastIndex) return;
+    const sample = series.sampleAt(index);
+    if (!sample) return;
+    const x = (sample.x - domain.xMin) * xScale;
+    const y = (height - 1) - (sample.y - domain.yMin) * yScale;
     path += path ? ` L ${x.toFixed(2)} ${y.toFixed(2)}` : `M ${x.toFixed(2)} ${y.toFixed(2)}`;
-  }
+    lastIndex = index;
+  };
+
+  appendSample(0);
+  for (let i = stride; i < series.length - 1; i += stride) appendSample(i);
+  appendSample(series.length - 1);
   return path;
 }
 
@@ -143,6 +152,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     root.style.display = "block";
     const width = Math.max(1, root.clientWidth);
     overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    overlay.setAttribute("preserveAspectRatio", "none");
 
     while (paths.length < selectedSeries.length) {
       const path = svg("path");
@@ -173,8 +183,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
 
     const current = chart.getViewport();
     wasAtRightEdge = Math.abs(current.xMax - domain.xMax) <= (domain.xMax - domain.xMin) * 0.005;
-    const left = dataToX(current.xMin, width);
-    const right = dataToX(current.xMax, width);
+    const left = dataToX(current.xMin, width - 1);
+    const right = dataToX(current.xMax, width - 1);
     const winW = Math.max(1, right - left);
     windowRect.setAttribute("x", String(left));
     windowRect.setAttribute("y", "0");
@@ -220,7 +230,9 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       root.style[placement] = `${margin}px`;
       root.style.height = `${height}px`;
       root.style.background = options.background ?? "rgb(15 23 42 / 0.78)";
-      root.style.border = "1px solid rgb(148 163 184 / 0.3)";
+      root.style.boxSizing = "border-box";
+      root.style.border = "0";
+      root.style.outline = "1px solid rgb(148 163 184 / 0.3)";
       root.style.zIndex = String(options.zIndex ?? 30);
       root.style.touchAction = "none";
 
