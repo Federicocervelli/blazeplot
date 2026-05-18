@@ -1,11 +1,10 @@
 import { Chart, StaticDataset } from "@/index.ts";
-import type { ChartSelectEvent, ChartViewportChangeEvent } from "@/index.ts";
+import type { ChartViewportChangeEvent } from "@/index.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { navigatorPlugin } from "@/plugins/navigator.ts";
-import { selectionPlugin } from "@/plugins/selection.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { createLinkedCharts } from "@/linked.ts";
 
@@ -36,18 +35,12 @@ const hero = new Chart(heroTarget, {
   hover: { mode: "nearest-x", group: "x", maxDistancePx: 32 },
   grid: true,
   plugins: [
-    interactionsPlugin({ boxZoom: false, wheelZoom: true, shiftDragPan: true }),
+    interactionsPlugin({ wheelZoom: true, shiftDragPan: true }),
     annotationsPlugin({
       annotations: [
         { type: "y-range", yMin: 80, yMax: 100, fillColor: "rgba(248,113,113,0.10)", borderColor: "rgba(248,113,113,0.35)", label: "hot zone" },
         { type: "x-range", xMin: xs[120]!, xMax: xs[150]!, fillColor: "rgba(250,204,21,0.10)", borderColor: "rgba(250,204,21,0.35)", label: "deploy window" },
       ],
-    }),
-    selectionPlugin({
-      mode: "xy",
-      samplePhase: "commit",
-      onCommit: (event) => pushLog(`selection: ${event.selection?.samples.reduce((sum, series) => sum + series.total, 0) ?? 0} raw samples`),
-      onClear: () => pushLog("selection cleared"),
     }),
     crosshairPlugin({ group: "feature-preview", snap: "nearest-x", mode: "ruler" }),
     navigatorPlugin({ height: 58, placement: "bottom", followLive: false }),
@@ -79,9 +72,6 @@ hero.setViewport({ xMin: initialXMin, xMax: initialXMax, yMin: 0, yMax: 120 });
 hero.setYViewport("right", { yMin: 0, yMax: 130 });
 hero.subscribe("viewportchange", (event: ChartViewportChangeEvent) => pushLog(`viewport: ${formatDate(event.viewport.xMin)} → ${formatDate(event.viewport.xMax)}`));
 hero.subscribe("seriesclick", (event) => pushLog(`seriesclick: ${event.item.name ?? event.item.seriesIndex} @ ${formatDate(event.item.x)}`));
-hero.subscribe("select", (event: ChartSelectEvent) => {
-  if (event.selection) pushLog("select event emitted");
-});
 hero.start();
 
 const linked = createLinkedCharts(linkedTarget, {
