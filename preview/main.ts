@@ -5,6 +5,7 @@ import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import {
+  DEFAULT_APPEND_RATE,
   HISTORY_SAMPLES,
   LIVE_BATCH_SIZE,
   OHLC_HISTORY_CAPACITY,
@@ -27,6 +28,7 @@ const hoverModeSelect = requireElement<HTMLSelectElement>("hoverModeSelect");
 const hoverGroupSelect = requireElement<HTMLSelectElement>("hoverGroupSelect");
 const axesSelect = requireElement<HTMLSelectElement>("axesSelect");
 const viewSamplesInput = requireElement<HTMLInputElement>("viewSamplesInput");
+const appendRateInput = requireElement<HTMLInputElement>("appendRateInput");
 const followToggle = requireElement<HTMLInputElement>("followToggle");
 const streamToggle = requireElement<HTMLInputElement>("streamToggle");
 const syncXToggle = requireElement<HTMLInputElement>("syncXToggle");
@@ -57,6 +59,7 @@ console.info("[blazeplot] preview starting");
 
 let t = 0;
 let viewSamples = VIEW_SAMPLES;
+let appendRate = DEFAULT_APPEND_RATE;
 let frames = 0;
 let appendedSinceStats = 0;
 let lastBatchSize = 0;
@@ -65,7 +68,6 @@ let workerPending = false;
 let followLive = true;
 let streaming = true;
 let streamClockStartedAt = performance.now();
-let streamPausedAt: number | null = null;
 let syncX = true;
 let showPerfPanel = true;
 let currentTheme: PreviewTheme = "default";
@@ -85,6 +87,9 @@ const tooltipOptions: { mode: ChartPickMode; group: ChartPickGroup; highlight: b
   highlight: true,
   formatter: (item) => `(${dateFormatter.format(new Date(item.x))}, ${numberFormatter.format(item.y)})`,
 };
+const MAX_APPEND_RATE = 1_000_000;
+const MAX_VIEW_SAMPLES = 1_000_000_000;
+
 const chartStats: ChartFrameStats = {
   fps: 0,
   frameMs: 0,
@@ -195,8 +200,9 @@ chart.addOhlc(
   { dataset: ohlcDataset, downsample: "none", name: "OHLC" },
   { tickWidth: OHLC_INTERVAL * PREVIEW_X_STEP_MS * 0.7, lineWidth: 1 },
 );
-viewSamplesInput.max = String(HISTORY_SAMPLES);
+viewSamplesInput.max = String(MAX_VIEW_SAMPLES);
 viewSamplesInput.value = String(viewSamples);
+appendRateInput.value = String(appendRate);
 applyTheme("default");
 chart.setViewport({ ...liveXViewport(), ...Y_VIEW });
 chart.start();
@@ -220,21 +226,15 @@ hoverGroupSelect.addEventListener("change", () => {
   chart.setViewport({});
 });
 viewSamplesInput.addEventListener("change", () => setViewSamples(viewSamplesInput.value));
+appendRateInput.addEventListener("change", () => setAppendRate(appendRateInput.value));
 followToggle.addEventListener("change", () => {
   followLive = followToggle.checked;
 });
 streamToggle.addEventListener("change", () => {
   const nextStreaming = streamToggle.checked;
   if (nextStreaming === streaming) return;
-
-  const now = performance.now();
-  if (nextStreaming) {
-    if (streamPausedAt !== null) streamClockStartedAt += now - streamPausedAt;
-    streamPausedAt = null;
-  } else {
-    streamPausedAt = now;
-  }
   streaming = nextStreaming;
+  if (streaming) syncStreamClock();
 });
 syncXToggle.addEventListener("change", () => {
   syncX = syncXToggle.checked;
@@ -260,6 +260,8 @@ screenshotButton.addEventListener("click", () => {
 console.info("[blazeplot] chart initialized", {
   canvasWidth: canvas.width,
   canvasHeight: canvas.height,
+  defaultAppendRate: DEFAULT_APPEND_RATE,
+  maxAppendRate: MAX_APPEND_RATE,
   liveBatchSize: LIVE_BATCH_SIZE,
 });
 
@@ -310,11 +312,19 @@ function stream(): void {
 }
 
 function nextBatchSize(): number {
-  const targetSamples = Math.floor((performance.now() - streamClockStartedAt) / PREVIEW_X_STEP_MS);
+  const targetSamples = Math.floor(((performance.now() - streamClockStartedAt) * appendRate) / 1000);
   const due = targetSamples - t;
   if (due <= 0) return 0;
 
-  return Math.min(LIVE_BATCH_SIZE, due);
+  return Math.min(maxBatchSize(), due);
+}
+
+function maxBatchSize(): number {
+  return Math.max(LIVE_BATCH_SIZE, Math.ceil(appendRate / 20));
+}
+
+function syncStreamClock(now: number = performance.now()): void {
+  streamClockStartedAt = now - (t * 1000) / appendRate;
 }
 
 function updateOverlay(): void {
@@ -323,7 +333,7 @@ function updateOverlay(): void {
 
   const elapsedMs = now - lastStatsAt;
   const fps = (frames * 1000) / elapsedMs;
-  const appendRate = (appendedSinceStats * 1000) / elapsedMs;
+  const actualAppendRate = (appendedSinceStats * 1000) / elapsedMs;
   chart.getFrameStats(chartStats);
   if (overlayText) {
     overlayText.parentElement?.toggleAttribute("hidden", !showPerfPanel);
@@ -339,7 +349,8 @@ function updateOverlay(): void {
       `renderer: ${chartStats.renderMode}`,
       `points appended: ${t.toLocaleString()}`,
       `last batch: ${lastBatchSize.toLocaleString()}`,
-      `append rate: ${appendRate.toFixed(0)} points/sec`,
+      `target append rate: ${appendRate.toLocaleString()} points/sec`,
+      `actual append rate: ${actualAppendRate.toFixed(0)} points/sec`,
       `view samples: ${viewSamples.toLocaleString()}`,
       `history span: ${HISTORY_SAMPLES.toLocaleString()}`,
       `sparse capacity: ${SPARSE_HISTORY_CAPACITY.toLocaleString()}`,
@@ -375,11 +386,18 @@ function resetView(): void {
 
 function setViewSamples(value: string): void {
   const parsed = Number(value.replaceAll(",", ""));
-  viewSamples = Number.isFinite(parsed) ? Math.round(Math.min(HISTORY_SAMPLES, Math.max(1_000, parsed))) : VIEW_SAMPLES;
+  viewSamples = Number.isFinite(parsed) ? Math.round(Math.min(MAX_VIEW_SAMPLES, Math.max(1_000, parsed))) : VIEW_SAMPLES;
   viewSamplesInput.value = String(viewSamples);
   const current = chart.getViewport();
   const xMax = followLive ? sampleToTime(Math.max(viewSamples, t)) : current.xMax;
   chart.setViewport({ xMin: Math.max(sampleToTime(0), xMax - viewSamples * PREVIEW_X_STEP_MS), xMax });
+}
+
+function setAppendRate(value: string): void {
+  const parsed = Number(value.replaceAll(",", ""));
+  appendRate = Number.isFinite(parsed) ? Math.round(Math.min(MAX_APPEND_RATE, Math.max(1, parsed))) : DEFAULT_APPEND_RATE;
+  appendRateInput.value = String(appendRate);
+  syncStreamClock();
 }
 
 function liveXViewport(): { xMin: number; xMax: number } {

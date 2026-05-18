@@ -1,6 +1,7 @@
 export const LIVE_BATCH_SIZE = 256;
 export const VIEW_SAMPLES = 86_400;
 export const PREVIEW_X_STEP_MS = 1;
+export const DEFAULT_APPEND_RATE = 1_000;
 export const PREVIEW_START_TIME = Date.now() - VIEW_SAMPLES * PREVIEW_X_STEP_MS;
 export const TRACE_PERIOD = VIEW_SAMPLES;
 export const SPARSE_INTERVAL = 60; // one sparse point per minute
@@ -32,5 +33,5 @@ export interface PreviewDataBatch {
 }
 
 export type PreviewDataWorkerRequest =
-  | { readonly type: "generate"; readonly batchSize?: number }
+  | { readonly type: "generate"; readonly batchSize: number }
   | { readonly type: "release"; readonly buffers: readonly ArrayBuffer[] };

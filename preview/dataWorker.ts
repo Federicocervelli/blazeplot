@@ -1,5 +1,4 @@
 import {
-  LIVE_BATCH_SIZE,
   OHLC_INTERVAL,
   PREVIEW_START_TIME,
   PREVIEW_X_STEP_MS,
@@ -33,9 +32,9 @@ worker.addEventListener("message", (event) => {
   postBatch(generateBatch(message.batchSize));
 });
 
-function generateBatch(requestedBatchSize?: number): PreviewDataBatch {
+function generateBatch(requestedBatchSize: number): PreviewDataBatch {
   const start = t;
-  const batchSize = Math.max(1, Math.floor(requestedBatchSize ?? LIVE_BATCH_SIZE));
+  const batchSize = Math.max(1, Math.floor(requestedBatchSize));
   const end = start + batchSize;
   const sparseStart = Math.ceil(start / SPARSE_INTERVAL) * SPARSE_INTERVAL;
   const sparseCount = sparseStart < end ? Math.floor((end - 1 - sparseStart) / SPARSE_INTERVAL) + 1 : 0;
