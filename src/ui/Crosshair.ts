@@ -168,7 +168,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
   return {
     install(chart: Chart) {
       chartRef = chart;
-      const color = options.color ?? "rgba(226, 232, 240, 0.9)";
+      const color = options.color ?? "rgba(148, 163, 184, 0.55)";
       const width = `${options.width ?? 1}px`;
       const dash = options.dash;
 
