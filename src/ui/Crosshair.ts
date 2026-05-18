@@ -88,7 +88,7 @@ function resolvePosition(chart: Chart, clientX: number, clientY: number, yAxis: 
     const picked = chart.pick(clientX, clientY, { mode: pickMode, group: snap === "nearest-x" ? "x" : "none" });
     const item = picked?.items[0];
     if (item) {
-      return { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: picked.items };
+      return { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: [item] };
     }
   }
 
