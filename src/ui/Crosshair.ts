@@ -178,7 +178,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
       root.style.inset = "0";
       root.style.display = "none";
       root.style.pointerEvents = "none";
-      root.style.zIndex = String(options.zIndex ?? 28);
+      root.style.zIndex = String(options.zIndex ?? 20);
 
       vertical = document.createElement("div");
       vertical.style.position = "absolute";
