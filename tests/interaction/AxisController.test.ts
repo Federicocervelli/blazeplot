@@ -65,4 +65,38 @@ describe("AxisController", () => {
     expect(axis.formatValue(1.234)).toBe("1.23");
     expect(axis.formatValue(0.00012)).toBe("1.20e-4");
   });
+
+  it("generates UTC time ticks", () => {
+    const camera = new Camera2D();
+    const start = Date.UTC(2026, 0, 1, 0, 0, 0);
+    camera.setViewport({ xMin: start, xMax: start + 3 * 60 * 60_000, yMin: -1, yMax: 1 });
+
+    const axis = new AxisController(camera, { x: { scale: "time", timezone: "utc" } });
+
+    expect(axis.getXTickValues(800, 10)).toEqual([
+      Date.UTC(2026, 0, 1, 0, 0, 0),
+      Date.UTC(2026, 0, 1, 0, 30, 0),
+      Date.UTC(2026, 0, 1, 1, 0, 0),
+      Date.UTC(2026, 0, 1, 1, 30, 0),
+      Date.UTC(2026, 0, 1, 2, 0, 0),
+      Date.UTC(2026, 0, 1, 2, 30, 0),
+      Date.UTC(2026, 0, 1, 3, 0, 0),
+    ]);
+  });
+
+  it("formats time ticks with built-in patterns", () => {
+    const camera = new Camera2D();
+    const start = Date.UTC(2026, 4, 18, 12, 34, 56, 789);
+    camera.setViewport({ xMin: start, xMax: start + 1_000, yMin: -1, yMax: 1 });
+
+    const axis = new AxisController(camera, { x: { scale: "time", timezone: "utc", tickFormat: "%Y-%m-%d %H:%M:%S.%L" } });
+
+    expect(axis.formatValue(start, "x")).toBe("2026-05-18 12:34:56.789");
+  });
+
+  it("uses custom tick formatter callbacks", () => {
+    const axis = new AxisController(new Camera2D(), { y: { tickFormat: (value, renderAxis) => `${renderAxis}:${value}` } });
+
+    expect(axis.formatValue(42, "y")).toBe("y:42");
+  });
 });

@@ -166,10 +166,10 @@ Package status:
 Prioritized additions based on gaps versus mature plotting libraries while preserving BlazePlot's fast WebGL2 streaming focus.
 
 1. **Time axis + tick formatters**
-   - [ ] Add `scale: "time"` support for X/Y axes where appropriate.
-   - [ ] Automatic time tick unit selection: ms, seconds, minutes, hours, days, months, years.
-   - [ ] Built-in timestamp/date formatters with local/UTC options.
-   - [ ] User-provided tick formatter callback per axis.
+   - [x] Add `scale: "time"` support for X/Y axes where appropriate.
+   - [x] Automatic time tick unit selection: ms, seconds, minutes, hours, days, months, years.
+   - [x] Built-in timestamp/date formatters with local/UTC options.
+   - [x] User-provided tick formatter callback per axis.
 
 2. **Brush / range selection plugin**
    - [ ] Add drag-to-select X range, Y range, and XY rectangle selection modes.

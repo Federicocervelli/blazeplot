@@ -6,6 +6,7 @@ import { ReglBackend } from "../render/ReglBackend.js";
 import type { GpuBuffer } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
+import type { AxisControllerAxisOptions, AxisScale, AxisTickFormat, AxisTimeZone } from "../interaction/AxisController.js";
 import type { PanIntent, ViewportPolicy, ZoomIntent } from "../interaction/types.js";
 import { AxisOverlay } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
@@ -25,9 +26,12 @@ const GRID_LINE_VERTEX_CAPACITY = 64;
 const DEFAULT_POINT_SIZE_PX = 4;
 const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
 
-export interface AxisConfig {
+export interface AxisConfig extends AxisControllerAxisOptions {
   readonly visible?: boolean;
   readonly position?: AxisPosition;
+  readonly scale?: AxisScale;
+  readonly tickFormat?: AxisTickFormat;
+  readonly timezone?: AxisTimeZone;
 }
 
 export type ChartPickMode = "nearest-x" | "nearest-point";
@@ -112,16 +116,23 @@ export interface ChartFrameStats {
   renderMode: "none" | "raw" | "minmax" | "points" | "bars" | "area" | "mixed";
 }
 
-function normalizeAxisConfig(config: boolean | AxisConfig | undefined): NormalizedAxisConfig {
+type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions;
+
+type ResolvedAxesConfig = { x: ResolvedAxisConfig; y: ResolvedAxisConfig; y2: ResolvedAxisConfig };
+
+function normalizeAxisConfig(config: boolean | AxisConfig | undefined): ResolvedAxisConfig {
   if (config === false) return { visible: false, position: "inside" };
   if (config === true || config === undefined) return { visible: true, position: "inside" };
   return {
     visible: config.visible !== false,
     position: config.position ?? "inside",
+    scale: config.scale,
+    tickFormat: config.tickFormat,
+    timezone: config.timezone,
   };
 }
 
-function normalizeAxesConfig(axes: ChartOptions["axes"]): { x: NormalizedAxisConfig; y: NormalizedAxisConfig; y2: NormalizedAxisConfig } {
+function normalizeAxesConfig(axes: ChartOptions["axes"]): ResolvedAxesConfig {
   if (axes === false) {
     return {
       x: { visible: false, position: "inside" },
@@ -168,7 +179,7 @@ export class Chart {
   private readonly xTicks: number[] = [];
   private readonly yTicks: number[] = [];
   private axisOverlay: AxisOverlay | null = null;
-  private normalizedAxes: { x: NormalizedAxisConfig; y: NormalizedAxisConfig; y2: NormalizedAxisConfig };
+  private normalizedAxes: ResolvedAxesConfig;
   private resolvedTheme: ResolvedChartTheme;
   private _gridVisible: boolean;
   private layout: ChartLayout;
@@ -214,8 +225,8 @@ export class Chart {
     this.applyCanvasSize();
     this.camera = new Camera2D();
     this.rightCamera = new Camera2D();
-    this.axis = new AxisController(this.camera);
-    this.rightAxis = new AxisController(this.rightCamera);
+    this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
+    this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     this.renderer = new Renderer(new ReglBackend(this.layout.canvas));
     this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
     this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
@@ -483,6 +494,8 @@ export class Chart {
 
   setAxes(axes: ChartOptions["axes"]): void {
     this.normalizedAxes = normalizeAxesConfig(axes);
+    this.axis.setOptions({ x: this.normalizedAxes.x, y: this.normalizedAxes.y });
+    this.rightAxis.setOptions({ x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     this.layout.update(this.normalizedAxes);
     this.axisOverlay?.dispose();
     this.axisOverlay = null;

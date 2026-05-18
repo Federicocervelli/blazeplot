@@ -113,7 +113,7 @@ export class AxisOverlay {
     for (let i = 0; i < values.length; i++) {
       const el = pool[i]!;
       const value = values[i]!;
-      const text = controller.formatValue(value);
+      const text = controller.formatValue(value, axis === "x" ? "x" : "y");
       if (el.textContent !== text) {
         el.textContent = text;
       }
