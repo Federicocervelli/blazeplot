@@ -60,6 +60,7 @@ console.info("[blazeplot] preview starting");
 let t = 0;
 let viewSamples = VIEW_SAMPLES;
 let frames = 0;
+let appendedSinceStats = 0;
 let lastBatchSize = 0;
 let lastStatsAt = performance.now();
 let workerPending = false;
@@ -278,6 +279,7 @@ function appendGeneratedBatch(batch: PreviewDataBatch): void {
 
   t = batch.end;
   lastBatchSize = batch.batchSize;
+  appendedSinceStats += batch.batchSize;
   frames++;
   workerPending = false;
   dataWorker.postMessage({ type: "release", buffers: release }, release);
@@ -314,12 +316,15 @@ function updateOverlay(): void {
   const now = performance.now();
   if (now - lastStatsAt < 500) return;
 
-  const fps = (frames * 1000) / (now - lastStatsAt);
+  const elapsedMs = now - lastStatsAt;
+  const fps = (frames * 1000) / elapsedMs;
+  const appendRate = (appendedSinceStats * 1000) / elapsedMs;
   chart.getFrameStats(chartStats);
   if (overlayText) {
     overlayText.parentElement?.toggleAttribute("hidden", !showPerfPanel);
     if (!showPerfPanel) {
       frames = 0;
+      appendedSinceStats = 0;
       lastStatsAt = now;
       return;
     }
@@ -329,6 +334,7 @@ function updateOverlay(): void {
       `renderer: ${chartStats.renderMode}`,
       `points appended: ${t.toLocaleString()}`,
       `last batch: ${lastBatchSize.toLocaleString()}`,
+      `append rate: ${appendRate.toFixed(0)} points/sec`,
       `view samples: ${viewSamples.toLocaleString()}`,
       `history span: ${HISTORY_SAMPLES.toLocaleString()}`,
       `sparse capacity: ${SPARSE_HISTORY_CAPACITY.toLocaleString()}`,
@@ -343,6 +349,7 @@ function updateOverlay(): void {
     ].join("\n");
   }
   frames = 0;
+  appendedSinceStats = 0;
   lastStatsAt = now;
 }
 
