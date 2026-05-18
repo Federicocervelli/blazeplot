@@ -22,6 +22,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
     "./plugins/legend": {
       "types": "./dist/plugins/legend.d.ts",
       "import": "./dist/plugins/legend.js"
@@ -71,6 +75,14 @@
     "release:major": "node scripts/release.js major",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   },
   "dependencies": {
     "regl": "^2.1.1"

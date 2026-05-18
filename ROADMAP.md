@@ -201,9 +201,9 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Allow height, placement, styles, and linked series configuration.
 
 9. **React wrapper package**
-   - [ ] Add first-party `@blazeplot/react` package or subpath.
-   - [ ] Provide `BlazeChart` component with ref access to the underlying `Chart`.
-   - [ ] Handle mount/dispose, prop updates, plugin lifecycle, and resize automatically.
+   - [x] Add first-party `@blazeplot/react` package or subpath.
+   - [x] Provide `BlazeChart` component with ref access to the underlying `Chart`.
+   - [x] Handle mount/dispose, prop updates, plugin lifecycle, and resize automatically.
    - [ ] Include examples for streaming data, tooltips, legends, and custom plugins.
 
 10. **More scales: built-in and configurable**

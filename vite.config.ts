@@ -28,6 +28,7 @@ export default defineConfig(({ command, mode }) => {
       lib: {
         entry: {
           index: resolve(__dirname, "src/index.ts"),
+          react: resolve(__dirname, "src/react.ts"),
           "plugins/legend": resolve(__dirname, "src/plugins/legend.ts"),
           "plugins/tooltip": resolve(__dirname, "src/plugins/tooltip.ts"),
           "plugins/interactions": resolve(__dirname, "src/plugins/interactions.ts"),
@@ -40,7 +41,7 @@ export default defineConfig(({ command, mode }) => {
         fileName: (_format, entryName) => `${entryName}.js`,
       },
       rollupOptions: {
-        external: ["regl"],
+        external: ["regl", "react"],
       },
     },
     server: {
