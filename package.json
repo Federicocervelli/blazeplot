@@ -38,6 +38,10 @@
       "types": "./dist/plugins/annotations.d.ts",
       "import": "./dist/plugins/annotations.js"
     },
+    "./plugins/selection": {
+      "types": "./dist/plugins/selection.d.ts",
+      "import": "./dist/plugins/selection.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

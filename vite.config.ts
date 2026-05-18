@@ -32,6 +32,7 @@ export default defineConfig(({ command, mode }) => {
           "plugins/tooltip": resolve(__dirname, "src/plugins/tooltip.ts"),
           "plugins/interactions": resolve(__dirname, "src/plugins/interactions.ts"),
           "plugins/annotations": resolve(__dirname, "src/plugins/annotations.ts"),
+          "plugins/selection": resolve(__dirname, "src/plugins/selection.ts"),
         },
         formats: ["es"],
         fileName: (_format, entryName) => `${entryName}.js`,

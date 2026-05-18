@@ -172,10 +172,10 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] User-provided tick formatter callback per axis.
 
 2. **Brush / range selection plugin**
-   - [ ] Add drag-to-select X range, Y range, and XY rectangle selection modes.
-   - [ ] Expose selected data-space bounds and matching raw samples.
-   - [ ] Add configurable selected/unselected styling hooks.
-   - [ ] Emit selection lifecycle events: start, update, commit, clear.
+   - [x] Add drag-to-select X range, Y range, and XY rectangle selection modes.
+   - [x] Expose selected data-space bounds and matching raw samples.
+   - [x] Add configurable selected/unselected styling hooks.
+   - [x] Emit selection lifecycle events: start, update, commit, clear.
 
 3. **Crosshair / ruler plugin**
    - [ ] Add vertical/horizontal crosshair lines independent of tooltip rendering.
