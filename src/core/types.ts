@@ -164,7 +164,7 @@ export interface SeriesSample {
 
 export interface SeriesConfig {
   readonly mode: SeriesMode;
-  readonly capacity: number;
+  readonly capacity?: number;
   readonly downsample?: LODStrategy;
   readonly overflow?: BufferOverflowStrategy;
   readonly dataset?: Dataset;

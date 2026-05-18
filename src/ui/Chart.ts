@@ -450,7 +450,7 @@ export class Chart {
     if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
-    const dataset: Dataset = config.dataset ?? new RingBuffer(config.capacity, { overflow: config.overflow });
+    const dataset: Dataset = config.dataset ?? this.createDefaultDataset(config);
     const palette = this.resolvedTheme.seriesColors;
     const paletteColor = palette[this.series.length % palette.length] ?? this.resolvedTheme.seriesColors[0]!;
     const color = style?.color ?? paletteColor;
@@ -493,6 +493,14 @@ export class Chart {
 
   addCandlestick(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     return this.addSeries({ ...config, mode: "candlestick" }, style);
+  }
+
+  private createDefaultDataset(config: SeriesConfig): Dataset {
+    const { capacity } = config;
+    if (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity <= 0) {
+      throw new TypeError("Series capacity must be a positive integer when no dataset is provided.");
+    }
+    return new RingBuffer(capacity, { overflow: config.overflow });
   }
 
   removeSeries(series: SeriesStore): boolean {
