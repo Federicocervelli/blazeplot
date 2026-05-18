@@ -36,6 +36,7 @@ export interface CrosshairPluginOptions {
   readonly labelColor?: string;
   readonly labelFont?: string;
   readonly zIndex?: number;
+  readonly rulerModifier?: "none" | "ctrl" | "shift" | "alt" | "meta";
   readonly formatX?: (value: number) => string;
   readonly formatY?: (value: number) => string;
   readonly formatter?: (item: ChartPickItem, position: CrosshairPosition) => string;
@@ -81,6 +82,14 @@ function countSamplesInRange(chart: Chart, xMin: number, xMax: number): number {
     total += Math.max(0, range.end - range.start);
   }
   return total;
+}
+
+function hasModifier(event: PointerEvent, modifier: CrosshairPluginOptions["rulerModifier"]): boolean {
+  if (!modifier || modifier === "none") return true;
+  if (modifier === "ctrl") return event.ctrlKey;
+  if (modifier === "shift") return event.shiftKey;
+  if (modifier === "alt") return event.altKey;
+  return event.metaKey;
 }
 
 function resolvePosition(chart: Chart, clientX: number, clientY: number, yAxis: SeriesYAxis, snap: CrosshairSnapMode): CrosshairPosition | null {
@@ -129,6 +138,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
   const yAxis = options.yAxis ?? "left";
   const snap = options.snap ?? "none";
   const mode = options.mode ?? "crosshair";
+  const rulerModifier = options.rulerModifier ?? "none";
   let chartRef: Chart | null = null;
   let root: HTMLDivElement | null = null;
   let vertical: HTMLDivElement | null = null;
@@ -306,13 +316,17 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
       };
 
       const onPointerDown = (event: PointerEvent): void => {
-        if (mode !== "ruler" || event.button !== 0) return;
+        if (mode !== "ruler" || event.button !== 0 || !hasModifier(event, rulerModifier)) return;
         rulerStart = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
-        if (rulerStart) event.preventDefault();
+        if (rulerStart) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+        }
       };
 
       const onPointerUp = (event: PointerEvent): void => {
         if (mode !== "ruler" || !rulerStart) return;
+        event.stopImmediatePropagation();
         const end = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         if (!end) return;
         const deltaX = end.dataX - rulerStart.dataX;
@@ -331,14 +345,14 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): ChartPlug
 
       chart.canvas.addEventListener("pointermove", onPointerMove);
       chart.canvas.addEventListener("pointerleave", onPointerLeave);
-      chart.canvas.addEventListener("pointerdown", onPointerDown);
-      chart.canvas.addEventListener("pointerup", onPointerUp);
+      chart.canvas.addEventListener("pointerdown", onPointerDown, { capture: true });
+      chart.canvas.addEventListener("pointerup", onPointerUp, { capture: true });
 
       return () => {
         chart.canvas.removeEventListener("pointermove", onPointerMove);
         chart.canvas.removeEventListener("pointerleave", onPointerLeave);
-        chart.canvas.removeEventListener("pointerdown", onPointerDown);
-        chart.canvas.removeEventListener("pointerup", onPointerUp);
+        chart.canvas.removeEventListener("pointerdown", onPointerDown, { capture: true });
+        chart.canvas.removeEventListener("pointerup", onPointerUp, { capture: true });
         if (options.group) {
           const set = groups.get(options.group);
           set?.delete(peer);

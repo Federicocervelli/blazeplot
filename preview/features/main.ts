@@ -49,7 +49,7 @@ const hero = new Chart(heroTarget, {
         { type: "x-range", xMin: xs[120]!, xMax: xs[150]!, fillColor: "rgba(250,204,21,0.10)", borderColor: "rgba(250,204,21,0.35)", label: "deploy window" },
       ],
     }),
-    crosshairPlugin({ group: "feature-preview", snap: "nearest-x", formatX: formatDate, formatY: formatValue }),
+    crosshairPlugin({ group: "feature-preview", snap: "nearest-x", mode: "ruler", rulerModifier: "ctrl", formatX: formatDate, formatY: formatValue }),
     navigatorPlugin({ height: 58, placement: "bottom", followLive: false }),
     legendPlugin({ toggleOnClick: true }),
     tooltipPlugin({ mode: "nearest-x", group: "x", maxDistancePx: 48, formatter: formatTooltipItem }),
