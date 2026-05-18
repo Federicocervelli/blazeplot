@@ -148,7 +148,7 @@ export class ContiguousRingDataset implements AppendableDataset, AcceleratedData
     const end = this.upperBoundX(viewport.xMax);
     if (end <= start) return 0;
 
-    const viewportSamples = Math.max(1, Math.ceil((viewport.xMax - viewport.xMin) / this.xStep));
+    const viewportSamples = Math.max(1, Math.ceil((this.fromTime(viewport.xMax) - this.fromTime(viewport.xMin)) / this.xStep));
     const stride = Math.max(1, Math.ceil(viewportSamples / maxPoints));
     const firstOrdinal = Math.round(this.firstX() / this.xStep);
     const remainder = positiveModulo(firstOrdinal + start, stride);

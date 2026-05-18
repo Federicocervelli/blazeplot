@@ -173,12 +173,12 @@ const scatterSeries = chart.addScatter(
 );
 const barSeries = chart.addBar(
   { capacity: SPARSE_HISTORY_CAPACITY, dataset: barDataset, downsample: "minmax", name: "Power" },
-  { barWidth: SPARSE_INTERVAL, baseline: -1.1 },
+  { barWidth: SPARSE_INTERVAL * PREVIEW_X_STEP_MS, baseline: -1.1 },
 );
 const ohlcDataset = new OhlcRingBuffer(OHLC_HISTORY_CAPACITY);
 chart.addOhlc(
   { capacity: OHLC_HISTORY_CAPACITY, dataset: ohlcDataset, downsample: "none", name: "OHLC" },
-  { tickWidth: OHLC_INTERVAL * 0.7, lineWidth: 1 },
+  { tickWidth: OHLC_INTERVAL * PREVIEW_X_STEP_MS * 0.7, lineWidth: 1 },
 );
 viewSamplesInput.max = String(HISTORY_SAMPLES);
 viewSamplesInput.value = String(viewSamples);
