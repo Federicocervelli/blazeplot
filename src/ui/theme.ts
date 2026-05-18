@@ -16,6 +16,12 @@ export interface ChartTheme {
   readonly legendTextColor?: string;
   readonly legendMutedTextColor?: string;
   readonly legendFont?: string;
+  readonly titleColor?: string;
+  readonly titleFont?: string;
+  readonly subtitleColor?: string;
+  readonly subtitleFont?: string;
+  readonly axisTitleColor?: string;
+  readonly axisTitleFont?: string;
 }
 
 export interface ResolvedChartTheme {
@@ -33,6 +39,12 @@ export interface ResolvedChartTheme {
   readonly legendTextColor: string;
   readonly legendMutedTextColor: string;
   readonly legendFont: string;
+  readonly titleColor: string;
+  readonly titleFont: string;
+  readonly subtitleColor: string;
+  readonly subtitleFont: string;
+  readonly axisTitleColor: string;
+  readonly axisTitleFont: string;
 }
 
 const DEFAULT_SERIES_COLORS: readonly RgbaColor[] = [
@@ -59,6 +71,12 @@ export const DEFAULT_CHART_THEME: ResolvedChartTheme = {
   legendTextColor: "#e5e5e5",
   legendMutedTextColor: "#888",
   legendFont: "11px/1.35 ui-monospace, monospace",
+  titleColor: "#f8fafc",
+  titleFont: "600 14px system-ui, sans-serif",
+  subtitleColor: "#cbd5e1",
+  subtitleFont: "12px system-ui, sans-serif",
+  axisTitleColor: "#d4d4d4",
+  axisTitleFont: "12px system-ui, sans-serif",
 };
 
 export function resolveChartTheme(theme: ChartTheme | undefined, context?: Element): ResolvedChartTheme {
@@ -88,6 +106,12 @@ export function resolveChartTheme(theme: ChartTheme | undefined, context?: Eleme
     legendTextColor: theme.legendTextColor ?? DEFAULT_CHART_THEME.legendTextColor,
     legendMutedTextColor: theme.legendMutedTextColor ?? DEFAULT_CHART_THEME.legendMutedTextColor,
     legendFont: theme.legendFont ?? DEFAULT_CHART_THEME.legendFont,
+    titleColor: theme.titleColor ?? DEFAULT_CHART_THEME.titleColor,
+    titleFont: theme.titleFont ?? DEFAULT_CHART_THEME.titleFont,
+    subtitleColor: theme.subtitleColor ?? DEFAULT_CHART_THEME.subtitleColor,
+    subtitleFont: theme.subtitleFont ?? DEFAULT_CHART_THEME.subtitleFont,
+    axisTitleColor: theme.axisTitleColor ?? DEFAULT_CHART_THEME.axisTitleColor,
+    axisTitleFont: theme.axisTitleFont ?? DEFAULT_CHART_THEME.axisTitleFont,
   };
 }
 

@@ -184,10 +184,10 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Allow styling, snapping mode, and axis readout configuration.
 
 4. **Chart titles and axis titles**
-   - [ ] Add chart title/subtitle DOM overlays inside `ChartLayout`.
-   - [ ] Add X/Y/Y2 axis title support for inside/outside axis layouts.
-   - [ ] Include titles in `chart.screenshot()` composition.
-   - [ ] Theme title fonts, colors, spacing, and alignment.
+   - [x] Add chart title/subtitle DOM overlays inside `ChartLayout`.
+   - [x] Add X/Y/Y2 axis title support for inside/outside axis layouts.
+   - [x] Include titles in `chart.screenshot()` composition.
+   - [x] Theme title fonts, colors, spacing, and alignment.
 
 5. **Richer event API**
    - [ ] Add typed subscriptions for `click`, `dblclick`, `pointerdown`, `pointerup`, `pointermove`, `viewportchange`, `select`, and `seriesclick`.

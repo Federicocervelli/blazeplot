@@ -26,12 +26,28 @@ const GRID_LINE_VERTEX_CAPACITY = 64;
 const DEFAULT_POINT_SIZE_PX = 4;
 const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
 
+export interface TextOverlayConfig {
+  readonly text: string;
+  readonly visible?: boolean;
+  readonly color?: string;
+  readonly font?: string;
+  readonly offsetX?: number;
+  readonly offsetY?: number;
+}
+
+export interface AxisTitleConfig extends TextOverlayConfig {}
+
+export interface ChartTitleConfig extends TextOverlayConfig {
+  readonly align?: "left" | "center" | "right";
+}
+
 export interface AxisConfig extends AxisControllerAxisOptions {
   readonly visible?: boolean;
   readonly position?: AxisPosition;
   readonly scale?: AxisScale;
   readonly tickFormat?: AxisTickFormat;
   readonly timezone?: AxisTimeZone;
+  readonly title?: string | AxisTitleConfig;
 }
 
 export type ChartPickMode = "nearest-x" | "nearest-point";
@@ -56,6 +72,8 @@ export interface ChartOptions {
   readonly grid?: boolean;
   readonly gridStyle?: Partial<SeriesStyle>;
   readonly axes?: boolean | { x?: boolean | AxisConfig; y?: boolean | AxisConfig; y2?: boolean | AxisConfig };
+  readonly title?: string | ChartTitleConfig;
+  readonly subtitle?: string | ChartTitleConfig;
   readonly hover?: ChartPickOptions;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
@@ -116,7 +134,7 @@ export interface ChartFrameStats {
   renderMode: "none" | "raw" | "minmax" | "points" | "bars" | "area" | "mixed";
 }
 
-type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions;
+type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | AxisTitleConfig };
 
 type ResolvedAxesConfig = { x: ResolvedAxisConfig; y: ResolvedAxisConfig; y2: ResolvedAxisConfig };
 
@@ -129,6 +147,7 @@ function normalizeAxisConfig(config: boolean | AxisConfig | undefined): Resolved
     scale: config.scale,
     tickFormat: config.tickFormat,
     timezone: config.timezone,
+    title: config.title,
   };
 }
 
@@ -152,6 +171,22 @@ function normalizeAxesConfig(axes: ChartOptions["axes"]): ResolvedAxesConfig {
     y: normalizeAxisConfig(axes.y),
     y2: normalizeAxisConfig(axes.y2 ?? false),
   };
+}
+
+function textOverlayText(config: string | TextOverlayConfig | undefined): string {
+  return typeof config === "string" ? config : config?.text ?? "";
+}
+
+function textOverlayVisible(config: string | TextOverlayConfig | undefined): boolean {
+  return typeof config === "string" ? config.length > 0 : !!config && config.visible !== false && config.text.length > 0;
+}
+
+function textOverlayOffsetX(config: string | TextOverlayConfig | undefined): number {
+  return typeof config === "string" ? 0 : config?.offsetX ?? 0;
+}
+
+function textOverlayOffsetY(config: string | TextOverlayConfig | undefined): number {
+  return typeof config === "string" ? 0 : config?.offsetY ?? 0;
 }
 
 interface PickCandidate {
@@ -247,6 +282,7 @@ export class Chart {
         font: this.resolvedTheme.axisFont,
       });
     }
+    this.updateTextOverlays();
 
     this.canvas.addEventListener("pointermove", this.handlePointerMove);
     this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
@@ -505,6 +541,7 @@ export class Chart {
         font: this.resolvedTheme.axisFont,
       });
     }
+    this.updateTextOverlays();
     this.resize();
     this.refreshHover();
   }
@@ -647,6 +684,66 @@ export class Chart {
       color: this.resolvedTheme.axisColor,
       font: this.resolvedTheme.axisFont,
     });
+    this.updateTextOverlays();
+  }
+
+  private updateTextOverlays(): void {
+    this.applyChartTextOverlay(this.layout.title, this.options.title, {
+      color: this.resolvedTheme.titleColor,
+      font: this.resolvedTheme.titleFont,
+      top: 6,
+    });
+    this.applyChartTextOverlay(this.layout.subtitle, this.options.subtitle, {
+      color: this.resolvedTheme.subtitleColor,
+      font: this.resolvedTheme.subtitleFont,
+      top: 26,
+    });
+    this.applyAxisTitleOverlay(this.layout.xAxisTitle, this.normalizedAxes.x.title, "x");
+    this.applyAxisTitleOverlay(this.layout.yAxisTitle, this.normalizedAxes.y.title, "y");
+    this.applyAxisTitleOverlay(this.layout.y2AxisTitle, this.normalizedAxes.y2.title, "y2");
+  }
+
+  private applyChartTextOverlay(
+    el: HTMLElement,
+    config: string | ChartTitleConfig | undefined,
+    defaults: { readonly color: string; readonly font: string; readonly top: number },
+  ): void {
+    const visible = textOverlayVisible(config);
+    el.textContent = textOverlayText(config);
+    el.style.display = visible ? "block" : "none";
+    if (!visible) return;
+
+    const align = typeof config === "string" ? "center" : config?.align ?? "center";
+    el.style.color = typeof config === "string" ? defaults.color : config?.color ?? defaults.color;
+    el.style.font = typeof config === "string" ? defaults.font : config?.font ?? defaults.font;
+    el.style.top = `${defaults.top + textOverlayOffsetY(config)}px`;
+    el.style.left = align === "left" ? `${8 + textOverlayOffsetX(config)}px` : align === "right" ? "auto" : `calc(50% + ${textOverlayOffsetX(config)}px)`;
+    el.style.right = align === "right" ? `${8 - textOverlayOffsetX(config)}px` : "auto";
+    el.style.transform = align === "center" ? "translateX(-50%)" : "none";
+    el.style.textAlign = align;
+  }
+
+  private applyAxisTitleOverlay(el: HTMLElement, config: string | AxisTitleConfig | undefined, axis: "x" | "y" | "y2"): void {
+    const visible = textOverlayVisible(config);
+    el.textContent = textOverlayText(config);
+    el.style.display = visible ? "block" : "none";
+    if (!visible) return;
+
+    el.style.color = typeof config === "string" ? this.resolvedTheme.axisTitleColor : config?.color ?? this.resolvedTheme.axisTitleColor;
+    el.style.font = typeof config === "string" ? this.resolvedTheme.axisTitleFont : config?.font ?? this.resolvedTheme.axisTitleFont;
+    if (axis === "x") {
+      el.style.left = `calc(50% + ${textOverlayOffsetX(config)}px)`;
+      el.style.bottom = `${4 - textOverlayOffsetY(config)}px`;
+      el.style.transform = "translateX(-50%)";
+    } else if (axis === "y") {
+      el.style.left = `${4 + textOverlayOffsetX(config)}px`;
+      el.style.top = `calc(50% + ${textOverlayOffsetY(config)}px)`;
+      el.style.transform = "translateY(-50%) rotate(-90deg)";
+    } else {
+      el.style.right = `${4 - textOverlayOffsetX(config)}px`;
+      el.style.top = `calc(50% + ${textOverlayOffsetY(config)}px)`;
+      el.style.transform = "translateY(-50%) rotate(90deg)";
+    }
   }
 
   private applyCanvasSize(dpr: number = globalThis.devicePixelRatio): boolean {

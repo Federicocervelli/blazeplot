@@ -20,6 +20,11 @@ export interface ChartLayoutElements {
   readonly y2Axis: HTMLDivElement;
   readonly corner: HTMLDivElement;
   readonly cornerRight: HTMLDivElement;
+  readonly title: HTMLDivElement;
+  readonly subtitle: HTMLDivElement;
+  readonly xAxisTitle: HTMLDivElement;
+  readonly yAxisTitle: HTMLDivElement;
+  readonly y2AxisTitle: HTMLDivElement;
 }
 
 export const LEFT_AXIS_GUTTER_CSS = 52;
@@ -35,6 +40,11 @@ export class ChartLayout implements ChartLayoutElements {
   readonly y2Axis: HTMLDivElement;
   readonly corner: HTMLDivElement;
   readonly cornerRight: HTMLDivElement;
+  readonly title: HTMLDivElement;
+  readonly subtitle: HTMLDivElement;
+  readonly xAxisTitle: HTMLDivElement;
+  readonly yAxisTitle: HTMLDivElement;
+  readonly y2AxisTitle: HTMLDivElement;
 
   private readonly externalCanvas: boolean;
   private readonly originalCanvasCssText: string;
@@ -54,6 +64,11 @@ export class ChartLayout implements ChartLayoutElements {
     this.y2Axis = document.createElement("div");
     this.corner = document.createElement("div");
     this.cornerRight = document.createElement("div");
+    this.title = document.createElement("div");
+    this.subtitle = document.createElement("div");
+    this.xAxisTitle = document.createElement("div");
+    this.yAxisTitle = document.createElement("div");
+    this.y2AxisTitle = document.createElement("div");
 
     this.root.className = "blazeplot-root";
     this.plot.className = "blazeplot-plot";
@@ -63,6 +78,11 @@ export class ChartLayout implements ChartLayoutElements {
     this.y2Axis.className = "blazeplot-axis blazeplot-axis-y2";
     this.corner.className = "blazeplot-axis-corner";
     this.cornerRight.className = "blazeplot-axis-corner blazeplot-axis-corner-right";
+    this.title.className = "blazeplot-title";
+    this.subtitle.className = "blazeplot-subtitle";
+    this.xAxisTitle.className = "blazeplot-axis-title blazeplot-axis-title-x";
+    this.yAxisTitle.className = "blazeplot-axis-title blazeplot-axis-title-y";
+    this.y2AxisTitle.className = "blazeplot-axis-title blazeplot-axis-title-y2";
 
     this.applyBaseStyles();
     this.mount(target);
@@ -104,6 +124,11 @@ export class ChartLayout implements ChartLayoutElements {
     this.root.appendChild(this.corner);
     this.root.appendChild(this.xAxis);
     this.root.appendChild(this.cornerRight);
+    this.root.appendChild(this.title);
+    this.root.appendChild(this.subtitle);
+    this.root.appendChild(this.xAxisTitle);
+    this.root.appendChild(this.yAxisTitle);
+    this.root.appendChild(this.y2AxisTitle);
     this.plot.appendChild(this.canvas);
   }
 
@@ -165,5 +190,39 @@ export class ChartLayout implements ChartLayoutElements {
     this.cornerRight.style.minWidth = "0";
     this.cornerRight.style.minHeight = "0";
     this.cornerRight.style.pointerEvents = "none";
+
+    for (const el of [this.title, this.subtitle, this.xAxisTitle, this.yAxisTitle, this.y2AxisTitle]) {
+      el.style.position = "absolute";
+      el.style.pointerEvents = "none";
+      el.style.userSelect = "none";
+      el.style.whiteSpace = "nowrap";
+      el.style.zIndex = "18";
+      el.style.display = "none";
+    }
+
+    this.title.style.top = "6px";
+    this.title.style.left = "50%";
+    this.title.style.transform = "translateX(-50%)";
+    this.title.style.textAlign = "center";
+
+    this.subtitle.style.top = "26px";
+    this.subtitle.style.left = "50%";
+    this.subtitle.style.transform = "translateX(-50%)";
+    this.subtitle.style.textAlign = "center";
+
+    this.xAxisTitle.style.left = "50%";
+    this.xAxisTitle.style.bottom = "4px";
+    this.xAxisTitle.style.transform = "translateX(-50%)";
+    this.xAxisTitle.style.textAlign = "center";
+
+    this.yAxisTitle.style.left = "4px";
+    this.yAxisTitle.style.top = "50%";
+    this.yAxisTitle.style.transform = "translateY(-50%) rotate(-90deg)";
+    this.yAxisTitle.style.transformOrigin = "left center";
+
+    this.y2AxisTitle.style.right = "4px";
+    this.y2AxisTitle.style.top = "50%";
+    this.y2AxisTitle.style.transform = "translateY(-50%) rotate(90deg)";
+    this.y2AxisTitle.style.transformOrigin = "right center";
   }
 }
