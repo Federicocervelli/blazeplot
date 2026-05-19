@@ -52,6 +52,7 @@ const DEFAULT_CASES = [
   "annotations",
   "selection",
   "navigator",
+  "scale-options",
 ];
 
 await main();

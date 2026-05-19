@@ -23,6 +23,7 @@ export interface AxisControllerAxisOptions {
   readonly logBase?: number;
   readonly symlogConstant?: number;
   readonly categories?: readonly string[];
+  readonly reversed?: boolean;
 }
 
 export interface AxisControllerOptions {
@@ -119,6 +120,29 @@ export class AxisController {
     return this.getScaledTickValues(this.camera.yMin, this.camera.yMax, canvasHeight, maxTicks, 48, target, axisOptions, "y");
   }
 
+  validateDomain(axis: AxisRenderTarget): void {
+    const options = axis === "x" ? this.options.x : this.options.y;
+    const min = axis === "x" ? this.camera.xMin : this.camera.yMin;
+    const max = axis === "x" ? this.camera.xMax : this.camera.yMax;
+    AxisController.validateAxisDomain(axis, min, max, options);
+  }
+
+  private static validateAxisDomain(axis: AxisRenderTarget, min: number, max: number, options: AxisControllerAxisOptions | undefined): void {
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+      throw new RangeError(`Axis ${axis} requires a finite domain with max > min.`);
+    }
+    const scale = options?.scale;
+    if (scale === "log") {
+      const base = options?.logBase ?? 10;
+      if (!Number.isFinite(base) || base <= 1) throw new RangeError(`Axis ${axis} logBase must be > 1.`);
+      if (min <= 0 || max <= 0) throw new RangeError(`Axis ${axis} log scale requires a positive domain.`);
+    }
+    if (scale === "symlog") {
+      const constant = options?.symlogConstant ?? 1;
+      if (!Number.isFinite(constant) || constant <= 0) throw new RangeError(`Axis ${axis} symlogConstant must be > 0.`);
+    }
+  }
+
   formatValue(value: number, axis: AxisRenderTarget = "y"): string {
     const axisOptions = axis === "x" ? this.options.x : this.options.y;
     const tickFormat = axisOptions?.tickFormat;
@@ -153,6 +177,7 @@ export class AxisController {
     options: AxisControllerAxisOptions | undefined,
     axis: AxisRenderTarget,
   ): number[] {
+    AxisController.validateAxisDomain(axis, min, max, options);
     const scale = options?.scale;
     if (scale && typeof scale === "object") {
       target.length = 0;
@@ -163,7 +188,6 @@ export class AxisController {
     if (scale === "log") return this.getLogTickValues(min, max, pixelSize, maxTicks, minPixelSpacing, target, options?.logBase);
     if (scale === "categorical") return this.getCategoricalTickValues(min, max, maxTicks, target, options?.categories);
     if (scale === "symlog") return this.getSymlogTickValues(min, max, pixelSize, maxTicks, minPixelSpacing, target, options?.symlogConstant);
-    void axis;
     return this.getLinearTickValues(min, max, pixelSize, maxTicks, minPixelSpacing, target);
   }
 
@@ -230,6 +254,7 @@ export class AxisController {
   }
 
   private getTimeTickValues(min: number, max: number, pixelSize: number, maxTicks: number, minPixelSpacing: number, target: number[], options: AxisControllerAxisOptions): number[] {
+    AxisController.validateAxisDomain("x", min, max, options);
     target.length = 0;
     this.lastTimeInterval = null;
     if (pixelSize <= 0 || maxTicks <= 0) return target;

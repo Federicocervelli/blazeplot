@@ -6,6 +6,8 @@ export class Camera2D {
   private _xMax: number = 1;
   private _yMin: number = 0;
   private _yMax: number = 1;
+  private _xReversed: boolean = false;
+  private _yReversed: boolean = false;
 
   get xMin(): number {
     return this._xMin;
@@ -23,24 +25,39 @@ export class Camera2D {
     return this._yMax;
   }
 
+  get xReversed(): boolean {
+    return this._xReversed;
+  }
+
+  get yReversed(): boolean {
+    return this._yReversed;
+  }
+
   get viewport(): Viewport {
     return { xMin: this._xMin, xMax: this._xMax, yMin: this._yMin, yMax: this._yMax };
   }
 
   get xScale(): number {
-    return 2 / (this._xMax - this._xMin);
+    return (this._xReversed ? -2 : 2) / (this._xMax - this._xMin);
   }
 
   get xOffset(): number {
-    return -(this._xMin + this._xMax) / (this._xMax - this._xMin);
+    const offset = -(this._xMin + this._xMax) / (this._xMax - this._xMin);
+    return this._xReversed ? -offset : offset;
   }
 
   get yScale(): number {
-    return 2 / (this._yMax - this._yMin);
+    return (this._yReversed ? -2 : 2) / (this._yMax - this._yMin);
   }
 
   get yOffset(): number {
-    return -(this._yMin + this._yMax) / (this._yMax - this._yMin);
+    const offset = -(this._yMin + this._yMax) / (this._yMax - this._yMin);
+    return this._yReversed ? -offset : offset;
+  }
+
+  setReversed(v: { x?: boolean; y?: boolean }): void {
+    if (v.x !== undefined) this._xReversed = v.x;
+    if (v.y !== undefined) this._yReversed = v.y;
   }
 
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void {
@@ -106,9 +123,20 @@ export class Camera2D {
     ];
   }
 
+  screenToData(screenX: number, screenY: number, canvasWidth: number, canvasHeight: number): [number, number] {
+    if (canvasWidth <= 0 || canvasHeight <= 0) throw new RangeError("Camera2D screen size must be positive.");
+    const clipX = (screenX / canvasWidth) * 2 - 1;
+    const clipY = 1 - (screenY / canvasHeight) * 2;
+    return [
+      Camera2D.normalizeZero((clipX - this.xOffset) / this.xScale),
+      Camera2D.normalizeZero((clipY - this.yOffset) / this.yScale),
+    ];
+  }
+
   clone(): Camera2D {
     const c = new Camera2D();
     c.setViewport(this.viewport);
+    c.setReversed({ x: this._xReversed, y: this._yReversed });
     return c;
   }
 
@@ -123,5 +151,9 @@ export class Camera2D {
 
   private static assertFinite(name: string, value: number): void {
     if (!Number.isFinite(value)) throw new RangeError(`Camera2D ${name} must be finite.`);
+  }
+
+  private static normalizeZero(value: number): number {
+    return Object.is(value, -0) ? 0 : value;
   }
 }

@@ -186,6 +186,10 @@ function normalizeAxisConfig(config: boolean | AxisConfig | undefined): Resolved
     scale: config.scale,
     tickFormat: config.tickFormat,
     timezone: config.timezone,
+    logBase: config.logBase,
+    symlogConstant: config.symlogConstant,
+    categories: config.categories,
+    reversed: config.reversed,
     title: config.title,
   };
 }
@@ -326,6 +330,7 @@ export class Chart {
     this.applyCanvasSize();
     this.camera = new Camera2D();
     this.rightCamera = new Camera2D();
+    this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     this.renderer = new Renderer(new ReglBackend(this.layout.canvas));
@@ -422,11 +427,7 @@ export class Chart {
     const plotY = clientY - rect.top;
     if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
 
-    const viewport = this.getCamera(yAxis).viewport;
-    return [
-      viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin),
-      viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin),
-    ];
+    return this.getCamera(yAxis).screenToData(plotX, plotY, rect.width, rect.height);
   }
 
   getViewport(yAxis: SeriesYAxis = "left"): Viewport {
@@ -665,6 +666,7 @@ export class Chart {
 
   setAxes(axes: ChartOptions["axes"]): void {
     this.normalizedAxes = normalizeAxesConfig(axes);
+    this.applyAxisDirections();
     this.axis.setOptions({ x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis.setOptions({ x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     this.layout.update(this.normalizedAxes);
@@ -922,6 +924,13 @@ export class Chart {
 
   private syncRightCameraX(): void {
     this.rightCamera.setViewport({ xMin: this.camera.xMin, xMax: this.camera.xMax });
+    this.rightCamera.setReversed({ x: this.camera.xReversed });
+  }
+
+  private applyAxisDirections(): void {
+    const xReversed = this.normalizedAxes.x.reversed === true;
+    this.camera.setReversed({ x: xReversed, y: this.normalizedAxes.y.reversed === true });
+    this.rightCamera.setReversed({ x: xReversed, y: this.normalizedAxes.y2.reversed === true });
   }
 
   private drawSeries(series: SeriesStore): void {

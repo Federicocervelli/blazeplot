@@ -225,8 +225,8 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Add built-in `linear`, `time`, `log`, and `symlog` scale implementations.
    - [x] Add optional built-in categorical/ordinal axis support for bar-like views.
    - [x] Provide a configurable/custom scale interface with `toScreen`, `fromScreen`, `ticks`, and `formatTick` hooks where feasible.
-   - [ ] Support reversed axes, log base configuration, symlog constant configuration, and domain validation.
-   - [ ] Ensure LOD/query paths remain data-space based and scale transforms are applied only at interaction/render mapping boundaries.
+   - [x] Support reversed axes, log base configuration, symlog constant configuration, and domain validation.
+   - [x] Ensure LOD/query paths remain data-space based and scale transforms are applied only at interaction/render mapping boundaries.
 
 11. **Linked multi-chart layout**
    - [x] Add a layout helper for stacked/side-by-side charts with shared X and independent Y axes.
