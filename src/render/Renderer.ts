@@ -1,5 +1,4 @@
 import { ShaderPrograms } from "./ShaderPrograms.js";
-import type { Camera2D } from "../interaction/Camera2D.js";
 import type { AttributeSpec, GpuBackend, GpuBuffer, GpuProgram } from "./types.js";
 import type { SeriesStyle } from "../core/types.js";
 
@@ -9,6 +8,13 @@ const BYTES_PER_FLOAT = 4;
 const DEFAULT_POINT_SIZE_PX = 4;
 const DEFAULT_BAR_WIDTH_DATA = 0.8;
 const DEFAULT_BASELINE = 0;
+
+export interface RenderProjection {
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+}
 
 export class Renderer {
   private readonly lineProgram: GpuProgram;
@@ -23,7 +29,6 @@ export class Renderer {
   private readonly scaleUniform: Float32Array = new Float32Array(2);
   private readonly offsetUniform: Float32Array = new Float32Array(2);
   private readonly canvasSizeUniform: Float32Array = new Float32Array(2);
-  private xOrigin: number = 0;
 
   constructor(private backend: GpuBackend) {
     this.lineProgram = this.backend.createProgram(ShaderPrograms.line.vert, ShaderPrograms.line.frag);
@@ -72,20 +77,16 @@ export class Renderer {
     this.backend.viewport(x, y, width, height);
   }
 
-  setXOrigin(origin: number): void {
-    this.xOrigin = Number.isFinite(origin) ? origin : 0;
-  }
-
   getWebGLContext(): WebGL2RenderingContext | null {
     return this.backend.getContext?.() ?? null;
   }
 
-  drawLines(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
-    this.drawLinePrimitive("lines", positions, count, style, camera);
+  drawLines(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
+    this.drawLinePrimitive("lines", positions, count, style, projection);
   }
 
-  drawLineStrip(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
-    this.drawLinePrimitive("line_strip", positions, count, style, camera);
+  drawLineStrip(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
+    this.drawLinePrimitive("line_strip", positions, count, style, projection);
   }
 
   drawClipLineStrip(positions: GpuBuffer, count: number, style: SeriesStyle): void {
@@ -96,12 +97,12 @@ export class Renderer {
     this.drawClipPrimitive("lines", positions, count, style);
   }
 
-  drawMinMaxSegments(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
-    this.drawLines(positions, count, style, camera);
+  drawMinMaxSegments(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
+    this.drawLines(positions, count, style, projection);
   }
 
-  drawMinMaxSegmentsInstanced(instanceBuffer: GpuBuffer, instanceCount: number, style: SeriesStyle, camera: Camera2D): void {
-    this.writeCameraUniforms(camera);
+  drawMinMaxSegmentsInstanced(instanceBuffer: GpuBuffer, instanceCount: number, style: SeriesStyle, projection: RenderProjection): void {
+    this.writeProjectionUniforms(projection);
 
     const stride = FLOATS_PER_SEGMENT_INSTANCE * BYTES_PER_FLOAT;
     const aX: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride, offset: 0 };
@@ -127,14 +128,14 @@ export class Renderer {
     positions: GpuBuffer,
     pointCount: number,
     style: SeriesStyle,
-    camera: Camera2D,
+    projection: RenderProjection,
     canvasWidth: number,
     canvasHeight: number,
   ): void {
     if (this.supportsInstancedPoints) {
-      this.drawPointsInstanced(positions, pointCount, style, camera, canvasWidth, canvasHeight);
+      this.drawPointsInstanced(positions, pointCount, style, projection, canvasWidth, canvasHeight);
     } else {
-      this.drawPointSprites(positions, pointCount, style, camera);
+      this.drawPointSprites(positions, pointCount, style, projection);
     }
   }
 
@@ -142,11 +143,11 @@ export class Renderer {
     instanceBuffer: GpuBuffer,
     pointCount: number,
     style: SeriesStyle,
-    camera: Camera2D,
+    projection: RenderProjection,
     canvasWidth: number,
     canvasHeight: number,
   ): void {
-    this.writeCameraUniforms(camera);
+    this.writeProjectionUniforms(projection);
     this.canvasSizeUniform[0] = Math.max(1, canvasWidth);
     this.canvasSizeUniform[1] = Math.max(1, canvasHeight);
 
@@ -170,8 +171,8 @@ export class Renderer {
     });
   }
 
-  private drawPointSprites(positions: GpuBuffer, pointCount: number, style: SeriesStyle, camera: Camera2D): void {
-    this.writeCameraUniforms(camera);
+  private drawPointSprites(positions: GpuBuffer, pointCount: number, style: SeriesStyle, projection: RenderProjection): void {
+    this.writeProjectionUniforms(projection);
 
     this.backend.draw({
       program: this.pointSpriteProgram,
@@ -187,8 +188,8 @@ export class Renderer {
     });
   }
 
-  drawAreaStrip(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
-    this.writeCameraUniforms(camera);
+  drawAreaStrip(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
+    this.writeProjectionUniforms(projection);
 
     this.backend.draw({
       program: this.lineProgram,
@@ -207,9 +208,9 @@ export class Renderer {
     instanceBuffer: GpuBuffer,
     barCount: number,
     style: SeriesStyle,
-    camera: Camera2D,
+    projection: RenderProjection,
   ): void {
-    this.writeCameraUniforms(camera);
+    this.writeProjectionUniforms(projection);
 
     const instanceStride = FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT;
     const aPosition: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0, size: 2 };
@@ -235,9 +236,9 @@ export class Renderer {
     instanceBuffer: GpuBuffer,
     barCount: number,
     style: SeriesStyle,
-    camera: Camera2D,
+    projection: RenderProjection,
   ): void {
-    this.writeCameraUniforms(camera);
+    this.writeProjectionUniforms(projection);
 
     const instanceStride = FLOATS_PER_SEGMENT_INSTANCE * BYTES_PER_FLOAT;
     const aX: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0 };
@@ -260,12 +261,12 @@ export class Renderer {
     });
   }
 
-  drawBarTriangles(positions: GpuBuffer, vertexCount: number, style: SeriesStyle, camera: Camera2D): void {
-    this.drawTrianglePrimitive(positions, vertexCount, style, camera);
+  drawBarTriangles(positions: GpuBuffer, vertexCount: number, style: SeriesStyle, projection: RenderProjection): void {
+    this.drawTrianglePrimitive(positions, vertexCount, style, projection);
   }
 
-  private drawLinePrimitive(primitive: "lines" | "line_strip", positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
-    this.writeCameraUniforms(camera);
+  private drawLinePrimitive(primitive: "lines" | "line_strip", positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
+    this.writeProjectionUniforms(projection);
 
     this.backend.draw({
       program: this.lineProgram,
@@ -280,8 +281,8 @@ export class Renderer {
     });
   }
 
-  private drawTrianglePrimitive(positions: GpuBuffer, count: number, style: SeriesStyle, camera: Camera2D): void {
-    this.writeCameraUniforms(camera);
+  private drawTrianglePrimitive(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
+    this.writeProjectionUniforms(projection);
 
     this.backend.draw({
       program: this.lineProgram,
@@ -315,13 +316,11 @@ export class Renderer {
     });
   }
 
-  private writeCameraUniforms(camera: Camera2D): void {
-    const shiftedXMin = camera.xMin - this.xOrigin;
-    const shiftedXMax = camera.xMax - this.xOrigin;
-    this.scaleUniform[0] = camera.xScale;
-    this.scaleUniform[1] = camera.yScale;
-    this.offsetUniform[0] = -(shiftedXMin + shiftedXMax) / (shiftedXMax - shiftedXMin);
-    this.offsetUniform[1] = camera.yOffset;
+  private writeProjectionUniforms(projection: RenderProjection): void {
+    this.scaleUniform[0] = projection.scaleX;
+    this.scaleUniform[1] = projection.scaleY;
+    this.offsetUniform[0] = projection.offsetX;
+    this.offsetUniform[1] = projection.offsetY;
   }
 
   dispose(): void {

@@ -2,8 +2,9 @@ import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, Seri
 import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
+import type { RenderProjection } from "../render/Renderer.js";
 import { isWebGL2Available, ReglBackend } from "../render/ReglBackend.js";
-import type { GpuBuffer } from "../render/types.js";
+import type { GpuBackend, GpuBuffer } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { AxisControllerAxisOptions, AxisScale, AxisTickFormat, AxisTimeZone } from "../interaction/AxisController.js";
@@ -131,6 +132,12 @@ export interface ChartKeyboardOptions {
   readonly zoomFactor?: number;
 }
 
+export interface ChartBackendFactoryContext {
+  readonly canvas: HTMLCanvasElement;
+}
+
+export type ChartBackendFactory = (context: ChartBackendFactoryContext) => GpuBackend;
+
 export interface ChartOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly grid?: boolean;
@@ -144,6 +151,8 @@ export interface ChartOptions {
   readonly followX?: boolean | ChartFollowXOptions;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
+  /** Advanced hook for supplying a custom GPU backend. Defaults to ReglBackend. */
+  readonly backendFactory?: ChartBackendFactory;
 }
 
 export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
@@ -284,6 +293,13 @@ type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { r
 
 type ResolvedAxesConfig = { x: ResolvedAxisConfig; y: ResolvedAxisConfig; y2: ResolvedAxisConfig };
 
+type MutableRenderProjection = {
+  scaleX: number;
+  scaleY: number;
+  offsetX: number;
+  offsetY: number;
+};
+
 function normalizeAxisConfig(config: boolean | AxisConfig | undefined): ResolvedAxisConfig {
   if (config === false) return { visible: false, position: "inside" };
   if (config === true || config === undefined) return { visible: true, position: "inside" };
@@ -398,6 +414,8 @@ export class Chart {
     pointermove: new Set(),
   };
   private currentHover: ChartHoverState | null = null;
+  private readonly leftProjection: MutableRenderProjection = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
+  private readonly rightProjection: MutableRenderProjection = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
   private lastPointerClientX: number = 0;
   private lastPointerClientY: number = 0;
   private pointerInPlot: boolean = false;
@@ -455,7 +473,7 @@ export class Chart {
     this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
-    this.renderer = new Renderer(new ReglBackend(this.layout.canvas));
+    this.renderer = new Renderer(this.createBackend());
     this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
     this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
     this.minMaxInstanceData = new Float32Array(MINMAX_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
@@ -498,6 +516,10 @@ export class Chart {
         this.pluginDisposers.push(() => installed.dispose());
       }
     }
+  }
+
+  private createBackend(): GpuBackend {
+    return this.options.backendFactory?.({ canvas: this.layout.canvas }) ?? new ReglBackend(this.layout.canvas);
   }
 
   get canvas(): HTMLCanvasElement {
@@ -1042,7 +1064,6 @@ export class Chart {
 
     const viewport = this.camera.viewport;
     this.currentXOrigin = viewport.xMin;
-    this.renderer.setXOrigin(this.currentXOrigin);
     if (this._gridVisible) {
       const gridVertexCount = this.writeGridVertices(viewport);
       if (gridVertexCount > 0) {
@@ -1277,6 +1298,17 @@ export class Chart {
     return series.config.yAxis === "right" ? this.rightCamera : this.camera;
   }
 
+  private projectionForCamera(camera: Camera2D): RenderProjection {
+    const projection = camera === this.rightCamera ? this.rightProjection : this.leftProjection;
+    const shiftedXMin = camera.xMin - this.currentXOrigin;
+    const shiftedXMax = camera.xMax - this.currentXOrigin;
+    projection.scaleX = camera.xScale;
+    projection.scaleY = camera.yScale;
+    projection.offsetX = -(shiftedXMin + shiftedXMax) / (shiftedXMax - shiftedXMin);
+    projection.offsetY = camera.yOffset;
+    return projection;
+  }
+
   private syncRightCameraX(): void {
     this.rightCamera.setViewport({ xMin: this.camera.xMin, xMax: this.camera.xMax });
     this.rightCamera.setReversed({ x: this.camera.xReversed });
@@ -1291,35 +1323,36 @@ export class Chart {
   private drawSeries(series: SeriesStore): void {
     const camera = this.cameraForSeries(series);
     const viewport = camera.viewport;
+    const projection = this.projectionForCamera(camera);
     switch (series.config.mode) {
       case "area":
-        this.drawAreaSeries(series, viewport, camera);
+        this.drawAreaSeries(series, viewport, projection);
         return;
       case "bar":
-        this.drawBarSeries(series, viewport, camera);
+        this.drawBarSeries(series, viewport, projection);
         return;
       case "ohlc":
-        this.drawOhlcSeries(series, viewport, camera);
+        this.drawOhlcSeries(series, viewport, projection);
         return;
       case "candlestick":
-        this.drawCandlestickSeries(series, viewport, camera);
+        this.drawCandlestickSeries(series, viewport, projection);
         return;
       case "scatter":
-        this.drawScatterSeries(series, viewport, camera);
+        this.drawScatterSeries(series, viewport, projection);
         return;
       default:
-        this.drawLineSeries(series, viewport, camera);
+        this.drawLineSeries(series, viewport, projection);
     }
   }
 
-  private drawLineSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawLineSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const visibleSamples = series.visibleSampleCount(viewport);
     const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
     if (dense && this.renderer.supportsInstancedSegments) {
       const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (segmentCount <= 0) return;
       this.uploadMinMaxInstanceData(segmentCount);
-      this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, camera);
+      this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, projection);
       this.recordDraw("minmax", segmentCount * 2);
       return;
     }
@@ -1328,7 +1361,7 @@ export class Chart {
       const count = series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (count < 2) return;
       this.uploadRawLineData(count);
-      this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, camera);
+      this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, projection);
       this.recordDraw("minmax", count);
       return;
     }
@@ -1340,7 +1373,7 @@ export class Chart {
     this.recordDraw("raw", count);
   }
 
-  private drawAreaSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawAreaSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport, 1);
     if (range.end - range.start < 2) return;
 
@@ -1349,14 +1382,14 @@ export class Chart {
       const areaVertexCount = series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, baseline, this.currentXOrigin);
       if (areaVertexCount >= 4) {
         this.uploadRawLineData(areaVertexCount);
-        this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, camera);
+        this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, projection);
         this.recordDraw("area", areaVertexCount);
       }
 
       const lineVertexCount = series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
       if (lineVertexCount >= 2) {
         this.uploadRawLineData(lineVertexCount);
-        this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, camera);
+        this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, projection);
         this.recordDraw("area", lineVertexCount);
       }
       return;
@@ -1367,7 +1400,7 @@ export class Chart {
       if (areaVertexCount < 4) break;
 
       this.uploadRawLineData(areaVertexCount);
-      this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, camera);
+      this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, projection);
       this.recordDraw("area", areaVertexCount);
       start += Math.max(1, (areaVertexCount >> 1) - 1);
     }
@@ -1377,14 +1410,14 @@ export class Chart {
       if (lineVertexCount < 2) break;
 
       this.uploadRawLineData(lineVertexCount);
-      this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, camera);
+      this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, projection);
       this.recordDraw("area", lineVertexCount);
       start += Math.max(1, lineVertexCount - 1);
     }
 
   }
 
-  private drawOhlcSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawOhlcSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport);
     const maxCandles = Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_CANDLE);
     for (let start = range.start; start < range.end;) {
@@ -1393,13 +1426,13 @@ export class Chart {
 
       const vertexCount = candleCount * 6;
       this.uploadRawLineData(vertexCount);
-      this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, camera);
+      this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, projection);
       this.recordDraw("raw", vertexCount);
       start += candleCount;
     }
   }
 
-  private drawCandlestickSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawCandlestickSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport, 1);
     const maxCandles = Math.min(
       Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE),
@@ -1416,18 +1449,18 @@ export class Chart {
       const wickVertexCount = this.writeCandlestickWicks(candleCount);
       if (wickVertexCount > 0) {
         this.uploadBarTriangleData(wickVertexCount);
-        this.renderer.drawLines(this.barTriangleBuffer, wickVertexCount, wickStyle, camera);
+        this.renderer.drawLines(this.barTriangleBuffer, wickVertexCount, wickStyle, projection);
         this.recordDraw("raw", wickVertexCount);
       }
 
       const bodyWidth = series.style.barWidth ?? series.style.tickWidth ?? 0.8;
-      this.drawCandlestickBodies(candleCount, bodyWidth, "up", upStyle, camera);
-      this.drawCandlestickBodies(candleCount, bodyWidth, "down", downStyle, camera);
+      this.drawCandlestickBodies(candleCount, bodyWidth, "up", upStyle, projection);
+      this.drawCandlestickBodies(candleCount, bodyWidth, "down", downStyle, projection);
       start += candleCount;
     }
   }
 
-  private drawScatterSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawScatterSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const pointSize = series.style.pointSize ?? DEFAULT_POINT_SIZE_PX;
 
     const visibleSamples = series.visibleSampleCount(viewport);
@@ -1447,7 +1480,7 @@ export class Chart {
         if (count <= 0) continue;
 
         this.uploadRawLineData(count);
-        this.renderer.drawPoints(this.rawLineBuffer, count, series.style, camera, this.canvas.width, this.canvas.height);
+        this.renderer.drawPoints(this.rawLineBuffer, count, series.style, projection, this.canvas.width, this.canvas.height);
         this.recordDraw("points", count);
       }
       return;
@@ -1465,11 +1498,11 @@ export class Chart {
     if (count <= 0) return;
 
     this.uploadRawLineData(count);
-    this.renderer.drawPoints(this.rawLineBuffer, count, series.style, camera, this.canvas.width, this.canvas.height);
+    this.renderer.drawPoints(this.rawLineBuffer, count, series.style, projection, this.canvas.width, this.canvas.height);
     this.recordDraw("points", count);
   }
 
-  private drawBarSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawBarSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const visibleSamples = series.visibleSampleCount(viewport);
     const rawBarCapacity = this.maxRawBarInstances();
     if (series.hasLOD && visibleSamples > rawBarCapacity) {
@@ -1478,7 +1511,7 @@ export class Chart {
 
       this.includeBaselineInBarRanges(sampledCount, series.style.baseline ?? 0);
       const vertexCount = this.writeBarBucketTriangles(sampledCount, viewport);
-      this.drawBarTriangles(vertexCount, series.style, camera);
+      this.drawBarTriangles(vertexCount, series.style, projection);
       return;
     }
 
@@ -1488,13 +1521,13 @@ export class Chart {
 
     if (this.renderer.supportsInstancedBars) {
       this.uploadRawLineData(count);
-      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, camera);
+      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, projection);
       this.recordDraw("bars", count);
       return;
     }
 
     const vertexCount = this.writeBarTriangles(count, series.style.baseline ?? 0, series.style.barWidth ?? 0.8);
-    this.drawBarTriangles(vertexCount, series.style, camera);
+    this.drawBarTriangles(vertexCount, series.style, projection);
   }
 
   private uploadRawLineData(vertexCount: number): void {
@@ -1609,7 +1642,7 @@ export class Chart {
     bodyWidth: number,
     direction: "up" | "down",
     style: SeriesStyle,
-    camera: Camera2D,
+    projection: RenderProjection,
   ): void {
     const halfWidth = bodyWidth * 0.5;
     let bodyCount = 0;
@@ -1625,7 +1658,7 @@ export class Chart {
       bodyCount++;
     }
 
-    this.drawBarTriangles(bodyCount * 6, style, camera);
+    this.drawBarTriangles(bodyCount * 6, style, projection);
   }
 
   private writeBarTriangle(index: number, x0: number, x1: number, y0: number, y1: number): void {
@@ -1647,12 +1680,12 @@ export class Chart {
   private drawBarTriangles(
     vertexCount: number,
     style: SeriesStyle,
-    camera: Camera2D,
+    projection: RenderProjection,
     mode: "bars" | "area" = "bars",
   ): void {
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount);
-    this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, camera);
+    this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, projection);
     this.recordDraw(mode, vertexCount);
   }
 
