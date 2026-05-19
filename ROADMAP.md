@@ -225,6 +225,13 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [ ] Improve mobile layout defaults for outside axes, controls, legends, and dense tick labels.
    - [ ] Add mobile preview/testing scenarios for high-DPR phones and tablets.
 
+13. **Tree-shakable plugin-owned UI and theme extension**
+   - [ ] Audit public exports and build output so chart-only imports do not pull optional plugin code or plugin DOM UI.
+   - [ ] Move plugin-specific DOM/UI helpers fully behind their plugin subpath entries.
+   - [ ] Keep `Chart` responsible for only the core plugin contract, layout reservations, and generic extension hooks.
+   - [ ] Decouple plugin theme values from the core `ChartTheme` shape where practical; let plugins define/resolve their own optional theme extensions.
+   - [ ] Provide typed extension points for plugin-owned theme tokens without forcing every consumer to import every built-in plugin's theme surface.
+
 ---
 
 ## Backend strategy
