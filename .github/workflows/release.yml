@@ -2,15 +2,21 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,7 +27,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -29,44 +34,105 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
-      - name: Typecheck
-        run: bun run typecheck
+      - name: Run CI checks
+        run: bun run ci
 
-      - name: Test
-        run: bun test
-
-      - name: Build
-        run: bun run build
-
-      - name: Publish to npm
+      - name: Read package version
+        id: version
         run: |
-          bun pm pack
-          npm publish ./blazeplot-*.tgz --provenance
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "${TAG} already exists; skipping npm publish."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify version is unpublished
+        if: steps.version.outputs.publish == 'true'
+        env:
+          PACKAGE_NAME: ${{ steps.version.outputs.name }}
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
+            echo "::error::${PACKAGE_NAME}@${PACKAGE_VERSION} is already published on npm, but tag v${PACKAGE_VERSION} does not exist."
+            exit 1
+          fi
 
       - name: Generate release notes
         id: notes
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PUBLISH: ${{ steps.version.outputs.publish }}
         run: |
-          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
-          PREV_TAG=$(git describe --tags --abbrev=0 "$CURRENT_TAG"^ 2>/dev/null || echo "")
-
-          if [ -z "$PREV_TAG" ]; then
-            echo "body=First release: $CURRENT_TAG" >> "$GITHUB_OUTPUT"
-            exit 0
+          CURRENT_REF="HEAD"
+          if [ "$PUBLISH" != "true" ]; then
+            CURRENT_REF="$TAG"
           fi
 
-          git log "$PREV_TAG".."$CURRENT_TAG" --pretty=format:"%s|%h|%an%n" | sed '/^$/d' > /tmp/commits.txt
+          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${CURRENT_REF}^" 2>/dev/null || true)
+          NOTES_FILE="changelogs/v${VERSION}.md"
+          : > /tmp/release_body.md
 
-          while IFS='|' read -r subject hash author; do
-            echo "- $subject [\`$hash\`](https://github.com/${{ github.repository }}/commit/$hash) $author" >> /tmp/release_body.md
-          done < /tmp/commits.txt
+          if [ -f "$NOTES_FILE" ]; then
+            cat "$NOTES_FILE" >> /tmp/release_body.md
+            printf '\n\n' >> /tmp/release_body.md
+          fi
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "First release: $TAG" >> /tmp/release_body.md
+          else
+            echo "## Commits" >> /tmp/release_body.md
+            echo >> /tmp/release_body.md
+            git log "$PREV_TAG".."$CURRENT_REF" --pretty=format:'- %s [`%h`](https://github.com/${{ github.repository }}/commit/%h) %an' >> /tmp/release_body.md
+            echo >> /tmp/release_body.md
+          fi
 
           echo "body<<EOF" >> "$GITHUB_OUTPUT"
           cat /tmp/release_body.md >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
+      - name: Pack package
+        if: steps.version.outputs.publish == 'true'
+        run: bun pm pack
+
+      - name: Configure npm token
+        if: steps.version.outputs.publish == 'true'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          else
+            echo "No NPM_TOKEN secret found; relying on npm trusted publishing/OIDC."
+          fi
+
+      - name: Publish to npm
+        if: steps.version.outputs.publish == 'true'
+        run: npm publish ./blazeplot-*.tgz --provenance --access public --registry https://registry.npmjs.org
+
+      - name: Tag release
+        if: steps.version.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "$TAG"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
           body: ${{ steps.notes.outputs.body }}
