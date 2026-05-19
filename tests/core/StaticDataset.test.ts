@@ -57,6 +57,17 @@ describe("StaticDataset", () => {
     expect(ds.upperBoundX(10)).toBe(5);
   });
 
+  it("treats non-finite y values as explicit gaps", () => {
+    const ds = new StaticDataset(
+      new Float64Array([0, 1, 2]),
+      new Float32Array([10, NaN, Infinity]),
+    );
+
+    expect(ds.isGap(0)).toBe(false);
+    expect(ds.isGap(1)).toBe(true);
+    expect(ds.isGap(2)).toBe(true);
+  });
+
   it("throws on out-of-range index", () => {
     const ds = new StaticDataset(
       new Float64Array([0, 1]),

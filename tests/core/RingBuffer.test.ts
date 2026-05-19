@@ -117,6 +117,17 @@ describe("RingBuffer", () => {
     expect(buf.rangeMinMaxY(1, 5)).toEqual({ minY: -1, maxY: 8 });
   });
 
+  it("marks non-finite y values as gaps and excludes them from min/max ranges", () => {
+    const buf = new RingBuffer(5);
+    buf.append([0, 1, 2, 3, 4], [5, NaN, -2, Infinity, 7]);
+
+    expect(buf.isGap(0)).toBe(false);
+    expect(buf.isGap(1)).toBe(true);
+    expect(buf.isGap(3)).toBe(true);
+    expect(buf.rangeMinMaxY(0, 5)).toEqual({ minY: -2, maxY: 7 });
+    expect(buf.rangeMinMaxY(1, 2)).toBeNull();
+  });
+
   it("returns min/max y over wrapped logical ranges", () => {
     const buf = new RingBuffer(4);
     buf.append([0, 1, 2, 3, 4, 5], [10, 20, -5, 7, 4, 12]);
