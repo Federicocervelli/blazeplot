@@ -5,6 +5,7 @@ export interface TooltipPluginOptions {
   readonly className?: string;
   readonly mode?: ChartPickMode;
   readonly group?: ChartPickGroup;
+  readonly syncGroup?: string;
   readonly maxDistancePx?: number;
   readonly offsetX?: number;
   readonly offsetY?: number;
@@ -27,6 +28,13 @@ function renderDefaultTooltip(state: ChartHoverState, container: HTMLElement, fo
     (item) => `(${formatCompactNumber(item.x)}, ${formatCompactNumber(item.y)})`,
   );
 }
+
+interface TooltipPeer {
+  showShared(dataX: number): void;
+  hideShared(): void;
+}
+
+const tooltipGroups = new Map<string, Set<TooltipPeer>>();
 
 function placeTooltip(container: HTMLElement, state: ChartHoverState, options: TooltipPluginOptions): void {
   placeFixedWithinViewport(container, state.clientX, state.clientY, {
@@ -129,7 +137,59 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         placeTooltip(container, effectiveState, options);
       };
 
-      const unsubscribeHover = chart.subscribe("hover", render);
+      const renderSharedAtX = (dataX: number): void => {
+        const viewport = chart.getViewport();
+        const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
+        const [plotX, plotY] = chart.dataToPlot(dataX, dataY);
+        const rect = chart.canvas.getBoundingClientRect();
+        render(chart.pick(rect.left + plotX, rect.top + plotY, {
+          mode: options.mode ?? "nearest-x",
+          group: options.group ?? "x",
+          maxDistancePx: options.maxDistancePx,
+        }));
+      };
+
+      let renderingShared = false;
+      const peer: TooltipPeer | null = options.syncGroup ? {
+        showShared(dataX: number): void {
+          renderingShared = true;
+          try {
+            renderSharedAtX(dataX);
+          } finally {
+            renderingShared = false;
+          }
+        },
+        hideShared(): void {
+          renderingShared = true;
+          try {
+            render(null);
+          } finally {
+            renderingShared = false;
+          }
+        },
+      } : null;
+
+      if (peer && options.syncGroup) {
+        const peers = tooltipGroups.get(options.syncGroup) ?? new Set<TooltipPeer>();
+        peers.add(peer);
+        tooltipGroups.set(options.syncGroup, peers);
+      }
+
+      const notifyPeers = (state: ChartHoverState | null): void => {
+        if (!peer || !options.syncGroup || renderingShared) return;
+        const peers = tooltipGroups.get(options.syncGroup);
+        if (!peers) return;
+        for (const other of peers) {
+          if (other === peer) continue;
+          if (state) other.showShared(state.anchorX);
+          else other.hideShared();
+        }
+      };
+
+      const unsubscribeHover = chart.subscribe("hover", (state) => {
+        render(state);
+        notifyPeers(state);
+      });
       const unsubscribeTheme = chart.subscribe("themechange", () => {
         applyTheme();
         render(chart.getHoverState());
@@ -138,6 +198,11 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       return () => {
         unsubscribeHover();
         unsubscribeTheme();
+        if (peer && options.syncGroup) {
+          const peers = tooltipGroups.get(options.syncGroup);
+          peers?.delete(peer);
+          if (peers?.size === 0) tooltipGroups.delete(options.syncGroup);
+        }
         markerLayer.remove();
         container.remove();
       };

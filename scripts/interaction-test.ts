@@ -55,6 +55,8 @@ interface InteractionSnapshot {
   crosshairMoves: number;
   selectionCommits: number;
   selectionBounds: ViewportSnapshot | null;
+  visibleCrosshairs: number;
+  visibleTooltips: number;
   error?: string | null;
 }
 
@@ -80,6 +82,7 @@ async function main(): Promise<void> {
 
     await runInteractionsCase(options, serverUrl);
     await runSelectionCase(options, serverUrl);
+    await runLinkedCase(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
@@ -126,6 +129,22 @@ async function runInteractionsCase(options: Options, serverUrl: string): Promise
     assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1), "double-click reset restores x span");
 
     console.log("✓ interactions: hover, crosshair, wheel zoom, shift pan, box zoom, reset");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function runLinkedCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "linked");
+  try {
+    const snapshot = await waitForReady(cdp, options.timeoutMs);
+    const rect = snapshot.canvasRect;
+    await mouseMove(cdp, rect.left + rect.width * 0.45, rect.top + rect.height * 0.5);
+    await sleep(250);
+    const after = await getRequiredSnapshot(cdp);
+    assert(after.visibleCrosshairs >= 2, "linked crosshairs are visible on both charts");
+    assert(after.visibleTooltips >= 2, "linked tooltips are visible on both charts");
+    console.log("✓ linked: synchronized crosshair and tooltip");
   } finally {
     cdp.close();
   }
@@ -189,7 +208,7 @@ function parseArgs(args: readonly string[]): Options {
 }
 
 function printHelpAndExit(): never {
-  console.log(`Usage: bun run test:interaction [options]\n\nRuns automated browser interaction tests for hover, crosshair, wheel zoom, pan, box zoom, reset, and selection.\n`);
+  console.log(`Usage: bun run test:interaction [options]\n\nRuns automated browser interaction tests for hover, crosshair, wheel zoom, pan, box zoom, reset, selection, and linked sync.\n`);
   process.exit(0);
 }
 
