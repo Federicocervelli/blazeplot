@@ -231,7 +231,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
 11. **Linked multi-chart layout**
    - [x] Add a layout helper for stacked/side-by-side charts with shared X and independent Y axes.
    - [x] Support synchronized X camera ranges across linked charts.
-   - [ ] Support synchronized cursor/crosshair, selections, and tooltips across linked charts.
+   - [x] Support synchronized cursor/crosshair, selections, and tooltips across linked charts.
    - [x] Allow configurable spacing/gutters between linked plot areas.
    - [x] Support per-panel titles, axes, legends, and series groups.
 
@@ -303,7 +303,6 @@ regl rules for V1:
 
 ## Future / difficult
 
-- Advanced linked-chart sync for cursor/crosshair, selections, and tooltips
 - Multiple independent Y axes beyond the current left/right axis pair
 - FFT / waterfall
 - WebGPU backend
