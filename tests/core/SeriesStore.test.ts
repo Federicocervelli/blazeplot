@@ -93,6 +93,19 @@ describe("SeriesStore", () => {
     expect(Array.from(raw)).toEqual([0, 4, 1, -1, 2, 7]);
   });
 
+  it("reports data bounds with optional x filtering and area/bar baseline inclusion", () => {
+    const dataset = new StaticDataset([0, 1, 2, 3], [5, -2, 8, 1]);
+    const series = new SeriesStore(
+      dataset,
+      { mode: "area", dataset, downsample: "none" },
+      { color: [1, 1, 1, 1], lineWidth: 1, baseline: -4 },
+    );
+
+    expect(series.dataBounds()).toEqual({ xMin: 0, xMax: 3, yMin: -4, yMax: 8 });
+    expect(series.dataBounds({ xMin: 1.5, xMax: 3 })).toEqual({ xMin: 2, xMax: 3, yMin: -4, yMax: 8 });
+    expect(series.dataBounds({ xMin: 10 })).toBeNull();
+  });
+
   it("appends y-only batches to datasets that support implicit x", () => {
     const series = new SeriesStore(
       new UniformRingBuffer(4, { xStart: 10, xStep: 5 }),

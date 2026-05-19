@@ -28,6 +28,17 @@ describe("StaticOhlcDataset", () => {
     expect(dataset.upperBoundX(3)).toBe(2);
   });
 
+  it("reports data bounds from high/low values", () => {
+    const dataset = new StaticOhlcDataset([1, 2], [10, 12], [14, 15], [8, 11], [13, 12.5]);
+    const series = new SeriesStore(
+      dataset,
+      { mode: "candlestick", capacity: 2, dataset },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    expect(series.dataBounds()).toEqual({ xMin: 1, xMax: 2, yMin: 8, yMax: 15 });
+  });
+
   it("copies OHLC glyph line vertices", () => {
     const dataset = new StaticOhlcDataset([10], [2], [5], [1], [4]);
     const series = new SeriesStore(

@@ -33,6 +33,18 @@ const NEAREST_POINT_LEAF_SIZE = 64;
 const SCATTER_INTERVAL_LEAF_SIZE = 64;
 const SCATTER_BUCKET_RANGE_PRUNE_SIZE = 1024;
 
+export interface SeriesDataBounds {
+  readonly xMin: number;
+  readonly xMax: number;
+  readonly yMin: number;
+  readonly yMax: number;
+}
+
+export interface SeriesDataBoundsOptions {
+  readonly xMin?: number;
+  readonly xMax?: number;
+}
+
 type PointSearchInterval = {
   readonly start: number;
   readonly end: number;
@@ -182,6 +194,41 @@ export class SeriesStore {
   sampleAt(index: number): SeriesSample | null {
     if (index < 0 || index >= this.dataset.length) return null;
     return { index, x: this.dataset.getX(index), y: this.dataset.getY(index) };
+  }
+
+  dataBounds(options: SeriesDataBoundsOptions = {}): SeriesDataBounds | null {
+    if (this.dataset.length <= 0) return null;
+
+    const start = Number.isFinite(options.xMin) ? this.dataset.lowerBoundX(options.xMin!) : 0;
+    const end = Number.isFinite(options.xMax) ? this.dataset.upperBoundX(options.xMax!) : this.dataset.length;
+    if (start >= end) return null;
+
+    let xMin = Infinity;
+    let xMax = -Infinity;
+    let yMin = Infinity;
+    let yMax = -Infinity;
+    const ohlc = isOhlcDataset(this.dataset) ? this.dataset : null;
+
+    for (let i = start; i < end; i++) {
+      const x = this.dataset.getX(i);
+      const low = ohlc ? ohlc.getLow(i) : this.dataset.getY(i);
+      const high = ohlc ? ohlc.getHigh(i) : low;
+      if (!Number.isFinite(x) || !Number.isFinite(low) || !Number.isFinite(high)) continue;
+      xMin = Math.min(xMin, x);
+      xMax = Math.max(xMax, x);
+      yMin = Math.min(yMin, low, high);
+      yMax = Math.max(yMax, low, high);
+    }
+
+    if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || !Number.isFinite(yMin) || !Number.isFinite(yMax)) return null;
+    if (this.config.mode === "area" || this.config.mode === "bar") {
+      const baseline = this.style.baseline ?? 0;
+      if (Number.isFinite(baseline)) {
+        yMin = Math.min(yMin, baseline);
+        yMax = Math.max(yMax, baseline);
+      }
+    }
+    return { xMin, xMax, yMin, yMax };
   }
 
   nearestSampleByX(x: number, viewport?: Viewport): SeriesSample | null {
