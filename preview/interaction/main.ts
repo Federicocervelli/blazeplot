@@ -28,6 +28,8 @@ interface InteractionSnapshot {
   readonly selectionBounds: { xMin: number; xMax: number; yMin: number; yMax: number } | null;
   readonly visibleCrosshairs: number;
   readonly visibleTooltips: number;
+  readonly crosshairX: number | null;
+  readonly tooltipLeft: number | null;
   readonly error: string | null;
 }
 
@@ -123,6 +125,8 @@ window.__blazeplotInteractionTest = {
     selectionBounds,
     visibleCrosshairs: countVisible(".blazeplot-crosshair"),
     visibleTooltips: countVisible(".blazeplot-tooltip"),
+    crosshairX: crosshairX(),
+    tooltipLeft: tooltipLeft(),
     error,
   }),
   resetViewport: () => {
@@ -165,6 +169,22 @@ function countVisible(selector: string): number {
     if (getComputedStyle(element).display !== "none") total++;
   }
   return total;
+}
+
+function crosshairX(): number | null {
+  const crosshair = document.querySelector<HTMLElement>(".blazeplot-crosshair");
+  const vertical = crosshair?.firstElementChild as HTMLElement | null;
+  if (!crosshair || !vertical || getComputedStyle(crosshair).display === "none") return null;
+  const value = Number.parseFloat(vertical.style.left);
+  return Number.isFinite(value) ? value : null;
+}
+
+function tooltipLeft(): number | null {
+  const tooltip = document.querySelector<HTMLElement>(".blazeplot-tooltip");
+  if (!tooltip || getComputedStyle(tooltip).display === "none") return null;
+  const translated = /translate\(([-0-9.]+)px/.exec(tooltip.style.transform)?.[1];
+  const value = Number.parseFloat(translated ?? tooltip.style.left);
+  return Number.isFinite(value) ? value : null;
 }
 
 function renderStatus(): void {
