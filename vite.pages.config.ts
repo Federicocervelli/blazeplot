@@ -20,6 +20,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "preview/index.html"),
         features: resolve(__dirname, "preview/features/index.html"),
+        react: resolve(__dirname, "preview/react/index.html"),
       },
     },
   },
