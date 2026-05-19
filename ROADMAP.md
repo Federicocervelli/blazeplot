@@ -63,7 +63,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] `DataCursor` — binary search by X value
 - [x] Tests for `RingBuffer`, `MinMaxPyramid`, and `Camera2D`
 - [x] **General dataset abstraction** — `Dataset`/`AppendableDataset` interfaces. `RingBuffer` satisfies `AppendableDataset`. `StaticDataset` wraps any typed arrays. `MinMaxPyramid`/`DataCursor`/`SeriesStore` all accept `Dataset`. Same render path for streaming and static data.
-- [x] **LOD as a strategy, not a requirement** — `SeriesConfig.downsample` accepts `"minmax" | "none"` (optional, defaults to `"minmax"`). Line/bar use min/max when enabled, scatter uses exact 2D-culled chunks for `"none"` and a 2D viewport-aware point sampler with min/max interval pruning for LOD, and area renders raw sampled strips.
+- [x] **LOD as a strategy, not a requirement** — `SeriesConfig.downsample` accepts `"minmax" | "none" | "server"` (optional, defaults to `"minmax"`). Line/bar use min/max when enabled, `"server"` renders pre-sampled min/max buckets directly when the dataset provides them, scatter uses exact 2D-culled chunks for `"none"` and a 2D viewport-aware point sampler with min/max interval pruning for LOD, and area renders raw sampled strips.
 - [x] **Incremental pyramid update** — current: O(log N) per append instead of full rebuild. Only recomputes the affected tail at each level. `SeriesStore` avoids repeated full rebuilds after fixed-capacity ring shifts and uses the generic `RangeMinMaxDataset.rangeMinMaxY()` capability for dense extraction; `RingBuffer` implements it with a physical segment tree for wrapped streaming queries.
 
 ---
@@ -152,6 +152,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)`, `chart.addOhlc(config)`, `chart.addCandlestick(config)` helpers.
 - [x] `chart.fitToData(options)` for fitting X and/or left/right Y viewports to visible or supplied series, with optional padding and include-zero behavior.
 - [x] Dataset-backed series ergonomics: `capacity` is optional when `dataset` is supplied, so static data quick starts can use `new StaticDataset(x, y)` without ring-buffer parameters.
+- [x] Server-sampled data support: `ServerSampledDataset` accepts replaceable point samples or pre-bucketed min/max data from an API; use `downsample: "server"` to render server min/max buckets without applying another client-side sampler.
 
 Package status:
 - [x] Current npm package version: `0.3.2`

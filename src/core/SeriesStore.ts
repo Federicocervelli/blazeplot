@@ -88,6 +88,10 @@ export class SeriesStore {
     return this.pyramid !== null;
   }
 
+  get hasServerMinMax(): boolean {
+    return this.config.downsample === "server" && hasCopyMinMaxSegments(this.dataset);
+  }
+
   get dirty(): boolean {
     return this._dirty;
   }
@@ -209,10 +213,12 @@ export class SeriesStore {
     let yMax = -Infinity;
     const ohlc = isOhlcDataset(this.dataset) ? this.dataset : null;
 
+    const rangeMinMax = !ohlc && hasRangeMinMaxY(this.dataset) ? this.dataset : null;
     for (let i = start; i < end; i++) {
       const x = this.dataset.getX(i);
-      const low = ohlc ? ohlc.getLow(i) : this.dataset.getY(i);
-      const high = ohlc ? ohlc.getHigh(i) : low;
+      const range = rangeMinMax?.rangeMinMaxY(i, i + 1);
+      const low = ohlc ? ohlc.getLow(i) : range?.minY ?? this.dataset.getY(i);
+      const high = ohlc ? ohlc.getHigh(i) : range?.maxY ?? low;
       if (!Number.isFinite(x) || !Number.isFinite(low) || !Number.isFinite(high)) continue;
       xMin = Math.min(xMin, x);
       xMax = Math.max(xMax, x);

@@ -49,7 +49,7 @@ A chart only needs a host element. For regular arrays, wrap your data in a `Stat
 |---|---|
 | **WebGL2 rendering** | GPU-accelerated plot rendering from the ground up. No Canvas2D fallback. Axis labels use lightweight DOM layers. |
 | **Flexible data model** | Streaming ring buffer or static arrays. Bring your own data shape. |
-| **LOD downsampling** | Min/max pyramid for efficient line rendering at any zoom level — sparse views show raw points, dense views show vertical segments. |
+| **LOD downsampling** | Min/max pyramid for efficient line rendering at any zoom level — sparse views show raw points, dense views show vertical segments. Server-pre-sampled min/max buckets can also be rendered directly with `ServerSampledDataset`. |
 | **Pan & zoom** | Pointer/touch pan and wheel zoom via `Camera2D`. Customizable viewport policies. |
 | **Grid lines** | Data-anchored grid rendered as WebGL line lists. |
 | **Axis labels** | Smart tick generation with DOM labels. Per-axis `inside`/`outside` positioning; outside axes reserve real layout gutters. |
@@ -228,6 +228,7 @@ These member tables are generated from TypeScript declarations.
 | `style: SeriesStyle` |
 | `constructor(dataset: Dataset, config: SeriesConfig, style: SeriesStyle)` |
 | `get hasLOD(): boolean` |
+| `get hasServerMinMax(): boolean` |
 | `get dirty(): boolean` |
 | `get length(): number` |
 | `get visible(): boolean` |
@@ -483,6 +484,11 @@ These member tables are generated from TypeScript declarations.
 | `SeriesStore` | class | `./core/SeriesStore` | — |
 | `SeriesStyle` | interface | `./core/types` | — |
 | `SeriesYAxis` | type | `./core/types` | — |
+| `ServerSampledBuckets` | interface | `./core/ServerSampledDataset` | — |
+| `ServerSampledData` | type | `./core/ServerSampledDataset` | — |
+| `ServerSampledDataset` | class | `./core/ServerSampledDataset` | Mutable dataset for viewport samples that were already reduced by a server. Use point data with `downsample: "none"`, or min/max buckets with `downsample: "server"` so BlazePlot renders the supplied buckets directly instead of applying another client-side sampler. |
+| `ServerSampledDatasetKind` | type | `./core/ServerSampledDataset` | — |
+| `ServerSampledPoints` | interface | `./core/ServerSampledDataset` | — |
 | `StaticDataset` | class | `./core/StaticDataset` | — |
 | `StaticOhlcDataset` | class | `./core/OhlcDataset` | — |
 | `TextOverlayConfig` | interface | `./ui/Chart` | — |

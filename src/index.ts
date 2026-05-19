@@ -10,6 +10,8 @@ export type { RingBufferOptions, RingBufferOverflow } from "./core/RingBuffer.js
 export { UniformRingBuffer } from "./core/UniformRingBuffer.js";
 export type { UniformRingBufferOptions } from "./core/UniformRingBuffer.js";
 export { StaticDataset } from "./core/StaticDataset.js";
+export { ServerSampledDataset } from "./core/ServerSampledDataset.js";
+export type { ServerSampledBuckets, ServerSampledData, ServerSampledDatasetKind, ServerSampledPoints } from "./core/ServerSampledDataset.js";
 export { OhlcRingBuffer, StaticOhlcDataset } from "./core/OhlcDataset.js";
 export type { OhlcRingBufferOptions } from "./core/OhlcDataset.js";
 export { MinMaxPyramid } from "./core/MinMaxPyramid.js";
