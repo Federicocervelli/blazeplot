@@ -196,6 +196,7 @@ function startVite(port: number): Bun.Subprocess {
     cmd: ["bunx", "vite", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
     stdout: "pipe",
     stderr: "pipe",
+    env: { ...process.env, BLAZEPLOT_BENCH: "1" },
   });
   drain(proc.stdout, "vite");
   drain(proc.stderr, "vite");
