@@ -41,6 +41,7 @@ const CASES = [
   "annotations",
   "selection",
   "navigator",
+  "scale-options",
 ] as const;
 
 type VisualCase = typeof CASES[number];
@@ -123,6 +124,15 @@ function optionsForCase(name: VisualCase): ConstructorParameters<typeof Chart>[1
   ] }));
   if (name === "selection") plugins.push(selectionPlugin({ mode: "xy" }));
   if (name === "navigator") plugins.push(navigatorPlugin({ height: 72 }));
+  if (name === "scale-options") {
+    return {
+      axes: {
+        x: { position: "outside", scale: "log", logBase: 2, reversed: true, title: "log2 reversed" },
+        y: { position: "outside", scale: "symlog", symlogConstant: 2, reversed: true, title: "symlog reversed" },
+      },
+      grid: true,
+    };
+  }
   if (name === "axes-title-grid") {
     return {
       title: "Visual axes test",
@@ -163,6 +173,9 @@ function setupCase(name: VisualCase, chart: Chart): void {
     case "selection":
     case "navigator":
       addLine(chart);
+      break;
+    case "scale-options":
+      addScaleOptions(chart);
       break;
   }
 }
@@ -216,6 +229,13 @@ function addOhlc(chart: Chart, mode: "ohlc" | "candlestick"): void {
   chart.setViewport({ xMin: -1, xMax: count, yMin: 6, yMax: 14 });
 }
 
+function addScaleOptions(chart: Chart): void {
+  const x = Float64Array.from({ length: 256 }, (_, i) => 2 ** (i / 32));
+  const y = Float32Array.from({ length: 256 }, (_, i) => Math.sin(i * 0.12) * 8);
+  chart.addLine({ dataset: new StaticDataset(x, y), name: "scale options" }, { lineWidth: 2 });
+  chart.setViewport({ xMin: 1, xMax: 256, yMin: -10, yMax: 10 });
+}
+
 function wave(count: number, phase = 0): { x: Float64Array; y: Float32Array } {
   const x = new Float64Array(count);
   const y = new Float32Array(count);
@@ -238,4 +258,8 @@ function assertCaseDom(name: VisualCase, chart: Chart): void {
   if (name === "annotations") assert(!!root.querySelector(".blazeplot-annotations"), "annotations layer exists");
   if (name === "selection") assert(!!root.querySelector(".blazeplot-selection-brush"), "selection layer exists");
   if (name === "navigator") assert(!!root.querySelector(".blazeplot-navigator"), "navigator exists");
+  if (name === "scale-options") {
+    assert(chart.getCamera().xReversed, "x axis reversed");
+    assert(chart.getCamera().yReversed, "y axis reversed");
+  }
 }

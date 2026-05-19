@@ -44,12 +44,27 @@ describe("Camera2D", () => {
     expect(() => camera.zoom({ factor: -1, cx: 0.5, cy: 0.5, axis: "xy" })).toThrow(RangeError);
   });
 
+  it("maps reversed axes to clip and screen/data coordinates", () => {
+    const camera = new Camera2D();
+    camera.setViewport({ xMin: 0, xMax: 10, yMin: -5, yMax: 5 });
+    camera.setReversed({ x: true, y: true });
+
+    expect(camera.toClip(0, -5)).toEqual([1, 1]);
+    expect(camera.toClip(10, 5)).toEqual([-1, -1]);
+    expect(camera.screenToData(0, 0, 100, 100)).toEqual([10, -5]);
+    expect(camera.screenToData(100, 100, 100, 100)).toEqual([0, 5]);
+  });
+
   it("clones without sharing state", () => {
     const camera = new Camera2D();
     camera.setViewport({ xMin: 10, xMax: 20, yMin: -1, yMax: 1 });
+    camera.setReversed({ x: true });
     const clone = camera.clone();
     clone.pan({ dx: 1, dy: 1 });
+    clone.setReversed({ x: false });
     expect(camera.viewport).toEqual({ xMin: 10, xMax: 20, yMin: -1, yMax: 1 });
+    expect(camera.xReversed).toBe(true);
     expect(clone.viewport).toEqual({ xMin: 20, xMax: 30, yMin: 1, yMax: 3 });
+    expect(clone.xReversed).toBe(false);
   });
 });
