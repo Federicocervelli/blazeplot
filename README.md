@@ -438,6 +438,7 @@ These member tables are generated from TypeScript declarations.
 | `ChartPointerEventState` | interface | `./ui/Chart` | — |
 | `ChartPointerEventType` | type | `./ui/Chart` | — |
 | `ChartScreenshotOptions` | interface | `./ui/Chart` | — |
+| `ChartScreenshotPreset` | type | `./ui/Chart` | — |
 | `ChartSelectEvent` | interface | `./ui/Chart` | — |
 | `ChartSeriesClickEvent` | interface | `./ui/Chart` | — |
 | `ChartSeriesState` | interface | `./ui/Chart` | — |

@@ -54,6 +54,14 @@ function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: numb
   return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
 }
 
+function screenshotBackground(options: ChartScreenshotOptions, themeBackground: string): string | null | undefined {
+  if (options.background !== undefined) return options.background;
+  if (options.transparent === true || options.preset === "transparent") return null;
+  if (options.preset === "dark") return "#0b1020";
+  if (options.preset === "light") return "#ffffff";
+  return themeBackground;
+}
+
 function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
   let nextMin = includeZero ? Math.min(0, min) : min;
   let nextMax = includeZero ? Math.max(0, max) : max;
@@ -209,6 +217,8 @@ export interface ChartHoverState {
   readonly items: readonly ChartPickItem[];
 }
 
+export type ChartScreenshotPreset = "theme" | "transparent" | "dark" | "light";
+
 export interface ChartScreenshotOptions {
   readonly type?: string;
   readonly quality?: number;
@@ -217,6 +227,7 @@ export interface ChartScreenshotOptions {
   readonly width?: number;
   readonly height?: number;
   readonly transparent?: boolean;
+  readonly preset?: ChartScreenshotPreset;
 }
 
 export interface ChartFitToDataPadding {
@@ -972,9 +983,7 @@ export class Chart {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Unable to create a 2D canvas context for screenshot export.");
 
-    const background = options.background === undefined && options.transparent !== true
-      ? rgbaCss(this.resolvedTheme.backgroundColor)
-      : options.background;
+    const background = screenshotBackground(options, rgbaCss(this.resolvedTheme.backgroundColor));
     if (background) {
       ctx.fillStyle = background;
       ctx.fillRect(0, 0, width, height);

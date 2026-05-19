@@ -277,7 +277,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Add explicit output width/height options independent of the live layout size.
    - [x] Add transparent-background export support.
    - [x] Add optional download and clipboard helper utilities outside the core chart path via `blazeplot/export`.
-   - [ ] Add dark/light export presets that preserve theme contrast.
+   - [x] Add transparent, dark, and light export presets.
    - [x] Add export coverage for plugin-owned SVG overlays.
 
 16. **Tree-shakable plugin-owned UI and theme extension**
