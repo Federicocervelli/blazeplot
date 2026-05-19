@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - development
   workflow_dispatch:
 
 permissions:
@@ -13,7 +14,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -22,19 +23,70 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout main preview
         uses: actions/checkout@v4
+        with:
+          ref: main
+          path: branches/main
+
+      - name: Checkout development preview
+        uses: actions/checkout@v4
+        with:
+          ref: development
+          path: branches/development
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
 
-      - name: Install dependencies
-        run: bun install
+      - name: Build main preview
+        working-directory: branches/main
+        run: |
+          bun install --frozen-lockfile
+          bun run pages:build
 
-      - name: Build preview
-        run: bun run pages:build
+      - name: Build development preview
+        working-directory: branches/development
+        env:
+          BLAZEPLOT_PAGES_BASE: /blazeplot/development/
+        run: |
+          bun install --frozen-lockfile
+          bun run pages:build
+
+      - name: Assemble branch previews
+        run: |
+          rm -rf build/pages
+          mkdir -p build/pages/development
+          cp -a branches/main/build/pages/. build/pages/
+          cp -a branches/development/build/pages/. build/pages/development/
+          cat > build/pages/previews.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <title>BlazePlot previews</title>
+              <style>
+                body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #111827; color: #e5e7eb; font: 16px/1.5 system-ui, sans-serif; }
+                main { width: min(720px, calc(100% - 32px)); padding: 32px; border: 1px solid #334155; border-radius: 16px; background: #020617; box-shadow: 0 20px 80px #0008; }
+                h1 { margin-top: 0; }
+                a { color: #60a5fa; }
+                li { margin: 12px 0; }
+                code { color: #fbbf24; }
+              </style>
+            </head>
+            <body>
+              <main>
+                <h1>BlazePlot branch previews</h1>
+                <ul>
+                  <li><a href="/blazeplot/">Stable preview</a> from <code>main</code></li>
+                  <li><a href="/blazeplot/development/">Development preview</a> from <code>development</code></li>
+                </ul>
+              </main>
+            </body>
+          </html>
+          HTML
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
