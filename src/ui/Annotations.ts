@@ -309,6 +309,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
       overlay.style.pointerEvents = "none";
       overlay.style.overflow = "hidden";
       overlay.style.zIndex = String(options.zIndex ?? 12);
+      overlay.setAttribute("aria-hidden", "true");
       chart.plotElement.appendChild(overlay);
       const unsubscribeRender = chart.subscribe("render", () => requestRender());
       const unsubscribeMove = chart.subscribe("pointermove", (event) => {

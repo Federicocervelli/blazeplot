@@ -60,6 +60,8 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       container.style.font = options.font ?? chart.theme.tooltipFont;
       container.style.padding = "8px 10px";
       container.style.whiteSpace = "pre";
+      container.setAttribute("role", "tooltip");
+      container.setAttribute("aria-hidden", "true");
       const tooltipParent = chart.rootElement.ownerDocument.body ?? chart.rootElement;
       tooltipParent.appendChild(container);
 
@@ -123,6 +125,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         renderMarkers(effectiveState);
         if (!effectiveState || effectiveState.items.length === 0) {
           container.style.display = "none";
+          container.setAttribute("aria-hidden", "true");
           resetTooltipWidth();
           return;
         }
@@ -134,6 +137,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         }
 
         container.style.display = "block";
+        container.setAttribute("aria-hidden", "false");
         lockTooltipWidth();
         placeTooltip(container, effectiveState, options);
       };
