@@ -510,4 +510,4 @@ bun run version:patch   # Prepare package.json + changelog for a patch release P
 bun run release:benchmarks  # Append benchmark results to the current release changelog
 ```
 
-Release and benchmark workflow details live in [docs/release-and-benchmarks.md](docs/release-and-benchmarks.md).
+Release and benchmark workflow details live in [docs/release-and-benchmarks.md](https://github.com/Federicocervelli/blazeplot/blob/main/docs/release-and-benchmarks.md).
