@@ -53,6 +53,7 @@ const DEFAULT_CASES = [
   "selection",
   "navigator",
   "scale-options",
+  "overlay-layering",
 ];
 
 await main();

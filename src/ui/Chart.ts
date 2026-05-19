@@ -295,13 +295,19 @@ export class Chart {
   private _rafId: number = 0;
   private _hoverRafId: number = 0;
   private readonly handlePointerMove = (event: PointerEvent): void => {
-    this.pointerInPlot = true;
-    this.lastPointerClientX = event.clientX;
-    this.lastPointerClientY = event.clientY;
-    this.scheduleHoverRefresh();
+    if (event.pointerType !== "touch") {
+      this.pointerInPlot = true;
+      this.lastPointerClientX = event.clientX;
+      this.lastPointerClientY = event.clientY;
+      this.scheduleHoverRefresh();
+    }
     if (this.pointerSubscribers.pointermove.size > 0) this.emitPointerEvent("pointermove", event);
   };
   private readonly handlePointerDown = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      this.pointerInPlot = false;
+      this.emitHover(null);
+    }
     this.emitPointerEvent("pointerdown", event);
   };
   private readonly handlePointerUp = (event: PointerEvent): void => {
