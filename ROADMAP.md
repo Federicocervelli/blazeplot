@@ -224,7 +224,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [ ] Expose typed policy hooks so applications can combine autoscale, fixed ranges, and synchronized chart constraints.
 
 8. **Missing-data and discontinuity semantics**
-   - [ ] Define and document behavior for `NaN`, infinities, duplicate X values, unsorted X values, and empty datasets.
+   - [x] Define and document behavior for `NaN`, infinities, duplicate X values, unsorted X values, and empty datasets.
    - [ ] Render explicit line/area gaps across invalid or missing samples instead of connecting across discontinuities.
    - [ ] Preserve gap semantics through LOD extraction, picking, tooltip grouping, screenshot export, and static/streaming datasets.
    - [ ] Add validation/error modes so callers can choose between permissive skip, warning, or throw behavior for bad data.
