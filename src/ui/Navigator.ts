@@ -253,6 +253,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       root.style.border = "0";
       root.style.zIndex = String(options.zIndex ?? 30);
       root.style.touchAction = "none";
+      root.style.outlineOffset = "2px";
       root.tabIndex = 0;
       root.setAttribute("role", "slider");
       root.setAttribute("aria-label", "Chart navigator visible X range");
