@@ -173,6 +173,7 @@ Package status:
 - [x] Release workflow publishes only unpublished `package.json` versions and skips publish work when the version tag already exists.
 - [x] Release changelogs include benchmark tables via `bun run release:benchmarks`; the release workflow appends them with `--if-missing` before GitHub Release creation.
 - [x] GitHub Pages deploys from `main` and uses the `github-pages` environment branch policy for `main`.
+- [x] Release and benchmark operations are documented in `docs/release-and-benchmarks.md`.
 
 ## Competitive feature roadmap
 

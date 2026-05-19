@@ -1,0 +1,59 @@
+# Release and benchmark notes
+
+BlazePlot releases are driven by pull requests into `main`. Tags are outputs of the release workflow, not inputs.
+
+## Branches
+
+- `development`: integration branch for feature and fix work.
+- Feature branches: branch from `development`, commit one focused change, then merge back to `development`.
+- `main`: protected release branch. A merge to `main` with an unpublished `package.json` version publishes the package.
+
+## Preparing a release candidate
+
+```bash
+git checkout development
+git pull --ff-only
+bun run version:patch      # or version:minor / version:major
+# edit changelogs/vX.Y.Z.md
+bun run release:benchmarks
+bun run docs:readme
+bun run ci
+bun run pages:build
+bun pm pack --dry-run
+```
+
+Open a PR from `development` to `main` after the candidate is ready. The PR's `validate` check must pass before merge.
+
+## What the release workflow does
+
+On every push to `main`, `.github/workflows/release.yml`:
+
+1. Installs with `bun install --frozen-lockfile`.
+2. Runs `bun run ci`.
+3. Reads `package.json` and computes `vX.Y.Z`.
+4. If that tag already exists, skips publish/tag/release creation.
+5. If the tag is new, verifies the npm version is unpublished.
+6. Runs `bun run release:benchmarks -- --if-missing` so the release notes include benchmark tables.
+7. Packs and publishes to npm with provenance.
+8. Creates the `vX.Y.Z` tag and GitHub Release.
+
+## Benchmark commands
+
+- `bun run bench:ci`: fast smoke benchmark used by CI.
+- `bun run bench -- --scenario <name>`: run one benchmark scenario and print JSON.
+- `bun run bench:report`: append benchmark tables to a markdown file.
+- `bun run release:benchmarks`: append benchmark tables to `changelogs/v<package.version>.md`.
+
+Browser detection checks `BLAZEPLOT_BENCH_CHROME`, `CHROME_PATH`, then common Chrome/Chromium/Brave binaries.
+
+## Reading release benchmark tables
+
+The changelog benchmark table is intentionally compact:
+
+- **RAF FPS / RAF p95 ms**: browser animation-frame cadence during the benchmark window.
+- **Chart p50/p95 ms**: `Chart` frame time from internal frame stats.
+- **Points**: median rendered primitives/points from `ChartFrameStats.pointsRendered`.
+- **Draws**: median draw call count.
+- **Upload KB**: median GPU upload size per frame.
+
+The CPU hot-spot table comes from the Chrome DevTools Protocol profiler. It is useful for spotting large regressions, but exact timings vary by runner/browser and should not be treated as strict performance budgets yet.
