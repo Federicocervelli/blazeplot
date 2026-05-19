@@ -67,6 +67,10 @@ jobs:
             exit 1
           fi
 
+      - name: Append release benchmark results
+        if: steps.version.outputs.publish == 'true'
+        run: bun run release:benchmarks -- --if-missing
+
       - name: Generate release notes
         id: notes
         env:
