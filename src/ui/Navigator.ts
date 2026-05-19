@@ -347,11 +347,46 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         if (domain) applyRange(domain.xMin, domain.xMax);
       };
 
+      const onKeyDown = (event: KeyboardEvent): void => {
+        if (!domain || !chartRef) return;
+        const viewport = chartRef.getViewport();
+        const span = viewport.xMax - viewport.xMin;
+        const step = span * (event.shiftKey ? 0.25 : 0.1);
+        let nextMin = viewport.xMin;
+        let nextMax = viewport.xMax;
+        let handled = true;
+        switch (event.key) {
+          case "ArrowLeft":
+            nextMin -= step;
+            nextMax -= step;
+            break;
+          case "ArrowRight":
+            nextMin += step;
+            nextMax += step;
+            break;
+          case "Home":
+            nextMin = domain.xMin;
+            nextMax = domain.xMin + span;
+            break;
+          case "End":
+            nextMax = domain.xMax;
+            nextMin = domain.xMax - span;
+            break;
+          default:
+            handled = false;
+            break;
+        }
+        if (!handled) return;
+        event.preventDefault();
+        applyRange(nextMin, nextMax);
+      };
+
       root.addEventListener("pointerdown", onPointerDown);
       root.addEventListener("pointermove", onPointerMove);
       root.addEventListener("pointerup", onPointerUp);
       root.addEventListener("pointercancel", onPointerUp);
       root.addEventListener("dblclick", onDoubleClick);
+      root.addEventListener("keydown", onKeyDown);
       render();
 
       return () => {
@@ -363,6 +398,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         root?.removeEventListener("pointerup", onPointerUp);
         root?.removeEventListener("pointercancel", onPointerUp);
         root?.removeEventListener("dblclick", onDoubleClick);
+        root?.removeEventListener("keydown", onKeyDown);
         if (options.reserveSpace !== false) chart.setLayoutReservation(reservationId, null);
         root?.remove();
         root = null;

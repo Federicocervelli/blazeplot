@@ -267,7 +267,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Add ARIA labels/roles for chart roots and plot/canvas/axis presentation semantics.
    - [x] Add keyboard pan, zoom, and fit-to-data reset with configurable pan/zoom amounts.
    - [x] Add ARIA labels/roles for legends, tooltips, navigators, and plugin controls.
-   - [ ] Add keyboard selection and navigator-handle movement with configurable shortcuts.
+   - [x] Add keyboard navigator window movement; keyboard selection/edit shortcuts remain future work.
    - [x] Add focus management and visible focus styles for chart roots and keyboard-focusable plugin controls.
    - [ ] Add high-contrast theme guidance and reduced-motion behavior where animations/interactions are introduced.
    - [ ] Add automated accessibility checks for representative previews.
