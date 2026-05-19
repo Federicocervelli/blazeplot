@@ -412,7 +412,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           event,
           rect.height,
           options.wheelZoomSensitivity ?? 0.001,
-          options.trackpadPinchSensitivity ?? 0.003,
+          options.trackpadPinchSensitivity ?? 0.0045,
         );
         const cx = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
         const cy = rect.height > 0 ? 1 - (event.clientY - rect.top) / rect.height : 0.5;
