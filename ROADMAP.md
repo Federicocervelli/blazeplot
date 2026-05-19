@@ -29,7 +29,7 @@ class FutureWebGPUBackend { …} # V3
 
 Package output is detached from the preview app:
 - `bun run dev` serves `preview/`.
-- `bun run build` emits core `dist/index.js` / `dist/index.d.ts` plus separate `react`, `linked`, and built-in plugin subpath chunks/declarations.
+- `bun run build` emits core `dist/index.js` / `dist/index.d.ts` plus separate `react`, `linked`, `export`, and built-in plugin subpath chunks/declarations.
 - `preview/` is excluded from npm package contents.
 
 ---
@@ -168,7 +168,7 @@ Package status:
 
 - [x] `main` is the protected release branch; release PRs merge there only after the `validate` status check passes.
 - [x] `development` is the integration branch for feature/fix work before release PRs.
-- [x] `bun run ci` runs typecheck, tests, package build, headless browser benchmark smoke test, automated visual tests, and automated browser interaction tests.
+- [x] `bun run ci` runs typecheck, tests, package build, package export smoke test, headless browser benchmark smoke test, automated visual tests, and automated browser interaction tests.
 - [x] GitHub CI runs the same `validate` check for PRs to `main`/`development` and pushes to `development`.
 - [x] Release workflow publishes only unpublished `package.json` versions and skips publish work when the version tag already exists.
 - [x] Release changelogs include benchmark tables via `bun run release:benchmarks`; the release workflow appends them with `--if-missing` before GitHub Release creation.
@@ -271,9 +271,10 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
 
 15. **Export and sharing improvements**
    - [x] Support `chart.screenshot()` image MIME type, quality, background, and DPR options.
-   - [ ] Add explicit output width/height options independent of the live layout size.
-   - [ ] Add transparent-background and dark/light export presets that preserve theme contrast.
-   - [ ] Add optional download and clipboard helper utilities outside the core chart path.
+   - [x] Add explicit output width/height options independent of the live layout size.
+   - [x] Add transparent-background export support.
+   - [x] Add optional download and clipboard helper utilities outside the core chart path via `blazeplot/export`.
+   - [ ] Add dark/light export presets that preserve theme contrast.
    - [ ] Add export coverage for plugin-owned non-text DOM/SVG overlays.
 
 16. **Tree-shakable plugin-owned UI and theme extension**
@@ -298,7 +299,7 @@ Current automated coverage is strongest for core data structures and interaction
 
 - [x] Core unit tests for ring buffers, static datasets, OHLC datasets, min/max pyramids, series extraction, and picking helpers.
 - [x] Interaction unit tests for `Camera2D` and `AxisController` behavior.
-- [x] CI `validate` check runs typecheck, unit tests, package build, headless `ci-smoke` browser benchmark, chart visual tests, and browser interaction tests.
+- [x] CI `validate` check runs typecheck, unit tests, package build, package export smoke test, headless `ci-smoke` browser benchmark, chart visual tests, and browser interaction tests.
 - [x] Release changelogs include benchmark result tables for each published version.
 - [x] Browser visual test harness renders focused chart/plugin cases for line, area, scatter, bar, OHLC, candlestick, axes/titles/grid, legend, tooltip, crosshair, annotations, selection, and navigator.
 - [x] WebGL smoke tests assert render modes, draw calls, rendered points, and `chart.screenshot()` output in a controlled browser.
@@ -306,7 +307,7 @@ Current automated coverage is strongest for core data structures and interaction
 - [ ] Expand DOM/plugin interaction tests to cover legend toggles, navigator handle dragging, axis-specific drag/zoom, annotation hit behavior, and mobile no-hover workflows.
 - [ ] Screenshot/export regression tests with image comparison baselines for plot + DOM/plugin overlay composition.
 - [ ] Benchmark trend storage/comparison so CI can flag large regressions without being flaky on shared runners.
-- [ ] Package export smoke tests for every public subpath (`blazeplot`, `react`, `linked`, and each built-in plugin) against built output.
+- [x] Package export smoke tests for every public subpath (`blazeplot`, `react`, `linked`, `export`, and each built-in plugin) against built output.
 - [ ] Bundle-size and tree-shaking regression checks so optional plugin chunks stay out of chart-only imports.
 - [ ] WebGL context-loss/context-restore browser tests once context recovery support is implemented.
 

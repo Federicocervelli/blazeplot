@@ -153,8 +153,11 @@ export interface ChartHoverState {
 export interface ChartScreenshotOptions {
   readonly type?: string;
   readonly quality?: number;
-  readonly background?: string;
+  readonly background?: string | null;
   readonly dpr?: number;
+  readonly width?: number;
+  readonly height?: number;
+  readonly transparent?: boolean;
 }
 
 export interface ChartLayoutReservation {
@@ -722,8 +725,10 @@ export class Chart {
     const rootRect = this.layout.root.getBoundingClientRect();
     const plotRect = this.layout.plot.getBoundingClientRect();
     const dpr = Number.isFinite(options.dpr) ? Math.max(1, options.dpr!) : Math.max(1, globalThis.devicePixelRatio || 1);
-    const width = Math.max(1, Math.round(rootRect.width * dpr));
-    const height = Math.max(1, Math.round(rootRect.height * dpr));
+    const width = Number.isFinite(options.width) ? Math.max(1, Math.round(options.width!)) : Math.max(1, Math.round(rootRect.width * dpr));
+    const height = Number.isFinite(options.height) ? Math.max(1, Math.round(options.height!)) : Math.max(1, Math.round(rootRect.height * dpr));
+    const scaleX = width / Math.max(1, rootRect.width);
+    const scaleY = height / Math.max(1, rootRect.height);
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -731,17 +736,22 @@ export class Chart {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Unable to create a 2D canvas context for screenshot export.");
 
-    ctx.fillStyle = options.background ?? rgbaCss(this.resolvedTheme.backgroundColor);
-    ctx.fillRect(0, 0, width, height);
+    const background = options.background === undefined && options.transparent !== true
+      ? rgbaCss(this.resolvedTheme.backgroundColor)
+      : options.background;
+    if (background) {
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, width, height);
+    }
 
     ctx.drawImage(
       this.canvas,
-      (plotRect.left - rootRect.left) * dpr,
-      (plotRect.top - rootRect.top) * dpr,
-      plotRect.width * dpr,
-      plotRect.height * dpr,
+      (plotRect.left - rootRect.left) * scaleX,
+      (plotRect.top - rootRect.top) * scaleY,
+      plotRect.width * scaleX,
+      plotRect.height * scaleY,
     );
-    this.drawDomTextForScreenshot(ctx, rootRect, dpr);
+    this.drawDomTextForScreenshot(ctx, rootRect, scaleX, scaleY);
 
     return new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
@@ -1483,7 +1493,7 @@ export class Chart {
     for (const callback of this.renderSubscribers) callback(this);
   }
 
-  private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, dpr: number): void {
+  private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, scaleX: number, scaleY: number): void {
     const elements = this.layout.root.querySelectorAll<HTMLElement>("div");
     for (const el of elements) {
       const text = el.textContent;
@@ -1496,7 +1506,7 @@ export class Chart {
       if (rect.width <= 0 || rect.height <= 0) continue;
 
       ctx.save();
-      ctx.scale(dpr, dpr);
+      ctx.scale(scaleX, scaleY);
       ctx.font = style.font;
       ctx.fillStyle = style.color;
       ctx.textBaseline = "top";
