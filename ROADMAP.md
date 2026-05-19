@@ -131,8 +131,8 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 
 **Status: basic shape exists**
 
-- [x] `new Chart(canvas)`
-- [x] `new Chart(canvas, { viewportPolicy })`
+- [x] `new Chart(targetElement)`
+- [x] `new Chart(targetElement, { viewportPolicy })`
 - [x] `chart.addSeries(config, style)`
 - [x] `chart.setViewport({ xMin, xMax, yMin, yMax })`
 - [x] `chart.start()` / `chart.stop()`
@@ -150,6 +150,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Legend plugin (`legendPlugin`) built on public series state APIs
 - [x] Tooltip / hit testing (`tooltipPlugin`, `chart.pick`, `chart.subscribe("hover")`; actual raw sample X/Y, per-frame live hover refresh, highlighted sample markers)
 - [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)`, `chart.addOhlc(config)`, `chart.addCandlestick(config)` helpers.
+- [x] Dataset-backed series ergonomics: `capacity` is optional when `dataset` is supplied, so static data quick starts can use `new StaticDataset(x, y)` without ring-buffer parameters.
 
 Package status:
 - [x] Current npm package version: `0.3.2`
@@ -213,7 +214,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Allow height, placement, styles, and linked series configuration.
 
 9. **React wrapper package**
-   - [x] Add first-party `@blazeplot/react` package or subpath.
+   - [x] Add first-party `blazeplot/react` subpath.
    - [x] Provide `BlazeChart` component with ref access to the underlying `Chart`.
    - [x] Handle mount/dispose, prop updates, plugin lifecycle, and resize automatically.
    - [ ] Include examples for streaming data, tooltips, legends, and custom plugins.
@@ -227,7 +228,8 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
 
 11. **Linked multi-chart layout**
    - [x] Add a layout helper for stacked/side-by-side charts with shared X and independent Y axes.
-   - [ ] Support synchronized camera ranges, cursor/crosshair, selections, and tooltips.
+   - [x] Support synchronized X camera ranges across linked charts.
+   - [ ] Support synchronized cursor/crosshair, selections, and tooltips across linked charts.
    - [x] Allow configurable spacing/gutters between linked plot areas.
    - [x] Support per-panel titles, axes, legends, and series groups.
 
@@ -284,7 +286,7 @@ regl rules for V1:
 
 ## Future / difficult
 
-- Multi-chart sync
-- Multiple Y axes
+- Advanced linked-chart sync for cursor/crosshair, selections, and tooltips
+- Multiple independent Y axes beyond the current left/right axis pair
 - FFT / waterfall
 - WebGPU backend
