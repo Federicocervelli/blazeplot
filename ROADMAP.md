@@ -219,6 +219,12 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Allow configurable spacing/gutters between linked plot areas.
    - [x] Support per-panel titles, axes, legends, and series groups.
 
+12. **Mobile and touch support**
+   - [ ] Add touch-first interaction presets for pan, pinch zoom, long-press tooltip/crosshair, and double-tap reset.
+   - [ ] Ensure tooltip, crosshair, selection, navigator, and legend interactions are usable without hover.
+   - [ ] Improve mobile layout defaults for outside axes, controls, legends, and dense tick labels.
+   - [ ] Add mobile preview/testing scenarios for high-DPR phones and tablets.
+
 ---
 
 ## Backend strategy
