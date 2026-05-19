@@ -21,6 +21,8 @@ const SPARSE_COS_STEP = Math.cos(OMEGA * SPARSE_INTERVAL);
 const pools = new Map<number, ArrayBuffer[]>();
 let t = 0;
 let randomState = 0x9e3779b9;
+let xStart = PREVIEW_START_TIME;
+let xStepMs = PREVIEW_X_STEP_MS;
 
 worker.addEventListener("message", (event) => {
   const message = event.data;
@@ -29,10 +31,18 @@ worker.addEventListener("message", (event) => {
     return;
   }
 
-  postBatch(generateBatch(message.batchSize));
+  if (message.type === "reset") {
+    t = 0;
+    randomState = 0x9e3779b9;
+    xStart = message.xStart;
+    xStepMs = message.xStepMs;
+    return;
+  }
+
+  postBatch(generateBatch(message.batchSize, message.generation));
 });
 
-function generateBatch(requestedBatchSize: number): PreviewDataBatch {
+function generateBatch(requestedBatchSize: number, batchGeneration: number): PreviewDataBatch {
   const start = t;
   const batchSize = Math.max(1, Math.floor(requestedBatchSize));
   const end = start + batchSize;
@@ -59,6 +69,7 @@ function generateBatch(requestedBatchSize: number): PreviewDataBatch {
   t = end;
   return {
     type: "batch",
+    generation: batchGeneration,
     start,
     end,
     batchSize,
@@ -131,7 +142,7 @@ function fillOhlc(
     const previousX = Math.max(0, x - OHLC_INTERVAL);
     const open = ohlcCloseAt(previousX);
     const close = ohlcCloseAt(x);
-    xs[i] = PREVIEW_START_TIME + x * PREVIEW_X_STEP_MS;
+    xs[i] = xStart + x * xStepMs;
     opens[i] = open;
     highs[i] = Math.max(open, close) + 0.025 + (index % 5) * 0.003;
     lows[i] = Math.min(open, close) - 0.025 - (index % 7) * 0.002;

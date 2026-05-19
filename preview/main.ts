@@ -6,19 +6,16 @@ import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import {
   DEFAULT_APPEND_RATE,
-  HISTORY_SAMPLES,
   LIVE_BATCH_SIZE,
-  OHLC_HISTORY_CAPACITY,
+  MAX_VIEW_SAMPLES,
   OHLC_INTERVAL,
   PREVIEW_START_TIME,
-  PREVIEW_X_STEP_MS,
-  SPARSE_HISTORY_CAPACITY,
   SPARSE_INTERVAL,
   VIEW_SAMPLES,
   Y_VIEW,
   type PreviewDataBatch,
 } from "./dataConfig.ts";
-import type { ChartFrameStats, ChartPickGroup, ChartPickMode, ChartTheme, ViewportPolicy } from "@/index.ts";
+import type { ChartFrameStats, ChartPickGroup, ChartPickMode, ChartTheme, SeriesStore, ViewportPolicy } from "@/index.ts";
 
 const chartTarget = requireElement<HTMLElement>("chart");
 const overlayText = document.getElementById("overlayText") as HTMLSpanElement | null;
@@ -60,6 +57,8 @@ console.info("[blazeplot] preview starting");
 let t = 0;
 let viewSamples = VIEW_SAMPLES;
 let appendRate = DEFAULT_APPEND_RATE;
+let previewStartTime = PREVIEW_START_TIME;
+let dataGeneration = 0;
 let frames = 0;
 let appendedSinceStats = 0;
 let lastBatchSize = 0;
@@ -88,6 +87,13 @@ const tooltipOptions: { mode: ChartPickMode; group: ChartPickGroup; highlight: b
   formatter: (item) => `(${dateFormatter.format(new Date(item.x))}, ${numberFormatter.format(item.y)})`,
 };
 const MAX_APPEND_RATE = 1_000_000;
+
+let lineSeries!: SeriesStore;
+let areaSeries!: SeriesStore;
+let scatterSeries!: SeriesStore;
+let barSeries!: SeriesStore;
+let ohlcSeries!: SeriesStore;
+let ohlcDataset!: OhlcRingBuffer;
 
 const chartStats: ChartFrameStats = {
   fps: 0,
@@ -174,32 +180,9 @@ const chart = new Chart(chartTarget, {
 });
 const canvas = chart.canvas;
 
-const lineDataset = new ProceduralLineDataset(HISTORY_SAMPLES);
-const lineSeries = chart.addLine(
-  { dataset: lineDataset, downsample: "minmax", name: "Wave" },
-  { lineWidth: 1 },
-);
-const areaDataset = new UniformRingBuffer(SPARSE_HISTORY_CAPACITY, { xStart: PREVIEW_START_TIME, xStep: SPARSE_INTERVAL * PREVIEW_X_STEP_MS });
-const spikeDataset = new UniformRingBuffer(SPARSE_HISTORY_CAPACITY, { xStart: PREVIEW_START_TIME, xStep: SPARSE_INTERVAL * PREVIEW_X_STEP_MS });
-const barDataset = new UniformRingBuffer(SPARSE_HISTORY_CAPACITY, { xStart: PREVIEW_START_TIME, xStep: SPARSE_INTERVAL * PREVIEW_X_STEP_MS, blockSize: 16 });
-const areaSeries = chart.addArea(
-  { dataset: areaDataset, downsample: "none", name: "Area" },
-  { baseline: -0.05, lineWidth: 1 },
-);
-const scatterSeries = chart.addScatter(
-  { dataset: spikeDataset, downsample: "none", name: "Spikes" },
-  { pointSize: 5 },
-);
-const barSeries = chart.addBar(
-  { dataset: barDataset, downsample: "minmax", name: "Power" },
-  { barWidth: SPARSE_INTERVAL * PREVIEW_X_STEP_MS, baseline: -1.1 },
-);
-const ohlcDataset = new OhlcRingBuffer(OHLC_HISTORY_CAPACITY);
-chart.addOhlc(
-  { dataset: ohlcDataset, downsample: "none", name: "OHLC" },
-  { tickWidth: OHLC_INTERVAL * PREVIEW_X_STEP_MS * 0.7, lineWidth: 1 },
-);
-viewSamplesInput.max = String(HISTORY_SAMPLES);
+installSeries();
+configureWorker();
+viewSamplesInput.max = String(MAX_VIEW_SAMPLES);
 viewSamplesInput.value = String(viewSamples);
 appendRateInput.value = String(appendRate);
 applyTheme("default");
@@ -264,15 +247,96 @@ console.info("[blazeplot] chart initialized", {
   liveBatchSize: LIVE_BATCH_SIZE,
 });
 
+function installSeries(): void {
+  const history = historySamples();
+  const xStep = sampleStepMs();
+  const lineDataset = new ProceduralLineDataset(history, { xStart: previewStartTime, xStep, tracePeriod: viewSamples });
+  lineSeries = chart.addLine(
+    { dataset: lineDataset, downsample: "minmax", name: "Wave" },
+    { lineWidth: 1 },
+  );
+
+  const sparseCapacity = sparseHistoryCapacity();
+  const areaDataset = new UniformRingBuffer(sparseCapacity, { xStart: previewStartTime, xStep: SPARSE_INTERVAL * xStep });
+  const spikeDataset = new UniformRingBuffer(sparseCapacity, { xStart: previewStartTime, xStep: SPARSE_INTERVAL * xStep });
+  const barDataset = new UniformRingBuffer(sparseCapacity, { xStart: previewStartTime, xStep: SPARSE_INTERVAL * xStep, blockSize: 16 });
+  areaSeries = chart.addArea(
+    { dataset: areaDataset, downsample: "none", name: "Area" },
+    { baseline: -0.05, lineWidth: 1 },
+  );
+  scatterSeries = chart.addScatter(
+    { dataset: spikeDataset, downsample: "none", name: "Spikes" },
+    { pointSize: 5 },
+  );
+  barSeries = chart.addBar(
+    { dataset: barDataset, downsample: "minmax", name: "Power" },
+    { barWidth: SPARSE_INTERVAL * xStep, baseline: -1.1 },
+  );
+
+  ohlcDataset = new OhlcRingBuffer(ohlcHistoryCapacity());
+  ohlcSeries = chart.addOhlc(
+    { dataset: ohlcDataset, downsample: "none", name: "OHLC" },
+    { tickWidth: OHLC_INTERVAL * xStep * 0.7, lineWidth: 1 },
+  );
+}
+
+function removeSeries(): void {
+  chart.removeSeries(lineSeries);
+  chart.removeSeries(areaSeries);
+  chart.removeSeries(scatterSeries);
+  chart.removeSeries(barSeries);
+  chart.removeSeries(ohlcSeries);
+}
+
+function resetDataModel(): void {
+  if (lineSeries) removeSeries();
+  t = 0;
+  lastBatchSize = 0;
+  appendedSinceStats = 0;
+  frames = 0;
+  workerPending = false;
+  previewStartTime = Date.now() - viewSamples * sampleStepMs();
+  streamClockStartedAt = performance.now();
+  dataGeneration++;
+  installSeries();
+  configureWorker();
+  chart.setViewport({ ...liveXViewport(), ...Y_VIEW });
+  updateOverlay(true);
+}
+
+function configureWorker(): void {
+  dataWorker.postMessage({ type: "reset", generation: dataGeneration, xStart: previewStartTime, xStepMs: sampleStepMs() });
+}
+
+function historySamples(): number {
+  return Math.max(1, viewSamples);
+}
+
+function sparseHistoryCapacity(): number {
+  return Math.ceil(historySamples() / SPARSE_INTERVAL) + 2;
+}
+
+function ohlcHistoryCapacity(): number {
+  return Math.ceil(historySamples() / OHLC_INTERVAL) + 2;
+}
+
+function sampleStepMs(): number {
+  return 1000 / appendRate;
+}
+
 function appendGeneratedBatch(batch: PreviewDataBatch): void {
-  const release: ArrayBuffer[] = [];
+  const release = batchBuffers(batch);
+  if (batch.generation !== dataGeneration) {
+    if (release.length > 0) dataWorker.postMessage({ type: "release", buffers: release }, release);
+    return;
+  }
+
   lineSeries.appendY({ length: batch.batchSize });
 
   if (batch.sparseCount > 0 && batch.areaY && batch.spikeY && batch.barY) {
     areaSeries.appendY(new Float32Array(batch.areaY));
     scatterSeries.appendY(new Float32Array(batch.spikeY));
     barSeries.appendY(new Float32Array(batch.barY));
-    release.push(batch.areaY, batch.spikeY, batch.barY);
   }
 
   if (batch.ohlcCount > 0 && batch.ohlcX && batch.ohlcOpen && batch.ohlcHigh && batch.ohlcLow && batch.ohlcClose) {
@@ -283,7 +347,6 @@ function appendGeneratedBatch(batch: PreviewDataBatch): void {
       new Float32Array(batch.ohlcLow),
       new Float32Array(batch.ohlcClose),
     );
-    release.push(batch.ohlcX, batch.ohlcOpen, batch.ohlcHigh, batch.ohlcLow, batch.ohlcClose);
   }
 
   t = batch.end;
@@ -295,12 +358,25 @@ function appendGeneratedBatch(batch: PreviewDataBatch): void {
   updateOverlay();
 }
 
+function batchBuffers(batch: PreviewDataBatch): ArrayBuffer[] {
+  const buffers: ArrayBuffer[] = [];
+  if (batch.areaY) buffers.push(batch.areaY);
+  if (batch.spikeY) buffers.push(batch.spikeY);
+  if (batch.barY) buffers.push(batch.barY);
+  if (batch.ohlcX) buffers.push(batch.ohlcX);
+  if (batch.ohlcOpen) buffers.push(batch.ohlcOpen);
+  if (batch.ohlcHigh) buffers.push(batch.ohlcHigh);
+  if (batch.ohlcLow) buffers.push(batch.ohlcLow);
+  if (batch.ohlcClose) buffers.push(batch.ohlcClose);
+  return buffers;
+}
+
 function stream(): void {
   if (streaming) {
     const batchSize = nextBatchSize();
     if (!workerPending && batchSize !== 0) {
       workerPending = true;
-      dataWorker.postMessage({ type: "generate", batchSize });
+      dataWorker.postMessage({ type: "generate", batchSize, generation: dataGeneration });
     }
   } else {
     lastBatchSize = 0;
@@ -326,9 +402,9 @@ function syncStreamClock(now: number = performance.now()): void {
   streamClockStartedAt = now - (t * 1000) / appendRate;
 }
 
-function updateOverlay(): void {
+function updateOverlay(force: boolean = false): void {
   const now = performance.now();
-  if (now - lastStatsAt < 500) return;
+  if (!force && now - lastStatsAt < 500) return;
 
   const elapsedMs = now - lastStatsAt;
   const fps = (frames * 1000) / elapsedMs;
@@ -348,12 +424,13 @@ function updateOverlay(): void {
       `renderer: ${chartStats.renderMode}`,
       `points appended: ${t.toLocaleString()}`,
       `last batch: ${lastBatchSize.toLocaleString()}`,
-      `target append rate: ${appendRate.toLocaleString()} points/sec`,
-      `actual append rate: ${actualAppendRate.toFixed(0)} points/sec`,
+      `target sample rate: ${appendRate.toLocaleString()} samples/sec`,
+      `actual append rate: ${actualAppendRate.toFixed(0)} samples/sec`,
+      `sample step: ${sampleStepMs().toFixed(4)} ms`,
       `view samples: ${viewSamples.toLocaleString()}`,
-      `history span: ${HISTORY_SAMPLES.toLocaleString()}`,
-      `sparse capacity: ${SPARSE_HISTORY_CAPACITY.toLocaleString()}`,
-      `ohlc capacity: ${OHLC_HISTORY_CAPACITY.toLocaleString()}`,
+      `history span: ${historySamples().toLocaleString()}`,
+      `sparse capacity: ${sparseHistoryCapacity().toLocaleString()}`,
+      `ohlc capacity: ${ohlcHistoryCapacity().toLocaleString()}`,
       `stream ticks/sec: ${fps.toFixed(1)}`,
       `render fps: ${chartStats.fps.toFixed(1)}`,
       `render ms/frame: ${chartStats.frameMs.toFixed(2)}`,
@@ -385,18 +462,16 @@ function resetView(): void {
 
 function setViewSamples(value: string): void {
   const parsed = Number(value.replaceAll(",", ""));
-  viewSamples = Number.isFinite(parsed) ? Math.round(Math.min(HISTORY_SAMPLES, Math.max(1_000, parsed))) : VIEW_SAMPLES;
+  viewSamples = Number.isFinite(parsed) ? Math.round(Math.min(MAX_VIEW_SAMPLES, Math.max(1_000, parsed))) : VIEW_SAMPLES;
   viewSamplesInput.value = String(viewSamples);
-  const current = chart.getViewport();
-  const xMax = followLive ? sampleToTime(Math.max(viewSamples, t)) : current.xMax;
-  chart.setViewport({ xMin: Math.max(sampleToTime(0), xMax - viewSamples * PREVIEW_X_STEP_MS), xMax });
+  resetDataModel();
 }
 
 function setAppendRate(value: string): void {
   const parsed = Number(value.replaceAll(",", ""));
   appendRate = Number.isFinite(parsed) ? Math.round(Math.min(MAX_APPEND_RATE, Math.max(1, parsed))) : DEFAULT_APPEND_RATE;
   appendRateInput.value = String(appendRate);
-  syncStreamClock();
+  resetDataModel();
 }
 
 function liveXViewport(): { xMin: number; xMax: number } {
@@ -408,7 +483,7 @@ function liveXViewport(): { xMin: number; xMax: number } {
 }
 
 function sampleToTime(sample: number): number {
-  return PREVIEW_START_TIME + sample * PREVIEW_X_STEP_MS;
+  return previewStartTime + sample * sampleStepMs();
 }
 
 async function downloadScreenshot(): Promise<void> {

@@ -1,7 +1,6 @@
 import { PREVIEW_START_TIME, PREVIEW_X_STEP_MS, TRACE_PERIOD } from "./dataConfig.ts";
 import type { AcceleratedDataset, AppendableDataset, MinMaxSegmentLayout, SampleCopyLayout, TimeRange, Viewport, YAppendableDataset } from "@/index.ts";
 
-const OMEGA = (Math.PI * 2) / TRACE_PERIOD;
 const BASELINE = 0.78;
 const AMPLITUDE = 0.25;
 const NOISE_MAX = 0.01;
@@ -13,16 +12,36 @@ function positiveModulo(value: number, modulo: number): number {
 type SampleLayout = SampleCopyLayout;
 type MinMaxLayout = MinMaxSegmentLayout;
 
+export interface ProceduralLineDatasetOptions {
+  readonly xStart?: number;
+  readonly xStep?: number;
+  readonly tracePeriod?: number;
+}
+
 export class ProceduralLineDataset implements AppendableDataset, YAppendableDataset, AcceleratedDataset {
   readonly capacity: number;
+  private readonly xStart: number;
+  private readonly xStep: number;
+  private readonly omega: number;
   private _length = 0;
   private _nextX = 0;
 
-  constructor(capacity: number) {
+  constructor(capacity: number, options: ProceduralLineDatasetOptions = {}) {
     if (!Number.isInteger(capacity) || capacity <= 0) {
       throw new RangeError("ProceduralLineDataset capacity must be a positive integer.");
     }
+    const xStep = options.xStep ?? PREVIEW_X_STEP_MS;
+    if (!Number.isFinite(xStep) || xStep <= 0) {
+      throw new RangeError("ProceduralLineDataset xStep must be a positive finite number.");
+    }
+    const tracePeriod = options.tracePeriod ?? TRACE_PERIOD;
+    if (!Number.isFinite(tracePeriod) || tracePeriod <= 0) {
+      throw new RangeError("ProceduralLineDataset tracePeriod must be a positive finite number.");
+    }
     this.capacity = capacity;
+    this.xStart = options.xStart ?? PREVIEW_START_TIME;
+    this.xStep = xStep;
+    this.omega = (Math.PI * 2) / tracePeriod;
   }
 
   get length(): number {
@@ -204,8 +223,8 @@ export class ProceduralLineDataset implements AppendableDataset, YAppendableData
     if (end <= start) return null;
     const x0 = this.firstX() + start;
     const x1 = this.firstX() + end - 1;
-    const phase0 = x0 * OMEGA;
-    const phase1 = x1 * OMEGA;
+    const phase0 = x0 * this.omega;
+    const phase1 = x1 * this.omega;
     const sin0 = Math.sin(phase0);
     const sin1 = Math.sin(phase1);
     const minSin = this.containsSineMinimum(phase0, phase1) ? -1 : Math.min(sin0, sin1);
@@ -217,7 +236,7 @@ export class ProceduralLineDataset implements AppendableDataset, YAppendableData
   }
 
   private yAt(x: number): number {
-    return BASELINE + Math.sin(x * OMEGA) * AMPLITUDE + this.noiseAt(x) * NOISE_MAX;
+    return BASELINE + Math.sin(x * this.omega) * AMPLITUDE + this.noiseAt(x) * NOISE_MAX;
   }
 
   private noiseAt(x: number): number {
@@ -246,11 +265,11 @@ export class ProceduralLineDataset implements AppendableDataset, YAppendableData
   }
 
   private toTime(ordinal: number): number {
-    return PREVIEW_START_TIME + ordinal * PREVIEW_X_STEP_MS;
+    return this.xStart + ordinal * this.xStep;
   }
 
   private fromTime(time: number): number {
-    return (time - PREVIEW_START_TIME) / PREVIEW_X_STEP_MS;
+    return (time - this.xStart) / this.xStep;
   }
 
   private assertValidIndex(index: number): void {
