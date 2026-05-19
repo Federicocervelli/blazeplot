@@ -84,6 +84,7 @@ async function main(): Promise<void> {
     await runSelectionCase(options, serverUrl);
     await runLinkedCase(options, serverUrl);
     await runMobileCase(options, serverUrl);
+    await runMobileLongPressCase(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
@@ -130,6 +131,24 @@ async function runInteractionsCase(options: Options, serverUrl: string): Promise
     assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1), "double-click reset restores x span");
 
     console.log("✓ interactions: hover, crosshair, wheel zoom, shift pan, box zoom, reset");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function runMobileLongPressCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "mobile-longpress");
+  try {
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+    const snapshot = await waitForReady(cdp, options.timeoutMs);
+    const center = centerOf(snapshot.canvasRect);
+    await touchStart(cdp, center.x, center.y);
+    await sleep(700);
+    const after = await getRequiredSnapshot(cdp);
+    await touchEnd(cdp);
+    assert(after.visibleCrosshairs >= 1, "long press shows crosshair");
+    assert(after.visibleTooltips >= 1, "long press shows tooltip");
+    console.log("✓ mobile: long-press crosshair and tooltip");
   } finally {
     cdp.close();
   }
@@ -366,6 +385,14 @@ async function pinch(cdp: CdpClient, centerX: number, centerY: number, startRadi
     { x: centerX + endRadius, y: centerY, id: 2 },
   ] });
   await sleep(50);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
+
+async function touchStart(cdp: CdpClient, x: number, y: number): Promise<void> {
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
+}
+
+async function touchEnd(cdp: CdpClient): Promise<void> {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 }
 

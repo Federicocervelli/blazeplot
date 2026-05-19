@@ -43,6 +43,7 @@ export interface CrosshairPluginOptions {
   readonly markerSize?: number;
   readonly markerStrokeColor?: string;
   readonly markerStrokeWidth?: number;
+  readonly longPressMs?: number | false;
   readonly rulerModifier?: "none" | "ctrl" | "shift" | "alt" | "meta";
   readonly formatX?: (value: number) => string;
   readonly formatY?: (value: number) => string;
@@ -381,7 +382,46 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         groups.set(options.group, set);
       }
 
+      let longPressTimer: number | null = null;
+      let longPressX = 0;
+      let longPressY = 0;
+
+      const clearLongPress = (): void => {
+        if (longPressTimer !== null) window.clearTimeout(longPressTimer);
+        longPressTimer = null;
+      };
+
+      const showAtClientPoint = (clientX: number, clientY: number): void => {
+        const position = resolvePosition(chart, clientX, clientY, yAxis, snap);
+        renderPosition(position);
+        emitMove(position);
+        if (position) emitShared(position);
+      };
+
+      const scheduleLongPress = (clientX: number, clientY: number): void => {
+        if (options.longPressMs === false) return;
+        longPressX = clientX;
+        longPressY = clientY;
+        clearLongPress();
+        longPressTimer = window.setTimeout(() => {
+          longPressTimer = null;
+          showAtClientPoint(longPressX, longPressY);
+        }, options.longPressMs ?? 450);
+      };
+
+      const onTouchStart = (event: TouchEvent): void => {
+        const touch = event.touches.item(0);
+        if (!touch || event.touches.length !== 1) return;
+        scheduleLongPress(touch.clientX, touch.clientY);
+      };
+
+      const onTouchMove = (event: TouchEvent): void => {
+        const touch = event.touches.item(0);
+        if (touch && longPressTimer !== null && Math.hypot(touch.clientX - longPressX, touch.clientY - longPressY) > 8) clearLongPress();
+      };
+
       const onPointerMove = (event: PointerEvent): void => {
+        if (event.pointerType === "touch" && longPressTimer !== null && Math.hypot(event.clientX - longPressX, event.clientY - longPressY) > 8) clearLongPress();
         const position = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         renderPosition(position);
         emitMove(position);
@@ -396,6 +436,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       };
 
       const onPointerDown = (event: PointerEvent): void => {
+        if (event.pointerType === "touch") scheduleLongPress(event.clientX, event.clientY);
         if (mode !== "ruler" || event.button !== 0 || !hasModifier(event, rulerModifier)) return;
         rulerStart = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         if (rulerStart) {
@@ -406,6 +447,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       };
 
       const onPointerUp = (event: PointerEvent): void => {
+        if (event.pointerType === "touch") clearLongPress();
         if (mode !== "ruler" || !rulerStart) return;
         event.stopImmediatePropagation();
         const end = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
@@ -416,12 +458,23 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       };
 
       chart.canvas.addEventListener("pointermove", onPointerMove);
+      chart.canvas.addEventListener("pointercancel", clearLongPress);
+      chart.canvas.addEventListener("touchstart", onTouchStart, { passive: true });
+      chart.canvas.addEventListener("touchmove", onTouchMove, { passive: true });
+      chart.canvas.addEventListener("touchend", clearLongPress);
+      chart.canvas.addEventListener("touchcancel", clearLongPress);
       chart.canvas.addEventListener("pointerleave", onPointerLeave);
       chart.canvas.addEventListener("pointerdown", onPointerDown, { capture: true });
       chart.canvas.addEventListener("pointerup", onPointerUp, { capture: true });
 
       return () => {
+        clearLongPress();
         chart.canvas.removeEventListener("pointermove", onPointerMove);
+        chart.canvas.removeEventListener("pointercancel", clearLongPress);
+        chart.canvas.removeEventListener("touchstart", onTouchStart);
+        chart.canvas.removeEventListener("touchmove", onTouchMove);
+        chart.canvas.removeEventListener("touchend", clearLongPress);
+        chart.canvas.removeEventListener("touchcancel", clearLongPress);
         chart.canvas.removeEventListener("pointerleave", onPointerLeave);
         chart.canvas.removeEventListener("pointerdown", onPointerDown, { capture: true });
         chart.canvas.removeEventListener("pointerup", onPointerUp, { capture: true });
