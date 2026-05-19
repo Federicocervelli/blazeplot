@@ -54,6 +54,7 @@ const DEFAULT_CASES = [
   "navigator",
   "scale-options",
   "overlay-layering",
+  "context-restore",
 ];
 
 await main();

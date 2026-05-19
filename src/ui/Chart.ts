@@ -395,6 +395,14 @@ interface PickCandidate {
   readonly seriesIndex: number;
 }
 
+interface ChartGpuResources {
+  readonly renderer: Renderer;
+  readonly rawLineBuffer: GpuBuffer;
+  readonly minMaxInstanceBuffer: GpuBuffer;
+  readonly barTriangleBuffer: GpuBuffer;
+  readonly gridBuffer: GpuBuffer;
+}
+
 export class Chart implements ChartPluginContext {
   static isWebGL2Available(): boolean {
     return isWebGL2Available();
@@ -405,14 +413,14 @@ export class Chart implements ChartPluginContext {
   private rightCamera: Camera2D;
   private axis: AxisController;
   private rightAxis: AxisController;
-  private renderer: Renderer;
-  private rawLineBuffer: GpuBuffer;
+  private renderer!: Renderer;
+  private rawLineBuffer!: GpuBuffer;
   private rawLineData: Float32Array;
-  private minMaxInstanceBuffer: GpuBuffer;
+  private minMaxInstanceBuffer!: GpuBuffer;
   private minMaxInstanceData: Float32Array;
-  private barTriangleBuffer: GpuBuffer;
+  private barTriangleBuffer!: GpuBuffer;
   private barTriangleData: Float32Array;
-  private gridBuffer: GpuBuffer;
+  private gridBuffer!: GpuBuffer;
   private gridData: Float32Array;
   private gridStyle: SeriesStyle;
   private readonly xTicks: number[] = [];
@@ -458,6 +466,8 @@ export class Chart implements ChartPluginContext {
   private xFollowPaused: boolean = false;
   private _rafId: number = 0;
   private _hoverRafId: number = 0;
+  private _restoreRenderRafId: number = 0;
+  private webglContextLost: boolean = false;
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (event.pointerType !== "touch") {
       this.pointerInPlot = true;
@@ -492,6 +502,32 @@ export class Chart implements ChartPluginContext {
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     this.handleKeyboardNavigation(event);
   };
+  private readonly handleWebGLContextLost = (event: Event): void => {
+    event.preventDefault();
+    this.webglContextLost = true;
+    if (this._restoreRenderRafId !== 0) {
+      cancelAnimationFrame(this._restoreRenderRafId);
+      this._restoreRenderRafId = 0;
+    }
+    this.resetFrameStats();
+  };
+  private readonly handleWebGLContextRestored = (): void => {
+    const oldRenderer = this.renderer;
+    let nextResources: ChartGpuResources;
+    try {
+      nextResources = this.createGpuResources();
+    } catch (error) {
+      this.webglContextLost = true;
+      console.error("BlazePlot failed to restore WebGL resources after context restoration.", error);
+      return;
+    }
+
+    this.installGpuResources(nextResources);
+    this.disposeRenderer(oldRenderer);
+    this.webglContextLost = false;
+    this.applyCanvasSize();
+    this.scheduleRenderAfterRestore();
+  };
 
   constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
     this.resolvedTheme = resolveChartTheme(options.theme, target);
@@ -507,15 +543,11 @@ export class Chart implements ChartPluginContext {
     this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
-    this.renderer = new Renderer(this.createBackend());
     this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
-    this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
     this.minMaxInstanceData = new Float32Array(MINMAX_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
-    this.minMaxInstanceBuffer = this.renderer.createFloatBuffer(this.minMaxInstanceData.length);
     this.barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLE);
-    this.barTriangleBuffer = this.renderer.createFloatBuffer(this.barTriangleData.length);
     this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
-    this.gridBuffer = this.renderer.createFloatBuffer(this.gridData.length);
+    this.installGpuResources(this.createGpuResources());
     this.gridStyle = {
       color: options.gridStyle?.color ?? this.resolvedTheme.gridColor,
       lineWidth: options.gridStyle?.lineWidth ?? 1,
@@ -535,6 +567,8 @@ export class Chart implements ChartPluginContext {
     this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
     this.canvas.addEventListener("click", this.handleClick);
     this.canvas.addEventListener("dblclick", this.handleDoubleClick);
+    this.canvas.addEventListener("webglcontextlost", this.handleWebGLContextLost);
+    this.canvas.addEventListener("webglcontextrestored", this.handleWebGLContextRestored);
     this.layout.root.addEventListener("keydown", this.handleKeyDown);
 
     if (typeof ResizeObserver !== "undefined") {
@@ -1082,39 +1116,50 @@ export class Chart implements ChartPluginContext {
       this.stats.fps = 1000 / (frameStartedAt - this.lastFrameAt);
     }
     this.lastFrameAt = frameStartedAt;
-    this.stats.pointsRendered = 0;
-    this.stats.drawCalls = 0;
-    this.stats.uploadBytes = 0;
-    this.stats.renderMode = "none";
+    this.resetFrameStats();
+
+    if (this.webglContextLost || this.renderer.getWebGLContext()?.isContextLost() === true) {
+      this.webglContextLost = true;
+      return;
+    }
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
     this.applyFollowXPolicy();
     this.applyAutoFitYPolicy();
 
-    const [r, g, b, a] = this.resolvedTheme.backgroundColor;
-    this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
-    this.renderer.clear(r, g, b, a);
+    try {
+      const [r, g, b, a] = this.resolvedTheme.backgroundColor;
+      this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
+      this.renderer.clear(r, g, b, a);
 
-    const viewport = this.camera.viewport;
-    this.currentXOrigin = viewport.xMin;
-    if (this._gridVisible) {
-      const gridVertexCount = this.writeGridVertices(viewport);
-      if (gridVertexCount > 0) {
-        this.uploadGridData(gridVertexCount);
-        this.renderer.drawClipLines(this.gridBuffer, gridVertexCount, this.gridStyle);
-        this.stats.drawCalls++;
+      const viewport = this.camera.viewport;
+      this.currentXOrigin = viewport.xMin;
+      if (this._gridVisible) {
+        const gridVertexCount = this.writeGridVertices(viewport);
+        if (gridVertexCount > 0) {
+          this.uploadGridData(gridVertexCount);
+          this.renderer.drawClipLines(this.gridBuffer, gridVertexCount, this.gridStyle);
+          this.stats.drawCalls++;
+        }
       }
-    }
 
-    for (const s of this.series) {
-      if (!s.visible) continue;
-      s.rebuildPyramid();
-      this.drawSeries(s);
-    }
+      for (const s of this.series) {
+        if (!s.visible) continue;
+        s.rebuildPyramid();
+        this.drawSeries(s);
+      }
 
-    this.axisOverlay?.update(this.camera, this.axis, this.rightCamera, this.rightAxis);
-    this.emitRender();
+      this.axisOverlay?.update(this.camera, this.axis, this.rightCamera, this.rightAxis);
+      this.emitRender();
+    } catch (error) {
+      if (this.renderer.getWebGLContext()?.isContextLost() === true) {
+        this.webglContextLost = true;
+        this.resetFrameStats();
+        return;
+      }
+      throw error;
+    }
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     if (this._hoverRafId !== 0) {
@@ -1129,17 +1174,70 @@ export class Chart implements ChartPluginContext {
     this.resizeObserver?.disconnect();
     if (this._hoverRafId !== 0) cancelAnimationFrame(this._hoverRafId);
     this._hoverRafId = 0;
+    if (this._restoreRenderRafId !== 0) cancelAnimationFrame(this._restoreRenderRafId);
+    this._restoreRenderRafId = 0;
     this.canvas.removeEventListener("pointermove", this.handlePointerMove);
     this.canvas.removeEventListener("pointerdown", this.handlePointerDown);
     this.canvas.removeEventListener("pointerup", this.handlePointerUp);
     this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
     this.canvas.removeEventListener("click", this.handleClick);
     this.canvas.removeEventListener("dblclick", this.handleDoubleClick);
+    this.canvas.removeEventListener("webglcontextlost", this.handleWebGLContextLost);
+    this.canvas.removeEventListener("webglcontextrestored", this.handleWebGLContextRestored);
     this.layout.root.removeEventListener("keydown", this.handleKeyDown);
     for (const dispose of this.pluginDisposers.splice(0)) dispose();
     this.axisOverlay?.dispose();
-    this.renderer.dispose();
+    this.disposeRenderer(this.renderer);
     this.layout.dispose();
+  }
+
+  private createGpuResources(): ChartGpuResources {
+    const renderer = new Renderer(this.createBackend());
+    try {
+      return {
+        renderer,
+        rawLineBuffer: renderer.createFloatBuffer(this.rawLineData.length),
+        minMaxInstanceBuffer: renderer.createFloatBuffer(this.minMaxInstanceData.length),
+        barTriangleBuffer: renderer.createFloatBuffer(this.barTriangleData.length),
+        gridBuffer: renderer.createFloatBuffer(this.gridData.length),
+      };
+    } catch (error) {
+      this.disposeRenderer(renderer);
+      throw error;
+    }
+  }
+
+  private installGpuResources(resources: ChartGpuResources): void {
+    this.renderer = resources.renderer;
+    this.rawLineBuffer = resources.rawLineBuffer;
+    this.minMaxInstanceBuffer = resources.minMaxInstanceBuffer;
+    this.barTriangleBuffer = resources.barTriangleBuffer;
+    this.gridBuffer = resources.gridBuffer;
+  }
+
+  private disposeRenderer(renderer: Renderer): void {
+    try {
+      renderer.dispose();
+    } catch {
+      // A browser may reject cleanup calls while the WebGL context is lost. The
+      // context-restored path recreates all GPU objects, so cleanup failures here
+      // should not tear down chart state.
+    }
+  }
+
+  private resetFrameStats(): void {
+    this.stats.pointsRendered = 0;
+    this.stats.drawCalls = 0;
+    this.stats.uploadBytes = 0;
+    this.stats.renderMode = "none";
+  }
+
+  private scheduleRenderAfterRestore(): void {
+    if (this._restoreRenderRafId !== 0) return;
+    this._restoreRenderRafId = requestAnimationFrame(() => {
+      this._restoreRenderRafId = 0;
+      this.render();
+    });
   }
 
   private applyAccessibility(): void {
