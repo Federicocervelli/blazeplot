@@ -71,6 +71,7 @@ The changelog benchmark table is intentionally compact:
 - **Chart p50/p95 ms**: `Chart` frame time from internal frame stats.
 - **Points**: median rendered primitives/points from `ChartFrameStats.pointsRendered`.
 - **Draws**: median draw call count.
+- **Batched**: median draw calls avoided by compatible internal batching.
 - **Upload KB**: median GPU upload size per frame.
 
 The CPU hot-spot table comes from the Chrome DevTools Protocol profiler. It is useful for spotting large regressions, but exact timings vary by runner/browser and should not be treated as strict performance budgets yet.
