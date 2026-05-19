@@ -413,7 +413,6 @@ function updateOverlay(force: boolean = false): void {
       return;
     }
     overlayText.textContent = [
-      "BlazePlot preview",
       `status: ${streaming ? workerPending ? "worker pending" : "streaming" : "paused"}`,
       `renderer: ${chartStats.renderMode}`,
       `samples: ${t.toLocaleString()}`,
