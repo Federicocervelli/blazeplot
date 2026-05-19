@@ -10,7 +10,7 @@
 - Typecheck: `bun run typecheck` (`tsc --noEmit`).
 - Build the npm package: `bun run build` (Vite/Rolldown library build + declaration emit via `vite-plugin-dts`).
 - Build JS only: `bun run build:js`.
-- Full CI locally: `bun run ci` (typecheck + tests + package build + package export smoke test + headless benchmark smoke test + automated chart visual tests + automated interaction tests).
+- Full CI locally: `bun run ci` (typecheck + tests + package build + package export smoke test + package contents dry-run + headless benchmark smoke test + automated chart visual tests + automated interaction tests).
 - Benchmark smoke test only: `bun run bench:ci` (`ci-smoke` scenario in a headless Chrome/Chromium/Brave browser). Set `BLAZEPLOT_BENCH_CHROME=/path/to/browser` if auto-detection fails.
 - Chart visual tests only: `bun run test:visual` (renders one focused browser case per chart/plugin feature, asserts render/DOM/screenshot output, and writes screenshots to `build/visual-tests/`).
 - Browser interaction tests only: `bun run test:interaction` (automates hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection through Chrome DevTools Protocol input events).
@@ -82,4 +82,4 @@
 - Unit tests cover core data structures (including raw sample picking helpers), OHLC datasets, series extraction, `Camera2D`, and axis behavior (`tests/core`, `tests/interaction`).
 - Browser visual tests (`bun run test:visual`) cover focused WebGL/DOM/plugin rendering cases and write screenshots to `build/visual-tests/`.
 - Browser interaction tests (`bun run test:interaction`) drive Chrome DevTools Protocol input events for hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection.
-- Full local validation is `bun run ci`; use targeted test scripts for focused changes when the full browser suite is unnecessary. Run `bun run test:exports` after `bun run build` when package entry points or Vite library entries change.
+- Full local validation is `bun run ci`; use targeted test scripts for focused changes when the full browser suite is unnecessary. Run `bun run test:exports` after `bun run build` when package entry points or Vite library entries change; run `bun run test:package` when package metadata or files change.
