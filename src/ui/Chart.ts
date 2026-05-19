@@ -1314,7 +1314,7 @@ export class Chart {
 
   private drawLineSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
     const visibleSamples = series.visibleSampleCount(viewport);
-    const dense = series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2;
+    const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
     if (dense && this.renderer.supportsInstancedSegments) {
       const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (segmentCount <= 0) return;
