@@ -317,8 +317,10 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
     while (i < end && i % this.blockSize !== 0) {
       const value = this.yData[i]!;
-      if (value < minY) minY = value;
-      if (value > maxY) maxY = value;
+      if (Number.isFinite(value)) {
+        if (value < minY) minY = value;
+        if (value > maxY) maxY = value;
+      }
       i++;
     }
 
@@ -335,8 +337,10 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
     while (i < end) {
       const value = this.yData[i]!;
-      if (value < minY) minY = value;
-      if (value > maxY) maxY = value;
+      if (Number.isFinite(value)) {
+        if (value < minY) minY = value;
+        if (value > maxY) maxY = value;
+      }
       i++;
     }
 
@@ -361,6 +365,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     for (let i = start; i < end; i++) {
       if (!this.isPhysicalValid(i)) continue;
       const value = this.yData[i]!;
+      if (!Number.isFinite(value)) continue;
       if (value < minY) minY = value;
       if (value > maxY) maxY = value;
     }

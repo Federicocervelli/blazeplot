@@ -25,7 +25,7 @@ const exportDescriptions = new Map([
   ["./react", "React wrapper component and hooks."],
   ["./linked", "Linked chart layout helpers."],
   ["./data", "Pure chart data export and transform helpers."],
-  ["./export", "Screenshot, CSV/JSON data, download, and clipboard helpers."],
+  ["./export", "Screenshot download and clipboard helpers."],
   ["./plugins/interactions", "Built-in pan, zoom, axis interaction, and reset plugin."],
   ["./plugins/legend", "Built-in legend plugin."],
   ["./plugins/tooltip", "Built-in tooltip plugin."],

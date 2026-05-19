@@ -25,7 +25,7 @@ Line and area series treat gap samples as strip breaks: the gap sample itself is
 Gap markers can be expressed in two ways:
 
 - Append/store a non-finite Y value such as `NaN` at the sorted X position where the discontinuity occurs.
-- Custom datasets can implement optional `isGap(index): boolean` on the `Dataset` contract. Accelerated custom copy methods (`copySamplesRange`, `copyVisibleSamples`, `copyVisiblePoints`, or `copyMinMaxSegments`) should encode or skip their own gaps consistently because those methods are considered renderer-ready fast paths.
+- Custom datasets can implement optional `isGap(index): boolean` on the `Dataset` contract. Accelerated custom range/copy methods (`rangeMinMaxY`, `copySamplesRange`, `copyVisibleSamples`, `copyVisiblePoints`, or `copyMinMaxSegments`) should skip or encode their own gaps consistently because those methods are considered renderer-ready fast paths.
 
 For finite-to-finite session breaks, insert an explicit gap marker sample for now. A dedicated session-boundary API may be added later.
 

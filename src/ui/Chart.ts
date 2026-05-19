@@ -323,7 +323,7 @@ export interface ChartPluginHandle {
 }
 
 export interface ChartPlugin {
-  install(chart: Chart): void | (() => void) | ChartPluginHandle;
+  install(chart: ChartPluginContext): void | (() => void) | ChartPluginHandle;
 }
 
 type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | AxisTitleConfig };

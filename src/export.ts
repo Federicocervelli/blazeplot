@@ -1,5 +1,4 @@
 import type { Chart, ChartScreenshotOptions, ChartScreenshotPreset } from "./ui/Chart.js";
-export * from "./data.js";
 
 export const CHART_SCREENSHOT_PRESETS: Record<Exclude<ChartScreenshotPreset, "theme">, ChartScreenshotOptions> = {
   transparent: { preset: "transparent" },

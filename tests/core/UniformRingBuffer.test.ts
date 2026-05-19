@@ -54,6 +54,15 @@ describe("UniformRingBuffer", () => {
     expect(buf.rangeMinMaxY(1, 3)).toEqual({ minY: 4, maxY: 7 });
   });
 
+  it("skips non-finite gaps in block min/max queries", () => {
+    const buf = new UniformRingBuffer(5, { blockSize: 2 });
+    buf.appendY([5, Infinity, 7]);
+
+    expect(buf.isGap(1)).toBe(true);
+    expect(buf.rangeMinMaxY(0, 3)).toEqual({ minY: 5, maxY: 7 });
+    expect(buf.rangeMinMaxY(1, 2)).toBeNull();
+  });
+
   it("copies stable visible samples and min/max segments", () => {
     const buf = new UniformRingBuffer(8, { xStart: 0, xStep: 1, blockSize: 2 });
     buf.appendY([5, -1, 8, 3, 2, 7, 4, 6]);
