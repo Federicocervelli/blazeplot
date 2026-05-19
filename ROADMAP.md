@@ -260,7 +260,8 @@ Current automated coverage is strongest for core data structures and interaction
 - [x] Release changelogs include benchmark result tables for each published version.
 - [x] Browser visual test harness renders focused chart/plugin cases for line, area, scatter, bar, OHLC, candlestick, axes/titles/grid, legend, tooltip, crosshair, annotations, selection, and navigator.
 - [x] WebGL smoke tests assert render modes, draw calls, rendered points, and `chart.screenshot()` output in a controlled browser.
-- [ ] DOM/plugin interaction test harness that simulates pointer/keyboard flows for tooltips, legends, selection, crosshair, navigator, and annotations.
+- [x] Browser interaction test harness simulates real input events for hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection.
+- [ ] Expand DOM/plugin interaction tests to cover legend toggles, navigator handle dragging, axis-specific drag/zoom, touch gestures, and annotation hit behavior.
 - [ ] Screenshot/export regression tests with image comparison baselines for plot + DOM overlay composition.
 - [ ] Benchmark trend storage/comparison so CI can flag large regressions without being flaky on shared runners.
 

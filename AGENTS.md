@@ -10,9 +10,10 @@
 - Typecheck: `bun run typecheck` (`tsc --noEmit`).
 - Build the npm package: `bun run build` (Vite/Rolldown library build + declaration emit via `vite-plugin-dts`).
 - Build JS only: `bun run build:js`.
-- Full CI locally: `bun run ci` (typecheck + tests + package build + headless benchmark smoke test + chart visual tests).
+- Full CI locally: `bun run ci` (typecheck + tests + package build + headless benchmark smoke test + automated chart visual tests + automated interaction tests).
 - Benchmark smoke test only: `bun run bench:ci` (`ci-smoke` scenario in a headless Chrome/Chromium/Brave browser). Set `BLAZEPLOT_BENCH_CHROME=/path/to/browser` if auto-detection fails.
-- Chart visual tests only: `bun run test:visual` (renders one focused browser case per chart/plugin feature and writes screenshots to `build/visual-tests/`).
+- Chart visual tests only: `bun run test:visual` (renders one focused browser case per chart/plugin feature, asserts render/DOM/screenshot output, and writes screenshots to `build/visual-tests/`).
+- Browser interaction tests only: `bun run test:interaction` (automates hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection through Chrome DevTools Protocol input events).
 - Append benchmark results to the current release changelog: `bun run release:benchmarks`.
 - Preview package contents: `bun pm pack --dry-run`.
 - Dev server: `bun run dev`; `vite.config.ts` serves `preview/` and opens the browser automatically.
