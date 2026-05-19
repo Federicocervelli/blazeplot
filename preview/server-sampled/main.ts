@@ -43,6 +43,15 @@ const sampledChart = new Chart(sampledChartEl, {
   hover: { mode: "nearest-x", group: "x", maxDistancePx: 48 },
   plugins: [
     interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true, touchPan: true, pinchZoom: true }),
+    crosshairPlugin({
+      axis: "xy",
+      snap: "nearest-x",
+      label: true,
+      highlight: false,
+      formatX: (value) => new Date(value).toLocaleString(),
+      formatY: (value) => value.toFixed(2),
+      formatter: (item) => sampledBucketLabel(item.index),
+    }),
   ],
   accessibility: { label: "Server sampled Binance kline preview" },
 });
@@ -59,6 +68,7 @@ const liveChart = new Chart(liveChartEl, {
     x: { position: "outside", scale: "time", timezone: "utc" },
     y: { position: "outside" },
   },
+  hover: { mode: "nearest-x", group: "none", maxDistancePx: 48 },
   followX: { window: liveWindowMs, pauseOnInteraction: true },
   autoFitY: { padding: { y: 0.08 } },
   plugins: [
@@ -76,15 +86,16 @@ const liveChart = new Chart(liveChartEl, {
       axis: "xy",
       snap: "nearest-x",
       label: true,
-      highlight: true,
+      highlight: false,
       formatX: (value) => new Date(value).toLocaleTimeString(),
       formatY: (value) => value.toFixed(2),
+      formatter: (item) => candleLabel(item.index),
     }),
   ],
   accessibility: { label: "Live Binance five second candlestick chart" },
 });
 
-liveChart.addCandlestick(
+const liveSeries = liveChart.addCandlestick(
   { dataset: liveDataset, name: "5s candles" },
   {
     color: [0.8, 0.86, 1, 1],
@@ -104,6 +115,16 @@ let currentLow = NaN;
 let currentClose = NaN;
 let tradeCount = 0;
 const candleMs = 5_000;
+const candleHalfWidthMs = 2_000;
+let highlightedCandleIndex = -1;
+const candleHighlightOverlay = createCandleHighlightOverlay(liveChart.plotElement);
+
+liveChart.subscribe("hover", (state) => {
+  const item = state?.items.find((candidate) => candidate.series === liveSeries);
+  highlightedCandleIndex = item?.index ?? -1;
+  renderHighlightedCandle();
+});
+liveChart.subscribe("render", renderHighlightedCandle);
 
 async function loadKlines(): Promise<void> {
   const symbol = symbolSelect.value;
@@ -195,6 +216,31 @@ function connectLiveTrades(): void {
   });
 }
 
+function sampledBucketLabel(index: number): string {
+  if (index < 0 || index >= sampledDataset.length) return "";
+  const range = sampledDataset.rangeMinMaxY(index, index + 1);
+  const x = sampledDataset.getX(index);
+  if (!range) return new Date(x).toLocaleString();
+  return `${new Date(x).toLocaleString()}\nlow ${range.minY.toFixed(2)}\nhigh ${range.maxY.toFixed(2)}`;
+}
+
+function candleLabel(index: number): string {
+  if (index < 0 || index >= liveDataset.length) return "";
+  const x = liveDataset.getX(index);
+  const open = liveDataset.getOpen(index);
+  const high = liveDataset.getHigh(index);
+  const low = liveDataset.getLow(index);
+  const close = liveDataset.getClose(index);
+  const change = close - open;
+  const pct = open !== 0 ? (change / open) * 100 : 0;
+  return [
+    new Date(x).toLocaleTimeString(),
+    `O ${open.toFixed(2)}  H ${high.toFixed(2)}`,
+    `L ${low.toFixed(2)}  C ${close.toFixed(2)}`,
+    `${change >= 0 ? "+" : ""}${change.toFixed(2)} (${pct >= 0 ? "+" : ""}${pct.toFixed(3)}%)`,
+  ].join("\n");
+}
+
 function ingestTrade(price: number, time: number): void {
   if (!Number.isFinite(price) || !Number.isFinite(time)) return;
   const bucketStart = Math.floor(time / candleMs) * candleMs;
@@ -223,6 +269,67 @@ function resumeLiveFollowViewport(): { xMin: number; xMax: number; yMin: number;
   if (!range) return current;
   const xMax = range.end;
   return { ...current, xMin: xMax - liveWindowMs, xMax };
+}
+
+function createCandleHighlightOverlay(parent: HTMLElement): SVGSVGElement {
+  const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  overlay.style.position = "absolute";
+  overlay.style.inset = "0";
+  overlay.style.width = "100%";
+  overlay.style.height = "100%";
+  overlay.style.pointerEvents = "none";
+  overlay.style.zIndex = "28";
+  overlay.setAttribute("aria-hidden", "true");
+  parent.appendChild(overlay);
+  return overlay;
+}
+
+function renderHighlightedCandle(): void {
+  candleHighlightOverlay.replaceChildren();
+  if (highlightedCandleIndex < 0 || highlightedCandleIndex >= liveDataset.length) return;
+
+  const width = Math.max(1, liveChart.canvas.clientWidth);
+  const height = Math.max(1, liveChart.canvas.clientHeight);
+  candleHighlightOverlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  const x = liveDataset.getX(highlightedCandleIndex);
+  const open = liveDataset.getOpen(highlightedCandleIndex);
+  const high = liveDataset.getHigh(highlightedCandleIndex);
+  const low = liveDataset.getLow(highlightedCandleIndex);
+  const close = liveDataset.getClose(highlightedCandleIndex);
+  const [cx, highY] = liveChart.dataToPlot(x, high);
+  const [, lowY] = liveChart.dataToPlot(x, low);
+  const [, openY] = liveChart.dataToPlot(x, open);
+  const [, closeY] = liveChart.dataToPlot(x, close);
+  const [leftX] = liveChart.dataToPlot(x - candleHalfWidthMs, close);
+  const [rightX] = liveChart.dataToPlot(x + candleHalfWidthMs, close);
+  const bodyX = Math.min(leftX, rightX);
+  const bodyW = Math.max(3, Math.abs(rightX - leftX));
+  const bodyY = Math.min(openY, closeY);
+  const bodyH = Math.max(2, Math.abs(closeY - openY));
+  const up = close >= open;
+  const stroke = up ? "#bbf7d0" : "#fecaca";
+  const fill = up ? "rgba(34, 197, 94, 0.48)" : "rgba(239, 68, 68, 0.48)";
+
+  const wick = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  wick.setAttribute("x1", String(cx));
+  wick.setAttribute("x2", String(cx));
+  wick.setAttribute("y1", String(highY));
+  wick.setAttribute("y2", String(lowY));
+  wick.setAttribute("stroke", stroke);
+  wick.setAttribute("stroke-width", "3");
+  wick.setAttribute("stroke-linecap", "round");
+
+  const body = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  body.setAttribute("x", String(bodyX));
+  body.setAttribute("y", String(bodyY));
+  body.setAttribute("width", String(bodyW));
+  body.setAttribute("height", String(bodyH));
+  body.setAttribute("rx", "1.5");
+  body.setAttribute("fill", fill);
+  body.setAttribute("stroke", stroke);
+  body.setAttribute("stroke-width", "2");
+
+  candleHighlightOverlay.append(wick, body);
 }
 
 reloadButton.addEventListener("click", () => void loadKlines());
