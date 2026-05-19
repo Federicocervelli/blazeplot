@@ -10,9 +10,29 @@
 - Typecheck: `bun run typecheck` (`tsc --noEmit`).
 - Build the npm package: `bun run build` (Vite/Rolldown library build + declaration emit via `vite-plugin-dts`).
 - Build JS only: `bun run build:js`.
+- Full CI locally: `bun run ci` (typecheck + tests + package build + headless benchmark smoke test).
+- Benchmark smoke test only: `bun run bench:ci` (`ci-smoke` scenario in a headless Chrome/Chromium/Brave browser). Set `BLAZEPLOT_BENCH_CHROME=/path/to/browser` if auto-detection fails.
+- Append benchmark results to the current release changelog: `bun run release:benchmarks`.
 - Preview package contents: `bun pm pack --dry-run`.
 - Dev server: `bun run dev`; `vite.config.ts` serves `preview/` and opens the browser automatically.
 - There is no lint or formatter script in `package.json`.
+
+## Branch and Release Flow
+
+- `main` is the protected release branch. It requires PRs, the `validate` status check, up-to-date branches, conversation resolution, linear history, and blocks force-push/deletion. It does **not** require approving reviews so the agent can merge its own tested release PRs when asked.
+- `development` is the integration branch for normal work. Open feature/fix PRs into `development`; open release PRs from `development` into `main`.
+- GitHub Pages deploys from `main`.
+- Releases are merge-to-main based. Do not use tag-push/manual release scripts.
+- To prepare a release PR:
+  1. Start on updated `development`.
+  2. Run `bun run version:patch` (or `version:minor` / `version:major`) to bump `package.json` and create `changelogs/vX.Y.Z.md`.
+  3. Edit the changelog notes.
+  4. Run `bun run release:benchmarks` so benchmark tables are included in the version markdown. The release workflow also runs this with `--if-missing` before publishing.
+  5. Run `bun run docs:readme` so the README changelog link points at the new version.
+  6. Run `bun run ci`, and ideally `bun run pages:build` and `bun pm pack --dry-run`.
+  7. Push `development`, open a PR to `main`, wait for `validate`, then merge.
+- Merging an unpublished `package.json` version to `main` runs the release workflow: CI, benchmark-result insertion if missing, package pack, npm publish, `vX.Y.Z` tag creation, and GitHub Release creation from `changelogs/vX.Y.Z.md` plus commits.
+- If the `vX.Y.Z` tag already exists, the release workflow skips publishing for that version.
 
 ## Project Shape
 
