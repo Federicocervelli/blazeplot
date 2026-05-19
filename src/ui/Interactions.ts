@@ -11,6 +11,8 @@ export interface InteractionsPluginOptions {
   readonly wheelZoom?: boolean;
   readonly wheelZoomSensitivity?: number;
   readonly trackpadPinchSensitivity?: number;
+  readonly trackpadPan?: boolean;
+  readonly trackpadPanSensitivity?: number;
   readonly axisInteractions?: boolean;
   readonly axisHover?: boolean;
   readonly axisHoverColor?: string;
@@ -68,6 +70,14 @@ function wheelZoomFactor(event: WheelEvent, fallbackPageSize: number, wheelSensi
   const delta = Math.max(-600, Math.min(600, wheelDeltaPixels(event, fallbackPageSize)));
   const sensitivity = event.ctrlKey ? pinchSensitivity : wheelSensitivity;
   return Math.max(0.2, Math.min(5, Math.exp(-delta * sensitivity)));
+}
+
+function isLikelyTrackpadPan(event: WheelEvent): boolean {
+  if (event.ctrlKey || event.deltaMode !== WheelEvent.DOM_DELTA_PIXEL) return false;
+  const absX = Math.abs(event.deltaX);
+  const absY = Math.abs(event.deltaY);
+  if (absX > 0) return true;
+  return absY > 0 && absY < 80;
 }
 
 function constrainPan(intent: PanIntent, axis: ZoomAxis): PanIntent {
@@ -380,6 +390,24 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         captureResetViewport();
         event.preventDefault();
         const rect = canvas.getBoundingClientRect();
+
+        if (options.trackpadPan !== false && isLikelyTrackpadPan(event)) {
+          const sensitivity = options.trackpadPanSensitivity ?? 1;
+          const panIntent = applyPanPolicy({
+            dx: rect.width > 0 && zoomAxis !== "y" ? (event.deltaX * sensitivity) / rect.width : 0,
+            dy: rect.height > 0 && zoomAxis !== "x" ? (-event.deltaY * sensitivity) / rect.height : 0,
+          }, zoomAxis, targetYAxis ?? "left");
+          if (!panIntent || (Math.abs(panIntent.dx) < 1e-6 && Math.abs(panIntent.dy) < 1e-6)) return;
+          if (targetYAxis && zoomAxis === "y") {
+            const next = chart.getCamera(targetYAxis).clone();
+            next.pan({ dx: 0, dy: panIntent.dy });
+            chart.setYViewport(targetYAxis, { yMin: next.yMin, yMax: next.yMax });
+          } else {
+            chart.pan(panIntent);
+          }
+          return;
+        }
+
         const factor = wheelZoomFactor(
           event,
           rect.height,
