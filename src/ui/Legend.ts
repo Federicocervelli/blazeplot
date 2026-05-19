@@ -41,6 +41,9 @@ function renderDefaultLegend(
   for (const item of state) {
     const row = document.createElement("button");
     row.type = "button";
+    row.setAttribute("role", "listitem");
+    row.setAttribute("aria-pressed", String(item.visible));
+    row.setAttribute("aria-label", `${item.visible ? "Hide" : "Show"} ${item.name ?? item.id ?? `${item.mode} ${item.index + 1}`}`);
     row.style.display = "flex";
     row.style.alignItems = "center";
     row.style.gap = "6px";
@@ -90,6 +93,8 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.style.font = options.font ?? chart.theme.legendFont;
       container.style.whiteSpace = "pre";
       container.style.userSelect = "none";
+      container.setAttribute("role", "list");
+      container.setAttribute("aria-label", "Chart series legend");
       applyPosition(container, options.position ?? "top-right");
       chart.rootElement.appendChild(container);
 
