@@ -15,6 +15,7 @@ export interface InteractionsPluginOptions {
   readonly axisHoverFilter?: string;
   readonly shiftDragPan?: boolean;
   readonly doubleClickReset?: boolean;
+  readonly resetViewport?: () => Viewport;
   readonly touchPan?: boolean;
   readonly pinchZoom?: boolean;
   readonly doubleTapReset?: boolean;
@@ -399,7 +400,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       const resetToCapturedViewport = (): void => {
-        const target = resetViewport ?? normalizeViewport(chart.getViewport());
+        const target = options.resetViewport?.() ?? resetViewport ?? normalizeViewport(chart.getViewport());
         chart.setViewport(target);
       };
 
