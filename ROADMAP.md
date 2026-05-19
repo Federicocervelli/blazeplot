@@ -215,7 +215,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Provide runtime `add`, `remove`, `clear`, `setAnnotations`, and `getAnnotations` APIs.
    - [x] Add annotation hit testing and hover/click event payloads that identify the annotation and data-space anchor/bounds.
    - [ ] Add optional drag/edit handles for movable lines, ranges, boxes, points, and labels.
-   - [ ] Include non-text plugin SVG/HTML overlays, including annotations, in `chart.screenshot()` composition.
+   - [x] Include plugin SVG overlays, including annotations, in `chart.screenshot()` composition.
 
 7. **Autoscale / fit-to-data viewport policies**
    - [x] Add `chart.fitToData()` with per-axis options for fitting all visible series or a supplied series subset.
@@ -278,7 +278,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Add transparent-background export support.
    - [x] Add optional download and clipboard helper utilities outside the core chart path via `blazeplot/export`.
    - [ ] Add dark/light export presets that preserve theme contrast.
-   - [ ] Add export coverage for plugin-owned non-text DOM/SVG overlays.
+   - [x] Add export coverage for plugin-owned SVG overlays.
 
 16. **Tree-shakable plugin-owned UI and theme extension**
    - [ ] Audit public exports and build output so chart-only imports do not pull optional plugin code or plugin DOM UI.
