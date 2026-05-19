@@ -9,6 +9,8 @@ export interface InteractionsPluginOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly boxZoom?: boolean;
   readonly wheelZoom?: boolean;
+  readonly wheelZoomSensitivity?: number;
+  readonly trackpadPinchSensitivity?: number;
   readonly axisInteractions?: boolean;
   readonly axisHover?: boolean;
   readonly axisHoverColor?: string;
@@ -54,6 +56,18 @@ type DragState =
 
 function resolveAxis(axis: InteractionAxisOption | undefined): ZoomAxis {
   return typeof axis === "function" ? axis() : axis ?? "xy";
+}
+
+function wheelDeltaPixels(event: WheelEvent, fallbackPageSize: number): number {
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * Math.max(1, fallbackPageSize);
+  return event.deltaY;
+}
+
+function wheelZoomFactor(event: WheelEvent, fallbackPageSize: number, wheelSensitivity: number, pinchSensitivity: number): number {
+  const delta = Math.max(-600, Math.min(600, wheelDeltaPixels(event, fallbackPageSize)));
+  const sensitivity = event.ctrlKey ? pinchSensitivity : wheelSensitivity;
+  return Math.max(0.2, Math.min(5, Math.exp(-delta * sensitivity)));
 }
 
 function constrainPan(intent: PanIntent, axis: ZoomAxis): PanIntent {
@@ -365,10 +379,16 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         if (options.wheelZoom === false) return;
         captureResetViewport();
         event.preventDefault();
-        const factor = event.deltaY < 0 ? 1.1 : 0.9;
         const rect = canvas.getBoundingClientRect();
+        const factor = wheelZoomFactor(
+          event,
+          rect.height,
+          options.wheelZoomSensitivity ?? 0.001,
+          options.trackpadPinchSensitivity ?? 0.003,
+        );
         const cx = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
         const cy = rect.height > 0 ? 1 - (event.clientY - rect.top) / rect.height : 0.5;
+        if (Math.abs(1 - factor) < 1e-4) return;
         const intent = applyZoomPolicy({ factor, cx, cy, axis: zoomAxis }, targetYAxis ?? "left");
         if (!intent) return;
         if (targetYAxis && zoomAxis === "y") {
