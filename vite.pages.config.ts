@@ -12,7 +12,13 @@ export default defineConfig({
   build: {
     target: "esnext",
     sourcemap: true,
-    emptyOutDir: false,
+    emptyOutDir: true,
     outDir: resolve(__dirname, "build/pages"),
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, "preview/index.html"),
+        features: resolve(__dirname, "preview/features/index.html"),
+      },
+    },
   },
 });
