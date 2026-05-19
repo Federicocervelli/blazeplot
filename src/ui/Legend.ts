@@ -59,6 +59,7 @@ function renderDefaultLegend(
     row.style.textAlign = "left";
     row.style.cursor = toggleOnClick ? "pointer" : "default";
     row.style.opacity = item.visible ? "1" : "0.45";
+    row.style.outlineOffset = "2px";
 
     const swatch = document.createElement("span");
     swatch.textContent = "\u2588";
