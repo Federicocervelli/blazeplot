@@ -136,6 +136,10 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return this.yData[this.logicalToPhysical(index)]!;
   }
 
+  isGap(index: number): boolean {
+    return !Number.isFinite(this.getY(index));
+  }
+
   lowerBoundX(x: number): number {
     if (this._length === 0) return 0;
     return Math.max(0, Math.min(this._length, Math.ceil((x - this.firstX()) / this.xStep)));
@@ -210,6 +214,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     if (visible <= 0) return 0;
 
     const segmentCount = Math.min(maxSegments, visible);
+    let written = 0;
     for (let segment = 0; segment < segmentCount; segment++) {
       const segmentStart = start + Math.floor((segment * visible) / segmentCount);
       const segmentEnd = Math.min(
@@ -224,20 +229,21 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
       const x = this.firstX() + (segmentStart + ((segmentEnd - segmentStart) >> 1)) * this.xStep - xOrigin;
       if (layout === "line-list") {
-        const offset = segment * 4;
+        const offset = written * 4;
         target[offset] = x;
         target[offset + 1] = range.minY;
         target[offset + 2] = x;
         target[offset + 3] = range.maxY;
       } else {
-        const offset = segment * 3;
+        const offset = written * 3;
         target[offset] = x;
         target[offset + 1] = range.minY;
         target[offset + 2] = range.maxY;
       }
+      written++;
     }
 
-    return segmentCount;
+    return written;
   }
 
   private replaceAll(y: ArrayLike<number>, sourceOffset: number, requested: number): void {
@@ -283,17 +289,21 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     if (layout === "points") {
       for (let i = 0, index = from; i < count; i++, index += stride) {
         const offset = i * 2;
-        target[offset] = firstX + index * this.xStep - xOrigin;
-        target[offset + 1] = this.yData[this.logicalToPhysical(index)]!;
+        const y = this.yData[this.logicalToPhysical(index)]!;
+        const gap = !Number.isFinite(y);
+        target[offset] = gap ? NaN : firstX + index * this.xStep - xOrigin;
+        target[offset + 1] = gap ? NaN : y;
       }
     } else {
       for (let i = 0, index = from; i < count; i++, index += stride) {
         const offset = i * 4;
         const x = firstX + index * this.xStep - xOrigin;
-        target[offset] = x;
-        target[offset + 1] = baseline;
-        target[offset + 2] = x;
-        target[offset + 3] = this.yData[this.logicalToPhysical(index)]!;
+        const y = this.yData[this.logicalToPhysical(index)]!;
+        const gap = !Number.isFinite(y);
+        target[offset] = gap ? NaN : x;
+        target[offset + 1] = gap ? NaN : baseline;
+        target[offset + 2] = gap ? NaN : x;
+        target[offset + 3] = gap ? NaN : y;
       }
     }
 

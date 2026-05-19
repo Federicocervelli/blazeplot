@@ -29,6 +29,10 @@ function hasCopyVisiblePoints(dataset: Dataset): dataset is VisiblePointCopyData
   return "copyVisiblePoints" in dataset;
 }
 
+function hasExplicitGaps(dataset: Dataset): dataset is Dataset & { isGap(index: number): boolean } {
+  return typeof dataset.isGap === "function";
+}
+
 const NEAREST_POINT_LEAF_SIZE = 64;
 const SCATTER_INTERVAL_LEAF_SIZE = 64;
 const SCATTER_BUCKET_RANGE_PRUNE_SIZE = 1024;
@@ -197,7 +201,9 @@ export class SeriesStore {
 
   sampleAt(index: number): SeriesSample | null {
     if (index < 0 || index >= this.dataset.length) return null;
-    return { index, x: this.dataset.getX(index), y: this.dataset.getY(index) };
+    const y = this.dataset.getY(index);
+    if (this.isGap(index, y)) return null;
+    return { index, x: this.dataset.getX(index), y };
   }
 
   dataBounds(options: SeriesDataBoundsOptions = {}): SeriesDataBounds | null {
@@ -216,8 +222,10 @@ export class SeriesStore {
     const rangeMinMax = !ohlc && hasRangeMinMaxY(this.dataset) ? this.dataset : null;
     for (let i = start; i < end; i++) {
       const x = this.dataset.getX(i);
+      const y = this.dataset.getY(i);
+      if (this.isGap(i, y)) continue;
       const range = rangeMinMax?.rangeMinMaxY(i, i + 1);
-      const low = ohlc ? ohlc.getLow(i) : range?.minY ?? this.dataset.getY(i);
+      const low = ohlc ? ohlc.getLow(i) : range?.minY ?? y;
       const high = ohlc ? ohlc.getHigh(i) : range?.maxY ?? low;
       if (!Number.isFinite(x) || !Number.isFinite(low) || !Number.isFinite(high)) continue;
       xMin = Math.min(xMin, x);
@@ -242,15 +250,24 @@ export class SeriesStore {
     if (range.start >= range.end) return null;
 
     const lower = this.dataset.lowerBoundX(x);
-    let bestIndex = Math.min(Math.max(lower, range.start), range.end - 1);
-    const prevIndex = bestIndex - 1;
-    if (prevIndex >= range.start) {
-      const bestDx = Math.abs(this.dataset.getX(bestIndex) - x);
-      const prevDx = Math.abs(this.dataset.getX(prevIndex) - x);
-      if (prevDx <= bestDx) bestIndex = prevIndex;
+    let left = Math.min(lower - 1, range.end - 1);
+    let right = Math.max(lower, range.start);
+
+    while (left >= range.start || right < range.end) {
+      const leftDx = left >= range.start ? Math.abs(this.dataset.getX(left) - x) : Infinity;
+      const rightDx = right < range.end ? Math.abs(this.dataset.getX(right) - x) : Infinity;
+      if (leftDx <= rightDx) {
+        const sample = this.sampleAt(left);
+        if (sample) return sample;
+        left--;
+      } else {
+        const sample = this.sampleAt(right);
+        if (sample) return sample;
+        right++;
+      }
     }
 
-    return this.sampleAt(bestIndex);
+    return null;
   }
 
   nearestSampleByPoint(
@@ -276,8 +293,10 @@ export class SeriesStore {
         : Infinity;
 
     const visitSample = (index: number): void => {
+      const sampleY = this.dataset.getY(index);
+      if (this.isGap(index, sampleY)) return;
       const dx = (this.dataset.getX(index) - x) * xScale;
-      const dy = (this.dataset.getY(index) - y) * yScale;
+      const dy = (sampleY - y) * yScale;
       const d2 = dx * dx + dy * dy;
       if (d2 < bestDistanceSq || (bestIndex < 0 && d2 <= bestDistanceSq)) {
         bestDistanceSq = d2;
@@ -386,7 +405,7 @@ export class SeriesStore {
     let count = 0;
     for (let i = from; i < to && count < maxPoints; i++) {
       const y = this.dataset.getY(i);
-      if (y < yMin || y > yMax) continue;
+      if (this.isGap(i, y) || y < yMin || y > yMax) continue;
 
       const offset = count * 2;
       target[offset] = this.dataset.getX(i) - xOrigin;
@@ -485,6 +504,11 @@ export class SeriesStore {
     };
   }
 
+  private isGap(index: number, y?: number): boolean {
+    const value = y ?? this.dataset.getY(index);
+    return !Number.isFinite(value) || (hasExplicitGaps(this.dataset) && this.dataset.isGap(index));
+  }
+
   private pointXDistanceSq(index: number, x: number, xScale: number): number {
     const dx = (this.dataset.getX(index) - x) * xScale;
     return dx * dx;
@@ -541,10 +565,11 @@ export class SeriesStore {
     let count = 0;
     let lastX = NaN;
     let lastY = NaN;
+    let lastWasGap = false;
     const addPoint = (x: number, y: number): boolean => {
       const outX = output === "clip" ? ((x - viewport.xMin) / xRange) * 2 - 1 : x - xOrigin;
       const outY = output === "clip" ? ((y - viewport.yMin) / yRange) * 2 - 1 : y;
-      if (count > 0 && outX === lastX && outY === lastY) return true;
+      if (!lastWasGap && count > 0 && outX === lastX && outY === lastY) return true;
       if (count >= maxPoints) return false;
       const offset = count * 2;
       target[offset] = outX;
@@ -552,13 +577,27 @@ export class SeriesStore {
       count++;
       lastX = outX;
       lastY = outY;
+      lastWasGap = false;
+      return true;
+    };
+    const addGap = (): boolean => {
+      if (count === 0 || lastWasGap) return true;
+      if (count >= maxPoints) return false;
+      const offset = count * 2;
+      target[offset] = NaN;
+      target[offset + 1] = NaN;
+      count++;
+      lastX = NaN;
+      lastY = NaN;
+      lastWasGap = true;
       return true;
     };
 
     if (end - start === 1) {
       const x = this.dataset.getX(start);
-      if (x < viewport.xMin || x > viewport.xMax) return 0;
-      return addPoint(x, this.dataset.getY(start)) ? count : 0;
+      const y = this.dataset.getY(start);
+      if (x < viewport.xMin || x > viewport.xMax || this.isGap(start, y)) return 0;
+      return addPoint(x, y) ? count : 0;
     }
 
     for (let i = start; i + 1 < end; i++) {
@@ -567,6 +606,10 @@ export class SeriesStore {
       const x1 = this.dataset.getX(i + 1);
       const y1 = this.dataset.getY(i + 1);
       if (x1 < viewport.xMin || x0 > viewport.xMax) continue;
+      if (this.isGap(i, y0) || this.isGap(i + 1, y1)) {
+        if (!addGap()) break;
+        continue;
+      }
 
       const clippedX0 = Math.max(x0, viewport.xMin);
       const clippedX1 = Math.min(x1, viewport.xMax);
@@ -642,7 +685,7 @@ export class SeriesStore {
     let count = 0;
     for (let i = start; i < end && count < maxPoints; i++) {
       const y = this.dataset.getY(i);
-      if (y < yMin || y > yMax) continue;
+      if (this.isGap(i, y) || y < yMin || y > yMax) continue;
 
       const offset = count * 2;
       target[offset] = this.dataset.getX(i) - xOrigin;
@@ -668,11 +711,14 @@ export class SeriesStore {
     const alignedStart = Math.floor(start / bucketWidth) * bucketWidth;
     let count = 0;
 
-    const writeIndex = (index: number): void => {
+    const writeIndex = (index: number): boolean => {
+      const y = this.dataset.getY(index);
+      if (this.isGap(index, y)) return false;
       const offset = count * 2;
       target[offset] = this.dataset.getX(index) - xOrigin;
-      target[offset + 1] = this.dataset.getY(index);
+      target[offset + 1] = y;
       count++;
+      return true;
     };
 
     for (let bucketStart = alignedStart; bucketStart < end && count < maxPoints; bucketStart += bucketWidth) {
@@ -686,7 +732,11 @@ export class SeriesStore {
       );
 
       if (fullRangeInside) {
-        writeIndex(representative);
+        if (!writeIndex(representative)) {
+          for (let i = visibleStart; i < bucketEnd; i++) {
+            if (writeIndex(i)) break;
+          }
+        }
         continue;
       }
 
@@ -695,13 +745,17 @@ export class SeriesStore {
         : null;
       if (range && (range.maxY < yMin || range.minY > yMax)) continue;
       if (range && range.minY >= yMin && range.maxY <= yMax) {
-        writeIndex(representative);
+        if (!writeIndex(representative)) {
+          for (let i = visibleStart; i < bucketEnd; i++) {
+            if (writeIndex(i)) break;
+          }
+        }
         continue;
       }
 
       for (let i = visibleStart; i < bucketEnd; i++) {
         const y = this.dataset.getY(i);
-        if (y < yMin || y > yMax) continue;
+        if (this.isGap(i, y) || y < yMin || y > yMax) continue;
 
         const offset = count * 2;
         target[offset] = this.dataset.getX(i) - xOrigin;
@@ -735,7 +789,7 @@ export class SeriesStore {
 
     const writePoint = (index: number): boolean => {
       const y = this.dataset.getY(index);
-      if (y < yMin || y > yMax) return true;
+      if (this.isGap(index, y) || y < yMin || y > yMax) return true;
       if (count >= maxPoints) {
         overflow = true;
         return false;
@@ -795,16 +849,17 @@ export class SeriesStore {
     for (let i = start; i < end && count < maxPoints; i += stride) {
       const x = this.dataset.getX(i) - xOrigin;
       const y = this.dataset.getY(i);
+      const gap = this.isGap(i, y);
       if (layout === "points") {
         const offset = count * 2;
-        target[offset] = x;
-        target[offset + 1] = y;
+        target[offset] = gap ? NaN : x;
+        target[offset + 1] = gap ? NaN : y;
       } else {
         const offset = count * 4;
-        target[offset] = x;
-        target[offset + 1] = baseline;
-        target[offset + 2] = x;
-        target[offset + 3] = y;
+        target[offset] = gap ? NaN : x;
+        target[offset + 1] = gap ? NaN : baseline;
+        target[offset + 2] = gap ? NaN : x;
+        target[offset + 3] = gap ? NaN : y;
       }
       count++;
     }
@@ -835,16 +890,17 @@ export class SeriesStore {
       const index = from + i;
       const x = this.dataset.getX(index) - xOrigin;
       const y = this.dataset.getY(index);
+      const gap = this.isGap(index, y);
       if (layout === "points") {
         const offset = i * 2;
-        target[offset] = x;
-        target[offset + 1] = y;
+        target[offset] = gap ? NaN : x;
+        target[offset + 1] = gap ? NaN : y;
       } else {
         const offset = i * 4;
-        target[offset] = x;
-        target[offset + 1] = baseline;
-        target[offset + 2] = x;
-        target[offset + 3] = y;
+        target[offset] = gap ? NaN : x;
+        target[offset + 1] = gap ? NaN : baseline;
+        target[offset + 2] = gap ? NaN : x;
+        target[offset + 3] = gap ? NaN : y;
       }
     }
 
@@ -871,6 +927,7 @@ export class SeriesStore {
     if (visible <= 0) return 0;
 
     const segmentCount = Math.min(maxSegments, visible);
+    let written = 0;
     for (let segment = 0; segment < segmentCount; segment++) {
       const segmentStart = start + Math.floor((segment * visible) / segmentCount);
       const segmentEnd = start + Math.max(
@@ -885,20 +942,21 @@ export class SeriesStore {
       const x = this.dataset.getX(segmentStart + ((clampedEnd - segmentStart) >> 1)) - xOrigin;
       const { minY, maxY } = range;
       if (layout === "line-list") {
-        const offset = segment * 4;
+        const offset = written * 4;
         target[offset] = x;
         target[offset + 1] = minY;
         target[offset + 2] = x;
         target[offset + 3] = maxY;
       } else {
-        const offset = segment * 3;
+        const offset = written * 3;
         target[offset] = x;
         target[offset + 1] = minY;
         target[offset + 2] = maxY;
       }
+      written++;
     }
 
-    return segmentCount;
+    return written;
   }
 
   private minMaxForRange(start: number, end: number): { minY: number; maxY: number } | null {
@@ -932,9 +990,8 @@ export class SeriesStore {
       const rangeStart = sourceBucket * bucketSampleWidth;
       const rangeEnd = Math.min(this.dataset.length, rangeStart + bucketSampleWidth);
       const range = this.dataset.rangeMinMaxY(rangeStart, rangeEnd);
-      if (!range) continue;
-      buckets[bucket * 2] = range.minY;
-      buckets[bucket * 2 + 1] = range.maxY;
+      buckets[bucket * 2] = range?.minY ?? NaN;
+      buckets[bucket * 2 + 1] = range?.maxY ?? NaN;
     }
 
     return { buckets, bucketCount, level, samplesPerPixel };
@@ -951,9 +1008,10 @@ export class SeriesStore {
     let maxY = -Infinity;
     for (let i = from; i < to; i++) {
       const y = this.dataset.getY(i);
+      if (this.isGap(i, y)) continue;
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     }
-    return { minY, maxY };
+    return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
   }
 }

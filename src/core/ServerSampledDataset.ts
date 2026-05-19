@@ -93,6 +93,12 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     return this.kind === "points" ? this.y[index]! : (this.minY[index]! + this.maxY[index]!) * 0.5;
   }
 
+  isGap(index: number): boolean {
+    if (this.kind === "points") return !Number.isFinite(this.getY(index));
+    this.assertIndex(index);
+    return !Number.isFinite(this.minY[index]!) || !Number.isFinite(this.maxY[index]!);
+  }
+
   lowerBoundX(value: number): number {
     const values = this.kind === "points" ? this.x : this.xEnd;
     let lo = 0;
@@ -146,15 +152,16 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     for (let index = from; index < to && written < count; index += stride) {
       const x = this.getX(index) - xOrigin;
       const y = this.getY(index);
+      const gap = this.isGap(index);
       const offset = written * floats;
       if (layout === "points") {
-        target[offset] = x;
-        target[offset + 1] = y;
+        target[offset] = gap ? NaN : x;
+        target[offset + 1] = gap ? NaN : y;
       } else {
-        target[offset] = x;
-        target[offset + 1] = baseline;
-        target[offset + 2] = x;
-        target[offset + 3] = y;
+        target[offset] = gap ? NaN : x;
+        target[offset + 1] = gap ? NaN : baseline;
+        target[offset + 2] = gap ? NaN : x;
+        target[offset + 3] = gap ? NaN : y;
       }
       written++;
     }
@@ -169,6 +176,7 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     const floats = layout === "line-list" ? 4 : 3;
     if (count <= 0 || target.length < count * floats) return 0;
 
+    let written = 0;
     for (let segment = 0; segment < count; segment++) {
       const segmentStart = start + Math.floor((segment * visible) / count);
       const segmentEnd = start + Math.max(
@@ -180,20 +188,21 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
       if (!range) continue;
       const x = this.bucketX(segmentStart, clampedEnd) - xOrigin;
       if (layout === "line-list") {
-        const offset = segment * 4;
+        const offset = written * 4;
         target[offset] = x;
         target[offset + 1] = range.minY;
         target[offset + 2] = x;
         target[offset + 3] = range.maxY;
       } else {
-        const offset = segment * 3;
+        const offset = written * 3;
         target[offset] = x;
         target[offset + 1] = range.minY;
         target[offset + 2] = range.maxY;
       }
+      written++;
     }
 
-    return count;
+    return written;
   }
 
   private bucketX(start: number, end: number): number {
