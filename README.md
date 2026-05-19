@@ -123,16 +123,17 @@ Generated from `dist/` after the package build. Budgets are enforced by `bun run
 
 | Chunk | File | Size | Budget | Headroom |
 |---|---|---:|---:|---:|
-| core entry | `dist/index.js` | 16.8 KiB | 31.3 KiB | 14.4 KiB free |
+| core entry | `dist/index.js` | 17.4 KiB | 31.3 KiB | 13.8 KiB free |
 | react entry | `dist/react.js` | 0.8 KiB | 7.8 KiB | 7.0 KiB free |
 | linked entry | `dist/linked.js` | 2.2 KiB | 15.6 KiB | 13.4 KiB free |
+| data entry | `dist/data.js` | 5.0 KiB | 11.7 KiB | 6.8 KiB free |
 | export entry | `dist/export.js` | 1.3 KiB | 7.8 KiB | 6.5 KiB free |
 | interactions plugin | `dist/plugins/interactions.js` | 15.4 KiB | 23.4 KiB | 8.1 KiB free |
 | annotations plugin | `dist/plugins/annotations.js` | 9.3 KiB | 15.6 KiB | 6.3 KiB free |
 | navigator plugin | `dist/plugins/navigator.js` | 8.6 KiB | 15.6 KiB | 7.0 KiB free |
 | selection plugin | `dist/plugins/selection.js` | 5.4 KiB | 11.7 KiB | 6.4 KiB free |
 | legend plugin | `dist/plugins/legend.js` | 2.9 KiB | 7.8 KiB | 4.9 KiB free |
-| shared Chart chunk | `dist/Chart-1xDHGtYU.js` | 112.4 KiB | 136.7 KiB | 24.3 KiB free |
+| shared Chart chunk | `dist/Chart-Bm6OpMQP.js` | 118.7 KiB | 136.7 KiB | 18.0 KiB free |
 
 ### Selected generated declarations
 
@@ -216,7 +217,7 @@ These member tables are generated from TypeScript declarations.
 | `followX?: boolean \\| ChartFollowXOptions` |
 | `plugins?: readonly ChartPlugin[]` |
 | `theme?: ChartTheme` |
-| `backendFactory?: ChartBackendFactory` |
+| `backendFactory?: ChartBackendFactory` | Advanced hook for supplying a custom GPU backend. Defaults to ReglBackend. |
 
 </details>
 
@@ -353,6 +354,7 @@ These member tables are generated from TypeScript declarations.
 | `clear(): void` |
 | `getX(index: number): number` |
 | `getY(index: number): number` |
+| `isGap(index: number): boolean` |
 | `lowerBoundX(x: number): number` |
 | `upperBoundX(x: number): number` |
 | `rangeMinMaxY(start: number, end: number): { minY: number; maxY: number; } \\| null` |
@@ -376,6 +378,7 @@ These member tables are generated from TypeScript declarations.
 | `get(index: number): { x: number; y: number; } \\| null` |
 | `getX(index: number): number` |
 | `getY(index: number): number` |
+| `isGap(index: number): boolean` |
 | `lowerBoundX(x: number): number` |
 | `upperBoundX(x: number): number` |
 | `rangeMinMaxY(start: number, end: number): { minY: number; maxY: number; } \\| null` |
@@ -393,6 +396,7 @@ These member tables are generated from TypeScript declarations.
 | `get range(): TimeRange \\| null` |
 | `getX(index: number): number` |
 | `getY(index: number): number` |
+| `isGap(index: number): boolean` |
 | `lowerBoundX(x: number): number` |
 | `upperBoundX(x: number): number` |
 
@@ -431,6 +435,7 @@ These member tables are generated from TypeScript declarations.
 | `range: TimeRange \\| null` |
 | `getX(index: number): number` |
 | `getY(index: number): number` |
+| `isGap(index: number): boolean` | Optional explicit missing-data marker. Gap samples are skipped by picks and break line/area strips on both sides. X values must remain sorted even when a sample is marked as a gap. |
 | `lowerBoundX(x: number): number` |
 | `upperBoundX(x: number): number` |
 
@@ -456,6 +461,7 @@ These member tables are generated from TypeScript declarations.
 |---|---|---|---|
 | `AcceleratedDataset` | interface | `./core/types` | Convenience contract for maximum-performance custom datasets. Implement this when a dataset can provide fast exact sample copies, stable viewport sampling, range min/max queries, and renderer-ready min/max buckets. |
 | `AppendableDataset` | interface | `./core/types` | — |
+| `AttributeSpec` | interface | `./render/types` | — |
 | `AxisConfig` | interface | `./ui/Chart` | — |
 | `AxisController` | class | `./interaction/AxisController` | — |
 | `AxisControllerAxisOptions` | interface | `./interaction/AxisController` | — |
@@ -467,7 +473,6 @@ These member tables are generated from TypeScript declarations.
 | `AxisTickFormatter` | type | `./interaction/AxisController` | — |
 | `AxisTimeZone` | type | `./interaction/AxisController` | — |
 | `AxisTitleConfig` | interface | `./ui/Chart` | — |
-| `AttributeSpec` | interface | `./render/types` | — |
 | `BufferOverflowStrategy` | type | `./core/types` | — |
 | `BufferSpec` | interface | `./render/types` | — |
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | — |
@@ -475,7 +480,7 @@ These member tables are generated from TypeScript declarations.
 | `Chart` | class | `./ui/Chart` | — |
 | `ChartAccessibilityOptions` | interface | `./ui/Chart` | — |
 | `ChartAutoFitYOptions` | interface | `./ui/Chart` | — |
-| `ChartBackendFactory` | type | `./ui/Chart` | Advanced hook for supplying a custom GPU backend. |
+| `ChartBackendFactory` | type | `./ui/Chart` | — |
 | `ChartBackendFactoryContext` | interface | `./ui/Chart` | — |
 | `ChartFitToDataOptions` | interface | `./ui/Chart` | — |
 | `ChartFitToDataPadding` | interface | `./ui/Chart` | — |
