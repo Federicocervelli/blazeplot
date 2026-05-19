@@ -219,6 +219,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Provide `BlazeChart` component with ref access to the underlying `Chart`.
    - [x] Handle mount/dispose, prop updates, plugin lifecycle, and resize automatically.
    - [x] Include examples for streaming data, tooltips, legends, and custom plugins.
+   - [x] Add a React Pages preview for stable and development branches.
 
 10. **More scales: built-in and configurable**
    - [x] Add built-in `linear`, `time`, `log`, and `symlog` scale implementations.

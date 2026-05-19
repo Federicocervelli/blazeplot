@@ -62,31 +62,25 @@ jobs:
           cp -a branches/development/build/pages/. build/pages/development/
           cat > build/pages/previews.html <<'HTML'
           <!doctype html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-              <title>BlazePlot previews</title>
-              <style>
-                body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #111827; color: #e5e7eb; font: 16px/1.5 system-ui, sans-serif; }
-                main { width: min(720px, calc(100% - 32px)); padding: 32px; border: 1px solid #334155; border-radius: 16px; background: #020617; box-shadow: 0 20px 80px #0008; }
-                h1 { margin-top: 0; }
-                a { color: #60a5fa; }
-                li { margin: 12px 0; }
-                code { color: #fbbf24; }
-              </style>
-            </head>
-            <body>
-              <main>
-                <h1>BlazePlot branch previews</h1>
-                <ul>
-                  <li><a href="/blazeplot/">Stable preview</a> from <code>main</code></li>
-                  <li><a href="/blazeplot/development/">Development preview</a> from <code>development</code></li>
-                </ul>
-              </main>
-            </body>
-          </html>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>BlazePlot previews</title>
+          <h1>BlazePlot previews</h1>
+          <ul>
+            <li><a href="/blazeplot/">main</a></li>
+            <li><a href="/blazeplot/features/">main features</a></li>
           HTML
+          if [ -f build/pages/react/index.html ]; then
+            echo '  <li><a href="/blazeplot/react/">main React</a></li>' >> build/pages/previews.html
+          fi
+          cat >> build/pages/previews.html <<'HTML'
+            <li><a href="/blazeplot/development/">development</a></li>
+            <li><a href="/blazeplot/development/features/">development features</a></li>
+          HTML
+          if [ -f build/pages/development/react/index.html ]; then
+            echo '  <li><a href="/blazeplot/development/react/">development React</a></li>' >> build/pages/previews.html
+          fi
+          echo '</ul>' >> build/pages/previews.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
