@@ -80,6 +80,20 @@ function buildReleaseMessage(version, notes, commitLog) {
   return `${sections.join("\n\n")}\n`;
 }
 
+function publishGitHubRelease(tag, notesPath, notes) {
+  const title = tag;
+  const notesArgs = notesPath === "-" ? ["--notes", notes] : ["--notes-file", notesPath];
+  try {
+    execFileSync("gh", ["release", "view", tag], { stdio: "pipe" });
+    execFileSync("gh", ["release", "edit", tag, "--title", title, ...notesArgs], { stdio: "inherit" });
+    return;
+  } catch (error) {
+    if (error?.status !== 1) throw error;
+  }
+
+  execFileSync("gh", ["release", "create", tag, "--title", title, ...notesArgs], { stdio: "inherit" });
+}
+
 const pkgPath = new URL("../package.json", import.meta.url);
 const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
 const oldVersion = pkg.version;
@@ -114,8 +128,10 @@ if (notesPath !== "-") execFileSync("git", ["add", notesPath]);
 const message = buildReleaseMessage(newVersion, releaseNotes, commitLog);
 execSync("git commit -F -", { input: message });
 
-execSync(`git tag v${newVersion}`);
+const tag = `v${newVersion}`;
+execSync(`git tag ${tag}`);
 execSync("git push origin HEAD");
-execSync(`git push origin v${newVersion}`);
+execSync(`git push origin ${tag}`);
+publishGitHubRelease(tag, notesPath, releaseNotes);
 
-console.log(`Released v${newVersion}`);
+console.log(`Released ${tag}`);
