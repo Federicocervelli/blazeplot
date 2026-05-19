@@ -152,14 +152,26 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)`, `chart.addOhlc(config)`, `chart.addCandlestick(config)` helpers.
 
 Package status:
-- [x] Current npm package version: `0.1.12`
+- [x] Current npm package version: `0.3.2`
 - [x] `exports`, `main`, `module`, and `types` point at `dist/`
 - [x] Optional plugin subpath exports point at separate `dist/plugins/*` chunks
 - [x] Vite library build from `src/index.ts`
 - [x] Declaration emit via `vite-plugin-dts`
-- [x] CI release workflow with npm publish and provenance
+- [x] Merge-to-`main` release workflow with npm publish, provenance, `vX.Y.Z` tags, and GitHub Releases
 
 ---
+
+## Release engineering and CI
+
+**Status: protected-branch release flow complete**
+
+- [x] `main` is the protected release branch; release PRs merge there only after the `validate` status check passes.
+- [x] `development` is the integration branch for feature/fix work before release PRs.
+- [x] `bun run ci` runs typecheck, tests, package build, and a headless browser benchmark smoke test.
+- [x] GitHub CI runs the same `validate` check for PRs to `main`/`development` and pushes to `development`.
+- [x] Release workflow publishes only unpublished `package.json` versions and skips publish work when the version tag already exists.
+- [x] Release changelogs include benchmark tables via `bun run release:benchmarks`; the release workflow appends them with `--if-missing` before GitHub Release creation.
+- [x] GitHub Pages deploys from `main` and uses the `github-pages` environment branch policy for `main`.
 
 ## Competitive feature roadmap
 
