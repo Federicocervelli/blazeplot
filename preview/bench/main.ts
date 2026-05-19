@@ -77,6 +77,21 @@ declare global {
 }
 
 const SCENARIOS: Record<string, ScenarioConfig> = {
+  "ci-smoke": {
+    name: "ci-smoke",
+    initialSamples: 100_000,
+    viewportSamples: 100_000,
+    capacity: 200_000,
+    fillBatchSize: 32_768,
+    liveBatchSize: 8_192,
+    sparseInterval: 256,
+    includeScatter: true,
+    includeBars: true,
+    yMin: -1.5,
+    yMax: 1.5,
+    measureMs: 500,
+    warmupMs: 100,
+  },
   "mixed-1m-live": {
     name: "mixed-1m-live",
     initialSamples: 1_000_000,
