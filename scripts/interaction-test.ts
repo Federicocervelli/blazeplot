@@ -200,7 +200,12 @@ function readPositiveInteger(flag: string, raw: string): number {
 }
 
 function startVite(port: number): Bun.Subprocess {
-  const proc = Bun.spawn({ cmd: ["bunx", "vite", "--host", "127.0.0.1", "--port", String(port), "--strictPort"], stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn({
+    cmd: ["bunx", "vite", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, BLAZEPLOT_BENCH: "1" },
+  });
   drain(proc.stdout, "vite");
   drain(proc.stderr, "vite");
   return proc;
