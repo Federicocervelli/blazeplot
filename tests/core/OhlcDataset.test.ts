@@ -89,6 +89,18 @@ describe("OhlcRingBuffer", () => {
     expect(dataset.lowerBoundX(2.5)).toBe(1);
   });
 
+  it("updates the latest candle in place for live bars", () => {
+    const dataset = new OhlcRingBuffer(2);
+    dataset.append([1, 2], [10, 20], [11, 21], [9, 19], [10.5, 20.5]);
+
+    expect(dataset.updateLast(20, 25, 18, 24)).toBe(true);
+    expect(dataset.getX(1)).toBe(2);
+    expect(dataset.getOpen(1)).toBe(20);
+    expect(dataset.getHigh(1)).toBe(25);
+    expect(dataset.getLow(1)).toBe(18);
+    expect(dataset.getClose(1)).toBe(24);
+  });
+
   it("supports explicit overflow errors", () => {
     const dataset = new OhlcRingBuffer(1, { overflow: "error" });
     dataset.push(1, 10, 11, 9, 10.5);
