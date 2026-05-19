@@ -1,4 +1,10 @@
-import type { Chart, ChartScreenshotOptions } from "./ui/Chart.js";
+import type { Chart, ChartScreenshotOptions, ChartScreenshotPreset } from "./ui/Chart.js";
+
+export const CHART_SCREENSHOT_PRESETS: Record<Exclude<ChartScreenshotPreset, "theme">, ChartScreenshotOptions> = {
+  transparent: { preset: "transparent" },
+  dark: { preset: "dark" },
+  light: { preset: "light" },
+};
 
 export interface ChartDownloadOptions extends ChartScreenshotOptions {
   readonly filename?: string;
