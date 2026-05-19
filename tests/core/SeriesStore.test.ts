@@ -300,6 +300,17 @@ describe("SeriesStore", () => {
     expect(Array.from(area.subarray(8, 16))).toEqual([2, -2, 2, 7, 3, -2, 3, 9]);
   });
 
+  it("preserves skipped gaps when visible sampling strides", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 1, 2, 3, 4]), new Float32Array([4, NaN, 7, 9, 10]));
+
+    const raw = new Float32Array(4);
+    const rawCount = series.copyRawVisible({ xMin: 0, xMax: 4, yMin: -10, yMax: 10 }, raw, 2);
+    expect(rawCount).toBe(2);
+    expect(Array.from(raw.subarray(0, 2))).toEqual([0, 4]);
+    expect(Array.from(raw.subarray(2, 4)).every(Number.isNaN)).toBe(true);
+  });
+
   it("honors dataset-provided finite gaps for extraction and picking", () => {
     const dataset = new ExplicitGapDataset([0, 1, 2, 3], [4, 50, 7, 9], new Set([1]));
     const series = new SeriesStore(

@@ -12,10 +12,20 @@ interface BundleSizeEntry extends Budget {
   readonly sizeBytes: number;
 }
 
+interface SharedChunkBudget {
+  readonly label: string;
+  readonly pattern: RegExp;
+  readonly maxBytes: number;
+}
+
+interface SharedChunkResult {
+  readonly budget: SharedChunkBudget;
+  readonly entries: BundleSizeEntry[];
+}
+
 interface BundleSizeReport {
   readonly entryChunks: BundleSizeEntry[];
-  readonly sharedChartChunk?: BundleSizeEntry;
-  readonly sharedChartChunkCount: number;
+  readonly sharedChunks: SharedChunkResult[];
 }
 
 const budgets: Budget[] = [
@@ -29,9 +39,15 @@ const budgets: Budget[] = [
   { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 16_000 },
   { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 12_000 },
   { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 8_000 },
+  { label: "tooltip plugin entry", path: "dist/plugins/tooltip.js", maxBytes: 4_000 },
+  { label: "crosshair plugin entry", path: "dist/plugins/crosshair.js", maxBytes: 4_000 },
 ];
 
-const maxChartBytes = 140_000;
+const sharedBudgets: SharedChunkBudget[] = [
+  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 140_000 },
+  { label: "shared Tooltip chunk", pattern: /^Tooltip-.*\.js$/, maxBytes: 12_000 },
+  { label: "shared Crosshair chunk", pattern: /^Crosshair-.*\.js$/, maxBytes: 16_000 },
+];
 
 export async function collectBundleSizeReport(): Promise<BundleSizeReport> {
   const entryChunks = budgets.map((budget) => ({
@@ -40,36 +56,36 @@ export async function collectBundleSizeReport(): Promise<BundleSizeReport> {
   }));
 
   const distFiles = await readdir("dist");
-  const chartChunks = distFiles.filter((file) => /^Chart-.*\.js$/.test(file));
-  const chartPath = chartChunks.length === 1 ? join("dist", chartChunks[0] ?? "") : undefined;
-  const sharedChartChunk = chartPath
-    ? { label: "shared Chart chunk", path: chartPath, maxBytes: maxChartBytes, sizeBytes: statSync(chartPath).size }
-    : undefined;
+  const sharedChunks = sharedBudgets.map((budget) => ({
+    budget,
+    entries: distFiles
+      .filter((file) => budget.pattern.test(file))
+      .map((file) => {
+        const path = join("dist", file);
+        return { label: budget.label, path, maxBytes: budget.maxBytes, sizeBytes: statSync(path).size };
+      }),
+  }));
 
-  return {
-    entryChunks,
-    sharedChartChunk,
-    sharedChartChunkCount: chartChunks.length,
-  };
+  return { entryChunks, sharedChunks };
 }
 
 export function bundleSizeFailures(report: BundleSizeReport): string[] {
   const failures: string[] = [];
-  for (const entry of [...report.entryChunks, ...(report.sharedChartChunk ? [report.sharedChartChunk] : [])]) {
+  for (const entry of [...report.entryChunks, ...report.sharedChunks.flatMap((chunk) => chunk.entries)]) {
     if (entry.sizeBytes > entry.maxBytes) {
       failures.push(`${entry.label} exceeds budget: ${entry.sizeBytes} > ${entry.maxBytes} bytes (${entry.path})`);
     }
   }
 
-  if (report.sharedChartChunkCount !== 1) {
-    failures.push(`Expected exactly one shared Chart chunk, found ${report.sharedChartChunkCount}.`);
+  for (const chunk of report.sharedChunks) {
+    if (chunk.entries.length !== 1) failures.push(`Expected exactly one ${chunk.budget.label}, found ${chunk.entries.length}.`);
   }
 
   return failures;
 }
 
 export function renderBundleSizeMarkdown(report: BundleSizeReport): string {
-  const rows = [...report.entryChunks, ...(report.sharedChartChunk ? [report.sharedChartChunk] : [])]
+  const rows = [...report.entryChunks, ...report.sharedChunks.flatMap((chunk) => chunk.entries)]
     .map((entry) => {
       const remainingBytes = entry.maxBytes - entry.sizeBytes;
       return `| ${markdownEscape(entry.label)} | \`${entry.path}\` | ${formatBytes(entry.sizeBytes)} | ${formatBytes(entry.maxBytes)} | ${formatHeadroom(remainingBytes)} |`;
@@ -85,8 +101,8 @@ export function renderBundleSizeMarkdown(report: BundleSizeReport): string {
     ...rows,
   ];
 
-  if (report.sharedChartChunkCount !== 1) {
-    lines.push("", `> Expected exactly one shared Chart chunk, found ${report.sharedChartChunkCount}.`);
+  for (const chunk of report.sharedChunks) {
+    if (chunk.entries.length !== 1) lines.push("", `> Expected exactly one ${chunk.budget.label}, found ${chunk.entries.length}.`);
   }
 
   return lines.join("\n");
@@ -105,7 +121,7 @@ async function main(): Promise<void> {
   for (const failure of failures) console.error(failure);
 
   if (failures.length > 0) process.exit(1);
-  console.log(`Bundle size check passed for ${budgets.length} entry chunks and ${report.sharedChartChunkCount} shared Chart chunk.`);
+  console.log(`Bundle size check passed for ${budgets.length} entry chunks and ${report.sharedChunks.length} shared chunks.`);
 }
 
 function parseArgs(args: readonly string[]): { markdown: boolean } {

@@ -88,6 +88,7 @@ export class ReglBackend implements GpuBackend {
   createBuffer(spec: BufferSpec): GpuBuffer {
     const { buffer } = this.resources.acquire(spec.length, spec.usage);
     return {
+      kind: "buffer",
       length: spec.length,
       type: spec.type,
       buffer,
@@ -105,6 +106,7 @@ export class ReglBackend implements GpuBackend {
 
   createProgram(vert: string, frag: string): GpuProgram {
     return {
+      kind: "program",
       id: this.nextProgramId++,
       vert,
       frag,

@@ -283,31 +283,55 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const floatsPerSample = layout === "points" ? 2 : 4;
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
 
-    const count = Math.min(maxPoints, Math.max(0, Math.ceil((to - from) / stride)));
     const firstX = this.firstX();
+    let count = 0;
+    let lastIndex = -1;
+    let lastWasGap = false;
+    const writeGap = (): boolean => {
+      if (count === 0 || lastWasGap) return true;
+      if (count >= maxPoints) return false;
+      const offset = count * floatsPerSample;
+      for (let j = 0; j < floatsPerSample; j++) target[offset + j] = NaN;
+      count++;
+      lastWasGap = true;
+      return true;
+    };
+    const writeSample = (index: number): boolean => {
+      const y = this.yData[this.logicalToPhysical(index)]!;
+      if (!Number.isFinite(y)) return writeGap();
+      if (count >= maxPoints) return false;
+      const offset = count * floatsPerSample;
+      const x = firstX + index * this.xStep - xOrigin;
+      if (layout === "points") {
+        target[offset] = x;
+        target[offset + 1] = y;
+      } else {
+        target[offset] = x;
+        target[offset + 1] = baseline;
+        target[offset + 2] = x;
+        target[offset + 3] = y;
+      }
+      count++;
+      lastWasGap = false;
+      return true;
+    };
 
-    if (layout === "points") {
-      for (let i = 0, index = from; i < count; i++, index += stride) {
-        const offset = i * 2;
-        const y = this.yData[this.logicalToPhysical(index)]!;
-        const gap = !Number.isFinite(y);
-        target[offset] = gap ? NaN : firstX + index * this.xStep - xOrigin;
-        target[offset + 1] = gap ? NaN : y;
-      }
-    } else {
-      for (let i = 0, index = from; i < count; i++, index += stride) {
-        const offset = i * 4;
-        const x = firstX + index * this.xStep - xOrigin;
-        const y = this.yData[this.logicalToPhysical(index)]!;
-        const gap = !Number.isFinite(y);
-        target[offset] = gap ? NaN : x;
-        target[offset + 1] = gap ? NaN : baseline;
-        target[offset + 2] = gap ? NaN : x;
-        target[offset + 3] = gap ? NaN : y;
-      }
+    for (let index = from; index < to; index += stride) {
+      if (lastIndex >= 0 && index > lastIndex + 1 && this.hasGapInLogicalRange(lastIndex + 1, index) && !writeGap()) break;
+      if (!writeSample(index)) break;
+      lastIndex = index;
     }
 
     return count;
+  }
+
+  private hasGapInLogicalRange(start: number, end: number): boolean {
+    const from = Math.max(0, start);
+    const to = Math.min(this._length, end);
+    for (let i = from; i < to; i++) {
+      if (!Number.isFinite(this.yData[this.logicalToPhysical(i)]!)) return true;
+    }
+    return false;
   }
 
   private queryPhysicalMinMax(start: number, end: number): { minY: number; maxY: number } | null {

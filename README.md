@@ -123,7 +123,7 @@ Generated from `dist/` after the package build. Budgets are enforced by `bun run
 
 | Chunk | File | Size | Budget | Headroom |
 |---|---|---:|---:|---:|
-| core entry | `dist/index.js` | 17.4 KiB | 31.3 KiB | 13.8 KiB free |
+| core entry | `dist/index.js` | 17.7 KiB | 31.3 KiB | 13.5 KiB free |
 | react entry | `dist/react.js` | 0.8 KiB | 7.8 KiB | 7.0 KiB free |
 | linked entry | `dist/linked.js` | 2.2 KiB | 15.6 KiB | 13.4 KiB free |
 | data entry | `dist/data.js` | 5.0 KiB | 11.7 KiB | 6.8 KiB free |
@@ -133,7 +133,11 @@ Generated from `dist/` after the package build. Budgets are enforced by `bun run
 | navigator plugin | `dist/plugins/navigator.js` | 8.6 KiB | 15.6 KiB | 7.0 KiB free |
 | selection plugin | `dist/plugins/selection.js` | 5.4 KiB | 11.7 KiB | 6.4 KiB free |
 | legend plugin | `dist/plugins/legend.js` | 2.9 KiB | 7.8 KiB | 4.9 KiB free |
-| shared Chart chunk | `dist/Chart-Bm6OpMQP.js` | 118.7 KiB | 136.7 KiB | 18.0 KiB free |
+| tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB | 3.9 KiB | 3.8 KiB free |
+| crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB | 3.9 KiB | 3.8 KiB free |
+| shared Chart chunk | `dist/Chart-cv7OLUe9.js` | 119.2 KiB | 136.7 KiB | 17.5 KiB free |
+| shared Tooltip chunk | `dist/Tooltip-B6xpcvUJ.js` | 4.8 KiB | 11.7 KiB | 6.9 KiB free |
+| shared Crosshair chunk | `dist/Crosshair-BYJjWKm3.js` | 8.7 KiB | 15.6 KiB | 6.9 KiB free |
 
 ### Selected generated declarations
 

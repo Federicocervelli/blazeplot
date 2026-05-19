@@ -1520,7 +1520,7 @@ export class Chart implements ChartPluginContext {
   }
 
   private canAppendToMinMaxLineBatch(batch: MinMaxLineBatch, style: SeriesStyle, camera: Camera2D): boolean {
-    return batch.camera === camera && colorsEqual(batch.color, style.color);
+    return batch.camera === camera && batch.style.lineWidth === style.lineWidth && colorsEqual(batch.color, style.color);
   }
 
   private flushMinMaxLineBatch(): void {

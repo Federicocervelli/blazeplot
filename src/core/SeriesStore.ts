@@ -867,25 +867,53 @@ export class SeriesStore {
 
     const stride = Math.max(1, Math.ceil(visible / maxPoints));
     let count = 0;
-    for (let i = start; i < end && count < maxPoints; i += stride) {
-      const x = this.dataset.getX(i) - xOrigin;
-      const y = this.dataset.getY(i);
-      const gap = this.isGap(i, y);
+    let lastIndex = -1;
+    let lastWasGap = false;
+    const writeGap = (): boolean => {
+      if (count === 0 || lastWasGap) return true;
+      if (count >= maxPoints) return false;
+      const offset = count * floatsPerSample;
+      for (let j = 0; j < floatsPerSample; j++) target[offset + j] = NaN;
+      count++;
+      lastWasGap = true;
+      return true;
+    };
+    const writeSample = (index: number): boolean => {
+      const x = this.dataset.getX(index) - xOrigin;
+      const y = this.dataset.getY(index);
+      if (this.isGap(index, y)) return writeGap();
+      if (count >= maxPoints) return false;
+      const offset = count * floatsPerSample;
       if (layout === "points") {
-        const offset = count * 2;
-        target[offset] = gap ? NaN : x;
-        target[offset + 1] = gap ? NaN : y;
+        target[offset] = x;
+        target[offset + 1] = y;
       } else {
-        const offset = count * 4;
-        target[offset] = gap ? NaN : x;
-        target[offset + 1] = gap ? NaN : baseline;
-        target[offset + 2] = gap ? NaN : x;
-        target[offset + 3] = gap ? NaN : y;
+        target[offset] = x;
+        target[offset + 1] = baseline;
+        target[offset + 2] = x;
+        target[offset + 3] = y;
       }
       count++;
+      lastWasGap = false;
+      return true;
+    };
+
+    for (let i = start; i < end; i += stride) {
+      if (lastIndex >= 0 && i > lastIndex + 1 && this.hasGapInRange(lastIndex + 1, i) && !writeGap()) break;
+      if (!writeSample(i)) break;
+      lastIndex = i;
     }
 
     return count;
+  }
+
+  private hasGapInRange(start: number, end: number): boolean {
+    const from = Math.max(0, start);
+    const to = Math.min(this.dataset.length, end);
+    for (let i = from; i < to; i++) {
+      if (this.isGap(i)) return true;
+    }
+    return false;
   }
 
   private copySampleRange(

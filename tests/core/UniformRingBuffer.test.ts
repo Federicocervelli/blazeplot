@@ -77,4 +77,15 @@ describe("UniformRingBuffer", () => {
     expect(segmentCount).toBe(2);
     expect(Array.from(segments)).toEqual([2, -1, 8, 6, 2, 7]);
   });
+
+  it("preserves skipped gaps when visible sampling strides", () => {
+    const buf = new UniformRingBuffer(5, { xStart: 0, xStep: 1, blockSize: 2 });
+    buf.appendY([4, NaN, 7, 9, 10]);
+
+    const samples = new Float32Array(4);
+    const sampleCount = buf.copyVisibleSamples({ xMin: 0, xMax: 4, yMin: -10, yMax: 10 }, samples, 2, "points", 0, 0);
+    expect(sampleCount).toBe(2);
+    expect(Array.from(samples.subarray(0, 2))).toEqual([0, 4]);
+    expect(Array.from(samples.subarray(2, 4)).every(Number.isNaN)).toBe(true);
+  });
 });

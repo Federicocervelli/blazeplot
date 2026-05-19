@@ -22,11 +22,14 @@ export interface BufferSpec {
 }
 
 export interface GpuBuffer {
+  readonly kind: "buffer";
   readonly length: number;
   readonly type: BufferSpec["type"];
 }
 
-export interface GpuProgram {}
+export interface GpuProgram {
+  readonly kind: "program";
+}
 
 export type GpuResource = GpuBuffer | GpuProgram;
 
