@@ -160,6 +160,7 @@ These member tables are generated from TypeScript declarations.
 | `title?: string \\| ChartTitleConfig` |
 | `subtitle?: string \\| ChartTitleConfig` |
 | `hover?: ChartPickOptions` |
+| `accessibility?: boolean \\| ChartAccessibilityOptions` |
 | `plugins?: readonly ChartPlugin[]` |
 | `theme?: ChartTheme` |
 
@@ -413,10 +414,12 @@ These member tables are generated from TypeScript declarations.
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | — |
 | `Camera2D` | class | `./interaction/Camera2D` | — |
 | `Chart` | class | `./ui/Chart` | — |
+| `ChartAccessibilityOptions` | interface | `./ui/Chart` | — |
 | `ChartFitToDataOptions` | interface | `./ui/Chart` | — |
 | `ChartFitToDataPadding` | interface | `./ui/Chart` | — |
 | `ChartFrameStats` | interface | `./ui/Chart` | — |
 | `ChartHoverState` | interface | `./ui/Chart` | — |
+| `ChartKeyboardOptions` | interface | `./ui/Chart` | — |
 | `ChartLayoutReservation` | interface | `./ui/Chart` | — |
 | `ChartOptions` | interface | `./ui/Chart` | — |
 | `ChartPickGroup` | type | `./ui/Chart` | — |

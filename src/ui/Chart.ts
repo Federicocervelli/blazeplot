@@ -94,6 +94,20 @@ export interface ChartPlugin {
   install(chart: Chart): void | (() => void) | ChartPluginHandle;
 }
 
+export interface ChartAccessibilityOptions {
+  readonly enabled?: boolean;
+  readonly label?: string;
+  readonly description?: string;
+  readonly role?: string;
+  readonly keyboard?: boolean | ChartKeyboardOptions;
+}
+
+export interface ChartKeyboardOptions {
+  readonly enabled?: boolean;
+  readonly panFraction?: number;
+  readonly zoomFactor?: number;
+}
+
 export interface ChartOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly grid?: boolean;
@@ -102,6 +116,7 @@ export interface ChartOptions {
   readonly title?: string | ChartTitleConfig;
   readonly subtitle?: string | ChartTitleConfig;
   readonly hover?: ChartPickOptions;
+  readonly accessibility?: boolean | ChartAccessibilityOptions;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
 }
@@ -372,6 +387,9 @@ export class Chart {
     this.pointerInPlot = false;
     this.emitHover(null);
   };
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    this.handleKeyboardNavigation(event);
+  };
 
   constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
     this.resolvedTheme = resolveChartTheme(options.theme, target);
@@ -380,6 +398,7 @@ export class Chart {
 
     this.layout = new ChartLayout(target, this.normalizedAxes);
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
+    this.applyAccessibility();
     this.applyCanvasSize();
     this.camera = new Camera2D();
     this.rightCamera = new Camera2D();
@@ -414,6 +433,7 @@ export class Chart {
     this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
     this.canvas.addEventListener("click", this.handleClick);
     this.canvas.addEventListener("dblclick", this.handleDoubleClick);
+    this.layout.root.addEventListener("keydown", this.handleKeyDown);
 
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -938,10 +958,101 @@ export class Chart {
     this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
     this.canvas.removeEventListener("click", this.handleClick);
     this.canvas.removeEventListener("dblclick", this.handleDoubleClick);
+    this.layout.root.removeEventListener("keydown", this.handleKeyDown);
     for (const dispose of this.pluginDisposers.splice(0)) dispose();
     this.axisOverlay?.dispose();
     this.renderer.dispose();
     this.layout.dispose();
+  }
+
+  private applyAccessibility(): void {
+    const option = this.options.accessibility;
+    const enabled = option !== false;
+    if (!enabled) return;
+
+    const config = typeof option === "object" ? option : undefined;
+    const label = config?.label ?? this.accessibleTitleText() ?? "BlazePlot chart";
+    this.layout.root.tabIndex = this.layout.root.tabIndex >= 0 ? this.layout.root.tabIndex : 0;
+    this.layout.root.setAttribute("role", config?.role ?? "img");
+    this.layout.root.setAttribute("aria-label", label);
+    if (config?.description) this.layout.root.setAttribute("aria-description", config.description);
+    this.layout.plot.setAttribute("role", "presentation");
+    this.canvas.setAttribute("aria-hidden", "true");
+    this.xAxisElement.setAttribute("aria-hidden", "true");
+    this.yAxisElement.setAttribute("aria-hidden", "true");
+    this.y2AxisElement.setAttribute("aria-hidden", "true");
+  }
+
+  private accessibleTitleText(): string | null {
+    const title = typeof this.options.title === "string" ? this.options.title : this.options.title?.text;
+    const subtitle = typeof this.options.subtitle === "string" ? this.options.subtitle : this.options.subtitle?.text;
+    return [title, subtitle].filter((part): part is string => Boolean(part)).join(" — ") || null;
+  }
+
+  private keyboardOptions(): Required<ChartKeyboardOptions> | null {
+    const accessibility = this.options.accessibility;
+    if (accessibility === false) return null;
+    const keyboard = typeof accessibility === "object" ? accessibility.keyboard : undefined;
+    if (keyboard === false) return null;
+    const config = typeof keyboard === "object" ? keyboard : undefined;
+    if (config?.enabled === false) return null;
+    const panFraction = typeof config?.panFraction === "number" && Number.isFinite(config.panFraction)
+      ? Math.max(0, config.panFraction)
+      : 0.1;
+    const zoomFactor = typeof config?.zoomFactor === "number" && Number.isFinite(config.zoomFactor) && config.zoomFactor > 1
+      ? config.zoomFactor
+      : 1.25;
+    return { enabled: true, panFraction, zoomFactor };
+  }
+
+  private handleKeyboardNavigation(event: KeyboardEvent): void {
+    const keyboard = this.keyboardOptions();
+    if (!keyboard || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+
+    const panStep = keyboard.panFraction * (event.shiftKey ? 2.5 : 1);
+    const zoomIn = keyboard.zoomFactor;
+    const zoomOut = 1 / keyboard.zoomFactor;
+    let handled = true;
+
+    switch (event.key) {
+      case "ArrowLeft":
+        this.pan({ dx: -panStep, dy: 0 });
+        break;
+      case "ArrowRight":
+        this.pan({ dx: panStep, dy: 0 });
+        break;
+      case "ArrowUp":
+        this.pan({ dx: 0, dy: panStep });
+        break;
+      case "ArrowDown":
+        this.pan({ dx: 0, dy: -panStep });
+        break;
+      case "+":
+      case "=":
+        this.zoom({ factor: zoomIn, cx: 0.5, cy: 0.5, axis: "xy" });
+        break;
+      case "-":
+      case "_":
+        this.zoom({ factor: zoomOut, cx: 0.5, cy: 0.5, axis: "xy" });
+        break;
+      case "PageUp":
+        this.zoom({ factor: zoomIn, cx: 0.5, cy: 0.5, axis: "y" });
+        break;
+      case "PageDown":
+        this.zoom({ factor: zoomOut, cx: 0.5, cy: 0.5, axis: "y" });
+        break;
+      case "Home":
+      case "0":
+        handled = this.fitToData({ padding: 0.05 });
+        break;
+      default:
+        handled = false;
+        break;
+    }
+
+    if (handled) event.preventDefault();
   }
 
   private applyTheme(): void {
