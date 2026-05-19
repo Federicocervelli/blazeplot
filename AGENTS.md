@@ -21,6 +21,9 @@
 
 - `main` is the protected release branch. It requires PRs, the `validate` status check, up-to-date branches, conversation resolution, linear history, and blocks force-push/deletion. It does **not** require approving reviews so the agent can merge its own tested release PRs when asked.
 - `development` is the integration branch for normal work. Open feature/fix PRs into `development`; open release PRs from `development` into `main`.
+- Implement each requested feature/fix on its own branch from updated `development` (for example `feature/<topic>` or `docs/<topic>`), make focused commits there, then merge it back to `development`. Do not stack unrelated changes in one feature branch.
+- Prefer `git merge --no-ff <feature-branch>` when merging completed feature branches back to `development` so feature boundaries remain visible in history.
+- Do not open PRs to `main` until the user explicitly asks for a release PR. Normal completed work should stop after merging to `development` and pushing it.
 - GitHub Pages deploys from `main`.
 - Releases are merge-to-main based. Do not use tag-push/manual release scripts.
 - To prepare a release PR:
