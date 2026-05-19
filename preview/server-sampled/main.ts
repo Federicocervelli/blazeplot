@@ -1,7 +1,6 @@
 import { Chart, OhlcRingBuffer, ServerSampledDataset } from "@/index";
 import { interactionsPlugin } from "@/plugins/interactions";
-import { tooltipPlugin } from "@/plugins/tooltip";
-import { legendPlugin } from "@/plugins/legend";
+import { crosshairPlugin } from "@/plugins/crosshair";
 
 type BinanceKline = [
   number,
@@ -37,49 +36,60 @@ const reloadButton = document.querySelector<HTMLButtonElement>("#reloadButton")!
 
 const sampledDataset = new ServerSampledDataset();
 const sampledChart = new Chart(sampledChartEl, {
-  title: "Server-sampled min/max buckets",
-  subtitle: "Binance public klines arrive already sampled by interval; downsample: \"server\" renders them directly.",
   axes: {
-    x: { position: "outside", scale: "time", timezone: "utc", title: "UTC time" },
-    y: { position: "outside", title: "price" },
+    x: { position: "outside", scale: "time", timezone: "utc" },
+    y: { position: "outside" },
   },
   hover: { mode: "nearest-x", group: "x", maxDistancePx: 48 },
   plugins: [
-    interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true }),
-    tooltipPlugin({ formatter: (item) => `${new Date(item.x).toISOString()}\nmid: ${item.y.toFixed(2)}` }),
-    legendPlugin(),
+    interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true, touchPan: true, pinchZoom: true }),
   ],
   accessibility: { label: "Server sampled Binance kline preview" },
 });
 
 const sampledSeries = sampledChart.addLine(
-  { dataset: sampledDataset, downsample: "server", name: "server OHLC high/low buckets" },
+  { dataset: sampledDataset, downsample: "server", name: "server buckets" },
   { color: [0.35, 0.75, 1, 1], lineWidth: 1.5 },
 );
 
-const liveDataset = new OhlcRingBuffer(360);
+const liveDataset = new OhlcRingBuffer(720);
+const liveWindowMs = 2 * 60 * 1000;
 const liveChart = new Chart(liveChartEl, {
-  title: "Live 10s candlestick bars",
-  subtitle: "Binance has no native 10s kline interval, so this preview aggregates public aggTrade messages into 10s candles in real time.",
   axes: {
-    x: { position: "outside", scale: "time", timezone: "utc", title: "UTC time" },
-    y: { position: "outside", title: "price" },
+    x: { position: "outside", scale: "time", timezone: "utc" },
+    y: { position: "outside" },
   },
-  followX: { window: 5 * 60 * 1000, pauseOnInteraction: true },
+  followX: { window: liveWindowMs, pauseOnInteraction: true },
   autoFitY: { padding: { y: 0.08 } },
   plugins: [
-    interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true }),
-    legendPlugin(),
+    interactionsPlugin({
+      wheelZoom: true,
+      shiftDragPan: true,
+      boxZoom: true,
+      doubleClickReset: true,
+      doubleTapReset: true,
+      touchPan: true,
+      pinchZoom: true,
+      resetViewport: () => resumeLiveFollowViewport(),
+    }),
+    crosshairPlugin({
+      axis: "xy",
+      snap: "nearest-x",
+      label: true,
+      highlight: true,
+      formatX: (value) => new Date(value).toLocaleTimeString(),
+      formatY: (value) => value.toFixed(2),
+    }),
   ],
-  accessibility: { label: "Live Binance ten second candlestick chart" },
+  accessibility: { label: "Live Binance five second candlestick chart" },
 });
 
 liveChart.addCandlestick(
-  { dataset: liveDataset, name: "10s aggTrade candles" },
+  { dataset: liveDataset, name: "5s candles" },
   {
     color: [0.8, 0.86, 1, 1],
     lineWidth: 1,
-    barWidth: 8_000,
+    barWidth: 4_000,
     upColor: [0.16, 0.86, 0.56, 1],
     downColor: [0.96, 0.32, 0.36, 1],
     wickColor: [0.75, 0.82, 0.92, 1],
@@ -93,7 +103,7 @@ let currentHigh = NaN;
 let currentLow = NaN;
 let currentClose = NaN;
 let tradeCount = 0;
-const candleMs = 10_000;
+const candleMs = 5_000;
 
 async function loadKlines(): Promise<void> {
   const symbol = symbolSelect.value;
@@ -164,10 +174,10 @@ function connectLiveTrades(): void {
 
   const symbol = symbolSelect.value.toLowerCase();
   const url = `wss://stream.binance.com:9443/ws/${symbol}@aggTrade`;
-  liveStatusEl.textContent = `connecting ${symbolSelect.value} aggTrade stream…`;
+  liveStatusEl.textContent = `connecting ${symbolSelect.value}…`;
   socket = new WebSocket(url);
   socket.addEventListener("open", () => {
-    liveStatusEl.textContent = `live ${symbolSelect.value} aggTrade stream connected; building 10s candles…`;
+    liveStatusEl.textContent = `${symbolSelect.value} live 5s`;
   });
   socket.addEventListener("message", (event) => {
     try {
@@ -203,7 +213,16 @@ function ingestTrade(price: number, time: number): void {
   }
   tradeCount++;
   if (liveDataset.length === 1) liveChart.fitToData({ padding: { x: 0.1, y: 0.1 } });
-  liveStatusEl.textContent = `${symbolSelect.value} live: ${liveDataset.length} × 10s candles, ${tradeCount} aggTrades, latest ${price.toFixed(2)}`;
+  liveStatusEl.textContent = `${symbolSelect.value} 5s: ${liveDataset.length} bars, ${tradeCount} trades, ${price.toFixed(2)}`;
+}
+
+function resumeLiveFollowViewport(): { xMin: number; xMax: number; yMin: number; yMax: number } {
+  liveChart.setXFollowPaused(false);
+  const current = liveChart.getViewport();
+  const range = liveDataset.range;
+  if (!range) return current;
+  const xMax = range.end;
+  return { ...current, xMin: xMax - liveWindowMs, xMax };
 }
 
 reloadButton.addEventListener("click", () => void loadKlines());
