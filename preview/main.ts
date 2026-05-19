@@ -60,7 +60,6 @@ let previewStartTime = Date.now();
 let dataGeneration = 0;
 let frames = 0;
 let appendedSinceStats = 0;
-let lastBatchSize = 0;
 let lastStatsAt = performance.now();
 let workerPending = false;
 let followLive = true;
@@ -290,7 +289,6 @@ function removeSeries(): void {
 function resetDataModel(): void {
   if (lineSeries) removeSeries();
   t = 0;
-  lastBatchSize = 0;
   appendedSinceStats = 0;
   frames = 0;
   workerPending = false;
@@ -349,7 +347,6 @@ function appendGeneratedBatch(batch: PreviewDataBatch): void {
   }
 
   t = batch.end;
-  lastBatchSize = batch.batchSize;
   appendedSinceStats += batch.batchSize;
   frames++;
   workerPending = false;
@@ -378,7 +375,6 @@ function stream(): void {
       dataWorker.postMessage({ type: "generate", batchSize, generation: dataGeneration });
     }
   } else {
-    lastBatchSize = 0;
     frames++;
     updateOverlay();
   }
@@ -406,7 +402,6 @@ function updateOverlay(force: boolean = false): void {
   if (!force && now - lastStatsAt < 500) return;
 
   const elapsedMs = now - lastStatsAt;
-  const fps = (frames * 1000) / elapsedMs;
   const actualAppendRate = (appendedSinceStats * 1000) / elapsedMs;
   chart.getFrameStats(chartStats);
   if (overlayText) {
@@ -421,22 +416,13 @@ function updateOverlay(force: boolean = false): void {
       "BlazePlot preview",
       `status: ${streaming ? workerPending ? "worker pending" : "streaming" : "paused"}`,
       `renderer: ${chartStats.renderMode}`,
-      `points appended: ${t.toLocaleString()}`,
-      `last batch: ${lastBatchSize.toLocaleString()}`,
-      `target sample rate: ${appendRate.toLocaleString()} samples/sec`,
-      `actual append rate: ${actualAppendRate.toFixed(0)} samples/sec`,
-      `sample step: ${sampleStepMs().toFixed(4)} ms`,
+      `samples: ${t.toLocaleString()}`,
+      `sample rate: ${appendRate.toLocaleString()}/sec target, ${actualAppendRate.toFixed(0)}/sec actual`,
       `view samples: ${viewSamples.toLocaleString()}`,
-      `history span: ${historySamples().toLocaleString()}`,
-      `sparse capacity: ${sparseHistoryCapacity().toLocaleString()}`,
-      `ohlc capacity: ${ohlcHistoryCapacity().toLocaleString()}`,
-      `stream ticks/sec: ${fps.toFixed(1)}`,
       `render fps: ${chartStats.fps.toFixed(1)}`,
       `render ms/frame: ${chartStats.frameMs.toFixed(2)}`,
       `points rendered/frame: ${chartStats.pointsRendered.toLocaleString()}`,
       `draw calls/frame: ${chartStats.drawCalls}`,
-      `upload bytes/frame: ${chartStats.uploadBytes.toLocaleString()}`,
-      `canvas: ${canvas.width} x ${canvas.height}`,
     ].join("\n");
   }
   frames = 0;
