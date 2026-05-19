@@ -320,7 +320,7 @@ Current automated coverage is strongest for core data structures and interaction
 - [x] Expose a clear WebGL2-unavailable error path/API so host applications can render their own fallback UI.
 - [ ] Add dispose/resource leak stress tests for repeated chart/plugin mount, unmount, series churn, resize, and screenshot cycles.
 - [x] Validate npm package contents and generated declaration files in CI before release PRs.
-- [ ] Track dependency and browser-support assumptions, especially WebGL2/regl behavior across Chrome, Firefox, Safari, and mobile browsers.
+- [x] Track dependency and browser-support assumptions, especially WebGL2/regl behavior across Chrome, Firefox, Safari, and mobile browsers.
 
 ## Backend strategy
 
