@@ -289,12 +289,13 @@ export class Chart {
   private lastFrameAt: number = 0;
   private currentXOrigin: number = 0;
   private _rafId: number = 0;
+  private _hoverRafId: number = 0;
   private readonly handlePointerMove = (event: PointerEvent): void => {
     this.pointerInPlot = true;
     this.lastPointerClientX = event.clientX;
     this.lastPointerClientY = event.clientY;
-    this.refreshHover();
-    this.emitPointerEvent("pointermove", event);
+    this.scheduleHoverRefresh();
+    if (this.pointerSubscribers.pointermove.size > 0) this.emitPointerEvent("pointermove", event);
   };
   private readonly handlePointerDown = (event: PointerEvent): void => {
     this.emitPointerEvent("pointerdown", event);
@@ -795,12 +796,18 @@ export class Chart {
     this.emitRender();
 
     this.stats.frameMs = performance.now() - frameStartedAt;
+    if (this._hoverRafId !== 0) {
+      cancelAnimationFrame(this._hoverRafId);
+      this._hoverRafId = 0;
+    }
     this.refreshHover();
   }
 
   dispose(): void {
     this.stop();
     this.resizeObserver?.disconnect();
+    if (this._hoverRafId !== 0) cancelAnimationFrame(this._hoverRafId);
+    this._hoverRafId = 0;
     this.canvas.removeEventListener("pointermove", this.handlePointerMove);
     this.canvas.removeEventListener("pointerdown", this.handlePointerDown);
     this.canvas.removeEventListener("pointerup", this.handlePointerUp);
@@ -1384,6 +1391,14 @@ export class Chart {
       clientX: itemClientX,
       clientY: itemClientY,
     };
+  }
+
+  private scheduleHoverRefresh(): void {
+    if (this._hoverRafId !== 0) return;
+    this._hoverRafId = requestAnimationFrame(() => {
+      this._hoverRafId = 0;
+      this.refreshHover();
+    });
   }
 
   private refreshHover(): void {
