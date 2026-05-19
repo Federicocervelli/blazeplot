@@ -3,11 +3,11 @@
 BlazePlot plugins are optional objects installed with `new Chart(target, { plugins: [...] })`.
 
 ```ts
-import type { ChartPlugin } from "blazeplot";
+import type { ChartPlugin, ChartPluginContext } from "blazeplot";
 
 export function examplePlugin(): ChartPlugin {
   return {
-    install(chart) {
+    install(chart: ChartPluginContext) {
       const unsubscribe = chart.subscribe("render", () => {
         // Read chart state and update plugin-owned UI.
       });
@@ -25,6 +25,8 @@ export function examplePlugin(): ChartPlugin {
 - Do not import built-in plugins from `Chart`; expose optional UI through subpath entries.
 
 ## Useful chart APIs
+
+`ChartPluginContext` is a narrow public extension surface implemented by `Chart`; use it to type plugins that do not need the concrete `Chart` class.
 
 - `chart.rootElement`, `chart.plotElement`, `chart.canvas` for DOM attachment.
 - `chart.setLayoutReservation(id, reservation)` to reserve outer space for plugin UI.

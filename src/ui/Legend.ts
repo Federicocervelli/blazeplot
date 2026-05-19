@@ -1,4 +1,4 @@
-import type { Chart, ChartPlugin, ChartSeriesState } from "./Chart.js";
+import type { Chart, ChartPlugin, ChartPluginContext, ChartSeriesState } from "./Chart.js";
 
 export interface LegendPluginOptions {
   readonly className?: string;
@@ -24,7 +24,7 @@ function applyPosition(el: HTMLElement, position: NonNullable<LegendPluginOption
   el.style.right = position.endsWith("right") ? "8px" : "auto";
 }
 
-function legendBorder(options: LegendPluginOptions, chart: Chart): string {
+function legendBorder(options: LegendPluginOptions, chart: ChartPluginContext): string {
   const color = options.borderColor ?? chart.theme.legendBorderColor;
   return color === "transparent" ? "0" : `1px solid ${color}`;
 }
@@ -32,7 +32,7 @@ function legendBorder(options: LegendPluginOptions, chart: Chart): string {
 function renderDefaultLegend(
   state: readonly ChartSeriesState[],
   container: HTMLElement,
-  chart: Chart,
+  chart: ChartPluginContext,
   toggleOnClick: boolean,
   options: LegendPluginOptions,
 ): void {
@@ -81,7 +81,7 @@ function renderDefaultLegend(
 
 export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
   return {
-    install(chart: Chart) {
+    install(chart: ChartPluginContext) {
       const container = document.createElement("div");
       container.className = options.className ?? "blazeplot-legend";
       container.style.position = "absolute";
@@ -110,7 +110,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
         applyTheme();
         const state = chart.getSeriesState();
         if (options.render) {
-          options.render(state, container, chart);
+          options.render(state, container, chart as Chart);
         } else {
           renderDefaultLegend(state, container, chart, options.toggleOnClick !== false, options);
         }

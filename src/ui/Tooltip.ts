@@ -1,4 +1,4 @@
-import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin } from "./Chart.js";
+import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
 import { formatCompactNumber, placeFixedWithinViewport, renderPickItems, rgba } from "./OverlayUtils.js";
 
 export interface TooltipPluginOptions {
@@ -46,7 +46,7 @@ function placeTooltip(container: HTMLElement, state: ChartHoverState, options: T
 
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
   return {
-    install(chart: Chart) {
+    install(chart: ChartPluginContext) {
       const container = document.createElement("div");
       container.className = options.className ?? "blazeplot-tooltip";
       container.style.position = "fixed";
@@ -131,7 +131,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         }
 
         if (options.render) {
-          options.render(effectiveState, container, chart);
+          options.render(effectiveState, container, chart as Chart);
         } else {
           renderDefaultTooltip(effectiveState, container, options.formatter);
         }

@@ -109,14 +109,6 @@ export interface ChartPickOptions {
   readonly maxDistancePx?: number;
 }
 
-export interface ChartPluginHandle {
-  dispose(): void;
-}
-
-export interface ChartPlugin {
-  install(chart: Chart): void | (() => void) | ChartPluginHandle;
-}
-
 export interface ChartAccessibilityOptions {
   readonly enabled?: boolean;
   readonly label?: string;
@@ -280,6 +272,48 @@ export interface ChartFrameStats {
   renderMode: "none" | "raw" | "minmax" | "points" | "bars" | "area" | "mixed";
 }
 
+export interface ChartPluginContext {
+  readonly canvas: HTMLCanvasElement;
+  readonly rootElement: HTMLElement;
+  readonly plotElement: HTMLElement;
+  readonly xAxisElement: HTMLElement;
+  readonly yAxisElement: HTMLElement;
+  readonly y2AxisElement: HTMLElement;
+  readonly theme: ResolvedChartTheme;
+  getWebGLContext(): WebGL2RenderingContext | null;
+  getCamera(yAxis?: SeriesYAxis): Camera2D;
+  dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
+  clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
+  getViewport(yAxis?: SeriesYAxis): Viewport;
+  pan(intent: PanIntent): void;
+  zoom(intent: ZoomIntent): void;
+  setSeriesVisible(series: SeriesStore, visible: boolean): boolean;
+  getSeriesState(): ChartSeriesState[];
+  setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void;
+  setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number }): void;
+  getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+  getHoverState(): ChartHoverState | null;
+  setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
+  subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
+  subscribe(event: "serieschange", callback: () => void): () => void;
+  subscribe(event: "themechange", callback: () => void): () => void;
+  subscribe(event: "render", callback: () => void): () => void;
+  subscribe(event: "viewportchange", callback: (event: ChartViewportChangeEvent) => void): () => void;
+  subscribe(event: "select", callback: (event: ChartSelectEvent) => void): () => void;
+  subscribe(event: "seriesclick", callback: (event: ChartSeriesClickEvent) => void): () => void;
+  subscribe(event: ChartPointerEventType, callback: (event: ChartPointerEventState) => void): () => void;
+  pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
+  emitSelect(selection: unknown): void;
+}
+
+export interface ChartPluginHandle {
+  dispose(): void;
+}
+
+export interface ChartPlugin {
+  install(chart: Chart): void | (() => void) | ChartPluginHandle;
+}
+
 type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | AxisTitleConfig };
 
 type ResolvedAxesConfig = { x: ResolvedAxisConfig; y: ResolvedAxisConfig; y2: ResolvedAxisConfig };
@@ -345,7 +379,7 @@ interface PickCandidate {
   readonly seriesIndex: number;
 }
 
-export class Chart {
+export class Chart implements ChartPluginContext {
   static isWebGL2Available(): boolean {
     return isWebGL2Available();
   }
