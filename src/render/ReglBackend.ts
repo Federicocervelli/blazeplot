@@ -30,6 +30,19 @@ interface ScissorProps {
   scissorBox?: { x: number; y: number; width: number; height: number };
 }
 
+export class WebGL2UnavailableError extends Error {
+  constructor(message = "BlazePlot requires WebGL2, but this browser/context does not support it.") {
+    super(message);
+    this.name = "WebGL2UnavailableError";
+  }
+}
+
+export function isWebGL2Available(): boolean {
+  if (typeof document === "undefined") return false;
+  const canvas = document.createElement("canvas");
+  return canvas.getContext("webgl2") !== null;
+}
+
 export class ReglBackend implements GpuBackend {
   private gl: WebGL2RenderingContext;
   private regl: Regl;
@@ -51,7 +64,7 @@ export class ReglBackend implements GpuBackend {
     });
 
     if (!gl) {
-      throw new Error("BlazePlot requires WebGL2, but this browser/context does not support it.");
+      throw new WebGL2UnavailableError();
     }
 
     this.gl = gl;

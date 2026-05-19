@@ -95,6 +95,7 @@ These member tables are generated from TypeScript declarations.
 
 | Member |
 |---|
+| `isWebGL2Available(): boolean` |
 | `constructor(target: HTMLElement, options?: ChartOptions)` |
 | `get canvas(): HTMLCanvasElement` |
 | `get rootElement(): HTMLElement` |
@@ -441,6 +442,7 @@ These member tables are generated from TypeScript declarations.
 | `CustomAxisScale` | interface | `./interaction/AxisController` | — |
 | `Dataset` | interface | `./core/types` | — |
 | `DEFAULT_CHART_THEME` | const | `./ui/theme` | — |
+| `isWebGL2Available` | function | `./render/ReglBackend` | — |
 | `LODBucket` | interface | `./core/types` | — |
 | `LODStrategy` | type | `./core/types` | — |
 | `LODView` | interface | `./core/types` | — |
@@ -479,6 +481,7 @@ These member tables are generated from TypeScript declarations.
 | `ViewportPolicy` | interface | `./interaction/types` | — |
 | `VisiblePointCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for point/scatter datasets. Implementations should cull against the full 2D viewport and may sample in screen space so dense point clouds respond to both X and Y zoom. |
 | `VisibleSampleCopyDataset` | interface | `./core/types` | Optional high-performance stable visible sampling capability. Unlike copySamplesRange, this method may stride/downsample, but should choose samples anchored to data coordinates so streamed appends do not make existing sampled points jitter. |
+| `WebGL2UnavailableError` | class | `./render/ReglBackend` | — |
 | `YAppendableDataset` | interface | `./core/types` | — |
 | `ZoomAxis` | type | `./interaction/types` | — |
 | `ZoomIntent` | interface | `./interaction/types` | — |

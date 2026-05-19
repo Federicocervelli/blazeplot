@@ -2,7 +2,7 @@ import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, Seri
 import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
-import { ReglBackend } from "../render/ReglBackend.js";
+import { isWebGL2Available, ReglBackend } from "../render/ReglBackend.js";
 import type { GpuBuffer } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
@@ -310,6 +310,10 @@ interface PickCandidate {
 }
 
 export class Chart {
+  static isWebGL2Available(): boolean {
+    return isWebGL2Available();
+  }
+
   private series: SeriesStore[] = [];
   private camera: Camera2D;
   private rightCamera: Camera2D;
