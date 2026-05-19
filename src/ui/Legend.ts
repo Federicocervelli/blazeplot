@@ -9,6 +9,7 @@ export interface LegendPluginOptions {
   readonly textColor?: string;
   readonly mutedTextColor?: string;
   readonly font?: string;
+  readonly zIndex?: number;
   readonly render?: (state: readonly ChartSeriesState[], container: HTMLElement, chart: Chart) => void;
 }
 
@@ -80,7 +81,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       const container = document.createElement("div");
       container.className = options.className ?? "blazeplot-legend";
       container.style.position = "absolute";
-      container.style.zIndex = "20";
+      container.style.zIndex = String(options.zIndex ?? 40);
       container.style.pointerEvents = "auto";
       container.style.padding = "8px 10px";
       container.style.border = legendBorder(options, chart);

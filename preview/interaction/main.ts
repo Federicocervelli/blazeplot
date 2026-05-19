@@ -83,7 +83,11 @@ if (caseName === "linked") {
         },
       })]
     : caseName === "mobile"
-      ? [interactionsPlugin({ minDragDistancePx: 4 })]
+      ? [
+          interactionsPlugin({ minDragDistancePx: 4 }),
+          tooltipPlugin(),
+          crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }),
+        ]
       : caseName === "mobile-longpress"
         ? [tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } })]
         : [

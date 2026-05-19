@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>BlazePlot Mobile Preview</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root { color-scheme: dark; --page-bg: #000; --panel-bg: #0a0a0a; --panel-border: #222; --text: #e5e5e5; --muted: #888; --control-bg: #111; --control-border: #333; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--page-bg); color: var(--text); }
+    body { font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    #app { width: 100%; height: 100%; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+    #topbar,
+    #controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 10px; background: var(--panel-bg); color: var(--text); }
+    #topbar { justify-content: space-between; border-bottom: 1px solid var(--panel-border); }
+    #controls { border-top: 1px solid var(--panel-border); }
+    #topbar .brand { font-weight: 700; letter-spacing: 0.02em; }
+    #topbar nav { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+    #topbar a,
+    button { color: var(--text); background: var(--control-bg); border: 1px solid var(--panel-border); border-radius: 4px; text-decoration: none; font: inherit; padding: 4px 7px; }
+    button { min-height: 32px; cursor: pointer; }
+    #chartPane { position: relative; min-height: 0; }
+    #chart { width: 100%; height: 100%; touch-action: none; }
+    #hint { color: var(--muted); flex: 1 1 100%; }
+    #status { position: absolute; left: 8px; bottom: 8px; z-index: 45; max-width: calc(100% - 16px); padding: 7px 9px; background: color-mix(in srgb, var(--panel-bg) 88%, transparent); border: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent); white-space: pre; pointer-events: none; }
+    @media (max-width: 520px) {
+      body { font-size: 11px; }
+      #topbar { align-items: flex-start; }
+      #topbar nav { max-width: 68vw; }
+      #controls { gap: 6px; }
+      button { flex: 1 1 auto; min-height: 36px; padding: 6px 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header id="topbar" aria-label="Project links">
+      <span class="brand">BlazePlot mobile</span>
+      <nav>
+        <a href="../">main</a>
+        <a href="../features/">features</a>
+        <a href="../interaction/?case=mobile">tests</a>
+        <a href="https://github.com/Federicocervelli/blazeplot" target="_blank" rel="noreferrer">GitHub</a>
+      </nav>
+    </header>
+    <main id="chartPane">
+      <div id="chart"></div>
+      <pre id="status">booting…</pre>
+    </main>
+    <section id="controls" aria-label="Mobile controls">
+      <button id="resetButton" type="button">reset</button>
+      <button id="streamButton" type="button">pause stream</button>
+      <button id="legendButton" type="button">toggle legend</button>
+      <div id="hint">Touch pan · pinch zoom · double-tap reset · long-press for crosshair/tooltip</div>
+    </section>
+  </div>
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

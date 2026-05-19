@@ -42,6 +42,7 @@ const CASES = [
   "selection",
   "navigator",
   "scale-options",
+  "overlay-layering",
 ] as const;
 
 type VisualCase = typeof CASES[number];
@@ -117,6 +118,7 @@ function optionsForCase(name: VisualCase): ConstructorParameters<typeof Chart>[1
   if (name === "legend") plugins.push(legendPlugin());
   if (name === "tooltip") plugins.push(tooltipPlugin());
   if (name === "crosshair") plugins.push(crosshairPlugin({ snap: "nearest-x", label: true }));
+  if (name === "overlay-layering") plugins.push(legendPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true }));
   if (name === "annotations") plugins.push(annotationsPlugin({ annotations: [
     { type: "x-line", x: 64, label: "x marker" },
     { type: "y-range", yMin: -0.4, yMax: 0.4, label: "range" },
@@ -172,6 +174,7 @@ function setupCase(name: VisualCase, chart: Chart): void {
     case "annotations":
     case "selection":
     case "navigator":
+    case "overlay-layering":
       addLine(chart);
       break;
     case "scale-options":
@@ -258,6 +261,14 @@ function assertCaseDom(name: VisualCase, chart: Chart): void {
   if (name === "annotations") assert(!!root.querySelector(".blazeplot-annotations"), "annotations layer exists");
   if (name === "selection") assert(!!root.querySelector(".blazeplot-selection-brush"), "selection layer exists");
   if (name === "navigator") assert(!!root.querySelector(".blazeplot-navigator"), "navigator exists");
+  if (name === "overlay-layering") {
+    const legend = root.querySelector<HTMLElement>(".blazeplot-legend");
+    const tooltipMarkers = root.querySelector<HTMLElement>(".blazeplot-tooltip-markers");
+    const crosshair = root.querySelector<HTMLElement>(".blazeplot-crosshair");
+    assert(!!legend && !!tooltipMarkers && !!crosshair, "overlay layers exist");
+    assert(Number(legend!.style.zIndex) > Number(tooltipMarkers!.style.zIndex), "legend above tooltip markers");
+    assert(Number(legend!.style.zIndex) > Number(crosshair!.style.zIndex), "legend above crosshair markers");
+  }
   if (name === "scale-options") {
     assert(chart.getCamera().xReversed, "x axis reversed");
     assert(chart.getCamera().yReversed, "y axis reversed");

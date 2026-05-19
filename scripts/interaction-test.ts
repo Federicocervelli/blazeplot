@@ -167,6 +167,8 @@ async function runMobileCase(options: Options, serverUrl: string): Promise<void>
     await sleep(200);
     snapshot = await getRequiredSnapshot(cdp);
     assert(Math.abs(snapshot.viewport.xMin - snapshot.initialViewport.xMin) > 1, "single-touch pan changes viewport");
+    assert(snapshot.visibleCrosshairs === 0, "touch pan does not show crosshair");
+    assert(snapshot.visibleTooltips === 0, "touch pan does not show tooltip");
 
     await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
     await sleep(100);
@@ -174,6 +176,8 @@ async function runMobileCase(options: Options, serverUrl: string): Promise<void>
     await sleep(200);
     snapshot = await getRequiredSnapshot(cdp);
     assert(spanX(snapshot.viewport) < initialSpan * 0.8, "pinch-out zoom shrinks x span");
+    assert(snapshot.visibleCrosshairs === 0, "pinch does not show crosshair");
+    assert(snapshot.visibleTooltips === 0, "pinch does not show tooltip");
 
     await doubleTap(cdp, center.x, center.y);
     await sleep(250);

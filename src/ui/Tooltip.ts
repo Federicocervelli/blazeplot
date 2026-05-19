@@ -218,8 +218,12 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       };
 
       const onTouchStart = (event: TouchEvent): void => {
+        if (event.touches.length !== 1) {
+          clearLongPress();
+          return;
+        }
         const touch = event.touches.item(0);
-        if (!touch || event.touches.length !== 1) return;
+        if (!touch) return;
         scheduleLongPress(touch.clientX, touch.clientY);
       };
 

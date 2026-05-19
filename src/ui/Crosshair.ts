@@ -320,7 +320,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       root.style.inset = "0";
       root.style.display = "none";
       root.style.pointerEvents = "none";
-      root.style.zIndex = String(options.zIndex ?? 10_000);
+      root.style.zIndex = String(options.zIndex ?? 22);
 
       vertical = document.createElement("div");
       vertical.style.position = "absolute";
@@ -410,8 +410,12 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       };
 
       const onTouchStart = (event: TouchEvent): void => {
+        if (event.touches.length !== 1) {
+          clearLongPress();
+          return;
+        }
         const touch = event.touches.item(0);
-        if (!touch || event.touches.length !== 1) return;
+        if (!touch) return;
         scheduleLongPress(touch.clientX, touch.clientY);
       };
 
@@ -421,7 +425,10 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       };
 
       const onPointerMove = (event: PointerEvent): void => {
-        if (event.pointerType === "touch" && longPressTimer !== null && Math.hypot(event.clientX - longPressX, event.clientY - longPressY) > 8) clearLongPress();
+        if (event.pointerType === "touch") {
+          if (longPressTimer !== null && Math.hypot(event.clientX - longPressX, event.clientY - longPressY) > 8) clearLongPress();
+          return;
+        }
         const position = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         renderPosition(position);
         emitMove(position);
