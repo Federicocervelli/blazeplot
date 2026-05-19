@@ -53,8 +53,10 @@ A chart only needs a host element. For regular arrays, wrap your data in a `Stat
 | **Pan & zoom** | Pointer/touch pan and wheel zoom via `Camera2D`. Customizable viewport policies. |
 | **Grid lines** | Data-anchored grid rendered as WebGL line lists. |
 | **Axis labels** | Smart tick generation with DOM labels. Per-axis `inside`/`outside` positioning; outside axes reserve real layout gutters. |
-| **Multi-series** | Independent buffers, styles, and visibility per series. Line, area, scatter, and bar modes are supported. |
-| **Plugin-ready UI** | Optional built-in `legendPlugin()` and `tooltipPlugin()` use the same public state and hover APIs available to custom plugins. |
+| **Multi-series** | Independent buffers, styles, and visibility per series. Line, area, scatter, bar, OHLC, and candlestick modes are supported. |
+| **Plugin-ready UI** | Optional built-in legend, tooltip, interactions, annotations, selection, crosshair, and navigator plugins use the same public APIs available to custom plugins. |
+| **React and linked charts** | First-party `blazeplot/react` and `blazeplot/linked` subpaths support React usage and synchronized multi-panel layouts. |
+| **Export helpers** | `chart.screenshot()` composites WebGL output with built-in DOM/SVG overlays, with optional download/clipboard helpers under `blazeplot/export`. |
 | **Benchmark overlay** | Built-in fps, frame time, vertex count, draw calls. |
 | **ResizeObserver** | Automatic DPR-aware canvas sizing. |
 

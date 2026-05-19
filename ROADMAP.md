@@ -146,7 +146,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] `chart.screenshot()` / export image (full chart composite: WebGL plot + built-in DOM text overlays)
 - [x] Theme system (`theme` option, `chart.setTheme()`, resolved `chart.theme`, themed plot background/grid/axes/default palette plus built-in legend/tooltip defaults)
 - [x] Plugin API (`ChartPlugin`, `plugins` option, disposable installs)
-- [x] Optional plugin subpath exports (`blazeplot/plugins/interactions`, `blazeplot/plugins/legend`, `blazeplot/plugins/tooltip`) so chart-only imports do not need to import built-in UI plugins
+- [x] Optional built-in plugin subpath exports under `blazeplot/plugins/*` so chart-only imports do not need to import built-in UI plugins
 - [x] Legend plugin (`legendPlugin`) built on public series state APIs
 - [x] Tooltip / hit testing (`tooltipPlugin`, `chart.pick`, `chart.subscribe("hover")`; actual raw sample X/Y, per-frame live hover refresh, highlighted sample markers)
 - [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)`, `chart.addOhlc(config)`, `chart.addCandlestick(config)` helpers.
@@ -155,7 +155,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Server-sampled data support: `ServerSampledDataset` accepts replaceable point samples or pre-bucketed min/max data from an API; use `downsample: "server"` to render server min/max buckets without applying another client-side sampler.
 
 Package status:
-- [x] Current npm package version: `0.3.2`
+- [x] Current npm package version: `0.3.3`
 - [x] `exports`, `main`, `module`, and `types` point at `dist/`
 - [x] Optional plugin subpath exports point at separate `dist/plugins/*` chunks
 - [x] Vite library build from `src/index.ts`
@@ -294,6 +294,42 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Add performance recipes for streaming ingestion, static datasets, LOD strategy choices, worker-fed data, and memory budgeting.
    - [x] Add API stability/versioning notes and migration guidance for breaking changes.
    - [x] Add real-world example recipes for financial OHLC/candlestick charts, multi-panel dashboards, annotations, export workflows, and React integration.
+   - [ ] Keep README feature marketing, example recipes, and generated API docs synchronized with current capabilities after each feature release.
+   - [ ] Add a real-time clock/time-axis example that demonstrates live date ticks, financial session breaks, candlestick/OHLC data, and typical streaming follow behavior.
+
+18. **Data ingestion, export, and transforms**
+   - [ ] Add optional CSV/JSON/typed-array ingestion helpers that normalize into built-in datasets without bloating the core render path.
+   - [ ] Add visible-range and selected-range data export helpers for CSV and JSON via `blazeplot/export` or a separate tree-shakable subpath.
+   - [ ] Add lightweight transform utilities for filter/map, resampling, aggregation/binning, rolling statistics, and derived series.
+   - [ ] Document when transforms should run in user code, a Web Worker, or server-side so the main-thread renderer stays responsive.
+
+19. **Off-main-thread data pipeline**
+   - [ ] Add guidance and helper APIs for Web Worker ingestion, batching, and LOD/pre-aggregation preparation.
+   - [ ] Support transfer-friendly dataset update patterns using transferable `ArrayBuffer`s and immutable batch handoff contracts.
+   - [ ] Investigate an optional `SharedArrayBuffer` path for very high-rate streams when host pages can satisfy cross-origin isolation requirements.
+   - [ ] Evaluate OffscreenCanvas only as a later rendering/backend strategy; keep V1 main-thread WebGL2 behavior stable.
+
+20. **Plugin API stability and ecosystem**
+   - [ ] Define the stable plugin API surface separately from internal `ui/` implementation details.
+   - [ ] Add plugin compatibility tests that exercise lifecycle, events, layout reservations, theme extension, screenshot inclusion, and disposal.
+   - [ ] Publish a plugin migration/deprecation policy and example third-party-style plugins outside the built-in plugin set.
+   - [ ] Keep built-in plugins as reference implementations without making chart-only imports depend on plugin UI code.
+
+21. **Locale, i18n, and timezone depth**
+   - [ ] Add locale-aware number and date formatting recipes using `Intl.NumberFormat` / `Intl.DateTimeFormat` while preserving custom formatter callbacks.
+   - [ ] Add tooltip, crosshair, legend, navigator, and selection readout text hooks so host applications can localize UI strings.
+   - [ ] Document local-vs-UTC time axis behavior, DST edge cases, and the limits of arbitrary IANA timezone support.
+   - [ ] Consider optional timezone formatter adapters instead of bundling timezone database data in the core package.
+
+22. **Responsive and mobile presets**
+   - [ ] Add responsive preset helpers that switch axes, gutters, tick density, legend placement, and interaction defaults at configurable breakpoints.
+   - [ ] Provide compact dashboard presets for small multiples and embedded mobile cards.
+   - [ ] Make hover-free mobile defaults easy to compose with selection, navigator, legend, tooltip, and crosshair plugins.
+
+23. **Per-point and per-sample styling**
+   - [ ] Add a data-driven styling model for scatter point color, point size, and optional shape/category mapping.
+   - [ ] Explore threshold/alert styling for line, area, bar, OHLC, and candlestick series without forcing per-sample styling overhead on simple series.
+   - [ ] Preserve LOD, picking, legend, tooltip, and screenshot behavior when per-sample style channels are present.
 
 ---
 
@@ -311,6 +347,7 @@ Current automated coverage is strongest for core data structures and interaction
 - [ ] Expand DOM/plugin interaction tests to cover legend toggles, navigator handle dragging, axis-specific drag/zoom, annotation hit behavior, and mobile no-hover workflows.
 - [ ] Screenshot/export regression tests with image comparison baselines for plot + DOM/plugin overlay composition.
 - [ ] Benchmark trend storage/comparison so CI can flag large regressions without being flaky on shared runners.
+- [ ] Add periodic Firefox, Safari/WebKit, and mobile-browser smoke coverage for WebGL2 rendering, pointer/touch interactions, screenshots, and package examples.
 - [x] Package export smoke tests for every public subpath (`blazeplot`, `react`, `linked`, `export`, and each built-in plugin) against built output.
 - [x] Bundle-size regression checks for core, shared, and optional plugin chunks.
 - [ ] WebGL context-loss/context-restore browser tests once context recovery support is implemented.
@@ -320,6 +357,7 @@ Current automated coverage is strongest for core data structures and interaction
 - [ ] Handle WebGL context loss/restoration by rebuilding regl resources, GPU buffers, and cached draw commands without leaking chart state.
 - [x] Expose a clear WebGL2-unavailable error path/API so host applications can render their own fallback UI.
 - [ ] Add dispose/resource leak stress tests for repeated chart/plugin mount, unmount, series churn, resize, and screenshot cycles.
+- [ ] Add memory/resource benchmarks for repeated chart creation, plugin install/dispose, series churn, resize, and screenshot/export loops.
 - [x] Validate npm package contents and generated declaration files in CI before release PRs.
 - [x] Track dependency and browser-support assumptions, especially WebGL2/regl behavior across Chrome, Firefox, Safari, and mobile browsers.
 
@@ -359,11 +397,29 @@ regl rules for V1:
 
 ---
 
-## Future / difficult
+## Post-V1 visualization and backend roadmap
 
-- Multiple independent Y axes beyond the current left/right axis pair
-- Error bars and confidence bands
-- Stacked area/bar charts
-- Histogram/binning helpers
-- Heatmap, spectrogram, FFT, and waterfall views
-- WebGPU backend
+These items are intentionally below the V1 streaming/time-series work. They should be prioritized by user demand, performance feasibility, and whether they fit BlazePlot's GPU-first dense-data niche.
+
+### Statistical and uncertainty overlays
+
+- [ ] Error bars for point, line, bar, and OHLC-adjacent workflows.
+- [ ] Confidence bands/envelopes that can share area/line rendering and preserve LOD semantics.
+- [ ] Threshold and alert bands that compose with annotations, tooltips, legends, and screenshots.
+
+### Aggregated and compositional series
+
+- [ ] Stacked area and stacked bar charts with clear baseline/domain rules and fit-to-data support.
+- [ ] Histogram and binning helpers that can run in user code, a worker, or server-side and feed normal bar/area renderers.
+- [ ] Grouped/categorical bar ergonomics if they can reuse the existing scale and bar rendering path.
+
+### Dense 2D and signal-analysis views
+
+- [ ] Heatmap rendering for dense matrix/time-window data.
+- [ ] Spectrogram, FFT, and waterfall views for signal-analysis dashboards.
+- [ ] Data contracts and color-scale APIs for 2D scalar fields without pulling non-time-series chart types into the core.
+
+### Axis and backend infrastructure
+
+- [ ] Multiple independent Y axes beyond the current left/right axis pair, with layout, interaction, and legend semantics.
+- [ ] WebGPU backend after the WebGL2 backend API, resource lifecycle, context-loss strategy, and test coverage are mature.
