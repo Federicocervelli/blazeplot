@@ -73,12 +73,18 @@ jobs:
           if [ -f build/pages/react/index.html ]; then
             echo '  <li><a href="/blazeplot/react/">main React</a></li>' >> build/pages/previews.html
           fi
+          if [ -f build/pages/visual/index.html ]; then
+            echo '  <li><a href="/blazeplot/visual/">main visual tests</a></li>' >> build/pages/previews.html
+          fi
           cat >> build/pages/previews.html <<'HTML'
             <li><a href="/blazeplot/development/">development</a></li>
             <li><a href="/blazeplot/development/features/">development features</a></li>
           HTML
           if [ -f build/pages/development/react/index.html ]; then
             echo '  <li><a href="/blazeplot/development/react/">development React</a></li>' >> build/pages/previews.html
+          fi
+          if [ -f build/pages/development/visual/index.html ]; then
+            echo '  <li><a href="/blazeplot/development/visual/">development visual tests</a></li>' >> build/pages/previews.html
           fi
           echo '</ul>' >> build/pages/previews.html
 

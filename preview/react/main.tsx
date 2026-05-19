@@ -91,6 +91,7 @@ function ReactPreview(): React.ReactElement {
         <nav>
           <a className="text-link" href="../">main preview</a>
           <a className="text-link" href="../features/">feature preview</a>
+          <a className="text-link" href="../visual/">visual tests</a>
           <a className="text-link" href="https://github.com/Federicocervelli/blazeplot/tree/main/src/react.ts" target="_blank" rel="noreferrer">wrapper source</a>
           <a href="https://github.com/Federicocervelli/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot on GitHub">
             <img src="https://img.shields.io/github/stars/Federicocervelli/blazeplot?style=flat&logo=github&logoColor=white&label=GitHub&labelColor=111111&color=444444" alt="GitHub stars: blazeplot" />

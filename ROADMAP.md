@@ -256,11 +256,12 @@ Current automated coverage is strongest for core data structures and interaction
 
 - [x] Core unit tests for ring buffers, static datasets, OHLC datasets, min/max pyramids, series extraction, and picking helpers.
 - [x] Interaction unit tests for `Camera2D` and `AxisController` behavior.
-- [x] CI `validate` check runs typecheck, unit tests, package build, and headless `ci-smoke` browser benchmark.
+- [x] CI `validate` check runs typecheck, unit tests, package build, headless `ci-smoke` browser benchmark, and chart visual tests.
 - [x] Release changelogs include benchmark result tables for each published version.
-- [ ] DOM/plugin integration test harness for tooltips, legends, selection, crosshair, navigator, and annotations.
-- [ ] WebGL smoke/regression tests that assert render modes, draw calls, and representative pixel output in a controlled browser.
-- [ ] Screenshot/export regression tests for plot + DOM overlay composition.
+- [x] Browser visual test harness renders focused chart/plugin cases for line, area, scatter, bar, OHLC, candlestick, axes/titles/grid, legend, tooltip, crosshair, annotations, selection, and navigator.
+- [x] WebGL smoke tests assert render modes, draw calls, rendered points, and `chart.screenshot()` output in a controlled browser.
+- [ ] DOM/plugin interaction test harness that simulates pointer/keyboard flows for tooltips, legends, selection, crosshair, navigator, and annotations.
+- [ ] Screenshot/export regression tests with image comparison baselines for plot + DOM overlay composition.
 - [ ] Benchmark trend storage/comparison so CI can flag large regressions without being flaky on shared runners.
 
 ## Backend strategy

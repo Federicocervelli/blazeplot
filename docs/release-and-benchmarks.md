@@ -52,6 +52,7 @@ On every push to `main`, `.github/workflows/release.yml`:
 ## Benchmark commands
 
 - `bun run bench:ci`: fast smoke benchmark used by CI.
+- `bun run test:visual`: browser visual chart tests used by CI; writes PNGs and `summary.json` to `build/visual-tests/`.
 - `bun run bench -- --scenario <name>`: run one benchmark scenario and print JSON.
 - `bun run bench:report`: append benchmark tables to a markdown file.
 - `bun run release:benchmarks`: append benchmark tables to `changelogs/v<package.version>.md`.
