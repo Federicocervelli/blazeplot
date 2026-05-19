@@ -288,11 +288,11 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [ ] Provide typed extension points for plugin-owned theme tokens without forcing every consumer to import every built-in plugin's theme surface.
 
 17. **Documentation and examples**
-   - [ ] Add a plugin authoring guide covering lifecycle, public chart APIs, layout reservations, events, theme extensions, and subpath packaging.
-   - [ ] Add theming and responsive-layout guides with mobile, dark mode, and high-density data examples.
-   - [ ] Add performance recipes for streaming ingestion, static datasets, LOD strategy choices, worker-fed data, and memory budgeting.
-   - [ ] Add API stability/versioning notes and migration guidance for breaking changes.
-   - [ ] Add real-world examples for financial OHLC/candlestick charts, multi-panel dashboards, annotations, export workflows, and React integration.
+   - [x] Add a plugin authoring guide covering lifecycle, public chart APIs, layout reservations, events, theme extensions, and subpath packaging.
+   - [x] Add theming and responsive-layout guides with mobile, dark mode, and high-density data examples.
+   - [x] Add performance recipes for streaming ingestion, static datasets, LOD strategy choices, worker-fed data, and memory budgeting.
+   - [x] Add API stability/versioning notes and migration guidance for breaking changes.
+   - [x] Add real-world example recipes for financial OHLC/candlestick charts, multi-panel dashboards, annotations, export workflows, and React integration.
 
 ---
 
