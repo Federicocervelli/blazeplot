@@ -1,9 +1,11 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
 
+const pagesBase = process.env.BLAZEPLOT_PAGES_BASE ?? "/blazeplot/";
+
 export default defineConfig({
   root: resolve(__dirname, "preview"),
-  base: "/blazeplot/",
+  base: pagesBase,
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
