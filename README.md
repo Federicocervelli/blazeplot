@@ -177,6 +177,7 @@ These member tables are generated from TypeScript declarations.
 | `followX?: boolean \\| ChartFollowXOptions` |
 | `plugins?: readonly ChartPlugin[]` |
 | `theme?: ChartTheme` |
+| `backendFactory?: ChartBackendFactory` |
 
 </details>
 
@@ -426,12 +427,16 @@ These member tables are generated from TypeScript declarations.
 | `AxisTickFormatter` | type | `./interaction/AxisController` | — |
 | `AxisTimeZone` | type | `./interaction/AxisController` | — |
 | `AxisTitleConfig` | interface | `./ui/Chart` | — |
+| `AttributeSpec` | interface | `./render/types` | — |
 | `BufferOverflowStrategy` | type | `./core/types` | — |
+| `BufferSpec` | interface | `./render/types` | — |
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | — |
 | `Camera2D` | class | `./interaction/Camera2D` | — |
 | `Chart` | class | `./ui/Chart` | — |
 | `ChartAccessibilityOptions` | interface | `./ui/Chart` | — |
 | `ChartAutoFitYOptions` | interface | `./ui/Chart` | — |
+| `ChartBackendFactory` | type | `./ui/Chart` | Advanced hook for supplying a custom GPU backend. |
+| `ChartBackendFactoryContext` | interface | `./ui/Chart` | — |
 | `ChartFitToDataOptions` | interface | `./ui/Chart` | — |
 | `ChartFitToDataPadding` | interface | `./ui/Chart` | — |
 | `ChartFollowXOptions` | interface | `./ui/Chart` | — |
@@ -460,6 +465,12 @@ These member tables are generated from TypeScript declarations.
 | `CustomAxisScale` | interface | `./interaction/AxisController` | — |
 | `Dataset` | interface | `./core/types` | — |
 | `DEFAULT_CHART_THEME` | const | `./ui/theme` | — |
+| `DrawSpec` | interface | `./render/types` | — |
+| `GpuBackend` | interface | `./render/types` | — |
+| `GpuBuffer` | interface | `./render/types` | — |
+| `GpuCapabilities` | interface | `./render/types` | — |
+| `GpuProgram` | interface | `./render/types` | — |
+| `GpuResource` | type | `./render/types` | — |
 | `isWebGL2Available` | function | `./render/ReglBackend` | — |
 | `LODBucket` | interface | `./core/types` | — |
 | `LODStrategy` | type | `./core/types` | — |
@@ -473,6 +484,7 @@ These member tables are generated from TypeScript declarations.
 | `PanIntent` | interface | `./interaction/types` | — |
 | `RangeMinMaxDataset` | interface | `./core/types` | — |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
+| `ReglBackend` | class | `./render/ReglBackend` | — |
 | `ResolvedChartTheme` | interface | `./ui/theme` | — |
 | `RgbaColor` | type | `./ui/theme` | — |
 | `RingBuffer` | class | `./core/RingBuffer` | — |
