@@ -150,6 +150,7 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Legend plugin (`legendPlugin`) built on public series state APIs
 - [x] Tooltip / hit testing (`tooltipPlugin`, `chart.pick`, `chart.subscribe("hover")`; actual raw sample X/Y, per-frame live hover refresh, highlighted sample markers)
 - [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)`, `chart.addOhlc(config)`, `chart.addCandlestick(config)` helpers.
+- [x] `chart.fitToData(options)` for fitting X and/or left/right Y viewports to visible or supplied series, with optional padding and include-zero behavior.
 - [x] Dataset-backed series ergonomics: `capacity` is optional when `dataset` is supplied, so static data quick starts can use `new StaticDataset(x, y)` without ring-buffer parameters.
 
 Package status:
@@ -217,7 +218,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [ ] Include non-text plugin SVG/HTML overlays, including annotations, in `chart.screenshot()` composition.
 
 7. **Autoscale / fit-to-data viewport policies**
-   - [ ] Add `chart.fitToData()` and per-axis helpers for fitting all visible series or a supplied series subset.
+   - [x] Add `chart.fitToData()` with per-axis options for fitting all visible series or a supplied series subset.
    - [ ] Add auto-Y-on-visible-X policies with configurable padding, include-zero, nice-domain rounding, and min/max locks.
    - [ ] Add streaming follow policies that can pause on manual navigation and resume explicitly or at the live edge.
    - [ ] Expose typed policy hooks so applications can combine autoscale, fixed ranges, and synchronized chart constraints.

@@ -26,6 +26,33 @@ const GRID_LINE_VERTEX_CAPACITY = 64;
 const DEFAULT_POINT_SIZE_PX = 4;
 const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
 
+function normalizeFitPadding(padding: number | ChartFitToDataPadding | undefined): Required<ChartFitToDataPadding> {
+  if (typeof padding === "number") {
+    const value = Number.isFinite(padding) ? Math.max(0, padding) : 0;
+    return { x: value, y: value };
+  }
+  const x = padding?.x;
+  const y = padding?.y;
+  return {
+    x: typeof x === "number" && Number.isFinite(x) ? Math.max(0, x) : 0,
+    y: typeof y === "number" && Number.isFinite(y) ? Math.max(0, y) : 0,
+  };
+}
+
+function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
+  let nextMin = includeZero ? Math.min(0, min) : min;
+  let nextMax = includeZero ? Math.max(0, max) : max;
+  let span = nextMax - nextMin;
+  if (span <= 0) {
+    const halfSpan = Math.max(1, Math.abs(nextMin)) * 0.5;
+    nextMin -= halfSpan;
+    nextMax += halfSpan;
+    span = nextMax - nextMin;
+  }
+  const amount = span * padding;
+  return { min: nextMin - amount, max: nextMax + amount };
+}
+
 export interface TextOverlayConfig {
   readonly text: string;
   readonly visible?: boolean;
@@ -158,6 +185,23 @@ export interface ChartScreenshotOptions {
   readonly width?: number;
   readonly height?: number;
   readonly transparent?: boolean;
+}
+
+export interface ChartFitToDataPadding {
+  readonly x?: number;
+  readonly y?: number;
+}
+
+export interface ChartFitToDataOptions {
+  readonly series?: readonly SeriesStore[];
+  readonly visibleOnly?: boolean;
+  readonly x?: boolean;
+  readonly y?: boolean;
+  readonly yAxis?: SeriesYAxis | "both";
+  readonly padding?: number | ChartFitToDataPadding;
+  readonly includeZero?: boolean;
+  readonly xMin?: number;
+  readonly xMax?: number;
 }
 
 export interface ChartLayoutReservation {
@@ -555,6 +599,68 @@ export class Chart {
     this.getCamera(yAxis).setViewport(v);
     this.emitViewportChange();
     this.refreshHover();
+  }
+
+  fitToData(options: ChartFitToDataOptions = {}): boolean {
+    const fitX = options.x !== false;
+    const fitY = options.y !== false;
+    if (!fitX && !fitY) return false;
+
+    const visibleOnly = options.visibleOnly !== false;
+    const yAxis = options.yAxis ?? "both";
+    const padding = normalizeFitPadding(options.padding);
+    let xMin = Infinity;
+    let xMax = -Infinity;
+    let leftYMin = Infinity;
+    let leftYMax = -Infinity;
+    let rightYMin = Infinity;
+    let rightYMax = -Infinity;
+
+    const candidates = options.series ?? this.series;
+    for (const series of candidates) {
+      if (!this.series.includes(series)) continue;
+      if (visibleOnly && !series.visible) continue;
+      const bounds = series.dataBounds({ xMin: options.xMin, xMax: options.xMax });
+      if (!bounds) continue;
+
+      xMin = Math.min(xMin, bounds.xMin);
+      xMax = Math.max(xMax, bounds.xMax);
+      const targetYAxis = series.config.yAxis ?? "left";
+      if (targetYAxis === "right") {
+        rightYMin = Math.min(rightYMin, bounds.yMin);
+        rightYMax = Math.max(rightYMax, bounds.yMax);
+      } else {
+        leftYMin = Math.min(leftYMin, bounds.yMin);
+        leftYMax = Math.max(leftYMax, bounds.yMax);
+      }
+    }
+
+    let changed = false;
+    if (fitX && Number.isFinite(xMin) && Number.isFinite(xMax)) {
+      const xDomain = paddedDomain(xMin, xMax, padding.x, false);
+      this.camera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
+      this.rightCamera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
+      changed = true;
+    }
+
+    if (fitY && (yAxis === "left" || yAxis === "both") && Number.isFinite(leftYMin) && Number.isFinite(leftYMax)) {
+      const yDomain = paddedDomain(leftYMin, leftYMax, padding.y, options.includeZero === true);
+      this.camera.setViewport({ yMin: yDomain.min, yMax: yDomain.max });
+      changed = true;
+    }
+
+    if (fitY && (yAxis === "right" || yAxis === "both") && Number.isFinite(rightYMin) && Number.isFinite(rightYMax)) {
+      const yDomain = paddedDomain(rightYMin, rightYMax, padding.y, options.includeZero === true);
+      this.rightCamera.setViewport({ yMin: yDomain.min, yMax: yDomain.max });
+      changed = true;
+    }
+
+    if (changed) {
+      this.syncRightCameraX();
+      this.emitViewportChange();
+      this.refreshHover();
+    }
+    return changed;
   }
 
   resize(dpr: number = globalThis.devicePixelRatio): boolean {

@@ -122,6 +122,7 @@ These member tables are generated from TypeScript declarations.
 | `getSeriesState(): ChartSeriesState[]` |
 | `setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number; }): void` |
 | `setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number; }): void` |
+| `fitToData(options?: ChartFitToDataOptions): boolean` |
 | `resize(dpr?: number): boolean` |
 | `getFrameStats(target?: ChartFrameStats): ChartFrameStats` |
 | `getHoverState(): ChartHoverState \\| null` |
@@ -226,6 +227,7 @@ These member tables are generated from TypeScript declarations.
 | `query(viewport: Viewport, pixelWidth: number): LODView` |
 | `visibleSampleCount(viewport: Viewport): number` |
 | `sampleAt(index: number): SeriesSample \\| null` |
+| `dataBounds(options?: SeriesDataBoundsOptions): SeriesDataBounds \\| null` |
 | `nearestSampleByX(x: number, viewport?: Viewport): SeriesSample \\| null` |
 | `nearestSampleByPoint(x: number, y: number, viewport: Viewport, plotWidth: number, plotHeight: number, maxDistancePx?: number): SeriesSample \\| null` |
 | `copyRawVisible(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin?: number): number` |
@@ -411,6 +413,8 @@ These member tables are generated from TypeScript declarations.
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | — |
 | `Camera2D` | class | `./interaction/Camera2D` | — |
 | `Chart` | class | `./ui/Chart` | — |
+| `ChartFitToDataOptions` | interface | `./ui/Chart` | — |
+| `ChartFitToDataPadding` | interface | `./ui/Chart` | — |
 | `ChartFrameStats` | interface | `./ui/Chart` | — |
 | `ChartHoverState` | interface | `./ui/Chart` | — |
 | `ChartLayoutReservation` | interface | `./ui/Chart` | — |
@@ -453,6 +457,8 @@ These member tables are generated from TypeScript declarations.
 | `RingBufferOverflow` | type | `./core/RingBuffer` | — |
 | `SampleCopyLayout` | type | `./core/types` | — |
 | `SeriesConfig` | interface | `./core/types` | — |
+| `SeriesDataBounds` | interface | `./core/SeriesStore` | — |
+| `SeriesDataBoundsOptions` | interface | `./core/SeriesStore` | — |
 | `SeriesMode` | type | `./core/types` | — |
 | `SeriesSample` | interface | `./core/types` | — |
 | `SeriesStore` | class | `./core/SeriesStore` | — |
