@@ -126,6 +126,16 @@ export class OhlcRingBuffer implements OhlcDataset {
     if (this._length < this.capacity) this._length++;
   }
 
+  updateLast(open: number, high: number, low: number, close: number): boolean {
+    if (this._length <= 0) return false;
+    const index = this.logicalToPhysical(this._length - 1);
+    this.openData[index] = open;
+    this.highData[index] = high;
+    this.lowData[index] = low;
+    this.closeData[index] = close;
+    return true;
+  }
+
   append(
     x: ArrayLike<number>,
     open: ArrayLike<number>,

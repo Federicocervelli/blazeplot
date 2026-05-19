@@ -365,6 +365,7 @@ These member tables are generated from TypeScript declarations.
 | `get length(): number` |
 | `get range(): TimeRange \\| null` |
 | `push(x: number, open: number, high: number, low: number, close: number): void` |
+| `updateLast(open: number, high: number, low: number, close: number): boolean` |
 | `append(x: ArrayLike<number>, open: ArrayLike<number>, high: ArrayLike<number>, low: ArrayLike<number>, close: ArrayLike<number>): void` |
 | `clear(): void` |
 | `getX(index: number): number` |
