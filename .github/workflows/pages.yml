@@ -60,6 +60,7 @@ jobs:
           mkdir -p build/pages/development
           cp -a branches/main/build/pages/. build/pages/
           cp -a branches/development/build/pages/. build/pages/development/
+          rm -rf build/pages/visual build/pages/interaction build/pages/development/visual build/pages/development/interaction
           cat > build/pages/previews.html <<'HTML'
           <!doctype html>
           <meta charset="utf-8">
@@ -76,12 +77,6 @@ jobs:
           if [ -f build/pages/mobile/index.html ]; then
             echo '  <li><a href="/blazeplot/mobile/">main mobile</a></li>' >> build/pages/previews.html
           fi
-          if [ -f build/pages/visual/index.html ]; then
-            echo '  <li><a href="/blazeplot/visual/">main visual tests</a></li>' >> build/pages/previews.html
-          fi
-          if [ -f build/pages/interaction/index.html ]; then
-            echo '  <li><a href="/blazeplot/interaction/">main interaction tests</a></li>' >> build/pages/previews.html
-          fi
           cat >> build/pages/previews.html <<'HTML'
             <li><a href="/blazeplot/development/">development</a></li>
             <li><a href="/blazeplot/development/features/">development features</a></li>
@@ -91,12 +86,6 @@ jobs:
           fi
           if [ -f build/pages/development/mobile/index.html ]; then
             echo '  <li><a href="/blazeplot/development/mobile/">development mobile</a></li>' >> build/pages/previews.html
-          fi
-          if [ -f build/pages/development/visual/index.html ]; then
-            echo '  <li><a href="/blazeplot/development/visual/">development visual tests</a></li>' >> build/pages/previews.html
-          fi
-          if [ -f build/pages/development/interaction/index.html ]; then
-            echo '  <li><a href="/blazeplot/development/interaction/">development interaction tests</a></li>' >> build/pages/previews.html
           fi
           echo '</ul>' >> build/pages/previews.html
 
