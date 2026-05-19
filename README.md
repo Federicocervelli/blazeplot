@@ -123,6 +123,8 @@ These member tables are generated from TypeScript declarations.
 | `getSeriesState(): ChartSeriesState[]` |
 | `setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number; }): void` |
 | `setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number; }): void` |
+| `setXFollowPaused(paused: boolean): void` |
+| `resumeXFollow(): void` |
 | `fitToData(options?: ChartFitToDataOptions): boolean` |
 | `resize(dpr?: number): boolean` |
 | `getFrameStats(target?: ChartFrameStats): ChartFrameStats` |
@@ -163,6 +165,7 @@ These member tables are generated from TypeScript declarations.
 | `hover?: ChartPickOptions` |
 | `accessibility?: boolean \\| ChartAccessibilityOptions` |
 | `autoFitY?: boolean \\| ChartAutoFitYOptions` |
+| `followX?: boolean \\| ChartFollowXOptions` |
 | `plugins?: readonly ChartPlugin[]` |
 | `theme?: ChartTheme` |
 
@@ -420,6 +423,7 @@ These member tables are generated from TypeScript declarations.
 | `ChartAutoFitYOptions` | interface | `./ui/Chart` | — |
 | `ChartFitToDataOptions` | interface | `./ui/Chart` | — |
 | `ChartFitToDataPadding` | interface | `./ui/Chart` | — |
+| `ChartFollowXOptions` | interface | `./ui/Chart` | — |
 | `ChartFrameStats` | interface | `./ui/Chart` | — |
 | `ChartHoverState` | interface | `./ui/Chart` | — |
 | `ChartKeyboardOptions` | interface | `./ui/Chart` | — |
