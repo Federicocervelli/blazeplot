@@ -40,6 +40,13 @@ export interface SeriesDataBounds {
   readonly yMax: number;
 }
 
+export interface SeriesOhlcSample extends SeriesSample {
+  readonly open: number;
+  readonly high: number;
+  readonly low: number;
+  readonly close: number;
+}
+
 export interface SeriesDataBoundsOptions {
   readonly xMin?: number;
   readonly xMax?: number;
@@ -198,6 +205,20 @@ export class SeriesStore {
   sampleAt(index: number): SeriesSample | null {
     if (index < 0 || index >= this.dataset.length) return null;
     return { index, x: this.dataset.getX(index), y: this.dataset.getY(index) };
+  }
+
+  ohlcAt(index: number): SeriesOhlcSample | null {
+    if (index < 0 || index >= this.dataset.length || !isOhlcDataset(this.dataset)) return null;
+    const close = this.dataset.getClose(index);
+    return {
+      index,
+      x: this.dataset.getX(index),
+      y: close,
+      open: this.dataset.getOpen(index),
+      high: this.dataset.getHigh(index),
+      low: this.dataset.getLow(index),
+      close,
+    };
   }
 
   dataBounds(options: SeriesDataBoundsOptions = {}): SeriesDataBounds | null {

@@ -5,7 +5,7 @@ export type { ChartTheme, ResolvedChartTheme, RgbaColor, CssColor, ThemeColor } 
 export type { AxisPosition } from "./ui/ChartLayout.js";
 export { SeriesStore } from "./core/SeriesStore.js";
 export { RingBuffer } from "./core/RingBuffer.js";
-export type { SeriesDataBounds, SeriesDataBoundsOptions } from "./core/SeriesStore.js";
+export type { SeriesDataBounds, SeriesDataBoundsOptions, SeriesOhlcSample } from "./core/SeriesStore.js";
 export type { RingBufferOptions, RingBufferOverflow } from "./core/RingBuffer.js";
 export { UniformRingBuffer } from "./core/UniformRingBuffer.js";
 export type { UniformRingBufferOptions } from "./core/UniformRingBuffer.js";
