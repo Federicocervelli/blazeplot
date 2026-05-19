@@ -42,11 +42,11 @@ declare global {
   }
 }
 
-type InteractionCase = "interactions" | "selection" | "linked" | "mobile";
+type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress";
 
 const params = new URLSearchParams(window.location.search);
 const rawCase = params.get("case");
-const caseName: InteractionCase = rawCase === "selection" || rawCase === "linked" || rawCase === "mobile" ? rawCase : "interactions";
+const caseName: InteractionCase = rawCase === "selection" || rawCase === "linked" || rawCase === "mobile" || rawCase === "mobile-longpress" ? rawCase : "interactions";
 const chartTarget = requireElement<HTMLElement>("chart");
 const statusTarget = requireElement<HTMLElement>("status");
 const caseTarget = requireElement<HTMLElement>("caseName");
@@ -84,11 +84,13 @@ if (caseName === "linked") {
       })]
     : caseName === "mobile"
       ? [interactionsPlugin({ minDragDistancePx: 4 })]
-      : [
-          interactionsPlugin({ minDragDistancePx: 4 }),
-          tooltipPlugin(),
-          crosshairPlugin({ snap: "none", label: true, onMove: () => { crosshairMoves++; } }),
-        ];
+      : caseName === "mobile-longpress"
+        ? [tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } })]
+        : [
+            interactionsPlugin({ minDragDistancePx: 4 }),
+            tooltipPlugin(),
+            crosshairPlugin({ snap: "none", label: true, onMove: () => { crosshairMoves++; } }),
+          ];
   charts.push(new Chart(chartTarget, { axes: { x: { position: "outside" }, y: { position: "outside" } }, grid: true, plugins }));
 }
 

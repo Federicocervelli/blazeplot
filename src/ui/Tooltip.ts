@@ -10,6 +10,7 @@ export interface TooltipPluginOptions {
   readonly offsetX?: number;
   readonly offsetY?: number;
   readonly highlight?: boolean;
+  readonly longPressMs?: number | false;
   readonly backgroundColor?: string;
   readonly textColor?: string;
   readonly font?: string;
@@ -186,6 +187,69 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         }
       };
 
+      let longPressTimer: number | null = null;
+      let longPressX = 0;
+      let longPressY = 0;
+
+      const clearLongPress = (): void => {
+        if (longPressTimer !== null) window.clearTimeout(longPressTimer);
+        longPressTimer = null;
+      };
+
+      const showAtClientPoint = (clientX: number, clientY: number): void => {
+        const state = chart.pick(clientX, clientY, {
+          mode: options.mode ?? "nearest-x",
+          group: options.group ?? "x",
+          maxDistancePx: options.maxDistancePx,
+        });
+        render(state);
+        notifyPeers(state);
+      };
+
+      const scheduleLongPress = (clientX: number, clientY: number): void => {
+        if (options.longPressMs === false) return;
+        longPressX = clientX;
+        longPressY = clientY;
+        clearLongPress();
+        longPressTimer = window.setTimeout(() => {
+          longPressTimer = null;
+          showAtClientPoint(longPressX, longPressY);
+        }, options.longPressMs ?? 450);
+      };
+
+      const onTouchStart = (event: TouchEvent): void => {
+        const touch = event.touches.item(0);
+        if (!touch || event.touches.length !== 1) return;
+        scheduleLongPress(touch.clientX, touch.clientY);
+      };
+
+      const onTouchMove = (event: TouchEvent): void => {
+        const touch = event.touches.item(0);
+        if (touch && longPressTimer !== null && Math.hypot(touch.clientX - longPressX, touch.clientY - longPressY) > 8) clearLongPress();
+      };
+
+      const onPointerDown = (event: PointerEvent): void => {
+        if (event.pointerType !== "touch") return;
+        scheduleLongPress(event.clientX, event.clientY);
+      };
+
+      const onPointerMove = (event: PointerEvent): void => {
+        if (event.pointerType === "touch" && longPressTimer !== null && Math.hypot(event.clientX - longPressX, event.clientY - longPressY) > 8) clearLongPress();
+      };
+
+      const onPointerUp = (event: PointerEvent): void => {
+        if (event.pointerType === "touch") clearLongPress();
+      };
+
+      chart.canvas.addEventListener("pointerdown", onPointerDown, { capture: true });
+      chart.canvas.addEventListener("pointermove", onPointerMove, { capture: true });
+      chart.canvas.addEventListener("pointerup", onPointerUp, { capture: true });
+      chart.canvas.addEventListener("pointercancel", onPointerUp, { capture: true });
+      chart.canvas.addEventListener("touchstart", onTouchStart, { passive: true });
+      chart.canvas.addEventListener("touchmove", onTouchMove, { passive: true });
+      chart.canvas.addEventListener("touchend", clearLongPress);
+      chart.canvas.addEventListener("touchcancel", clearLongPress);
+
       const unsubscribeHover = chart.subscribe("hover", (state) => {
         render(state);
         notifyPeers(state);
@@ -196,6 +260,15 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       });
       applyTheme();
       return () => {
+        clearLongPress();
+        chart.canvas.removeEventListener("pointerdown", onPointerDown, { capture: true });
+        chart.canvas.removeEventListener("pointermove", onPointerMove, { capture: true });
+        chart.canvas.removeEventListener("pointerup", onPointerUp, { capture: true });
+        chart.canvas.removeEventListener("pointercancel", onPointerUp, { capture: true });
+        chart.canvas.removeEventListener("touchstart", onTouchStart);
+        chart.canvas.removeEventListener("touchmove", onTouchMove);
+        chart.canvas.removeEventListener("touchend", clearLongPress);
+        chart.canvas.removeEventListener("touchcancel", clearLongPress);
         unsubscribeHover();
         unsubscribeTheme();
         if (peer && options.syncGroup) {

@@ -237,7 +237,8 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
 
 12. **Mobile and touch support**
    - [x] Add touch-first interaction presets for pan, pinch zoom, and double-tap reset.
-   - [ ] Add long-press tooltip/crosshair behavior and ensure selection, navigator, and legend interactions are usable without hover.
+   - [x] Add long-press tooltip/crosshair behavior.
+   - [ ] Ensure selection, navigator, and legend interactions are usable without hover.
    - [ ] Improve mobile layout defaults for outside axes, controls, legends, and dense tick labels.
    - [x] Add mobile preview/testing scenarios for automated touch gestures.
 
@@ -261,7 +262,7 @@ Current automated coverage is strongest for core data structures and interaction
 - [x] Browser visual test harness renders focused chart/plugin cases for line, area, scatter, bar, OHLC, candlestick, axes/titles/grid, legend, tooltip, crosshair, annotations, selection, and navigator.
 - [x] WebGL smoke tests assert render modes, draw calls, rendered points, and `chart.screenshot()` output in a controlled browser.
 - [x] Browser interaction test harness simulates real input events for hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection.
-- [ ] Expand DOM/plugin interaction tests to cover legend toggles, navigator handle dragging, axis-specific drag/zoom, annotation hit behavior, and long-press touch behavior.
+- [ ] Expand DOM/plugin interaction tests to cover legend toggles, navigator handle dragging, axis-specific drag/zoom, and annotation hit behavior.
 - [ ] Screenshot/export regression tests with image comparison baselines for plot + DOM overlay composition.
 - [ ] Benchmark trend storage/comparison so CI can flag large regressions without being flaky on shared runners.
 
