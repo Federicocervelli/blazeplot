@@ -248,6 +248,19 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
 
 ---
 
+## Testing and quality roadmap
+
+Current automated coverage is strongest for core data structures and interaction math, with a CI browser benchmark smoke test covering the WebGL render path at a coarse level.
+
+- [x] Core unit tests for ring buffers, static datasets, OHLC datasets, min/max pyramids, series extraction, and picking helpers.
+- [x] Interaction unit tests for `Camera2D` and `AxisController` behavior.
+- [x] CI `validate` check runs typecheck, unit tests, package build, and headless `ci-smoke` browser benchmark.
+- [x] Release changelogs include benchmark result tables for each published version.
+- [ ] DOM/plugin integration test harness for tooltips, legends, selection, crosshair, navigator, and annotations.
+- [ ] WebGL smoke/regression tests that assert render modes, draw calls, and representative pixel output in a controlled browser.
+- [ ] Screenshot/export regression tests for plot + DOM overlay composition.
+- [ ] Benchmark trend storage/comparison so CI can flag large regressions without being flaky on shared runners.
+
 ## Backend strategy
 
 ```
