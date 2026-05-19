@@ -48,6 +48,12 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: number): boolean {
+  const scale = Math.max(1, Math.abs(aMin), Math.abs(aMax), Math.abs(bMin), Math.abs(bMax));
+  const epsilon = scale * 1e-9;
+  return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
+}
+
 function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
   let nextMin = includeZero ? Math.min(0, min) : min;
   let nextMax = includeZero ? Math.max(0, max) : max;
@@ -126,6 +132,7 @@ export interface ChartOptions {
   readonly subtitle?: string | ChartTitleConfig;
   readonly hover?: ChartPickOptions;
   readonly accessibility?: boolean | ChartAccessibilityOptions;
+  readonly autoFitY?: boolean | ChartAutoFitYOptions;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
 }
@@ -226,6 +233,15 @@ export interface ChartFitToDataOptions {
   readonly includeZero?: boolean;
   readonly xMin?: number;
   readonly xMax?: number;
+}
+
+export interface ChartAutoFitYOptions {
+  readonly enabled?: boolean;
+  readonly yAxis?: SeriesYAxis | "both";
+  readonly padding?: number | ChartFitToDataPadding;
+  readonly includeZero?: boolean;
+  readonly visibleOnly?: boolean;
+  readonly series?: readonly SeriesStore[];
 }
 
 export interface ChartLayoutReservation {
@@ -671,21 +687,27 @@ export class Chart {
     let changed = false;
     if (fitX && Number.isFinite(xMin) && Number.isFinite(xMax)) {
       const xDomain = paddedDomain(xMin, xMax, padding.x, false);
-      this.camera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
-      this.rightCamera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
-      changed = true;
+      if (!domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xDomain.min, xDomain.max)) {
+        this.camera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
+        this.rightCamera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
+        changed = true;
+      }
     }
 
     if (fitY && (yAxis === "left" || yAxis === "both") && Number.isFinite(leftYMin) && Number.isFinite(leftYMax)) {
       const yDomain = paddedDomain(leftYMin, leftYMax, padding.y, options.includeZero === true);
-      this.camera.setViewport({ yMin: yDomain.min, yMax: yDomain.max });
-      changed = true;
+      if (!domainsAlmostEqual(this.camera.yMin, this.camera.yMax, yDomain.min, yDomain.max)) {
+        this.camera.setViewport({ yMin: yDomain.min, yMax: yDomain.max });
+        changed = true;
+      }
     }
 
     if (fitY && (yAxis === "right" || yAxis === "both") && Number.isFinite(rightYMin) && Number.isFinite(rightYMax)) {
       const yDomain = paddedDomain(rightYMin, rightYMax, padding.y, options.includeZero === true);
-      this.rightCamera.setViewport({ yMin: yDomain.min, yMax: yDomain.max });
-      changed = true;
+      if (!domainsAlmostEqual(this.rightCamera.yMin, this.rightCamera.yMax, yDomain.min, yDomain.max)) {
+        this.rightCamera.setViewport({ yMin: yDomain.min, yMax: yDomain.max });
+        changed = true;
+      }
     }
 
     if (changed) {
@@ -694,6 +716,24 @@ export class Chart {
       this.refreshHover();
     }
     return changed;
+  }
+
+  private applyAutoFitYPolicy(): void {
+    const option = this.options.autoFitY;
+    if (!option) return;
+    const config = typeof option === "object" ? option : undefined;
+    if (config?.enabled === false) return;
+    this.fitToData({
+      x: false,
+      y: true,
+      xMin: this.camera.xMin,
+      xMax: this.camera.xMax,
+      yAxis: config?.yAxis ?? "both",
+      padding: config?.padding,
+      includeZero: config?.includeZero,
+      visibleOnly: config?.visibleOnly,
+      series: config?.series,
+    });
   }
 
   resize(dpr: number = globalThis.devicePixelRatio): boolean {
@@ -927,6 +967,7 @@ export class Chart {
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
+    this.applyAutoFitYPolicy();
 
     const [r, g, b, a] = this.resolvedTheme.backgroundColor;
     this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
