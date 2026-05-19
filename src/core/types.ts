@@ -45,6 +45,12 @@ export interface Dataset {
   readonly range: TimeRange | null;
   getX(index: number): number;
   getY(index: number): number;
+  /**
+   * Optional explicit missing-data marker. Gap samples are skipped by picks and
+   * break line/area strips on both sides. X values must remain sorted even when
+   * a sample is marked as a gap.
+   */
+  isGap?(index: number): boolean;
   lowerBoundX(x: number): number;
   upperBoundX(x: number): number;
 }

@@ -30,6 +30,10 @@
       "types": "./dist/linked.d.ts",
       "import": "./dist/linked.js"
     },
+    "./data": {
+      "types": "./dist/data.d.ts",
+      "import": "./dist/data.js"
+    },
     "./export": {
       "types": "./dist/export.d.ts",
       "import": "./dist/export.js"
@@ -81,6 +85,7 @@
     "bench:scatter": "bun scripts/scatter-profile.ts",
     "bench:report": "bun scripts/benchmark-report.ts",
     "release:benchmarks": "bun scripts/release-benchmarks.ts",
+    "docs:bundle-size": "bun scripts/bundle-size-check.ts --markdown",
     "docs:readme": "bun run build && node scripts/generate-readme-docs.js",
     "test": "bun test",
     "test:visual": "bun scripts/visual-test.ts",

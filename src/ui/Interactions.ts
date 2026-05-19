@@ -1,6 +1,6 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "../interaction/types.js";
-import type { Chart, ChartPlugin } from "./Chart.js";
+import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
 
 export type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
 
@@ -152,7 +152,7 @@ function applySelectionAxis(
 
 export function interactionsPlugin(options: InteractionsPluginOptions = {}): ChartPlugin {
   return {
-    install(chart: Chart) {
+    install(chart: ChartPluginContext) {
       const minDragDistancePx = options.minDragDistancePx ?? 6;
       const canvas = chart.canvas;
       const xAxis = chart.xAxisElement;

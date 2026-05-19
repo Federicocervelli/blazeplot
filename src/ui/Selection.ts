@@ -1,6 +1,6 @@
 import type { SeriesSample, SeriesYAxis, Viewport } from "../core/types.js";
 import type { SeriesStore } from "../core/SeriesStore.js";
-import type { Chart, ChartPlugin, ChartSeriesState } from "./Chart.js";
+import type { ChartPlugin, ChartPluginContext, ChartSeriesState } from "./Chart.js";
 
 export type SelectionMode = "x-range" | "y-range" | "xy";
 export type SelectionEventType = "start" | "update" | "commit" | "clear";
@@ -167,12 +167,12 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
   const minDragDistancePx = options.minDragDistancePx ?? 4;
   const maxSamplesPerSeries = Math.max(0, Math.floor(options.maxSamplesPerSeries ?? 5_000));
   const samplePhase = options.samplePhase ?? "commit";
-  let chartRef: Chart | null = null;
+  let chartRef: ChartPluginContext | null = null;
   let overlay: HTMLDivElement | null = null;
   let drag: DragState | null = null;
   let committedSelection: SelectionState | null = null;
 
-  const notifySeriesSelection = (chart: Chart | null, selection: SelectionState | null): void => {
+  const notifySeriesSelection = (chart: ChartPluginContext | null, selection: SelectionState | null): void => {
     if (!chart || !options.onSeriesSelectionChange) return;
     for (const series of chart.getSeriesState()) {
       const samples = selection?.samples.find((entry) => entry.series === series.series) ?? null;
@@ -202,7 +202,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     overlay.style.display = "block";
   };
 
-  const buildSelection = (chart: Chart, state: DragState, includeSamples: boolean): SelectionState | null => {
+  const buildSelection = (chart: ChartPluginContext, state: DragState, includeSamples: boolean): SelectionState | null => {
     const canvas = chart.canvas;
     const rect = canvas.getBoundingClientRect();
     const current = chart.getViewport(yAxis);
@@ -219,7 +219,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
   };
 
   return {
-    install(chart: Chart) {
+    install(chart: ChartPluginContext) {
       chartRef = chart;
       const canvas = chart.canvas;
       overlay = document.createElement("div");

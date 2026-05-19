@@ -1,6 +1,6 @@
 import type { SeriesYAxis } from "../core/types.js";
-import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin } from "./Chart.js";
-import { formatCompactNumber, placeAbsoluteWithinBox, renderPickItems, rgba } from "./OverlayUtils.js";
+import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
+import { createLongPressTouchTracker, createPickMarker, formatCompactNumber, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
 
 export type CrosshairAxis = "x" | "y" | "xy";
 export type CrosshairSnapMode = "none" | "nearest-x" | "nearest-point";
@@ -72,7 +72,7 @@ export interface CrosshairPlugin extends ChartPlugin {
   subscribe(event: "measurechange" | "measureend", callback: (measurement: RulerMeasurement) => void): () => void;
 }
 
-function countSamplesInRange(chart: Chart, xMin: number, xMax: number): number {
+function countSamplesInRange(chart: ChartPluginContext, xMin: number, xMax: number): number {
   const viewport = { xMin, xMax, yMin: -Infinity, yMax: Infinity };
   let total = 0;
   for (const state of chart.getSeriesState()) {
@@ -91,13 +91,13 @@ function hasModifier(event: PointerEvent, modifier: CrosshairPluginOptions["rule
   return event.metaKey;
 }
 
-function positionFromPick(chart: Chart, clientX: number, clientY: number, mode: ChartPickMode): CrosshairPosition | null {
+function positionFromPick(chart: ChartPluginContext, clientX: number, clientY: number, mode: ChartPickMode): CrosshairPosition | null {
   const picked = chart.pick(clientX, clientY, { mode, group: "none" });
   const item = picked?.items[0];
   return item ? { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: [item] } : null;
 }
 
-function resolvePosition(chart: Chart, clientX: number, clientY: number, yAxis: SeriesYAxis, snap: CrosshairSnapMode): CrosshairPosition | null {
+function resolvePosition(chart: ChartPluginContext, clientX: number, clientY: number, yAxis: SeriesYAxis, snap: CrosshairSnapMode): CrosshairPosition | null {
   const rect = chart.canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
 
@@ -113,7 +113,7 @@ function resolvePosition(chart: Chart, clientX: number, clientY: number, yAxis: 
   return { dataX: data[0], dataY: data[1], plotX, plotY, items: [] };
 }
 
-function resolveSharedPosition(chart: Chart, dataX: number, yAxis: SeriesYAxis): CrosshairPosition | null {
+function resolveSharedPosition(chart: ChartPluginContext, dataX: number, yAxis: SeriesYAxis): CrosshairPosition | null {
   const rect = chart.canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
 
@@ -152,7 +152,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   const snap = options.snap ?? "none";
   const mode = options.mode ?? "crosshair";
   const rulerModifier = options.rulerModifier ?? "none";
-  let chartRef: Chart | null = null;
+  let chartRef: ChartPluginContext | null = null;
   let root: HTMLDivElement | null = null;
   let vertical: HTMLDivElement | null = null;
   let horizontal: HTMLDivElement | null = null;
@@ -216,18 +216,11 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     const size = Math.max(2, options.markerSize ?? 10);
     const strokeWidth = Math.max(0, options.markerStrokeWidth ?? 2);
     for (const item of position.items) {
-      const marker = document.createElement("div");
-      marker.style.position = "absolute";
-      marker.style.left = `${item.plotX}px`;
-      marker.style.top = `${item.plotY}px`;
-      marker.style.width = `${size}px`;
-      marker.style.height = `${size}px`;
-      marker.style.border = `${strokeWidth}px solid ${options.markerStrokeColor ?? "#f8fafc"}`;
-      marker.style.borderRadius = "999px";
-      marker.style.background = rgba(item.series.style.color);
-      marker.style.boxShadow = "0 0 0 1px rgba(4, 8, 16, 0.85)";
-      marker.style.transform = "translate(-50%, -50%)";
-      markerLayer.appendChild(marker);
+      markerLayer.appendChild(createPickMarker(item, {
+        sizePx: size,
+        strokeColor: options.markerStrokeColor,
+        strokeWidthPx: strokeWidth,
+      }));
     }
   };
 
@@ -245,7 +238,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     if (options.label !== false) {
       label.style.display = "block";
       if (options.render) {
-        options.render(position, label, chartRef!);
+        options.render(position, label, chartRef! as Chart);
       } else {
         renderDefaultLabel(position, label, formatX, formatY, options.formatter);
       }
@@ -255,7 +248,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     }
   };
 
-  const measurementFrom = (start: CrosshairPosition, end: CrosshairPosition, chart: Chart): RulerMeasurement => {
+  const measurementFrom = (start: CrosshairPosition, end: CrosshairPosition, chart: ChartPluginContext): RulerMeasurement => {
     const deltaX = end.dataX - start.dataX;
     const deltaY = end.dataY - start.dataY;
     return {
@@ -308,7 +301,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   };
 
   return {
-    install(chart: Chart) {
+    install(chart: ChartPluginContext) {
       chartRef = chart;
       const color = options.color ?? "rgba(148, 163, 184, 0.55)";
       const width = `${options.width ?? 1}px`;
@@ -382,20 +375,6 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         groups.set(options.group, set);
       }
 
-      let longPressTimer: number | null = null;
-      let longPressRaf = 0;
-      let longPressActive = false;
-      let longPressX = 0;
-      let longPressY = 0;
-
-      const clearLongPress = (): void => {
-        if (longPressTimer !== null) window.clearTimeout(longPressTimer);
-        if (longPressRaf !== 0) window.cancelAnimationFrame(longPressRaf);
-        longPressTimer = null;
-        longPressRaf = 0;
-        longPressActive = false;
-      };
-
       const showAtClientPoint = (clientX: number, clientY: number): void => {
         const position = resolvePosition(chart, clientX, clientY, yAxis, snap);
         renderPosition(position);
@@ -403,64 +382,13 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         if (position) emitShared(position);
       };
 
-      const refreshLongPress = (): void => {
-        if (!longPressActive) return;
-        showAtClientPoint(longPressX, longPressY);
-        longPressRaf = window.requestAnimationFrame(refreshLongPress);
-      };
-
-      const activateLongPress = (): void => {
-        longPressTimer = null;
-        longPressActive = true;
-        showAtClientPoint(longPressX, longPressY);
-        longPressRaf = window.requestAnimationFrame(refreshLongPress);
-      };
-
-      const scheduleLongPress = (clientX: number, clientY: number): void => {
-        if (options.longPressMs === false || longPressActive) return;
-        longPressX = clientX;
-        longPressY = clientY;
-        clearLongPress();
-        longPressTimer = window.setTimeout(activateLongPress, options.longPressMs ?? 450);
-      };
-
-      const onTouchStart = (event: TouchEvent): void => {
-        if (event.touches.length !== 1) {
-          clearLongPress();
-          return;
-        }
-        const touch = event.touches.item(0);
-        if (!touch) return;
-        scheduleLongPress(touch.clientX, touch.clientY);
-      };
-
-      const onTouchMove = (event: TouchEvent): void => {
-        const touch = event.touches.item(0);
-        if (!touch) return;
-        if (longPressActive) {
-          event.preventDefault();
-          event.stopPropagation();
-          longPressX = touch.clientX;
-          longPressY = touch.clientY;
-          showAtClientPoint(longPressX, longPressY);
-          return;
-        }
-        if (longPressTimer !== null && Math.hypot(touch.clientX - longPressX, touch.clientY - longPressY) > 8) clearLongPress();
-      };
+      const longPress = createLongPressTouchTracker({
+        delayMs: () => options.longPressMs,
+        onPoint: showAtClientPoint,
+      });
 
       const onPointerMove = (event: PointerEvent): void => {
-        if (event.pointerType === "touch") {
-          if (longPressActive) {
-            event.preventDefault();
-            event.stopPropagation();
-            longPressX = event.clientX;
-            longPressY = event.clientY;
-            showAtClientPoint(longPressX, longPressY);
-          } else if (longPressTimer !== null && Math.hypot(event.clientX - longPressX, event.clientY - longPressY) > 8) {
-            clearLongPress();
-          }
-          return;
-        }
+        if (longPress.onPointerMove(event)) return;
         const position = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         renderPosition(position);
         emitMove(position);
@@ -475,7 +403,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       };
 
       const onPointerDown = (event: PointerEvent): void => {
-        if (event.pointerType === "touch") scheduleLongPress(event.clientX, event.clientY);
+        longPress.onPointerDown(event);
         if (mode !== "ruler" || event.button !== 0 || !hasModifier(event, rulerModifier)) return;
         rulerStart = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         if (rulerStart) {
@@ -486,7 +414,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       };
 
       const onPointerUp = (event: PointerEvent): void => {
-        if (event.pointerType === "touch") clearLongPress();
+        longPress.clearIfTouchPointer(event);
         if (mode !== "ruler" || !rulerStart) return;
         event.stopImmediatePropagation();
         const end = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
@@ -497,23 +425,23 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       };
 
       chart.canvas.addEventListener("pointermove", onPointerMove);
-      chart.canvas.addEventListener("pointercancel", clearLongPress);
-      chart.canvas.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
-      chart.canvas.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
-      chart.canvas.addEventListener("touchend", clearLongPress);
-      chart.canvas.addEventListener("touchcancel", clearLongPress);
+      chart.canvas.addEventListener("pointercancel", longPress.clear);
+      chart.canvas.addEventListener("touchstart", longPress.onTouchStart, { capture: true, passive: true });
+      chart.canvas.addEventListener("touchmove", longPress.onTouchMove, { capture: true, passive: false });
+      chart.canvas.addEventListener("touchend", longPress.clear);
+      chart.canvas.addEventListener("touchcancel", longPress.clear);
       chart.canvas.addEventListener("pointerleave", onPointerLeave);
       chart.canvas.addEventListener("pointerdown", onPointerDown, { capture: true });
       chart.canvas.addEventListener("pointerup", onPointerUp, { capture: true });
 
       return () => {
-        clearLongPress();
+        longPress.clear();
         chart.canvas.removeEventListener("pointermove", onPointerMove);
-        chart.canvas.removeEventListener("pointercancel", clearLongPress);
-        chart.canvas.removeEventListener("touchstart", onTouchStart, { capture: true });
-        chart.canvas.removeEventListener("touchmove", onTouchMove, { capture: true });
-        chart.canvas.removeEventListener("touchend", clearLongPress);
-        chart.canvas.removeEventListener("touchcancel", clearLongPress);
+        chart.canvas.removeEventListener("pointercancel", longPress.clear);
+        chart.canvas.removeEventListener("touchstart", longPress.onTouchStart, { capture: true });
+        chart.canvas.removeEventListener("touchmove", longPress.onTouchMove, { capture: true });
+        chart.canvas.removeEventListener("touchend", longPress.clear);
+        chart.canvas.removeEventListener("touchcancel", longPress.clear);
         chart.canvas.removeEventListener("pointerleave", onPointerLeave);
         chart.canvas.removeEventListener("pointerdown", onPointerDown, { capture: true });
         chart.canvas.removeEventListener("pointerup", onPointerUp, { capture: true });

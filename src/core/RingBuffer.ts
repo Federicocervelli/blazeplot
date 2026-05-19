@@ -99,6 +99,10 @@ export class RingBuffer {
     return this.yData[this.logicalToPhysical(index)]!;
   }
 
+  isGap(index: number): boolean {
+    return !Number.isFinite(this.getY(index));
+  }
+
   lowerBoundX(x: number): number {
     return lowerBound(this._length, (index) => this.getX(index), x);
   }
@@ -161,16 +165,16 @@ export class RingBuffer {
       this.xData[physical] = x[sourceOffset + i]!;
       this.yData[physical] = value;
       const leaf = this.treeBase + physical;
-      this.minTree[leaf] = value;
-      this.maxTree[leaf] = value;
+      this.minTree[leaf] = Number.isFinite(value) ? value : Infinity;
+      this.maxTree[leaf] = Number.isFinite(value) ? value : -Infinity;
     }
     this.recomputeTreeRange(physicalStart, physicalStart + count);
   }
 
   private setTreeLeaf(physical: number, value: number): void {
     let index = this.treeBase + physical;
-    this.minTree[index] = value;
-    this.maxTree[index] = value;
+    this.minTree[index] = Number.isFinite(value) ? value : Infinity;
+    this.maxTree[index] = Number.isFinite(value) ? value : -Infinity;
     index >>= 1;
     while (index >= 1) {
       this.recomputeTreeNode(index);

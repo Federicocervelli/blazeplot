@@ -1,5 +1,5 @@
 import type { SeriesStore } from "../core/SeriesStore.js";
-import type { Chart, ChartPlugin } from "./Chart.js";
+import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
 
 export interface NavigatorPluginOptions {
   readonly height?: number;
@@ -54,7 +54,7 @@ function rgba(color: readonly [number, number, number, number]): string {
   return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
 }
 
-function seriesList(chart: Chart, option: NavigatorPluginOptions["series"]): SeriesStore[] {
+function seriesList(chart: ChartPluginContext, option: NavigatorPluginOptions["series"]): SeriesStore[] {
   if (option) return Array.isArray(option) ? [...(option as readonly SeriesStore[])] : [option as SeriesStore];
   return chart.getSeriesState().filter((state) => state.visible).map((state) => state.series);
 }
@@ -122,7 +122,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
   const handleWidth = Math.max(4, options.handleWidth ?? 8);
   const handleHitWidth = Math.max(handleWidth, options.handleHitWidth ?? 18);
   const reservationId = `navigator-${Math.random().toString(36).slice(2)}`;
-  let chartRef: Chart | null = null;
+  let chartRef: ChartPluginContext | null = null;
   let root: HTMLDivElement | null = null;
   let overlay: SVGSVGElement | null = null;
   let windowRect: SVGRectElement | null = null;
@@ -240,7 +240,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
   };
 
   return {
-    install(chart: Chart) {
+    install(chart: ChartPluginContext) {
       chartRef = chart;
       root = document.createElement("div");
       root.className = options.className ?? "blazeplot-navigator";

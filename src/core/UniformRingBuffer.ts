@@ -136,6 +136,10 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return this.yData[this.logicalToPhysical(index)]!;
   }
 
+  isGap(index: number): boolean {
+    return !Number.isFinite(this.getY(index));
+  }
+
   lowerBoundX(x: number): number {
     if (this._length === 0) return 0;
     return Math.max(0, Math.min(this._length, Math.ceil((x - this.firstX()) / this.xStep)));
@@ -210,6 +214,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     if (visible <= 0) return 0;
 
     const segmentCount = Math.min(maxSegments, visible);
+    let written = 0;
     for (let segment = 0; segment < segmentCount; segment++) {
       const segmentStart = start + Math.floor((segment * visible) / segmentCount);
       const segmentEnd = Math.min(
@@ -224,20 +229,21 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
       const x = this.firstX() + (segmentStart + ((segmentEnd - segmentStart) >> 1)) * this.xStep - xOrigin;
       if (layout === "line-list") {
-        const offset = segment * 4;
+        const offset = written * 4;
         target[offset] = x;
         target[offset + 1] = range.minY;
         target[offset + 2] = x;
         target[offset + 3] = range.maxY;
       } else {
-        const offset = segment * 3;
+        const offset = written * 3;
         target[offset] = x;
         target[offset + 1] = range.minY;
         target[offset + 2] = range.maxY;
       }
+      written++;
     }
 
-    return segmentCount;
+    return written;
   }
 
   private replaceAll(y: ArrayLike<number>, sourceOffset: number, requested: number): void {
@@ -277,27 +283,55 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const floatsPerSample = layout === "points" ? 2 : 4;
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
 
-    const count = Math.min(maxPoints, Math.max(0, Math.ceil((to - from) / stride)));
     const firstX = this.firstX();
-
-    if (layout === "points") {
-      for (let i = 0, index = from; i < count; i++, index += stride) {
-        const offset = i * 2;
-        target[offset] = firstX + index * this.xStep - xOrigin;
-        target[offset + 1] = this.yData[this.logicalToPhysical(index)]!;
-      }
-    } else {
-      for (let i = 0, index = from; i < count; i++, index += stride) {
-        const offset = i * 4;
-        const x = firstX + index * this.xStep - xOrigin;
+    let count = 0;
+    let lastIndex = -1;
+    let lastWasGap = false;
+    const writeGap = (): boolean => {
+      if (count === 0 || lastWasGap) return true;
+      if (count >= maxPoints) return false;
+      const offset = count * floatsPerSample;
+      for (let j = 0; j < floatsPerSample; j++) target[offset + j] = NaN;
+      count++;
+      lastWasGap = true;
+      return true;
+    };
+    const writeSample = (index: number): boolean => {
+      const y = this.yData[this.logicalToPhysical(index)]!;
+      if (!Number.isFinite(y)) return writeGap();
+      if (count >= maxPoints) return false;
+      const offset = count * floatsPerSample;
+      const x = firstX + index * this.xStep - xOrigin;
+      if (layout === "points") {
+        target[offset] = x;
+        target[offset + 1] = y;
+      } else {
         target[offset] = x;
         target[offset + 1] = baseline;
         target[offset + 2] = x;
-        target[offset + 3] = this.yData[this.logicalToPhysical(index)]!;
+        target[offset + 3] = y;
       }
+      count++;
+      lastWasGap = false;
+      return true;
+    };
+
+    for (let index = from; index < to; index += stride) {
+      if (lastIndex >= 0 && index > lastIndex + 1 && this.hasGapInLogicalRange(lastIndex + 1, index) && !writeGap()) break;
+      if (!writeSample(index)) break;
+      lastIndex = index;
     }
 
     return count;
+  }
+
+  private hasGapInLogicalRange(start: number, end: number): boolean {
+    const from = Math.max(0, start);
+    const to = Math.min(this._length, end);
+    for (let i = from; i < to; i++) {
+      if (!Number.isFinite(this.yData[this.logicalToPhysical(i)]!)) return true;
+    }
+    return false;
   }
 
   private queryPhysicalMinMax(start: number, end: number): { minY: number; maxY: number } | null {
@@ -307,8 +341,10 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
     while (i < end && i % this.blockSize !== 0) {
       const value = this.yData[i]!;
-      if (value < minY) minY = value;
-      if (value > maxY) maxY = value;
+      if (Number.isFinite(value)) {
+        if (value < minY) minY = value;
+        if (value > maxY) maxY = value;
+      }
       i++;
     }
 
@@ -325,8 +361,10 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
     while (i < end) {
       const value = this.yData[i]!;
-      if (value < minY) minY = value;
-      if (value > maxY) maxY = value;
+      if (Number.isFinite(value)) {
+        if (value < minY) minY = value;
+        if (value > maxY) maxY = value;
+      }
       i++;
     }
 
@@ -351,6 +389,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     for (let i = start; i < end; i++) {
       if (!this.isPhysicalValid(i)) continue;
       const value = this.yData[i]!;
+      if (!Number.isFinite(value)) continue;
       if (value < minY) minY = value;
       if (value > maxY) maxY = value;
     }

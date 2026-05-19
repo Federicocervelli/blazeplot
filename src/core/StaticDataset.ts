@@ -26,6 +26,10 @@ export class StaticDataset implements Dataset {
     return this.yData[index]!;
   }
 
+  isGap(index: number): boolean {
+    return !Number.isFinite(this.getY(index));
+  }
+
   lowerBoundX(x: number): number {
     return lowerBound(this.length, (index) => this.xData[index]!, x);
   }

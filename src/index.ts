@@ -1,11 +1,11 @@
 export { Chart } from "./ui/Chart.js";
-export type { AxisConfig, AxisTitleConfig, ChartAccessibilityOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFitToDataOptions, ChartFitToDataPadding, ChartFrameStats, ChartKeyboardOptions, ChartLayoutReservation, ChartOptions, ChartPointerEventState, ChartPointerEventType, ChartScreenshotOptions, ChartScreenshotPreset, ChartSelectEvent, ChartSeriesClickEvent, ChartTitleConfig, ChartViewportChangeEvent, TextOverlayConfig, TypedSeriesConfig, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPickOptions, ChartPlugin, ChartPluginHandle, ChartSeriesState } from "./ui/Chart.js";
+export type { AxisConfig, AxisTitleConfig, ChartAccessibilityOptions, ChartAutoFitYOptions, ChartBackendFactory, ChartBackendFactoryContext, ChartFollowXOptions, ChartFitToDataOptions, ChartFitToDataPadding, ChartFrameStats, ChartKeyboardOptions, ChartLayoutReservation, ChartOptions, ChartPointerEventState, ChartPointerEventType, ChartScreenshotOptions, ChartScreenshotPreset, ChartSelectEvent, ChartSeriesClickEvent, ChartTitleConfig, ChartViewportChangeEvent, TextOverlayConfig, TypedSeriesConfig, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPickOptions, ChartPlugin, ChartPluginContext, ChartPluginHandle, ChartSeriesState } from "./ui/Chart.js";
 export { DEFAULT_CHART_THEME } from "./ui/theme.js";
 export type { ChartTheme, ResolvedChartTheme, RgbaColor, CssColor, ThemeColor } from "./ui/theme.js";
 export type { AxisPosition } from "./ui/ChartLayout.js";
 export { SeriesStore } from "./core/SeriesStore.js";
 export { RingBuffer } from "./core/RingBuffer.js";
-export type { SeriesDataBounds, SeriesDataBoundsOptions } from "./core/SeriesStore.js";
+export type { SeriesDataBounds, SeriesDataBoundsOptions, SeriesOhlcSample } from "./core/SeriesStore.js";
 export type { RingBufferOptions, RingBufferOverflow } from "./core/RingBuffer.js";
 export { UniformRingBuffer } from "./core/UniformRingBuffer.js";
 export type { UniformRingBufferOptions } from "./core/UniformRingBuffer.js";
@@ -15,7 +15,8 @@ export type { ServerSampledBuckets, ServerSampledData, ServerSampledDatasetKind,
 export { OhlcRingBuffer, StaticOhlcDataset } from "./core/OhlcDataset.js";
 export type { OhlcRingBufferOptions } from "./core/OhlcDataset.js";
 export { MinMaxPyramid } from "./core/MinMaxPyramid.js";
-export { isWebGL2Available, WebGL2UnavailableError } from "./render/ReglBackend.js";
+export { isWebGL2Available, ReglBackend, WebGL2UnavailableError } from "./render/ReglBackend.js";
+export type { AttributeSpec, BufferSpec, DrawSpec, GpuBackend, GpuBuffer, GpuCapabilities, GpuProgram, GpuResource } from "./render/types.js";
 export { Camera2D } from "./interaction/Camera2D.js";
 export { AxisController } from "./interaction/AxisController.js";
 export type { AxisControllerAxisOptions, AxisControllerOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
