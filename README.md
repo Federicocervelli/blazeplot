@@ -6,7 +6,7 @@
 [![npm version](https://img.shields.io/npm/v/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![npm downloads](https://img.shields.io/npm/dt/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![previews](https://img.shields.io/badge/previews-main%20%7C%20development-blue?logo=githubpages)](https://federicocervelli.github.io/blazeplot/previews.html)
+[![previews](https://img.shields.io/badge/previews-blue?logo=githubpages&logoColor=white)](https://federicocervelli.github.io/blazeplot/previews.html)
 
 Fast WebGL2 plotting engine for the browser 🔥
 
