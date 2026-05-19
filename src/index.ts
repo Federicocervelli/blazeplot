@@ -13,6 +13,7 @@ export { StaticDataset } from "./core/StaticDataset.js";
 export { OhlcRingBuffer, StaticOhlcDataset } from "./core/OhlcDataset.js";
 export type { OhlcRingBufferOptions } from "./core/OhlcDataset.js";
 export { MinMaxPyramid } from "./core/MinMaxPyramid.js";
+export { isWebGL2Available, WebGL2UnavailableError } from "./render/ReglBackend.js";
 export { Camera2D } from "./interaction/Camera2D.js";
 export { AxisController } from "./interaction/AxisController.js";
 export type { AxisControllerAxisOptions, AxisControllerOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";

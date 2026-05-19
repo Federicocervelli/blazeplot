@@ -317,7 +317,7 @@ Current automated coverage is strongest for core data structures and interaction
 ## Runtime resilience and packaging roadmap
 
 - [ ] Handle WebGL context loss/restoration by rebuilding regl resources, GPU buffers, and cached draw commands without leaking chart state.
-- [ ] Expose a clear WebGL2-unavailable error path/API so host applications can render their own fallback UI.
+- [x] Expose a clear WebGL2-unavailable error path/API so host applications can render their own fallback UI.
 - [ ] Add dispose/resource leak stress tests for repeated chart/plugin mount, unmount, series churn, resize, and screenshot cycles.
 - [ ] Validate npm package contents and generated declaration files in CI before release PRs.
 - [ ] Track dependency and browser-support assumptions, especially WebGL2/regl behavior across Chrome, Firefox, Safari, and mobile browsers.
