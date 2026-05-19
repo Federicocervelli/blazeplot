@@ -13,7 +13,7 @@ BlazePlot releases are driven by pull requests into `main`. Tags are outputs of 
 GitHub Pages publishes both active branches into one site:
 
 - Stable `main`: <https://federicocervelli.github.io/blazeplot/>
-- Stable React preview: <https://federicocervelli.github.io/blazeplot/react/>
+- Stable React preview, once the React preview reaches `main`: <https://federicocervelli.github.io/blazeplot/react/>
 - In-progress `development`: <https://federicocervelli.github.io/blazeplot/development/>
 - In-progress React preview: <https://federicocervelli.github.io/blazeplot/development/react/>
 - Preview index: <https://federicocervelli.github.io/blazeplot/previews.html>
