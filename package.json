@@ -69,7 +69,7 @@
     "dev": "vite",
     "build": "vite build",
     "bench:ci": "bun run bench --scenario ci-smoke --measure-ms 500 --warmup-ms 100 --width 800 --height 450 --top 12 --setup-timeout-ms 60000",
-    "ci": "bun run typecheck && bun test && bun run build && bun run bench:ci && bun run test:visual",
+    "ci": "bun run typecheck && bun test && bun run build && bun run bench:ci && bun run test:visual && bun run test:interaction",
     "build:js": "vite build --mode js-only",
     "pages:build": "vite build --config vite.pages.config.ts",
     "preview": "vite preview",
@@ -83,7 +83,8 @@
     "typecheck": "tsc --noEmit",
     "version:patch": "node scripts/bump-version.js patch",
     "version:minor": "node scripts/bump-version.js minor",
-    "version:major": "node scripts/bump-version.js major"
+    "version:major": "node scripts/bump-version.js major",
+    "test:interaction": "bun scripts/interaction-test.ts"
   },
   "peerDependencies": {
     "react": ">=18"

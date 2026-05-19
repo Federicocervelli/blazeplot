@@ -22,6 +22,7 @@ export default defineConfig({
         features: resolve(__dirname, "preview/features/index.html"),
         react: resolve(__dirname, "preview/react/index.html"),
         visual: resolve(__dirname, "preview/visual/index.html"),
+        interaction: resolve(__dirname, "preview/interaction/index.html"),
       },
     },
   },
