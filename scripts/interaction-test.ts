@@ -57,6 +57,8 @@ interface InteractionSnapshot {
   selectionBounds: ViewportSnapshot | null;
   visibleCrosshairs: number;
   visibleTooltips: number;
+  crosshairX: number | null;
+  tooltipLeft: number | null;
   error?: string | null;
 }
 
@@ -144,10 +146,19 @@ async function runMobileLongPressCase(options: Options, serverUrl: string): Prom
     const center = centerOf(snapshot.canvasRect);
     await touchStart(cdp, center.x, center.y);
     await sleep(700);
-    const after = await getRequiredSnapshot(cdp);
-    await touchEnd(cdp);
+    let after = await getRequiredSnapshot(cdp);
     assert(after.visibleCrosshairs >= 1, "long press shows crosshair");
     assert(after.visibleTooltips >= 1, "long press shows tooltip");
+    const initialCrosshairX = after.crosshairX;
+    const initialTooltipLeft = after.tooltipLeft;
+    assert(initialCrosshairX !== null, "long press exposes crosshair x");
+    assert(initialTooltipLeft !== null, "long press exposes tooltip left");
+    await touchMove(cdp, center.x + 90, center.y);
+    await sleep(150);
+    after = await getRequiredSnapshot(cdp);
+    await touchEnd(cdp);
+    assert(after.crosshairX !== null && Math.abs(after.crosshairX - initialCrosshairX!) > 30, "long-press crosshair follows finger");
+    assert(after.tooltipLeft !== null && Math.abs(after.tooltipLeft - initialTooltipLeft!) > 20, "long-press tooltip follows finger");
     console.log("✓ mobile: long-press crosshair and tooltip");
   } finally {
     cdp.close();
@@ -394,6 +405,10 @@ async function pinch(cdp: CdpClient, centerX: number, centerY: number, startRadi
 
 async function touchStart(cdp: CdpClient, x: number, y: number): Promise<void> {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
+}
+
+async function touchMove(cdp: CdpClient, x: number, y: number): Promise<void> {
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y, id: 1 }] });
 }
 
 async function touchEnd(cdp: CdpClient): Promise<void> {
