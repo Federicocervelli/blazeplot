@@ -509,3 +509,5 @@ bun run bench:ci        # Headless browser benchmark smoke test
 bun run version:patch   # Prepare package.json + changelog for a patch release PR
 bun run release:benchmarks  # Append benchmark results to the current release changelog
 ```
+
+Release and benchmark workflow details live in [docs/release-and-benchmarks.md](docs/release-and-benchmarks.md).
