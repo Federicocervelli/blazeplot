@@ -28,8 +28,8 @@ let nextInteractionsPluginId = 1;
 type InteractionTarget = HTMLCanvasElement | HTMLElement;
 
 type TouchGestureState =
-  | { readonly mode: "pan"; lastX: number; lastY: number }
-  | { readonly mode: "pinch"; lastDistance: number };
+  | { readonly mode: "pan"; readonly axis: ZoomAxis; readonly yAxis?: SeriesYAxis; lastX: number; lastY: number }
+  | { readonly mode: "pinch"; readonly axis: ZoomAxis; readonly yAxis?: SeriesYAxis; lastDistance: number };
 
 type DragState =
   | {
@@ -137,6 +137,9 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const originalY2AxisPointerEvents = y2Axis.style.pointerEvents;
       const originalXAxisCursor = xAxis.style.cursor;
       const originalCanvasTouchAction = canvas.style.touchAction;
+      const originalXAxisTouchAction = xAxis.style.touchAction;
+      const originalYAxisTouchAction = yAxis.style.touchAction;
+      const originalY2AxisTouchAction = y2Axis.style.touchAction;
       const originalYAxisCursor = yAxis.style.cursor;
       const originalY2AxisCursor = y2Axis.style.cursor;
       const originalXAxisFilter = xAxis.style.filter;
@@ -165,6 +168,11 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
 
       if (options.touchPan !== false || options.pinchZoom !== false) {
         canvas.style.touchAction = "none";
+        if (options.axisInteractions !== false) {
+          xAxis.style.touchAction = "none";
+          yAxis.style.touchAction = "none";
+          y2Axis.style.touchAction = "none";
+        }
       }
 
       if (options.axisInteractions !== false) {
@@ -401,20 +409,55 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         resetToCapturedViewport();
       };
 
+      const touchTargetConfig = (target: EventTarget | null): { axis: ZoomAxis; yAxis?: SeriesYAxis } | null => {
+        if (target === xAxis) return { axis: "x" };
+        if (target === yAxis) return { axis: "y", yAxis: "left" };
+        if (target === y2Axis) return { axis: "y", yAxis: "right" };
+        if (target === canvas) return { axis: resolveAxis(options.axis) };
+        return null;
+      };
+
+      const applyTouchPan = (axis: ZoomAxis, yAxis: SeriesYAxis | undefined, dx: number, dy: number): void => {
+        const intent = applyPanPolicy({ dx, dy }, axis, yAxis ?? "left");
+        if (!intent) return;
+        if (yAxis && axis === "y") {
+          const next = chart.getCamera(yAxis).clone();
+          next.pan({ dx: 0, dy: intent.dy });
+          chart.setYViewport(yAxis, { yMin: next.yMin, yMax: next.yMax });
+        } else {
+          chart.pan(intent);
+        }
+      };
+
+      const applyTouchZoom = (axis: ZoomAxis, yAxis: SeriesYAxis | undefined, factor: number, cx: number, cy: number): void => {
+        const intent = applyZoomPolicy({ factor, cx, cy, axis }, yAxis ?? "left");
+        if (!intent) return;
+        if (yAxis && axis === "y") {
+          const next = chart.getCamera(yAxis).clone();
+          next.zoom(intent);
+          chart.setYViewport(yAxis, { yMin: next.yMin, yMax: next.yMax });
+        } else {
+          chart.zoom(intent);
+        }
+      };
+
       const onTouchStart = (event: TouchEvent): void => {
         if (event.touches.length === 0) return;
+        const config = touchTargetConfig(event.currentTarget);
+        if (!config) return;
+        if (event.currentTarget !== canvas && options.axisInteractions === false) return;
         captureResetViewport();
         if (event.touches.length >= 2 && options.pinchZoom !== false) {
           event.preventDefault();
           const distance = touchDistance(event.touches);
-          if (distance && distance > 0) touchGesture = { mode: "pinch", lastDistance: distance };
+          if (distance && distance > 0) touchGesture = { mode: "pinch", axis: config.axis, yAxis: config.yAxis, lastDistance: distance };
           return;
         }
         if (options.touchPan === false) return;
         const touch = event.touches.item(0);
         if (!touch) return;
         event.preventDefault();
-        touchGesture = { mode: "pan", lastX: touch.clientX, lastY: touch.clientY };
+        touchGesture = { mode: "pan", axis: config.axis, yAxis: config.yAxis, lastX: touch.clientX, lastY: touch.clientY };
       };
 
       const onTouchMove = (event: TouchEvent): void => {
@@ -426,15 +469,14 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           const center = touchCenter(event.touches);
           if (!distance || !center) return;
           if (touchGesture.mode !== "pinch" || touchGesture.lastDistance <= 0) {
-            touchGesture = { mode: "pinch", lastDistance: distance };
+            touchGesture = { mode: "pinch", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastDistance: distance };
             return;
           }
           const factor = distance / touchGesture.lastDistance;
           const cx = rect.width > 0 ? (center.x - rect.left) / rect.width : 0.5;
           const cy = rect.height > 0 ? 1 - (center.y - rect.top) / rect.height : 0.5;
-          const intent = applyZoomPolicy({ factor, cx, cy, axis: resolveAxis(options.axis) });
-          if (intent) chart.zoom(intent);
-          touchGesture = { mode: "pinch", lastDistance: distance };
+          applyTouchZoom(touchGesture.axis, touchGesture.yAxis, factor, cx, cy);
+          touchGesture = { mode: "pinch", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastDistance: distance };
           return;
         }
         if (touchGesture.mode !== "pan" || options.touchPan === false) return;
@@ -443,24 +485,24 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         event.preventDefault();
         const dx = rect.width > 0 ? (touchGesture.lastX - touch.clientX) / rect.width : 0;
         const dy = rect.height > 0 ? (touch.clientY - touchGesture.lastY) / rect.height : 0;
-        const intent = applyPanPolicy({ dx, dy }, resolveAxis(options.axis));
-        if (intent) chart.pan(intent);
-        touchGesture = { mode: "pan", lastX: touch.clientX, lastY: touch.clientY };
+        applyTouchPan(touchGesture.axis, touchGesture.yAxis, dx, dy);
+        touchGesture = { mode: "pan", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastX: touch.clientX, lastY: touch.clientY };
       };
 
       const onTouchEnd = (event: TouchEvent): void => {
-        if (event.touches.length >= 2 && options.pinchZoom !== false) {
+        if (event.touches.length >= 2 && options.pinchZoom !== false && touchGesture) {
           const distance = touchDistance(event.touches);
-          if (distance && distance > 0) touchGesture = { mode: "pinch", lastDistance: distance };
+          if (distance && distance > 0) touchGesture = { mode: "pinch", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastDistance: distance };
           return;
         }
-        if (event.touches.length === 1 && options.touchPan !== false) {
+        if (event.touches.length === 1 && options.touchPan !== false && touchGesture) {
           const touch = event.touches.item(0);
-          if (touch) touchGesture = { mode: "pan", lastX: touch.clientX, lastY: touch.clientY };
+          if (touch) touchGesture = { mode: "pan", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastX: touch.clientX, lastY: touch.clientY };
           return;
         }
+        const completedOnCanvas = touchGesture !== null && (event.currentTarget === canvas || !touchGesture.yAxis && touchGesture.axis === resolveAxis(options.axis));
         touchGesture = null;
-        if (options.doubleTapReset === false || event.changedTouches.length !== 1) return;
+        if (!completedOnCanvas || options.doubleTapReset === false || event.changedTouches.length !== 1) return;
         const touch = event.changedTouches.item(0);
         if (!touch) return;
         const now = event.timeStamp;
@@ -500,6 +542,18 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         xAxis.addEventListener("dblclick", onDoubleClick);
         yAxis.addEventListener("dblclick", onDoubleClick);
         y2Axis.addEventListener("dblclick", onDoubleClick);
+        xAxis.addEventListener("touchstart", onTouchStart, { passive: false });
+        xAxis.addEventListener("touchmove", onTouchMove, { passive: false });
+        xAxis.addEventListener("touchend", onTouchEnd, { passive: false });
+        xAxis.addEventListener("touchcancel", onTouchEnd, { passive: false });
+        yAxis.addEventListener("touchstart", onTouchStart, { passive: false });
+        yAxis.addEventListener("touchmove", onTouchMove, { passive: false });
+        yAxis.addEventListener("touchend", onTouchEnd, { passive: false });
+        yAxis.addEventListener("touchcancel", onTouchEnd, { passive: false });
+        y2Axis.addEventListener("touchstart", onTouchStart, { passive: false });
+        y2Axis.addEventListener("touchmove", onTouchMove, { passive: false });
+        y2Axis.addEventListener("touchend", onTouchEnd, { passive: false });
+        y2Axis.addEventListener("touchcancel", onTouchEnd, { passive: false });
       }
 
       for (const target of pointerTargets) {
@@ -531,6 +585,18 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         xAxis.removeEventListener("dblclick", onDoubleClick);
         yAxis.removeEventListener("dblclick", onDoubleClick);
         y2Axis.removeEventListener("dblclick", onDoubleClick);
+        xAxis.removeEventListener("touchstart", onTouchStart);
+        xAxis.removeEventListener("touchmove", onTouchMove);
+        xAxis.removeEventListener("touchend", onTouchEnd);
+        xAxis.removeEventListener("touchcancel", onTouchEnd);
+        yAxis.removeEventListener("touchstart", onTouchStart);
+        yAxis.removeEventListener("touchmove", onTouchMove);
+        yAxis.removeEventListener("touchend", onTouchEnd);
+        yAxis.removeEventListener("touchcancel", onTouchEnd);
+        y2Axis.removeEventListener("touchstart", onTouchStart);
+        y2Axis.removeEventListener("touchmove", onTouchMove);
+        y2Axis.removeEventListener("touchend", onTouchEnd);
+        y2Axis.removeEventListener("touchcancel", onTouchEnd);
         for (const target of pointerTargets) {
           target.removeEventListener("pointermove", onPointerMove);
           target.removeEventListener("pointerup", onPointerUp);
@@ -540,6 +606,9 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         canvas.style.touchAction = originalCanvasTouchAction;
         yAxis.style.pointerEvents = originalYAxisPointerEvents;
         y2Axis.style.pointerEvents = originalY2AxisPointerEvents;
+        xAxis.style.touchAction = originalXAxisTouchAction;
+        yAxis.style.touchAction = originalYAxisTouchAction;
+        y2Axis.style.touchAction = originalY2AxisTouchAction;
         xAxis.style.cursor = originalXAxisCursor;
         yAxis.style.cursor = originalYAxisCursor;
         y2Axis.style.cursor = originalY2AxisCursor;

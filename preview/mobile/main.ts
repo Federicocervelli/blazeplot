@@ -3,7 +3,6 @@ import type { ChartFrameStats } from "@/index.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
-import { tooltipPlugin } from "@/plugins/tooltip.ts";
 
 const target = requireElement<HTMLElement>("chart");
 const status = requireElement<HTMLElement>("status");
@@ -28,7 +27,6 @@ const chart = new Chart(target, {
   plugins: [
     interactionsPlugin({ minDragDistancePx: 6 }),
     crosshairPlugin({ snap: "nearest-x", label: true, longPressMs: 420 }),
-    tooltipPlugin({ longPressMs: 420 }),
     legendPlugin({ position: "top-left" }),
   ],
 });
