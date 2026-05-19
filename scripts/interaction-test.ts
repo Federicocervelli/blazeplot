@@ -83,6 +83,7 @@ async function main(): Promise<void> {
     await runInteractionsCase(options, serverUrl);
     await runSelectionCase(options, serverUrl);
     await runLinkedCase(options, serverUrl);
+    await runMobileCase(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
@@ -129,6 +130,37 @@ async function runInteractionsCase(options: Options, serverUrl: string): Promise
     assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1), "double-click reset restores x span");
 
     console.log("✓ interactions: hover, crosshair, wheel zoom, shift pan, box zoom, reset");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function runMobileCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "mobile");
+  try {
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
+    let snapshot = await waitForReady(cdp, options.timeoutMs);
+    const rect = snapshot.canvasRect;
+    const center = centerOf(rect);
+    const initialSpan = spanX(snapshot.viewport);
+
+    await touchDrag(cdp, center.x, center.y, center.x + 120, center.y);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(Math.abs(snapshot.viewport.xMin - snapshot.initialViewport.xMin) > 1, "single-touch pan changes viewport");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(100);
+    await pinch(cdp, center.x, center.y, 48, 112);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(spanX(snapshot.viewport) < initialSpan * 0.8, "pinch-out zoom shrinks x span");
+
+    await doubleTap(cdp, center.x, center.y);
+    await sleep(250);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(close(spanX(snapshot.viewport), initialSpan, 1), "double-tap reset restores x span");
+    console.log("✓ mobile: touch pan, pinch zoom, double-tap reset");
   } finally {
     cdp.close();
   }
@@ -313,6 +345,36 @@ async function doubleClick(cdp: CdpClient, x: number, y: number): Promise<void> 
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1, pointerType: "mouse" });
   await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 2, pointerType: "mouse" });
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 2, pointerType: "mouse" });
+}
+
+async function touchDrag(cdp: CdpClient, x0: number, y0: number, x1: number, y1: number): Promise<void> {
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: x0, y: y0, id: 1 }] });
+  await sleep(50);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x1, y: y1, id: 1 }] });
+  await sleep(50);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
+
+async function pinch(cdp: CdpClient, centerX: number, centerY: number, startRadius: number, endRadius: number): Promise<void> {
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [
+    { x: centerX - startRadius, y: centerY, id: 1 },
+    { x: centerX + startRadius, y: centerY, id: 2 },
+  ] });
+  await sleep(50);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [
+    { x: centerX - endRadius, y: centerY, id: 1 },
+    { x: centerX + endRadius, y: centerY, id: 2 },
+  ] });
+  await sleep(50);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
+
+async function doubleTap(cdp: CdpClient, x: number, y: number): Promise<void> {
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await sleep(90);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 }
 
 function centerOf(rect: RectSnapshot): { x: number; y: number } {

@@ -236,10 +236,10 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Support per-panel titles, axes, legends, and series groups.
 
 12. **Mobile and touch support**
-   - [ ] Add touch-first interaction presets for pan, pinch zoom, long-press tooltip/crosshair, and double-tap reset.
-   - [ ] Ensure tooltip, crosshair, selection, navigator, and legend interactions are usable without hover.
+   - [x] Add touch-first interaction presets for pan, pinch zoom, and double-tap reset.
+   - [ ] Add long-press tooltip/crosshair behavior and ensure selection, navigator, and legend interactions are usable without hover.
    - [ ] Improve mobile layout defaults for outside axes, controls, legends, and dense tick labels.
-   - [ ] Add mobile preview/testing scenarios for high-DPR phones and tablets.
+   - [x] Add mobile preview/testing scenarios for automated touch gestures.
 
 13. **Tree-shakable plugin-owned UI and theme extension**
    - [ ] Audit public exports and build output so chart-only imports do not pull optional plugin code or plugin DOM UI.
@@ -261,7 +261,7 @@ Current automated coverage is strongest for core data structures and interaction
 - [x] Browser visual test harness renders focused chart/plugin cases for line, area, scatter, bar, OHLC, candlestick, axes/titles/grid, legend, tooltip, crosshair, annotations, selection, and navigator.
 - [x] WebGL smoke tests assert render modes, draw calls, rendered points, and `chart.screenshot()` output in a controlled browser.
 - [x] Browser interaction test harness simulates real input events for hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection.
-- [ ] Expand DOM/plugin interaction tests to cover legend toggles, navigator handle dragging, axis-specific drag/zoom, touch gestures, and annotation hit behavior.
+- [ ] Expand DOM/plugin interaction tests to cover legend toggles, navigator handle dragging, axis-specific drag/zoom, annotation hit behavior, and long-press touch behavior.
 - [ ] Screenshot/export regression tests with image comparison baselines for plot + DOM overlay composition.
 - [ ] Benchmark trend storage/comparison so CI can flag large regressions without being flaky on shared runners.
 
