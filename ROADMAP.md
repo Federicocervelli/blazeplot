@@ -29,7 +29,7 @@ class FutureWebGPUBackend { …} # V3
 
 Package output is detached from the preview app:
 - `bun run dev` serves `preview/`.
-- `bun run build` emits `dist/index.js` and `dist/index.d.ts` from `src/index.ts`.
+- `bun run build` emits core `dist/index.js` / `dist/index.d.ts` plus separate `react`, `linked`, `export`, and built-in plugin subpath chunks/declarations.
 - `preview/` is excluded from npm package contents.
 
 ---
@@ -63,7 +63,7 @@ Current implementation uses a `RingBuffer` + `MinMaxPyramid` for contiguous stre
 - [x] `DataCursor` — binary search by X value
 - [x] Tests for `RingBuffer`, `MinMaxPyramid`, and `Camera2D`
 - [x] **General dataset abstraction** — `Dataset`/`AppendableDataset` interfaces. `RingBuffer` satisfies `AppendableDataset`. `StaticDataset` wraps any typed arrays. `MinMaxPyramid`/`DataCursor`/`SeriesStore` all accept `Dataset`. Same render path for streaming and static data.
-- [x] **LOD as a strategy, not a requirement** — `SeriesConfig.downsample` accepts `"minmax" | "none"` (optional, defaults to `"minmax"`). Line/bar use min/max when enabled, scatter uses exact 2D-culled chunks for `"none"` and a 2D viewport-aware point sampler with min/max interval pruning for LOD, and area renders raw sampled strips.
+- [x] **LOD as a strategy, not a requirement** — `SeriesConfig.downsample` accepts `"minmax" | "none" | "server"` (optional, defaults to `"minmax"`). Line/bar use min/max when enabled, `"server"` renders pre-sampled min/max buckets directly when the dataset provides them, scatter uses exact 2D-culled chunks for `"none"` and a 2D viewport-aware point sampler with min/max interval pruning for LOD, and area renders raw sampled strips.
 - [x] **Incremental pyramid update** — current: O(log N) per append instead of full rebuild. Only recomputes the affected tail at each level. `SeriesStore` avoids repeated full rebuilds after fixed-capacity ring shifts and uses the generic `RangeMinMaxDataset.rangeMinMaxY()` capability for dense extraction; `RingBuffer` implements it with a physical segment tree for wrapped streaming queries.
 
 ---
@@ -131,8 +131,8 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 
 **Status: basic shape exists**
 
-- [x] `new Chart(canvas)`
-- [x] `new Chart(canvas, { viewportPolicy })`
+- [x] `new Chart(targetElement)`
+- [x] `new Chart(targetElement, { viewportPolicy })`
 - [x] `chart.addSeries(config, style)`
 - [x] `chart.setViewport({ xMin, xMax, yMin, yMax })`
 - [x] `chart.start()` / `chart.stop()`
@@ -150,16 +150,32 @@ Camera modifies `Camera2D`, renderer reads it. No direct data access from intera
 - [x] Legend plugin (`legendPlugin`) built on public series state APIs
 - [x] Tooltip / hit testing (`tooltipPlugin`, `chart.pick`, `chart.subscribe("hover")`; actual raw sample X/Y, per-frame live hover refresh, highlighted sample markers)
 - [x] `chart.addLine(config)`, `chart.addArea(config)`, `chart.addScatter(config)`, `chart.addBar(config)`, `chart.addOhlc(config)`, `chart.addCandlestick(config)` helpers.
+- [x] `chart.fitToData(options)` for fitting X and/or left/right Y viewports to visible or supplied series, with optional padding and include-zero behavior.
+- [x] Dataset-backed series ergonomics: `capacity` is optional when `dataset` is supplied, so static data quick starts can use `new StaticDataset(x, y)` without ring-buffer parameters.
+- [x] Server-sampled data support: `ServerSampledDataset` accepts replaceable point samples or pre-bucketed min/max data from an API; use `downsample: "server"` to render server min/max buckets without applying another client-side sampler.
 
 Package status:
-- [x] Current npm package version: `0.1.12`
+- [x] Current npm package version: `0.3.2`
 - [x] `exports`, `main`, `module`, and `types` point at `dist/`
 - [x] Optional plugin subpath exports point at separate `dist/plugins/*` chunks
 - [x] Vite library build from `src/index.ts`
 - [x] Declaration emit via `vite-plugin-dts`
-- [x] CI release workflow with npm publish and provenance
+- [x] Merge-to-`main` release workflow with npm publish, provenance, `vX.Y.Z` tags, and GitHub Releases
 
 ---
+
+## Release engineering and CI
+
+**Status: protected-branch release flow complete**
+
+- [x] `main` is the protected release branch; release PRs merge there only after the `validate` status check passes.
+- [x] `development` is the integration branch for feature/fix work before release PRs.
+- [x] `bun run ci` runs typecheck, tests, package build, package export smoke test, package contents dry-run, bundle-size check, headless browser benchmark smoke test, automated visual tests, and automated browser interaction tests.
+- [x] GitHub CI runs the same `validate` check for PRs to `main`/`development` and pushes to `development`.
+- [x] Release workflow publishes only unpublished `package.json` versions and skips publish work when the version tag already exists.
+- [x] Release changelogs include benchmark tables via `bun run release:benchmarks`; the release workflow appends them with `--if-missing` before GitHub Release creation.
+- [x] GitHub Pages deploys combined branch previews: stable `main` at `/blazeplot/` and in-progress `development` at `/blazeplot/development/`.
+- [x] Release and benchmark operations are documented in `docs/release-and-benchmarks.md`.
 
 ## Competitive feature roadmap
 
@@ -194,45 +210,118 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Include data coordinates, plot/client coordinates, target series, nearest sample, and active modifier keys where relevant.
    - [x] Keep plugin-facing events stable and avoid DOM implementation leaks.
 
-8. **Navigator / overview mini-map plugin**
+6. **Annotation overlay plugin**
+   - [x] Add first-party `blazeplot/plugins/annotations` entrypoint with a plugin-owned SVG overlay.
+   - [x] Support X/Y lines, X/Y ranges, boxes, points, labels, visibility, IDs, per-annotation styles, and left/right Y-axis targeting.
+   - [x] Provide runtime `add`, `remove`, `clear`, `setAnnotations`, and `getAnnotations` APIs.
+   - [x] Add annotation hit testing and hover/click event payloads that identify the annotation and data-space anchor/bounds.
+   - [ ] Add optional drag/edit handles for movable lines, ranges, boxes, points, and labels.
+   - [x] Include plugin SVG overlays, including annotations, in `chart.screenshot()` composition.
+
+7. **Autoscale / fit-to-data viewport policies**
+   - [x] Add `chart.fitToData()` with per-axis options for fitting all visible series or a supplied series subset.
+   - [x] Add auto-Y-on-visible-X policies with configurable padding and include-zero behavior.
+   - [x] Add streaming follow policies that can pause on manual navigation and resume explicitly.
+   - [ ] Expose typed policy hooks so applications can combine autoscale, fixed ranges, and synchronized chart constraints.
+
+8. **Missing-data and discontinuity semantics**
+   - [x] Define and document behavior for `NaN`, infinities, duplicate X values, unsorted X values, and empty datasets.
+   - [ ] Render explicit line/area gaps across invalid or missing samples instead of connecting across discontinuities.
+   - [ ] Preserve gap semantics through LOD extraction, picking, tooltip grouping, screenshot export, and static/streaming datasets.
+   - [ ] Add validation/error modes so callers can choose between permissive skip, warning, or throw behavior for bad data.
+
+9. **Navigator / overview mini-map plugin**
    - [x] Add a small overview plot with draggable visible-window handles.
    - [x] Support live streaming follow mode and manual historical browsing.
    - [x] Reuse existing LOD paths for large overview datasets.
    - [x] Allow height, placement, styles, and linked series configuration.
 
-9. **React wrapper package**
-   - [x] Add first-party `@blazeplot/react` package or subpath.
+10. **React wrapper package**
+   - [x] Add first-party `blazeplot/react` subpath.
    - [x] Provide `BlazeChart` component with ref access to the underlying `Chart`.
    - [x] Handle mount/dispose, prop updates, plugin lifecycle, and resize automatically.
-   - [ ] Include examples for streaming data, tooltips, legends, and custom plugins.
+   - [x] Include examples for streaming data, tooltips, legends, and custom plugins.
+   - [x] Add a React Pages preview for stable and development branches.
 
-10. **More scales: built-in and configurable**
+11. **More scales: built-in and configurable**
    - [x] Add built-in `linear`, `time`, `log`, and `symlog` scale implementations.
    - [x] Add optional built-in categorical/ordinal axis support for bar-like views.
    - [x] Provide a configurable/custom scale interface with `toScreen`, `fromScreen`, `ticks`, and `formatTick` hooks where feasible.
-   - [ ] Support reversed axes, log base configuration, symlog constant configuration, and domain validation.
-   - [ ] Ensure LOD/query paths remain data-space based and scale transforms are applied only at interaction/render mapping boundaries.
+   - [x] Support reversed axes, log base configuration, symlog constant configuration, and domain validation.
+   - [x] Ensure LOD/query paths remain data-space based and scale transforms are applied only at interaction/render mapping boundaries.
 
-11. **Linked multi-chart layout**
+12. **Linked multi-chart layout**
    - [x] Add a layout helper for stacked/side-by-side charts with shared X and independent Y axes.
-   - [ ] Support synchronized camera ranges, cursor/crosshair, selections, and tooltips.
+   - [x] Support synchronized X camera ranges across linked charts.
+   - [x] Support synchronized cursor/crosshair, selections, and tooltips across linked charts.
    - [x] Allow configurable spacing/gutters between linked plot areas.
    - [x] Support per-panel titles, axes, legends, and series groups.
 
-12. **Mobile and touch support**
-   - [ ] Add touch-first interaction presets for pan, pinch zoom, long-press tooltip/crosshair, and double-tap reset.
-   - [ ] Ensure tooltip, crosshair, selection, navigator, and legend interactions are usable without hover.
+13. **Mobile and touch support**
+   - [x] Add touch-first interaction presets for pan, pinch zoom, and double-tap reset.
+   - [x] Add long-press tooltip/crosshair behavior.
+   - [ ] Ensure selection, navigator, and legend interactions are usable without hover.
    - [ ] Improve mobile layout defaults for outside axes, controls, legends, and dense tick labels.
-   - [ ] Add mobile preview/testing scenarios for high-DPR phones and tablets.
+   - [x] Add mobile preview/testing scenarios for automated touch gestures.
 
-13. **Tree-shakable plugin-owned UI and theme extension**
+14. **Accessibility and keyboard support**
+   - [x] Add ARIA labels/roles for chart roots and plot/canvas/axis presentation semantics.
+   - [x] Add keyboard pan, zoom, and fit-to-data reset with configurable pan/zoom amounts.
+   - [x] Add ARIA labels/roles for legends, tooltips, navigators, and plugin controls.
+   - [x] Add keyboard navigator window movement; keyboard selection/edit shortcuts remain future work.
+   - [x] Add focus management and visible focus styles for chart roots and keyboard-focusable plugin controls.
+   - [ ] Add high-contrast theme guidance and reduced-motion behavior where animations/interactions are introduced.
+   - [ ] Add automated accessibility checks for representative previews.
+
+15. **Export and sharing improvements**
+   - [x] Support `chart.screenshot()` image MIME type, quality, background, and DPR options.
+   - [x] Add explicit output width/height options independent of the live layout size.
+   - [x] Add transparent-background export support.
+   - [x] Add optional download and clipboard helper utilities outside the core chart path via `blazeplot/export`.
+   - [x] Add transparent, dark, and light export presets.
+   - [x] Add export coverage for plugin-owned SVG overlays.
+
+16. **Tree-shakable plugin-owned UI and theme extension**
    - [ ] Audit public exports and build output so chart-only imports do not pull optional plugin code or plugin DOM UI.
    - [ ] Move plugin-specific DOM/UI helpers fully behind their plugin subpath entries.
    - [ ] Keep `Chart` responsible for only the core plugin contract, layout reservations, and generic extension hooks.
    - [ ] Decouple plugin theme values from the core `ChartTheme` shape where practical; let plugins define/resolve their own optional theme extensions.
    - [ ] Provide typed extension points for plugin-owned theme tokens without forcing every consumer to import every built-in plugin's theme surface.
 
+17. **Documentation and examples**
+   - [x] Add a plugin authoring guide covering lifecycle, public chart APIs, layout reservations, events, theme extensions, and subpath packaging.
+   - [x] Add theming and responsive-layout guides with mobile, dark mode, and high-density data examples.
+   - [x] Add performance recipes for streaming ingestion, static datasets, LOD strategy choices, worker-fed data, and memory budgeting.
+   - [x] Add API stability/versioning notes and migration guidance for breaking changes.
+   - [x] Add real-world example recipes for financial OHLC/candlestick charts, multi-panel dashboards, annotations, export workflows, and React integration.
+
 ---
+
+## Testing and quality roadmap
+
+Current automated coverage is strongest for core data structures and interaction math, with CI browser benchmark, visual, and interaction harnesses covering the WebGL/DOM/plugin paths at a broader smoke/regression level.
+
+- [x] Core unit tests for ring buffers, static datasets, OHLC datasets, min/max pyramids, series extraction, and picking helpers.
+- [x] Interaction unit tests for `Camera2D` and `AxisController` behavior.
+- [x] CI `validate` check runs typecheck, unit tests, package build, package export smoke test, package contents dry-run, bundle-size check, headless `ci-smoke` browser benchmark, chart visual tests, and browser interaction tests.
+- [x] Release changelogs include benchmark result tables for each published version.
+- [x] Browser visual test harness renders focused chart/plugin cases for line, area, scatter, bar, OHLC, candlestick, axes/titles/grid, legend, tooltip, crosshair, annotations, selection, and navigator.
+- [x] WebGL smoke tests assert render modes, draw calls, rendered points, and `chart.screenshot()` output in a controlled browser.
+- [x] Browser interaction test harness simulates real input events for hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection.
+- [ ] Expand DOM/plugin interaction tests to cover legend toggles, navigator handle dragging, axis-specific drag/zoom, annotation hit behavior, and mobile no-hover workflows.
+- [ ] Screenshot/export regression tests with image comparison baselines for plot + DOM/plugin overlay composition.
+- [ ] Benchmark trend storage/comparison so CI can flag large regressions without being flaky on shared runners.
+- [x] Package export smoke tests for every public subpath (`blazeplot`, `react`, `linked`, `export`, and each built-in plugin) against built output.
+- [x] Bundle-size regression checks for core, shared, and optional plugin chunks.
+- [ ] WebGL context-loss/context-restore browser tests once context recovery support is implemented.
+
+## Runtime resilience and packaging roadmap
+
+- [ ] Handle WebGL context loss/restoration by rebuilding regl resources, GPU buffers, and cached draw commands without leaking chart state.
+- [x] Expose a clear WebGL2-unavailable error path/API so host applications can render their own fallback UI.
+- [ ] Add dispose/resource leak stress tests for repeated chart/plugin mount, unmount, series churn, resize, and screenshot cycles.
+- [x] Validate npm package contents and generated declaration files in CI before release PRs.
+- [x] Track dependency and browser-support assumptions, especially WebGL2/regl behavior across Chrome, Firefox, Safari, and mobile browsers.
 
 ## Backend strategy
 
@@ -262,17 +351,19 @@ regl rules for V1:
 
 ## What we're NOT doing (V1)
 
-- SVG / Canvas2D fallback
+- SVG / Canvas2D fallback renderer for core plot drawing
 - Spline interpolation
 - Antialias perfection
 - Recalculating axes in render loop
-- Per-series draw call without batching
+- Keeping long-term per-series draw calls once batching is available
 
 ---
 
 ## Future / difficult
 
-- Multi-chart sync
-- Multiple Y axes
-- FFT / waterfall
+- Multiple independent Y axes beyond the current left/right axis pair
+- Error bars and confidence bands
+- Stacked area/bar charts
+- Histogram/binning helpers
+- Heatmap, spectrogram, FFT, and waterfall views
 - WebGPU backend

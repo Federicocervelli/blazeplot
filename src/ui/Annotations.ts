@@ -1,4 +1,4 @@
-import type { Chart, ChartPlugin } from "./Chart.js";
+import type { Chart, ChartPlugin, ChartPointerEventState } from "./Chart.js";
 import type { SeriesYAxis } from "../core/types.js";
 
 export interface AnnotationLabelOptions {
@@ -93,6 +93,29 @@ export type Annotation =
   | PointAnnotation
   | LabelAnnotation;
 
+export interface AnnotationHitBounds {
+  readonly xMin?: number;
+  readonly xMax?: number;
+  readonly yMin?: number;
+  readonly yMax?: number;
+  readonly x?: number;
+  readonly y?: number;
+}
+
+export interface AnnotationHitEvent {
+  readonly annotation: Annotation;
+  readonly clientX: number;
+  readonly clientY: number;
+  readonly plotX: number;
+  readonly plotY: number;
+  readonly dataX: number;
+  readonly dataY: number;
+  readonly bounds: AnnotationHitBounds;
+  readonly source?: ChartPointerEventState;
+}
+
+export type AnnotationHitEventType = "hover" | "click";
+
 export interface AnnotationsPluginOptions {
   readonly annotations?: readonly Annotation[];
   readonly className?: string;
@@ -100,6 +123,9 @@ export interface AnnotationsPluginOptions {
   readonly defaultFillColor?: string;
   readonly defaultFont?: string;
   readonly zIndex?: number;
+  readonly hitTolerancePx?: number;
+  readonly onHover?: (event: AnnotationHitEvent | null) => void;
+  readonly onClick?: (event: AnnotationHitEvent) => void;
 }
 
 export interface AnnotationsPlugin extends ChartPlugin {
@@ -108,6 +134,9 @@ export interface AnnotationsPlugin extends ChartPlugin {
   clear(): void;
   setAnnotations(annotations: readonly Annotation[]): void;
   getAnnotations(): readonly Annotation[];
+  pick(clientX: number, clientY: number): AnnotationHitEvent | null;
+  subscribe(event: "hover", callback: (event: AnnotationHitEvent | null) => void): () => void;
+  subscribe(event: "click", callback: (event: AnnotationHitEvent) => void): () => void;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -138,6 +167,95 @@ function isInsidePlot(x: number, y: number, width: number, height: number): bool
   return x >= 0 && x <= width && y >= 0 && y <= height;
 }
 
+function isNear(value: number, target: number, tolerance: number): boolean {
+  return Math.abs(value - target) <= tolerance;
+}
+
+function isInsideRect(x: number, y: number, rect: { x: number; y: number; w: number; h: number }, tolerance: number): boolean {
+  return x >= rect.x - tolerance && x <= rect.x + rect.w + tolerance && y >= rect.y - tolerance && y <= rect.y + rect.h + tolerance;
+}
+
+function annotationBounds(annotation: Annotation): AnnotationHitBounds {
+  switch (annotation.type) {
+    case "x-line":
+      return { x: annotation.x, xMin: annotation.x, xMax: annotation.x };
+    case "y-line":
+      return { y: annotation.y, yMin: annotation.y, yMax: annotation.y };
+    case "x-range":
+      return { xMin: Math.min(annotation.xMin, annotation.xMax), xMax: Math.max(annotation.xMin, annotation.xMax) };
+    case "y-range":
+      return { yMin: Math.min(annotation.yMin, annotation.yMax), yMax: Math.max(annotation.yMin, annotation.yMax) };
+    case "box":
+      return {
+        xMin: Math.min(annotation.xMin, annotation.xMax),
+        xMax: Math.max(annotation.xMin, annotation.xMax),
+        yMin: Math.min(annotation.yMin, annotation.yMax),
+        yMax: Math.max(annotation.yMin, annotation.yMax),
+      };
+    case "point":
+    case "label":
+      return { x: annotation.x, y: annotation.y };
+  }
+}
+
+function hitTestAnnotation(chart: Chart, annotation: Annotation, plotX: number, plotY: number, width: number, height: number, tolerance: number): boolean {
+  if (annotation.visible === false) return false;
+  const viewport = chart.getViewport(annotation.yAxis ?? "left");
+  const xToPx = (x: number): number => ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * width;
+  const yToPx = (y: number): number => ((viewport.yMax - y) / (viewport.yMax - viewport.yMin)) * height;
+
+  switch (annotation.type) {
+    case "x-line":
+      return isNear(plotX, xToPx(annotation.x), tolerance) && plotY >= -tolerance && plotY <= height + tolerance;
+    case "y-line":
+      return isNear(plotY, yToPx(annotation.y), tolerance) && plotX >= -tolerance && plotX <= width + tolerance;
+    case "x-range": {
+      const rect = clampRect(xToPx(annotation.xMin), 0, xToPx(annotation.xMax), height, width, height);
+      return rect ? isInsideRect(plotX, plotY, rect, tolerance) : false;
+    }
+    case "y-range": {
+      const rect = clampRect(0, yToPx(annotation.yMax), width, yToPx(annotation.yMin), width, height);
+      return rect ? isInsideRect(plotX, plotY, rect, tolerance) : false;
+    }
+    case "box": {
+      const rect = clampRect(xToPx(annotation.xMin), yToPx(annotation.yMax), xToPx(annotation.xMax), yToPx(annotation.yMin), width, height);
+      return rect ? isInsideRect(plotX, plotY, rect, tolerance) : false;
+    }
+    case "point": {
+      const dx = plotX - xToPx(annotation.x);
+      const dy = plotY - yToPx(annotation.y);
+      const radius = annotation.radius ?? 5;
+      return dx * dx + dy * dy <= (radius + tolerance) * (radius + tolerance);
+    }
+    case "label": {
+      const x = xToPx(annotation.x);
+      const y = yToPx(annotation.y);
+      const rect = { x: x - tolerance, y: y - 16 - tolerance, w: Math.max(16, annotation.text.length * 7 + 8) + tolerance * 2, h: 22 + tolerance * 2 };
+      return isInsideRect(plotX, plotY, rect, 0);
+    }
+  }
+}
+
+function createHitEvent(chart: Chart, annotation: Annotation, clientX: number, clientY: number, source?: ChartPointerEventState): AnnotationHitEvent | null {
+  const rect = chart.canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const plotX = clientX - rect.left;
+  const plotY = clientY - rect.top;
+  const data = chart.clientToData(clientX, clientY, annotation.yAxis ?? "left");
+  if (!data) return null;
+  return {
+    annotation,
+    clientX,
+    clientY,
+    plotX,
+    plotY,
+    dataX: data[0],
+    dataY: data[1],
+    bounds: annotationBounds(annotation),
+    source,
+  };
+}
+
 export function annotationsPlugin(options: AnnotationsPluginOptions = {}): AnnotationsPlugin {
   let annotations = [...(options.annotations ?? [])];
   let chartRef: Chart | null = null;
@@ -145,9 +263,38 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
   const color = options.defaultColor ?? "rgba(255,255,255,0.85)";
   const fillColor = options.defaultFillColor ?? "rgba(255,255,255,0.12)";
   const font = options.defaultFont ?? "12px system-ui, sans-serif";
+  const hitTolerancePx = Math.max(0, options.hitTolerancePx ?? 6);
+  const hoverSubscribers = new Set<(event: AnnotationHitEvent | null) => void>();
+  const clickSubscribers = new Set<(event: AnnotationHitEvent) => void>();
+  let lastHoverAnnotation: Annotation | null = null;
 
   const requestRender = (): void => {
     if (chartRef && overlay) render(chartRef, overlay, annotations, color, fillColor, font);
+  };
+
+  const pickAt = (clientX: number, clientY: number, source?: ChartPointerEventState): AnnotationHitEvent | null => {
+    if (!chartRef) return null;
+    const rect = chartRef.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const plotX = clientX - rect.left;
+    const plotY = clientY - rect.top;
+    for (let i = annotations.length - 1; i >= 0; i--) {
+      const annotation = annotations[i]!;
+      if (hitTestAnnotation(chartRef, annotation, plotX, plotY, rect.width, rect.height, hitTolerancePx)) {
+        return createHitEvent(chartRef, annotation, clientX, clientY, source);
+      }
+    }
+    return null;
+  };
+
+  const emitHover = (event: AnnotationHitEvent | null): void => {
+    options.onHover?.(event);
+    for (const callback of hoverSubscribers) callback(event);
+  };
+
+  const emitClick = (event: AnnotationHitEvent): void => {
+    options.onClick?.(event);
+    for (const callback of clickSubscribers) callback(event);
   };
 
   return {
@@ -162,11 +309,24 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
       overlay.style.pointerEvents = "none";
       overlay.style.overflow = "hidden";
       overlay.style.zIndex = String(options.zIndex ?? 12);
+      overlay.setAttribute("aria-hidden", "true");
       chart.plotElement.appendChild(overlay);
       const unsubscribeRender = chart.subscribe("render", () => requestRender());
+      const unsubscribeMove = chart.subscribe("pointermove", (event) => {
+        const hit = pickAt(event.clientX, event.clientY, event);
+        const nextAnnotation = hit?.annotation ?? null;
+        if (nextAnnotation !== lastHoverAnnotation || hit) emitHover(hit);
+        lastHoverAnnotation = nextAnnotation;
+      });
+      const unsubscribeClick = chart.subscribe("click", (event) => {
+        const hit = pickAt(event.clientX, event.clientY, event);
+        if (hit) emitClick(hit);
+      });
       requestRender();
       return () => {
         unsubscribeRender();
+        unsubscribeMove();
+        unsubscribeClick();
         overlay?.remove();
         overlay = null;
         chartRef = null;
@@ -195,6 +355,19 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
     },
     getAnnotations(): readonly Annotation[] {
       return annotations;
+    },
+    pick(clientX: number, clientY: number): AnnotationHitEvent | null {
+      return pickAt(clientX, clientY);
+    },
+    subscribe(event: AnnotationHitEventType, callback: ((event: AnnotationHitEvent | null) => void) | ((event: AnnotationHitEvent) => void)): () => void {
+      if (event === "hover") {
+        const cb = callback as (event: AnnotationHitEvent | null) => void;
+        hoverSubscribers.add(cb);
+        return () => hoverSubscribers.delete(cb);
+      }
+      const cb = callback as (event: AnnotationHitEvent) => void;
+      clickSubscribers.add(cb);
+      return () => clickSubscribers.delete(cb);
     },
   };
 }

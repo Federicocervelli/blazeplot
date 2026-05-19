@@ -2,7 +2,7 @@ import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, Seri
 import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
-import { ReglBackend } from "../render/ReglBackend.js";
+import { isWebGL2Available, ReglBackend } from "../render/ReglBackend.js";
 import type { GpuBuffer } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
@@ -25,6 +25,56 @@ const FLOATS_PER_OHLC_TUPLE = 5;
 const GRID_LINE_VERTEX_CAPACITY = 64;
 const DEFAULT_POINT_SIZE_PX = 4;
 const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
+
+function normalizeFitPadding(padding: number | ChartFitToDataPadding | undefined): Required<ChartFitToDataPadding> {
+  if (typeof padding === "number") {
+    const value = Number.isFinite(padding) ? Math.max(0, padding) : 0;
+    return { x: value, y: value };
+  }
+  const x = padding?.x;
+  const y = padding?.y;
+  return {
+    x: typeof x === "number" && Number.isFinite(x) ? Math.max(0, x) : 0,
+    y: typeof y === "number" && Number.isFinite(y) ? Math.max(0, y) : 0,
+  };
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Unable to load SVG overlay for screenshot export."));
+    image.src = src;
+  });
+}
+
+function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: number): boolean {
+  const scale = Math.max(1, Math.abs(aMin), Math.abs(aMax), Math.abs(bMin), Math.abs(bMax));
+  const epsilon = scale * 1e-9;
+  return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
+}
+
+function screenshotBackground(options: ChartScreenshotOptions, themeBackground: string): string | null | undefined {
+  if (options.background !== undefined) return options.background;
+  if (options.transparent === true || options.preset === "transparent") return null;
+  if (options.preset === "dark") return "#0b1020";
+  if (options.preset === "light") return "#ffffff";
+  return themeBackground;
+}
+
+function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
+  let nextMin = includeZero ? Math.min(0, min) : min;
+  let nextMax = includeZero ? Math.max(0, max) : max;
+  let span = nextMax - nextMin;
+  if (span <= 0) {
+    const halfSpan = Math.max(1, Math.abs(nextMin)) * 0.5;
+    nextMin -= halfSpan;
+    nextMax += halfSpan;
+    span = nextMax - nextMin;
+  }
+  const amount = span * padding;
+  return { min: nextMin - amount, max: nextMax + amount };
+}
 
 export interface TextOverlayConfig {
   readonly text: string;
@@ -67,6 +117,20 @@ export interface ChartPlugin {
   install(chart: Chart): void | (() => void) | ChartPluginHandle;
 }
 
+export interface ChartAccessibilityOptions {
+  readonly enabled?: boolean;
+  readonly label?: string;
+  readonly description?: string;
+  readonly role?: string;
+  readonly keyboard?: boolean | ChartKeyboardOptions;
+}
+
+export interface ChartKeyboardOptions {
+  readonly enabled?: boolean;
+  readonly panFraction?: number;
+  readonly zoomFactor?: number;
+}
+
 export interface ChartOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly grid?: boolean;
@@ -75,6 +139,9 @@ export interface ChartOptions {
   readonly title?: string | ChartTitleConfig;
   readonly subtitle?: string | ChartTitleConfig;
   readonly hover?: ChartPickOptions;
+  readonly accessibility?: boolean | ChartAccessibilityOptions;
+  readonly autoFitY?: boolean | ChartAutoFitYOptions;
+  readonly followX?: boolean | ChartFollowXOptions;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
 }
@@ -150,11 +217,51 @@ export interface ChartHoverState {
   readonly items: readonly ChartPickItem[];
 }
 
+export type ChartScreenshotPreset = "theme" | "transparent" | "dark" | "light";
+
 export interface ChartScreenshotOptions {
   readonly type?: string;
   readonly quality?: number;
-  readonly background?: string;
+  readonly background?: string | null;
   readonly dpr?: number;
+  readonly width?: number;
+  readonly height?: number;
+  readonly transparent?: boolean;
+  readonly preset?: ChartScreenshotPreset;
+}
+
+export interface ChartFitToDataPadding {
+  readonly x?: number;
+  readonly y?: number;
+}
+
+export interface ChartFitToDataOptions {
+  readonly series?: readonly SeriesStore[];
+  readonly visibleOnly?: boolean;
+  readonly x?: boolean;
+  readonly y?: boolean;
+  readonly yAxis?: SeriesYAxis | "both";
+  readonly padding?: number | ChartFitToDataPadding;
+  readonly includeZero?: boolean;
+  readonly xMin?: number;
+  readonly xMax?: number;
+}
+
+export interface ChartAutoFitYOptions {
+  readonly enabled?: boolean;
+  readonly yAxis?: SeriesYAxis | "both";
+  readonly padding?: number | ChartFitToDataPadding;
+  readonly includeZero?: boolean;
+  readonly visibleOnly?: boolean;
+  readonly series?: readonly SeriesStore[];
+}
+
+export interface ChartFollowXOptions {
+  readonly enabled?: boolean;
+  readonly window?: number;
+  readonly pauseOnInteraction?: boolean;
+  readonly visibleOnly?: boolean;
+  readonly series?: readonly SeriesStore[];
 }
 
 export interface ChartLayoutReservation {
@@ -186,6 +293,10 @@ function normalizeAxisConfig(config: boolean | AxisConfig | undefined): Resolved
     scale: config.scale,
     tickFormat: config.tickFormat,
     timezone: config.timezone,
+    logBase: config.logBase,
+    symlogConstant: config.symlogConstant,
+    categories: config.categories,
+    reversed: config.reversed,
     title: config.title,
   };
 }
@@ -235,6 +346,10 @@ interface PickCandidate {
 }
 
 export class Chart {
+  static isWebGL2Available(): boolean {
+    return isWebGL2Available();
+  }
+
   private series: SeriesStore[] = [];
   private camera: Camera2D;
   private rightCamera: Camera2D;
@@ -288,16 +403,23 @@ export class Chart {
   private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
   private currentXOrigin: number = 0;
+  private xFollowPaused: boolean = false;
   private _rafId: number = 0;
   private _hoverRafId: number = 0;
   private readonly handlePointerMove = (event: PointerEvent): void => {
-    this.pointerInPlot = true;
-    this.lastPointerClientX = event.clientX;
-    this.lastPointerClientY = event.clientY;
-    this.scheduleHoverRefresh();
+    if (event.pointerType !== "touch") {
+      this.pointerInPlot = true;
+      this.lastPointerClientX = event.clientX;
+      this.lastPointerClientY = event.clientY;
+      this.scheduleHoverRefresh();
+    }
     if (this.pointerSubscribers.pointermove.size > 0) this.emitPointerEvent("pointermove", event);
   };
   private readonly handlePointerDown = (event: PointerEvent): void => {
+    if (event.pointerType === "touch") {
+      this.pointerInPlot = false;
+      this.emitHover(null);
+    }
     this.emitPointerEvent("pointerdown", event);
   };
   private readonly handlePointerUp = (event: PointerEvent): void => {
@@ -315,6 +437,9 @@ export class Chart {
     this.pointerInPlot = false;
     this.emitHover(null);
   };
+  private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    this.handleKeyboardNavigation(event);
+  };
 
   constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
     this.resolvedTheme = resolveChartTheme(options.theme, target);
@@ -323,9 +448,11 @@ export class Chart {
 
     this.layout = new ChartLayout(target, this.normalizedAxes);
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
+    this.applyAccessibility();
     this.applyCanvasSize();
     this.camera = new Camera2D();
     this.rightCamera = new Camera2D();
+    this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     this.renderer = new Renderer(new ReglBackend(this.layout.canvas));
@@ -356,6 +483,7 @@ export class Chart {
     this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
     this.canvas.addEventListener("click", this.handleClick);
     this.canvas.addEventListener("dblclick", this.handleDoubleClick);
+    this.layout.root.addEventListener("keydown", this.handleKeyDown);
 
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -422,11 +550,7 @@ export class Chart {
     const plotY = clientY - rect.top;
     if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
 
-    const viewport = this.getCamera(yAxis).viewport;
-    return [
-      viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin),
-      viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin),
-    ];
+    return this.getCamera(yAxis).screenToData(plotX, plotY, rect.width, rect.height);
   }
 
   getViewport(yAxis: SeriesYAxis = "left"): Viewport {
@@ -434,6 +558,7 @@ export class Chart {
   }
 
   pan(intent: PanIntent): void {
+    this.pauseXFollowForInteraction();
     this.camera.pan(intent);
     this.syncRightCameraX();
     this.emitViewportChange();
@@ -441,6 +566,7 @@ export class Chart {
   }
 
   zoom(intent: ZoomIntent): void {
+    this.pauseXFollowForInteraction();
     this.camera.zoom(intent);
     this.syncRightCameraX();
     this.emitViewportChange();
@@ -545,6 +671,137 @@ export class Chart {
     this.getCamera(yAxis).setViewport(v);
     this.emitViewportChange();
     this.refreshHover();
+  }
+
+  setXFollowPaused(paused: boolean): void {
+    this.xFollowPaused = paused;
+  }
+
+  resumeXFollow(): void {
+    this.xFollowPaused = false;
+    this.applyFollowXPolicy();
+  }
+
+  fitToData(options: ChartFitToDataOptions = {}): boolean {
+    const fitX = options.x !== false;
+    const fitY = options.y !== false;
+    if (!fitX && !fitY) return false;
+
+    const visibleOnly = options.visibleOnly !== false;
+    const yAxis = options.yAxis ?? "both";
+    const padding = normalizeFitPadding(options.padding);
+    let xMin = Infinity;
+    let xMax = -Infinity;
+    let leftYMin = Infinity;
+    let leftYMax = -Infinity;
+    let rightYMin = Infinity;
+    let rightYMax = -Infinity;
+
+    const candidates = options.series ?? this.series;
+    for (const series of candidates) {
+      if (!this.series.includes(series)) continue;
+      if (visibleOnly && !series.visible) continue;
+      const bounds = series.dataBounds({ xMin: options.xMin, xMax: options.xMax });
+      if (!bounds) continue;
+
+      xMin = Math.min(xMin, bounds.xMin);
+      xMax = Math.max(xMax, bounds.xMax);
+      const targetYAxis = series.config.yAxis ?? "left";
+      if (targetYAxis === "right") {
+        rightYMin = Math.min(rightYMin, bounds.yMin);
+        rightYMax = Math.max(rightYMax, bounds.yMax);
+      } else {
+        leftYMin = Math.min(leftYMin, bounds.yMin);
+        leftYMax = Math.max(leftYMax, bounds.yMax);
+      }
+    }
+
+    let changed = false;
+    if (fitX && Number.isFinite(xMin) && Number.isFinite(xMax)) {
+      const xDomain = paddedDomain(xMin, xMax, padding.x, false);
+      if (!domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xDomain.min, xDomain.max)) {
+        this.camera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
+        this.rightCamera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
+        changed = true;
+      }
+    }
+
+    if (fitY && (yAxis === "left" || yAxis === "both") && Number.isFinite(leftYMin) && Number.isFinite(leftYMax)) {
+      const yDomain = paddedDomain(leftYMin, leftYMax, padding.y, options.includeZero === true);
+      if (!domainsAlmostEqual(this.camera.yMin, this.camera.yMax, yDomain.min, yDomain.max)) {
+        this.camera.setViewport({ yMin: yDomain.min, yMax: yDomain.max });
+        changed = true;
+      }
+    }
+
+    if (fitY && (yAxis === "right" || yAxis === "both") && Number.isFinite(rightYMin) && Number.isFinite(rightYMax)) {
+      const yDomain = paddedDomain(rightYMin, rightYMax, padding.y, options.includeZero === true);
+      if (!domainsAlmostEqual(this.rightCamera.yMin, this.rightCamera.yMax, yDomain.min, yDomain.max)) {
+        this.rightCamera.setViewport({ yMin: yDomain.min, yMax: yDomain.max });
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.syncRightCameraX();
+      this.emitViewportChange();
+      this.refreshHover();
+    }
+    return changed;
+  }
+
+  private pauseXFollowForInteraction(): void {
+    const option = this.options.followX;
+    if (!option) return;
+    const config = typeof option === "object" ? option : undefined;
+    if (config?.pauseOnInteraction === false) return;
+    this.xFollowPaused = true;
+  }
+
+  private applyFollowXPolicy(): void {
+    const option = this.options.followX;
+    if (!option || this.xFollowPaused) return;
+    const config = typeof option === "object" ? option : undefined;
+    if (config?.enabled === false) return;
+
+    const visibleOnly = config?.visibleOnly !== false;
+    const candidates = config?.series ?? this.series;
+    let xMax = -Infinity;
+    for (const series of candidates) {
+      if (!this.series.includes(series)) continue;
+      if (visibleOnly && !series.visible) continue;
+      const bounds = series.dataBounds();
+      if (bounds) xMax = Math.max(xMax, bounds.xMax);
+    }
+    if (!Number.isFinite(xMax)) return;
+
+    const currentSpan = this.camera.xMax - this.camera.xMin;
+    const span = typeof config?.window === "number" && Number.isFinite(config.window) && config.window > 0
+      ? config.window
+      : currentSpan;
+    const xMin = xMax - span;
+    if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax)) return;
+    this.camera.setViewport({ xMin, xMax });
+    this.rightCamera.setViewport({ xMin, xMax });
+    this.emitViewportChange();
+  }
+
+  private applyAutoFitYPolicy(): void {
+    const option = this.options.autoFitY;
+    if (!option) return;
+    const config = typeof option === "object" ? option : undefined;
+    if (config?.enabled === false) return;
+    this.fitToData({
+      x: false,
+      y: true,
+      xMin: this.camera.xMin,
+      xMax: this.camera.xMax,
+      yAxis: config?.yAxis ?? "both",
+      padding: config?.padding,
+      includeZero: config?.includeZero,
+      visibleOnly: config?.visibleOnly,
+      series: config?.series,
+    });
   }
 
   resize(dpr: number = globalThis.devicePixelRatio): boolean {
@@ -665,6 +922,7 @@ export class Chart {
 
   setAxes(axes: ChartOptions["axes"]): void {
     this.normalizedAxes = normalizeAxesConfig(axes);
+    this.applyAxisDirections();
     this.axis.setOptions({ x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis.setOptions({ x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     this.layout.update(this.normalizedAxes);
@@ -714,8 +972,10 @@ export class Chart {
     const rootRect = this.layout.root.getBoundingClientRect();
     const plotRect = this.layout.plot.getBoundingClientRect();
     const dpr = Number.isFinite(options.dpr) ? Math.max(1, options.dpr!) : Math.max(1, globalThis.devicePixelRatio || 1);
-    const width = Math.max(1, Math.round(rootRect.width * dpr));
-    const height = Math.max(1, Math.round(rootRect.height * dpr));
+    const width = Number.isFinite(options.width) ? Math.max(1, Math.round(options.width!)) : Math.max(1, Math.round(rootRect.width * dpr));
+    const height = Number.isFinite(options.height) ? Math.max(1, Math.round(options.height!)) : Math.max(1, Math.round(rootRect.height * dpr));
+    const scaleX = width / Math.max(1, rootRect.width);
+    const scaleY = height / Math.max(1, rootRect.height);
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -723,17 +983,21 @@ export class Chart {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Unable to create a 2D canvas context for screenshot export.");
 
-    ctx.fillStyle = options.background ?? rgbaCss(this.resolvedTheme.backgroundColor);
-    ctx.fillRect(0, 0, width, height);
+    const background = screenshotBackground(options, rgbaCss(this.resolvedTheme.backgroundColor));
+    if (background) {
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, width, height);
+    }
 
     ctx.drawImage(
       this.canvas,
-      (plotRect.left - rootRect.left) * dpr,
-      (plotRect.top - rootRect.top) * dpr,
-      plotRect.width * dpr,
-      plotRect.height * dpr,
+      (plotRect.left - rootRect.left) * scaleX,
+      (plotRect.top - rootRect.top) * scaleY,
+      plotRect.width * scaleX,
+      plotRect.height * scaleY,
     );
-    this.drawDomTextForScreenshot(ctx, rootRect, dpr);
+    await this.drawSvgOverlaysForScreenshot(ctx, rootRect, scaleX, scaleY);
+    this.drawDomTextForScreenshot(ctx, rootRect, scaleX, scaleY);
 
     return new Promise<Blob>((resolve, reject) => {
       canvas.toBlob(
@@ -769,6 +1033,8 @@ export class Chart {
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
+    this.applyFollowXPolicy();
+    this.applyAutoFitYPolicy();
 
     const [r, g, b, a] = this.resolvedTheme.backgroundColor;
     this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -814,10 +1080,101 @@ export class Chart {
     this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
     this.canvas.removeEventListener("click", this.handleClick);
     this.canvas.removeEventListener("dblclick", this.handleDoubleClick);
+    this.layout.root.removeEventListener("keydown", this.handleKeyDown);
     for (const dispose of this.pluginDisposers.splice(0)) dispose();
     this.axisOverlay?.dispose();
     this.renderer.dispose();
     this.layout.dispose();
+  }
+
+  private applyAccessibility(): void {
+    const option = this.options.accessibility;
+    const enabled = option !== false;
+    if (!enabled) return;
+
+    const config = typeof option === "object" ? option : undefined;
+    const label = config?.label ?? this.accessibleTitleText() ?? "BlazePlot chart";
+    this.layout.root.tabIndex = this.layout.root.tabIndex >= 0 ? this.layout.root.tabIndex : 0;
+    this.layout.root.setAttribute("role", config?.role ?? "img");
+    this.layout.root.setAttribute("aria-label", label);
+    if (config?.description) this.layout.root.setAttribute("aria-description", config.description);
+    this.layout.plot.setAttribute("role", "presentation");
+    this.canvas.setAttribute("aria-hidden", "true");
+    this.xAxisElement.setAttribute("aria-hidden", "true");
+    this.yAxisElement.setAttribute("aria-hidden", "true");
+    this.y2AxisElement.setAttribute("aria-hidden", "true");
+  }
+
+  private accessibleTitleText(): string | null {
+    const title = typeof this.options.title === "string" ? this.options.title : this.options.title?.text;
+    const subtitle = typeof this.options.subtitle === "string" ? this.options.subtitle : this.options.subtitle?.text;
+    return [title, subtitle].filter((part): part is string => Boolean(part)).join(" — ") || null;
+  }
+
+  private keyboardOptions(): Required<ChartKeyboardOptions> | null {
+    const accessibility = this.options.accessibility;
+    if (accessibility === false) return null;
+    const keyboard = typeof accessibility === "object" ? accessibility.keyboard : undefined;
+    if (keyboard === false) return null;
+    const config = typeof keyboard === "object" ? keyboard : undefined;
+    if (config?.enabled === false) return null;
+    const panFraction = typeof config?.panFraction === "number" && Number.isFinite(config.panFraction)
+      ? Math.max(0, config.panFraction)
+      : 0.1;
+    const zoomFactor = typeof config?.zoomFactor === "number" && Number.isFinite(config.zoomFactor) && config.zoomFactor > 1
+      ? config.zoomFactor
+      : 1.25;
+    return { enabled: true, panFraction, zoomFactor };
+  }
+
+  private handleKeyboardNavigation(event: KeyboardEvent): void {
+    const keyboard = this.keyboardOptions();
+    if (!keyboard || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+
+    const panStep = keyboard.panFraction * (event.shiftKey ? 2.5 : 1);
+    const zoomIn = keyboard.zoomFactor;
+    const zoomOut = 1 / keyboard.zoomFactor;
+    let handled = true;
+
+    switch (event.key) {
+      case "ArrowLeft":
+        this.pan({ dx: -panStep, dy: 0 });
+        break;
+      case "ArrowRight":
+        this.pan({ dx: panStep, dy: 0 });
+        break;
+      case "ArrowUp":
+        this.pan({ dx: 0, dy: panStep });
+        break;
+      case "ArrowDown":
+        this.pan({ dx: 0, dy: -panStep });
+        break;
+      case "+":
+      case "=":
+        this.zoom({ factor: zoomIn, cx: 0.5, cy: 0.5, axis: "xy" });
+        break;
+      case "-":
+      case "_":
+        this.zoom({ factor: zoomOut, cx: 0.5, cy: 0.5, axis: "xy" });
+        break;
+      case "PageUp":
+        this.zoom({ factor: zoomIn, cx: 0.5, cy: 0.5, axis: "y" });
+        break;
+      case "PageDown":
+        this.zoom({ factor: zoomOut, cx: 0.5, cy: 0.5, axis: "y" });
+        break;
+      case "Home":
+      case "0":
+        handled = this.fitToData({ padding: 0.05 });
+        break;
+      default:
+        handled = false;
+        break;
+    }
+
+    if (handled) event.preventDefault();
   }
 
   private applyTheme(): void {
@@ -922,6 +1279,13 @@ export class Chart {
 
   private syncRightCameraX(): void {
     this.rightCamera.setViewport({ xMin: this.camera.xMin, xMax: this.camera.xMax });
+    this.rightCamera.setReversed({ x: this.camera.xReversed });
+  }
+
+  private applyAxisDirections(): void {
+    const xReversed = this.normalizedAxes.x.reversed === true;
+    this.camera.setReversed({ x: xReversed, y: this.normalizedAxes.y.reversed === true });
+    this.rightCamera.setReversed({ x: xReversed, y: this.normalizedAxes.y2.reversed === true });
   }
 
   private drawSeries(series: SeriesStore): void {
@@ -950,7 +1314,7 @@ export class Chart {
 
   private drawLineSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
     const visibleSamples = series.visibleSampleCount(viewport);
-    const dense = series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2;
+    const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
     if (dense && this.renderer.supportsInstancedSegments) {
       const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (segmentCount <= 0) return;
@@ -1468,7 +1832,41 @@ export class Chart {
     for (const callback of this.renderSubscribers) callback(this);
   }
 
-  private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, dpr: number): void {
+  private async drawSvgOverlaysForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, scaleX: number, scaleY: number): Promise<void> {
+    const svgs = this.layout.root.querySelectorAll<SVGSVGElement>("svg");
+    const serializer = new XMLSerializer();
+    for (const source of svgs) {
+      const style = getComputedStyle(source);
+      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
+      const rect = source.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+
+      const clone = source.cloneNode(true) as SVGSVGElement;
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("width", String(rect.width));
+      clone.setAttribute("height", String(rect.height));
+      if (!clone.getAttribute("viewBox")) clone.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
+      const blob = new Blob([serializer.serializeToString(clone)], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      try {
+        const image = await loadImage(url);
+        ctx.save();
+        ctx.globalAlpha = Number.isFinite(Number(style.opacity)) ? Number(style.opacity) : 1;
+        ctx.drawImage(
+          image,
+          (rect.left - rootRect.left) * scaleX,
+          (rect.top - rootRect.top) * scaleY,
+          rect.width * scaleX,
+          rect.height * scaleY,
+        );
+        ctx.restore();
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+  }
+
+  private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, scaleX: number, scaleY: number): void {
     const elements = this.layout.root.querySelectorAll<HTMLElement>("div");
     for (const el of elements) {
       const text = el.textContent;
@@ -1481,7 +1879,7 @@ export class Chart {
       if (rect.width <= 0 || rect.height <= 0) continue;
 
       ctx.save();
-      ctx.scale(dpr, dpr);
+      ctx.scale(scaleX, scaleY);
       ctx.font = style.font;
       ctx.fillStyle = style.color;
       ctx.textBaseline = "top";

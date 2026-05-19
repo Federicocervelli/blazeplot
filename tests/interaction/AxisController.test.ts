@@ -109,6 +109,29 @@ describe("AxisController", () => {
     expect(axis.getXTickValues(800, 10)).toEqual([1, 10, 100, 1000]);
   });
 
+  it("uses configurable log bases and validates log domains", () => {
+    const camera = new Camera2D();
+    camera.setViewport({ xMin: 1, xMax: 64, yMin: -1, yMax: 1 });
+    const axis = new AxisController(camera, { x: { scale: "log", logBase: 2 } });
+
+    expect(axis.getXTickValues(800, 10)).toEqual([1, 2, 4, 8, 16, 32, 64]);
+    expect(() => axis.validateDomain("x")).not.toThrow();
+
+    camera.setViewport({ xMin: -1, xMax: 64 });
+    expect(() => axis.validateDomain("x")).toThrow(RangeError);
+  });
+
+  it("uses configurable symlog constants", () => {
+    const camera = new Camera2D();
+    camera.setViewport({ xMin: -100, xMax: 100, yMin: -1, yMax: 1 });
+
+    const defaultAxis = new AxisController(camera, { x: { scale: "symlog" } });
+    const wideLinearAxis = new AxisController(camera, { x: { scale: "symlog", symlogConstant: 10 } });
+
+    expect(wideLinearAxis.getXTickValues(800, 7)).not.toEqual(defaultAxis.getXTickValues(800, 7));
+    expect(() => wideLinearAxis.validateDomain("x")).not.toThrow();
+  });
+
   it("formats categorical ticks from labels", () => {
     const camera = new Camera2D();
     camera.setViewport({ xMin: 0, xMax: 3, yMin: -1, yMax: 1 });

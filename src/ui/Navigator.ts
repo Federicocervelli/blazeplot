@@ -159,6 +159,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     }
 
     root.style.display = "block";
+    root.setAttribute("aria-valuemin", String(domain.xMin));
+    root.setAttribute("aria-valuemax", String(domain.xMax));
     const width = Math.max(1, root.clientWidth);
     overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
     overlay.setAttribute("preserveAspectRatio", "none");
@@ -191,6 +193,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     }
 
     const current = chart.getViewport();
+    root.setAttribute("aria-valuenow", String((current.xMin + current.xMax) * 0.5));
+    root.setAttribute("aria-valuetext", `Visible X range ${current.xMin} to ${current.xMax}`);
     wasAtRightEdge = Math.abs(current.xMax - domain.xMax) <= (domain.xMax - domain.xMin) * 0.005;
     const left = dataToX(current.xMin, width - 1);
     const right = dataToX(current.xMax, width - 1);
@@ -249,6 +253,10 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       root.style.border = "0";
       root.style.zIndex = String(options.zIndex ?? 30);
       root.style.touchAction = "none";
+      root.style.outlineOffset = "2px";
+      root.tabIndex = 0;
+      root.setAttribute("role", "slider");
+      root.setAttribute("aria-label", "Chart navigator visible X range");
 
       if (options.reserveSpace !== false) {
         chart.setLayoutReservation(reservationId, placement === "top" ? { top: height + margin * 2 } : { bottom: height + margin * 2 });
@@ -257,6 +265,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       overlay = svg("svg");
       overlay.style.width = "100%";
       overlay.style.height = "100%";
+      overlay.setAttribute("aria-hidden", "true");
       overlay.style.display = "block";
       windowRect = svg("rect");
       leftHandle = svg("rect");
@@ -338,11 +347,46 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         if (domain) applyRange(domain.xMin, domain.xMax);
       };
 
+      const onKeyDown = (event: KeyboardEvent): void => {
+        if (!domain || !chartRef) return;
+        const viewport = chartRef.getViewport();
+        const span = viewport.xMax - viewport.xMin;
+        const step = span * (event.shiftKey ? 0.25 : 0.1);
+        let nextMin = viewport.xMin;
+        let nextMax = viewport.xMax;
+        let handled = true;
+        switch (event.key) {
+          case "ArrowLeft":
+            nextMin -= step;
+            nextMax -= step;
+            break;
+          case "ArrowRight":
+            nextMin += step;
+            nextMax += step;
+            break;
+          case "Home":
+            nextMin = domain.xMin;
+            nextMax = domain.xMin + span;
+            break;
+          case "End":
+            nextMax = domain.xMax;
+            nextMin = domain.xMax - span;
+            break;
+          default:
+            handled = false;
+            break;
+        }
+        if (!handled) return;
+        event.preventDefault();
+        applyRange(nextMin, nextMax);
+      };
+
       root.addEventListener("pointerdown", onPointerDown);
       root.addEventListener("pointermove", onPointerMove);
       root.addEventListener("pointerup", onPointerUp);
       root.addEventListener("pointercancel", onPointerUp);
       root.addEventListener("dblclick", onDoubleClick);
+      root.addEventListener("keydown", onKeyDown);
       render();
 
       return () => {
@@ -354,6 +398,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         root?.removeEventListener("pointerup", onPointerUp);
         root?.removeEventListener("pointercancel", onPointerUp);
         root?.removeEventListener("dblclick", onDoubleClick);
+        root?.removeEventListener("keydown", onKeyDown);
         if (options.reserveSpace !== false) chart.setLayoutReservation(reservationId, null);
         root?.remove();
         root = null;

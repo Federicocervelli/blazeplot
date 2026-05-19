@@ -152,7 +152,7 @@ export interface YAppendableDataset extends Dataset {
   clear(): void;
 }
 
-export type LODStrategy = "minmax" | "none";
+export type LODStrategy = "minmax" | "none" | "server";
 export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
 
 export interface SeriesSample {

@@ -1,9 +1,11 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
 
+const pagesBase = process.env.BLAZEPLOT_PAGES_BASE ?? "/blazeplot/";
+
 export default defineConfig({
   root: resolve(__dirname, "preview"),
-  base: "/blazeplot/",
+  base: pagesBase,
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
@@ -18,6 +20,9 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "preview/index.html"),
         features: resolve(__dirname, "preview/features/index.html"),
+        serverSampled: resolve(__dirname, "preview/server-sampled/index.html"),
+        react: resolve(__dirname, "preview/react/index.html"),
+        mobile: resolve(__dirname, "preview/mobile/index.html"),
       },
     },
   },

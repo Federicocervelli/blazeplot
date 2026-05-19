@@ -28,6 +28,17 @@ describe("StaticOhlcDataset", () => {
     expect(dataset.upperBoundX(3)).toBe(2);
   });
 
+  it("reports data bounds from high/low values", () => {
+    const dataset = new StaticOhlcDataset([1, 2], [10, 12], [14, 15], [8, 11], [13, 12.5]);
+    const series = new SeriesStore(
+      dataset,
+      { mode: "candlestick", capacity: 2, dataset },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    expect(series.dataBounds()).toEqual({ xMin: 1, xMax: 2, yMin: 8, yMax: 15 });
+  });
+
   it("copies OHLC glyph line vertices", () => {
     const dataset = new StaticOhlcDataset([10], [2], [5], [1], [4]);
     const series = new SeriesStore(
@@ -76,6 +87,18 @@ describe("OhlcRingBuffer", () => {
     expect(dataset.getOpen(0)).toBe(20);
     expect(dataset.getClose(1)).toBe(30.5);
     expect(dataset.lowerBoundX(2.5)).toBe(1);
+  });
+
+  it("updates the latest candle in place for live bars", () => {
+    const dataset = new OhlcRingBuffer(2);
+    dataset.append([1, 2], [10, 20], [11, 21], [9, 19], [10.5, 20.5]);
+
+    expect(dataset.updateLast(20, 25, 18, 24)).toBe(true);
+    expect(dataset.getX(1)).toBe(2);
+    expect(dataset.getOpen(1)).toBe(20);
+    expect(dataset.getHigh(1)).toBe(25);
+    expect(dataset.getLow(1)).toBe(18);
+    expect(dataset.getClose(1)).toBe(24);
   });
 
   it("supports explicit overflow errors", () => {

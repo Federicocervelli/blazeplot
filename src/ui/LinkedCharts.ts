@@ -1,4 +1,6 @@
 import { Chart } from "./Chart.js";
+import { crosshairPlugin } from "./Crosshair.js";
+import { tooltipPlugin } from "./Tooltip.js";
 import type { ChartOptions, ChartPlugin, ChartSelectEvent, ChartViewportChangeEvent } from "./Chart.js";
 
 export interface LinkedChartPanelOptions {
@@ -12,6 +14,8 @@ export interface LinkedChartsOptions {
   readonly panels: readonly LinkedChartPanelOptions[];
   readonly sharedX?: boolean;
   readonly syncSelections?: boolean;
+  readonly syncCrosshair?: boolean;
+  readonly syncTooltips?: boolean;
   readonly spacing?: number | string;
   readonly className?: string;
 }
@@ -27,6 +31,8 @@ function cssSize(value: number | string | undefined, fallback: string): string {
   return typeof value === "number" ? `${value}px` : value ?? fallback;
 }
 
+let linkedChartsId = 0;
+
 export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOptions): LinkedChartsHandle {
   const rows = Math.max(1, Math.floor(options.rows ?? options.panels.length));
   const columns = Math.max(1, Math.floor(options.columns ?? Math.ceil(options.panels.length / rows)));
@@ -35,6 +41,7 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
   const disposers: Array<() => void> = [];
   let syncingViewport = false;
   let syncingSelection = false;
+  const syncGroup = `blazeplot-linked-${linkedChartsId++}`;
 
   root.className = options.className ?? "blazeplot-linked-charts";
   root.style.display = "grid";
@@ -54,7 +61,11 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
     cell.style.minWidth = "0";
     cell.style.minHeight = "0";
     root.appendChild(cell);
-    charts.push(new Chart(cell, panel.options));
+    const plugins = [...(panel.options?.plugins ?? [])];
+    if (options.syncCrosshair) plugins.push(crosshairPlugin({ group: syncGroup }));
+    if (options.syncTooltips) plugins.push(tooltipPlugin({ syncGroup }));
+    const chartOptions = plugins.length > 0 ? { ...panel.options, plugins } : panel.options;
+    charts.push(new Chart(cell, chartOptions));
   }
 
   const setXRange = (xMin: number, xMax: number): void => {

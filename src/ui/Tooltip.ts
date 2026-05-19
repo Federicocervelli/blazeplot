@@ -5,10 +5,12 @@ export interface TooltipPluginOptions {
   readonly className?: string;
   readonly mode?: ChartPickMode;
   readonly group?: ChartPickGroup;
+  readonly syncGroup?: string;
   readonly maxDistancePx?: number;
   readonly offsetX?: number;
   readonly offsetY?: number;
   readonly highlight?: boolean;
+  readonly longPressMs?: number | false;
   readonly backgroundColor?: string;
   readonly textColor?: string;
   readonly font?: string;
@@ -27,6 +29,13 @@ function renderDefaultTooltip(state: ChartHoverState, container: HTMLElement, fo
     (item) => `(${formatCompactNumber(item.x)}, ${formatCompactNumber(item.y)})`,
   );
 }
+
+interface TooltipPeer {
+  showShared(dataX: number): void;
+  hideShared(): void;
+}
+
+const tooltipGroups = new Map<string, Set<TooltipPeer>>();
 
 function placeTooltip(container: HTMLElement, state: ChartHoverState, options: TooltipPluginOptions): void {
   placeFixedWithinViewport(container, state.clientX, state.clientY, {
@@ -51,6 +60,8 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       container.style.font = options.font ?? chart.theme.tooltipFont;
       container.style.padding = "8px 10px";
       container.style.whiteSpace = "pre";
+      container.setAttribute("role", "tooltip");
+      container.setAttribute("aria-hidden", "true");
       const tooltipParent = chart.rootElement.ownerDocument.body ?? chart.rootElement;
       tooltipParent.appendChild(container);
 
@@ -114,6 +125,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         renderMarkers(effectiveState);
         if (!effectiveState || effectiveState.items.length === 0) {
           container.style.display = "none";
+          container.setAttribute("aria-hidden", "true");
           resetTooltipWidth();
           return;
         }
@@ -125,19 +137,186 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         }
 
         container.style.display = "block";
+        container.setAttribute("aria-hidden", "false");
         lockTooltipWidth();
         placeTooltip(container, effectiveState, options);
       };
 
-      const unsubscribeHover = chart.subscribe("hover", render);
+      const renderSharedAtX = (dataX: number): void => {
+        const viewport = chart.getViewport();
+        const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
+        const [plotX, plotY] = chart.dataToPlot(dataX, dataY);
+        const rect = chart.canvas.getBoundingClientRect();
+        render(chart.pick(rect.left + plotX, rect.top + plotY, {
+          mode: options.mode ?? "nearest-x",
+          group: options.group ?? "x",
+          maxDistancePx: options.maxDistancePx,
+        }));
+      };
+
+      let renderingShared = false;
+      const peer: TooltipPeer | null = options.syncGroup ? {
+        showShared(dataX: number): void {
+          renderingShared = true;
+          try {
+            renderSharedAtX(dataX);
+          } finally {
+            renderingShared = false;
+          }
+        },
+        hideShared(): void {
+          renderingShared = true;
+          try {
+            render(null);
+          } finally {
+            renderingShared = false;
+          }
+        },
+      } : null;
+
+      if (peer && options.syncGroup) {
+        const peers = tooltipGroups.get(options.syncGroup) ?? new Set<TooltipPeer>();
+        peers.add(peer);
+        tooltipGroups.set(options.syncGroup, peers);
+      }
+
+      const notifyPeers = (state: ChartHoverState | null): void => {
+        if (!peer || !options.syncGroup || renderingShared) return;
+        const peers = tooltipGroups.get(options.syncGroup);
+        if (!peers) return;
+        for (const other of peers) {
+          if (other === peer) continue;
+          if (state) other.showShared(state.anchorX);
+          else other.hideShared();
+        }
+      };
+
+      let longPressTimer: number | null = null;
+      let longPressRaf = 0;
+      let longPressActive = false;
+      let longPressX = 0;
+      let longPressY = 0;
+
+      const clearLongPress = (): void => {
+        if (longPressTimer !== null) window.clearTimeout(longPressTimer);
+        if (longPressRaf !== 0) window.cancelAnimationFrame(longPressRaf);
+        longPressTimer = null;
+        longPressRaf = 0;
+        longPressActive = false;
+      };
+
+      const showAtClientPoint = (clientX: number, clientY: number): void => {
+        const state = chart.pick(clientX, clientY, {
+          mode: options.mode ?? "nearest-x",
+          group: options.group ?? "x",
+          maxDistancePx: options.maxDistancePx,
+        });
+        render(state);
+        notifyPeers(state);
+      };
+
+      const refreshLongPress = (): void => {
+        if (!longPressActive) return;
+        showAtClientPoint(longPressX, longPressY);
+        longPressRaf = window.requestAnimationFrame(refreshLongPress);
+      };
+
+      const activateLongPress = (): void => {
+        longPressTimer = null;
+        longPressActive = true;
+        showAtClientPoint(longPressX, longPressY);
+        longPressRaf = window.requestAnimationFrame(refreshLongPress);
+      };
+
+      const scheduleLongPress = (clientX: number, clientY: number): void => {
+        if (options.longPressMs === false || longPressActive) return;
+        longPressX = clientX;
+        longPressY = clientY;
+        clearLongPress();
+        longPressTimer = window.setTimeout(activateLongPress, options.longPressMs ?? 450);
+      };
+
+      const onTouchStart = (event: TouchEvent): void => {
+        if (event.touches.length !== 1) {
+          clearLongPress();
+          return;
+        }
+        const touch = event.touches.item(0);
+        if (!touch) return;
+        scheduleLongPress(touch.clientX, touch.clientY);
+      };
+
+      const onTouchMove = (event: TouchEvent): void => {
+        const touch = event.touches.item(0);
+        if (!touch) return;
+        if (longPressActive) {
+          event.preventDefault();
+          event.stopPropagation();
+          longPressX = touch.clientX;
+          longPressY = touch.clientY;
+          showAtClientPoint(longPressX, longPressY);
+          return;
+        }
+        if (longPressTimer !== null && Math.hypot(touch.clientX - longPressX, touch.clientY - longPressY) > 8) clearLongPress();
+      };
+
+      const onPointerDown = (event: PointerEvent): void => {
+        if (event.pointerType !== "touch") return;
+        scheduleLongPress(event.clientX, event.clientY);
+      };
+
+      const onPointerMove = (event: PointerEvent): void => {
+        if (event.pointerType !== "touch") return;
+        if (longPressActive) {
+          event.preventDefault();
+          event.stopPropagation();
+          longPressX = event.clientX;
+          longPressY = event.clientY;
+          showAtClientPoint(longPressX, longPressY);
+        } else if (longPressTimer !== null && Math.hypot(event.clientX - longPressX, event.clientY - longPressY) > 8) {
+          clearLongPress();
+        }
+      };
+
+      const onPointerUp = (event: PointerEvent): void => {
+        if (event.pointerType === "touch") clearLongPress();
+      };
+
+      chart.canvas.addEventListener("pointerdown", onPointerDown, { capture: true });
+      chart.canvas.addEventListener("pointermove", onPointerMove, { capture: true });
+      chart.canvas.addEventListener("pointerup", onPointerUp, { capture: true });
+      chart.canvas.addEventListener("pointercancel", onPointerUp, { capture: true });
+      chart.canvas.addEventListener("touchstart", onTouchStart, { capture: true, passive: true });
+      chart.canvas.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
+      chart.canvas.addEventListener("touchend", clearLongPress);
+      chart.canvas.addEventListener("touchcancel", clearLongPress);
+
+      const unsubscribeHover = chart.subscribe("hover", (state) => {
+        render(state);
+        notifyPeers(state);
+      });
       const unsubscribeTheme = chart.subscribe("themechange", () => {
         applyTheme();
         render(chart.getHoverState());
       });
       applyTheme();
       return () => {
+        clearLongPress();
+        chart.canvas.removeEventListener("pointerdown", onPointerDown, { capture: true });
+        chart.canvas.removeEventListener("pointermove", onPointerMove, { capture: true });
+        chart.canvas.removeEventListener("pointerup", onPointerUp, { capture: true });
+        chart.canvas.removeEventListener("pointercancel", onPointerUp, { capture: true });
+        chart.canvas.removeEventListener("touchstart", onTouchStart, { capture: true });
+        chart.canvas.removeEventListener("touchmove", onTouchMove, { capture: true });
+        chart.canvas.removeEventListener("touchend", clearLongPress);
+        chart.canvas.removeEventListener("touchcancel", clearLongPress);
         unsubscribeHover();
         unsubscribeTheme();
+        if (peer && options.syncGroup) {
+          const peers = tooltipGroups.get(options.syncGroup);
+          peers?.delete(peer);
+          if (peers?.size === 0) tooltipGroups.delete(options.syncGroup);
+        }
         markerLayer.remove();
         container.remove();
       };

@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - development
   workflow_dispatch:
 
 permissions:
@@ -13,7 +14,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -22,19 +23,71 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout main preview
         uses: actions/checkout@v4
+        with:
+          ref: main
+          path: branches/main
+
+      - name: Checkout development preview
+        uses: actions/checkout@v4
+        with:
+          ref: development
+          path: branches/development
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
 
-      - name: Install dependencies
-        run: bun install
+      - name: Build main preview
+        working-directory: branches/main
+        run: |
+          bun install --frozen-lockfile
+          bun run pages:build
 
-      - name: Build preview
-        run: bun run pages:build
+      - name: Build development preview
+        working-directory: branches/development
+        env:
+          BLAZEPLOT_PAGES_BASE: /blazeplot/development/
+        run: |
+          bun install --frozen-lockfile
+          bun run pages:build
+
+      - name: Assemble branch previews
+        run: |
+          rm -rf build/pages
+          mkdir -p build/pages/development
+          cp -a branches/main/build/pages/. build/pages/
+          cp -a branches/development/build/pages/. build/pages/development/
+          rm -rf build/pages/visual build/pages/interaction build/pages/development/visual build/pages/development/interaction
+          cat > build/pages/previews.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>BlazePlot previews</title>
+          <h1>BlazePlot previews</h1>
+          <ul>
+            <li><a href="/blazeplot/">main</a></li>
+            <li><a href="/blazeplot/features/">main features</a></li>
+          HTML
+          if [ -f build/pages/react/index.html ]; then
+            echo '  <li><a href="/blazeplot/react/">main React</a></li>' >> build/pages/previews.html
+          fi
+          if [ -f build/pages/mobile/index.html ]; then
+            echo '  <li><a href="/blazeplot/mobile/">main mobile</a></li>' >> build/pages/previews.html
+          fi
+          cat >> build/pages/previews.html <<'HTML'
+            <li><a href="/blazeplot/development/">development</a></li>
+            <li><a href="/blazeplot/development/features/">development features</a></li>
+          HTML
+          if [ -f build/pages/development/react/index.html ]; then
+            echo '  <li><a href="/blazeplot/development/react/">development React</a></li>' >> build/pages/previews.html
+          fi
+          if [ -f build/pages/development/mobile/index.html ]; then
+            echo '  <li><a href="/blazeplot/development/mobile/">development mobile</a></li>' >> build/pages/previews.html
+          fi
+          echo '</ul>' >> build/pages/previews.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

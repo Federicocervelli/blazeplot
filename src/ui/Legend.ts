@@ -9,6 +9,7 @@ export interface LegendPluginOptions {
   readonly textColor?: string;
   readonly mutedTextColor?: string;
   readonly font?: string;
+  readonly zIndex?: number;
   readonly render?: (state: readonly ChartSeriesState[], container: HTMLElement, chart: Chart) => void;
 }
 
@@ -40,6 +41,9 @@ function renderDefaultLegend(
   for (const item of state) {
     const row = document.createElement("button");
     row.type = "button";
+    row.setAttribute("role", "listitem");
+    row.setAttribute("aria-pressed", String(item.visible));
+    row.setAttribute("aria-label", `${item.visible ? "Hide" : "Show"} ${item.name ?? item.id ?? `${item.mode} ${item.index + 1}`}`);
     row.style.display = "flex";
     row.style.alignItems = "center";
     row.style.gap = "6px";
@@ -55,6 +59,7 @@ function renderDefaultLegend(
     row.style.textAlign = "left";
     row.style.cursor = toggleOnClick ? "pointer" : "default";
     row.style.opacity = item.visible ? "1" : "0.45";
+    row.style.outlineOffset = "2px";
 
     const swatch = document.createElement("span");
     swatch.textContent = "\u2588";
@@ -80,7 +85,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       const container = document.createElement("div");
       container.className = options.className ?? "blazeplot-legend";
       container.style.position = "absolute";
-      container.style.zIndex = "20";
+      container.style.zIndex = String(options.zIndex ?? 40);
       container.style.pointerEvents = "auto";
       container.style.padding = "8px 10px";
       container.style.border = legendBorder(options, chart);
@@ -89,6 +94,8 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.style.font = options.font ?? chart.theme.legendFont;
       container.style.whiteSpace = "pre";
       container.style.userSelect = "none";
+      container.setAttribute("role", "list");
+      container.setAttribute("aria-label", "Chart series legend");
       applyPosition(container, options.position ?? "top-right");
       chart.rootElement.appendChild(container);
 
