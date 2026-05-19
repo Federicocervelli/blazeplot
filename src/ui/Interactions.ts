@@ -77,7 +77,11 @@ function isLikelyTrackpadPan(event: WheelEvent): boolean {
   const absX = Math.abs(event.deltaX);
   const absY = Math.abs(event.deltaY);
   if (absX > 0) return true;
-  return absY > 0 && absY < 80;
+  if (absY <= 0) return false;
+  // Traditional mouse wheels usually report coarse 100px-ish vertical steps in
+  // Chromium. Trackpads emit fine-grained pixel deltas, but a fast swipe can be
+  // larger than a single mouse notch, so avoid a hard small-delta cutoff.
+  return absY < 140 || Math.abs(absY % 100) > 1;
 }
 
 function constrainPan(intent: PanIntent, axis: ZoomAxis): PanIntent {
@@ -392,7 +396,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         const rect = canvas.getBoundingClientRect();
 
         if (options.trackpadPan !== false && isLikelyTrackpadPan(event)) {
-          const sensitivity = options.trackpadPanSensitivity ?? 1;
+          const sensitivity = options.trackpadPanSensitivity ?? 1.6;
           const panIntent = applyPanPolicy({
             dx: rect.width > 0 && zoomAxis !== "y" ? (event.deltaX * sensitivity) / rect.width : 0,
             dy: rect.height > 0 && zoomAxis !== "x" ? (-event.deltaY * sensitivity) / rect.height : 0,
