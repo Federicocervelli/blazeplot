@@ -133,6 +133,7 @@ export interface ChartOptions {
   readonly hover?: ChartPickOptions;
   readonly accessibility?: boolean | ChartAccessibilityOptions;
   readonly autoFitY?: boolean | ChartAutoFitYOptions;
+  readonly followX?: boolean | ChartFollowXOptions;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
 }
@@ -240,6 +241,14 @@ export interface ChartAutoFitYOptions {
   readonly yAxis?: SeriesYAxis | "both";
   readonly padding?: number | ChartFitToDataPadding;
   readonly includeZero?: boolean;
+  readonly visibleOnly?: boolean;
+  readonly series?: readonly SeriesStore[];
+}
+
+export interface ChartFollowXOptions {
+  readonly enabled?: boolean;
+  readonly window?: number;
+  readonly pauseOnInteraction?: boolean;
   readonly visibleOnly?: boolean;
   readonly series?: readonly SeriesStore[];
 }
@@ -383,6 +392,7 @@ export class Chart {
   private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
   private currentXOrigin: number = 0;
+  private xFollowPaused: boolean = false;
   private _rafId: number = 0;
   private _hoverRafId: number = 0;
   private readonly handlePointerMove = (event: PointerEvent): void => {
@@ -537,6 +547,7 @@ export class Chart {
   }
 
   pan(intent: PanIntent): void {
+    this.pauseXFollowForInteraction();
     this.camera.pan(intent);
     this.syncRightCameraX();
     this.emitViewportChange();
@@ -544,6 +555,7 @@ export class Chart {
   }
 
   zoom(intent: ZoomIntent): void {
+    this.pauseXFollowForInteraction();
     this.camera.zoom(intent);
     this.syncRightCameraX();
     this.emitViewportChange();
@@ -650,6 +662,15 @@ export class Chart {
     this.refreshHover();
   }
 
+  setXFollowPaused(paused: boolean): void {
+    this.xFollowPaused = paused;
+  }
+
+  resumeXFollow(): void {
+    this.xFollowPaused = false;
+    this.applyFollowXPolicy();
+  }
+
   fitToData(options: ChartFitToDataOptions = {}): boolean {
     const fitX = options.x !== false;
     const fitY = options.y !== false;
@@ -716,6 +737,42 @@ export class Chart {
       this.refreshHover();
     }
     return changed;
+  }
+
+  private pauseXFollowForInteraction(): void {
+    const option = this.options.followX;
+    if (!option) return;
+    const config = typeof option === "object" ? option : undefined;
+    if (config?.pauseOnInteraction === false) return;
+    this.xFollowPaused = true;
+  }
+
+  private applyFollowXPolicy(): void {
+    const option = this.options.followX;
+    if (!option || this.xFollowPaused) return;
+    const config = typeof option === "object" ? option : undefined;
+    if (config?.enabled === false) return;
+
+    const visibleOnly = config?.visibleOnly !== false;
+    const candidates = config?.series ?? this.series;
+    let xMax = -Infinity;
+    for (const series of candidates) {
+      if (!this.series.includes(series)) continue;
+      if (visibleOnly && !series.visible) continue;
+      const bounds = series.dataBounds();
+      if (bounds) xMax = Math.max(xMax, bounds.xMax);
+    }
+    if (!Number.isFinite(xMax)) return;
+
+    const currentSpan = this.camera.xMax - this.camera.xMin;
+    const span = typeof config?.window === "number" && Number.isFinite(config.window) && config.window > 0
+      ? config.window
+      : currentSpan;
+    const xMin = xMax - span;
+    if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax)) return;
+    this.camera.setViewport({ xMin, xMax });
+    this.rightCamera.setViewport({ xMin, xMax });
+    this.emitViewportChange();
   }
 
   private applyAutoFitYPolicy(): void {
@@ -967,6 +1024,7 @@ export class Chart {
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
+    this.applyFollowXPolicy();
     this.applyAutoFitYPolicy();
 
     const [r, g, b, a] = this.resolvedTheme.backgroundColor;

@@ -220,7 +220,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
 7. **Autoscale / fit-to-data viewport policies**
    - [x] Add `chart.fitToData()` with per-axis options for fitting all visible series or a supplied series subset.
    - [x] Add auto-Y-on-visible-X policies with configurable padding and include-zero behavior.
-   - [ ] Add streaming follow policies that can pause on manual navigation and resume explicitly or at the live edge.
+   - [x] Add streaming follow policies that can pause on manual navigation and resume explicitly.
    - [ ] Expose typed policy hooks so applications can combine autoscale, fixed ranges, and synchronized chart constraints.
 
 8. **Missing-data and discontinuity semantics**
