@@ -84,12 +84,26 @@ function ReactPreview(): React.ReactElement {
 
   return (
     <div className="app">
-      <header>
-        <strong>BlazePlot React preview</strong>
+      <header id="topbar" aria-label="Project links">
+        <div className="left">
+          <span className="brand">BlazePlot React preview</span>
+        </div>
         <nav>
-          <a href="../">main preview</a>
-          <a href="../features/">feature preview</a>
-          <a href="https://github.com/Federicocervelli/blazeplot/tree/main/src/react.ts">wrapper source</a>
+          <a className="text-link" href="../">main preview</a>
+          <a className="text-link" href="../features/">feature preview</a>
+          <a className="text-link" href="https://github.com/Federicocervelli/blazeplot/tree/main/src/react.ts" target="_blank" rel="noreferrer">wrapper source</a>
+          <a href="https://github.com/Federicocervelli/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot on GitHub">
+            <img src="https://img.shields.io/github/stars/Federicocervelli/blazeplot?style=flat&logo=github&logoColor=white&label=GitHub&labelColor=111111&color=444444" alt="GitHub stars: blazeplot" />
+          </a>
+          <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot on npm">
+            <img src="https://img.shields.io/npm/v/blazeplot?style=flat&logo=npm&logoColor=CB3837&label=npm&labelColor=111111&color=444444" alt="npm: blazeplot" />
+          </a>
+          <a href="https://cervelli.dev" target="_blank" rel="noreferrer" aria-label="Federico Cervelli portfolio">
+            <img src="https://img.shields.io/badge/Portfolio-cervelli.dev-444444?style=flat&logo=googlechrome&logoColor=4285F4&labelColor=111111" alt="Portfolio: cervelli.dev" />
+          </a>
+          <a href="https://liberapay.com/cervelli/donate" target="_blank" rel="noreferrer" aria-label="Donate on Liberapay">
+            <img src="https://img.shields.io/badge/Donate-Liberapay-444444?style=flat&logo=liberapay&logoColor=F6C915&labelColor=111111" alt="Donate: Liberapay" />
+          </a>
         </nav>
       </header>
       <main>
