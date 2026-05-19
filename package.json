@@ -74,7 +74,7 @@
     "bench": "bun scripts/benchmark.ts",
     "bench:scatter": "bun scripts/scatter-profile.ts",
     "bench:report": "bun scripts/benchmark-report.ts",
-    "docs:readme": "node scripts/generate-readme-docs.js",
+    "docs:readme": "bun run build && node scripts/generate-readme-docs.js",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major",

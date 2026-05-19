@@ -128,7 +128,7 @@ const githubReleaseBody = buildGitHubReleaseBody(releaseNotes, commitLog);
 
 pkg.version = newVersion;
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-execFileSync("node", ["scripts/generate-readme-docs.js"], { stdio: "inherit" });
+execFileSync("bun", ["run", "docs:readme"], { stdio: "inherit" });
 
 execFileSync("git", ["add", "package.json", "README.md"]);
 if (notesPath !== "-") execFileSync("git", ["add", notesPath]);
