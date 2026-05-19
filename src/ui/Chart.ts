@@ -17,6 +17,7 @@ import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 const MINMAX_SEGMENT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
+const MINMAX_BATCH_SEGMENT_CAPACITY = MINMAX_SEGMENT_CAPACITY * 4;
 const FLOATS_PER_MINMAX_SEGMENT_INSTANCE = 3;
 const BAR_TRIANGLE_CAPACITY = 4_096;
 const FLOATS_PER_BAR_TRIANGLE = 12;
@@ -278,6 +279,8 @@ export interface ChartFrameStats {
   drawCalls: number;
   uploadBytes: number;
   renderMode: "none" | "raw" | "minmax" | "points" | "bars" | "area" | "mixed";
+  /** Number of otherwise separate draw calls avoided by compatible internal batching. */
+  batchedDrawCalls?: number;
 }
 
 type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | AxisTitleConfig };
@@ -339,10 +342,25 @@ function textOverlayOffsetY(config: string | TextOverlayConfig | undefined): num
   return typeof config === "string" ? 0 : config?.offsetY ?? 0;
 }
 
+function colorsEqual(
+  a: readonly [number, number, number, number],
+  b: readonly [number, number, number, number],
+): boolean {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
+}
+
 interface PickCandidate {
   readonly sample: SeriesSample;
   readonly series: SeriesStore;
   readonly seriesIndex: number;
+}
+
+interface MinMaxLineBatch {
+  readonly camera: Camera2D;
+  readonly style: SeriesStyle;
+  readonly color: readonly [number, number, number, number];
+  segmentCount: number;
+  seriesCount: number;
 }
 
 export class Chart {
@@ -379,6 +397,7 @@ export class Chart {
     drawCalls: 0,
     uploadBytes: 0,
     renderMode: "none",
+    batchedDrawCalls: 0,
   };
   private resizeObserver: ResizeObserver | null = null;
   private readonly pluginDisposers: Array<() => void> = [];
@@ -403,6 +422,7 @@ export class Chart {
   private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
   private currentXOrigin: number = 0;
+  private minMaxLineBatch: MinMaxLineBatch | null = null;
   private xFollowPaused: boolean = false;
   private _rafId: number = 0;
   private _hoverRafId: number = 0;
@@ -458,7 +478,7 @@ export class Chart {
     this.renderer = new Renderer(new ReglBackend(this.layout.canvas));
     this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
     this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
-    this.minMaxInstanceData = new Float32Array(MINMAX_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
+    this.minMaxInstanceData = new Float32Array(MINMAX_BATCH_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
     this.minMaxInstanceBuffer = this.renderer.createFloatBuffer(this.minMaxInstanceData.length);
     this.barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLE);
     this.barTriangleBuffer = this.renderer.createFloatBuffer(this.barTriangleData.length);
@@ -810,13 +830,14 @@ export class Chart {
     return resized;
   }
 
-  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): ChartFrameStats {
+  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none", batchedDrawCalls: 0 }): ChartFrameStats {
     target.fps = this.stats.fps;
     target.frameMs = this.stats.frameMs;
     target.pointsRendered = this.stats.pointsRendered;
     target.drawCalls = this.stats.drawCalls;
     target.uploadBytes = this.stats.uploadBytes;
     target.renderMode = this.stats.renderMode;
+    target.batchedDrawCalls = this.stats.batchedDrawCalls ?? 0;
     return target;
   }
 
@@ -1030,6 +1051,7 @@ export class Chart {
     this.stats.drawCalls = 0;
     this.stats.uploadBytes = 0;
     this.stats.renderMode = "none";
+    this.stats.batchedDrawCalls = 0;
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
@@ -1055,8 +1077,11 @@ export class Chart {
     for (const s of this.series) {
       if (!s.visible) continue;
       s.rebuildPyramid();
+      if (this.queueMinMaxLineBatch(s)) continue;
+      this.flushMinMaxLineBatch();
       this.drawSeries(s);
     }
+    this.flushMinMaxLineBatch();
 
     this.axisOverlay?.update(this.camera, this.axis, this.rightCamera, this.rightAxis);
     this.emitRender();
@@ -1286,6 +1311,65 @@ export class Chart {
     const xReversed = this.normalizedAxes.x.reversed === true;
     this.camera.setReversed({ x: xReversed, y: this.normalizedAxes.y.reversed === true });
     this.rightCamera.setReversed({ x: xReversed, y: this.normalizedAxes.y2.reversed === true });
+  }
+
+  private queueMinMaxLineBatch(series: SeriesStore): boolean {
+    if (series.config.mode !== "line" || !this.renderer.supportsInstancedSegments) return false;
+
+    const camera = this.cameraForSeries(series);
+    const viewport = camera.viewport;
+    const visibleSamples = series.visibleSampleCount(viewport);
+    const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
+    if (!dense) return false;
+
+    if (this.minMaxLineBatch && !this.canAppendToMinMaxLineBatch(this.minMaxLineBatch, series.style, camera)) {
+      this.flushMinMaxLineBatch();
+    }
+
+    const perSeriesCapacity = this.maxMinMaxSegments();
+    const batchCapacity = this.maxMinMaxBatchSegments();
+    if (perSeriesCapacity <= 0 || batchCapacity <= 0) return true;
+
+    if (this.minMaxLineBatch && this.minMaxLineBatch.segmentCount + perSeriesCapacity > batchCapacity) {
+      this.flushMinMaxLineBatch();
+    }
+
+    if (!this.minMaxLineBatch) {
+      this.minMaxLineBatch = {
+        camera,
+        style: series.style,
+        color: series.style.color,
+        segmentCount: 0,
+        seriesCount: 0,
+      };
+    }
+
+    const batch = this.minMaxLineBatch;
+    const targetOffset = batch.segmentCount * FLOATS_PER_MINMAX_SEGMENT_INSTANCE;
+    const target = this.minMaxInstanceData.subarray(targetOffset);
+    const segmentCount = series.copyMinMaxInstanced(viewport, target, perSeriesCapacity, this.currentXOrigin);
+    if (segmentCount > 0) {
+      batch.segmentCount += segmentCount;
+      batch.seriesCount++;
+    }
+    return true;
+  }
+
+  private canAppendToMinMaxLineBatch(batch: MinMaxLineBatch, style: SeriesStyle, camera: Camera2D): boolean {
+    return batch.camera === camera && colorsEqual(batch.color, style.color);
+  }
+
+  private flushMinMaxLineBatch(): void {
+    const batch = this.minMaxLineBatch;
+    this.minMaxLineBatch = null;
+    if (!batch || batch.segmentCount <= 0) return;
+
+    this.uploadMinMaxInstanceData(batch.segmentCount);
+    this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, batch.segmentCount, batch.style, batch.camera);
+    this.recordDraw("minmax", batch.segmentCount * 2);
+    if (batch.seriesCount > 1) {
+      this.stats.batchedDrawCalls = (this.stats.batchedDrawCalls ?? 0) + batch.seriesCount - 1;
+    }
   }
 
   private drawSeries(series: SeriesStore): void {
@@ -1891,6 +1975,10 @@ export class Chart {
 
   private maxMinMaxSegments(): number {
     return Math.min(this.canvas.width, MINMAX_SEGMENT_CAPACITY);
+  }
+
+  private maxMinMaxBatchSegments(): number {
+    return Math.min(this.maxMinMaxSegments() * 4, MINMAX_BATCH_SEGMENT_CAPACITY);
   }
 
   private maxBarTriangleBars(): number {

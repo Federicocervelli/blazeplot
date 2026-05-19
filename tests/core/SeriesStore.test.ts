@@ -150,6 +150,20 @@ describe("SeriesStore", () => {
     expect(Array.from(instances)).toEqual([1, 1, 7, 4, 2, 9]);
   });
 
+  it("copies instanced min/max segments into an offset target view", () => {
+    const series = makeSeries();
+    series.append(
+      new Float64Array([0, 1, 2, 3, 4, 5]),
+      new Float32Array([3, 7, 1, 9, 5, 2]),
+    );
+
+    const instances = new Float32Array([-1, -1, -1, 0, 0, 0, 0, 0, 99]);
+    const count = series.copyMinMaxInstanced({ xMin: 0, xMax: 5, yMin: 0, yMax: 10 }, instances.subarray(3), 2);
+
+    expect(count).toBe(2);
+    expect(Array.from(instances)).toEqual([-1, -1, -1, 1, 1, 7, 4, 2, 9]);
+  });
+
   it("uses dataset range min/max aggregation when available", () => {
     const dataset = new TrackingRangeDataset([0, 1, 2, 3, 4, 5], [3, 7, 1, 9, 5, 2]);
     const series = new SeriesStore(
