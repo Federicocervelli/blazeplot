@@ -9,7 +9,6 @@ import {
   LIVE_BATCH_SIZE,
   MAX_VIEW_SAMPLES,
   OHLC_INTERVAL,
-  PREVIEW_START_TIME,
   SPARSE_INTERVAL,
   VIEW_SAMPLES,
   Y_VIEW,
@@ -57,7 +56,7 @@ console.info("[blazeplot] preview starting");
 let t = 0;
 let viewSamples = VIEW_SAMPLES;
 let appendRate = DEFAULT_APPEND_RATE;
-let previewStartTime = PREVIEW_START_TIME;
+let previewStartTime = Date.now();
 let dataGeneration = 0;
 let frames = 0;
 let appendedSinceStats = 0;
@@ -295,7 +294,7 @@ function resetDataModel(): void {
   appendedSinceStats = 0;
   frames = 0;
   workerPending = false;
-  previewStartTime = Date.now() - viewSamples * sampleStepMs();
+  previewStartTime = Date.now();
   streamClockStartedAt = performance.now();
   dataGeneration++;
   installSeries();
@@ -475,10 +474,10 @@ function setAppendRate(value: string): void {
 }
 
 function liveXViewport(): { xMin: number; xMax: number } {
-  const sampleMax = Math.max(viewSamples, t);
+  const xMax = sampleToTime(t);
   return {
-    xMin: sampleToTime(Math.max(0, sampleMax - viewSamples)),
-    xMax: sampleToTime(sampleMax),
+    xMin: xMax - viewSamples * sampleStepMs(),
+    xMax,
   };
 }
 
