@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 
 function usage(exitCode = 1) {
   const output = exitCode === 0 ? console.log : console.error;
@@ -9,11 +9,13 @@ function usage(exitCode = 1) {
 
 Options:
   --notes <file>       Include curated release notes from a markdown/text file.
+                       Defaults to changelogs/v<newVersion>.md.
                        Use "-" to read notes from stdin.
   --no-commits         Do not append the generated commit list.
   -h, --help           Show this help.
 
-Example:
+Examples:
+  node scripts/release.js minor
   node scripts/release.js minor --notes RELEASE_NOTES.md
 `);
   process.exit(exitCode);
@@ -78,11 +80,6 @@ function buildReleaseMessage(version, notes, commitLog) {
   return `${sections.join("\n\n")}\n`;
 }
 
-if (notesPath && notesPath !== "-" && !existsSync(notesPath)) {
-  console.error(`Release notes file not found: ${notesPath}`);
-  process.exit(1);
-}
-
 const pkgPath = new URL("../package.json", import.meta.url);
 const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
 const oldVersion = pkg.version;
@@ -97,6 +94,13 @@ if (type === "major") {
   newVersion = `${major}.${minor}.${patch + 1}`;
 }
 
+if (!notesPath) notesPath = `changelogs/v${newVersion}.md`;
+if (notesPath !== "-" && !existsSync(notesPath)) {
+  console.error(`Release notes file not found: ${notesPath}`);
+  console.error("Create it or pass --notes <file>.");
+  process.exit(1);
+}
+
 const prevTag = `v${oldVersion}`;
 const releaseNotes = readReleaseNotes(notesPath);
 const commitLog = includeCommits ? collectCommitLog(prevTag) : "";
@@ -104,7 +108,8 @@ const commitLog = includeCommits ? collectCommitLog(prevTag) : "";
 pkg.version = newVersion;
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
-execSync("git add package.json");
+execFileSync("git", ["add", "package.json"]);
+if (notesPath !== "-") execFileSync("git", ["add", notesPath]);
 
 const message = buildReleaseMessage(newVersion, releaseNotes, commitLog);
 execSync("git commit -F -", { input: message });
