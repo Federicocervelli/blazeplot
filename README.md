@@ -21,21 +21,23 @@ bun install blazeplot
 
 ## Quick start
 
+A chart only needs a host element. For regular arrays, wrap your data in a `StaticDataset`; `capacity` is only needed when you want a streaming ring buffer.
+
 ```html
 <div id="chart" style="width:100%;height:400px"></div>
 
 <script type="module">
-  import { Chart } from "blazeplot";
+  import { Chart, StaticDataset } from "blazeplot";
 
-  const chart = new Chart(document.getElementById("chart"));
-  const wave = chart.addLine({ capacity: 10_000, downsample: "minmax" });
+  const el = document.getElementById("chart");
+  if (!el) throw new Error("Missing #chart element");
 
-  wave.append(
-    Float64Array.from({ length: 1000 }, (_, i) => i),
-    Float32Array.from({ length: 1000 }, (_, i) => Math.sin(i * 0.02)),
-  );
+  const x = Array.from({ length: 1000 }, (_, i) => i);
+  const y = x.map((value) => Math.sin(value * 0.02));
 
-  chart.setViewport({ xMin: 0, xMax: 1000, yMin: -1.5, yMax: 1.5 });
+  const chart = new Chart(el);
+  chart.addLine({ dataset: new StaticDataset(x, y), name: "sine" });
+  chart.setViewport({ xMin: x[0], xMax: x[x.length - 1], yMin: -1.5, yMax: 1.5 });
   chart.start();
 </script>
 ```
