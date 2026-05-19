@@ -213,7 +213,7 @@ Prioritized additions based on gaps versus mature plotting libraries while prese
    - [x] Add first-party `blazeplot/plugins/annotations` entrypoint with a plugin-owned SVG overlay.
    - [x] Support X/Y lines, X/Y ranges, boxes, points, labels, visibility, IDs, per-annotation styles, and left/right Y-axis targeting.
    - [x] Provide runtime `add`, `remove`, `clear`, `setAnnotations`, and `getAnnotations` APIs.
-   - [ ] Add annotation hit testing and hover/click event payloads that identify the annotation and data-space anchor/bounds.
+   - [x] Add annotation hit testing and hover/click event payloads that identify the annotation and data-space anchor/bounds.
    - [ ] Add optional drag/edit handles for movable lines, ranges, boxes, points, and labels.
    - [ ] Include non-text plugin SVG/HTML overlays, including annotations, in `chart.screenshot()` composition.
 
