@@ -194,7 +194,42 @@ async function runMobileCase(options: Options, serverUrl: string): Promise<void>
     await sleep(250);
     snapshot = await getRequiredSnapshot(cdp);
     assert(close(spanX(snapshot.viewport), initialSpan, 1), "double-tap reset restores x span");
-    console.log("✓ mobile: touch pan, pinch zoom, double-tap reset");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(100);
+    snapshot = await getRequiredSnapshot(cdp);
+    const xAxisCenter = centerOf(snapshot.xAxisRect);
+    const yAxisCenter = centerOf(snapshot.yAxisRect);
+    await touchDrag(cdp, xAxisCenter.x, xAxisCenter.y, xAxisCenter.x + 110, xAxisCenter.y);
+    await sleep(150);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(Math.abs(snapshot.viewport.xMin - snapshot.initialViewport.xMin) > 1, "x-axis touch drag pans x");
+    assert(close(spanY(snapshot.viewport), spanY(snapshot.initialViewport), 0.01), "x-axis touch drag preserves y span");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(100);
+    await pinch(cdp, xAxisCenter.x, xAxisCenter.y, 42, 96);
+    await sleep(150);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(spanX(snapshot.viewport) < initialSpan * 0.8, "x-axis pinch zooms x");
+    assert(close(spanY(snapshot.viewport), spanY(snapshot.initialViewport), 0.01), "x-axis pinch preserves y span");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(100);
+    await touchDrag(cdp, yAxisCenter.x, yAxisCenter.y, yAxisCenter.x, yAxisCenter.y + 80);
+    await sleep(150);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(Math.abs(snapshot.viewport.yMin - snapshot.initialViewport.yMin) > 0.05, "y-axis touch drag pans y");
+    assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1), "y-axis touch drag preserves x span");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(100);
+    await pinchVertical(cdp, yAxisCenter.x, center.y, 34, 86);
+    await sleep(150);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(spanY(snapshot.viewport) < spanY(snapshot.initialViewport) * 0.8, "y-axis pinch zooms y");
+    assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1), "y-axis pinch preserves x span");
+    console.log("✓ mobile: touch pan, pinch zoom, axis gestures, double-tap reset");
   } finally {
     cdp.close();
   }
@@ -403,6 +438,20 @@ async function pinch(cdp: CdpClient, centerX: number, centerY: number, startRadi
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 }
 
+async function pinchVertical(cdp: CdpClient, centerX: number, centerY: number, startRadius: number, endRadius: number): Promise<void> {
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [
+    { x: centerX, y: centerY - startRadius, id: 1 },
+    { x: centerX, y: centerY + startRadius, id: 2 },
+  ] });
+  await sleep(50);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [
+    { x: centerX, y: centerY - endRadius, id: 1 },
+    { x: centerX, y: centerY + endRadius, id: 2 },
+  ] });
+  await sleep(50);
+  await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+}
+
 async function touchStart(cdp: CdpClient, x: number, y: number): Promise<void> {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
 }
@@ -429,6 +478,10 @@ function centerOf(rect: RectSnapshot): { x: number; y: number } {
 
 function spanX(v: ViewportSnapshot): number {
   return v.xMax - v.xMin;
+}
+
+function spanY(v: ViewportSnapshot): number {
+  return v.yMax - v.yMin;
 }
 
 function close(a: number, b: number, tolerance: number): boolean {
