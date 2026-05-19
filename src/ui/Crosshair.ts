@@ -1,5 +1,5 @@
 import type { SeriesYAxis } from "../core/types.js";
-import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin } from "./Chart.js";
+import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
 import { formatCompactNumber, placeAbsoluteWithinBox, renderPickItems, rgba } from "./OverlayUtils.js";
 
 export type CrosshairAxis = "x" | "y" | "xy";
@@ -72,7 +72,7 @@ export interface CrosshairPlugin extends ChartPlugin {
   subscribe(event: "measurechange" | "measureend", callback: (measurement: RulerMeasurement) => void): () => void;
 }
 
-function countSamplesInRange(chart: Chart, xMin: number, xMax: number): number {
+function countSamplesInRange(chart: ChartPluginContext, xMin: number, xMax: number): number {
   const viewport = { xMin, xMax, yMin: -Infinity, yMax: Infinity };
   let total = 0;
   for (const state of chart.getSeriesState()) {
@@ -91,13 +91,13 @@ function hasModifier(event: PointerEvent, modifier: CrosshairPluginOptions["rule
   return event.metaKey;
 }
 
-function positionFromPick(chart: Chart, clientX: number, clientY: number, mode: ChartPickMode): CrosshairPosition | null {
+function positionFromPick(chart: ChartPluginContext, clientX: number, clientY: number, mode: ChartPickMode): CrosshairPosition | null {
   const picked = chart.pick(clientX, clientY, { mode, group: "none" });
   const item = picked?.items[0];
   return item ? { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: [item] } : null;
 }
 
-function resolvePosition(chart: Chart, clientX: number, clientY: number, yAxis: SeriesYAxis, snap: CrosshairSnapMode): CrosshairPosition | null {
+function resolvePosition(chart: ChartPluginContext, clientX: number, clientY: number, yAxis: SeriesYAxis, snap: CrosshairSnapMode): CrosshairPosition | null {
   const rect = chart.canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
 
@@ -113,7 +113,7 @@ function resolvePosition(chart: Chart, clientX: number, clientY: number, yAxis: 
   return { dataX: data[0], dataY: data[1], plotX, plotY, items: [] };
 }
 
-function resolveSharedPosition(chart: Chart, dataX: number, yAxis: SeriesYAxis): CrosshairPosition | null {
+function resolveSharedPosition(chart: ChartPluginContext, dataX: number, yAxis: SeriesYAxis): CrosshairPosition | null {
   const rect = chart.canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
 
@@ -152,7 +152,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   const snap = options.snap ?? "none";
   const mode = options.mode ?? "crosshair";
   const rulerModifier = options.rulerModifier ?? "none";
-  let chartRef: Chart | null = null;
+  let chartRef: ChartPluginContext | null = null;
   let root: HTMLDivElement | null = null;
   let vertical: HTMLDivElement | null = null;
   let horizontal: HTMLDivElement | null = null;
@@ -245,7 +245,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     if (options.label !== false) {
       label.style.display = "block";
       if (options.render) {
-        options.render(position, label, chartRef!);
+        options.render(position, label, chartRef! as Chart);
       } else {
         renderDefaultLabel(position, label, formatX, formatY, options.formatter);
       }
@@ -255,7 +255,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     }
   };
 
-  const measurementFrom = (start: CrosshairPosition, end: CrosshairPosition, chart: Chart): RulerMeasurement => {
+  const measurementFrom = (start: CrosshairPosition, end: CrosshairPosition, chart: ChartPluginContext): RulerMeasurement => {
     const deltaX = end.dataX - start.dataX;
     const deltaY = end.dataY - start.dataY;
     return {
@@ -308,7 +308,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   };
 
   return {
-    install(chart: Chart) {
+    install(chart: ChartPluginContext) {
       chartRef = chart;
       const color = options.color ?? "rgba(148, 163, 184, 0.55)";
       const width = `${options.width ?? 1}px`;

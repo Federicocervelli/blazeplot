@@ -468,6 +468,7 @@ These member tables are generated from TypeScript declarations.
 | `ChartPickMode` | type | `./ui/Chart` | — |
 | `ChartPickOptions` | interface | `./ui/Chart` | — |
 | `ChartPlugin` | interface | `./ui/Chart` | — |
+| `ChartPluginContext` | interface | `./ui/Chart` | — |
 | `ChartPluginHandle` | interface | `./ui/Chart` | — |
 | `ChartPointerEventState` | interface | `./ui/Chart` | — |
 | `ChartPointerEventType` | type | `./ui/Chart` | — |
