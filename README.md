@@ -12,8 +12,6 @@ Fast WebGL2 plotting engine for the browser 🔥
 
 Built for people who have hit the performance ceiling of Chart.js, Plotly, and similar browser charting libraries. BlazePlot keeps the hot path GPU-native and the DOM minimal, so large streaming datasets stay interactive instead of turning into a slideshow.
 
-Built on WebGL2 + [regl](https://github.com/regl-project/regl).
-
 ## Installation
 
 ```bash
