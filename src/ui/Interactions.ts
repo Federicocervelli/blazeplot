@@ -78,10 +78,10 @@ function isLikelyTrackpadPan(event: WheelEvent): boolean {
   const absY = Math.abs(event.deltaY);
   if (absX > 0) return true;
   if (absY <= 0) return false;
-  // Traditional mouse wheels usually report coarse 100px-ish vertical steps in
-  // Chromium. Trackpads emit fine-grained pixel deltas, but a fast swipe can be
-  // larger than a single mouse notch, so avoid a hard small-delta cutoff.
-  return absY < 140 || Math.abs(absY % 100) > 1;
+  // Traditional mouse wheels commonly report coarse vertical-only ~100px pixel
+  // deltas in Chromium. Keep those as zoom; trackpad two-finger slides emit
+  // fine-grained smaller deltas and should pan.
+  return absY < 80;
 }
 
 function constrainPan(intent: PanIntent, axis: ZoomAxis): PanIntent {
