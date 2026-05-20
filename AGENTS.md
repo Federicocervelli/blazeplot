@@ -26,7 +26,7 @@
 - Implement each requested feature/fix on its own branch from updated `development` (for example `feature/<topic>` or `docs/<topic>`), make focused commits there, then merge it back to `development`. Do not stack unrelated changes in one feature branch.
 - Prefer `git merge --no-ff <feature-branch>` when merging completed feature branches back to `development` so feature boundaries remain visible in history.
 - Do not open PRs to `main` until the user explicitly asks for a release PR. Normal completed work should stop after merging to `development` and pushing it.
-- GitHub Pages deploys on pushes to `main` and `development`. The stable site is served at `https://blazeplot.cervelli.dev/`; stable previews are at `https://blazeplot.cervelli.dev/blazeplot/previews`; the in-progress `development` site is served at `https://blazeplot.cervelli.dev/development/`; integrated development previews live under `/development/previews`.
+- GitHub Pages deploys on pushes to `main` and `development`. The stable site is served at `https://blazeplot.cervelli.dev/`; stable previews are at `https://blazeplot.cervelli.dev/previews`; the in-progress `development` site is served at `https://blazeplot.cervelli.dev/development/`; integrated development previews live under `/development/previews`.
 - Releases are merge-to-main based. Do not use tag-push/manual release scripts.
 - To prepare a release PR:
   1. Start on updated `development`.

@@ -13,7 +13,7 @@ BlazePlot releases are driven by pull requests into `main`. Tags are outputs of 
 GitHub Pages publishes both active branches into one site:
 
 - Stable `main` site: <https://blazeplot.cervelli.dev/>
-- Stable integrated previews: <https://blazeplot.cervelli.dev/blazeplot/previews>
+- Stable integrated previews: <https://blazeplot.cervelli.dev/previews>
 - In-progress `development` site: <https://blazeplot.cervelli.dev/development/>
 - In-progress integrated previews: <https://blazeplot.cervelli.dev/development/previews>
 - Legacy `previews.html` index is not generated; use the app preview routes directly.
