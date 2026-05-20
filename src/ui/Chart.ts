@@ -384,14 +384,6 @@ function textOverlayVisible(config: string | TextOverlayConfig | undefined): boo
   return typeof config === "string" ? config.length > 0 : !!config && config.visible !== false && config.text.length > 0;
 }
 
-function textOverlayOffsetX(config: string | TextOverlayConfig | undefined): number {
-  return typeof config === "string" ? 0 : config?.offsetX ?? 0;
-}
-
-function textOverlayOffsetY(config: string | TextOverlayConfig | undefined): number {
-  return typeof config === "string" ? 0 : config?.offsetY ?? 0;
-}
-
 function colorsEqual(
   a: readonly [number, number, number, number],
   b: readonly [number, number, number, number],
@@ -1393,14 +1385,17 @@ export class Chart implements ChartPluginContext {
     el.style.display = visible ? "block" : "none";
     if (!visible) return;
 
-    const align = typeof config === "string" ? "center" : config?.align ?? "center";
-    el.style.color = typeof config === "string" ? defaults.color : config?.color ?? defaults.color;
-    el.style.font = typeof config === "string" ? defaults.font : config?.font ?? defaults.font;
-    el.style.top = `${defaults.top + textOverlayOffsetY(config)}px`;
-    el.style.left = align === "left" ? `${8 + textOverlayOffsetX(config)}px` : align === "right" ? "auto" : `calc(50% + ${textOverlayOffsetX(config)}px)`;
-    el.style.right = align === "right" ? `${8 - textOverlayOffsetX(config)}px` : "auto";
-    el.style.transform = align === "center" ? "translateX(-50%)" : "none";
-    el.style.textAlign = align;
+    const custom = typeof config === "string" ? undefined : config;
+    const align = custom?.align ?? "center";
+    const offsetX = custom?.offsetX ?? 0;
+    const style = el.style;
+    style.color = custom?.color ?? defaults.color;
+    style.font = custom?.font ?? defaults.font;
+    style.top = `${defaults.top + (custom?.offsetY ?? 0)}px`;
+    style.left = align === "left" ? `${8 + offsetX}px` : align === "right" ? "auto" : `calc(50% + ${offsetX}px)`;
+    style.right = align === "right" ? `${8 - offsetX}px` : "auto";
+    style.transform = align === "center" ? "translateX(-50%)" : "none";
+    style.textAlign = align;
   }
 
   private applyAxisTitleOverlay(el: HTMLElement, config: string | AxisTitleConfig | undefined, axis: "x" | "y" | "y2"): void {
@@ -1409,20 +1404,24 @@ export class Chart implements ChartPluginContext {
     el.style.display = visible ? "block" : "none";
     if (!visible) return;
 
-    el.style.color = typeof config === "string" ? this.resolvedTheme.axisTitleColor : config?.color ?? this.resolvedTheme.axisTitleColor;
-    el.style.font = typeof config === "string" ? this.resolvedTheme.axisTitleFont : config?.font ?? this.resolvedTheme.axisTitleFont;
+    const custom = typeof config === "string" ? undefined : config;
+    const offsetX = custom?.offsetX ?? 0;
+    const offsetY = custom?.offsetY ?? 0;
+    const style = el.style;
+    style.color = custom?.color ?? this.resolvedTheme.axisTitleColor;
+    style.font = custom?.font ?? this.resolvedTheme.axisTitleFont;
     if (axis === "x") {
-      el.style.left = `calc(50% + ${textOverlayOffsetX(config)}px)`;
-      el.style.bottom = `${4 - textOverlayOffsetY(config)}px`;
-      el.style.transform = "translateX(-50%)";
+      style.left = `calc(50% + ${offsetX}px)`;
+      style.bottom = `${4 - offsetY}px`;
+      style.transform = "translateX(-50%)";
     } else if (axis === "y") {
-      el.style.left = `${4 + textOverlayOffsetX(config)}px`;
-      el.style.top = `calc(50% + ${textOverlayOffsetY(config)}px)`;
-      el.style.transform = "translateY(-50%) rotate(-90deg)";
+      style.left = `${4 + offsetX}px`;
+      style.top = `calc(50% + ${offsetY}px)`;
+      style.transform = "translateY(-50%) rotate(-90deg)";
     } else {
-      el.style.right = `${4 - textOverlayOffsetX(config)}px`;
-      el.style.top = `calc(50% + ${textOverlayOffsetY(config)}px)`;
-      el.style.transform = "translateY(-50%) rotate(90deg)";
+      style.right = `${4 - offsetX}px`;
+      style.top = `calc(50% + ${offsetY}px)`;
+      style.transform = "translateY(-50%) rotate(90deg)";
     }
   }
 
