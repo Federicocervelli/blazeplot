@@ -61,6 +61,9 @@ jobs:
           cp -a branches/main/build/pages/. build/pages/
           cp -a branches/development/build/pages/. build/pages/development/
           rm -rf build/pages/visual build/pages/interaction build/pages/development/visual build/pages/development/interaction
+          mkdir -p build/pages/previews build/pages/development/previews
+          cp build/pages/index.html build/pages/previews/index.html
+          cp build/pages/development/index.html build/pages/development/previews/index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
