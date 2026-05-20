@@ -70,7 +70,7 @@ async function main(): Promise<void> {
 function parseArgs(args: readonly string[]): Options {
   const options: Options = {
     scenarios: ["mixed-1m-live"],
-    outMd: "BENCHMARK_RESULTS.md",
+    outMd: "docs/internal/benchmark-results.md",
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -126,7 +126,7 @@ function parseArgs(args: readonly string[]): Options {
 }
 
 function printHelpAndExit(): never {
-  console.log(`Usage: bun run bench:report [options]\n\nOptions:\n  --scenario <name[,name]>   Scenario(s) to run (default: mixed-1m-live)\n  --out-md <path>            Markdown file to append (default: BENCHMARK_RESULTS.md)\n  --measure-ms <ms>          Forwarded to bench harness\n  --warmup-ms <ms>           Forwarded to bench harness\n  --width <px>               Browser viewport width\n  --height <px>              Browser viewport height\n  --top <n>                  CPU profile rows to capture\n  --setup-timeout-ms <ms>    Setup timeout\n  --chrome <path>            Browser executable\n`);
+  console.log(`Usage: bun run bench:report [options]\n\nOptions:\n  --scenario <name[,name]>   Scenario(s) to run (default: mixed-1m-live)\n  --out-md <path>            Markdown file to append (default: docs/internal/benchmark-results.md)\n  --measure-ms <ms>          Forwarded to bench harness\n  --warmup-ms <ms>           Forwarded to bench harness\n  --width <px>               Browser viewport width\n  --height <px>              Browser viewport height\n  --top <n>                  CPU profile rows to capture\n  --setup-timeout-ms <ms>    Setup timeout\n  --chrome <path>            Browser executable\n`);
   process.exit(0);
 }
 

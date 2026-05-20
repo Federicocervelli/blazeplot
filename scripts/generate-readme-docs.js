@@ -6,7 +6,7 @@ import { dirname, resolve } from "node:path";
 import ts from "typescript";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
-const readmePath = resolve(root, "README.md");
+const apiReferencePath = resolve(root, "docs/api-reference.md");
 const packagePath = resolve(root, "package.json");
 const distIndexPath = resolve(root, "dist/index.d.ts");
 
@@ -14,7 +14,6 @@ const startMarker = "<!-- README_DOCS_START -->";
 const endMarker = "<!-- README_DOCS_END -->";
 
 const pkg = JSON.parse(readFileSync(packagePath, "utf-8"));
-let readme = readFileSync(readmePath, "utf-8");
 
 if (!existsSync(distIndexPath)) {
   throw new Error("dist/index.d.ts not found. Run `bun run build` before generating README docs.");
@@ -25,7 +24,7 @@ const exportDescriptions = new Map([
   ["./core", "Data structures, datasets, LOD helpers, and series storage without chart UI."],
   ["./interaction", "Camera, axis, pan/zoom intent, and viewport policy helpers without chart UI."],
   ["./render", "Renderer and WebGL backend primitives without chart UI."],
-  ["./react", "React wrapper component and hooks."],
+  ["./react", "React wrapper component."],
   ["./linked", "Linked chart layout helpers with tooltip/crosshair sync factories."],
   ["./linked-core", "Lean linked chart layout helpers without tooltip/crosshair sync imports."],
   ["./data", "Pure chart data export and transform helpers."],
@@ -38,23 +37,6 @@ const exportDescriptions = new Map([
   ["./plugins/crosshair", "Built-in crosshair and ruler plugin."],
   ["./plugins/navigator", "Built-in overview/navigator plugin."],
 ]);
-
-const keySymbols = [
-  "Chart",
-  "ChartOptions",
-  "ChartTheme",
-  "AxisConfig",
-  "SeriesStore",
-  "SeriesConfig",
-  "SeriesStyle",
-  "UniformRingBuffer",
-  "RingBuffer",
-  "StaticDataset",
-  "OhlcRingBuffer",
-  "Dataset",
-  "AcceleratedDataset",
-  "ViewportPolicy",
-];
 
 const sourceCache = new Map();
 const declarationCache = new Map();
@@ -207,152 +189,57 @@ function renderPublicExports(exports) {
   return [
     "### All public exports",
     "",
-    "<details>",
-    "<summary>Generated from <code>dist/index.d.ts</code> after the package build</summary>",
+    "Generated from `dist/index.d.ts` after the package build.",
     "",
     "| Export | Kind | Source | JSDoc summary |",
     "|---|---|---|---|",
     ...rows,
-    "",
-    "</details>",
-  ].join("\n");
-}
-
-function paramsText(parameters, source) {
-  return parameters.map((param) => nodeText(param, source)).join(", ");
-}
-
-function hasModifier(node, kind) {
-  return !!node.modifiers?.some((modifier) => modifier.kind === kind);
-}
-
-function isPublicMember(member) {
-  return !hasModifier(member, ts.SyntaxKind.PrivateKeyword) && !hasModifier(member, ts.SyntaxKind.ProtectedKeyword);
-}
-
-function memberName(member, source) {
-  if (ts.isConstructorDeclaration(member)) return "constructor";
-  const name = member.name;
-  if (!name) return "";
-  return nodeText(name, source);
-}
-
-function memberSignature(member, source) {
-  if (ts.isConstructorDeclaration(member)) return `constructor(${paramsText(member.parameters, source)})`;
-  if (ts.isMethodDeclaration(member) || ts.isMethodSignature(member)) {
-    const name = memberName(member, source);
-    const typeParams = member.typeParameters?.length ? `<${member.typeParameters.map((param) => nodeText(param, source)).join(", ")}>` : "";
-    const ret = member.type ? nodeText(member.type, source) : "void";
-    return `${name}${typeParams}(${paramsText(member.parameters, source)}): ${ret}`;
-  }
-  if (ts.isPropertyDeclaration(member) || ts.isPropertySignature(member)) {
-    const opt = member.questionToken ? "?" : "";
-    const type = member.type ? nodeText(member.type, source) : "unknown";
-    return `${memberName(member, source)}${opt}: ${type}`;
-  }
-  if (ts.isGetAccessorDeclaration(member)) {
-    const type = member.type ? nodeText(member.type, source) : "unknown";
-    return `get ${memberName(member, source)}(): ${type}`;
-  }
-  if (ts.isSetAccessorDeclaration(member)) {
-    return `set ${memberName(member, source)}(${paramsText(member.parameters, source)})`;
-  }
-  return nodeText(member, source);
-}
-
-function renderMembers(entry) {
-  const declaration = entry.declaration;
-  if (!declaration) return "";
-  const { node, source } = declaration;
-  if (!((ts.isClassDeclaration(node) || ts.isInterfaceDeclaration(node)) && node.members.length > 0)) return "";
-
-  const rows = node.members
-    .filter(isPublicMember)
-    .map((member) => {
-      const signature = memberSignature(member, source);
-      if (!signature) return "";
-      return `| ${code(signature)} | ${markdownEscape(jsDoc(member) || "—")} |`;
-    })
-    .filter(Boolean);
-
-  if (rows.length === 0) return "";
-  return [
-    `<details>`,
-    `<summary>${entry.kind} ${entry.name}</summary>`,
-    "",
-    "| Member |",
-    "|---|",
-    ...rows.map((row) => row.replace(/ \| — \|$/, " |")),
-    "",
-    `</details>`,
-  ].join("\n");
-}
-
-function renderKeyDeclarations(exports) {
-  const byName = new Map(exports.map((entry) => [entry.name, entry]));
-  const sections = keySymbols
-    .map((name) => byName.get(name))
-    .filter(Boolean)
-    .map(renderMembers)
-    .filter(Boolean);
-
-  if (sections.length === 0) return "";
-  return [
-    "### Selected generated declarations",
-    "",
-    "These member tables are generated from TypeScript declarations.",
-    "",
-    sections.join("\n\n"),
   ].join("\n");
 }
 
 function renderGeneratedDocs() {
   const publicExports = collectPublicExports();
-  const selectedDeclarations = renderKeyDeclarations(publicExports);
+  const commonApiMap = [
+    "This page is generated from the built package. Use it as an index of import paths and public symbols; the guide pages explain when to use each feature.",
+    "",
+    "### Common API map",
+    "",
+    "| Task | Start here |",
+    "|---|---|",
+    "| Create and render a chart | `Chart`, `ChartOptions`, `chart.addLine(...)`, `chart.fitToData()`, `chart.start()` |",
+    "| Static X/Y arrays | `StaticDataset` |",
+    "| Live irregular data | `RingBuffer` |",
+    "| Live fixed-rate data | `UniformRingBuffer` |",
+    "| OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |",
+    "| Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |",
+    "| Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |",
+    "| Tooltips, legends, annotations, selection | `blazeplot/plugins/*` subpaths |",
+    "| React | `blazeplot/react` and `BlazeChart` |",
+    "| Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |",
+    "| Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |",
+    "",
+    "Guides: [Overview](./overview.md), [Examples](./examples.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), [Built-in plugins](./built-in-plugins.md), and [Plugin authoring](./plugin-authoring.md).",
+  ].join("\n");
+
   const parts = [
     startMarker,
     "## API reference",
     "",
-    "This section is generated by `bun run docs:readme` from TypeScript declaration files, JSDoc comments, and built `dist/` bundle sizes. Do not edit it by hand.",
-    "",
-    "- [Quick start](#quick-start)",
-    "- [Features](#features)",
-    "- [Architecture](#architecture)",
-    "- [Development](#development)",
-    "- [Plugin authoring](docs/plugin-authoring.md)",
-    "- [Theming and responsive layout](docs/theming-and-layout.md)",
-    "- [Performance recipes](docs/performance-recipes.md)",
-    "- [Data semantics](docs/data-semantics.md)",
-    "- [Versioning and migration](docs/versioning-and-migration.md)",
-    "- [Browser and dependency support](docs/browser-support.md)",
-    "- [Example recipes](docs/examples.md)",
-    "- [Roadmap](ROADMAP.md)",
-    "- [Bundle size summary](#bundle-size-summary)",
-    `- [Changelog for v${pkg.version}](changelogs/v${pkg.version}.md)`,
+    commonApiMap,
     "",
     renderEntrypoints(),
     "",
     renderBundleSizeSummary(),
   ];
-  if (selectedDeclarations) parts.push("", selectedDeclarations);
   parts.push("", renderPublicExports(publicExports));
   parts.push(endMarker);
   return parts.join("\n");
 }
 
-const generated = renderGeneratedDocs();
-const start = readme.indexOf(startMarker);
-const end = readme.indexOf(endMarker);
+const generated = renderGeneratedDocs()
+  .replace(startMarker, "")
+  .replace(endMarker, "")
+  .trim();
 
-if (start !== -1 && end !== -1 && end > start) {
-  readme = `${readme.slice(0, start)}${generated}${readme.slice(end + endMarker.length)}`;
-} else {
-  const insertBefore = readme.indexOf("\n## Development\n");
-  if (insertBefore === -1) {
-    throw new Error("Could not find README Development section to insert generated documentation block before.");
-  }
-  readme = `${readme.slice(0, insertBefore)}\n${generated}\n${readme.slice(insertBefore)}`;
-}
-
-writeFileSync(readmePath, readme.endsWith("\n") ? readme : `${readme}\n`);
-console.log("Generated README documentation section from TypeScript declarations.");
+writeFileSync(apiReferencePath, `${generated}\n`);
+console.log("Generated docs/api-reference.md from TypeScript declarations.");

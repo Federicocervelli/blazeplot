@@ -1,6 +1,6 @@
 import { Chart } from "@/index.ts";
 import type { ChartFrameStats, SeriesStore } from "@/index.ts";
-import { ProceduralLineDataset } from "../ProceduralLineDataset.ts";
+import { ProceduralLineDataset } from "../../../website/src/ProceduralLineDataset.ts";
 
 interface ScenarioConfig {
   readonly name: string;

@@ -1,16 +1,17 @@
 # Plugin authoring
 
-BlazePlot plugins are optional objects installed with `new Chart(target, { plugins: [...] })`.
+A BlazePlot plugin is a small object installed with `new Chart(target, { plugins: [...] })`. Use plugins for UI or behavior that should stay outside the core renderer: legends, tooltips, custom overlays, interaction modes, or app-specific controls.
 
 ```ts
-import type { ChartPlugin, ChartPluginContext } from "blazeplot";
+import type { ChartPlugin } from "blazeplot";
 
 export function examplePlugin(): ChartPlugin {
   return {
-    install(chart: ChartPluginContext) {
+    install(chart) {
       const unsubscribe = chart.subscribe("render", () => {
         // Read chart state and update plugin-owned UI.
       });
+
       return () => unsubscribe();
     },
   };
@@ -19,22 +20,46 @@ export function examplePlugin(): ChartPlugin {
 
 ## Lifecycle
 
-- `install(chart)` runs once after the chart root, canvas, cameras, axes, and core event plumbing exist.
-- Return either a cleanup function or an object with `dispose()`.
-- Keep DOM/event resources plugin-owned and remove them during cleanup.
-- Do not import built-in plugins from `Chart`; expose optional UI through subpath entries.
+- `install(chart)` runs once after the chart root, plot layer, canvas, camera, axes, and event plumbing exist.
+- Return a cleanup function or an object with `dispose()`.
+- Own any DOM nodes, event listeners, timers, observers, or GPU resources you create.
+- Remove those resources during cleanup. The chart will call plugin cleanup from `chart.dispose()`.
 
 ## Useful chart APIs
 
-`ChartPluginContext` is a narrow public extension surface implemented by `Chart`; use it to type plugins that do not need the concrete `Chart` class.
-
-- `chart.rootElement`, `chart.plotElement`, `chart.canvas` for DOM attachment.
-- `chart.setLayoutReservation(id, reservation)` to reserve outer space for plugin UI.
-- `chart.subscribe(...)` for render, hover, pointer, viewport, selection, series, and theme changes.
+- `chart.rootElement`, `chart.plotElement`, and `chart.canvas` for DOM attachment.
+- `chart.setLayoutReservation(id, reservation)` for plugin UI outside the plot area.
+- `chart.subscribe(...)` for `render`, `hover`, `viewportchange`, `select`, `serieschange`, `seriesclick`, `themechange`, and pointer events (`click`, `dblclick`, `pointerdown`, `pointerup`, `pointermove`).
 - `chart.pick(clientX, clientY)` for nearest raw sample data.
-- `chart.clientToData(clientX, clientY, yAxis)` and `chart.dataToPlot(x, y, yAxis)` for coordinate conversion.
-- `chart.theme` plus `themechange` for theme-aware plugin UI.
+- `chart.clientToData(...)` and `chart.dataToPlot(...)` for coordinate conversion.
+- `chart.theme` and the `themechange` event for theme-aware UI.
+- `chart.requestRender()` or `chart.render()` when plugin state changes need a redraw.
 
-## Subpath packaging
+## Layout guidance
 
-Built-in optional plugins live under `src/plugins/*` and are Vite library entries. Follow the same pattern for first-party plugins so chart-only imports stay lean.
+Attach plot overlays to `chart.plotElement` when they should move with the plot. For UI outside the plot, reserve space with `chart.setLayoutReservation(...)` instead of hard-coding margins over the canvas. This keeps axes, screenshots, and responsive layout predictable.
+
+```ts
+export function footerPlugin(): ChartPlugin {
+  return {
+    install(chart) {
+      const id = "my-footer";
+      const footer = document.createElement("div");
+      footer.textContent = "Updated live";
+      chart.rootElement.appendChild(footer);
+      chart.setLayoutReservation(id, { bottom: 28 });
+
+      return () => {
+        chart.setLayoutReservation(id, null);
+        footer.remove();
+      };
+    },
+  };
+}
+```
+
+See [Theming and layout](./theming-and-layout.md).
+
+## Importing built-in plugins
+
+Built-in plugins live under subpaths such as `blazeplot/plugins/tooltip` and `blazeplot/plugins/interactions`. Import only the plugins you use. See [Examples](./examples.md#built-in-plugins) and the [API reference](./api-reference.md#package-entry-points).

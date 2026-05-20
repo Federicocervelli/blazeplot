@@ -1,28 +1,46 @@
 # Performance recipes
 
-BlazePlot is optimized for large browser plots through WebGL2 rendering and data-space LOD.
+BlazePlot is fast when the data model and the visible range match how the renderer works. The most important rules are simple: keep X sorted, batch writes, avoid rebuilding charts, and let LOD handle dense views.
 
 ## Streaming data
 
-- Use ring-buffer series for live feeds and set capacity to the largest visible/history window you need.
-- Prefer typed-array batch appends over one point at a time.
-- Keep X values sorted for binary-search and LOD extraction paths.
-- Use `overflow: "wrap"` for live charts, `"drop-new"` for backpressure, or `"error"` for strict ingestion.
+- Use `RingBuffer` for irregular live samples and `UniformRingBuffer` for fixed-rate samples.
+- For fixed-rate data, append only Y batches with `appendY(...)` so you do not store or copy repeated X values.
+- Set capacity to the largest history window you need to keep in memory.
+- Append typed-array batches when possible instead of one sample at a time, for example `Float64Array` X plus `Float32Array` Y for `append(...)` or `Float32Array` Y for `appendY(...)`.
+- Keep X values sorted in logical order. Binary search, picking, and LOD depend on it.
+- Choose an overflow mode intentionally:
+  - `"wrap"` for rolling live windows,
+  - `"drop-new"` when backpressure is safer than overwriting history,
+  - `"error"` when ingestion bugs should fail loudly.
 
-## Static data
+For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 
-- Use `new StaticDataset(x, y)` for typed arrays.
-- Supply custom datasets that implement accelerated copy/min-max capabilities for remote, procedural, or memory-mapped data.
+## Static or remote data
 
-## LOD choices
+- Use `new StaticDataset(x, y)` for fixed arrays.
+- Use typed arrays for large datasets to reduce memory and copy cost.
+- For remote, procedural, or memory-mapped data, implement the accelerated methods your data can answer cheaply: `rangeMinMaxY`, `copySamplesRange`, `copyVisibleSamples`, `copyVisiblePoints`, or `copyMinMaxSegments`. These contracts are listed in the [API reference](./api-reference.md#all-public-exports).
+- If your server already returns reduced min/max buckets, use `ServerSampledDataset` with `downsample: "server"` so the client renders the supplied buckets directly.
 
-- Default line/bar LOD uses min/max buckets for dense views.
-- Use `downsample: "none"` when exact raw rendering is required and the visible point count is bounded.
-- Scatter defaults to viewport-aware point sampling after exact visible extraction exceeds the point budget.
-- Area series render sampled strips and intentionally skip min/max LOD.
+## Choosing downsampling
 
-## Memory budgeting
+- Line and bar series use min/max LOD by default in dense views.
+- Use `downsample: "none"` only when the number of visible samples is bounded and exact raw rendering matters.
+- Scatter series first extract exact visible points, then sample when the visible set is too large.
+- Area series render sampled strips and do not use min/max LOD. If preserving extremes matters more than filled-shape continuity, use a line/bar series or server-sampled min/max buckets.
+- Server-sampled min/max data should use `downsample: "server"`.
 
-- Reuse series and append batches instead of recreating charts.
-- Call `chart.removeSeries(series)` for discarded series and `chart.dispose()` for unmounted charts.
-- Run `bun run bench:ci` and browser visual tests before releases that change rendering or extraction paths.
+## Reducing per-frame work
+
+- Create charts once. Update datasets and call `chart.render()` instead of recreating the chart.
+- Use `chart.start()` for continuous rendering, or call `chart.render()` after data/option changes when you control the frame loop yourself.
+- Remove unused series with `chart.removeSeries(series)`.
+- Dispose charts on unmount with `chart.dispose()`.
+- Keep optional features in subpath imports, for example `blazeplot/plugins/tooltip`, so chart-only bundles stay smaller.
+
+## Browser budgets
+
+GPU upload size, draw calls, and DOM overlays all matter. Large legends, many annotation labels, or very frequent layout changes can hurt performance even when the WebGL plot is fast.
+
+Use the browser tests and benchmark commands in [Release and benchmark notes](./release-and-benchmarks.md#benchmark-and-bundle-size-commands) when checking a performance-sensitive change.

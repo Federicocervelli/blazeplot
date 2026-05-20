@@ -1,4 +1,4 @@
-import { PREVIEW_START_TIME, PREVIEW_X_STEP_MS, TRACE_PERIOD } from "./dataConfig.ts";
+import { PREVIEW_START_TIME, PREVIEW_X_STEP_MS, TRACE_PERIOD } from "./preview-data-config.ts";
 import type { AcceleratedDataset, AppendableDataset, MinMaxSegmentLayout, SampleCopyLayout, TimeRange, Viewport, YAppendableDataset } from "@/index.ts";
 
 const BASELINE = 0.78;

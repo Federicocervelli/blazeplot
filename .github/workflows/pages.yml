@@ -66,27 +66,13 @@ jobs:
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
           <title>BlazePlot previews</title>
-          <h1>BlazePlot previews</h1>
+          <h1>BlazePlot site and previews</h1>
           <ul>
-            <li><a href="/blazeplot/">main</a></li>
-            <li><a href="/blazeplot/features/">main features</a></li>
           HTML
-          if [ -f build/pages/react/index.html ]; then
-            echo '  <li><a href="/blazeplot/react/">main React</a></li>' >> build/pages/previews.html
-          fi
-          if [ -f build/pages/mobile/index.html ]; then
-            echo '  <li><a href="/blazeplot/mobile/">main mobile</a></li>' >> build/pages/previews.html
-          fi
-          cat >> build/pages/previews.html <<'HTML'
-            <li><a href="/blazeplot/development/">development</a></li>
-            <li><a href="/blazeplot/development/features/">development features</a></li>
-          HTML
-          if [ -f build/pages/development/react/index.html ]; then
-            echo '  <li><a href="/blazeplot/development/react/">development React</a></li>' >> build/pages/previews.html
-          fi
-          if [ -f build/pages/development/mobile/index.html ]; then
-            echo '  <li><a href="/blazeplot/development/mobile/">development mobile</a></li>' >> build/pages/previews.html
-          fi
+          echo '  <li><a href="/blazeplot/">main site</a></li>' >> build/pages/previews.html
+          echo '  <li><a href="/blazeplot/#previews">main previews</a></li>' >> build/pages/previews.html
+          echo '  <li><a href="/blazeplot/development/">development site</a></li>' >> build/pages/previews.html
+          echo '  <li><a href="/blazeplot/development/#previews">development previews</a></li>' >> build/pages/previews.html
           echo '</ul>' >> build/pages/previews.html
 
       - name: Configure Pages

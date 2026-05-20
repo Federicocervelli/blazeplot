@@ -1,29 +1,31 @@
 # Versioning and migration
 
-BlazePlot follows npm semver:
+BlazePlot follows npm semver.
 
-- patch: bug fixes and compatible behavior/performance improvements,
-- minor: new APIs, chart types, plugins, or options that remain backward compatible,
-- major: intentional breaking API or runtime behavior changes.
+- Patch releases fix bugs or make compatible performance/behavior improvements.
+- Minor releases add APIs, chart types, plugins, or options without intentional breaking changes.
+- Major releases can change public APIs or runtime behavior in breaking ways.
 
-## Release flow
+## Stability expectations
 
-Normal work lands on `development`. Release PRs merge `development` into `main`; publishing is handled by the release workflow when `package.json` contains an unpublished version.
+- `blazeplot` and the documented subpath exports are intended to stay stable within a major version.
+- Built-in plugin options may grow over time, but existing option names should be preserved when practical.
+- Low-level renderer/backend types are the most likely to change before a future backend is added.
+- Deprecated names may stay as aliases for at least one minor version when that does not create maintenance risk.
 
-See [release-and-benchmarks.md](./release-and-benchmarks.md) for exact commands.
+## When upgrading
 
-## Migration guidance
+1. Read the changelog for your target version.
+2. Check the [API reference](./api-reference.md) for renamed or moved exports.
+3. Run your chart interaction flows, not just unit tests. Pan, zoom, tooltips, selection, screenshots, and exports can depend on browser behavior.
+4. If you use custom datasets, re-check the assumptions in [Data semantics](./data-semantics.md).
 
-When changing public APIs:
+## For maintainers changing public APIs
 
 1. Prefer additive options and subpath exports.
-2. Keep old names as aliases for at least one minor version when practical.
+2. Keep old names as aliases when practical.
 3. Document behavior changes in `changelogs/vX.Y.Z.md`.
-4. Regenerate README API tables with `bun run docs:readme`.
-5. Add tests or browser smoke coverage for migration-sensitive behavior.
+4. Regenerate generated docs with `bun run docs:readme`.
+5. Add unit, visual, interaction, or package export coverage for migration-sensitive behavior.
 
-## Stability notes
-
-- Core `blazeplot` exports are intended to be stable within a major line.
-- Built-in plugin subpaths can evolve independently but should preserve option names where possible.
-- Low-level rendering/backend types are more likely to change before a future WebGPU backend.
+Release commands and benchmark notes live in [Release and benchmark notes](./release-and-benchmarks.md).
