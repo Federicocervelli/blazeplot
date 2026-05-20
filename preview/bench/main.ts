@@ -46,6 +46,7 @@ interface BenchmarkResult {
     readonly frameMs: NumericSummary;
     readonly pointsRendered: NumericSummary;
     readonly drawCalls: NumericSummary;
+    readonly batchedDrawCalls: NumericSummary;
     readonly uploadBytes: NumericSummary;
   };
   readonly finalStats: ChartFrameStats;
@@ -201,6 +202,7 @@ const frameStats: ChartFrameStats = {
   drawCalls: 0,
   uploadBytes: 0,
   renderMode: "none",
+  batchedDrawCalls: 0,
 };
 
 let state: BenchmarkState = "loading";
@@ -281,6 +283,7 @@ async function measure(): Promise<BenchmarkResult> {
   const chartFrameMs: number[] = [];
   const pointsRendered: number[] = [];
   const drawCalls: number[] = [];
+  const batchedDrawCalls: number[] = [];
   const uploadBytes: number[] = [];
   const startMs = performance.now();
   let lastFrameMs: number | null = null;
@@ -303,6 +306,7 @@ async function measure(): Promise<BenchmarkResult> {
     chartFrameMs.push(frameStats.frameMs);
     pointsRendered.push(frameStats.pointsRendered);
     drawCalls.push(frameStats.drawCalls);
+    batchedDrawCalls.push(frameStats.batchedDrawCalls ?? 0);
     uploadBytes.push(frameStats.uploadBytes);
     renderStatus();
   }
@@ -327,6 +331,7 @@ async function measure(): Promise<BenchmarkResult> {
       frameMs: summarize(chartFrameMs),
       pointsRendered: summarize(pointsRendered),
       drawCalls: summarize(drawCalls),
+      batchedDrawCalls: summarize(batchedDrawCalls),
       uploadBytes: summarize(uploadBytes),
     },
     finalStats: { ...frameStats },
@@ -414,6 +419,7 @@ function renderStatus(): void {
     `render ms: ${frameStats.frameMs.toFixed(2)}`,
     `points rendered: ${frameStats.pointsRendered.toLocaleString()}`,
     `draw calls: ${frameStats.drawCalls}`,
+    `batched draws saved: ${frameStats.batchedDrawCalls ?? 0}`,
   ].join("\n");
 }
 

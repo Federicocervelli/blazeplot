@@ -75,6 +75,19 @@ describe("StaticOhlcDataset", () => {
     expect(count).toBe(1);
     expect(Array.from(target)).toEqual([10, 2, 5, 1, 4]);
   });
+
+  it("reads exact OHLC samples for data export", () => {
+    const x = 1_700_000_000_001;
+    const dataset = new StaticOhlcDataset([x], [2], [5], [1], [4]);
+    const series = new SeriesStore(
+      dataset,
+      { mode: "candlestick", capacity: 1, dataset },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    expect(series.ohlcAt(0)).toEqual({ index: 0, x, y: 4, open: 2, high: 5, low: 1, close: 4 });
+    expect(series.ohlcAt(1)).toBeNull();
+  });
 });
 
 describe("OhlcRingBuffer", () => {

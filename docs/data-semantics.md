@@ -14,13 +14,20 @@ Empty datasets report `range: null`, render nothing, return no picks, and are ig
 
 ## Invalid values
 
-- Finite X/Y values are expected for rendering and picking.
-- `NaN` and infinities should be filtered by producers or by custom dataset implementations before data reaches render paths.
-- Current built-in datasets store numeric values as provided; strict validation modes and explicit line/area gap rendering are tracked as future work.
+- Finite X values are expected and must remain sorted in logical order.
+- Non-finite Y values (`NaN`, `Infinity`, `-Infinity`) are treated as missing data for built-in line/area extraction and picking.
+- Built-in datasets store numeric values as provided; they do not reorder data or perform full validation scans by default.
 
 ## Missing data and gaps
 
-Line and area discontinuity rendering is not yet a first-class feature. Until gap-aware extraction lands, callers should split discontinuous data into separate series or filter invalid spans before appending.
+Line and area series treat gap samples as strip breaks: the gap sample itself is not rendered or picked, and finite samples on either side are not connected.
+
+Gap markers can be expressed in two ways:
+
+- Append/store a non-finite Y value such as `NaN` at the sorted X position where the discontinuity occurs.
+- Custom datasets can implement optional `isGap(index): boolean` on the `Dataset` contract. Accelerated custom range/copy methods (`rangeMinMaxY`, `copySamplesRange`, `copyVisibleSamples`, `copyVisiblePoints`, or `copyMinMaxSegments`) should skip or encode their own gaps consistently because those methods are considered renderer-ready fast paths.
+
+For finite-to-finite session breaks, insert an explicit gap marker sample for now. A dedicated session-boundary API may be added later.
 
 ## OHLC datasets
 

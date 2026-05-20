@@ -1,4 +1,4 @@
-import type { Chart, ChartPlugin, ChartPointerEventState } from "./Chart.js";
+import type { ChartPlugin, ChartPluginContext, ChartPointerEventState } from "./Chart.js";
 import type { SeriesYAxis } from "../core/types.js";
 
 export interface AnnotationLabelOptions {
@@ -198,7 +198,7 @@ function annotationBounds(annotation: Annotation): AnnotationHitBounds {
   }
 }
 
-function hitTestAnnotation(chart: Chart, annotation: Annotation, plotX: number, plotY: number, width: number, height: number, tolerance: number): boolean {
+function hitTestAnnotation(chart: ChartPluginContext, annotation: Annotation, plotX: number, plotY: number, width: number, height: number, tolerance: number): boolean {
   if (annotation.visible === false) return false;
   const viewport = chart.getViewport(annotation.yAxis ?? "left");
   const xToPx = (x: number): number => ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * width;
@@ -236,7 +236,7 @@ function hitTestAnnotation(chart: Chart, annotation: Annotation, plotX: number, 
   }
 }
 
-function createHitEvent(chart: Chart, annotation: Annotation, clientX: number, clientY: number, source?: ChartPointerEventState): AnnotationHitEvent | null {
+function createHitEvent(chart: ChartPluginContext, annotation: Annotation, clientX: number, clientY: number, source?: ChartPointerEventState): AnnotationHitEvent | null {
   const rect = chart.canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
   const plotX = clientX - rect.left;
@@ -258,7 +258,7 @@ function createHitEvent(chart: Chart, annotation: Annotation, clientX: number, c
 
 export function annotationsPlugin(options: AnnotationsPluginOptions = {}): AnnotationsPlugin {
   let annotations = [...(options.annotations ?? [])];
-  let chartRef: Chart | null = null;
+  let chartRef: ChartPluginContext | null = null;
   let overlay: SVGSVGElement | null = null;
   const color = options.defaultColor ?? "rgba(255,255,255,0.85)";
   const fillColor = options.defaultFillColor ?? "rgba(255,255,255,0.12)";
@@ -298,7 +298,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
   };
 
   return {
-    install(chart: Chart) {
+    install(chart: ChartPluginContext) {
       chartRef = chart;
       overlay = svg("svg");
       overlay.classList.add(options.className ?? "blazeplot-annotations");
@@ -373,7 +373,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
 }
 
 function render(
-  chart: Chart,
+  chart: ChartPluginContext,
   overlay: SVGSVGElement,
   annotations: readonly Annotation[],
   defaultColor: string,
@@ -392,7 +392,7 @@ function render(
 }
 
 function drawAnnotation(
-  chart: Chart,
+  chart: ChartPluginContext,
   overlay: SVGSVGElement,
   annotation: Annotation,
   width: number,

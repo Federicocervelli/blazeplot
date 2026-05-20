@@ -1,6 +1,3 @@
-declare const gpuBufferBrand: unique symbol;
-declare const gpuProgramBrand: unique symbol;
-
 export interface GpuBackend {
   readonly capabilities: GpuCapabilities;
   createBuffer(spec: BufferSpec): GpuBuffer;
@@ -25,13 +22,13 @@ export interface BufferSpec {
 }
 
 export interface GpuBuffer {
-  readonly [gpuBufferBrand]: true;
+  readonly kind: "buffer";
   readonly length: number;
   readonly type: BufferSpec["type"];
 }
 
 export interface GpuProgram {
-  readonly [gpuProgramBrand]: true;
+  readonly kind: "program";
 }
 
 export type GpuResource = GpuBuffer | GpuProgram;

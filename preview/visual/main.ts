@@ -43,6 +43,7 @@ const CASES = [
   "navigator",
   "scale-options",
   "overlay-layering",
+  "context-restore",
 ] as const;
 
 type VisualCase = typeof CASES[number];
@@ -73,18 +74,7 @@ try {
   setupCase(caseName, chart);
   chart.start();
   window.setTimeout(() => {
-    try {
-      stats = chart.getFrameStats();
-      assert(stats.drawCalls > 0, "drawCalls > 0");
-      assert(stats.pointsRendered > 0, "pointsRendered > 0");
-      assert(stats.renderMode !== "none", `renderMode=${stats.renderMode}`);
-      assertCaseDom(caseName, chart);
-      state = "ready";
-    } catch (caught) {
-      error = caught instanceof Error ? caught.message : String(caught);
-      state = "error";
-    }
-    renderStatus();
+    void finalizeCase();
   }, 120);
 } catch (caught) {
   error = caught instanceof Error ? caught.message : String(caught);
@@ -180,7 +170,63 @@ function setupCase(name: VisualCase, chart: Chart): void {
     case "scale-options":
       addScaleOptions(chart);
       break;
+    case "context-restore":
+      addLine(chart);
+      break;
   }
+}
+
+async function finalizeCase(): Promise<void> {
+  try {
+    if (caseName === "context-restore") await exerciseContextRestore(chart);
+    stats = chart.getFrameStats();
+    assert(stats.drawCalls > 0, "drawCalls > 0");
+    assert(stats.pointsRendered > 0, "pointsRendered > 0");
+    assert(stats.renderMode !== "none", `renderMode=${stats.renderMode}`);
+    assertCaseDom(caseName, chart);
+    state = "ready";
+  } catch (caught) {
+    error = caught instanceof Error ? caught.message : String(caught);
+    state = "error";
+  }
+  renderStatus();
+}
+
+async function exerciseContextRestore(chart: Chart): Promise<void> {
+  const gl = chart.getWebGLContext();
+  const extension = gl?.getExtension("WEBGL_lose_context");
+  if (!extension) {
+    assertions.push("WEBGL_lose_context unavailable; context restore smoke skipped");
+    return;
+  }
+
+  const lost = waitForCanvasEvent(chart.canvas, "webglcontextlost", 1_000);
+  const restored = waitForCanvasEvent(chart.canvas, "webglcontextrestored", 2_000);
+  extension.loseContext();
+  await lost;
+  await delay(50);
+  extension.restoreContext();
+  await restored;
+  await delay(180);
+  assertions.push("webgl context restored");
+}
+
+function waitForCanvasEvent(canvas: HTMLCanvasElement, type: "webglcontextlost" | "webglcontextrestored", timeoutMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      canvas.removeEventListener(type, handleEvent);
+      reject(new Error(`Timed out waiting for ${type}`));
+    }, timeoutMs);
+    const handleEvent = (): void => {
+      window.clearTimeout(timeoutId);
+      resolve();
+    };
+    canvas.addEventListener(type, handleEvent, { once: true });
+  });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function addLine(chart: Chart): void {

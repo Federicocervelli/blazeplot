@@ -2,8 +2,9 @@ import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, Seri
 import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
-import { isWebGL2Available, ReglBackend } from "../render/ReglBackend.js";
-import type { GpuBuffer } from "../render/types.js";
+import type { RenderProjection } from "../render/Renderer.js";
+import { isWebGL2Available, WebGL2Backend } from "../render/WebGL2Backend.js";
+import type { GpuBackend, GpuBuffer } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { AxisControllerAxisOptions, AxisScale, AxisTickFormat, AxisTimeZone } from "../interaction/AxisController.js";
@@ -11,12 +12,13 @@ import type { PanIntent, ViewportPolicy, ZoomIntent } from "../interaction/types
 import { AxisOverlay } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
-import { resolveChartTheme, rgbaCss } from "./theme.js";
+import { resolveChartTheme } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 const MINMAX_SEGMENT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
+const MINMAX_BATCH_SEGMENT_CAPACITY = MINMAX_SEGMENT_CAPACITY * 4;
 const FLOATS_PER_MINMAX_SEGMENT_INSTANCE = 3;
 const BAR_TRIANGLE_CAPACITY = 4_096;
 const FLOATS_PER_BAR_TRIANGLE = 12;
@@ -39,27 +41,10 @@ function normalizeFitPadding(padding: number | ChartFitToDataPadding | undefined
   };
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Unable to load SVG overlay for screenshot export."));
-    image.src = src;
-  });
-}
-
 function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: number): boolean {
   const scale = Math.max(1, Math.abs(aMin), Math.abs(aMax), Math.abs(bMin), Math.abs(bMax));
   const epsilon = scale * 1e-9;
   return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
-}
-
-function screenshotBackground(options: ChartScreenshotOptions, themeBackground: string): string | null | undefined {
-  if (options.background !== undefined) return options.background;
-  if (options.transparent === true || options.preset === "transparent") return null;
-  if (options.preset === "dark") return "#0b1020";
-  if (options.preset === "light") return "#ffffff";
-  return themeBackground;
 }
 
 function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
@@ -109,14 +94,6 @@ export interface ChartPickOptions {
   readonly maxDistancePx?: number;
 }
 
-export interface ChartPluginHandle {
-  dispose(): void;
-}
-
-export interface ChartPlugin {
-  install(chart: Chart): void | (() => void) | ChartPluginHandle;
-}
-
 export interface ChartAccessibilityOptions {
   readonly enabled?: boolean;
   readonly label?: string;
@@ -131,6 +108,12 @@ export interface ChartKeyboardOptions {
   readonly zoomFactor?: number;
 }
 
+export interface ChartBackendFactoryContext {
+  readonly canvas: HTMLCanvasElement;
+}
+
+export type ChartBackendFactory = (context: ChartBackendFactoryContext) => GpuBackend;
+
 export interface ChartOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly grid?: boolean;
@@ -144,6 +127,8 @@ export interface ChartOptions {
   readonly followX?: boolean | ChartFollowXOptions;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
+  /** Advanced hook for supplying a custom GPU backend. Defaults to WebGL2Backend. */
+  readonly backendFactory?: ChartBackendFactory;
 }
 
 export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
@@ -278,11 +263,62 @@ export interface ChartFrameStats {
   drawCalls: number;
   uploadBytes: number;
   renderMode: "none" | "raw" | "minmax" | "points" | "bars" | "area" | "mixed";
+  /** Number of otherwise separate draw calls avoided by compatible internal batching. */
+  batchedDrawCalls?: number;
+}
+
+export interface ChartPluginContext {
+  readonly canvas: HTMLCanvasElement;
+  readonly rootElement: HTMLElement;
+  readonly plotElement: HTMLElement;
+  readonly xAxisElement: HTMLElement;
+  readonly yAxisElement: HTMLElement;
+  readonly y2AxisElement: HTMLElement;
+  readonly theme: ResolvedChartTheme;
+  getWebGLContext(): WebGL2RenderingContext | null;
+  getCamera(yAxis?: SeriesYAxis): Camera2D;
+  dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
+  clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
+  getViewport(yAxis?: SeriesYAxis): Viewport;
+  pan(intent: PanIntent): void;
+  zoom(intent: ZoomIntent): void;
+  setSeriesVisible(series: SeriesStore, visible: boolean): boolean;
+  getSeriesState(): ChartSeriesState[];
+  setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void;
+  setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number }): void;
+  getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+  getHoverState(): ChartHoverState | null;
+  setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
+  subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
+  subscribe(event: "serieschange", callback: () => void): () => void;
+  subscribe(event: "themechange", callback: () => void): () => void;
+  subscribe(event: "render", callback: () => void): () => void;
+  subscribe(event: "viewportchange", callback: (event: ChartViewportChangeEvent) => void): () => void;
+  subscribe(event: "select", callback: (event: ChartSelectEvent) => void): () => void;
+  subscribe(event: "seriesclick", callback: (event: ChartSeriesClickEvent) => void): () => void;
+  subscribe(event: ChartPointerEventType, callback: (event: ChartPointerEventState) => void): () => void;
+  pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
+  emitSelect(selection: unknown): void;
+}
+
+export interface ChartPluginHandle {
+  dispose(): void;
+}
+
+export interface ChartPlugin {
+  install(chart: ChartPluginContext): void | (() => void) | ChartPluginHandle;
 }
 
 type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | AxisTitleConfig };
 
 type ResolvedAxesConfig = { x: ResolvedAxisConfig; y: ResolvedAxisConfig; y2: ResolvedAxisConfig };
+
+type MutableRenderProjection = {
+  scaleX: number;
+  scaleY: number;
+  offsetX: number;
+  offsetY: number;
+};
 
 function normalizeAxisConfig(config: boolean | AxisConfig | undefined): ResolvedAxisConfig {
   if (config === false) return { visible: false, position: "inside" };
@@ -331,12 +367,11 @@ function textOverlayVisible(config: string | TextOverlayConfig | undefined): boo
   return typeof config === "string" ? config.length > 0 : !!config && config.visible !== false && config.text.length > 0;
 }
 
-function textOverlayOffsetX(config: string | TextOverlayConfig | undefined): number {
-  return typeof config === "string" ? 0 : config?.offsetX ?? 0;
-}
-
-function textOverlayOffsetY(config: string | TextOverlayConfig | undefined): number {
-  return typeof config === "string" ? 0 : config?.offsetY ?? 0;
+function colorsEqual(
+  a: readonly [number, number, number, number],
+  b: readonly [number, number, number, number],
+): boolean {
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
 }
 
 interface PickCandidate {
@@ -345,7 +380,23 @@ interface PickCandidate {
   readonly seriesIndex: number;
 }
 
-export class Chart {
+interface ChartGpuResources {
+  readonly renderer: Renderer;
+  readonly rawLineBuffer: GpuBuffer;
+  readonly minMaxInstanceBuffer: GpuBuffer;
+  readonly barTriangleBuffer: GpuBuffer;
+  readonly gridBuffer: GpuBuffer;
+}
+
+interface MinMaxLineBatch {
+  readonly camera: Camera2D;
+  readonly style: SeriesStyle;
+  readonly color: readonly [number, number, number, number];
+  segmentCount: number;
+  seriesCount: number;
+}
+
+export class Chart implements ChartPluginContext {
   static isWebGL2Available(): boolean {
     return isWebGL2Available();
   }
@@ -355,14 +406,14 @@ export class Chart {
   private rightCamera: Camera2D;
   private axis: AxisController;
   private rightAxis: AxisController;
-  private renderer: Renderer;
-  private rawLineBuffer: GpuBuffer;
+  private renderer!: Renderer;
+  private rawLineBuffer!: GpuBuffer;
   private rawLineData: Float32Array;
-  private minMaxInstanceBuffer: GpuBuffer;
+  private minMaxInstanceBuffer!: GpuBuffer;
   private minMaxInstanceData: Float32Array;
-  private barTriangleBuffer: GpuBuffer;
+  private barTriangleBuffer!: GpuBuffer;
   private barTriangleData: Float32Array;
-  private gridBuffer: GpuBuffer;
+  private gridBuffer!: GpuBuffer;
   private gridData: Float32Array;
   private gridStyle: SeriesStyle;
   private readonly xTicks: number[] = [];
@@ -379,6 +430,7 @@ export class Chart {
     drawCalls: 0,
     uploadBytes: 0,
     renderMode: "none",
+    batchedDrawCalls: 0,
   };
   private resizeObserver: ResizeObserver | null = null;
   private readonly pluginDisposers: Array<() => void> = [];
@@ -398,14 +450,19 @@ export class Chart {
     pointermove: new Set(),
   };
   private currentHover: ChartHoverState | null = null;
+  private readonly leftProjection: MutableRenderProjection = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
+  private readonly rightProjection: MutableRenderProjection = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
   private lastPointerClientX: number = 0;
   private lastPointerClientY: number = 0;
   private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
   private currentXOrigin: number = 0;
+  private minMaxLineBatch: MinMaxLineBatch | null = null;
   private xFollowPaused: boolean = false;
   private _rafId: number = 0;
   private _hoverRafId: number = 0;
+  private _restoreRenderRafId: number = 0;
+  private webglContextLost: boolean = false;
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (event.pointerType !== "touch") {
       this.pointerInPlot = true;
@@ -440,6 +497,32 @@ export class Chart {
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     this.handleKeyboardNavigation(event);
   };
+  private readonly handleWebGLContextLost = (event: Event): void => {
+    event.preventDefault();
+    this.webglContextLost = true;
+    if (this._restoreRenderRafId !== 0) {
+      cancelAnimationFrame(this._restoreRenderRafId);
+      this._restoreRenderRafId = 0;
+    }
+    this.resetFrameStats();
+  };
+  private readonly handleWebGLContextRestored = (): void => {
+    const oldRenderer = this.renderer;
+    let nextResources: ChartGpuResources;
+    try {
+      nextResources = this.createGpuResources();
+    } catch (error) {
+      this.webglContextLost = true;
+      console.error("BlazePlot failed to restore WebGL resources after context restoration.", error);
+      return;
+    }
+
+    this.installGpuResources(nextResources);
+    this.disposeRenderer(oldRenderer);
+    this.webglContextLost = false;
+    this.applyCanvasSize();
+    this.scheduleRenderAfterRestore();
+  };
 
   constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
     this.resolvedTheme = resolveChartTheme(options.theme, target);
@@ -455,15 +538,11 @@ export class Chart {
     this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
-    this.renderer = new Renderer(new ReglBackend(this.layout.canvas));
     this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
-    this.rawLineBuffer = this.renderer.createFloatBuffer(this.rawLineData.length);
-    this.minMaxInstanceData = new Float32Array(MINMAX_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
-    this.minMaxInstanceBuffer = this.renderer.createFloatBuffer(this.minMaxInstanceData.length);
+    this.minMaxInstanceData = new Float32Array(MINMAX_BATCH_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
     this.barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLE);
-    this.barTriangleBuffer = this.renderer.createFloatBuffer(this.barTriangleData.length);
     this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
-    this.gridBuffer = this.renderer.createFloatBuffer(this.gridData.length);
+    this.installGpuResources(this.createGpuResources());
     this.gridStyle = {
       color: options.gridStyle?.color ?? this.resolvedTheme.gridColor,
       lineWidth: options.gridStyle?.lineWidth ?? 1,
@@ -483,6 +562,8 @@ export class Chart {
     this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
     this.canvas.addEventListener("click", this.handleClick);
     this.canvas.addEventListener("dblclick", this.handleDoubleClick);
+    this.canvas.addEventListener("webglcontextlost", this.handleWebGLContextLost);
+    this.canvas.addEventListener("webglcontextrestored", this.handleWebGLContextRestored);
     this.layout.root.addEventListener("keydown", this.handleKeyDown);
 
     if (typeof ResizeObserver !== "undefined") {
@@ -498,6 +579,10 @@ export class Chart {
         this.pluginDisposers.push(() => installed.dispose());
       }
     }
+  }
+
+  private createBackend(): GpuBackend {
+    return this.options.backendFactory?.({ canvas: this.layout.canvas }) ?? new WebGL2Backend(this.layout.canvas);
   }
 
   get canvas(): HTMLCanvasElement {
@@ -810,13 +895,14 @@ export class Chart {
     return resized;
   }
 
-  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): ChartFrameStats {
+  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none", batchedDrawCalls: 0 }): ChartFrameStats {
     target.fps = this.stats.fps;
     target.frameMs = this.stats.frameMs;
     target.pointsRendered = this.stats.pointsRendered;
     target.drawCalls = this.stats.drawCalls;
     target.uploadBytes = this.stats.uploadBytes;
     target.renderMode = this.stats.renderMode;
+    target.batchedDrawCalls = this.stats.batchedDrawCalls ?? 0;
     return target;
   }
 
@@ -969,43 +1055,8 @@ export class Chart {
   async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
     this.render();
 
-    const rootRect = this.layout.root.getBoundingClientRect();
-    const plotRect = this.layout.plot.getBoundingClientRect();
-    const dpr = Number.isFinite(options.dpr) ? Math.max(1, options.dpr!) : Math.max(1, globalThis.devicePixelRatio || 1);
-    const width = Number.isFinite(options.width) ? Math.max(1, Math.round(options.width!)) : Math.max(1, Math.round(rootRect.width * dpr));
-    const height = Number.isFinite(options.height) ? Math.max(1, Math.round(options.height!)) : Math.max(1, Math.round(rootRect.height * dpr));
-    const scaleX = width / Math.max(1, rootRect.width);
-    const scaleY = height / Math.max(1, rootRect.height);
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Unable to create a 2D canvas context for screenshot export.");
-
-    const background = screenshotBackground(options, rgbaCss(this.resolvedTheme.backgroundColor));
-    if (background) {
-      ctx.fillStyle = background;
-      ctx.fillRect(0, 0, width, height);
-    }
-
-    ctx.drawImage(
-      this.canvas,
-      (plotRect.left - rootRect.left) * scaleX,
-      (plotRect.top - rootRect.top) * scaleY,
-      plotRect.width * scaleX,
-      plotRect.height * scaleY,
-    );
-    await this.drawSvgOverlaysForScreenshot(ctx, rootRect, scaleX, scaleY);
-    this.drawDomTextForScreenshot(ctx, rootRect, scaleX, scaleY);
-
-    return new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => blob ? resolve(blob) : reject(new Error("Unable to encode chart screenshot.")),
-        options.type ?? "image/png",
-        options.quality,
-      );
-    });
+    const { composeChartScreenshot } = await import("./screenshot.js");
+    return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
   start(): void {
@@ -1026,40 +1077,53 @@ export class Chart {
       this.stats.fps = 1000 / (frameStartedAt - this.lastFrameAt);
     }
     this.lastFrameAt = frameStartedAt;
-    this.stats.pointsRendered = 0;
-    this.stats.drawCalls = 0;
-    this.stats.uploadBytes = 0;
-    this.stats.renderMode = "none";
+    this.resetFrameStats();
+
+    if (this.webglContextLost || this.renderer.getWebGLContext()?.isContextLost() === true) {
+      this.webglContextLost = true;
+      return;
+    }
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
     this.applyFollowXPolicy();
     this.applyAutoFitYPolicy();
 
-    const [r, g, b, a] = this.resolvedTheme.backgroundColor;
-    this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
-    this.renderer.clear(r, g, b, a);
+    try {
+      const [r, g, b, a] = this.resolvedTheme.backgroundColor;
+      this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
+      this.renderer.clear(r, g, b, a);
 
-    const viewport = this.camera.viewport;
-    this.currentXOrigin = viewport.xMin;
-    this.renderer.setXOrigin(this.currentXOrigin);
-    if (this._gridVisible) {
-      const gridVertexCount = this.writeGridVertices(viewport);
-      if (gridVertexCount > 0) {
-        this.uploadGridData(gridVertexCount);
-        this.renderer.drawClipLines(this.gridBuffer, gridVertexCount, this.gridStyle);
-        this.stats.drawCalls++;
+      const viewport = this.camera.viewport;
+      this.currentXOrigin = viewport.xMin;
+      if (this._gridVisible) {
+        const gridVertexCount = this.writeGridVertices(viewport);
+        if (gridVertexCount > 0) {
+          this.uploadGridData(gridVertexCount);
+          this.renderer.drawClipLines(this.gridBuffer, gridVertexCount, this.gridStyle);
+          this.stats.drawCalls++;
+        }
       }
-    }
 
-    for (const s of this.series) {
-      if (!s.visible) continue;
-      s.rebuildPyramid();
-      this.drawSeries(s);
-    }
+      for (const s of this.series) {
+        if (!s.visible) continue;
+        s.rebuildPyramid();
+        if (this.queueMinMaxLineBatch(s)) continue;
+        this.flushMinMaxLineBatch();
+        this.drawSeries(s);
+      }
+      this.flushMinMaxLineBatch();
 
-    this.axisOverlay?.update(this.camera, this.axis, this.rightCamera, this.rightAxis);
-    this.emitRender();
+      this.axisOverlay?.update(this.camera, this.axis, this.rightCamera, this.rightAxis);
+      this.emitRender();
+    } catch (error) {
+      if (this.renderer.getWebGLContext()?.isContextLost() === true) {
+        this.webglContextLost = true;
+        this.resetFrameStats();
+        return;
+      }
+      throw error;
+    }
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     if (this._hoverRafId !== 0) {
@@ -1074,17 +1138,71 @@ export class Chart {
     this.resizeObserver?.disconnect();
     if (this._hoverRafId !== 0) cancelAnimationFrame(this._hoverRafId);
     this._hoverRafId = 0;
+    if (this._restoreRenderRafId !== 0) cancelAnimationFrame(this._restoreRenderRafId);
+    this._restoreRenderRafId = 0;
     this.canvas.removeEventListener("pointermove", this.handlePointerMove);
     this.canvas.removeEventListener("pointerdown", this.handlePointerDown);
     this.canvas.removeEventListener("pointerup", this.handlePointerUp);
     this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
     this.canvas.removeEventListener("click", this.handleClick);
     this.canvas.removeEventListener("dblclick", this.handleDoubleClick);
+    this.canvas.removeEventListener("webglcontextlost", this.handleWebGLContextLost);
+    this.canvas.removeEventListener("webglcontextrestored", this.handleWebGLContextRestored);
     this.layout.root.removeEventListener("keydown", this.handleKeyDown);
     for (const dispose of this.pluginDisposers.splice(0)) dispose();
     this.axisOverlay?.dispose();
-    this.renderer.dispose();
+    this.disposeRenderer(this.renderer);
     this.layout.dispose();
+  }
+
+  private createGpuResources(): ChartGpuResources {
+    const renderer = new Renderer(this.createBackend());
+    try {
+      return {
+        renderer,
+        rawLineBuffer: renderer.createFloatBuffer(this.rawLineData.length),
+        minMaxInstanceBuffer: renderer.createFloatBuffer(this.minMaxInstanceData.length),
+        barTriangleBuffer: renderer.createFloatBuffer(this.barTriangleData.length),
+        gridBuffer: renderer.createFloatBuffer(this.gridData.length),
+      };
+    } catch (error) {
+      this.disposeRenderer(renderer);
+      throw error;
+    }
+  }
+
+  private installGpuResources(resources: ChartGpuResources): void {
+    this.renderer = resources.renderer;
+    this.rawLineBuffer = resources.rawLineBuffer;
+    this.minMaxInstanceBuffer = resources.minMaxInstanceBuffer;
+    this.barTriangleBuffer = resources.barTriangleBuffer;
+    this.gridBuffer = resources.gridBuffer;
+  }
+
+  private disposeRenderer(renderer: Renderer): void {
+    try {
+      renderer.dispose();
+    } catch {
+      // A browser may reject cleanup calls while the WebGL context is lost. The
+      // context-restored path recreates all GPU objects, so cleanup failures here
+      // should not tear down chart state.
+    }
+  }
+
+  private resetFrameStats(): void {
+    this.stats.pointsRendered = 0;
+    this.stats.drawCalls = 0;
+    this.stats.uploadBytes = 0;
+    this.stats.renderMode = "none";
+    this.stats.batchedDrawCalls = 0;
+  }
+
+  private scheduleRenderAfterRestore(): void {
+    if (this._restoreRenderRafId !== 0) return;
+    this._restoreRenderRafId = requestAnimationFrame(() => {
+      this._restoreRenderRafId = 0;
+      this.render();
+    });
   }
 
   private applyAccessibility(): void {
@@ -1215,14 +1333,17 @@ export class Chart {
     el.style.display = visible ? "block" : "none";
     if (!visible) return;
 
-    const align = typeof config === "string" ? "center" : config?.align ?? "center";
-    el.style.color = typeof config === "string" ? defaults.color : config?.color ?? defaults.color;
-    el.style.font = typeof config === "string" ? defaults.font : config?.font ?? defaults.font;
-    el.style.top = `${defaults.top + textOverlayOffsetY(config)}px`;
-    el.style.left = align === "left" ? `${8 + textOverlayOffsetX(config)}px` : align === "right" ? "auto" : `calc(50% + ${textOverlayOffsetX(config)}px)`;
-    el.style.right = align === "right" ? `${8 - textOverlayOffsetX(config)}px` : "auto";
-    el.style.transform = align === "center" ? "translateX(-50%)" : "none";
-    el.style.textAlign = align;
+    const custom = typeof config === "string" ? undefined : config;
+    const align = custom?.align ?? "center";
+    const offsetX = custom?.offsetX ?? 0;
+    const style = el.style;
+    style.color = custom?.color ?? defaults.color;
+    style.font = custom?.font ?? defaults.font;
+    style.top = `${defaults.top + (custom?.offsetY ?? 0)}px`;
+    style.left = align === "left" ? `${8 + offsetX}px` : align === "right" ? "auto" : `calc(50% + ${offsetX}px)`;
+    style.right = align === "right" ? `${8 - offsetX}px` : "auto";
+    style.transform = align === "center" ? "translateX(-50%)" : "none";
+    style.textAlign = align;
   }
 
   private applyAxisTitleOverlay(el: HTMLElement, config: string | AxisTitleConfig | undefined, axis: "x" | "y" | "y2"): void {
@@ -1231,20 +1352,24 @@ export class Chart {
     el.style.display = visible ? "block" : "none";
     if (!visible) return;
 
-    el.style.color = typeof config === "string" ? this.resolvedTheme.axisTitleColor : config?.color ?? this.resolvedTheme.axisTitleColor;
-    el.style.font = typeof config === "string" ? this.resolvedTheme.axisTitleFont : config?.font ?? this.resolvedTheme.axisTitleFont;
+    const custom = typeof config === "string" ? undefined : config;
+    const offsetX = custom?.offsetX ?? 0;
+    const offsetY = custom?.offsetY ?? 0;
+    const style = el.style;
+    style.color = custom?.color ?? this.resolvedTheme.axisTitleColor;
+    style.font = custom?.font ?? this.resolvedTheme.axisTitleFont;
     if (axis === "x") {
-      el.style.left = `calc(50% + ${textOverlayOffsetX(config)}px)`;
-      el.style.bottom = `${4 - textOverlayOffsetY(config)}px`;
-      el.style.transform = "translateX(-50%)";
+      style.left = `calc(50% + ${offsetX}px)`;
+      style.bottom = `${4 - offsetY}px`;
+      style.transform = "translateX(-50%)";
     } else if (axis === "y") {
-      el.style.left = `${4 + textOverlayOffsetX(config)}px`;
-      el.style.top = `calc(50% + ${textOverlayOffsetY(config)}px)`;
-      el.style.transform = "translateY(-50%) rotate(-90deg)";
+      style.left = `${4 + offsetX}px`;
+      style.top = `calc(50% + ${offsetY}px)`;
+      style.transform = "translateY(-50%) rotate(-90deg)";
     } else {
-      el.style.right = `${4 - textOverlayOffsetX(config)}px`;
-      el.style.top = `calc(50% + ${textOverlayOffsetY(config)}px)`;
-      el.style.transform = "translateY(-50%) rotate(90deg)";
+      style.right = `${4 - offsetX}px`;
+      style.top = `calc(50% + ${offsetY}px)`;
+      style.transform = "translateY(-50%) rotate(90deg)";
     }
   }
 
@@ -1277,6 +1402,17 @@ export class Chart {
     return series.config.yAxis === "right" ? this.rightCamera : this.camera;
   }
 
+  private projectionForCamera(camera: Camera2D): RenderProjection {
+    const projection = camera === this.rightCamera ? this.rightProjection : this.leftProjection;
+    const shiftedXMin = camera.xMin - this.currentXOrigin;
+    const shiftedXMax = camera.xMax - this.currentXOrigin;
+    projection.scaleX = camera.xScale;
+    projection.scaleY = camera.yScale;
+    projection.offsetX = -(shiftedXMin + shiftedXMax) / (shiftedXMax - shiftedXMin);
+    projection.offsetY = camera.yOffset;
+    return projection;
+  }
+
   private syncRightCameraX(): void {
     this.rightCamera.setViewport({ xMin: this.camera.xMin, xMax: this.camera.xMax });
     this.rightCamera.setReversed({ x: this.camera.xReversed });
@@ -1288,38 +1424,98 @@ export class Chart {
     this.rightCamera.setReversed({ x: xReversed, y: this.normalizedAxes.y2.reversed === true });
   }
 
-  private drawSeries(series: SeriesStore): void {
+  private queueMinMaxLineBatch(series: SeriesStore): boolean {
+    if (series.config.mode !== "line" || !this.renderer.supportsInstancedSegments) return false;
+
     const camera = this.cameraForSeries(series);
     const viewport = camera.viewport;
-    switch (series.config.mode) {
-      case "area":
-        this.drawAreaSeries(series, viewport, camera);
-        return;
-      case "bar":
-        this.drawBarSeries(series, viewport, camera);
-        return;
-      case "ohlc":
-        this.drawOhlcSeries(series, viewport, camera);
-        return;
-      case "candlestick":
-        this.drawCandlestickSeries(series, viewport, camera);
-        return;
-      case "scatter":
-        this.drawScatterSeries(series, viewport, camera);
-        return;
-      default:
-        this.drawLineSeries(series, viewport, camera);
+    const visibleSamples = series.visibleSampleCount(viewport);
+    const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
+    if (!dense) return false;
+
+    if (this.minMaxLineBatch && !this.canAppendToMinMaxLineBatch(this.minMaxLineBatch, series.style, camera)) {
+      this.flushMinMaxLineBatch();
+    }
+
+    const perSeriesCapacity = this.maxMinMaxSegments();
+    const batchCapacity = this.maxMinMaxBatchSegments();
+    if (perSeriesCapacity <= 0 || batchCapacity <= 0) return true;
+
+    if (this.minMaxLineBatch && this.minMaxLineBatch.segmentCount + perSeriesCapacity > batchCapacity) {
+      this.flushMinMaxLineBatch();
+    }
+
+    if (!this.minMaxLineBatch) {
+      this.minMaxLineBatch = {
+        camera,
+        style: series.style,
+        color: series.style.color,
+        segmentCount: 0,
+        seriesCount: 0,
+      };
+    }
+
+    const batch = this.minMaxLineBatch;
+    const targetOffset = batch.segmentCount * FLOATS_PER_MINMAX_SEGMENT_INSTANCE;
+    const target = this.minMaxInstanceData.subarray(targetOffset);
+    const segmentCount = series.copyMinMaxInstanced(viewport, target, perSeriesCapacity, this.currentXOrigin);
+    if (segmentCount > 0) {
+      batch.segmentCount += segmentCount;
+      batch.seriesCount++;
+    }
+    return true;
+  }
+
+  private canAppendToMinMaxLineBatch(batch: MinMaxLineBatch, style: SeriesStyle, camera: Camera2D): boolean {
+    return batch.camera === camera && batch.style.lineWidth === style.lineWidth && colorsEqual(batch.color, style.color);
+  }
+
+  private flushMinMaxLineBatch(): void {
+    const batch = this.minMaxLineBatch;
+    this.minMaxLineBatch = null;
+    if (!batch || batch.segmentCount <= 0) return;
+
+    this.uploadMinMaxInstanceData(batch.segmentCount);
+    this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, batch.segmentCount, batch.style, this.projectionForCamera(batch.camera));
+    this.recordDraw("minmax", batch.segmentCount * 2);
+    if (batch.seriesCount > 1) {
+      this.stats.batchedDrawCalls = (this.stats.batchedDrawCalls ?? 0) + batch.seriesCount - 1;
     }
   }
 
-  private drawLineSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawSeries(series: SeriesStore): void {
+    const camera = this.cameraForSeries(series);
+    const viewport = camera.viewport;
+    const projection = this.projectionForCamera(camera);
+    switch (series.config.mode) {
+      case "area":
+        this.drawAreaSeries(series, viewport, projection);
+        return;
+      case "bar":
+        this.drawBarSeries(series, viewport, projection);
+        return;
+      case "ohlc":
+        this.drawOhlcSeries(series, viewport, projection);
+        return;
+      case "candlestick":
+        this.drawCandlestickSeries(series, viewport, projection);
+        return;
+      case "scatter":
+        this.drawScatterSeries(series, viewport, projection);
+        return;
+      default:
+        this.drawLineSeries(series, viewport, projection);
+    }
+  }
+
+  private drawLineSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const visibleSamples = series.visibleSampleCount(viewport);
     const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
     if (dense && this.renderer.supportsInstancedSegments) {
       const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (segmentCount <= 0) return;
       this.uploadMinMaxInstanceData(segmentCount);
-      this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, camera);
+      this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, projection);
       this.recordDraw("minmax", segmentCount * 2);
       return;
     }
@@ -1328,7 +1524,7 @@ export class Chart {
       const count = series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (count < 2) return;
       this.uploadRawLineData(count);
-      this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, camera);
+      this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, projection);
       this.recordDraw("minmax", count);
       return;
     }
@@ -1340,7 +1536,7 @@ export class Chart {
     this.recordDraw("raw", count);
   }
 
-  private drawAreaSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawAreaSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport, 1);
     if (range.end - range.start < 2) return;
 
@@ -1349,14 +1545,14 @@ export class Chart {
       const areaVertexCount = series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, baseline, this.currentXOrigin);
       if (areaVertexCount >= 4) {
         this.uploadRawLineData(areaVertexCount);
-        this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, camera);
+        this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, projection);
         this.recordDraw("area", areaVertexCount);
       }
 
       const lineVertexCount = series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
       if (lineVertexCount >= 2) {
         this.uploadRawLineData(lineVertexCount);
-        this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, camera);
+        this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, projection);
         this.recordDraw("area", lineVertexCount);
       }
       return;
@@ -1367,7 +1563,7 @@ export class Chart {
       if (areaVertexCount < 4) break;
 
       this.uploadRawLineData(areaVertexCount);
-      this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, camera);
+      this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, projection);
       this.recordDraw("area", areaVertexCount);
       start += Math.max(1, (areaVertexCount >> 1) - 1);
     }
@@ -1377,14 +1573,14 @@ export class Chart {
       if (lineVertexCount < 2) break;
 
       this.uploadRawLineData(lineVertexCount);
-      this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, camera);
+      this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, projection);
       this.recordDraw("area", lineVertexCount);
       start += Math.max(1, lineVertexCount - 1);
     }
 
   }
 
-  private drawOhlcSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawOhlcSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport);
     const maxCandles = Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_CANDLE);
     for (let start = range.start; start < range.end;) {
@@ -1393,13 +1589,13 @@ export class Chart {
 
       const vertexCount = candleCount * 6;
       this.uploadRawLineData(vertexCount);
-      this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, camera);
+      this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, projection);
       this.recordDraw("raw", vertexCount);
       start += candleCount;
     }
   }
 
-  private drawCandlestickSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawCandlestickSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport, 1);
     const maxCandles = Math.min(
       Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE),
@@ -1416,18 +1612,18 @@ export class Chart {
       const wickVertexCount = this.writeCandlestickWicks(candleCount);
       if (wickVertexCount > 0) {
         this.uploadBarTriangleData(wickVertexCount);
-        this.renderer.drawLines(this.barTriangleBuffer, wickVertexCount, wickStyle, camera);
+        this.renderer.drawLines(this.barTriangleBuffer, wickVertexCount, wickStyle, projection);
         this.recordDraw("raw", wickVertexCount);
       }
 
       const bodyWidth = series.style.barWidth ?? series.style.tickWidth ?? 0.8;
-      this.drawCandlestickBodies(candleCount, bodyWidth, "up", upStyle, camera);
-      this.drawCandlestickBodies(candleCount, bodyWidth, "down", downStyle, camera);
+      this.drawCandlestickBodies(candleCount, bodyWidth, "up", upStyle, projection);
+      this.drawCandlestickBodies(candleCount, bodyWidth, "down", downStyle, projection);
       start += candleCount;
     }
   }
 
-  private drawScatterSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawScatterSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const pointSize = series.style.pointSize ?? DEFAULT_POINT_SIZE_PX;
 
     const visibleSamples = series.visibleSampleCount(viewport);
@@ -1447,7 +1643,7 @@ export class Chart {
         if (count <= 0) continue;
 
         this.uploadRawLineData(count);
-        this.renderer.drawPoints(this.rawLineBuffer, count, series.style, camera, this.canvas.width, this.canvas.height);
+        this.renderer.drawPoints(this.rawLineBuffer, count, series.style, projection, this.canvas.width, this.canvas.height);
         this.recordDraw("points", count);
       }
       return;
@@ -1465,11 +1661,11 @@ export class Chart {
     if (count <= 0) return;
 
     this.uploadRawLineData(count);
-    this.renderer.drawPoints(this.rawLineBuffer, count, series.style, camera, this.canvas.width, this.canvas.height);
+    this.renderer.drawPoints(this.rawLineBuffer, count, series.style, projection, this.canvas.width, this.canvas.height);
     this.recordDraw("points", count);
   }
 
-  private drawBarSeries(series: SeriesStore, viewport: Viewport, camera: Camera2D): void {
+  private drawBarSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const visibleSamples = series.visibleSampleCount(viewport);
     const rawBarCapacity = this.maxRawBarInstances();
     if (series.hasLOD && visibleSamples > rawBarCapacity) {
@@ -1478,7 +1674,7 @@ export class Chart {
 
       this.includeBaselineInBarRanges(sampledCount, series.style.baseline ?? 0);
       const vertexCount = this.writeBarBucketTriangles(sampledCount, viewport);
-      this.drawBarTriangles(vertexCount, series.style, camera);
+      this.drawBarTriangles(vertexCount, series.style, projection);
       return;
     }
 
@@ -1488,13 +1684,13 @@ export class Chart {
 
     if (this.renderer.supportsInstancedBars) {
       this.uploadRawLineData(count);
-      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, camera);
+      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, projection);
       this.recordDraw("bars", count);
       return;
     }
 
     const vertexCount = this.writeBarTriangles(count, series.style.baseline ?? 0, series.style.barWidth ?? 0.8);
-    this.drawBarTriangles(vertexCount, series.style, camera);
+    this.drawBarTriangles(vertexCount, series.style, projection);
   }
 
   private uploadRawLineData(vertexCount: number): void {
@@ -1609,7 +1805,7 @@ export class Chart {
     bodyWidth: number,
     direction: "up" | "down",
     style: SeriesStyle,
-    camera: Camera2D,
+    projection: RenderProjection,
   ): void {
     const halfWidth = bodyWidth * 0.5;
     let bodyCount = 0;
@@ -1625,7 +1821,7 @@ export class Chart {
       bodyCount++;
     }
 
-    this.drawBarTriangles(bodyCount * 6, style, camera);
+    this.drawBarTriangles(bodyCount * 6, style, projection);
   }
 
   private writeBarTriangle(index: number, x0: number, x1: number, y0: number, y1: number): void {
@@ -1647,12 +1843,12 @@ export class Chart {
   private drawBarTriangles(
     vertexCount: number,
     style: SeriesStyle,
-    camera: Camera2D,
+    projection: RenderProjection,
     mode: "bars" | "area" = "bars",
   ): void {
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount);
-    this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, camera);
+    this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, projection);
     this.recordDraw(mode, vertexCount);
   }
 
@@ -1832,65 +2028,12 @@ export class Chart {
     for (const callback of this.renderSubscribers) callback(this);
   }
 
-  private async drawSvgOverlaysForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, scaleX: number, scaleY: number): Promise<void> {
-    const svgs = this.layout.root.querySelectorAll<SVGSVGElement>("svg");
-    const serializer = new XMLSerializer();
-    for (const source of svgs) {
-      const style = getComputedStyle(source);
-      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
-      const rect = source.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) continue;
-
-      const clone = source.cloneNode(true) as SVGSVGElement;
-      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-      clone.setAttribute("width", String(rect.width));
-      clone.setAttribute("height", String(rect.height));
-      if (!clone.getAttribute("viewBox")) clone.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
-      const blob = new Blob([serializer.serializeToString(clone)], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      try {
-        const image = await loadImage(url);
-        ctx.save();
-        ctx.globalAlpha = Number.isFinite(Number(style.opacity)) ? Number(style.opacity) : 1;
-        ctx.drawImage(
-          image,
-          (rect.left - rootRect.left) * scaleX,
-          (rect.top - rootRect.top) * scaleY,
-          rect.width * scaleX,
-          rect.height * scaleY,
-        );
-        ctx.restore();
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-    }
-  }
-
-  private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, scaleX: number, scaleY: number): void {
-    const elements = this.layout.root.querySelectorAll<HTMLElement>("div");
-    for (const el of elements) {
-      const text = el.textContent;
-      if (!text || el.children.length > 0) continue;
-
-      const style = getComputedStyle(el);
-      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
-
-      const rect = el.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) continue;
-
-      ctx.save();
-      ctx.scale(scaleX, scaleY);
-      ctx.font = style.font;
-      ctx.fillStyle = style.color;
-      ctx.textBaseline = "top";
-      ctx.textAlign = "left";
-      ctx.fillText(text, rect.left - rootRect.left, rect.top - rootRect.top);
-      ctx.restore();
-    }
-  }
-
   private maxMinMaxSegments(): number {
     return Math.min(this.canvas.width, MINMAX_SEGMENT_CAPACITY);
+  }
+
+  private maxMinMaxBatchSegments(): number {
+    return Math.min(this.maxMinMaxSegments() * 4, MINMAX_BATCH_SEGMENT_CAPACITY);
   }
 
   private maxBarTriangleBars(): number {

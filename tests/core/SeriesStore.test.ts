@@ -3,7 +3,7 @@ import { SeriesStore } from "../../src/core/SeriesStore.ts";
 import { RingBuffer } from "../../src/core/RingBuffer.ts";
 import { StaticDataset } from "../../src/core/StaticDataset.ts";
 import { UniformRingBuffer } from "../../src/core/UniformRingBuffer.ts";
-import type { RangeMinMaxDataset, TimeRange } from "../../src/core/types.ts";
+import type { Dataset, RangeMinMaxDataset, TimeRange } from "../../src/core/types.ts";
 
 function makeSeries(): SeriesStore {
   return new SeriesStore(
@@ -11,6 +11,57 @@ function makeSeries(): SeriesStore {
     { mode: "line", capacity: 8, downsample: "minmax" },
     { color: [1, 1, 1, 1], lineWidth: 1 },
   );
+}
+
+class ExplicitGapDataset implements Dataset {
+  constructor(
+    private readonly xData: readonly number[],
+    private readonly yData: readonly number[],
+    private readonly gapIndices: ReadonlySet<number>,
+  ) {}
+
+  get length(): number {
+    return Math.min(this.xData.length, this.yData.length);
+  }
+
+  get range(): TimeRange | null {
+    if (this.length === 0) return null;
+    return { start: this.xData[0]!, end: this.xData[this.length - 1]! };
+  }
+
+  getX(index: number): number {
+    return this.xData[index]!;
+  }
+
+  getY(index: number): number {
+    return this.yData[index]!;
+  }
+
+  isGap(index: number): boolean {
+    return this.gapIndices.has(index);
+  }
+
+  lowerBoundX(x: number): number {
+    let lo = 0;
+    let hi = this.length;
+    while (lo < hi) {
+      const mid = lo + ((hi - lo) >> 1);
+      if (this.xData[mid]! < x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  upperBoundX(x: number): number {
+    let lo = 0;
+    let hi = this.length;
+    while (lo < hi) {
+      const mid = lo + ((hi - lo) >> 1);
+      if (this.xData[mid]! <= x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
 }
 
 class TrackingRangeDataset implements RangeMinMaxDataset {
@@ -150,6 +201,20 @@ describe("SeriesStore", () => {
     expect(Array.from(instances)).toEqual([1, 1, 7, 4, 2, 9]);
   });
 
+  it("copies instanced min/max segments into an offset target view", () => {
+    const series = makeSeries();
+    series.append(
+      new Float64Array([0, 1, 2, 3, 4, 5]),
+      new Float32Array([3, 7, 1, 9, 5, 2]),
+    );
+
+    const instances = new Float32Array([-1, -1, -1, 0, 0, 0, 0, 0, 99]);
+    const count = series.copyMinMaxInstanced({ xMin: 0, xMax: 5, yMin: 0, yMax: 10 }, instances.subarray(3), 2);
+
+    expect(count).toBe(2);
+    expect(Array.from(instances)).toEqual([-1, -1, -1, 1, 1, 7, 4, 2, 9]);
+  });
+
   it("uses dataset range min/max aggregation when available", () => {
     const dataset = new TrackingRangeDataset([0, 1, 2, 3, 4, 5], [3, 7, 1, 9, 5, 2]);
     const series = new SeriesStore(
@@ -212,6 +277,55 @@ describe("SeriesStore", () => {
 
     expect(count).toBe(6);
     expect(Array.from(area)).toEqual([0, -2, 0, 4, 1, -2, 1, -1, 2, -2, 2, 7]);
+  });
+
+  it("encodes non-finite line and area samples as strip-breaking gaps", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 1, 2, 3]), new Float32Array([4, NaN, 7, 9]));
+
+    const raw = new Float32Array(8);
+    const rawCount = series.copyRawRange(0, 4, raw, 4);
+    expect(rawCount).toBe(4);
+    expect(raw[0]).toBe(0);
+    expect(raw[1]).toBe(4);
+    expect(Number.isNaN(raw[2]!)).toBe(true);
+    expect(Number.isNaN(raw[3]!)).toBe(true);
+    expect(Array.from(raw.subarray(4, 8))).toEqual([2, 7, 3, 9]);
+
+    const area = new Float32Array(16);
+    const areaCount = series.copyAreaRange(0, 4, area, 4, -2);
+    expect(areaCount).toBe(8);
+    expect(Array.from(area.subarray(0, 4))).toEqual([0, -2, 0, 4]);
+    expect(Array.from(area.subarray(4, 8)).every(Number.isNaN)).toBe(true);
+    expect(Array.from(area.subarray(8, 16))).toEqual([2, -2, 2, 7, 3, -2, 3, 9]);
+  });
+
+  it("preserves skipped gaps when visible sampling strides", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 1, 2, 3, 4]), new Float32Array([4, NaN, 7, 9, 10]));
+
+    const raw = new Float32Array(4);
+    const rawCount = series.copyRawVisible({ xMin: 0, xMax: 4, yMin: -10, yMax: 10 }, raw, 2);
+    expect(rawCount).toBe(2);
+    expect(Array.from(raw.subarray(0, 2))).toEqual([0, 4]);
+    expect(Array.from(raw.subarray(2, 4)).every(Number.isNaN)).toBe(true);
+  });
+
+  it("honors dataset-provided finite gaps for extraction and picking", () => {
+    const dataset = new ExplicitGapDataset([0, 1, 2, 3], [4, 50, 7, 9], new Set([1]));
+    const series = new SeriesStore(
+      dataset,
+      { mode: "line", dataset, downsample: "none" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    const raw = new Float32Array(8);
+    const rawCount = series.copyRawRange(0, 4, raw, 4);
+    expect(rawCount).toBe(4);
+    expect(Number.isNaN(raw[2]!)).toBe(true);
+    expect(Number.isNaN(raw[3]!)).toBe(true);
+    expect(series.sampleAt(1)).toBeNull();
+    expect(series.nearestSampleByX(1, { xMin: 0, xMax: 3, yMin: 0, yMax: 100 })).toEqual({ index: 0, x: 0, y: 4 });
   });
 
   it("counts visible samples", () => {
@@ -302,6 +416,20 @@ describe("SeriesStore", () => {
     expect(raw[1]!).toBeCloseTo(-0.2);
     expect(raw[2]).toBe(1);
     expect(raw[3]!).toBeCloseTo(0.2);
+  });
+
+  it("does not connect clipped line extraction across gaps", () => {
+    const series = makeSeries();
+    series.append(new Float64Array([0, 1, 2, 3, 4]), new Float32Array([0, 1, NaN, 3, 4]));
+
+    const raw = new Float32Array(12);
+    const count = series.copyRawVisibleClipSpace({ xMin: 0, xMax: 4, yMin: 0, yMax: 4 }, raw, 6);
+
+    expect(count).toBe(5);
+    expect(Array.from(raw.subarray(0, 4))).toEqual([-1, -1, -0.5, -0.5]);
+    expect(Number.isNaN(raw[4]!)).toBe(true);
+    expect(Number.isNaN(raw[5]!)).toBe(true);
+    expect(Array.from(raw.subarray(6, 10))).toEqual([0.5, 0.5, 1, 1]);
   });
 
   it("finds nearest raw sample by x within the viewport", () => {

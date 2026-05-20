@@ -54,6 +54,15 @@ describe("UniformRingBuffer", () => {
     expect(buf.rangeMinMaxY(1, 3)).toEqual({ minY: 4, maxY: 7 });
   });
 
+  it("skips non-finite gaps in block min/max queries", () => {
+    const buf = new UniformRingBuffer(5, { blockSize: 2 });
+    buf.appendY([5, Infinity, 7]);
+
+    expect(buf.isGap(1)).toBe(true);
+    expect(buf.rangeMinMaxY(0, 3)).toEqual({ minY: 5, maxY: 7 });
+    expect(buf.rangeMinMaxY(1, 2)).toBeNull();
+  });
+
   it("copies stable visible samples and min/max segments", () => {
     const buf = new UniformRingBuffer(8, { xStart: 0, xStep: 1, blockSize: 2 });
     buf.appendY([5, -1, 8, 3, 2, 7, 4, 6]);
@@ -67,5 +76,16 @@ describe("UniformRingBuffer", () => {
     const segmentCount = buf.copyMinMaxSegments({ xMin: 0, xMax: 7, yMin: 0, yMax: 10 }, segments, 2, "instanced", 0);
     expect(segmentCount).toBe(2);
     expect(Array.from(segments)).toEqual([2, -1, 8, 6, 2, 7]);
+  });
+
+  it("preserves skipped gaps when visible sampling strides", () => {
+    const buf = new UniformRingBuffer(5, { xStart: 0, xStep: 1, blockSize: 2 });
+    buf.appendY([4, NaN, 7, 9, 10]);
+
+    const samples = new Float32Array(4);
+    const sampleCount = buf.copyVisibleSamples({ xMin: 0, xMax: 4, yMin: -10, yMax: 10 }, samples, 2, "points", 0, 0);
+    expect(sampleCount).toBe(2);
+    expect(Array.from(samples.subarray(0, 2))).toEqual([0, 4]);
+    expect(Array.from(samples.subarray(2, 4)).every(Number.isNaN)).toBe(true);
   });
 });

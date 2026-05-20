@@ -6,11 +6,33 @@
 [![npm version](https://img.shields.io/npm/v/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![npm downloads](https://img.shields.io/npm/dt/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![previews](https://img.shields.io/badge/previews-blue?logo=githubpages&logoColor=white)](https://federicocervelli.github.io/blazeplot/previews.html)
+<a href="https://federicocervelli.github.io/blazeplot/previews.html"><img src="assets/blazeplot-logo.png" alt="previews" height="20" /></a>
 
 Fast WebGL2 plotting engine for the browser.
 
 Built for people who have hit the performance ceiling of Chart.js, Plotly, and similar browser charting libraries. BlazePlot keeps the hot path GPU-native and the DOM minimal, so large streaming datasets stay interactive instead of turning into a slideshow.
+
+Built on native WebGL2 with no rendering runtime dependency.
+
+## Small core, fast first frame
+
+The core chart runtime is intentionally compact: the current production build for `blazeplot` without optional plugin subpaths is about **139 KiB raw / 34 KiB gzip** (`dist/index.js` plus shared chart/render/data chunks after `bun run build`). Optional UI plugins, React helpers, linked charts, and export helpers ship as separate subpath entries.
+
+A minimal 1,000-point line chart renders its first frame in about **0.3 ms median / 0.5 ms p95** of chart render work in the project headless Chrome benchmark setup (640×360 canvas, axes/grid disabled, HeadlessChrome 148 with SwiftShader). Chart construction and WebGL program/buffer setup for that case is about **19 ms median**.
+
+### Versioned footprint and first-draw comparison
+
+Vendor/package-published figures only; no cross-library benchmark runs. Best available value in each metric is bolded.
+
+| Library | Version | JS/package footprint | First draw / first chart |
+|---|---:|---:|---:|
+| BlazePlot | 0.3.4 | **139 KiB raw / 34 KiB gzip** | **0.3 ms median / 0.5 ms p95 render**; 19 ms setup |
+| Chart.js | 4.5.1 | 1,562 KB tarball; 5.9 MB unpacked | not published |
+| Plotly.js | 3.5.0 | 10.7 MB raw; 4.6 MB min; 1.4 MB gzip | not published |
+| LightningChart JS | 5.2.1 | 1.2–1.5 MB JS; 25.5 MB unpacked | not fixed/published |
+| SciChart.js | 5.x / 5.2.11 package | 1.9 MB JS + ~1 MB WASM; 54–55 MB unpacked | ~250 ms empty-cache init |
+
+References: BlazePlot figures are from this release build and local first-frame benchmark described above. Chart.js: [v4.5.1 release](https://github.com/chartjs/Chart.js/releases/tag/v4.5.1), [npm registry](https://registry.npmjs.org/chart.js), [npmx v4.5.1](https://npmx.dev/package/chart.js/v/4.5.1). Plotly.js: [v3.5.0 tree](https://github.com/plotly/plotly.js/tree/v3.5.0), [dist README](https://github.com/plotly/plotly.js/blob/master/dist/README.md). LightningChart JS: [`@arction/lcjs` v5.2.1](https://www.npmjs.com/package/@arction/lcjs), [registry](https://registry.npmjs.org/%40arction%2Flcjs), [installation docs](https://lightningchart.com/js-charts/docs/5.2.1/installation/), [rendering-speed showcase](https://github.com/Lightning-Chart/lcjs-showcase-renderingSpeed). SciChart.js: [v5 docs](https://www.scichart.com/documentation/js/v5/whats-new/sdk-5.0/), [registry](https://registry.npmjs.org/scichart).
 
 ## Installation
 
@@ -51,15 +73,37 @@ A chart only needs a host element. For regular arrays, wrap your data in a `Stat
 | **Pan & zoom** | Pointer/touch pan and wheel zoom via `Camera2D`. Customizable viewport policies. |
 | **Grid lines** | Data-anchored grid rendered as WebGL line lists. |
 | **Axis labels** | Smart tick generation with DOM labels. Per-axis `inside`/`outside` positioning; outside axes reserve real layout gutters. |
-| **Multi-series** | Independent buffers, styles, and visibility per series. Line, area, scatter, and bar modes are supported. |
-| **Plugin-ready UI** | Optional built-in `legendPlugin()` and `tooltipPlugin()` use the same public state and hover APIs available to custom plugins. |
+| **Multi-series** | Independent buffers, styles, and visibility per series. Line, area, scatter, bar, OHLC, and candlestick modes are supported. |
+| **Plugin-ready UI** | Optional built-in legend, tooltip, interactions, annotations, selection, crosshair, and navigator plugins use the same public APIs available to custom plugins. |
+| **React and linked charts** | First-party `blazeplot/react` and `blazeplot/linked` subpaths support React usage and synchronized multi-panel layouts. |
+| **Export helpers** | `chart.screenshot()` composites WebGL output with built-in DOM/SVG overlays. `blazeplot/data` provides lightweight CSV/JSON data export and pure transform helpers; `blazeplot/export` provides download/clipboard helpers. |
 | **Benchmark overlay** | Built-in fps, frame time, vertex count, draw calls. |
 | **ResizeObserver** | Automatic DPR-aware canvas sizing. |
+
+## Data export and transforms
+
+Use the tree-shakable `blazeplot/data` subpath when you only need data helpers. It collects raw rows from the current visible x range, a committed selection plugin state, or the full chart, then serializes them as CSV or JSON.
+
+```ts
+import { chartDataToCSV, chartDataToJSON, exportSelectedChartData, exportVisibleChartData, rollingMean } from "blazeplot/data";
+import { downloadBlob } from "blazeplot/export";
+
+const visible = exportVisibleChartData(chart);
+const csv = chartDataToCSV(visible);
+
+const selection = selectionPluginHandle.getSelection();
+const selectedJson = chartDataToJSON(exportSelectedChartData(chart, selection));
+
+const smoothed = rollingMean(visible.series[0]?.samples ?? [], 5);
+downloadBlob(new Blob([csv], { type: "text/csv" }), "visible-data.csv");
+```
+
+`exportVisibleChartData` exports samples in each series' current x viewport by default; pass `{ includeYRange: true }` to require y-viewport overlap. Selection exports follow the selection plugin mode (`x-range`, `y-range`, or `xy`) and include OHLC/candlestick `open`, `high`, `low`, and `close` columns when available.
 
 <!-- README_DOCS_START -->
 ## API reference
 
-This section is generated by `bun run docs:readme` from TypeScript declaration files and JSDoc comments. Do not edit it by hand.
+This section is generated by `bun run docs:readme` from TypeScript declaration files, JSDoc comments, and built `dist/` bundle sizes. Do not edit it by hand.
 
 - [Quick start](#quick-start)
 - [Features](#features)
@@ -73,15 +117,21 @@ This section is generated by `bun run docs:readme` from TypeScript declaration f
 - [Browser and dependency support](docs/browser-support.md)
 - [Example recipes](docs/examples.md)
 - [Roadmap](ROADMAP.md)
-- [Changelog for v0.3.3](changelogs/v0.3.3.md)
+- [Bundle size summary](#bundle-size-summary)
+- [Changelog for v0.3.4](changelogs/v0.3.4.md)
 
 ### Package entry points
 
 | Import | Contents |
 |---|---|
 | `blazeplot` | Core chart, data, interaction, rendering types, and low-level primitives. |
+| `blazeplot/core` | Data structures, datasets, LOD helpers, and series storage without chart UI. |
+| `blazeplot/interaction` | Camera, axis, pan/zoom intent, and viewport policy helpers without chart UI. |
+| `blazeplot/render` | Renderer and WebGL backend primitives without chart UI. |
 | `blazeplot/react` | React wrapper component and hooks. |
-| `blazeplot/linked` | Linked chart layout helpers. |
+| `blazeplot/linked` | Linked chart layout helpers with tooltip/crosshair sync factories. |
+| `blazeplot/linked-core` | Lean linked chart layout helpers without tooltip/crosshair sync imports. |
+| `blazeplot/data` | Pure chart data export and transform helpers. |
 | `blazeplot/export` | Screenshot download and clipboard helpers. |
 | `blazeplot/plugins/legend` | Built-in legend plugin. |
 | `blazeplot/plugins/tooltip` | Built-in tooltip plugin. |
@@ -90,6 +140,39 @@ This section is generated by `bun run docs:readme` from TypeScript declaration f
 | `blazeplot/plugins/selection` | Built-in brush/range selection plugin. |
 | `blazeplot/plugins/crosshair` | Built-in crosshair and ruler plugin. |
 | `blazeplot/plugins/navigator` | Built-in overview/navigator plugin. |
+
+### Bundle size summary
+
+Generated from `dist/` after the package build. Budgets are enforced by `bun run test:bundle-size`.
+
+| Chunk | File | Size | Budget | Headroom |
+|---|---|---:|---:|---:|
+| root entry | `dist/index.js` | 0.7 KiB | 31.3 KiB | 30.6 KiB free |
+| core subpath entry | `dist/core.js` | 0.7 KiB | 3.9 KiB | 3.2 KiB free |
+| interaction subpath entry | `dist/interaction.js` | 0.1 KiB | 2.0 KiB | 1.9 KiB free |
+| render subpath entry | `dist/render.js` | 0.3 KiB | 2.0 KiB | 1.7 KiB free |
+| react entry | `dist/react.js` | 0.7 KiB | 7.8 KiB | 7.1 KiB free |
+| linked entry | `dist/linked.js` | 0.4 KiB | 15.6 KiB | 15.3 KiB free |
+| linked core entry | `dist/linked-core.js` | 0.1 KiB | 7.8 KiB | 7.7 KiB free |
+| data entry | `dist/data.js` | 4.9 KiB | 11.7 KiB | 6.8 KiB free |
+| export entry | `dist/export.js` | 1.3 KiB | 7.8 KiB | 6.5 KiB free |
+| interactions plugin | `dist/plugins/interactions.js` | 15.3 KiB | 23.4 KiB | 8.1 KiB free |
+| annotations plugin | `dist/plugins/annotations.js` | 9.3 KiB | 15.6 KiB | 6.3 KiB free |
+| navigator plugin | `dist/plugins/navigator.js` | 8.6 KiB | 15.6 KiB | 7.0 KiB free |
+| selection plugin | `dist/plugins/selection.js` | 5.3 KiB | 11.7 KiB | 6.4 KiB free |
+| legend plugin | `dist/plugins/legend.js` | 2.8 KiB | 7.8 KiB | 5.0 KiB free |
+| tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB | 3.9 KiB | 3.8 KiB free |
+| crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB | 3.9 KiB | 3.8 KiB free |
+| shared Chart chunk | `dist/Chart-D1ISQl_J.js` | 57.0 KiB | 136.7 KiB | 79.7 KiB free |
+| shared RingBuffer chunk | `dist/RingBuffer-Bd5JaRf4.js` | 29.6 KiB | 39.1 KiB | 9.4 KiB free |
+| shared OhlcDataset chunk | `dist/OhlcDataset-1cMrc6BC.js` | 17.3 KiB | 23.4 KiB | 6.1 KiB free |
+| shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB | 19.5 KiB | 6.0 KiB free |
+| shared WebGL2Backend chunk | `dist/WebGL2Backend-wxbXnm0h.js` | 20.9 KiB | 23.4 KiB | 2.5 KiB free |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DDrAyfEg.js` | 2.1 KiB | 7.8 KiB | 5.7 KiB free |
+| lazy screenshot chunk | `dist/screenshot-BVw2v67J.js` | 3.0 KiB | 7.8 KiB | 4.8 KiB free |
+| shared OverlayUtils chunk | `dist/OverlayUtils-Gk-tb2Ak.js` | 3.1 KiB | 7.8 KiB | 4.7 KiB free |
+| shared Tooltip chunk | `dist/Tooltip-DDEQ32oy.js` | 4.8 KiB | 11.7 KiB | 6.9 KiB free |
+| shared Crosshair chunk | `dist/Crosshair-DyBHoqIB.js` | 8.6 KiB | 15.6 KiB | 7.0 KiB free |
 
 ### Selected generated declarations
 
@@ -173,6 +256,7 @@ These member tables are generated from TypeScript declarations.
 | `followX?: boolean \\| ChartFollowXOptions` |
 | `plugins?: readonly ChartPlugin[]` |
 | `theme?: ChartTheme` |
+| `backendFactory?: ChartBackendFactory` | Advanced hook for supplying a custom GPU backend. Defaults to WebGL2Backend. |
 
 </details>
 
@@ -239,6 +323,7 @@ These member tables are generated from TypeScript declarations.
 | `query(viewport: Viewport, pixelWidth: number): LODView` |
 | `visibleSampleCount(viewport: Viewport): number` |
 | `sampleAt(index: number): SeriesSample \\| null` |
+| `ohlcAt(index: number): SeriesOhlcSample \\| null` |
 | `dataBounds(options?: SeriesDataBoundsOptions): SeriesDataBounds \\| null` |
 | `nearestSampleByX(x: number, viewport?: Viewport): SeriesSample \\| null` |
 | `nearestSampleByPoint(x: number, y: number, viewport: Viewport, plotWidth: number, plotHeight: number, maxDistancePx?: number): SeriesSample \\| null` |
@@ -308,6 +393,7 @@ These member tables are generated from TypeScript declarations.
 | `clear(): void` |
 | `getX(index: number): number` |
 | `getY(index: number): number` |
+| `isGap(index: number): boolean` |
 | `lowerBoundX(x: number): number` |
 | `upperBoundX(x: number): number` |
 | `rangeMinMaxY(start: number, end: number): { minY: number; maxY: number; } \\| null` |
@@ -331,6 +417,7 @@ These member tables are generated from TypeScript declarations.
 | `get(index: number): { x: number; y: number; } \\| null` |
 | `getX(index: number): number` |
 | `getY(index: number): number` |
+| `isGap(index: number): boolean` |
 | `lowerBoundX(x: number): number` |
 | `upperBoundX(x: number): number` |
 | `rangeMinMaxY(start: number, end: number): { minY: number; maxY: number; } \\| null` |
@@ -348,6 +435,7 @@ These member tables are generated from TypeScript declarations.
 | `get range(): TimeRange \\| null` |
 | `getX(index: number): number` |
 | `getY(index: number): number` |
+| `isGap(index: number): boolean` |
 | `lowerBoundX(x: number): number` |
 | `upperBoundX(x: number): number` |
 
@@ -386,6 +474,7 @@ These member tables are generated from TypeScript declarations.
 | `range: TimeRange \\| null` |
 | `getX(index: number): number` |
 | `getY(index: number): number` |
+| `isGap(index: number): boolean` | Optional explicit missing-data marker. Gap samples are skipped by picks and break line/area strips on both sides. X values must remain sorted even when a sample is marked as a gap. |
 | `lowerBoundX(x: number): number` |
 | `upperBoundX(x: number): number` |
 
@@ -411,6 +500,7 @@ These member tables are generated from TypeScript declarations.
 |---|---|---|---|
 | `AcceleratedDataset` | interface | `./core/types` | Convenience contract for maximum-performance custom datasets. Implement this when a dataset can provide fast exact sample copies, stable viewport sampling, range min/max queries, and renderer-ready min/max buckets. |
 | `AppendableDataset` | interface | `./core/types` | — |
+| `AttributeSpec` | interface | `./render/types` | — |
 | `AxisConfig` | interface | `./ui/Chart` | — |
 | `AxisController` | class | `./interaction/AxisController` | — |
 | `AxisControllerAxisOptions` | interface | `./interaction/AxisController` | — |
@@ -423,11 +513,14 @@ These member tables are generated from TypeScript declarations.
 | `AxisTimeZone` | type | `./interaction/AxisController` | — |
 | `AxisTitleConfig` | interface | `./ui/Chart` | — |
 | `BufferOverflowStrategy` | type | `./core/types` | — |
+| `BufferSpec` | interface | `./render/types` | — |
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | — |
 | `Camera2D` | class | `./interaction/Camera2D` | — |
 | `Chart` | class | `./ui/Chart` | — |
 | `ChartAccessibilityOptions` | interface | `./ui/Chart` | — |
 | `ChartAutoFitYOptions` | interface | `./ui/Chart` | — |
+| `ChartBackendFactory` | type | `./ui/Chart` | — |
+| `ChartBackendFactoryContext` | interface | `./ui/Chart` | — |
 | `ChartFitToDataOptions` | interface | `./ui/Chart` | — |
 | `ChartFitToDataPadding` | interface | `./ui/Chart` | — |
 | `ChartFollowXOptions` | interface | `./ui/Chart` | — |
@@ -441,6 +534,7 @@ These member tables are generated from TypeScript declarations.
 | `ChartPickMode` | type | `./ui/Chart` | — |
 | `ChartPickOptions` | interface | `./ui/Chart` | — |
 | `ChartPlugin` | interface | `./ui/Chart` | — |
+| `ChartPluginContext` | interface | `./ui/Chart` | — |
 | `ChartPluginHandle` | interface | `./ui/Chart` | — |
 | `ChartPointerEventState` | interface | `./ui/Chart` | — |
 | `ChartPointerEventType` | type | `./ui/Chart` | — |
@@ -456,7 +550,13 @@ These member tables are generated from TypeScript declarations.
 | `CustomAxisScale` | interface | `./interaction/AxisController` | — |
 | `Dataset` | interface | `./core/types` | — |
 | `DEFAULT_CHART_THEME` | const | `./ui/theme` | — |
-| `isWebGL2Available` | function | `./render/ReglBackend` | — |
+| `DrawSpec` | interface | `./render/types` | — |
+| `GpuBackend` | interface | `./render/types` | — |
+| `GpuBuffer` | interface | `./render/types` | — |
+| `GpuCapabilities` | interface | `./render/types` | — |
+| `GpuProgram` | interface | `./render/types` | — |
+| `GpuResource` | type | `./render/types` | — |
+| `isWebGL2Available` | function | `./render/WebGL2Backend` | — |
 | `LODBucket` | interface | `./core/types` | — |
 | `LODStrategy` | type | `./core/types` | — |
 | `LODView` | interface | `./core/types` | — |
@@ -469,6 +569,7 @@ These member tables are generated from TypeScript declarations.
 | `PanIntent` | interface | `./interaction/types` | — |
 | `RangeMinMaxDataset` | interface | `./core/types` | — |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
+| `ReglBackend` | const | `./render/WebGL2Backend` | Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API. |
 | `ResolvedChartTheme` | interface | `./ui/theme` | — |
 | `RgbaColor` | type | `./ui/theme` | — |
 | `RingBuffer` | class | `./core/RingBuffer` | — |
@@ -479,6 +580,7 @@ These member tables are generated from TypeScript declarations.
 | `SeriesDataBounds` | interface | `./core/SeriesStore` | — |
 | `SeriesDataBoundsOptions` | interface | `./core/SeriesStore` | — |
 | `SeriesMode` | type | `./core/types` | — |
+| `SeriesOhlcSample` | interface | `./core/SeriesStore` | — |
 | `SeriesSample` | interface | `./core/types` | — |
 | `SeriesStore` | class | `./core/SeriesStore` | — |
 | `SeriesStyle` | interface | `./core/types` | — |
@@ -500,7 +602,8 @@ These member tables are generated from TypeScript declarations.
 | `ViewportPolicy` | interface | `./interaction/types` | — |
 | `VisiblePointCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for point/scatter datasets. Implementations should cull against the full 2D viewport and may sample in screen space so dense point clouds respond to both X and Y zoom. |
 | `VisibleSampleCopyDataset` | interface | `./core/types` | Optional high-performance stable visible sampling capability. Unlike copySamplesRange, this method may stride/downsample, but should choose samples anchored to data coordinates so streamed appends do not make existing sampled points jitter. |
-| `WebGL2UnavailableError` | class | `./render/ReglBackend` | — |
+| `WebGL2Backend` | class | `./render/WebGL2Backend` | — |
+| `WebGL2UnavailableError` | class | `./render/WebGL2Backend` | — |
 | `YAppendableDataset` | interface | `./core/types` | — |
 | `ZoomAxis` | type | `./interaction/types` | — |
 | `ZoomIntent` | interface | `./interaction/types` | — |
@@ -513,7 +616,7 @@ These member tables are generated from TypeScript declarations.
 ```
 src/
   core/          # Data model — series, datasets, LOD
-  render/        # GPU abstraction + regl backend
+  render/        # GPU abstraction + native WebGL2 backend
   interaction/   # Camera, axis ticks, interaction intent types
   ui/            # Orchestrator (Chart)
 ```

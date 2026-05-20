@@ -2,6 +2,10 @@ import type { Dataset, LODView, Viewport } from "./types.js";
 
 const MAX_LEVELS = 16;
 
+function isGap(source: Dataset, index: number, y: number): boolean {
+  return !Number.isFinite(y) || source.isGap?.(index) === true;
+}
+
 export class MinMaxPyramid {
   private levels: Float32Array[] = [];
   private levelLengths: Uint32Array;
@@ -49,6 +53,7 @@ export class MinMaxPyramid {
             if (prevMax > maxY) maxY = prevMax;
           } else {
             const y = source.getY(j);
+            if (isGap(source, j, y)) continue;
             if (y < minY) minY = y;
             if (y > maxY) maxY = y;
           }
@@ -122,6 +127,7 @@ export class MinMaxPyramid {
         if (L === 0) {
           for (let j = start; j < end; j++) {
             const y = source.getY(j);
+            if (isGap(source, j, y)) continue;
             if (y < minY) minY = y;
             if (y > maxY) maxY = y;
           }
@@ -205,8 +211,10 @@ export class MinMaxPyramid {
         i += width;
       } else {
         const y = source.getY(i);
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
+        if (!isGap(source, i, y)) {
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
         i++;
       }
     }
@@ -246,8 +254,10 @@ export class MinMaxPyramid {
     const result = new Float32Array(count * 2);
     for (let i = 0; i < count; i++) {
       const j = (bucketStart + i) * 2;
-      result[i * 2] = levelData[j]!;
-      result[i * 2 + 1] = levelData[j + 1]!;
+      const minY = levelData[j]!;
+      const maxY = levelData[j + 1]!;
+      result[i * 2] = Number.isFinite(minY) ? minY : NaN;
+      result[i * 2 + 1] = Number.isFinite(maxY) ? maxY : NaN;
     }
 
     return { buckets: result, bucketCount: count, level, samplesPerPixel };
