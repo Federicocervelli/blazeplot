@@ -1,8 +1,8 @@
 const imports = [
-  { specifier: "blazeplot", expected: ["Chart", "RingBuffer", "StaticDataset", "ServerSampledDataset"] },
+  { specifier: "blazeplot", expected: ["Chart", "RingBuffer", "StaticDataset", "ServerSampledDataset", "WebGL2Backend", "ReglBackend"] },
   { specifier: "blazeplot/core", expected: ["RingBuffer", "UniformRingBuffer", "StaticDataset", "ServerSampledDataset", "SeriesStore", "MinMaxPyramid"] },
   { specifier: "blazeplot/interaction", expected: ["Camera2D", "AxisController"] },
-  { specifier: "blazeplot/render", expected: ["Renderer", "ReglBackend", "WebGL2Resources", "ShaderPrograms", "isWebGL2Available", "WebGL2UnavailableError"] },
+  { specifier: "blazeplot/render", expected: ["Renderer", "WebGL2Backend", "ReglBackend", "WebGL2Resources", "ShaderPrograms", "isWebGL2Available", "WebGL2UnavailableError"] },
   { specifier: "blazeplot/react", expected: ["BlazeChart"] },
   { specifier: "blazeplot/linked", expected: ["createLinkedCharts", "linkedChartsPlugin"] },
   { specifier: "blazeplot/linked-core", expected: ["createLinkedCharts", "linkedChartsPlugin"] },
@@ -24,6 +24,16 @@ for (const entry of imports) {
       throw new Error(`${entry.specifier} is missing expected export ${name}.`);
     }
   }
+}
+
+const importPackage = async (specifier: string): Promise<Record<string, unknown>> => await import(specifier) as Record<string, unknown>;
+const rootExports = await importPackage("blazeplot");
+const renderExports = await importPackage("blazeplot/render");
+if (rootExports.ReglBackend !== rootExports.WebGL2Backend) {
+  throw new Error("blazeplot ReglBackend compatibility alias does not match WebGL2Backend.");
+}
+if (renderExports.ReglBackend !== renderExports.WebGL2Backend) {
+  throw new Error("blazeplot/render ReglBackend compatibility alias does not match WebGL2Backend.");
 }
 
 console.log(`Validated ${imports.length} package export subpaths.`);

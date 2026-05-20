@@ -15,7 +15,7 @@ export type { ServerSampledBuckets, ServerSampledData, ServerSampledDatasetKind,
 export { OhlcRingBuffer, StaticOhlcDataset } from "./core/OhlcDataset.js";
 export type { OhlcRingBufferOptions } from "./core/OhlcDataset.js";
 export { MinMaxPyramid } from "./core/MinMaxPyramid.js";
-export { isWebGL2Available, ReglBackend, WebGL2UnavailableError } from "./render/ReglBackend.js";
+export { isWebGL2Available, ReglBackend, WebGL2Backend, WebGL2UnavailableError } from "./render/WebGL2Backend.js";
 export type { AttributeSpec, BufferSpec, DrawSpec, GpuBackend, GpuBuffer, GpuCapabilities, GpuProgram, GpuResource } from "./render/types.js";
 export { Camera2D } from "./interaction/Camera2D.js";
 export { AxisController } from "./interaction/AxisController.js";

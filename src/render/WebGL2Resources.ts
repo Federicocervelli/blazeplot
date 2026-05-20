@@ -1,49 +1,52 @@
-import type { Regl, Buffer as ReglBuffer } from "regl";
-
 interface PoolEntry {
-  buffer: ReglBuffer;
-  floatArray: Float32Array;
-  floatCapacity: number;
+  buffer: WebGLBuffer;
+  byteCapacity: number;
+  target: number;
+  usage: number;
   inUse: boolean;
 }
 
 const POOL_SIZES = [1024, 4096, 16384, 32768, 131072];
 
+export interface WebGL2ResourceBuffer {
+  readonly buffer: WebGLBuffer;
+  readonly byteCapacity: number;
+}
+
 export class WebGL2Resources {
-  private readonly regl: Regl;
   private readonly pool: PoolEntry[] = [];
   private preAllocated: boolean = false;
 
-  constructor(regl: Regl) {
-    this.regl = regl;
-  }
-
-  get reglInstance(): Regl {
-    return this.regl;
-  }
+  constructor(private readonly gl: WebGL2RenderingContext) {}
 
   preAllocate(): void {
     if (this.preAllocated) return;
     this.preAllocated = true;
 
     for (const size of POOL_SIZES) {
-      this.pool.push(this.createEntry(size, "stream"));
+      this.pool.push(this.createEntry(size * Float32Array.BYTES_PER_ELEMENT, this.gl.ARRAY_BUFFER, this.gl.STREAM_DRAW));
     }
   }
 
-  acquire(floatCount: number, usage: "static" | "dynamic" | "stream" = "stream"): { buffer: ReglBuffer; array: Float32Array } {
-    const needed = floatCount;
-    let entry = this.findFree(needed);
+  acquire(
+    elementCount: number,
+    usage: "static" | "dynamic" | "stream" = "stream",
+    type: "float" | "element" = "float",
+  ): WebGL2ResourceBuffer {
+    const target = type === "element" ? this.gl.ELEMENT_ARRAY_BUFFER : this.gl.ARRAY_BUFFER;
+    const byteLength = elementCount * (type === "element" ? Uint16Array.BYTES_PER_ELEMENT : Float32Array.BYTES_PER_ELEMENT);
+    const glUsage = this.toGlUsage(usage);
+    let entry = this.findFree(byteLength, target, glUsage);
     if (!entry) {
-      const capacity = this.roundUp(needed);
-      entry = this.createEntry(capacity, usage);
+      const capacity = this.roundUp(byteLength);
+      entry = this.createEntry(capacity, target, glUsage);
       this.pool.push(entry);
     }
     entry.inUse = true;
-    return { buffer: entry.buffer, array: entry.floatArray };
+    return { buffer: entry.buffer, byteCapacity: entry.byteCapacity };
   }
 
-  release(buffer: ReglBuffer): void {
+  release(buffer: WebGLBuffer): void {
     for (const entry of this.pool) {
       if (entry.buffer === buffer) {
         entry.inUse = false;
@@ -54,35 +57,50 @@ export class WebGL2Resources {
 
   destroy(): void {
     for (const entry of this.pool) {
-      entry.buffer.destroy();
+      this.gl.deleteBuffer(entry.buffer);
     }
     this.pool.length = 0;
     this.preAllocated = false;
   }
 
-  private createEntry(floatCapacity: number, usage: "static" | "dynamic" | "stream"): PoolEntry {
+  private createEntry(byteCapacity: number, target: number, usage: number): PoolEntry {
+    const buffer = this.gl.createBuffer();
+    if (!buffer) {
+      throw new Error("Failed to allocate WebGL buffer.");
+    }
+    this.gl.bindBuffer(target, buffer);
+    this.gl.bufferData(target, byteCapacity, usage);
     return {
-      buffer: this.regl.buffer({
-        length: floatCapacity * 4,
-        usage,
-        type: "float",
-      }),
-      floatArray: new Float32Array(floatCapacity),
-      floatCapacity,
+      buffer,
+      byteCapacity,
+      target,
+      usage,
       inUse: false,
     };
   }
 
-  private findFree(minCapacity: number): PoolEntry | undefined {
-    return this.pool.find(e => !e.inUse && e.floatCapacity >= minCapacity);
+  private findFree(minByteCapacity: number, target: number, usage: number): PoolEntry | undefined {
+    return this.pool.find(e => !e.inUse && e.target === target && e.usage === usage && e.byteCapacity >= minByteCapacity);
   }
 
-  private roundUp(n: number): number {
+  private roundUp(byteLength: number): number {
     for (const size of POOL_SIZES) {
-      if (size >= n) return size;
+      const bytes = size * Float32Array.BYTES_PER_ELEMENT;
+      if (bytes >= byteLength) return bytes;
     }
-    const highest = POOL_SIZES[POOL_SIZES.length - 1]!;
-    const nextPower = 1 << (32 - Math.clz32(n - 1));
+    const highest = POOL_SIZES[POOL_SIZES.length - 1]! * Float32Array.BYTES_PER_ELEMENT;
+    const nextPower = 1 << (32 - Math.clz32(byteLength - 1));
     return Math.max(highest * 2, nextPower);
+  }
+
+  private toGlUsage(usage: "static" | "dynamic" | "stream"): number {
+    switch (usage) {
+      case "static":
+        return this.gl.STATIC_DRAW;
+      case "dynamic":
+        return this.gl.DYNAMIC_DRAW;
+      case "stream":
+        return this.gl.STREAM_DRAW;
+    }
   }
 }
