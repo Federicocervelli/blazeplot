@@ -8,7 +8,7 @@
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![previews](https://img.shields.io/badge/previews-blue?logo=githubpages&logoColor=white)](https://federicocervelli.github.io/blazeplot/previews.html)
 
-Fast WebGL2 plotting engine for the browser 🔥
+Fast WebGL2 plotting engine for the browser.
 
 Built for people who have hit the performance ceiling of Chart.js, Plotly, and similar browser charting libraries. BlazePlot keeps the hot path GPU-native and the DOM minimal, so large streaming datasets stay interactive instead of turning into a slideshow.
 
