@@ -22,6 +22,9 @@ if (!existsSync(distIndexPath)) {
 
 const exportDescriptions = new Map([
   [".", "Core chart, data, interaction, rendering types, and low-level primitives."],
+  ["./core", "Data structures, datasets, LOD helpers, and series storage without chart UI."],
+  ["./interaction", "Camera, axis, pan/zoom intent, and viewport policy helpers without chart UI."],
+  ["./render", "Renderer and WebGL backend primitives without chart UI."],
   ["./react", "React wrapper component and hooks."],
   ["./linked", "Linked chart layout helpers."],
   ["./data", "Pure chart data export and transform helpers."],

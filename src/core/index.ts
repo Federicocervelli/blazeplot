@@ -1,11 +1,15 @@
-export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, LODStrategy, Dataset, AcceleratedDataset, AppendableDataset, YAppendableDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout } from "./types.js";
+export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, SeriesSample, LODStrategy, BufferOverflowStrategy, Dataset, AcceleratedDataset, OhlcDataset, AppendableDataset, YAppendableDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout } from "./types.js";
 
 export { ServerSampledDataset } from "./ServerSampledDataset.js";
 export type { ServerSampledBuckets, ServerSampledData, ServerSampledDatasetKind, ServerSampledPoints } from "./ServerSampledDataset.js";
 export { RingBuffer } from "./RingBuffer.js";
+export type { RingBufferOptions, RingBufferOverflow } from "./RingBuffer.js";
 export { UniformRingBuffer } from "./UniformRingBuffer.js";
 export type { UniformRingBufferOptions } from "./UniformRingBuffer.js";
 export { StaticDataset } from "./StaticDataset.js";
+export { OhlcRingBuffer, StaticOhlcDataset } from "./OhlcDataset.js";
+export type { OhlcRingBufferOptions } from "./OhlcDataset.js";
 export { MinMaxPyramid } from "./MinMaxPyramid.js";
 export { SeriesStore } from "./SeriesStore.js";
+export type { SeriesDataBounds, SeriesDataBoundsOptions, SeriesOhlcSample } from "./SeriesStore.js";
 export { DataCursor } from "./DataCursor.js";
