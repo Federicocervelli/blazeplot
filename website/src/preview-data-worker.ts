@@ -6,7 +6,7 @@ import {
   TRACE_PERIOD,
   type PreviewDataBatch,
   type PreviewDataWorkerRequest,
-} from "./dataConfig.ts";
+} from "./preview-data-config.ts";
 
 type WorkerGlobal = {
   addEventListener(type: "message", listener: (event: MessageEvent<PreviewDataWorkerRequest>) => void): void;

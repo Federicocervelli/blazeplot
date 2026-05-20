@@ -1,6 +1,6 @@
-# Theming and responsive layout
+# Theming and layout
 
-BlazePlot themes are supplied with `new Chart(target, { theme })` or `chart.setTheme(theme)`.
+Pass a theme when you create a chart, or update it later with `chart.setTheme(theme)`.
 
 ```ts
 chart.setTheme({
@@ -11,24 +11,51 @@ chart.setTheme({
 });
 ```
 
-## Responsive layout
+Theme values are merged with the default theme, so you can override only the tokens you need. Colors accept CSS color strings; renderer-facing colors also accept RGBA arrays in 0-1 range.
 
-- The chart root fills its container; set an explicit size on the host element.
-- Outside axes reserve fixed gutters for readable labels.
-- Use `axes: { x: { position: "inside" }, y: { position: "inside" } }` for compact/mobile layouts.
-- Use titles and axis titles for built-in text overlays included in screenshots.
+## Theme tokens
 
-## Mobile defaults
+| Token group | Options |
+|---|---|
+| Plot | `backgroundColor`, `gridColor`, `axisColor`, `axisFont`, `seriesColors` |
+| Tooltip | `tooltipBackgroundColor`, `tooltipTextColor`, `tooltipFont` |
+| Legend | `legendBackgroundColor`, `legendBorderColor`, `legendTextColor`, `legendMutedTextColor`, `legendFont` |
+| Titles | `titleColor`, `titleFont`, `subtitleColor`, `subtitleFont`, `axisTitleColor`, `axisTitleFont` |
 
-For small screens prefer:
+## Sizing
 
-- inside axes or hidden secondary axes,
-- fewer/dynamic ticks through axis scale/tick options,
-- touch-first `interactionsPlugin({ touchPan: true, pinchZoom: true })`,
-- legends outside the plot via plugin layout reservations when space allows.
+- The chart root fills its host element. Give the host an explicit width and height.
+- The WebGL canvas is sized to the plot area, not the full outer chart, when outside axes reserve gutters.
+- `ResizeObserver` is used when available so charts follow container size changes.
+- Call `chart.dispose()` when removing the host element.
+
+## Axes and gutters
+
+- Outside axes reserve real CSS-pixel gutters for labels: 52px on the left/right Y sides and 28px on the bottom X side.
+- Inside axes draw labels over the plot and are useful for compact layouts.
+- Use `axes: { x: { position: "inside" }, y: { position: "inside" } }` when space is tight.
+- Titles and axis titles are built-in DOM text overlays and are included in `chart.screenshot()` output.
+
+## Plugin layout
+
+Plugins that need space outside the plot should use `chart.setLayoutReservation(id, reservation)`. This avoids overlapping axes and keeps screenshots consistent. Plot overlays, such as crosshairs or custom markers, should attach to `chart.plotElement`.
+
+The built-in legend is positioned inside the chart root and does not reserve space. The navigator can reserve top or bottom space. For external legends or controls, create a plugin with a layout reservation.
+
+For plugin lifecycle details, see [Plugin authoring](./plugin-authoring.md).
+
+## Mobile layouts
+
+For small screens, prefer:
+
+- inside axes or fewer visible axes,
+- fewer ticks through axis scale/tick options,
+- touch-first interaction options such as `interactionsPlugin({ touchPan: true, pinchZoom: true })`,
+- legends outside the plot when space allows.
 
 ## Accessibility and contrast
 
-- Provide `accessibility: { label: "..." }` for screen-reader context.
-- Keep grid and axis colors above the background at low opacity only when decorative.
-- Prefer distinct series colors and visible point/line sizes for high-density data.
+- Provide `accessibility: { label: "..." }` so the chart has useful screen-reader context.
+- Keep axis text readable against the background.
+- Use grid colors as decoration, not as the only way to understand the chart.
+- Pick series colors that remain distinct for dense data and common color-vision differences.

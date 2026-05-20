@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+/* ── Dark theme base, matching preview aesthetic ── */
+:host {
+  --bg: #000;
+  --text: #e5e5e5;
+  --muted: #888;
+  --border: #222;
+  --accent: #fc4a05;
+  --panel: #0a0a0a;
+}
+
+/* ── Article / markdown content styles ── */
+.article h1,
+.article h2,
+.article h3,
+.article h4 {
+  @apply text-[#e5e5e5] font-semibold tracking-tight;
+}
+.article h1 { @apply text-2xl mb-4 mt-0; }
+.article h2 { @apply text-xl mb-3 mt-8 pb-1 border-b border-[#222]; }
+.article h3 { @apply text-lg mb-2 mt-6; }
+.article h4 { @apply text-base mb-2 mt-4; }
+
+.article p,
+.article li { @apply text-[#bbb] leading-relaxed; }
+.article p { @apply mb-3; }
+
+.article a { @apply text-[#fc4a05] no-underline hover:underline; }
+.article img { @apply inline-block align-middle; }
+.article p:has(img) { @apply flex flex-wrap items-center gap-1.5; }
+
+.article blockquote {
+  @apply border-l-2 border-[#333] pl-4 my-4 text-[#888] italic;
+}
+
+.article pre {
+  @apply relative my-5 overflow-auto rounded border border-[#222] bg-[#050505] p-0;
+}
+.article pre code {
+  @apply block min-w-full bg-transparent px-4 py-4 text-[12px] leading-relaxed text-[#dce8ff];
+}
+.article code {
+  @apply text-sm text-[#fc4a05];
+}
+.article p > code,
+.article li > code {
+  @apply rounded border border-[#3a1608] bg-[#140703] px-1.5 py-0.5 text-[#ff7a18];
+}
+.article .code-language {
+  @apply pointer-events-none absolute right-2 top-2 rounded border border-[#222] bg-black px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-[#555];
+}
+.article .hljs-comment,
+.article .hljs-quote { color: #6b7280; }
+.article .hljs-keyword,
+.article .hljs-selector-tag,
+.article .hljs-meta .hljs-keyword { color: #fc4a05; }
+.article .hljs-string,
+.article .hljs-regexp,
+.article .hljs-template-string { color: #7dd3fc; }
+.article .hljs-number,
+.article .hljs-literal { color: #facc15; }
+.article .hljs-title,
+.article .hljs-title.function_,
+.article .hljs-built_in { color: #a7f3d0; }
+.article .hljs-attr,
+.article .hljs-attribute,
+.article .hljs-property,
+.article .hljs-variable { color: #c4b5fd; }
+.article .hljs-tag,
+.article .hljs-name { color: #93c5fd; }
+
+.article ul,
+.article ol { @apply mb-4 pl-6; }
+.article ul { @apply list-disc; }
+.article ol { @apply list-decimal; }
+.article li { @apply mb-1; }
+
+.article hr { @apply border-[#222] my-6; }
+
+.article .table-wrap {
+  @apply my-5 overflow-x-auto rounded border border-[#222];
+}
+.article table {
+  @apply m-0 w-full min-w-[640px] border-separate border-spacing-0 text-[12px];
+}
+.article th,
+.article td {
+  @apply border-b border-r border-[#1f1f1f] px-3 py-2 text-left align-top leading-relaxed;
+}
+.article th:last-child,
+.article td:last-child { @apply border-r-0; }
+.article tbody tr:last-child td { @apply border-b-0; }
+.article th {
+  @apply bg-[#080808] text-[#e5e5e5] font-medium;
+}
+.article td {
+  @apply text-[#aaa];
+}
+.article tbody tr:nth-child(even) td {
+  @apply bg-[#050505];
+}
+.article tbody tr:hover td {
+  @apply bg-[#0a0a0a] text-[#d4d4d4];
+}

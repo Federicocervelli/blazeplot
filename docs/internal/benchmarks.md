@@ -12,7 +12,7 @@ Append a persistent markdown benchmark log with:
 bun run bench:report --scenario mixed-1m-live --measure-ms 5000
 ```
 
-By default this appends to `BENCHMARK_RESULTS.md`. Use `--out-md path/to/file.md` to write elsewhere, and pass comma-separated scenarios such as `--scenario mixed-1m-live,line-5m-static`.
+By default this appends to `docs/internal/benchmark-results.md`. Use `--out-md path/to/file.md` to write elsewhere, and pass comma-separated scenarios such as `--scenario mixed-1m-live,line-5m-static`.
 
 The harness starts Vite, opens `/bench/` in headless Chrome/Chromium, waits for the chart scene to load and warm up, starts the Chrome CPU profiler, runs the scenario, then prints a JSON report. The report includes chart/RAF FPS summaries, frame timing, draw/upload stats, Chrome performance metrics, and a top-N bottom-up CPU profile table.
 
@@ -30,7 +30,7 @@ If Chrome/Chromium/Brave is not on `PATH`, pass `--chrome /path/to/browser` or s
 bun run bench --scenario mixed-1m-live --chrome /usr/bin/brave --out bench-result.json
 ```
 
-Built-in scenarios live in `preview/bench/main.ts`:
+Built-in scenarios live in `tests/browser/bench/main.ts`:
 
 - `mixed-1m-live` (default): line + scatter + bars with live appends.
 - `line-5m-static`: static downsampled line scene.

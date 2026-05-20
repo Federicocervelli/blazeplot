@@ -1,6 +1,6 @@
 {
   "name": "blazeplot",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "author": {
     "name": "Federico Cervelli",
     "url": "https://cervelli.dev"
@@ -91,12 +91,14 @@
     "LICENSE"
   ],
   "scripts": {
-    "dev": "vite",
+    "dev": "BLAZEPLOT_PAGES_BASE=/ vite --config vite.pages.config.ts",
+    "legacy-preview:dev": "vite",
     "build": "vite build",
     "bench:ci": "bun run bench --scenario ci-smoke --measure-ms 500 --warmup-ms 100 --width 800 --height 450 --top 12 --setup-timeout-ms 60000",
     "ci": "bun run typecheck && bun test && bun run build && bun run test:exports && bun run test:package && bun run test:bundle-size && bun run bench:ci && bun run test:visual && bun run test:interaction",
     "build:js": "vite build --mode js-only",
     "pages:build": "vite build --config vite.pages.config.ts",
+    "pages:preview": "vite preview --config vite.pages.config.ts",
     "preview": "vite preview",
     "bench": "bun scripts/benchmark.ts",
     "bench:scatter": "bun scripts/scatter-profile.ts",
@@ -125,11 +127,15 @@
     }
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
     "@types/bun": "^1.3.14",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "highlight.js": "^11.11.1",
+    "lit": "^3.3.3",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "tailwindcss": "^4.3.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.13",
     "vite-plugin-dts": "^5.0.0"

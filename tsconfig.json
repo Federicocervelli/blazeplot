@@ -24,5 +24,13 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src", "preview", "tests", "scripts", "vite.config.ts"]
+  "include": [
+    "src",
+    "preview",
+    "website",
+    "tests",
+    "scripts",
+    "vite.config.ts",
+    "vite.pages.config.ts"
+  ]
 }

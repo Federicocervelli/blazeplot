@@ -97,18 +97,15 @@ export function bundleSizeFailures(report: BundleSizeReport): string[] {
 
 export function renderBundleSizeMarkdown(report: BundleSizeReport): string {
   const rows = [...report.entryChunks, ...report.sharedChunks.flatMap((chunk) => chunk.entries)]
-    .map((entry) => {
-      const remainingBytes = entry.maxBytes - entry.sizeBytes;
-      return `| ${markdownEscape(entry.label)} | \`${entry.path}\` | ${formatBytes(entry.sizeBytes)} | ${formatBytes(entry.maxBytes)} | ${formatHeadroom(remainingBytes)} |`;
-    });
+    .map((entry) => `| ${markdownEscape(entry.label)} | \`${entry.path}\` | ${formatBytes(entry.sizeBytes)} |`);
 
   const lines = [
     "### Bundle size summary",
     "",
-    "Generated from `dist/` after the package build. Budgets are enforced by `bun run test:bundle-size`.",
+    "Generated from `dist/` after the package build.",
     "",
-    "| Chunk | File | Size | Budget | Headroom |",
-    "|---|---|---:|---:|---:|",
+    "| Chunk | File | Size |",
+    "|---|---|---:|",
     ...rows,
   ];
 
@@ -160,11 +157,6 @@ function printHelpAndExit(): never {
 
 function formatBytes(bytes: number): string {
   return `${(bytes / 1024).toFixed(1)} KiB`;
-}
-
-function formatHeadroom(bytes: number): string {
-  const sign = bytes < 0 ? "over" : "free";
-  return `${formatBytes(Math.abs(bytes))} ${sign}`;
 }
 
 function markdownEscape(value: string): string {

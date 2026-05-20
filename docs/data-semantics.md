@@ -1,34 +1,69 @@
 # Data semantics
 
-BlazePlot data paths assume numeric, finite, X-sorted samples unless a dataset explicitly documents otherwise.
+BlazePlot expects finite, sorted X values. Y values are normally finite; non-finite Y values are treated as gaps by built-in datasets. The library does not sort or fully validate built-in datasets on every update; that would be too expensive for large live streams.
 
 ## Empty datasets
 
-Empty datasets report `range: null`, render nothing, return no picks, and are ignored by `chart.fitToData()` / auto-fit policies.
+Empty datasets:
+
+- report `range: null`,
+- render nothing,
+- return no pick results,
+- are ignored by `chart.fitToData()` and auto-fit policies.
 
 ## X ordering
 
-- Built-in binary search, LOD, and viewport extraction assume logical X values are sorted ascending.
-- Duplicate X values are allowed; range searches include all samples matching the viewport bounds.
-- Unsorted X values are unsupported for built-in datasets and can produce incorrect search, LOD, and picking results.
+- Built-in datasets expect logical X values sorted ascending.
+- Duplicate X values are allowed. Range searches include all samples on the viewport bounds.
+- Unsorted X values can break binary search, LOD extraction, picking, and exported visible data.
+- Ring buffers preserve logical order after wrapping, but appended X values still need to move forward in that logical order.
+
+If you need unsorted source data, sort it before passing it to a built-in dataset or implement a custom dataset that exposes sorted logical access.
 
 ## Invalid values
 
-- Finite X values are expected and must remain sorted in logical order.
-- Non-finite Y values (`NaN`, `Infinity`, `-Infinity`) are treated as missing data for built-in line/area extraction and picking.
-- Built-in datasets store numeric values as provided; they do not reorder data or perform full validation scans by default.
+- X values should be finite numbers.
+- Non-finite Y values (`NaN`, `Infinity`, `-Infinity`) act as missing/gap samples for built-in extraction, picking, and data bounds.
+- Built-in datasets store numeric values as provided. They do not reorder data or scan everything for invalid values by default.
 
-## Missing data and gaps
+## Gaps
 
-Line and area series treat gap samples as strip breaks: the gap sample itself is not rendered or picked, and finite samples on either side are not connected.
+Built-in picking and bounds skip gap samples. Line and area series also treat gap samples as strip breaks: the gap sample is not rendered or picked, and finite samples on either side are not connected.
 
-Gap markers can be expressed in two ways:
+You can mark a gap in either of these ways:
 
-- Append/store a non-finite Y value such as `NaN` at the sorted X position where the discontinuity occurs.
-- Custom datasets can implement optional `isGap(index): boolean` on the `Dataset` contract. Accelerated custom range/copy methods (`rangeMinMaxY`, `copySamplesRange`, `copyVisibleSamples`, `copyVisiblePoints`, or `copyMinMaxSegments`) should skip or encode their own gaps consistently because those methods are considered renderer-ready fast paths.
+- store a non-finite Y value such as `NaN` at the sorted X position where the break should happen;
+- implement `isGap(index): boolean` on a custom `Dataset`.
 
-For finite-to-finite session breaks, insert an explicit gap marker sample for now. A dedicated session-boundary API may be added later.
+If a custom dataset also implements accelerated methods such as `rangeMinMaxY`, `copySamplesRange`, `copyVisibleSamples`, `copyVisiblePoints`, or `copyMinMaxSegments`, those methods are renderer-ready fast paths. They should skip or encode gaps consistently themselves.
+
+For finite-to-finite session breaks, insert an explicit gap marker sample.
+
+## Ring buffers
+
+`RingBuffer` stores explicit X/Y samples and supports three overflow modes: `"wrap"`, `"drop-new"`, and `"error"`. The default is `"wrap"`, which keeps the newest samples and preserves logical order after the physical buffer wraps.
+
+`UniformRingBuffer` is for fixed-rate data. It stores Y values and derives X as `xStart + index * xStep`; `xStep` must be positive. Prefer it for telemetry or signal data where every sample is evenly spaced.
+
+## Server-sampled datasets
+
+`ServerSampledDataset` is for data that was already reduced before it reached the browser.
+
+- Point data represents concrete X/Y samples. Use it with `downsample: "none"`.
+- Min/max bucket data represents `{ xStart, xEnd, minY, maxY }` envelopes. Use it with `downsample: "server"` so BlazePlot renders those envelopes directly.
+- Bucket ranges should be sorted by X and should describe the visible interval they cover. Viewport extraction includes buckets whose X range overlaps the viewport.
+- Generic APIs expose a bucket midpoint for `getX()` and a midpoint between `minY`/`maxY` for `getY()`; rendering and bounds use the full bucket range.
+
+See [Performance recipes](./performance-recipes.md) for when to choose server-side sampling.
+
+## Series bounds and fitting
+
+`chart.fitToData()` and Y auto-fit use the series data bounds. Empty series and missing values are ignored. OHLC/candlestick bounds use high/low values rather than close.
 
 ## OHLC datasets
 
-OHLC/candlestick datasets expose close as generic `getY()`. Fit/bounds helpers use high/low for the Y domain.
+OHLC and candlestick datasets expose close through generic `getY()`. Bounds and fitting use high/low. Use `StaticOhlcDataset` for fixed history and `OhlcRingBuffer` for live OHLC data.
+
+## Export and picking
+
+`chart.pick()` returns raw sample coordinates, not downsampled screen buckets. Data export helpers use the current visible X range by default; pass `{ includeYRange: true }` when you also want to filter by the current Y range. See [Examples](./examples.md#export-image-and-data).

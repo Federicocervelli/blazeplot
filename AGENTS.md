@@ -16,7 +16,7 @@
 - Browser interaction tests only: `bun run test:interaction` (automates hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection through Chrome DevTools Protocol input events).
 - Append benchmark results to the current release changelog: `bun run release:benchmarks`.
 - Preview package contents: `bun pm pack --dry-run`.
-- Dev server: `bun run dev`; `vite.config.ts` serves `preview/` and opens the browser automatically.
+- Dev server: `bun run dev` serves the Lit website (`website/`) with integrated docs and previews. Use `bun run legacy-preview:dev` only for browser fixture debugging under `tests/browser/`.
 - There is no lint or formatter script in `package.json`.
 
 ## Branch and Release Flow
@@ -26,7 +26,7 @@
 - Implement each requested feature/fix on its own branch from updated `development` (for example `feature/<topic>` or `docs/<topic>`), make focused commits there, then merge it back to `development`. Do not stack unrelated changes in one feature branch.
 - Prefer `git merge --no-ff <feature-branch>` when merging completed feature branches back to `development` so feature boundaries remain visible in history.
 - Do not open PRs to `main` until the user explicitly asks for a release PR. Normal completed work should stop after merging to `development` and pushing it.
-- GitHub Pages deploys on pushes to `main` and `development`. The stable `main` preview is served at `https://federicocervelli.github.io/blazeplot/`; the in-progress `development` preview is served at `https://federicocervelli.github.io/blazeplot/development/`; React previews live under `/react/` for both branches; `previews.html` links all previews.
+- GitHub Pages deploys on pushes to `main` and `development`. The stable site is served at `https://federicocervelli.github.io/blazeplot/`; the in-progress `development` site is served at `https://federicocervelli.github.io/blazeplot/development/`; integrated Lit previews live under `#previews`; `previews.html` links the branch sites/previews.
 - Releases are merge-to-main based. Do not use tag-push/manual release scripts.
 - To prepare a release PR:
   1. Start on updated `development`.
@@ -43,8 +43,8 @@
 
 - Public API exports live in `src/index.ts`.
 - npm package output includes the core `dist/index.js` / `dist/index.d.ts` plus separate subpath chunks/declarations for `react`, `linked`, `export`, and built-in plugins; package metadata points `exports`, `main`, `module`, and `types` at `dist/`.
-- `preview/` is detached from package output and is the only app served by `bun run dev`.
-- `preview/main.ts` streams data into `Chart` and reports `renderer: ${chartStats.renderMode}`.
+- `website/` is the docs/previews app served by `bun run dev` and built by `bun run pages:build`. Shared website preview data helpers live in `website/src/`.
+- `tests/browser/` contains the Vite-served benchmark, visual, and interaction fixture pages used by `bun run bench:ci`, `bun run test:visual`, and `bun run test:interaction`. `bun run legacy-preview:dev` serves this fixture root for debugging.
 - `src/core/` is the data engine and should not depend on UI, DOM, or GPU code.
 - `src/render/` owns the GPU abstraction and the native WebGL2 implementation.
 - `src/interaction/` owns `Camera2D`, tick helpers, and viewport policy/intent types; interaction mutates the camera, not series data.
@@ -66,14 +66,14 @@
 - `ViewportPolicy` transforms `PanIntent`/`ZoomIntent` and can update `Camera2D` before render. Keep behavior rules there, not in core/rendering.
 - Optional built-ins like interactions, legend, tooltip, annotations, selection, crosshair, and navigator are Chart plugins exported from subpaths (`blazeplot/plugins/*`). `Chart` owns only the lightweight plugin contract and public state/pick/camera APIs; avoid importing built-in plugins into `Chart.ts` or the top-level entry.
 - Hover state refreshes every render while the pointer is inside the plot, so live-follow charts update tooltips even when the cursor is still. `chart.pick()` returns actual raw sample coordinates plus plot/client coordinates for marker overlays.
-- In the preview, synced-X behavior keeps live X follow active while wheel zoom/pan are Y-only.
+- In the website preview, synced-X behavior keeps live X follow active while wheel zoom/pan are Y-only.
 
 ## TypeScript Conventions
 
 - Package source under `src/` uses ESM-style `.js` relative import specifiers so emitted JS and declarations line up for npm consumers.
 - Optional plugin subpath entries live under `src/plugins/` and are configured as separate Vite library entries plus `package.json` subpath exports to keep chart-only imports lean.
 - Use the `@/*` alias for `src/*` when it improves clarity; it is configured in both `tsconfig.json` and `vite.config.ts`.
-- Prefer relative imports inside `src/` package code so declaration output does not leak the `@/*` alias. `preview/` can use `@/*`.
+- Prefer relative imports inside `src/` package code so declaration output does not leak the `@/*` alias. Browser fixtures under `tests/browser/` can use `@/*`.
 - `tsconfig.json` is strict and enables `noUncheckedIndexedAccess`, `noUnusedLocals`, and `noUnusedParameters`; unused placeholders are usually prefixed with `_`.
 - `tsconfig.build.json` scopes declaration generation to `src/`; `vite-plugin-dts` emits package declarations during `vite build`.
 

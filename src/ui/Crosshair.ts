@@ -166,6 +166,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   const formatY = options.formatY ?? formatCompactNumber;
   let currentPosition: CrosshairPosition | null = null;
   let currentMeasurement: RulerMeasurement | null = null;
+  let activeClientPoint: { clientX: number; clientY: number } | null = null;
   const moveSubscribers = new Set<(position: CrosshairPosition | null) => void>();
   const measureStartSubscribers = new Set<(position: CrosshairPosition) => void>();
   const measureChangeSubscribers = new Set<(measurement: RulerMeasurement) => void>();
@@ -375,11 +376,17 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         groups.set(options.group, set);
       }
 
-      const showAtClientPoint = (clientX: number, clientY: number): void => {
+      const updateAtClientPoint = (clientX: number, clientY: number): void => {
         const position = resolvePosition(chart, clientX, clientY, yAxis, snap);
         renderPosition(position);
         emitMove(position);
         if (position) emitShared(position);
+        if (mode === "ruler") renderRuler(position);
+      };
+
+      const showAtClientPoint = (clientX: number, clientY: number): void => {
+        activeClientPoint = { clientX, clientY };
+        updateAtClientPoint(clientX, clientY);
       };
 
       const longPress = createLongPressTouchTracker({
@@ -388,15 +395,13 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       });
 
       const onPointerMove = (event: PointerEvent): void => {
+        activeClientPoint = { clientX: event.clientX, clientY: event.clientY };
         if (longPress.onPointerMove(event)) return;
-        const position = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
-        renderPosition(position);
-        emitMove(position);
-        if (position) emitShared(position);
-        if (mode === "ruler") renderRuler(position);
+        updateAtClientPoint(event.clientX, event.clientY);
       };
 
       const onPointerLeave = (): void => {
+        activeClientPoint = null;
         if (!rulerStart) renderPosition(null);
         emitMove(null);
         emitHideShared();
@@ -434,6 +439,11 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       chart.canvas.addEventListener("pointerdown", onPointerDown, { capture: true });
       chart.canvas.addEventListener("pointerup", onPointerUp, { capture: true });
 
+      const unsubscribeRender = chart.subscribe("render", () => {
+        if (!activeClientPoint) return;
+        updateAtClientPoint(activeClientPoint.clientX, activeClientPoint.clientY);
+      });
+
       return () => {
         longPress.clear();
         chart.canvas.removeEventListener("pointermove", onPointerMove);
@@ -445,6 +455,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         chart.canvas.removeEventListener("pointerleave", onPointerLeave);
         chart.canvas.removeEventListener("pointerdown", onPointerDown, { capture: true });
         chart.canvas.removeEventListener("pointerup", onPointerUp, { capture: true });
+        unsubscribeRender();
         if (options.group) {
           const set = groups.get(options.group);
           set?.delete(peer);
@@ -459,6 +470,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         rulerSvg = null;
         rulerLine = null;
         rulerStart = null;
+        activeClientPoint = null;
         chartRef = null;
       };
     },

@@ -1,14 +1,27 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
+import tailwindcss from "@tailwindcss/vite";
+import packageJson from "./package.json" with { type: "json" };
 
 const pagesBase = process.env.BLAZEPLOT_PAGES_BASE ?? "/blazeplot/";
 
 export default defineConfig({
-  root: resolve(__dirname, "preview"),
+  plugins: [tailwindcss()],
+  define: {
+    __BLAZEPLOT_VERSION__: JSON.stringify(packageJson.version),
+  },
+  root: resolve(__dirname, "website"),
   base: pagesBase,
+  publicDir: resolve(__dirname, "website/public"),
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
+    },
+  },
+  server: {
+    open: true,
+    fs: {
+      allow: [__dirname],
     },
   },
   build: {
@@ -18,11 +31,8 @@ export default defineConfig({
     outDir: resolve(__dirname, "build/pages"),
     rollupOptions: {
       input: {
-        main: resolve(__dirname, "preview/index.html"),
-        features: resolve(__dirname, "preview/features/index.html"),
-        serverSampled: resolve(__dirname, "preview/server-sampled/index.html"),
-        react: resolve(__dirname, "preview/react/index.html"),
-        mobile: resolve(__dirname, "preview/mobile/index.html"),
+        main: resolve(__dirname, "website/index.html"),
+        notFound: resolve(__dirname, "website/404.html"),
       },
     },
   },

@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import dts from "vite-plugin-dts";
 
 export default defineConfig(({ command, mode }) => {
-  const root = command === "serve" ? resolve(__dirname, "preview") : __dirname;
+  const root = command === "serve" ? resolve(__dirname, "tests/browser") : __dirname;
 
   return {
     root,
