@@ -20,9 +20,7 @@ export class Renderer {
   private readonly lineProgram: GpuProgram;
   private readonly segmentProgram: GpuProgram;
   private readonly pointProgram: GpuProgram;
-  private readonly pointSpriteProgram: GpuProgram;
   private readonly barProgram: GpuProgram;
-  private readonly barRangeProgram: GpuProgram;
   private readonly segmentSelectBuffer: GpuBuffer;
   private readonly pointCornerBuffer: GpuBuffer;
   private readonly barCornerBuffer: GpuBuffer;
@@ -34,9 +32,7 @@ export class Renderer {
     this.lineProgram = this.backend.createProgram(ShaderPrograms.line.vert, ShaderPrograms.line.frag);
     this.segmentProgram = this.backend.createProgram(ShaderPrograms.segment.vert, ShaderPrograms.segment.frag);
     this.pointProgram = this.backend.createProgram(ShaderPrograms.point.vert, ShaderPrograms.point.frag);
-    this.pointSpriteProgram = this.backend.createProgram(ShaderPrograms.pointSprite.vert, ShaderPrograms.pointSprite.frag);
     this.barProgram = this.backend.createProgram(ShaderPrograms.bar.vert, ShaderPrograms.bar.frag);
-    this.barRangeProgram = this.backend.createProgram(ShaderPrograms.barRange.vert, ShaderPrograms.barRange.frag);
 
     this.segmentSelectBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 2 });
     this.backend.updateBuffer(this.segmentSelectBuffer, new Float32Array([0, 1]));
@@ -46,18 +42,6 @@ export class Renderer {
 
     this.barCornerBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 8 });
     this.backend.updateBuffer(this.barCornerBuffer, new Float32Array([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]));
-  }
-
-  get supportsInstancedSegments(): boolean {
-    return this.backend.capabilities.instancing;
-  }
-
-  get supportsInstancedPoints(): boolean {
-    return this.backend.capabilities.instancing;
-  }
-
-  get supportsInstancedBars(): boolean {
-    return this.backend.capabilities.instancing;
   }
 
   clear(r: number, g: number, b: number, a: number): void {
@@ -97,10 +81,6 @@ export class Renderer {
     this.drawClipPrimitive("lines", positions, count, style);
   }
 
-  drawMinMaxSegments(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.drawLines(positions, count, style, projection);
-  }
-
   drawMinMaxSegmentsInstanced(instanceBuffer: GpuBuffer, instanceCount: number, style: SeriesStyle, projection: RenderProjection): void {
     this.writeProjectionUniforms(projection);
 
@@ -132,27 +112,12 @@ export class Renderer {
     canvasWidth: number,
     canvasHeight: number,
   ): void {
-    if (this.supportsInstancedPoints) {
-      this.drawPointsInstanced(positions, pointCount, style, projection, canvasWidth, canvasHeight);
-    } else {
-      this.drawPointSprites(positions, pointCount, style, projection);
-    }
-  }
-
-  private drawPointsInstanced(
-    instanceBuffer: GpuBuffer,
-    pointCount: number,
-    style: SeriesStyle,
-    projection: RenderProjection,
-    canvasWidth: number,
-    canvasHeight: number,
-  ): void {
     this.writeProjectionUniforms(projection);
     this.canvasSizeUniform[0] = Math.max(1, canvasWidth);
     this.canvasSizeUniform[1] = Math.max(1, canvasHeight);
 
     const instanceStride = FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT;
-    const aPosition: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0, size: 2 };
+    const aPosition: AttributeSpec = { buffer: positions, divisor: 1, stride: instanceStride, offset: 0, size: 2 };
     const aCorner: AttributeSpec = { buffer: this.pointCornerBuffer, divisor: 0, stride: FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT, offset: 0, size: 2 };
 
     this.backend.draw({
@@ -165,23 +130,6 @@ export class Renderer {
         uScale: this.scaleUniform,
         uOffset: this.offsetUniform,
         uCanvasSize: this.canvasSizeUniform,
-        uPointSize: style.pointSize ?? DEFAULT_POINT_SIZE_PX,
-        uColor: style.color,
-      },
-    });
-  }
-
-  private drawPointSprites(positions: GpuBuffer, pointCount: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.writeProjectionUniforms(projection);
-
-    this.backend.draw({
-      program: this.pointSpriteProgram,
-      primitive: "points",
-      count: pointCount,
-      attributes: { aPosition: positions },
-      uniforms: {
-        uScale: this.scaleUniform,
-        uOffset: this.offsetUniform,
         uPointSize: style.pointSize ?? DEFAULT_POINT_SIZE_PX,
         uColor: style.color,
       },
@@ -227,35 +175,6 @@ export class Renderer {
         uOffset: this.offsetUniform,
         uBarWidth: style.barWidth ?? DEFAULT_BAR_WIDTH_DATA,
         uBaseline: style.baseline ?? DEFAULT_BASELINE,
-        uColor: style.color,
-      },
-    });
-  }
-
-  drawBarRangesInstanced(
-    instanceBuffer: GpuBuffer,
-    barCount: number,
-    style: SeriesStyle,
-    projection: RenderProjection,
-  ): void {
-    this.writeProjectionUniforms(projection);
-
-    const instanceStride = FLOATS_PER_SEGMENT_INSTANCE * BYTES_PER_FLOAT;
-    const aX: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0 };
-    const aMinY: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: BYTES_PER_FLOAT };
-    const aMaxY: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: BYTES_PER_FLOAT * 2 };
-    const aCorner: AttributeSpec = { buffer: this.barCornerBuffer, divisor: 0, stride: FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT, offset: 0, size: 2 };
-
-    this.backend.draw({
-      program: this.barRangeProgram,
-      primitive: "triangle_strip",
-      count: 4,
-      instances: barCount,
-      attributes: { aCorner, aMaxY, aMinY, aX },
-      uniforms: {
-        uScale: this.scaleUniform,
-        uOffset: this.offsetUniform,
-        uBarWidth: style.barWidth ?? DEFAULT_BAR_WIDTH_DATA,
         uColor: style.color,
       },
     });
