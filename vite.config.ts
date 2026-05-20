@@ -22,7 +22,7 @@ export default defineConfig(({ command, mode }) => {
     },
     build: {
       target: "esnext",
-      sourcemap: true,
+      sourcemap: "hidden",
       emptyOutDir: true,
       outDir: resolve(__dirname, "dist"),
       lib: {
