@@ -1,5 +1,8 @@
 const imports = [
   { specifier: "blazeplot", expected: ["Chart", "RingBuffer", "StaticDataset", "ServerSampledDataset"] },
+  { specifier: "blazeplot/core", expected: ["RingBuffer", "UniformRingBuffer", "StaticDataset", "ServerSampledDataset", "SeriesStore", "MinMaxPyramid"] },
+  { specifier: "blazeplot/interaction", expected: ["Camera2D", "AxisController"] },
+  { specifier: "blazeplot/render", expected: ["Renderer", "ReglBackend", "WebGL2Resources", "ShaderPrograms", "isWebGL2Available", "WebGL2UnavailableError"] },
   { specifier: "blazeplot/react", expected: ["BlazeChart"] },
   { specifier: "blazeplot/linked", expected: ["createLinkedCharts", "linkedChartsPlugin"] },
   { specifier: "blazeplot/data", expected: ["exportVisibleChartData", "exportSelectedChartData", "chartDataToCSV", "binSamples", "rollingMean"] },
