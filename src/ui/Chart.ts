@@ -1684,7 +1684,7 @@ export class Chart implements ChartPluginContext {
 
     if (this.renderer.supportsInstancedBars) {
       this.uploadRawLineData(count);
-      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, projection, this.canvas.width, this.canvas.height);
+      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, projection);
       this.recordDraw("bars", count);
       return;
     }

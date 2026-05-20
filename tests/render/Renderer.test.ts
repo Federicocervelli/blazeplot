@@ -112,14 +112,13 @@ describe("Renderer", () => {
     const projection = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
 
     renderer.drawPoints(positions, 10, style, projection, 640, 480);
-    renderer.drawBarsInstanced(positions, 5, style, projection, 800, 600);
+    renderer.drawBarsInstanced(positions, 5, style, projection);
 
     expect(backend.draws.at(-2)).toMatchObject({ primitive: "triangle_strip", count: 4, instances: 10 });
     expect(backend.draws.at(-2)!.attributes.aPosition).toMatchObject({ buffer: positions, divisor: 1, stride: 8, offset: 0, size: 2 });
-    expect(backend.draws.at(-2)!.uniforms.uCanvasSize).toBeInstanceOf(Float32Array);
+    expect(Array.from(backend.draws.at(-2)!.uniforms.uCanvasSize as Float32Array)).toEqual([640, 480]);
     expect(backend.draws.at(-1)).toMatchObject({ primitive: "triangle_strip", count: 4, instances: 5 });
     expect(backend.draws.at(-1)!.attributes.aPosition).toMatchObject({ buffer: positions, divisor: 1, stride: 8, offset: 0, size: 2 });
-    expect(Array.from(backend.draws.at(-1)!.uniforms.uCanvasSize as Float32Array)).toEqual([800, 600]);
   });
 
   it("falls back to point sprites when instancing is unavailable", () => {

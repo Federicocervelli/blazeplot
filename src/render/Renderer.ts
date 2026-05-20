@@ -209,12 +209,8 @@ export class Renderer {
     barCount: number,
     style: SeriesStyle,
     projection: RenderProjection,
-    canvasWidth: number,
-    canvasHeight: number,
   ): void {
     this.writeProjectionUniforms(projection);
-    this.canvasSizeUniform[0] = Math.max(1, canvasWidth);
-    this.canvasSizeUniform[1] = Math.max(1, canvasHeight);
 
     const instanceStride = FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT;
     const aPosition: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0, size: 2 };
@@ -229,7 +225,6 @@ export class Renderer {
       uniforms: {
         uScale: this.scaleUniform,
         uOffset: this.offsetUniform,
-        uCanvasSize: this.canvasSizeUniform,
         uBarWidth: style.barWidth ?? DEFAULT_BAR_WIDTH_DATA,
         uBaseline: style.baseline ?? DEFAULT_BASELINE,
         uColor: style.color,
@@ -242,12 +237,8 @@ export class Renderer {
     barCount: number,
     style: SeriesStyle,
     projection: RenderProjection,
-    canvasWidth: number,
-    canvasHeight: number,
   ): void {
     this.writeProjectionUniforms(projection);
-    this.canvasSizeUniform[0] = Math.max(1, canvasWidth);
-    this.canvasSizeUniform[1] = Math.max(1, canvasHeight);
 
     const instanceStride = FLOATS_PER_SEGMENT_INSTANCE * BYTES_PER_FLOAT;
     const aX: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0 };
@@ -264,7 +255,6 @@ export class Renderer {
       uniforms: {
         uScale: this.scaleUniform,
         uOffset: this.offsetUniform,
-        uCanvasSize: this.canvasSizeUniform,
         uBarWidth: style.barWidth ?? DEFAULT_BAR_WIDTH_DATA,
         uColor: style.color,
       },
