@@ -54,6 +54,8 @@ const sharedBudgets: SharedChunkBudget[] = [
   { label: "shared AxisController chunk", pattern: /^AxisController-.*\.js$/, maxBytes: 20_000 },
   { label: "shared ReglBackend chunk", pattern: /^ReglBackend-.*\.js$/, maxBytes: 20_000 },
   { label: "shared LinkedChartsCore chunk", pattern: /^LinkedChartsCore-.*\.js$/, maxBytes: 8_000 },
+  { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 8_000 },
+  { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 8_000 },
   { label: "shared Tooltip chunk", pattern: /^Tooltip-.*\.js$/, maxBytes: 12_000 },
   { label: "shared Crosshair chunk", pattern: /^Crosshair-.*\.js$/, maxBytes: 16_000 },
 ];

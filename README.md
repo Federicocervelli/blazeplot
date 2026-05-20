@@ -149,6 +149,8 @@ Generated from `dist/` after the package build. Budgets are enforced by `bun run
 | shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB | 19.5 KiB | 6.0 KiB free |
 | shared ReglBackend chunk | `dist/ReglBackend-CjLa4teY.js` | 12.7 KiB | 19.5 KiB | 6.8 KiB free |
 | shared LinkedChartsCore chunk | `dist/LinkedChartsCore-qY8fJMJc.js` | 2.1 KiB | 7.8 KiB | 5.7 KiB free |
+| lazy screenshot chunk | `dist/screenshot-D0gwqHMq.js` | 3.0 KiB | 7.8 KiB | 4.8 KiB free |
+| shared OverlayUtils chunk | `dist/OverlayUtils-Gk-tb2Ak.js` | 3.1 KiB | 7.8 KiB | 4.7 KiB free |
 | shared Tooltip chunk | `dist/Tooltip-DDEQ32oy.js` | 4.8 KiB | 11.7 KiB | 6.9 KiB free |
 | shared Crosshair chunk | `dist/Crosshair-DyBHoqIB.js` | 8.6 KiB | 15.6 KiB | 7.0 KiB free |
 
