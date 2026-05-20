@@ -268,28 +268,6 @@ describe("SeriesStore", () => {
     }
   });
 
-  it("anchors dense min/max buckets to data coordinates so panning moves columns", () => {
-    const x = Array.from({ length: 120 }, (_, i) => i);
-    const y = Array.from({ length: 120 }, () => 1);
-    const series = new SeriesStore(
-      new StaticDataset(x, y),
-      { mode: "line", capacity: 120, downsample: "minmax" },
-      { color: [1, 1, 1, 1], lineWidth: 1 },
-    );
-    series.rebuildPyramid();
-
-    const first = new Float32Array(30);
-    const second = new Float32Array(30);
-    const firstCount = series.copyMinMaxInstanced({ xMin: 0, xMax: 99, yMin: 0, yMax: 2 }, first, 10);
-    const secondCount = series.copyMinMaxInstanced({ xMin: 1, xMax: 100, yMin: 0, yMax: 2 }, second, 10);
-
-    const firstX = Array.from(first.subarray(0, firstCount * 3)).filter((_, index) => index % 3 === 0);
-    const secondX = Array.from(second.subarray(0, secondCount * 3)).filter((_, index) => index % 3 === 0);
-
-    expect(firstX).toEqual([5, 15, 25, 35, 45, 55, 65, 75, 85, 95]);
-    expect(secondX).toEqual(firstX);
-  });
-
   it("copies visible samples as an area strip", () => {
     const series = makeSeries();
     series.append(new Float64Array([0, 1, 2]), new Float32Array([4, -1, 7]));

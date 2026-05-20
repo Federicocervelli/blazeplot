@@ -33,10 +33,6 @@ function hasExplicitGaps(dataset: Dataset): dataset is Dataset & { isGap(index: 
   return typeof dataset.isGap === "function";
 }
 
-function alignBucketStart(x: number, bucketWidth: number): number {
-  return Math.floor(x / bucketWidth) * bucketWidth;
-}
-
 const NEAREST_POINT_LEAF_SIZE = 64;
 const SCATTER_INTERVAL_LEAF_SIZE = 64;
 const SCATTER_BUCKET_RANGE_PRUNE_SIZE = 1024;
@@ -979,26 +975,20 @@ export class SeriesStore {
     const visible = end - start;
     if (visible <= 0) return 0;
 
-    const bucketWidth = (viewport.xMax - viewport.xMin) / Math.max(1, Math.min(maxSegments, visible));
-    if (!Number.isFinite(bucketWidth) || bucketWidth <= 0) return 0;
-
-    let bucketStartX = alignBucketStart(viewport.xMin, bucketWidth);
+    const segmentCount = Math.min(maxSegments, visible);
     let written = 0;
-    while (bucketStartX < viewport.xMax && written < maxSegments) {
-      const bucketEndX = bucketStartX + bucketWidth;
-      const clampedStartX = Math.max(viewport.xMin, bucketStartX);
-      const clampedEndX = Math.min(viewport.xMax, bucketEndX);
-      const segmentStart = Math.max(start, this.dataset.lowerBoundX(clampedStartX));
-      const segmentEnd = bucketEndX >= viewport.xMax
-        ? end
-        : Math.min(end, this.dataset.lowerBoundX(clampedEndX));
-      bucketStartX = bucketEndX;
-      if (segmentEnd <= segmentStart) continue;
+    for (let segment = 0; segment < segmentCount; segment++) {
+      const segmentStart = start + Math.floor((segment * visible) / segmentCount);
+      const segmentEnd = start + Math.max(
+        Math.floor(((segment + 1) * visible) / segmentCount),
+        Math.floor((segment * visible) / segmentCount) + 1,
+      );
+      const clampedEnd = Math.min(end, segmentEnd);
 
-      const range = this.minMaxForRange(segmentStart, segmentEnd);
+      const range = this.minMaxForRange(segmentStart, clampedEnd);
       if (!range) continue;
 
-      const x = this.dataset.getX(segmentStart + ((segmentEnd - segmentStart) >> 1)) - xOrigin;
+      const x = this.dataset.getX(segmentStart + ((clampedEnd - segmentStart) >> 1)) - xOrigin;
       const { minY, maxY } = range;
       if (layout === "line-list") {
         const offset = written * 4;

@@ -116,10 +116,7 @@ export interface VisiblePointCopyDataset extends Dataset {
 /**
  * Optional high-performance min/max extraction capability for dense rendering.
  * Implementations can use pyramids, segment trees, database aggregates, or
- * analytic/procedural envelopes to emit renderer-ready min/max buckets. Buckets
- * should be anchored to data coordinates, not the viewport's left edge, so
- * panning/streaming moves existing dense columns instead of re-sampling every
- * screen column in place.
+ * analytic/procedural envelopes to emit renderer-ready min/max buckets.
  */
 export interface MinMaxSegmentCopyDataset extends Dataset {
   copyMinMaxSegments(
