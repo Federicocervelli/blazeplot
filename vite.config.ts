@@ -48,7 +48,7 @@ export default defineConfig(({ command, mode }) => {
         fileName: (_format, entryName) => `${entryName}.js`,
       },
       rollupOptions: {
-        external: ["regl", "react"],
+        external: ["react"],
       },
     },
     server: {

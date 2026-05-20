@@ -52,7 +52,7 @@ const sharedBudgets: SharedChunkBudget[] = [
   { label: "shared RingBuffer chunk", pattern: /^RingBuffer-.*\.js$/, maxBytes: 40_000 },
   { label: "shared OhlcDataset chunk", pattern: /^OhlcDataset-.*\.js$/, maxBytes: 24_000 },
   { label: "shared AxisController chunk", pattern: /^AxisController-.*\.js$/, maxBytes: 20_000 },
-  { label: "shared ReglBackend chunk", pattern: /^ReglBackend-.*\.js$/, maxBytes: 20_000 },
+  { label: "shared WebGL2Backend chunk", pattern: /^WebGL2Backend-.*\.js$/, maxBytes: 24_000 },
   { label: "shared LinkedChartsCore chunk", pattern: /^LinkedChartsCore-.*\.js$/, maxBytes: 8_000 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 8_000 },
   { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 8_000 },

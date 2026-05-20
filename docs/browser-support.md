@@ -33,5 +33,5 @@ CI validates:
 
 ## Dependencies
 
-- Runtime dependency: `regl` for the WebGL2 command abstraction.
+- BlazePlot's default renderer uses the browser's native WebGL2 API directly and has no runtime rendering dependency.
 - Optional peer dependency: `react` for `blazeplot/react` only.

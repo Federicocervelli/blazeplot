@@ -12,7 +12,7 @@ Fast WebGL2 plotting engine for the browser 🔥
 
 Built for people who have hit the performance ceiling of Chart.js, Plotly, and similar browser charting libraries. BlazePlot keeps the hot path GPU-native and the DOM minimal, so large streaming datasets stay interactive instead of turning into a slideshow.
 
-Built on WebGL2 + [regl](https://github.com/regl-project/regl).
+Built on native WebGL2 with no rendering runtime dependency.
 
 ## Installation
 
@@ -127,10 +127,10 @@ Generated from `dist/` after the package build. Budgets are enforced by `bun run
 
 | Chunk | File | Size | Budget | Headroom |
 |---|---|---:|---:|---:|
-| root entry | `dist/index.js` | 0.6 KiB | 31.3 KiB | 30.6 KiB free |
+| root entry | `dist/index.js` | 0.7 KiB | 31.3 KiB | 30.6 KiB free |
 | core subpath entry | `dist/core.js` | 0.7 KiB | 3.9 KiB | 3.2 KiB free |
 | interaction subpath entry | `dist/interaction.js` | 0.1 KiB | 2.0 KiB | 1.9 KiB free |
-| render subpath entry | `dist/render.js` | 0.2 KiB | 2.0 KiB | 1.7 KiB free |
+| render subpath entry | `dist/render.js` | 0.3 KiB | 2.0 KiB | 1.7 KiB free |
 | react entry | `dist/react.js` | 0.7 KiB | 7.8 KiB | 7.1 KiB free |
 | linked entry | `dist/linked.js` | 0.4 KiB | 15.6 KiB | 15.3 KiB free |
 | linked core entry | `dist/linked-core.js` | 0.1 KiB | 7.8 KiB | 7.7 KiB free |
@@ -143,13 +143,13 @@ Generated from `dist/` after the package build. Budgets are enforced by `bun run
 | legend plugin | `dist/plugins/legend.js` | 2.8 KiB | 7.8 KiB | 5.0 KiB free |
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB | 3.9 KiB | 3.8 KiB free |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB | 3.9 KiB | 3.8 KiB free |
-| shared Chart chunk | `dist/Chart-BSxrO2Xg.js` | 57.0 KiB | 136.7 KiB | 79.7 KiB free |
+| shared Chart chunk | `dist/Chart-D1ISQl_J.js` | 57.0 KiB | 136.7 KiB | 79.7 KiB free |
 | shared RingBuffer chunk | `dist/RingBuffer-Bd5JaRf4.js` | 29.6 KiB | 39.1 KiB | 9.4 KiB free |
 | shared OhlcDataset chunk | `dist/OhlcDataset-1cMrc6BC.js` | 17.3 KiB | 23.4 KiB | 6.1 KiB free |
 | shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB | 19.5 KiB | 6.0 KiB free |
-| shared ReglBackend chunk | `dist/ReglBackend-QQ6UA3BC.js` | 15.0 KiB | 19.5 KiB | 4.5 KiB free |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-BUsJ6c2M.js` | 2.1 KiB | 7.8 KiB | 5.7 KiB free |
-| lazy screenshot chunk | `dist/screenshot-DqGl9D2p.js` | 3.0 KiB | 7.8 KiB | 4.8 KiB free |
+| shared WebGL2Backend chunk | `dist/WebGL2Backend-wxbXnm0h.js` | 20.9 KiB | 23.4 KiB | 2.5 KiB free |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DDrAyfEg.js` | 2.1 KiB | 7.8 KiB | 5.7 KiB free |
+| lazy screenshot chunk | `dist/screenshot-BVw2v67J.js` | 3.0 KiB | 7.8 KiB | 4.8 KiB free |
 | shared OverlayUtils chunk | `dist/OverlayUtils-Gk-tb2Ak.js` | 3.1 KiB | 7.8 KiB | 4.7 KiB free |
 | shared Tooltip chunk | `dist/Tooltip-DDEQ32oy.js` | 4.8 KiB | 11.7 KiB | 6.9 KiB free |
 | shared Crosshair chunk | `dist/Crosshair-DyBHoqIB.js` | 8.6 KiB | 15.6 KiB | 7.0 KiB free |
@@ -236,7 +236,7 @@ These member tables are generated from TypeScript declarations.
 | `followX?: boolean \\| ChartFollowXOptions` |
 | `plugins?: readonly ChartPlugin[]` |
 | `theme?: ChartTheme` |
-| `backendFactory?: ChartBackendFactory` | Advanced hook for supplying a custom GPU backend. Defaults to ReglBackend. |
+| `backendFactory?: ChartBackendFactory` | Advanced hook for supplying a custom GPU backend. Defaults to WebGL2Backend. |
 
 </details>
 
@@ -536,7 +536,7 @@ These member tables are generated from TypeScript declarations.
 | `GpuCapabilities` | interface | `./render/types` | — |
 | `GpuProgram` | interface | `./render/types` | — |
 | `GpuResource` | type | `./render/types` | — |
-| `isWebGL2Available` | function | `./render/ReglBackend` | — |
+| `isWebGL2Available` | function | `./render/WebGL2Backend` | — |
 | `LODBucket` | interface | `./core/types` | — |
 | `LODStrategy` | type | `./core/types` | — |
 | `LODView` | interface | `./core/types` | — |
@@ -549,7 +549,7 @@ These member tables are generated from TypeScript declarations.
 | `PanIntent` | interface | `./interaction/types` | — |
 | `RangeMinMaxDataset` | interface | `./core/types` | — |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
-| `ReglBackend` | class | `./render/ReglBackend` | — |
+| `ReglBackend` | const | `./render/WebGL2Backend` | Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API. |
 | `ResolvedChartTheme` | interface | `./ui/theme` | — |
 | `RgbaColor` | type | `./ui/theme` | — |
 | `RingBuffer` | class | `./core/RingBuffer` | — |
@@ -582,7 +582,8 @@ These member tables are generated from TypeScript declarations.
 | `ViewportPolicy` | interface | `./interaction/types` | — |
 | `VisiblePointCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for point/scatter datasets. Implementations should cull against the full 2D viewport and may sample in screen space so dense point clouds respond to both X and Y zoom. |
 | `VisibleSampleCopyDataset` | interface | `./core/types` | Optional high-performance stable visible sampling capability. Unlike copySamplesRange, this method may stride/downsample, but should choose samples anchored to data coordinates so streamed appends do not make existing sampled points jitter. |
-| `WebGL2UnavailableError` | class | `./render/ReglBackend` | — |
+| `WebGL2Backend` | class | `./render/WebGL2Backend` | — |
+| `WebGL2UnavailableError` | class | `./render/WebGL2Backend` | — |
 | `YAppendableDataset` | interface | `./core/types` | — |
 | `ZoomAxis` | type | `./interaction/types` | — |
 | `ZoomIntent` | interface | `./interaction/types` | — |
@@ -595,7 +596,7 @@ These member tables are generated from TypeScript declarations.
 ```
 src/
   core/          # Data model — series, datasets, LOD
-  render/        # GPU abstraction + regl backend
+  render/        # GPU abstraction + native WebGL2 backend
   interaction/   # Camera, axis ticks, interaction intent types
   ui/            # Orchestrator (Chart)
 ```

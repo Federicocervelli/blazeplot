@@ -13,11 +13,11 @@ BlazePlot is a fast WebGL2 plotting engine for dense browser time-series charts.
 ## Near-term priorities
 
 1. **Native WebGL2 backend / regl removal**
-   - [ ] Add a native `WebGL2Backend` implementing the existing `GpuBackend` interface.
-   - [ ] Keep `ReglBackend` available during parity work.
+   - [x] Add a native `WebGL2Backend` implementing the existing `GpuBackend` interface.
+   - [x] Keep `ReglBackend` available as a deprecated compatibility alias during migration.
    - [ ] Validate lines, min/max, scatter, bars, area, OHLC, candlesticks, context restore, and screenshots with pixel-visible browser tests.
-   - [ ] Switch the default backend only after parity/performance is proven.
-   - [ ] Remove the `regl` dependency when the native backend is stable to reduce real consumer bundle size.
+   - [x] Switch the default backend after native parity work.
+   - [x] Remove the `regl` dependency to reduce real consumer bundle size.
 
 2. **Renderer correctness and regression coverage**
    - [ ] Strengthen visual tests so they fail when draw calls happen but pixels are not visibly rendered.

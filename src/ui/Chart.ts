@@ -3,7 +3,7 @@ import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
 import type { RenderProjection } from "../render/Renderer.js";
-import { isWebGL2Available, ReglBackend } from "../render/ReglBackend.js";
+import { isWebGL2Available, WebGL2Backend } from "../render/WebGL2Backend.js";
 import type { GpuBackend, GpuBuffer } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
@@ -127,7 +127,7 @@ export interface ChartOptions {
   readonly followX?: boolean | ChartFollowXOptions;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
-  /** Advanced hook for supplying a custom GPU backend. Defaults to ReglBackend. */
+  /** Advanced hook for supplying a custom GPU backend. Defaults to WebGL2Backend. */
   readonly backendFactory?: ChartBackendFactory;
 }
 
@@ -582,7 +582,7 @@ export class Chart implements ChartPluginContext {
   }
 
   private createBackend(): GpuBackend {
-    return this.options.backendFactory?.({ canvas: this.layout.canvas }) ?? new ReglBackend(this.layout.canvas);
+    return this.options.backendFactory?.({ canvas: this.layout.canvas }) ?? new WebGL2Backend(this.layout.canvas);
   }
 
   get canvas(): HTMLCanvasElement {
