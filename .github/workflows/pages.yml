@@ -61,19 +61,6 @@ jobs:
           cp -a branches/main/build/pages/. build/pages/
           cp -a branches/development/build/pages/. build/pages/development/
           rm -rf build/pages/visual build/pages/interaction build/pages/development/visual build/pages/development/interaction
-          cat > build/pages/previews.html <<'HTML'
-          <!doctype html>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>BlazePlot previews</title>
-          <h1>BlazePlot site and previews</h1>
-          <ul>
-          HTML
-          echo '  <li><a href="/">main site</a></li>' >> build/pages/previews.html
-          echo '  <li><a href="/#previews">main previews</a></li>' >> build/pages/previews.html
-          echo '  <li><a href="/development/">development site</a></li>' >> build/pages/previews.html
-          echo '  <li><a href="/development/#previews">development previews</a></li>' >> build/pages/previews.html
-          echo '</ul>' >> build/pages/previews.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v5

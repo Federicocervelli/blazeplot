@@ -13,10 +13,10 @@ BlazePlot releases are driven by pull requests into `main`. Tags are outputs of 
 GitHub Pages publishes both active branches into one site:
 
 - Stable `main` site: <https://blazeplot.cervelli.dev/>
-- Stable integrated previews: <https://blazeplot.cervelli.dev/#previews>
+- Stable integrated previews: <https://blazeplot.cervelli.dev/blazeplot/previews>
 - In-progress `development` site: <https://blazeplot.cervelli.dev/development/>
-- In-progress integrated previews: <https://blazeplot.cervelli.dev/development/#previews>
-- Branch preview index: <https://blazeplot.cervelli.dev/previews.html>
+- In-progress integrated previews: <https://blazeplot.cervelli.dev/development/previews>
+- Legacy `previews.html` index is not generated; use the app preview routes directly.
 
 The Pages workflow runs on pushes to either `main` or `development`, checks out both branches, builds each Lit website with the correct Vite `base`, and deploys a combined artifact. Legacy preview routes redirect to the integrated `#previews` view.
 

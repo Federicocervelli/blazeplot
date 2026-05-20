@@ -1451,6 +1451,9 @@ export class BlazeplotSite extends LitElement {
     let relative = pathname;
     if (relative.startsWith(basePath)) relative = relative.slice(basePath.length);
     relative = relative.replace(/^\/+|\/+$/gu, "");
+    if (relative === "blazeplot" || relative.startsWith("blazeplot/")) {
+      relative = relative.slice("blazeplot".length).replace(/^\/+|\/+$/gu, "");
+    }
 
     if (relative === "") return "home";
     if (relative === "home") return "home";
