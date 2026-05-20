@@ -30,6 +30,7 @@ export default defineConfig(({ command, mode }) => {
           index: resolve(__dirname, "src/index.ts"),
           react: resolve(__dirname, "src/react.ts"),
           linked: resolve(__dirname, "src/linked.ts"),
+          "linked-core": resolve(__dirname, "src/linked-core.ts"),
           data: resolve(__dirname, "src/data.ts"),
           export: resolve(__dirname, "src/export.ts"),
           "plugins/legend": resolve(__dirname, "src/plugins/legend.ts"),

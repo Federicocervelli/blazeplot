@@ -30,6 +30,10 @@
       "types": "./dist/linked.d.ts",
       "import": "./dist/linked.js"
     },
+    "./linked-core": {
+      "types": "./dist/linked-core.d.ts",
+      "import": "./dist/linked-core.js"
+    },
     "./data": {
       "types": "./dist/data.d.ts",
       "import": "./dist/data.js"

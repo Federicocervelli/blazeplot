@@ -2,6 +2,7 @@ const imports = [
   { specifier: "blazeplot", expected: ["Chart", "RingBuffer", "StaticDataset", "ServerSampledDataset"] },
   { specifier: "blazeplot/react", expected: ["BlazeChart"] },
   { specifier: "blazeplot/linked", expected: ["createLinkedCharts", "linkedChartsPlugin"] },
+  { specifier: "blazeplot/linked-core", expected: ["createLinkedCharts", "linkedChartsPlugin"] },
   { specifier: "blazeplot/data", expected: ["exportVisibleChartData", "exportSelectedChartData", "chartDataToCSV", "binSamples", "rollingMean"] },
   { specifier: "blazeplot/export", expected: ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "CHART_SCREENSHOT_PRESETS"] },
   { specifier: "blazeplot/plugins/legend", expected: ["legendPlugin"] },

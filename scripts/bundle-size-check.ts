@@ -32,6 +32,7 @@ const budgets: Budget[] = [
   { label: "core entry", path: "dist/index.js", maxBytes: 32_000 },
   { label: "react entry", path: "dist/react.js", maxBytes: 8_000 },
   { label: "linked entry", path: "dist/linked.js", maxBytes: 16_000 },
+  { label: "linked core entry", path: "dist/linked-core.js", maxBytes: 8_000 },
   { label: "data entry", path: "dist/data.js", maxBytes: 12_000 },
   { label: "export entry", path: "dist/export.js", maxBytes: 8_000 },
   { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 24_000 },
@@ -45,6 +46,7 @@ const budgets: Budget[] = [
 
 const sharedBudgets: SharedChunkBudget[] = [
   { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 140_000 },
+  { label: "shared LinkedChartsCore chunk", pattern: /^LinkedChartsCore-.*\.js$/, maxBytes: 8_000 },
   { label: "shared Tooltip chunk", pattern: /^Tooltip-.*\.js$/, maxBytes: 12_000 },
   { label: "shared Crosshair chunk", pattern: /^Crosshair-.*\.js$/, maxBytes: 16_000 },
 ];
