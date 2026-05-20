@@ -86,6 +86,7 @@
     "bench:report": "bun scripts/benchmark-report.ts",
     "release:benchmarks": "bun scripts/release-benchmarks.ts",
     "docs:bundle-size": "bun scripts/bundle-size-check.ts --markdown",
+    "bundle:analyze": "bun scripts/bundle-analyze.ts",
     "docs:readme": "bun run build && node scripts/generate-readme-docs.js",
     "test": "bun test",
     "test:visual": "bun scripts/visual-test.ts",
