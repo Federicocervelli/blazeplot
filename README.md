@@ -6,7 +6,7 @@
 [![npm version](https://img.shields.io/npm/v/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![npm downloads](https://img.shields.io/npm/dt/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![previews](https://img.shields.io/badge/previews-blue?logo=githubpages&logoColor=white)](https://federicocervelli.github.io/blazeplot/previews.html)
+<a href="https://federicocervelli.github.io/blazeplot/previews.html"><img src="assets/blazeplot-logo.png" alt="previews" height="20" /></a>
 
 Fast WebGL2 plotting engine for the browser.
 
@@ -22,15 +22,17 @@ A minimal 1,000-point line chart renders its first frame in about **0.3 ms media
 
 ### Versioned footprint and first-draw comparison
 
-These are vendor-published/package-published figures, not cross-library benchmark runs. They are intentionally version-pinned so the numbers can be checked against the exact release/source.
+Vendor/package-published figures only; no cross-library benchmark runs. Best available value in each metric is bolded.
 
-| Library | Version / source anchor | Bundle or package footprint reported by source | First-draw / first-chart timing reported by source |
-|---|---|---:|---|
-| **BlazePlot** | `blazeplot` **v0.3.3** / this build | Core chart runtime: **~139 KiB raw / ~34 KiB gzip** for `blazeplot` without optional plugin subpaths | Minimal 1k-point first render work: **~0.3 ms median / ~0.5 ms p95**; setup **~19 ms median** |
-| **Chart.js** | [`chart.js` v4.5.1](https://github.com/chartjs/Chart.js/releases/tag/v4.5.1) | Release tarball: **1,562 KB**; npm package unpacked size reported as **~5.9 MB** ([npm registry](https://registry.npmjs.org/chart.js), [npmx v4.5.1](https://npmx.dev/package/chart.js/v/4.5.1)) | No version-pinned minimal first-draw number published in the cited release/docs; Chart.js publishes performance guidance instead ([performance docs](https://www.chartjs.org/docs/next/general/performance.html)) |
-| **Plotly.js** | [`plotly.js` v3.5.0](https://github.com/plotly/plotly.js/tree/v3.5.0) | Main bundle: **10.7 MB raw / 4.6 MB minified / 1.4 MB min+gzip** ([dist README](https://github.com/plotly/plotly.js/blob/master/dist/README.md)) | No version-pinned minimal first-draw number published in the cited dist/release docs |
-| **LightningChart JS** | [`@arction/lcjs` v5.2.1](https://www.npmjs.com/package/@arction/lcjs) | Package docs list browser/ESM bundles around **1.2–1.5 MB** and registry unpacked size around **25.5 MB** ([npm registry](https://registry.npmjs.org/%40arction%2Flcjs), [v5.2.1 docs](https://lightningchart.com/js-charts/docs/5.2.1/installation/)) | Public showcase measures time to render **1M LineSeries points**, but does not publish one fixed first-draw number in the cited README/search result ([showcase repo](https://github.com/Lightning-Chart/lcjs-showcase-renderingSpeed)) |
-| **SciChart.js** | SciChart.js **v5** docs / `scichart` package | `index.min.js` reported at **~1.9 MB** plus **~1 MB** 2D/3D WASM files after v5 reductions ([v5 docs](https://www.scichart.com/documentation/js/v5/whats-new/sdk-5.0/)); package unpacked size around **54–55 MB** ([npm registry](https://registry.npmjs.org/scichart)) | First-chart initialization reported as **~250 ms empty cache** after v5 init speedups ([v5 docs](https://www.scichart.com/documentation/js/v5/whats-new/sdk-5.0/)) |
+| Library | Version | JS/package footprint | First draw / first chart |
+|---|---:|---:|---:|
+| BlazePlot | 0.3.4 | **139 KiB raw / 34 KiB gzip** | **0.3 ms median / 0.5 ms p95 render**; 19 ms setup |
+| Chart.js | 4.5.1 | 1,562 KB tarball; 5.9 MB unpacked | not published |
+| Plotly.js | 3.5.0 | 10.7 MB raw; 4.6 MB min; 1.4 MB gzip | not published |
+| LightningChart JS | 5.2.1 | 1.2–1.5 MB JS; 25.5 MB unpacked | not fixed/published |
+| SciChart.js | 5.x / 5.2.11 package | 1.9 MB JS + ~1 MB WASM; 54–55 MB unpacked | ~250 ms empty-cache init |
+
+References: BlazePlot figures are from this release build and local first-frame benchmark described above. Chart.js: [v4.5.1 release](https://github.com/chartjs/Chart.js/releases/tag/v4.5.1), [npm registry](https://registry.npmjs.org/chart.js), [npmx v4.5.1](https://npmx.dev/package/chart.js/v/4.5.1). Plotly.js: [v3.5.0 tree](https://github.com/plotly/plotly.js/tree/v3.5.0), [dist README](https://github.com/plotly/plotly.js/blob/master/dist/README.md). LightningChart JS: [`@arction/lcjs` v5.2.1](https://www.npmjs.com/package/@arction/lcjs), [registry](https://registry.npmjs.org/%40arction%2Flcjs), [installation docs](https://lightningchart.com/js-charts/docs/5.2.1/installation/), [rendering-speed showcase](https://github.com/Lightning-Chart/lcjs-showcase-renderingSpeed). SciChart.js: [v5 docs](https://www.scichart.com/documentation/js/v5/whats-new/sdk-5.0/), [registry](https://registry.npmjs.org/scichart).
 
 ## Installation
 
