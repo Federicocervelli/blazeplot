@@ -188,35 +188,36 @@ export class ProceduralLineDataset implements AppendableDataset, YAppendableData
     const visible = end - start;
     if (visible <= 0) return 0;
 
-    const segmentCount = Math.min(maxSegments, visible);
+    const bucketSize = Math.max(1, Math.ceil(visible / Math.max(1, maxSegments)));
     const firstOrdinal = this.firstX();
-    for (let segment = 0; segment < segmentCount; segment++) {
-      const segmentStart = start + Math.floor((segment * visible) / segmentCount);
-      const segmentEnd = Math.min(
-        end,
-        start + Math.max(
-          Math.floor(((segment + 1) * visible) / segmentCount),
-          Math.floor((segment * visible) / segmentCount) + 1,
-        ),
-      );
+    const absoluteStart = firstOrdinal + start;
+    const firstBucketStart = start - positiveModulo(absoluteStart, bucketSize);
+
+    let written = 0;
+    for (let bucketStart = firstBucketStart; bucketStart < end && written < maxSegments; bucketStart += bucketSize) {
+      const segmentStart = Math.max(start, bucketStart);
+      const segmentEnd = Math.min(end, bucketStart + bucketSize);
+      if (segmentEnd <= segmentStart) continue;
+
       const range = this.rangeMinMaxByIndex(segmentStart, segmentEnd)!;
-      const x = this.toTime(firstOrdinal + segmentStart + ((segmentEnd - segmentStart) >> 1)) - xOrigin;
+      const x = this.toTime(firstOrdinal + bucketStart + (bucketSize >> 1)) - xOrigin;
 
       if (layout === "line-list") {
-        const offset = segment * 4;
+        const offset = written * 4;
         target[offset] = x;
         target[offset + 1] = range.minY;
         target[offset + 2] = x;
         target[offset + 3] = range.maxY;
       } else {
-        const offset = segment * 3;
+        const offset = written * 3;
         target[offset] = x;
         target[offset + 1] = range.minY;
         target[offset + 2] = range.maxY;
       }
+      written++;
     }
 
-    return segmentCount;
+    return written;
   }
 
   private rangeMinMaxByIndex(start: number, end: number): { minY: number; maxY: number } | null {

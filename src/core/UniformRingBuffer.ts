@@ -213,21 +213,22 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const visible = end - start;
     if (visible <= 0) return 0;
 
-    const segmentCount = Math.min(maxSegments, visible);
+    const bucketSize = Math.max(1, Math.ceil(visible / Math.max(1, maxSegments)));
+    const firstX = this.firstX();
+    const firstOrdinal = Math.round(firstX / this.xStep);
+    const absoluteStart = firstOrdinal + start;
+    const firstBucketStart = start - positiveModulo(absoluteStart, bucketSize);
+
     let written = 0;
-    for (let segment = 0; segment < segmentCount; segment++) {
-      const segmentStart = start + Math.floor((segment * visible) / segmentCount);
-      const segmentEnd = Math.min(
-        end,
-        start + Math.max(
-          Math.floor(((segment + 1) * visible) / segmentCount),
-          Math.floor((segment * visible) / segmentCount) + 1,
-        ),
-      );
+    for (let bucketStart = firstBucketStart; bucketStart < end && written < maxSegments; bucketStart += bucketSize) {
+      const segmentStart = Math.max(start, bucketStart);
+      const segmentEnd = Math.min(end, bucketStart + bucketSize);
+      if (segmentEnd <= segmentStart) continue;
+
       const range = this.rangeMinMaxY(segmentStart, segmentEnd);
       if (!range) continue;
 
-      const x = this.firstX() + (segmentStart + ((segmentEnd - segmentStart) >> 1)) * this.xStep - xOrigin;
+      const x = firstX + (bucketStart + (bucketSize >> 1)) * this.xStep - xOrigin;
       if (layout === "line-list") {
         const offset = written * 4;
         target[offset] = x;
