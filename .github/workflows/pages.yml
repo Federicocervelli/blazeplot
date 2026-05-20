@@ -49,7 +49,7 @@ jobs:
       - name: Build development preview
         working-directory: branches/development
         env:
-          BLAZEPLOT_PAGES_BASE: /blazeplot/development/
+          BLAZEPLOT_PAGES_BASE: /development/
         run: |
           bun install --frozen-lockfile
           bun run pages:build
@@ -69,10 +69,10 @@ jobs:
           <h1>BlazePlot site and previews</h1>
           <ul>
           HTML
-          echo '  <li><a href="/blazeplot/">main site</a></li>' >> build/pages/previews.html
-          echo '  <li><a href="/blazeplot/#previews">main previews</a></li>' >> build/pages/previews.html
-          echo '  <li><a href="/blazeplot/development/">development site</a></li>' >> build/pages/previews.html
-          echo '  <li><a href="/blazeplot/development/#previews">development previews</a></li>' >> build/pages/previews.html
+          echo '  <li><a href="/">main site</a></li>' >> build/pages/previews.html
+          echo '  <li><a href="/#previews">main previews</a></li>' >> build/pages/previews.html
+          echo '  <li><a href="/development/">development site</a></li>' >> build/pages/previews.html
+          echo '  <li><a href="/development/#previews">development previews</a></li>' >> build/pages/previews.html
           echo '</ul>' >> build/pages/previews.html
 
       - name: Configure Pages
