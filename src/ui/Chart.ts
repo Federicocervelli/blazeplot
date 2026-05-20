@@ -1425,7 +1425,7 @@ export class Chart implements ChartPluginContext {
   }
 
   private queueMinMaxLineBatch(series: SeriesStore): boolean {
-    if (series.config.mode !== "line") return false;
+    if (series.config.mode !== "line" || !this.renderer.supportsInstancedSegments) return false;
 
     const camera = this.cameraForSeries(series);
     const viewport = camera.viewport;
@@ -1511,12 +1511,21 @@ export class Chart implements ChartPluginContext {
   private drawLineSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const visibleSamples = series.visibleSampleCount(viewport);
     const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
-    if (dense) {
+    if (dense && this.renderer.supportsInstancedSegments) {
       const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (segmentCount <= 0) return;
       this.uploadMinMaxInstanceData(segmentCount);
       this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, projection);
       this.recordDraw("minmax", segmentCount * 2);
+      return;
+    }
+
+    if (dense) {
+      const count = series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments(), this.currentXOrigin);
+      if (count < 2) return;
+      this.uploadRawLineData(count);
+      this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, projection);
+      this.recordDraw("minmax", count);
       return;
     }
 
@@ -1658,7 +1667,7 @@ export class Chart implements ChartPluginContext {
 
   private drawBarSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const visibleSamples = series.visibleSampleCount(viewport);
-    const rawBarCapacity = RAW_LINE_VERTEX_CAPACITY;
+    const rawBarCapacity = this.maxRawBarInstances();
     if (series.hasLOD && visibleSamples > rawBarCapacity) {
       const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarTriangleBars(), this.currentXOrigin);
       if (sampledCount <= 0) return;
@@ -1673,9 +1682,15 @@ export class Chart implements ChartPluginContext {
     const count = series.copyRawRange(range.start, range.end, this.rawLineData, rawBarCapacity, this.currentXOrigin);
     if (count <= 0) return;
 
-    this.uploadRawLineData(count);
-    this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, projection);
-    this.recordDraw("bars", count);
+    if (this.renderer.supportsInstancedBars) {
+      this.uploadRawLineData(count);
+      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, projection);
+      this.recordDraw("bars", count);
+      return;
+    }
+
+    const vertexCount = this.writeBarTriangles(count, series.style.baseline ?? 0, series.style.barWidth ?? 0.8);
+    this.drawBarTriangles(vertexCount, series.style, projection);
   }
 
   private uploadRawLineData(vertexCount: number): void {
@@ -1709,6 +1724,16 @@ export class Chart implements ChartPluginContext {
       this.minMaxInstanceData[offset + 1] = Math.min(baseline, minY);
       this.minMaxInstanceData[offset + 2] = Math.max(baseline, maxY);
     }
+  }
+
+  private writeBarTriangles(barCount: number, baseline: number, barWidth: number): number {
+    const count = Math.min(barCount, this.maxBarTriangleBars());
+    for (let i = 0; i < count; i++) {
+      const x = this.rawLineData[i * 2]!;
+      const y = this.rawLineData[i * 2 + 1]!;
+      this.writeBarTriangle(i, x - barWidth * 0.5, x + barWidth * 0.5, baseline, y);
+    }
+    return count * 6;
   }
 
   private writeBarBucketTriangles(
@@ -2013,6 +2038,10 @@ export class Chart implements ChartPluginContext {
 
   private maxBarTriangleBars(): number {
     return Math.min(BAR_TRIANGLE_CAPACITY, RAW_LINE_VERTEX_CAPACITY);
+  }
+
+  private maxRawBarInstances(): number {
+    return this.renderer.supportsInstancedBars ? RAW_LINE_VERTEX_CAPACITY : this.maxBarTriangleBars();
   }
 
   private writeGridVertices(viewport: Viewport): number {

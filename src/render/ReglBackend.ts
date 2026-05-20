@@ -30,32 +30,6 @@ interface ScissorProps {
   scissorBox?: { x: number; y: number; width: number; height: number };
 }
 
-interface ReglInstancingExtension {
-  readonly VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE: number;
-  drawArraysInstancedANGLE(mode: number, first: number, count: number, primcount: number): void;
-  drawElementsInstancedANGLE(mode: number, count: number, type: number, offset: number, primcount: number): void;
-  vertexAttribDivisorANGLE(index: number, divisor: number): void;
-}
-
-const ANGLE_INSTANCED_ARRAYS = "angle_instanced_arrays";
-const VERTEX_ATTRIB_ARRAY_DIVISOR = 0x88fe;
-
-function installReglWebGL2InstancingShim(gl: WebGL2RenderingContext): void {
-  const getExtension = gl.getExtension.bind(gl);
-  if (getExtension(ANGLE_INSTANCED_ARRAYS)) return;
-
-  const instancingExtension: ReglInstancingExtension = {
-    VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE: VERTEX_ATTRIB_ARRAY_DIVISOR,
-    drawArraysInstancedANGLE: gl.drawArraysInstanced.bind(gl),
-    drawElementsInstancedANGLE: gl.drawElementsInstanced.bind(gl),
-    vertexAttribDivisorANGLE: gl.vertexAttribDivisor.bind(gl),
-  };
-
-  gl.getExtension = ((name: string): unknown => (
-    name.toLowerCase() === ANGLE_INSTANCED_ARRAYS ? instancingExtension : getExtension(name)
-  )) as WebGL2RenderingContext["getExtension"];
-}
-
 export class WebGL2UnavailableError extends Error {
   constructor(message = "BlazePlot requires WebGL2, but this browser/context does not support it.") {
     super(message);
@@ -94,15 +68,17 @@ export class ReglBackend implements GpuBackend {
     }
 
     this.gl = gl;
-    installReglWebGL2InstancingShim(this.gl);
     this.regl = createRegl({
       gl: toReglContext(this.gl),
-      extensions: [ANGLE_INSTANCED_ARRAYS],
-      optionalExtensions: ["ext_disjoint_timer_query_webgl2"],
+      extensions: [],
+      optionalExtensions: [
+        "angle_instanced_arrays",
+        "ext_disjoint_timer_query_webgl2",
+      ],
     });
 
     this.capabilities = {
-      instancing: true,
+      instancing: this.regl.hasExtension("angle_instanced_arrays"),
     };
 
     this.resources = new WebGL2Resources(this.regl);
