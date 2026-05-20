@@ -22,14 +22,18 @@ export default defineConfig(({ command, mode }) => {
     },
     build: {
       target: "esnext",
-      sourcemap: true,
+      sourcemap: "hidden",
       emptyOutDir: true,
       outDir: resolve(__dirname, "dist"),
       lib: {
         entry: {
           index: resolve(__dirname, "src/index.ts"),
+          core: resolve(__dirname, "src/core/index.ts"),
+          interaction: resolve(__dirname, "src/interaction/index.ts"),
+          render: resolve(__dirname, "src/render/index.ts"),
           react: resolve(__dirname, "src/react.ts"),
           linked: resolve(__dirname, "src/linked.ts"),
+          "linked-core": resolve(__dirname, "src/linked-core.ts"),
           data: resolve(__dirname, "src/data.ts"),
           export: resolve(__dirname, "src/export.ts"),
           "plugins/legend": resolve(__dirname, "src/plugins/legend.ts"),

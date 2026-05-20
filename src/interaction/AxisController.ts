@@ -33,11 +33,7 @@ export interface AxisControllerOptions {
 
 type TimeUnit = "millisecond" | "second" | "minute" | "hour" | "day" | "month" | "year";
 
-interface TimeInterval {
-  readonly unit: TimeUnit;
-  readonly count: number;
-  readonly approxMs: number;
-}
+type TimeInterval = readonly [unit: TimeUnit, count: number, approxMs: number];
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -47,41 +43,41 @@ const MONTH = 30 * DAY;
 const YEAR = 365 * DAY;
 
 const TIME_INTERVALS: readonly TimeInterval[] = [
-  { unit: "millisecond", count: 1, approxMs: 1 },
-  { unit: "millisecond", count: 5, approxMs: 5 },
-  { unit: "millisecond", count: 10, approxMs: 10 },
-  { unit: "millisecond", count: 50, approxMs: 50 },
-  { unit: "millisecond", count: 100, approxMs: 100 },
-  { unit: "millisecond", count: 250, approxMs: 250 },
-  { unit: "millisecond", count: 500, approxMs: 500 },
-  { unit: "second", count: 1, approxMs: SECOND },
-  { unit: "second", count: 5, approxMs: 5 * SECOND },
-  { unit: "second", count: 15, approxMs: 15 * SECOND },
-  { unit: "second", count: 30, approxMs: 30 * SECOND },
-  { unit: "minute", count: 1, approxMs: MINUTE },
-  { unit: "minute", count: 5, approxMs: 5 * MINUTE },
-  { unit: "minute", count: 15, approxMs: 15 * MINUTE },
-  { unit: "minute", count: 30, approxMs: 30 * MINUTE },
-  { unit: "hour", count: 1, approxMs: HOUR },
-  { unit: "hour", count: 3, approxMs: 3 * HOUR },
-  { unit: "hour", count: 6, approxMs: 6 * HOUR },
-  { unit: "hour", count: 12, approxMs: 12 * HOUR },
-  { unit: "day", count: 1, approxMs: DAY },
-  { unit: "day", count: 2, approxMs: 2 * DAY },
-  { unit: "day", count: 7, approxMs: 7 * DAY },
-  { unit: "month", count: 1, approxMs: MONTH },
-  { unit: "month", count: 3, approxMs: 3 * MONTH },
-  { unit: "month", count: 6, approxMs: 6 * MONTH },
-  { unit: "year", count: 1, approxMs: YEAR },
-  { unit: "year", count: 2, approxMs: 2 * YEAR },
-  { unit: "year", count: 5, approxMs: 5 * YEAR },
-  { unit: "year", count: 10, approxMs: 10 * YEAR },
+  ["millisecond", 1, 1],
+  ["millisecond", 5, 5],
+  ["millisecond", 10, 10],
+  ["millisecond", 50, 50],
+  ["millisecond", 100, 100],
+  ["millisecond", 250, 250],
+  ["millisecond", 500, 500],
+  ["second", 1, SECOND],
+  ["second", 5, 5 * SECOND],
+  ["second", 15, 15 * SECOND],
+  ["second", 30, 30 * SECOND],
+  ["minute", 1, MINUTE],
+  ["minute", 5, 5 * MINUTE],
+  ["minute", 15, 15 * MINUTE],
+  ["minute", 30, 30 * MINUTE],
+  ["hour", 1, HOUR],
+  ["hour", 3, 3 * HOUR],
+  ["hour", 6, 6 * HOUR],
+  ["hour", 12, 12 * HOUR],
+  ["day", 1, DAY],
+  ["day", 2, 2 * DAY],
+  ["day", 7, 7 * DAY],
+  ["month", 1, MONTH],
+  ["month", 3, 3 * MONTH],
+  ["month", 6, 6 * MONTH],
+  ["year", 1, YEAR],
+  ["year", 2, 2 * YEAR],
+  ["year", 5, 5 * YEAR],
+  ["year", 10, 10 * YEAR],
 ];
 
-const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
-const MONTH_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"] as const;
-const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-const WEEKDAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+const MONTH_SHORT = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
+const MONTH_LONG = "January February March April May June July August September October November December".split(" ");
+const WEEKDAY_SHORT = "Sun Mon Tue Wed Thu Fri Sat".split(" ");
+const WEEKDAY_LONG = "Sunday Monday Tuesday Wednesday Thursday Friday Saturday".split(" ");
 
 export class AxisController {
   private options: AxisControllerOptions;
@@ -292,18 +288,19 @@ export class AxisController {
 
   private chooseTimeInterval(rawStepMs: number): TimeInterval {
     for (const interval of TIME_INTERVALS) {
-      if (interval.approxMs >= rawStepMs) return interval;
+      if (interval[2] >= rawStepMs) return interval;
     }
     const years = Math.max(10, Math.ceil(rawStepMs / YEAR));
     const magnitude = 10 ** Math.floor(Math.log10(years));
     const normalized = years / magnitude;
     const count = normalized <= 1 ? magnitude : normalized <= 2 ? 2 * magnitude : normalized <= 5 ? 5 * magnitude : 10 * magnitude;
-    return { unit: "year", count, approxMs: count * YEAR };
+    return ["year", count, count * YEAR];
   }
 
   private floorTime(value: number, interval: TimeInterval, timezone: AxisTimeZone): number {
     if (!Number.isFinite(value)) return value;
-    if (interval.unit === "millisecond") return Math.floor(value / interval.count) * interval.count;
+    const [unit, count] = interval;
+    if (unit === "millisecond") return Math.floor(value / count) * count;
 
     const date = new Date(value);
     const utc = timezone === "utc";
@@ -314,45 +311,46 @@ export class AxisController {
     const minute = utc ? date.getUTCMinutes() : date.getMinutes();
     const second = utc ? date.getUTCSeconds() : date.getSeconds();
 
-    switch (interval.unit) {
+    switch (unit) {
       case "second":
-        return this.makeTime(timezone, year, month, day, hour, minute, Math.floor(second / interval.count) * interval.count, 0);
+        return this.makeTime(timezone, year, month, day, hour, minute, Math.floor(second / count) * count, 0);
       case "minute":
-        return this.makeTime(timezone, year, month, day, hour, Math.floor(minute / interval.count) * interval.count, 0, 0);
+        return this.makeTime(timezone, year, month, day, hour, Math.floor(minute / count) * count, 0, 0);
       case "hour":
-        return this.makeTime(timezone, year, month, day, Math.floor(hour / interval.count) * interval.count, 0, 0, 0);
+        return this.makeTime(timezone, year, month, day, Math.floor(hour / count) * count, 0, 0, 0);
       case "day":
-        return this.makeTime(timezone, year, month, Math.floor((day - 1) / interval.count) * interval.count + 1, 0, 0, 0, 0);
+        return this.makeTime(timezone, year, month, Math.floor((day - 1) / count) * count + 1, 0, 0, 0, 0);
       case "month":
-        return this.makeTime(timezone, year, Math.floor(month / interval.count) * interval.count, 1, 0, 0, 0, 0);
+        return this.makeTime(timezone, year, Math.floor(month / count) * count, 1, 0, 0, 0, 0);
       case "year":
-        return this.makeTime(timezone, Math.floor(year / interval.count) * interval.count, 0, 1, 0, 0, 0, 0);
+        return this.makeTime(timezone, Math.floor(year / count) * count, 0, 1, 0, 0, 0, 0);
     }
   }
 
   private advanceTime(value: number, interval: TimeInterval, timezone: AxisTimeZone): number {
     const date = new Date(value);
     const utc = timezone === "utc";
-    switch (interval.unit) {
+    const [unit, count] = interval;
+    switch (unit) {
       case "millisecond":
-        return value + interval.count;
+        return value + count;
       case "second":
-        utc ? date.setUTCSeconds(date.getUTCSeconds() + interval.count) : date.setSeconds(date.getSeconds() + interval.count);
+        utc ? date.setUTCSeconds(date.getUTCSeconds() + count) : date.setSeconds(date.getSeconds() + count);
         return date.getTime();
       case "minute":
-        utc ? date.setUTCMinutes(date.getUTCMinutes() + interval.count) : date.setMinutes(date.getMinutes() + interval.count);
+        utc ? date.setUTCMinutes(date.getUTCMinutes() + count) : date.setMinutes(date.getMinutes() + count);
         return date.getTime();
       case "hour":
-        utc ? date.setUTCHours(date.getUTCHours() + interval.count) : date.setHours(date.getHours() + interval.count);
+        utc ? date.setUTCHours(date.getUTCHours() + count) : date.setHours(date.getHours() + count);
         return date.getTime();
       case "day":
-        utc ? date.setUTCDate(date.getUTCDate() + interval.count) : date.setDate(date.getDate() + interval.count);
+        utc ? date.setUTCDate(date.getUTCDate() + count) : date.setDate(date.getDate() + count);
         return date.getTime();
       case "month":
-        utc ? date.setUTCMonth(date.getUTCMonth() + interval.count) : date.setMonth(date.getMonth() + interval.count);
+        utc ? date.setUTCMonth(date.getUTCMonth() + count) : date.setMonth(date.getMonth() + count);
         return date.getTime();
       case "year":
-        utc ? date.setUTCFullYear(date.getUTCFullYear() + interval.count) : date.setFullYear(date.getFullYear() + interval.count);
+        utc ? date.setUTCFullYear(date.getUTCFullYear() + count) : date.setFullYear(date.getFullYear() + count);
         return date.getTime();
     }
   }
@@ -367,7 +365,7 @@ export class AxisController {
     const date = new Date(value);
     if (tickFormat) return this.formatTimePattern(date, tickFormat, timezone);
 
-    const approxMs = interval?.approxMs ?? 0;
+    const approxMs = interval?.[2] ?? 0;
     if (approxMs > 0 && approxMs < SECOND) return this.formatTimePattern(date, "%H:%M:%S.%L", timezone);
     if (approxMs > 0 && approxMs < DAY) return this.formatTimePattern(date, "%H:%M:%S", timezone);
     if (approxMs > 0 && approxMs < YEAR) return this.formatTimePattern(date, "%b %d", timezone);

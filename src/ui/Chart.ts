@@ -12,7 +12,7 @@ import type { PanIntent, ViewportPolicy, ZoomIntent } from "../interaction/types
 import { AxisOverlay } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
-import { resolveChartTheme, rgbaCss } from "./theme.js";
+import { resolveChartTheme } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
@@ -41,27 +41,10 @@ function normalizeFitPadding(padding: number | ChartFitToDataPadding | undefined
   };
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Unable to load SVG overlay for screenshot export."));
-    image.src = src;
-  });
-}
-
 function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: number): boolean {
   const scale = Math.max(1, Math.abs(aMin), Math.abs(aMax), Math.abs(bMin), Math.abs(bMax));
   const epsilon = scale * 1e-9;
   return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
-}
-
-function screenshotBackground(options: ChartScreenshotOptions, themeBackground: string): string | null | undefined {
-  if (options.background !== undefined) return options.background;
-  if (options.transparent === true || options.preset === "transparent") return null;
-  if (options.preset === "dark") return "#0b1020";
-  if (options.preset === "light") return "#ffffff";
-  return themeBackground;
 }
 
 function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
@@ -382,14 +365,6 @@ function textOverlayText(config: string | TextOverlayConfig | undefined): string
 
 function textOverlayVisible(config: string | TextOverlayConfig | undefined): boolean {
   return typeof config === "string" ? config.length > 0 : !!config && config.visible !== false && config.text.length > 0;
-}
-
-function textOverlayOffsetX(config: string | TextOverlayConfig | undefined): number {
-  return typeof config === "string" ? 0 : config?.offsetX ?? 0;
-}
-
-function textOverlayOffsetY(config: string | TextOverlayConfig | undefined): number {
-  return typeof config === "string" ? 0 : config?.offsetY ?? 0;
 }
 
 function colorsEqual(
@@ -1080,43 +1055,8 @@ export class Chart implements ChartPluginContext {
   async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
     this.render();
 
-    const rootRect = this.layout.root.getBoundingClientRect();
-    const plotRect = this.layout.plot.getBoundingClientRect();
-    const dpr = Number.isFinite(options.dpr) ? Math.max(1, options.dpr!) : Math.max(1, globalThis.devicePixelRatio || 1);
-    const width = Number.isFinite(options.width) ? Math.max(1, Math.round(options.width!)) : Math.max(1, Math.round(rootRect.width * dpr));
-    const height = Number.isFinite(options.height) ? Math.max(1, Math.round(options.height!)) : Math.max(1, Math.round(rootRect.height * dpr));
-    const scaleX = width / Math.max(1, rootRect.width);
-    const scaleY = height / Math.max(1, rootRect.height);
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Unable to create a 2D canvas context for screenshot export.");
-
-    const background = screenshotBackground(options, rgbaCss(this.resolvedTheme.backgroundColor));
-    if (background) {
-      ctx.fillStyle = background;
-      ctx.fillRect(0, 0, width, height);
-    }
-
-    ctx.drawImage(
-      this.canvas,
-      (plotRect.left - rootRect.left) * scaleX,
-      (plotRect.top - rootRect.top) * scaleY,
-      plotRect.width * scaleX,
-      plotRect.height * scaleY,
-    );
-    await this.drawSvgOverlaysForScreenshot(ctx, rootRect, scaleX, scaleY);
-    this.drawDomTextForScreenshot(ctx, rootRect, scaleX, scaleY);
-
-    return new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => blob ? resolve(blob) : reject(new Error("Unable to encode chart screenshot.")),
-        options.type ?? "image/png",
-        options.quality,
-      );
-    });
+    const { composeChartScreenshot } = await import("./screenshot.js");
+    return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
   start(): void {
@@ -1393,14 +1333,17 @@ export class Chart implements ChartPluginContext {
     el.style.display = visible ? "block" : "none";
     if (!visible) return;
 
-    const align = typeof config === "string" ? "center" : config?.align ?? "center";
-    el.style.color = typeof config === "string" ? defaults.color : config?.color ?? defaults.color;
-    el.style.font = typeof config === "string" ? defaults.font : config?.font ?? defaults.font;
-    el.style.top = `${defaults.top + textOverlayOffsetY(config)}px`;
-    el.style.left = align === "left" ? `${8 + textOverlayOffsetX(config)}px` : align === "right" ? "auto" : `calc(50% + ${textOverlayOffsetX(config)}px)`;
-    el.style.right = align === "right" ? `${8 - textOverlayOffsetX(config)}px` : "auto";
-    el.style.transform = align === "center" ? "translateX(-50%)" : "none";
-    el.style.textAlign = align;
+    const custom = typeof config === "string" ? undefined : config;
+    const align = custom?.align ?? "center";
+    const offsetX = custom?.offsetX ?? 0;
+    const style = el.style;
+    style.color = custom?.color ?? defaults.color;
+    style.font = custom?.font ?? defaults.font;
+    style.top = `${defaults.top + (custom?.offsetY ?? 0)}px`;
+    style.left = align === "left" ? `${8 + offsetX}px` : align === "right" ? "auto" : `calc(50% + ${offsetX}px)`;
+    style.right = align === "right" ? `${8 - offsetX}px` : "auto";
+    style.transform = align === "center" ? "translateX(-50%)" : "none";
+    style.textAlign = align;
   }
 
   private applyAxisTitleOverlay(el: HTMLElement, config: string | AxisTitleConfig | undefined, axis: "x" | "y" | "y2"): void {
@@ -1409,20 +1352,24 @@ export class Chart implements ChartPluginContext {
     el.style.display = visible ? "block" : "none";
     if (!visible) return;
 
-    el.style.color = typeof config === "string" ? this.resolvedTheme.axisTitleColor : config?.color ?? this.resolvedTheme.axisTitleColor;
-    el.style.font = typeof config === "string" ? this.resolvedTheme.axisTitleFont : config?.font ?? this.resolvedTheme.axisTitleFont;
+    const custom = typeof config === "string" ? undefined : config;
+    const offsetX = custom?.offsetX ?? 0;
+    const offsetY = custom?.offsetY ?? 0;
+    const style = el.style;
+    style.color = custom?.color ?? this.resolvedTheme.axisTitleColor;
+    style.font = custom?.font ?? this.resolvedTheme.axisTitleFont;
     if (axis === "x") {
-      el.style.left = `calc(50% + ${textOverlayOffsetX(config)}px)`;
-      el.style.bottom = `${4 - textOverlayOffsetY(config)}px`;
-      el.style.transform = "translateX(-50%)";
+      style.left = `calc(50% + ${offsetX}px)`;
+      style.bottom = `${4 - offsetY}px`;
+      style.transform = "translateX(-50%)";
     } else if (axis === "y") {
-      el.style.left = `${4 + textOverlayOffsetX(config)}px`;
-      el.style.top = `calc(50% + ${textOverlayOffsetY(config)}px)`;
-      el.style.transform = "translateY(-50%) rotate(-90deg)";
+      style.left = `${4 + offsetX}px`;
+      style.top = `calc(50% + ${offsetY}px)`;
+      style.transform = "translateY(-50%) rotate(-90deg)";
     } else {
-      el.style.right = `${4 - textOverlayOffsetX(config)}px`;
-      el.style.top = `calc(50% + ${textOverlayOffsetY(config)}px)`;
-      el.style.transform = "translateY(-50%) rotate(90deg)";
+      style.right = `${4 - offsetX}px`;
+      style.top = `calc(50% + ${offsetY}px)`;
+      style.transform = "translateY(-50%) rotate(90deg)";
     }
   }
 
@@ -1478,7 +1425,7 @@ export class Chart implements ChartPluginContext {
   }
 
   private queueMinMaxLineBatch(series: SeriesStore): boolean {
-    if (series.config.mode !== "line" || !this.renderer.supportsInstancedSegments) return false;
+    if (series.config.mode !== "line") return false;
 
     const camera = this.cameraForSeries(series);
     const viewport = camera.viewport;
@@ -1564,21 +1511,12 @@ export class Chart implements ChartPluginContext {
   private drawLineSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const visibleSamples = series.visibleSampleCount(viewport);
     const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
-    if (dense && this.renderer.supportsInstancedSegments) {
+    if (dense) {
       const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (segmentCount <= 0) return;
       this.uploadMinMaxInstanceData(segmentCount);
       this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, projection);
       this.recordDraw("minmax", segmentCount * 2);
-      return;
-    }
-
-    if (dense) {
-      const count = series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments(), this.currentXOrigin);
-      if (count < 2) return;
-      this.uploadRawLineData(count);
-      this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, projection);
-      this.recordDraw("minmax", count);
       return;
     }
 
@@ -1720,7 +1658,7 @@ export class Chart implements ChartPluginContext {
 
   private drawBarSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const visibleSamples = series.visibleSampleCount(viewport);
-    const rawBarCapacity = this.maxRawBarInstances();
+    const rawBarCapacity = RAW_LINE_VERTEX_CAPACITY;
     if (series.hasLOD && visibleSamples > rawBarCapacity) {
       const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarTriangleBars(), this.currentXOrigin);
       if (sampledCount <= 0) return;
@@ -1735,15 +1673,9 @@ export class Chart implements ChartPluginContext {
     const count = series.copyRawRange(range.start, range.end, this.rawLineData, rawBarCapacity, this.currentXOrigin);
     if (count <= 0) return;
 
-    if (this.renderer.supportsInstancedBars) {
-      this.uploadRawLineData(count);
-      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, projection);
-      this.recordDraw("bars", count);
-      return;
-    }
-
-    const vertexCount = this.writeBarTriangles(count, series.style.baseline ?? 0, series.style.barWidth ?? 0.8);
-    this.drawBarTriangles(vertexCount, series.style, projection);
+    this.uploadRawLineData(count);
+    this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, projection);
+    this.recordDraw("bars", count);
   }
 
   private uploadRawLineData(vertexCount: number): void {
@@ -1777,16 +1709,6 @@ export class Chart implements ChartPluginContext {
       this.minMaxInstanceData[offset + 1] = Math.min(baseline, minY);
       this.minMaxInstanceData[offset + 2] = Math.max(baseline, maxY);
     }
-  }
-
-  private writeBarTriangles(barCount: number, baseline: number, barWidth: number): number {
-    const count = Math.min(barCount, this.maxBarTriangleBars());
-    for (let i = 0; i < count; i++) {
-      const x = this.rawLineData[i * 2]!;
-      const y = this.rawLineData[i * 2 + 1]!;
-      this.writeBarTriangle(i, x - barWidth * 0.5, x + barWidth * 0.5, baseline, y);
-    }
-    return count * 6;
   }
 
   private writeBarBucketTriangles(
@@ -2081,63 +2003,6 @@ export class Chart implements ChartPluginContext {
     for (const callback of this.renderSubscribers) callback(this);
   }
 
-  private async drawSvgOverlaysForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, scaleX: number, scaleY: number): Promise<void> {
-    const svgs = this.layout.root.querySelectorAll<SVGSVGElement>("svg");
-    const serializer = new XMLSerializer();
-    for (const source of svgs) {
-      const style = getComputedStyle(source);
-      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
-      const rect = source.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) continue;
-
-      const clone = source.cloneNode(true) as SVGSVGElement;
-      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-      clone.setAttribute("width", String(rect.width));
-      clone.setAttribute("height", String(rect.height));
-      if (!clone.getAttribute("viewBox")) clone.setAttribute("viewBox", `0 0 ${rect.width} ${rect.height}`);
-      const blob = new Blob([serializer.serializeToString(clone)], { type: "image/svg+xml;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      try {
-        const image = await loadImage(url);
-        ctx.save();
-        ctx.globalAlpha = Number.isFinite(Number(style.opacity)) ? Number(style.opacity) : 1;
-        ctx.drawImage(
-          image,
-          (rect.left - rootRect.left) * scaleX,
-          (rect.top - rootRect.top) * scaleY,
-          rect.width * scaleX,
-          rect.height * scaleY,
-        );
-        ctx.restore();
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-    }
-  }
-
-  private drawDomTextForScreenshot(ctx: CanvasRenderingContext2D, rootRect: DOMRect, scaleX: number, scaleY: number): void {
-    const elements = this.layout.root.querySelectorAll<HTMLElement>("div");
-    for (const el of elements) {
-      const text = el.textContent;
-      if (!text || el.children.length > 0) continue;
-
-      const style = getComputedStyle(el);
-      if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
-
-      const rect = el.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) continue;
-
-      ctx.save();
-      ctx.scale(scaleX, scaleY);
-      ctx.font = style.font;
-      ctx.fillStyle = style.color;
-      ctx.textBaseline = "top";
-      ctx.textAlign = "left";
-      ctx.fillText(text, rect.left - rootRect.left, rect.top - rootRect.top);
-      ctx.restore();
-    }
-  }
-
   private maxMinMaxSegments(): number {
     return Math.min(this.canvas.width, MINMAX_SEGMENT_CAPACITY);
   }
@@ -2148,10 +2013,6 @@ export class Chart implements ChartPluginContext {
 
   private maxBarTriangleBars(): number {
     return Math.min(BAR_TRIANGLE_CAPACITY, RAW_LINE_VERTEX_CAPACITY);
-  }
-
-  private maxRawBarInstances(): number {
-    return this.renderer.supportsInstancedBars ? RAW_LINE_VERTEX_CAPACITY : this.maxBarTriangleBars();
   }
 
   private writeGridVertices(viewport: Viewport): number {

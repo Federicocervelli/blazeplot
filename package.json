@@ -22,6 +22,18 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./interaction": {
+      "types": "./dist/interaction.d.ts",
+      "import": "./dist/interaction.js"
+    },
+    "./render": {
+      "types": "./dist/render.d.ts",
+      "import": "./dist/render.js"
+    },
     "./react": {
       "types": "./dist/react.d.ts",
       "import": "./dist/react.js"
@@ -29,6 +41,10 @@
     "./linked": {
       "types": "./dist/linked.d.ts",
       "import": "./dist/linked.js"
+    },
+    "./linked-core": {
+      "types": "./dist/linked-core.d.ts",
+      "import": "./dist/linked-core.js"
     },
     "./data": {
       "types": "./dist/data.d.ts",
@@ -70,6 +86,7 @@
   },
   "files": [
     "dist",
+    "!dist/**/*.map",
     "README.md",
     "LICENSE"
   ],
@@ -86,6 +103,7 @@
     "bench:report": "bun scripts/benchmark-report.ts",
     "release:benchmarks": "bun scripts/release-benchmarks.ts",
     "docs:bundle-size": "bun scripts/bundle-size-check.ts --markdown",
+    "bundle:analyze": "bun scripts/bundle-analyze.ts",
     "docs:readme": "bun run build && node scripts/generate-readme-docs.js",
     "test": "bun test",
     "test:visual": "bun scripts/visual-test.ts",

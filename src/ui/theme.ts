@@ -183,9 +183,9 @@ function parseRgbColor(color: string): RgbaColor | null {
     : rgbPart.split(/\s+/).filter(Boolean);
 
   if (rgb.length < 3) return null;
-  const r = parseRgbChannel(rgb[0]!);
-  const g = parseRgbChannel(rgb[1]!);
-  const b = parseRgbChannel(rgb[2]!);
+  const r = parseChannel(rgb[0]!, 255);
+  const g = parseChannel(rgb[1]!, 255);
+  const b = parseChannel(rgb[2]!, 255);
   const a = parseAlpha(alphaPart ?? (rgb.length > 3 ? rgb[3]! : undefined));
   if (r === null || g === null || b === null || a === null) return null;
   return [r, g, b, a];
@@ -199,9 +199,9 @@ function parseSrgbColor(color: string): RgbaColor | null {
   const channels = parts[0]!.split(/\s+/).filter(Boolean);
   if (channels.length < 3) return null;
 
-  const r = parseUnitChannel(channels[0]!);
-  const g = parseUnitChannel(channels[1]!);
-  const b = parseUnitChannel(channels[2]!);
+  const r = parseChannel(channels[0]!);
+  const g = parseChannel(channels[1]!);
+  const b = parseChannel(channels[2]!);
   const a = parseAlpha(parts[1]);
   if (r === null || g === null || b === null || a === null) return null;
   return [r, g, b, a];
@@ -224,20 +224,13 @@ function parseHexColor(color: string): RgbaColor | null {
   return [r, g, b, a];
 }
 
-function parseRgbChannel(value: string): number | null {
-  if (value.endsWith("%")) return clamp01(Number.parseFloat(value) / 100);
-  return clamp01(Number.parseFloat(value) / 255);
-}
-
-function parseUnitChannel(value: string): number | null {
-  if (value.endsWith("%")) return clamp01(Number.parseFloat(value) / 100);
-  return clamp01(Number.parseFloat(value));
+function parseChannel(value: string, divisor: number = 1): number | null {
+  const number = Number.parseFloat(value);
+  return clamp01(value.endsWith("%") ? number / 100 : number / divisor);
 }
 
 function parseAlpha(value: string | undefined): number | null {
-  if (!value) return 1;
-  if (value.endsWith("%")) return clamp01(Number.parseFloat(value) / 100);
-  return clamp01(Number.parseFloat(value));
+  return value ? parseChannel(value) : 1;
 }
 
 function clamp01(value: number): number | null {
