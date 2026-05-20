@@ -54,6 +54,7 @@ On every push to `main`, `.github/workflows/release.yml`:
 - `bun run docs:readme`: rebuilds the package and refreshes generated README API and bundle-size sections from `dist/`.
 - `bun run test:bundle-size`: enforces built package chunk budgets.
 - `bun run docs:bundle-size`: prints the bundle-size markdown summary for the current `dist/` build.
+- `bun run bundle:analyze`: reports built chunk raw/gzip sizes and source-map generated-byte contributors for investigating bundle growth.
 - `bun run bench:ci`: fast smoke benchmark used by CI.
 - `bun run test:visual`: browser visual chart tests used by CI; writes PNGs and `summary.json` to `build/visual-tests/`.
 - `bun run test:interaction`: browser input automation used by CI for hover, crosshair, zoom, pan, reset, and selection.
