@@ -131,26 +131,26 @@ Generated from `dist/` after the package build. Budgets are enforced by `bun run
 | core subpath entry | `dist/core.js` | 0.7 KiB | 3.9 KiB | 3.2 KiB free |
 | interaction subpath entry | `dist/interaction.js` | 0.1 KiB | 2.0 KiB | 1.9 KiB free |
 | render subpath entry | `dist/render.js` | 0.2 KiB | 2.0 KiB | 1.7 KiB free |
-| react entry | `dist/react.js` | 0.8 KiB | 7.8 KiB | 7.0 KiB free |
-| linked entry | `dist/linked.js` | 0.4 KiB | 15.6 KiB | 15.2 KiB free |
+| react entry | `dist/react.js` | 0.7 KiB | 7.8 KiB | 7.1 KiB free |
+| linked entry | `dist/linked.js` | 0.4 KiB | 15.6 KiB | 15.3 KiB free |
 | linked core entry | `dist/linked-core.js` | 0.1 KiB | 7.8 KiB | 7.7 KiB free |
-| data entry | `dist/data.js` | 5.0 KiB | 11.7 KiB | 6.8 KiB free |
+| data entry | `dist/data.js` | 4.9 KiB | 11.7 KiB | 6.8 KiB free |
 | export entry | `dist/export.js` | 1.3 KiB | 7.8 KiB | 6.5 KiB free |
-| interactions plugin | `dist/plugins/interactions.js` | 15.4 KiB | 23.4 KiB | 8.1 KiB free |
+| interactions plugin | `dist/plugins/interactions.js` | 15.3 KiB | 23.4 KiB | 8.1 KiB free |
 | annotations plugin | `dist/plugins/annotations.js` | 9.3 KiB | 15.6 KiB | 6.3 KiB free |
 | navigator plugin | `dist/plugins/navigator.js` | 8.6 KiB | 15.6 KiB | 7.0 KiB free |
-| selection plugin | `dist/plugins/selection.js` | 5.4 KiB | 11.7 KiB | 6.4 KiB free |
-| legend plugin | `dist/plugins/legend.js` | 2.9 KiB | 7.8 KiB | 4.9 KiB free |
+| selection plugin | `dist/plugins/selection.js` | 5.3 KiB | 11.7 KiB | 6.4 KiB free |
+| legend plugin | `dist/plugins/legend.js` | 2.8 KiB | 7.8 KiB | 5.0 KiB free |
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB | 3.9 KiB | 3.8 KiB free |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB | 3.9 KiB | 3.8 KiB free |
-| shared Chart chunk | `dist/Chart-Dke-oxI7.js` | 56.1 KiB | 136.7 KiB | 80.6 KiB free |
-| shared RingBuffer chunk | `dist/RingBuffer-Bd5JaRf4.js` | 29.7 KiB | 39.1 KiB | 9.4 KiB free |
-| shared OhlcDataset chunk | `dist/OhlcDataset-1cMrc6BC.js` | 17.4 KiB | 23.4 KiB | 6.1 KiB free |
-| shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB | 19.5 KiB | 5.9 KiB free |
-| shared ReglBackend chunk | `dist/ReglBackend-CjLa4teY.js` | 12.8 KiB | 19.5 KiB | 6.7 KiB free |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DzZ6WYpc.js` | 2.2 KiB | 7.8 KiB | 5.6 KiB free |
+| shared Chart chunk | `dist/Chart-BYNaFAfk.js` | 56.1 KiB | 136.7 KiB | 80.7 KiB free |
+| shared RingBuffer chunk | `dist/RingBuffer-Bd5JaRf4.js` | 29.6 KiB | 39.1 KiB | 9.4 KiB free |
+| shared OhlcDataset chunk | `dist/OhlcDataset-1cMrc6BC.js` | 17.3 KiB | 23.4 KiB | 6.1 KiB free |
+| shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB | 19.5 KiB | 6.0 KiB free |
+| shared ReglBackend chunk | `dist/ReglBackend-CjLa4teY.js` | 12.7 KiB | 19.5 KiB | 6.8 KiB free |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-qY8fJMJc.js` | 2.1 KiB | 7.8 KiB | 5.7 KiB free |
 | shared Tooltip chunk | `dist/Tooltip-DDEQ32oy.js` | 4.8 KiB | 11.7 KiB | 6.9 KiB free |
-| shared Crosshair chunk | `dist/Crosshair-DyBHoqIB.js` | 8.7 KiB | 15.6 KiB | 6.9 KiB free |
+| shared Crosshair chunk | `dist/Crosshair-DyBHoqIB.js` | 8.6 KiB | 15.6 KiB | 7.0 KiB free |
 
 ### Selected generated declarations
 
