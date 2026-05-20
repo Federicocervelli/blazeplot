@@ -14,6 +14,12 @@ Built for people who have hit the performance ceiling of Chart.js, Plotly, and s
 
 Built on native WebGL2 with no rendering runtime dependency.
 
+## Small core, fast first frame
+
+The core chart runtime is intentionally compact: the current production build for `blazeplot` without optional plugin subpaths is about **139 KiB raw / 34 KiB gzip** (`dist/index.js` plus shared chart/render/data chunks after `bun run build`). Optional UI plugins, React helpers, linked charts, and export helpers ship as separate subpath entries.
+
+A minimal 1,000-point line chart renders its first frame in about **0.3 ms median / 0.5 ms p95** of chart render work in the project headless Chrome benchmark setup (640×360 canvas, axes/grid disabled, HeadlessChrome 148 with SwiftShader). Chart construction and WebGL program/buffer setup for that case is about **19 ms median**.
+
 ## Installation
 
 ```bash
