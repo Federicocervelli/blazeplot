@@ -14,25 +14,23 @@ Built for people who have hit the performance ceiling of Chart.js, Plotly, and s
 
 Built on native WebGL2 with no rendering runtime dependency.
 
-## Small core, fast first frame
+## Performance
 
-The core chart runtime is intentionally compact: the current production build for `blazeplot` without optional plugin subpaths is about **139 KiB raw / 34 KiB gzip** (`dist/index.js` plus shared chart/render/data chunks after `bun run build`). Optional UI plugins, React helpers, linked charts, and export helpers ship as separate subpath entries.
+The core chart runtime is intentionally compact: the production build for `blazeplot` (without optional plugins) is about **139 KiB raw / 34 KiB gzip**. Optional plugins and helpers ship as separate subpath entries.
 
-A minimal 1,000-point line chart renders its first frame in about **0.3 ms median / 0.5 ms p95** of chart render work in the project headless Chrome benchmark setup (640×360 canvas, axes/grid disabled, HeadlessChrome 148 with SwiftShader). Chart construction and WebGL program/buffer setup for that case is about **19 ms median**.
+A minimal 1,000-point line chart renders its first frame in about **0.3 ms median / 0.5 ms p95** of render work (640×360 canvas, HeadlessChrome 148, SwiftShader). Chart construction and WebGL setup takes about **19 ms median**.
 
-### Versioned footprint and first-draw comparison
+Size and first-draw comparison (vendor-published figures, best value bolded):
 
-Vendor/package-published figures only; no cross-library benchmark runs. Best available value in each metric is bolded.
-
-| Library | Version | JS/package footprint | First draw / first chart |
+| Library | Version | Size | First draw |
 |---|---:|---:|---:|
-| BlazePlot | 0.3.4 | **139 KiB raw / 34 KiB gzip** | **0.3 ms median / 0.5 ms p95 render**; 19 ms setup |
-| Chart.js | 4.5.1 | 1,562 KB tarball; 5.9 MB unpacked | not published |
-| Plotly.js | 3.5.0 | 10.7 MB raw; 4.6 MB min; 1.4 MB gzip | not published |
-| LightningChart JS | 5.2.1 | 1.2–1.5 MB JS; 25.5 MB unpacked | not fixed/published |
-| SciChart.js | 5.x / 5.2.11 package | 1.9 MB JS + ~1 MB WASM; 54–55 MB unpacked | ~250 ms empty-cache init |
+| **BlazePlot** | 0.3.4 | **139 KiB raw / 34 KiB gzip** | **0.3 ms render** (19 ms setup) |
+| Chart.js | 4.5.1 | 1,562 KB tarball (5.9 MB unpacked) | — |
+| Plotly.js | 3.5.0 | 4.6 MB min (1.4 MB gzip) | — |
+| LightningChart JS | 5.2.1 | 1.2–1.5 MB JS (25.5 MB unpacked) | — |
+| SciChart.js | 5.x | 1.9 MB JS + ~1 MB WASM | ~250 ms init |
 
-References: BlazePlot figures are from this release build and local first-frame benchmark described above. Chart.js: [v4.5.1 release](https://github.com/chartjs/Chart.js/releases/tag/v4.5.1), [npm registry](https://registry.npmjs.org/chart.js), [npmx v4.5.1](https://npmx.dev/package/chart.js/v/4.5.1). Plotly.js: [v3.5.0 tree](https://github.com/plotly/plotly.js/tree/v3.5.0), [dist README](https://github.com/plotly/plotly.js/blob/master/dist/README.md). LightningChart JS: [`@arction/lcjs` v5.2.1](https://www.npmjs.com/package/@arction/lcjs), [registry](https://registry.npmjs.org/%40arction%2Flcjs), [installation docs](https://lightningchart.com/js-charts/docs/5.2.1/installation/), [rendering-speed showcase](https://github.com/Lightning-Chart/lcjs-showcase-renderingSpeed). SciChart.js: [v5 docs](https://www.scichart.com/documentation/js/v5/whats-new/sdk-5.0/), [registry](https://registry.npmjs.org/scichart).
+References: BlazePlot — [this release build](https://github.com/Federicocervelli/blazeplot) and local benchmark. Chart.js — [v4.5.1](https://github.com/chartjs/Chart.js/releases/tag/v4.5.1). Plotly.js — [v3.5.0](https://github.com/plotly/plotly.js/tree/v3.5.0). LightningChart JS — [v5.2.1](https://www.npmjs.com/package/@arction/lcjs). SciChart.js — [v5](https://www.npmjs.com/package/scichart).
 
 ## Installation
 
@@ -613,27 +611,6 @@ These member tables are generated from TypeScript declarations.
 </details>
 <!-- README_DOCS_END -->
 
-## Architecture
-
-```
-src/
-  core/          # Data model — series, datasets, LOD
-  render/        # GPU abstraction + native WebGL2 backend
-  interaction/   # Camera, axis ticks, interaction intent types
-  ui/            # Orchestrator (Chart)
-```
-
-## Contributing
-
-Keep pull requests small and focused. One feature or fix per PR.
-
-Branch flow:
-
-- `development` is the integration branch for regular work.
-- Open feature/fix PRs into `development`.
-- Open release PRs from `development` into `main` with the version and changelog already updated.
-- Merging an unpublished version to `main` runs CI, publishes npm, creates the `vX.Y.Z` tag, and creates the GitHub Release.
-
 ## Development
 
 ```bash
@@ -648,4 +625,6 @@ bun run version:patch   # Prepare package.json + changelog for a patch release P
 bun run release:benchmarks  # Append benchmark results to the current release changelog
 ```
 
-Release and benchmark workflow details live in [docs/release-and-benchmarks.md](https://github.com/Federicocervelli/blazeplot/blob/main/docs/release-and-benchmarks.md).
+Branch flow: `development` is the integration branch for regular work; open feature/fix PRs into `development`. Open release PRs from `development` into `main` with version and changelog already updated. Release PRs publish npm and create the GitHub Release on merge.
+
+See [docs/release-and-benchmarks.md](https://github.com/Federicocervelli/blazeplot/blob/main/docs/release-and-benchmarks.md) for full workflow details.
