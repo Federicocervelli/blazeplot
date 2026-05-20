@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import packageJson from "./package.json" with { type: "json" };
 
-const pagesBase = process.env.BLAZEPLOT_PAGES_BASE ?? "/blazeplot/";
+const pagesBase = process.env.BLAZEPLOT_PAGES_BASE ?? "/";
 
 export default defineConfig({
   plugins: [tailwindcss()],
