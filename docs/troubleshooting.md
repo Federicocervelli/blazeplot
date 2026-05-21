@@ -2,6 +2,17 @@
 
 Use this page when a chart renders blank, feels slow, or behaves differently from the examples.
 
+## Start with the symptom
+
+| Symptom | Check first | Detailed section |
+|---|---|---|
+| Empty area or no plot | Host size, WebGL2, viewport, render loop, sorted finite data | [Blank chart](#blank-chart) |
+| Live view keeps resetting | Repeated `fitToData()` calls instead of `followX` | [Live chart keeps jumping away from the latest data](#live-chart-keeps-jumping-away-from-the-latest-data) |
+| Chart slows down over time | Per-point appends, chart recreation, hidden render loops, DOM overlays | [Performance drops over time](#performance-drops-over-time) |
+| Log axis fails | Zero or negative viewport values | [Log axis throws a domain error](#log-axis-throws-a-domain-error) |
+| React chart remounts | Unstable `options` identity or missing effect cleanup | [React chart recreates unexpectedly](#react-chart-recreates-unexpectedly) |
+| Screenshot omits controls | Controls live outside the chart root | [Screenshots miss external UI](#screenshots-miss-external-ui) |
+
 ## Blank chart
 
 Check these first:
