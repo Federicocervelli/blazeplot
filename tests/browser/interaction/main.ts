@@ -31,6 +31,8 @@ interface InteractionSnapshot {
   readonly crosshairX: number | null;
   readonly tooltipLeft: number | null;
   readonly renderEvents: number;
+  readonly followingLatestX: boolean;
+  readonly latestXFollowPaused: boolean;
   readonly error: string | null;
 }
 
@@ -142,6 +144,8 @@ window.__blazeplotInteractionTest = {
     crosshairX: crosshairX(),
     tooltipLeft: tooltipLeft(),
     renderEvents,
+    followingLatestX: chart.isFollowingLatestX(),
+    latestXFollowPaused: chart.isLatestXFollowPaused(),
     error,
   }),
   resetViewport: () => {

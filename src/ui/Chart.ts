@@ -314,6 +314,8 @@ export interface ChartPluginContext {
   setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number }): void;
   followLatestX(options?: ChartFollowXOptions): void;
   stopFollowingLatestX(): void;
+  isFollowingLatestX(): boolean;
+  isLatestXFollowPaused(): boolean;
   setXFollowPaused(paused: boolean): void;
   resumeXFollow(): void;
   resumeLatestXFollow(): void;
@@ -827,6 +829,14 @@ export class Chart implements ChartPluginContext {
     this.xFollowPaused = false;
     this.clearXFollowResumeTimer();
     this.requestRender();
+  }
+
+  isFollowingLatestX(): boolean {
+    return !!this.followXConfig && this.followXConfig.enabled !== false && !this.xFollowPaused;
+  }
+
+  isLatestXFollowPaused(): boolean {
+    return !!this.followXConfig && this.xFollowPaused;
   }
 
   setXFollowPaused(paused: boolean): void {

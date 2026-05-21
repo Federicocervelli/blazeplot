@@ -60,6 +60,8 @@ interface InteractionSnapshot {
   crosshairX: number | null;
   tooltipLeft: number | null;
   renderEvents: number;
+  followingLatestX: boolean;
+  latestXFollowPaused: boolean;
   error?: string | null;
 }
 
@@ -163,12 +165,24 @@ async function runLiveFollowCase(options: Options, serverUrl: string): Promise<v
     await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
     await sleep(40);
     snapshot = await getRequiredSnapshot(cdp);
-    assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1), "setViewport pauses live follow for interaction-style changes");
+    assert(snapshot.latestXFollowPaused, "setViewport pauses live follow for interaction-style changes");
+    assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1), "setViewport applies the requested historical viewport while paused");
 
+    const center = centerOf(snapshot.canvasRect);
+    await doubleClick(cdp, center.x, center.y);
+    await sleep(80);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.followingLatestX, "double-click reset resumes latest-X follow by default");
+    assert(snapshot.viewport.xMax >= epochLikeX + 1_100, "double-click reset returns a live-follow chart to the latest x window");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(40);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.latestXFollowPaused, "setViewport can pause live follow again after reset");
     await sleep(180);
     snapshot = await getRequiredSnapshot(cdp);
-    assert(snapshot.viewport.xMax >= epochLikeX + 1_100, "resumeAfterMs resumes live follow after inactivity");
-    console.log("✓ live follow: helper pins, pauses, and resumes the rolling x window");
+    assert(snapshot.viewport.xMax >= epochLikeX + 1_200, "resumeAfterMs resumes live follow after inactivity");
+    console.log("✓ live follow: helper pins, pauses, reset-resumes, and auto-resumes the rolling x window");
   } finally {
     cdp.close();
   }
