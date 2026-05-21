@@ -158,6 +158,14 @@ describe("SeriesStore", () => {
     expect(series.dataBounds({ xMin: 10 })).toBeNull();
   });
 
+  it("exposes x range even when latest samples are gaps", () => {
+    const series = makeSeries();
+    series.append({ x: [1, 2, 3], y: [4, NaN, NaN] });
+
+    expect(series.xRange).toEqual({ start: 1, end: 3 });
+    expect(series.dataBounds()).toEqual({ xMin: 1, xMax: 1, yMin: 4, yMax: 4 });
+  });
+
   it("appends y-only batches to datasets that support implicit x", () => {
     const series = new SeriesStore(
       new UniformRingBuffer(4, { xStart: 10, xStep: 5 }),

@@ -946,8 +946,8 @@ export class Chart implements ChartPluginContext {
     for (const series of candidates) {
       if (!this.series.includes(series)) continue;
       if (visibleOnly && !series.visible) continue;
-      const bounds = series.dataBounds();
-      if (bounds) xMax = Math.max(xMax, bounds.xMax);
+      const range = series.xRange;
+      if (range) xMax = Math.max(xMax, range.end);
     }
     if (!Number.isFinite(xMax)) return;
 
