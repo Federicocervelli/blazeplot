@@ -165,7 +165,7 @@ describe("SeriesStore", () => {
       { color: [1, 1, 1, 1], lineWidth: 1 },
     );
 
-    series.appendY(new Float32Array([4, -1, 7]));
+    series.append({ y: new Float32Array([4, -1, 7]) });
 
     expect(series.length).toBe(3);
     const raw = new Float32Array(6);
@@ -174,7 +174,16 @@ describe("SeriesStore", () => {
     expect(Array.from(raw)).toEqual([10, 4, 15, -1, 20, 7]);
   });
 
-  it("appends and updates OHLC datasets through the series so on-demand charts become dirty", () => {
+  it("appends XY samples through the generic series API", () => {
+    const series = makeSeries();
+    series.append({ x: new Float64Array([1, 2, 3]), y: new Float32Array([4, 5, 6]) });
+    series.append({ x: 4, y: 7 });
+
+    expect(series.length).toBe(4);
+    expect(series.sampleAt(3)).toEqual({ index: 3, x: 4, y: 7 });
+  });
+
+  it("appends and updates OHLC datasets through the generic series API so on-demand charts become dirty", () => {
     let dirtyCount = 0;
     const dataset = new OhlcRingBuffer(8);
     const series = new SeriesStore(
@@ -184,12 +193,12 @@ describe("SeriesStore", () => {
       () => { dirtyCount += 1; },
     );
 
-    series.appendOhlc([10], [1], [2], [0.5], [1.5]);
+    series.append({ x: 10, open: 1, high: 2, low: 0.5, close: 1.5 });
     expect(dataset.length).toBe(1);
     expect(dataset.getClose(0)).toBe(1.5);
     expect(dirtyCount).toBe(1);
 
-    expect(series.updateLastOhlc(1.5, 3, 1, 2.5)).toBe(true);
+    expect(series.updateLast({ open: 1.5, high: 3, low: 1, close: 2.5 })).toBe(true);
     expect(dataset.getOpen(0)).toBe(1.5);
     expect(dataset.getHigh(0)).toBe(3);
     expect(dataset.getLow(0)).toBe(1);
