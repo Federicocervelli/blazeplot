@@ -198,8 +198,24 @@ function renderPublicExports(exports) {
   ].join("\n");
 }
 
-function renderGeneratedDocs() {
+function renderGuideLinks(basePath) {
+  const prefix = basePath ? `${basePath.replace(/\/$/, "")}/` : "";
+  return [
+    `[Overview](${prefix}overview.md)`,
+    `[Examples](${prefix}examples.md)`,
+    `[Data semantics](${prefix}data-semantics.md)`,
+    `[Performance recipes](${prefix}performance-recipes.md)`,
+    `[Built-in plugins](${prefix}built-in-plugins.md)`,
+    `[Plugin authoring](${prefix}plugin-authoring.md)`,
+    `[Theming and layout](${prefix}theming-and-layout.md)`,
+    `[Troubleshooting](${prefix}troubleshooting.md)`,
+    `[Roadmap](${prefix}roadmap.md)`,
+  ].join(", ");
+}
+
+function renderGeneratedDocs(options = {}) {
   const publicExports = collectPublicExports();
+  const guideBasePath = options.guideBasePath ?? "";
   const commonApiMap = [
     "This page is generated from the built package. Use it as an index of import paths and public symbols; the guide pages explain when to use each feature.",
     "",
@@ -219,7 +235,7 @@ function renderGeneratedDocs() {
     "| Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |",
     "| Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |",
     "",
-    "Guides: [Overview](./overview.md), [Examples](./examples.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), [Built-in plugins](./built-in-plugins.md), and [Plugin authoring](./plugin-authoring.md).",
+    `Guides: ${renderGuideLinks(guideBasePath)}.`,
   ].join("\n");
 
   const parts = [
@@ -230,6 +246,8 @@ function renderGeneratedDocs() {
     "",
     renderEntrypoints(),
     "",
+    "The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; use the README performance section for the aggregate core runtime size.",
+    "",
     renderBundleSizeSummary(),
   ];
   parts.push("", renderPublicExports(publicExports));
@@ -237,14 +255,15 @@ function renderGeneratedDocs() {
   return parts.join("\n");
 }
 
-const generatedBlock = renderGeneratedDocs();
-const generated = generatedBlock
+const apiGeneratedBlock = renderGeneratedDocs({ guideBasePath: "." });
+const apiGenerated = apiGeneratedBlock
   .replace(startMarker, "")
   .replace(endMarker, "")
   .trim();
 
-writeFileSync(apiReferencePath, `${generated}\n`);
+writeFileSync(apiReferencePath, `${apiGenerated}\n`);
 if (existsSync(readmePath)) {
+  const readmeGeneratedBlock = renderGeneratedDocs({ guideBasePath: "docs" });
   const readme = readFileSync(readmePath, "utf-8");
   const start = readme.indexOf(startMarker);
   const end = readme.indexOf(endMarker);
@@ -253,7 +272,7 @@ if (existsSync(readmePath)) {
   }
   const before = readme.slice(0, start);
   const after = readme.slice(end + endMarker.length);
-  writeFileSync(readmePath, `${before}${generatedBlock}${after}`);
+  writeFileSync(readmePath, `${before}${readmeGeneratedBlock}${after}`);
 }
 console.log("Generated docs/api-reference.md from TypeScript declarations.");
 console.log("Updated README generated docs section.");

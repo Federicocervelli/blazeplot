@@ -51,4 +51,5 @@ Use this checklist in PR descriptions for docs changes.
 | `docs/built-in-plugins.md` | Optional plugin usage and plugin handles |
 | `docs/plugin-authoring.md` | Public plugin contract for custom UI/behavior |
 | `docs/theming-and-layout.md` | Theme tokens, axes, gutters, and responsive layout |
+| `docs/troubleshooting.md` | Common blank-chart, lifecycle, performance, axis, React, and screenshot failures |
 | `docs/api-reference.md` | Generated import paths and public symbols |

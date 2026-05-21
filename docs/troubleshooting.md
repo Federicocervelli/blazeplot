@@ -1,0 +1,75 @@
+# Troubleshooting
+
+Use this page when a chart renders blank, feels slow, or behaves differently from the examples.
+
+## Blank chart
+
+Check these first:
+
+1. **The host element has size.** BlazePlot fills its container; a `0px`-tall parent produces a `0px` plot.
+2. **The browser supports WebGL2.** BlazePlot does not include a Canvas2D or SVG fallback. Use `isWebGL2Available()` if you need to show a fallback UI.
+3. **The chart has a viewport.** Call `chart.fitToData()` after adding initial series, or set a viewport explicitly with `chart.setViewport(...)`.
+4. **The render loop is running.** Call `chart.start()` for animated/live charts. If you only need one frame, interactions and screenshots call into the render path as needed, but app code usually starts the loop.
+5. **The data is finite and sorted.** Built-in datasets expect ascending X values. Non-finite Y values create gaps.
+
+```ts
+import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
+
+if (!isWebGL2Available()) {
+  showUnsupportedBrowserMessage();
+} else {
+  const chart = new Chart(element);
+  chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+  chart.fitToData({ padding: 0.05 });
+  chart.start();
+}
+```
+
+## Live chart keeps jumping away from the latest data
+
+For live telemetry, prefer `followX` over repeatedly calling `fitToData()` on every sample. `fitToData()` is best for initial setup and explicit reset actions; `followX` keeps a fixed-width window pinned to the newest sample.
+
+```ts
+const chart = new Chart(element, {
+  followX: { window: 60_000, pauseOnInteraction: true },
+  autoFitY: { padding: { y: 0.1 } },
+});
+```
+
+If the user pans or zooms and `pauseOnInteraction` is enabled, call `chart.resumeXFollow()` when they click your "live" button.
+
+## Performance drops over time
+
+- Append batches instead of single points when possible.
+- Use `UniformRingBuffer` for fixed-rate signals so X values are derived instead of copied.
+- Keep chart instances alive; update datasets instead of recreating charts.
+- Call `chart.stop()` when a chart is hidden, and `chart.dispose()` when it is removed.
+- Avoid large DOM overlays in hot paths. Legends, tooltips, annotation labels, and custom plugins still do DOM work.
+
+See [Performance recipes](./performance-recipes.md) for deeper guidance.
+
+## Log axis throws a domain error
+
+A log axis requires a positive viewport. If your data can contain zero or negative values, use `scale: "symlog"` or keep the axis linear.
+
+```ts
+const chart = new Chart(element, {
+  axes: {
+    y: { scale: "symlog", symlogConstant: 1 },
+  },
+});
+```
+
+## React chart recreates unexpectedly
+
+`BlazeChart` recreates the chart when the `options` object identity changes. Keep options stable with `useMemo`, and clean up your own timers, workers, and subscriptions in effects.
+
+```tsx
+const options = useMemo(() => ({ plugins: [interactionsPlugin()] }), []);
+
+return <BlazeChart options={options} onChart={setupChart} />;
+```
+
+## Screenshots miss external UI
+
+`chart.screenshot()` captures the WebGL plot plus BlazePlot-owned DOM overlays and layout reservations. It does not capture controls you render elsewhere in the page. Put plugin UI inside the chart root, or compose your app-level screenshot separately.

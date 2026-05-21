@@ -34,6 +34,7 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 ## Reducing per-frame work
 
 - Create charts once. Update datasets and keep the chart's `start()` loop running instead of recreating the chart.
+- Call `chart.start()` once for an active chart lifecycle, or after a matching `chart.stop()`. Do not call it repeatedly from reactive render paths.
 - Use `chart.stop()` when a chart is hidden or inactive, then `chart.start()` again when it should resume rendering.
 - Remove unused series with `chart.removeSeries(series)`.
 - Dispose charts on unmount with `chart.dispose()`.

@@ -1,6 +1,6 @@
 # Examples
 
-These are small patterns you can copy into an app. For complete runnable cases, open the [interactive previews](#previews) in the docs site. If you are new to BlazePlot, start with the [Overview](./overview.md) first.
+These are small patterns you can copy into an app. For complete runnable cases, open the [interactive previews](https://blazeplot.cervelli.dev/previews). If you are new to BlazePlot, start with the [Overview](./overview.md) first.
 
 ## Choose a starting point
 
@@ -44,13 +44,15 @@ Use a ring buffer when old samples can fall out of the visible history window.
 import { Chart, RingBuffer } from "blazeplot";
 
 const dataset = new RingBuffer(60_000, { overflow: "wrap" });
-const chart = new Chart(element);
+const chart = new Chart(element, {
+  followX: { window: 60_000, pauseOnInteraction: true },
+  autoFitY: { padding: { y: 0.1 } },
+});
 chart.addLine({ dataset, name: "live" });
 chart.start();
 
 const timer = setInterval(() => {
   dataset.push(Date.now(), Math.random());
-  chart.fitToData({ x: true, y: true });
 }, 100);
 
 const cleanup = () => {
@@ -59,7 +61,7 @@ const cleanup = () => {
 };
 ```
 
-Keep appended X values sorted. See [Data semantics](./data-semantics.md) and [Performance recipes](./performance-recipes.md) for the details.
+Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. Use `chart.resumeXFollow()` from a "live" button if the user pans away and wants to jump back. See [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
 
 If samples arrive at a fixed interval, prefer `UniformRingBuffer`:
 
@@ -86,6 +88,30 @@ const cleanup = () => {
 ```
 
 `chart.start()` owns the animation loop, so dataset changes are picked up on the next frame. Stop the loop with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
+
+
+## Server-sampled min/max buckets
+
+Use `ServerSampledDataset` when your backend already reduced dense history into min/max buckets. Pass `downsample: "server"` so BlazePlot renders the supplied envelope directly instead of applying another client-side sampler.
+
+```ts
+import { Chart, ServerSampledDataset } from "blazeplot";
+
+const dataset = new ServerSampledDataset({
+  kind: "minmax",
+  xStart: bucketStarts,
+  xEnd: bucketEnds,
+  minY: bucketMins,
+  maxY: bucketMaxes,
+});
+
+const chart = new Chart(element);
+chart.addLine({ dataset, name: "server buckets", downsample: "server" });
+chart.fitToData();
+chart.start();
+```
+
+Bucket ranges should be sorted and non-overlapping for predictable picking, bounds, and visible-data export. Use `dataset.replace(...)` when a new viewport response arrives.
 
 ## Financial OHLC and candlesticks
 

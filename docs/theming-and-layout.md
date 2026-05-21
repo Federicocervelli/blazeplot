@@ -36,6 +36,23 @@ Theme values are merged with the default theme, so you can override only the tok
 - Use `axes: { x: { position: "inside" }, y: { position: "inside" } }` when space is tight.
 - Titles and axis titles are built-in DOM text overlays and are included in `chart.screenshot()` output.
 
+Axis options live under `ChartOptions.axes`. Use them for time ticks, log/symlog scales, category labels, custom tick formatting, reversed axes, and left/right Y-axis placement.
+
+```ts
+const chart = new Chart(element, {
+  axes: {
+    x: { scale: "time", timezone: "utc", title: "Time" },
+    y: { scale: "symlog", symlogConstant: 1, title: "Latency" },
+    y2: { visible: true, position: "outside", title: "Requests" },
+  },
+});
+
+chart.addLine({ dataset: latencyDataset, name: "p95 latency" });
+chart.addBar({ dataset: requestDataset, name: "requests", yAxis: "right" });
+```
+
+Use `scale: "log"` only for positive domains. Use `scale: "symlog"` when values can cross zero. For categorical axes, pass numeric category indexes as data and provide labels with `categories`.
+
 ## Plugin layout
 
 Plugins that need space outside the plot should use `chart.setLayoutReservation(id, reservation)`. This avoids overlapping axes and keeps screenshots consistent. Plot overlays, such as crosshairs or custom markers, should attach to `chart.plotElement`.

@@ -7,9 +7,11 @@ import examples from "../../docs/examples.md?raw";
 import overview from "../../docs/overview.md?raw";
 import performanceRecipes from "../../docs/performance-recipes.md?raw";
 import releaseBenchmarks from "../../docs/release-and-benchmarks.md?raw";
+import roadmap from "../../docs/roadmap.md?raw";
 import versioningMigration from "../../docs/versioning-and-migration.md?raw";
 import pluginAuthoring from "../../docs/plugin-authoring.md?raw";
 import themingLayout from "../../docs/theming-and-layout.md?raw";
+import troubleshooting from "../../docs/troubleshooting.md?raw";
 
 export interface DocPage {
   readonly slug: string;
@@ -67,6 +69,12 @@ export const DOC_PAGES: readonly DocPage[] = [
     markdown: themingLayout,
   },
   {
+    slug: "troubleshooting",
+    title: "Troubleshooting",
+    description: "Fix blank charts, live viewport issues, performance drift, and common React mistakes.",
+    markdown: troubleshooting,
+  },
+  {
     slug: "browser-support",
     title: "Browser",
     description: "Runtime requirements and WebGL2 support expectations.",
@@ -83,6 +91,12 @@ export const DOC_PAGES: readonly DocPage[] = [
     title: "Release",
     description: "Release flow, benchmark commands, and how to read generated performance tables.",
     markdown: releaseBenchmarks,
+  },
+  {
+    slug: "roadmap",
+    title: "Roadmap",
+    description: "Current status, near-term priorities, and non-goals for BlazePlot.",
+    markdown: roadmap,
   },
   {
     slug: "documentation-contributions",
@@ -102,8 +116,8 @@ export const DOC_NAV_SECTIONS: readonly DocNavSection[] = [
   { title: "Start", slugs: ["overview", "examples"] },
   { title: "Core", slugs: ["data-semantics", "performance-recipes"] },
   { title: "UI", slugs: ["built-in-plugins", "theming-and-layout", "plugin-authoring"] },
-  { title: "Reference", slugs: ["browser-support", "api-reference"] },
-  { title: "Maintainers", slugs: ["versioning-and-migration", "release-and-benchmarks", "documentation-contributions"] },
+  { title: "Reference", slugs: ["troubleshooting", "browser-support", "api-reference"] },
+  { title: "Maintainers", slugs: ["versioning-and-migration", "release-and-benchmarks", "roadmap", "documentation-contributions"] },
 ] as const;
 
 export function getDocPage(slug: string | undefined): DocPage {
