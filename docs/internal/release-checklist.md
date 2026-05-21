@@ -2,6 +2,8 @@
 
 Use this checklist for the PR that promotes `development` to `main` and publishes a new npm version.
 
+Related workflow reference: [GitHub workflow runbook](./github-workflows.md).
+
 ## 1. Prepare the candidate on `development`
 
 ```bash

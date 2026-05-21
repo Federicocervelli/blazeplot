@@ -2,6 +2,8 @@
 
 This runbook collects the commands maintainers use most often while changing BlazePlot. It is intentionally operational: copy the command, run it, and know what it proves.
 
+Related workflow reference: [GitHub workflow runbook](./github-workflows.md).
+
 ## Setup
 
 ```bash
