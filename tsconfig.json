@@ -5,6 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "moduleDetection": "force",
+    "types": ["bun"],
     "jsx": "react-jsx",
     "allowJs": false,
     "allowImportingTsExtensions": true,
@@ -19,6 +20,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
 
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
