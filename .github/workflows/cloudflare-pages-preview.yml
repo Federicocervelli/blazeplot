@@ -83,7 +83,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: bun
-          wranglerVersion: "4"
+          wranglerVersion: "3.114.17"
           preCommands: wrangler pages project create ${{ env.CLOUDFLARE_PAGES_PROJECT }} --production-branch main || true
           command: pages deploy build/pages --project-name=${{ env.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ steps.branch.outputs.name }} --commit-hash=${{ steps.branch.outputs.sha }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
