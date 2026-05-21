@@ -7,6 +7,7 @@ import ts from "typescript";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const apiReferencePath = resolve(root, "docs/api-reference.md");
+const readmePath = resolve(root, "README.md");
 const packagePath = resolve(root, "package.json");
 const distIndexPath = resolve(root, "dist/index.d.ts");
 
@@ -236,10 +237,23 @@ function renderGeneratedDocs() {
   return parts.join("\n");
 }
 
-const generated = renderGeneratedDocs()
+const generatedBlock = renderGeneratedDocs();
+const generated = generatedBlock
   .replace(startMarker, "")
   .replace(endMarker, "")
   .trim();
 
 writeFileSync(apiReferencePath, `${generated}\n`);
+if (existsSync(readmePath)) {
+  const readme = readFileSync(readmePath, "utf-8");
+  const start = readme.indexOf(startMarker);
+  const end = readme.indexOf(endMarker);
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error("README generated docs markers were not found.");
+  }
+  const before = readme.slice(0, start);
+  const after = readme.slice(end + endMarker.length);
+  writeFileSync(readmePath, `${before}${generatedBlock}${after}`);
+}
 console.log("Generated docs/api-reference.md from TypeScript declarations.");
+console.log("Updated README generated docs section.");

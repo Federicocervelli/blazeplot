@@ -2,6 +2,7 @@ import apiReference from "../../docs/api-reference.md?raw";
 import browserSupport from "../../docs/browser-support.md?raw";
 import builtInPlugins from "../../docs/built-in-plugins.md?raw";
 import dataSemantics from "../../docs/data-semantics.md?raw";
+import documentationContributions from "../../docs/documentation-contributions.md?raw";
 import examples from "../../docs/examples.md?raw";
 import overview from "../../docs/overview.md?raw";
 import performanceRecipes from "../../docs/performance-recipes.md?raw";
@@ -84,6 +85,12 @@ export const DOC_PAGES: readonly DocPage[] = [
     markdown: releaseBenchmarks,
   },
   {
+    slug: "documentation-contributions",
+    title: "Docs process",
+    description: "How to make BlazePlot docs concrete, source-checked, and useful.",
+    markdown: documentationContributions,
+  },
+  {
     slug: "api-reference",
     title: "API reference",
     description: "Generated package entry point, symbol, bundle size, and public API reference.",
@@ -96,7 +103,7 @@ export const DOC_NAV_SECTIONS: readonly DocNavSection[] = [
   { title: "Core", slugs: ["data-semantics", "performance-recipes"] },
   { title: "UI", slugs: ["built-in-plugins", "theming-and-layout", "plugin-authoring"] },
   { title: "Reference", slugs: ["browser-support", "api-reference"] },
-  { title: "Maintainers", slugs: ["versioning-and-migration", "release-and-benchmarks"] },
+  { title: "Maintainers", slugs: ["versioning-and-migration", "release-and-benchmarks", "documentation-contributions"] },
 ] as const;
 
 export function getDocPage(slug: string | undefined): DocPage {
