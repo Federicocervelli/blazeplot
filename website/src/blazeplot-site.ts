@@ -668,8 +668,8 @@ export class BlazeplotSite extends LitElement {
         scatterSeries?.appendY(new Float32Array(batch.spikeY));
         barSeries?.appendY(new Float32Array(batch.barY));
       }
-      if (batch.ohlcCount > 0 && ohlcDataset && batch.ohlcX && batch.ohlcOpen && batch.ohlcHigh && batch.ohlcLow && batch.ohlcClose) {
-        ohlcDataset.append(new Float64Array(batch.ohlcX), new Float32Array(batch.ohlcOpen), new Float32Array(batch.ohlcHigh), new Float32Array(batch.ohlcLow), new Float32Array(batch.ohlcClose));
+      if (batch.ohlcCount > 0 && ohlcSeries && batch.ohlcX && batch.ohlcOpen && batch.ohlcHigh && batch.ohlcLow && batch.ohlcClose) {
+        ohlcSeries.appendOhlc(new Float64Array(batch.ohlcX), new Float32Array(batch.ohlcOpen), new Float32Array(batch.ohlcHigh), new Float32Array(batch.ohlcLow), new Float32Array(batch.ohlcClose));
       }
       t = batch.end;
       appendedSinceStats += batch.batchSize;
@@ -1142,7 +1142,7 @@ export class BlazeplotSite extends LitElement {
 
     const connectLiveTrades = (): void => {
       socket?.close();
-      liveDataset.clear();
+      liveSeries.clear();
       currentBucketStart = NaN;
       currentOpen = NaN;
       currentHigh = NaN;
@@ -1202,12 +1202,12 @@ export class BlazeplotSite extends LitElement {
         currentHigh = price;
         currentLow = price;
         currentClose = price;
-        liveDataset.push(bucketStart, currentOpen, currentHigh, currentLow, currentClose);
+        liveSeries.appendOhlc([bucketStart], [currentOpen], [currentHigh], [currentLow], [currentClose]);
       } else {
         currentHigh = Math.max(currentHigh, price);
         currentLow = Math.min(currentLow, price);
         currentClose = price;
-        liveDataset.updateLast(currentOpen, currentHigh, currentLow, currentClose);
+        liveSeries.updateLastOhlc(currentOpen, currentHigh, currentLow, currentClose);
       }
       tradeCount += 1;
       if (liveDataset.length === 1) liveChart.fitToData({ padding: { x: 0.1, y: 0.1 } });
@@ -1468,8 +1468,8 @@ export class BlazeplotSite extends LitElement {
     if (this.homeDataMode === "streaming") {
       const dataset = new UniformRingBuffer(count * 2);
       for (let i = 0; i < count; i += 1) dataset.push(i, this.homeSignal(i, 0));
-      chart.addLine({ dataset, name: "line" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
-      return { append: (x) => dataset.push(x, this.homeSignal(x, 0)) };
+      const series = chart.addLine({ dataset, name: "line" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
+      return { append: (x) => series.append([x], [this.homeSignal(x, 0)]) };
     }
 
     const x = new Float32Array(count);
@@ -1487,8 +1487,8 @@ export class BlazeplotSite extends LitElement {
     if (this.homeDataMode === "streaming") {
       const datasets = colors.map(() => new UniformRingBuffer(count * 2));
       for (let i = 0; i < count; i += 1) datasets.forEach((dataset, index) => dataset.push(i, this.homeSignal(i, index)));
-      datasets.forEach((dataset, index) => chart.addLine({ dataset, name: `series ${index + 1}` }, { color: colors[index]!, lineWidth: 1.5 }));
-      return { append: (x) => datasets.forEach((dataset, index) => dataset.push(x, this.homeSignal(x, index))) };
+      const series = datasets.map((dataset, index) => chart.addLine({ dataset, name: `series ${index + 1}` }, { color: colors[index]!, lineWidth: 1.5 }));
+      return { append: (x) => series.forEach((item, index) => item.append([x], [this.homeSignal(x, index)])) };
     }
 
     for (let series = 0; series < colors.length; series += 1) {
@@ -1506,18 +1506,26 @@ export class BlazeplotSite extends LitElement {
   private addHomeOhlcSeries(chart: Chart, count: number): { append: (x: number) => void } | null {
     const dataset = new OhlcRingBuffer(this.homeDataMode === "streaming" ? count * 2 : count);
     for (let i = 0; i < count; i += 1) this.pushHomeOhlc(dataset, i);
-    chart.addOhlc(
+    const series = chart.addOhlc(
       { dataset, name: "ohlc" },
       { color: [0.78, 0.82, 0.9, 1], upColor: [0.2, 0.8, 0.45, 1], downColor: [0.988, 0.29, 0.02, 1], wickColor: [0.72, 0.76, 0.84, 1], tickWidth: 0.7 },
     );
-    return this.homeDataMode === "streaming" ? { append: (x) => this.pushHomeOhlc(dataset, x) } : null;
+    return this.homeDataMode === "streaming" ? { append: (x) => {
+      const [open, high, low, close] = this.homeOhlcValues(x);
+      series.appendOhlc([x], [open], [high], [low], [close]);
+    } } : null;
   }
 
   private pushHomeOhlc(dataset: OhlcRingBuffer, x: number): void {
+    const [open, high, low, close] = this.homeOhlcValues(x);
+    dataset.push(x, open, high, low, close);
+  }
+
+  private homeOhlcValues(x: number): readonly [number, number, number, number] {
     const open = this.homeSignal(x - 1, 0) * 0.75;
     const close = this.homeSignal(x, 0) * 0.75;
     const spread = 0.12 + Math.abs(Math.sin(x * 0.19)) * 0.08;
-    dataset.push(x, open, Math.max(open, close) + spread, Math.min(open, close) - spread, close);
+    return [open, Math.max(open, close) + spread, Math.min(open, close) - spread, close];
   }
 
   private homeSignal(x: number, phase: number): number {
