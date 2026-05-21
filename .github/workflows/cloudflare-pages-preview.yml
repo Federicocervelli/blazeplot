@@ -1,10 +1,6 @@
 name: Cloudflare Pages Preview
 
 on:
-  push:
-    branches-ignore:
-      - main
-      - development
   workflow_dispatch:
 
 env:
@@ -33,6 +29,10 @@ jobs:
       - name: Resolve branch metadata
         id: branch
         run: |
+          if [ "${GITHUB_REF_NAME}" = "main" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
+            echo "::error::Cloudflare previews are only for feature branches. Use GitHub Pages for main/development."
+            exit 1
+          fi
           echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
