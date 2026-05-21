@@ -56,6 +56,8 @@ The API token needs Cloudflare Pages edit access for the account that owns the P
 
 When those secrets are absent, the workflow exits successfully after a notice and skips the build/deploy steps. That keeps feature branch PRs green before Cloudflare is configured.
 
+This repository has the required Cloudflare secrets configured. If preview deploys start skipping again, check whether those repository secrets were removed or expired.
+
 ## Release
 
 File: `.github/workflows/release.yml`
