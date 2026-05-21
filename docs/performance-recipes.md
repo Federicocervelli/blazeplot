@@ -2,6 +2,17 @@
 
 BlazePlot is fast when the data model and the visible range match how the renderer works. The most important rules are simple: keep X sorted, batch writes, avoid rebuilding charts, and let LOD handle dense views.
 
+## Decision guide
+
+| Situation | Prefer | Why |
+|---|---|---|
+| Appending irregular telemetry | `RingBuffer` with batched `append(...)` | Keeps a bounded rolling history without reallocating arrays. |
+| Appending fixed-rate telemetry | `UniformRingBuffer.appendY(...)` | Avoids storing repeated X values. |
+| Rendering dense historical ranges | Built-in LOD or `ServerSampledDataset` | Reduces visible work while preserving extrema. |
+| Rendering a small exact viewport | `downsample: "none"` | Avoids sampler overhead when visible points are already bounded. |
+| Backend already has min/max buckets | `ServerSampledDataset` + `downsample: "server"` | Prevents double-sampling on the client. |
+| Chart is hidden but still mounted | `chart.stop()` | Avoids unnecessary frames; call `chart.start()` when visible again. |
+
 ## Streaming data
 
 - Use `RingBuffer` for irregular live samples and `UniformRingBuffer` for fixed-rate samples.

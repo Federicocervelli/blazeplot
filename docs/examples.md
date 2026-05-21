@@ -4,6 +4,8 @@ These are small patterns you can copy into an app. For complete runnable cases, 
 
 ## Choose a starting point
 
+Use this table before reaching for a generic chart example. The dataset choice determines memory use, update cost, picking, export behavior, and whether client-side LOD can help.
+
 | If you have | Use |
 |---|---|
 | Fixed X/Y arrays | `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` |
@@ -15,6 +17,18 @@ These are small patterns you can copy into an app. For complete runnable cases, 
 | Multiple charts sharing an X range | `createLinkedCharts` from `blazeplot/linked` |
 
 All built-in datasets expect sorted X values. If source data arrives out of order, sort it before constructing the dataset or write a custom dataset that exposes sorted logical access.
+
+## Example structure
+
+Most examples follow the same lifecycle:
+
+1. create a sized host element;
+2. create a dataset that matches the data source;
+3. create one chart instance;
+4. add one or more series;
+5. initialize the viewport with `fitToData()` or live-window options;
+6. call `chart.start()` once;
+7. clean up timers, subscriptions, workers, plugin handles, and the chart when the owner unmounts.
 
 ## Basic line chart
 
@@ -88,7 +102,6 @@ const cleanup = () => {
 ```
 
 `chart.start()` owns the animation loop, so dataset changes are picked up on the next frame. Stop the loop with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
-
 
 ## Server-sampled min/max buckets
 
