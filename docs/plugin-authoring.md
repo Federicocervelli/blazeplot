@@ -33,7 +33,9 @@ export function examplePlugin(): ChartPlugin {
 - `chart.pick(clientX, clientY)` for nearest raw sample data.
 - `chart.clientToData(...)` and `chart.dataToPlot(...)` for coordinate conversion.
 - `chart.theme` and the `themechange` event for theme-aware UI.
-- `chart.start()` keeps plugin state changes visible on the next animation frame; use `chart.stop()` only when the chart should pause rendering.
+- `chart.subscribe("render", ...)` for plugin UI that needs to follow the chart's current viewport or frame stats.
+
+The app that owns the chart controls `chart.start()` and `chart.stop()`. Plugin code should update plugin-owned DOM or state from subscribed chart events and clean up its own resources when disposed.
 
 ## Layout guidance
 
