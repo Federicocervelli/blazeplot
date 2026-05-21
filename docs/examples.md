@@ -48,10 +48,15 @@ const chart = new Chart(element);
 chart.addLine({ dataset, name: "live" });
 chart.start();
 
-setInterval(() => {
+const timer = setInterval(() => {
   dataset.push(Date.now(), Math.random());
   chart.fitToData({ x: true, y: true });
 }, 100);
+
+const cleanup = () => {
+  clearInterval(timer);
+  chart.dispose();
+};
 ```
 
 Keep appended X values sorted. See [Data semantics](./data-semantics.md) and [Performance recipes](./performance-recipes.md) for the details.
@@ -70,12 +75,17 @@ const chart = new Chart(element);
 chart.addLine({ dataset, name: "signal" });
 chart.start();
 
-setInterval(() => {
+const timer = setInterval(() => {
   dataset.appendY(new Float32Array([Math.random(), Math.random(), Math.random()]));
 }, 50);
+
+const cleanup = () => {
+  clearInterval(timer);
+  chart.dispose();
+};
 ```
 
-`chart.start()` owns the animation loop, so dataset changes are picked up on the next frame. Stop the loop with `chart.stop()` if the chart is temporarily hidden, and call `chart.dispose()` when it is removed.
+`chart.start()` owns the animation loop, so dataset changes are picked up on the next frame. Stop the loop with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
 
 ## Financial OHLC and candlesticks
 
