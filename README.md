@@ -125,8 +125,8 @@ This page is generated from the built package. Use it as an index of import path
 |---|---|
 | Create and render a chart | `createChart(...)` for common static charts; `Chart`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` for manual lifecycle control |
 | Static X/Y arrays or object rows | `createChart(...)`, `StaticDataset`, `StaticDataset.fromObjects(...)` |
-| Live irregular data | `RingBuffer` |
-| Live fixed-rate data | `UniformRingBuffer` |
+| Live irregular data | `chart.addLine({ capacity })`, `RingBuffer`, [Live data](docs/live-data.md) |
+| Live fixed-rate data | `chart.addLine({ capacity, xStep })`, `UniformRingBuffer`, [Live data](docs/live-data.md) |
 | OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |
 | Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |
 | Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |
@@ -135,7 +135,7 @@ This page is generated from the built package. Use it as an index of import path
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
 
-Guides: [Docs map](docs/README.md), [Overview](docs/overview.md), [Examples](docs/examples.md), [Data semantics](docs/data-semantics.md), [Performance recipes](docs/performance-recipes.md), [Built-in plugins](docs/built-in-plugins.md), [Plugin authoring](docs/plugin-authoring.md), [Theming and layout](docs/theming-and-layout.md), [Troubleshooting](docs/troubleshooting.md), [Browser support](docs/browser-support.md), [Migration](docs/versioning-and-migration.md), [Roadmap](docs/roadmap.md).
+Guides: [Docs map](docs/README.md), [Overview](docs/overview.md), [Examples](docs/examples.md), [Live data](docs/live-data.md), [Data semantics](docs/data-semantics.md), [Performance recipes](docs/performance-recipes.md), [Built-in plugins](docs/built-in-plugins.md), [Plugin authoring](docs/plugin-authoring.md), [Theming and layout](docs/theming-and-layout.md), [Troubleshooting](docs/troubleshooting.md), [Browser support](docs/browser-support.md), [Migration](docs/versioning-and-migration.md), [Roadmap](docs/roadmap.md).
 
 ### Package entry points
 
@@ -184,12 +184,12 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-DNFSrD8o.js` | 53.2 KiB |
-| shared RingBuffer chunk | `dist/RingBuffer-DKebdYRz.js` | 34.7 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-kclkVNw-.js` | 18.7 KiB |
+| shared Chart chunk | `dist/Chart-CO0tCgXP.js` | 54.7 KiB |
+| shared streaming data chunk | `dist/UniformRingBuffer-DLAObqFn.js` | 44.2 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-C-ffn2gE.js` | 9.9 KiB |
 | shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-Bs4aiO8a.js` | 21.3 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DTnlaoIp.js` | 2.1 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-Bz1_9QVj.js` | 2.1 KiB |
 | lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
 | shared Tooltip chunk | `dist/Tooltip-D0WRT6Fj.js` | 5.7 KiB |

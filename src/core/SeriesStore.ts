@@ -287,7 +287,7 @@ export class SeriesStore {
 
   private appendXY(x: ArrayLike<number>, y: ArrayLike<number>): void {
     if (!("push" in this.dataset)) {
-      throw new TypeError("SeriesStore dataset is not appendable.");
+      throw new TypeError("series.append({ x, y }) requires an appendable XY dataset such as RingBuffer. Provide x/y values or create the series with chart.addLine({ capacity }).");
     }
 
     const appendable = this.dataset as AppendableDataset;
@@ -302,7 +302,7 @@ export class SeriesStore {
 
   private appendYArray(y: ArrayLike<number>): void {
     if (!hasAppendY(this.dataset)) {
-      throw new TypeError("SeriesStore dataset does not support appendY.");
+      throw new TypeError("series.append({ y }) requires an implicit-X dataset such as UniformRingBuffer. Use series.append({ x, y }) or create the series with chart.addLine({ capacity, xStep }).");
     }
 
     this.dataset.appendY(y);
@@ -328,7 +328,7 @@ export class SeriesStore {
     close: ArrayLike<number>,
   ): void {
     if (!hasOhlcAppend(this.dataset)) {
-      throw new TypeError("SeriesStore dataset does not support OHLC append.");
+      throw new TypeError("series.append({ x, open, high, low, close }) requires an appendable OHLC dataset such as OhlcRingBuffer.");
     }
 
     this.dataset.append(x, open, high, low, close);
@@ -352,7 +352,7 @@ export class SeriesStore {
     let updated = false;
     if (data.x !== undefined) {
       if (!hasUpdate(this.dataset)) {
-        throw new TypeError("SeriesStore dataset does not support XY update.");
+        throw new TypeError("series.updateAt(index, { x, y }) requires a mutable XY dataset such as RingBuffer.");
       }
       updated = this.dataset.update(index, data.x, data.y);
     } else if (hasUpdateY(this.dataset)) {
@@ -360,7 +360,7 @@ export class SeriesStore {
     } else if (hasUpdate(this.dataset)) {
       updated = this.dataset.update(index, this.dataset.getX(index), data.y);
     } else {
-      throw new TypeError("SeriesStore dataset does not support Y update.");
+      throw new TypeError("series.updateAt(index, { y }) requires a mutable dataset such as RingBuffer or UniformRingBuffer.");
     }
 
     if (updated) this.markDataMutated(true);
@@ -370,7 +370,7 @@ export class SeriesStore {
   private updateOhlcAt(index: number, open: number, high: number, low: number, close: number): boolean {
     if (index < 0 || index >= this.dataset.length) return false;
     if (!hasOhlcAppend(this.dataset)) {
-      throw new TypeError("SeriesStore dataset does not support OHLC update.");
+      throw new TypeError("series.updateAt(index, { open, high, low, close }) requires a mutable OHLC dataset such as OhlcRingBuffer.");
     }
 
     let updated = false;
@@ -379,7 +379,7 @@ export class SeriesStore {
     } else if (index === this.dataset.length - 1 && typeof this.dataset.updateLast === "function") {
       updated = this.dataset.updateLast(open, high, low, close);
     } else {
-      throw new TypeError("SeriesStore dataset does not support OHLC updateAt.");
+      throw new TypeError("series.updateAt(index, { open, high, low, close }) requires an OHLC dataset with updateAt support; use OhlcRingBuffer for mutable candles.");
     }
 
     if (updated) this.markDataMutated(true);
@@ -393,7 +393,7 @@ export class SeriesStore {
 
   replace(data: unknown): void {
     if (!("replace" in this.dataset) || typeof this.dataset.replace !== "function") {
-      throw new TypeError("SeriesStore dataset does not support replace.");
+      throw new TypeError("series.replace(...) requires a dataset with replace(...) support, such as ServerSampledDataset.");
     }
 
     (this.dataset.replace as (data: unknown) => void)(data);
@@ -414,7 +414,7 @@ export class SeriesStore {
 
   clear(): void {
     if (!("clear" in this.dataset)) {
-      throw new TypeError("SeriesStore dataset is not clearable.");
+      throw new TypeError("series.clear() requires a clearable dataset such as RingBuffer, UniformRingBuffer, or OhlcRingBuffer.");
     }
 
     (this.dataset as AppendableDataset).clear();

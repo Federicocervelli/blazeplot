@@ -45,7 +45,7 @@ declare global {
   }
 }
 
-type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop";
+type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow";
 
 const params = new URLSearchParams(window.location.search);
 const rawCase = params.get("case");
@@ -56,6 +56,7 @@ const caseName: InteractionCase = rawCase === "selection"
   || rawCase === "lifecycle"
   || rawCase === "render-loop"
   || rawCase === "continuous-render-loop"
+  || rawCase === "live-follow"
   ? rawCase
   : "interactions";
 const chartTarget = requireElement<HTMLElement>("chart");
@@ -152,8 +153,16 @@ try {
   for (const [chartIndex, item] of charts.entries()) {
     const x = Float64Array.from({ length: 1_000 }, (_, i) => i);
     const y = Float32Array.from({ length: 1_000 }, (_, i) => Math.sin(i * 0.025 + chartIndex * 0.8));
-    item.addLine({ dataset: new StaticDataset(x, y), name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
+    if (caseName === "render-loop") {
+      const series = item.addLine({ capacity: 1_000, xStart: 0, xStep: 1, name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
+      series.append({ y });
+    } else {
+      item.addLine({ dataset: new StaticDataset(x, y), name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
+    }
     item.setViewport(initialViewport);
+    if (caseName === "live-follow") {
+      item.followLatestX({ window: 100, pauseOnInteraction: true, resumeAfterMs: 120 });
+    }
     if (caseName === "lifecycle") {
       item.start();
       item.start();

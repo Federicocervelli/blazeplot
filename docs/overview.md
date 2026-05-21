@@ -60,7 +60,7 @@ For a maintainer-oriented page list, see [Documentation map](./README.md).
 | Area | What to use |
 |---|---|
 | Static data | `StaticDataset` for fixed X/Y arrays. See [Data semantics](./data-semantics.md). |
-| Live data | `RingBuffer`, `UniformRingBuffer`, or OHLC ring buffers. See [Performance recipes](./performance-recipes.md). |
+| Live data | Series appends with `chart.addLine({ capacity })`, `chart.addLine({ capacity, xStep })`, or OHLC ring buffers. See [Live data](./live-data.md) and [Performance recipes](./performance-recipes.md). |
 | Chart types | Line, area, scatter, bar, OHLC, and candlestick series. |
 | Interaction | Optional `interactionsPlugin` for wheel zoom, shift-drag/axis pan, box zoom, touch pan, and pinch zoom. |
 | Live viewport helpers | `followX` for rolling windows and `autoFitY` for visible-range Y fitting. |

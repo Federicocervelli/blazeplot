@@ -50,7 +50,7 @@ const budgets: Budget[] = [
 
 const sharedBudgets: SharedChunkBudget[] = [
   { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 140_000 },
-  { label: "shared RingBuffer chunk", pattern: /^RingBuffer-.*\.js$/, maxBytes: 40_000 },
+  { label: "shared streaming data chunk", pattern: /^(RingBuffer|UniformRingBuffer)-.*\.js$/, maxBytes: 64_000 },
   { label: "shared OhlcDataset chunk", pattern: /^OhlcDataset-.*\.js$/, maxBytes: 24_000 },
   { label: "shared AxisController chunk", pattern: /^AxisController-.*\.js$/, maxBytes: 20_000 },
   { label: "shared WebGL2Backend chunk", pattern: /^WebGL2Backend-.*\.js$/, maxBytes: 24_000 },

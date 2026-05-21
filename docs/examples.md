@@ -88,18 +88,17 @@ chart.start();
 Use a ring buffer when old samples can fall out of the visible history window.
 
 ```ts
-import { Chart, RingBuffer } from "blazeplot";
+import { Chart } from "blazeplot";
 
-const dataset = new RingBuffer(60_000, { overflow: "wrap" });
 const chart = new Chart(element, {
-  followX: { window: 60_000, pauseOnInteraction: true },
+  followX: { window: 60_000, pauseOnInteraction: true, resumeAfterMs: 3000 },
   autoFitY: { padding: { y: 0.1 } },
 });
-chart.addLine({ dataset, name: "live" });
+const series = chart.addLine({ capacity: 60_000, name: "live" });
 chart.start();
 
 const timer = setInterval(() => {
-  dataset.push(Date.now(), Math.random());
+  series.append({ x: Date.now(), y: Math.random() });
 }, 100);
 
 const cleanup = () => {
@@ -108,20 +107,15 @@ const cleanup = () => {
 };
 ```
 
-Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. Use `chart.resumeXFollow()` from a "live" button if the user pans away and wants to jump back. See [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
+Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. You can also enable or change follow behavior at runtime with `chart.followLatestX(...)`, stop it with `chart.stopFollowingLatestX()`, and call `chart.resumeLatestXFollow()` from a "live" button if the user pans away and wants to jump back. See [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
 
-If samples arrive at a fixed interval, prefer `UniformRingBuffer`:
+If samples arrive at a fixed interval, use the `{ capacity, xStep }` shorthand so BlazePlot creates an implicit-X buffer:
 
 ```ts
-import { Chart, UniformRingBuffer } from "blazeplot";
-
-const dataset = new UniformRingBuffer(60_000, {
-  xStart: performance.now(),
-  xStep: 16.6667,
-});
+import { Chart } from "blazeplot";
 
 const chart = new Chart(element);
-const series = chart.addLine({ dataset, name: "signal" });
+const series = chart.addLine({ capacity: 60_000, xStart: performance.now(), xStep: 16.6667, name: "signal" });
 chart.start();
 
 const timer = setInterval(() => {

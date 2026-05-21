@@ -91,6 +91,7 @@ async function main(): Promise<void> {
     await runLifecycleCase(options, serverUrl);
     await runRenderLoopCase(options, serverUrl);
     await runContinuousRenderLoopCase(options, serverUrl);
+    await runLiveFollowCase(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
@@ -141,6 +142,27 @@ async function runContinuousRenderLoopCase(options: Options, serverUrl: string):
     const after = await getRequiredSnapshot(cdp);
     assert(after.renderEvents > snapshot.renderEvents + 2, "continuous render loop keeps rendering across frames");
     console.log("✓ render loop: continuous mode keeps requestAnimationFrame active");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function runLiveFollowCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "live-follow");
+  try {
+    let snapshot = await waitForReady(cdp, options.timeoutMs);
+    assert(close(snapshot.viewport.xMax, 999, 0.1), "followLatestX pins the viewport to the newest sample");
+    assert(close(spanX(snapshot.viewport), 100, 0.1), "followLatestX uses the configured rolling window");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(40);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1), "setViewport pauses live follow for interaction-style changes");
+
+    await sleep(180);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(close(snapshot.viewport.xMax, 999, 0.1), "resumeAfterMs resumes live follow after inactivity");
+    console.log("✓ live follow: helper pins, pauses, and resumes the rolling x window");
   } finally {
     cdp.close();
   }

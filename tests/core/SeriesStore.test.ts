@@ -236,7 +236,7 @@ describe("SeriesStore", () => {
 
     expect(series.updateLast({ y: 11 })).toBe(true);
     expect(series.sampleAt(2)).toEqual({ index: 2, x: 20, y: 11 });
-    expect(() => series.updateAt(1, { x: 15, y: 12 })).toThrow("XY update");
+    expect(() => series.updateAt(1, { x: 15, y: 12 })).toThrow("mutable XY dataset");
   });
 
   it("appends and updates OHLC datasets through the generic series API so on-demand charts become dirty", () => {

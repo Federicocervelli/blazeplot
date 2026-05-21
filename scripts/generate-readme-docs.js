@@ -198,12 +198,18 @@ function renderPublicExports(exports) {
   ].join("\n");
 }
 
+function guideLink(basePath, file) {
+  const prefix = basePath ? `${basePath.replace(/\/$/, "")}/` : "";
+  return `${prefix}${file}`;
+}
+
 function renderGuideLinks(basePath) {
   const prefix = basePath ? `${basePath.replace(/\/$/, "")}/` : "";
   return [
     `[Docs map](${prefix}README.md)`,
     `[Overview](${prefix}overview.md)`,
     `[Examples](${prefix}examples.md)`,
+    `[Live data](${prefix}live-data.md)`,
     `[Data semantics](${prefix}data-semantics.md)`,
     `[Performance recipes](${prefix}performance-recipes.md)`,
     `[Built-in plugins](${prefix}built-in-plugins.md)`,
@@ -228,8 +234,8 @@ function renderGeneratedDocs(options = {}) {
     "|---|---|",
     "| Create and render a chart | `createChart(...)` for common static charts; `Chart`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` for manual lifecycle control |",
     "| Static X/Y arrays or object rows | `createChart(...)`, `StaticDataset`, `StaticDataset.fromObjects(...)` |",
-    "| Live irregular data | `RingBuffer` |",
-    "| Live fixed-rate data | `UniformRingBuffer` |",
+    "| Live irregular data | `chart.addLine({ capacity })`, `RingBuffer`, [Live data](" + guideLink(guideBasePath, "live-data.md") + ") |",
+    "| Live fixed-rate data | `chart.addLine({ capacity, xStep })`, `UniformRingBuffer`, [Live data](" + guideLink(guideBasePath, "live-data.md") + ") |",
     "| OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |",
     "| Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |",
     "| Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |",
