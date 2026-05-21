@@ -36,20 +36,27 @@ jobs:
           echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
-      - name: Verify Cloudflare credentials
+      - name: Check Cloudflare credentials
+        id: cloudflare
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          test -n "$CLOUDFLARE_ACCOUNT_ID"
-          test -n "$CLOUDFLARE_API_TOKEN"
+          if [ -n "$CLOUDFLARE_ACCOUNT_ID" ] && [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Cloudflare Pages preview skipped because CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are not configured."
+          fi
 
       - name: Setup Bun
+        if: steps.cloudflare.outputs.configured == 'true'
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
       - name: Cache Bun package downloads
+        if: steps.cloudflare.outputs.configured == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
@@ -59,14 +66,17 @@ jobs:
             bun-${{ runner.os }}-
 
       - name: Install dependencies
+        if: steps.cloudflare.outputs.configured == 'true'
         run: bun install --frozen-lockfile
 
       - name: Build website
+        if: steps.cloudflare.outputs.configured == 'true'
         env:
           BLAZEPLOT_PAGES_BASE: /
         run: bun run pages:build
 
       - name: Deploy to Cloudflare Pages
+        if: steps.cloudflare.outputs.configured == 'true'
         id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
@@ -79,6 +89,7 @@ jobs:
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Write preview summary
+        if: steps.cloudflare.outputs.configured == 'true'
         env:
           DEPLOYMENT_URL: ${{ steps.deploy.outputs.deployment-url }}
           DEPLOYMENT_ALIAS_URL: ${{ steps.deploy.outputs.pages-deployment-alias-url }}
