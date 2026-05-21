@@ -89,6 +89,8 @@ async function main(): Promise<void> {
     await runMobileCase(options, serverUrl);
     await runMobileLongPressCase(options, serverUrl);
     await runLifecycleCase(options, serverUrl);
+    await runRenderLoopCase(options, serverUrl);
+    await runContinuousRenderLoopCase(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
@@ -104,6 +106,41 @@ async function runLifecycleCase(options: Options, serverUrl: string): Promise<vo
     const after = await getRequiredSnapshot(cdp);
     assert(after.renderEvents === snapshot.renderEvents, "stop cancels all render loops after duplicate start calls");
     console.log("✓ lifecycle: duplicate start is idempotent and stop cancels rendering");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function runRenderLoopCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "render-loop");
+  try {
+    const snapshot = await waitForReady(cdp, options.timeoutMs);
+    assert(snapshot.renderEvents > 0, "default render loop renders the initial dirty frame");
+    await sleep(250);
+    const idle = await getRequiredSnapshot(cdp);
+    assert(idle.renderEvents === snapshot.renderEvents, "default render loop does not continuously render static charts");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(100);
+    const afterDirty = await getRequiredSnapshot(cdp);
+    assert(afterDirty.renderEvents > idle.renderEvents, "default render loop renders again after chart state changes");
+    await sleep(250);
+    const afterIdle = await getRequiredSnapshot(cdp);
+    assert(afterIdle.renderEvents === afterDirty.renderEvents, "default render loop returns to idle after the dirty frame");
+    console.log("✓ render loop: default mode renders on demand and idles for static charts");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function runContinuousRenderLoopCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "continuous-render-loop");
+  try {
+    const snapshot = await waitForReady(cdp, options.timeoutMs);
+    await sleep(250);
+    const after = await getRequiredSnapshot(cdp);
+    assert(after.renderEvents > snapshot.renderEvents + 2, "continuous render loop keeps rendering across frames");
+    console.log("✓ render loop: continuous mode keeps requestAnimationFrame active");
   } finally {
     cdp.close();
   }

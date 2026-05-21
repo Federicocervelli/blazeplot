@@ -45,11 +45,19 @@ declare global {
   }
 }
 
-type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle";
+type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop";
 
 const params = new URLSearchParams(window.location.search);
 const rawCase = params.get("case");
-const caseName: InteractionCase = rawCase === "selection" || rawCase === "linked" || rawCase === "mobile" || rawCase === "mobile-longpress" || rawCase === "lifecycle" ? rawCase : "interactions";
+const caseName: InteractionCase = rawCase === "selection"
+  || rawCase === "linked"
+  || rawCase === "mobile"
+  || rawCase === "mobile-longpress"
+  || rawCase === "lifecycle"
+  || rawCase === "render-loop"
+  || rawCase === "continuous-render-loop"
+  ? rawCase
+  : "interactions";
 const chartTarget = requireElement<HTMLElement>("chart");
 const statusTarget = requireElement<HTMLElement>("status");
 const caseTarget = requireElement<HTMLElement>("caseName");
@@ -150,6 +158,8 @@ try {
       item.start();
       item.start();
       item.stop();
+    } else if (caseName === "continuous-render-loop") {
+      item.start({ renderLoop: "continuous" });
     } else {
       item.start();
     }

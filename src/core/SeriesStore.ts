@@ -73,6 +73,7 @@ export class SeriesStore {
   readonly style: SeriesStyle;
   private readonly dataset: Dataset;
   private readonly pyramid: MinMaxPyramid | null;
+  private readonly onDirty?: () => void;
 
   private _dirty: boolean = false;
   private _useDatasetRangeMinMax: boolean = false;
@@ -81,9 +82,10 @@ export class SeriesStore {
   private _lastBuildRangeStart: number = NaN;
   private _visible: boolean = true;
 
-  constructor(dataset: Dataset, config: SeriesConfig, style: SeriesStyle) {
+  constructor(dataset: Dataset, config: SeriesConfig, style: SeriesStyle, onDirty?: () => void) {
     this.dataset = dataset;
     this.config = config;
+    this.onDirty = onDirty;
     this.pyramid = (config.mode === "line" || config.mode === "bar" || config.mode === "scatter") && config.downsample !== "none" ? new MinMaxPyramid() : null;
     this._useDatasetRangeMinMax = hasRangeMinMaxY(dataset);
     this.style = style;
@@ -116,7 +118,9 @@ export class SeriesStore {
   }
 
   setVisible(visible: boolean): void {
+    if (this._visible === visible) return;
     this._visible = visible;
+    this.onDirty?.();
   }
 
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
@@ -127,6 +131,7 @@ export class SeriesStore {
     const appendable = this.dataset as AppendableDataset;
     appendable.append(x, y);
     this._dirty = true;
+    this.onDirty?.();
   }
 
   appendY(y: ArrayLike<number>): void {
@@ -136,10 +141,12 @@ export class SeriesStore {
 
     this.dataset.appendY(y);
     this._dirty = true;
+    this.onDirty?.();
   }
 
   markDirty(): void {
     this._dirty = true;
+    this.onDirty?.();
   }
 
   clear(): void {
@@ -154,6 +161,7 @@ export class SeriesStore {
     this._lastBuildLength = this.dataset.length;
     this._lastBuildRangeStart = this.dataset.range?.start ?? NaN;
     this._dirty = false;
+    this.onDirty?.();
   }
 
   rebuildPyramid(): void {

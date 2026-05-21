@@ -233,7 +233,7 @@ window.__blazeplotBench = {
 };
 
 chart.setViewport({ xMin: 0, xMax: config.viewportSamples, yMin: config.yMin, yMax: config.yMax });
-chart.start();
+chart.start({ renderLoop: "continuous" });
 void prepare();
 
 async function prepare(): Promise<void> {
