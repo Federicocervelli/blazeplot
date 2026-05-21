@@ -41,13 +41,13 @@ bun add blazeplot
 
 ## Quick start
 
-A chart only needs a host element. For regular arrays, wrap your data in a `StaticDataset`; `capacity` is only needed when you want a streaming ring buffer.
+A chart only needs a sized host element. `createChart(...)` accepts simple array data, fits the viewport, and starts rendering for the common first-chart case.
 
 ```html
 <div id="chart" style="width:100%;height:400px"></div>
 
 <script type="module">
-  import { Chart, StaticDataset } from "blazeplot";
+  import { createChart } from "blazeplot";
 
   const el = document.getElementById("chart");
   if (!el) throw new Error("Missing #chart element");
@@ -55,12 +55,13 @@ A chart only needs a host element. For regular arrays, wrap your data in a `Stat
   const x = Array.from({ length: 1000 }, (_, i) => i);
   const y = x.map((value) => Math.sin(value * 0.02));
 
-  const chart = new Chart(el);
-  chart.addLine({ dataset: new StaticDataset(x, y), name: "sine" });
-  chart.setViewport({ xMin: x[0], xMax: x[x.length - 1], yMin: -1.5, yMax: 1.5 });
-  chart.start();
+  const chart = createChart(el, {
+    series: [{ type: "line", x, y, name: "sine" }],
+  });
 </script>
 ```
+
+Use the lower-level `Chart` and dataset classes when you need explicit lifecycle control, custom datasets, streaming buffers, or specialized viewport policies.
 
 ## Features
 
@@ -122,8 +123,8 @@ This page is generated from the built package. Use it as an index of import path
 
 | Task | Start here |
 |---|---|
-| Create and render a chart | `Chart`, `ChartOptions`, `chart.addLine(...)`, `chart.fitToData()`, `chart.start()` |
-| Static X/Y arrays | `StaticDataset` |
+| Create and render a chart | `createChart(...)` for common static charts; `Chart`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` for manual control |
+| Static X/Y arrays or object rows | `createChart(...)`, `StaticDataset`, `StaticDataset.fromObjects(...)` |
 | Live irregular data | `RingBuffer` |
 | Live fixed-rate data | `UniformRingBuffer` |
 | OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |
@@ -165,7 +166,7 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 0.7 KiB |
+| root entry | `dist/index.js` | 1.6 KiB |
 | core subpath entry | `dist/core.js` | 0.7 KiB |
 | interaction subpath entry | `dist/interaction.js` | 0.1 KiB |
 | render subpath entry | `dist/render.js` | 0.3 KiB |
@@ -183,7 +184,7 @@ Generated from `dist/` after the package build.
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | shared Chart chunk | `dist/Chart-D1ISQl_J.js` | 57.0 KiB |
 | shared RingBuffer chunk | `dist/RingBuffer-Bd5JaRf4.js` | 29.6 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-1cMrc6BC.js` | 17.3 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-CvR874hx.js` | 17.8 KiB |
 | shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-wxbXnm0h.js` | 20.9 KiB |
 | shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DDrAyfEg.js` | 2.1 KiB |
@@ -246,6 +247,14 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartTheme` | interface | `./ui/theme` | — |
 | `ChartTitleConfig` | interface | `./ui/Chart` | — |
 | `ChartViewportChangeEvent` | interface | `./ui/Chart` | — |
+| `createChart` | function | `./createChart` | Create a chart from a compact declarative config. This helper is intentionally thin: it returns the underlying `Chart` instance, so advanced code can still use the full imperative API after setup. |
+| `CreateChartArraySeries` | interface | `./createChart` | — |
+| `CreateChartDatasetSeries` | interface | `./createChart` | — |
+| `CreateChartObjectSeries` | interface | `./createChart` | — |
+| `CreateChartOptions` | interface | `./createChart` | High-level chart configuration for common first-render cases. Use `createChart(...)` when you have static arrays, object rows, or a simple streaming buffer and want BlazePlot to create the chart, add series, fit the initial viewport, and start rendering in one call. |
+| `CreateChartSeries` | type | `./createChart` | — |
+| `CreateChartSeriesType` | type | `./createChart` | — |
+| `CreateChartStreamingSeries` | interface | `./createChart` | — |
 | `CssColor` | type | `./ui/theme` | — |
 | `CustomAxisScale` | interface | `./interaction/AxisController` | — |
 | `Dataset` | interface | `./core/types` | — |
@@ -291,6 +300,8 @@ Generated from `dist/index.d.ts` after the package build.
 | `ServerSampledDatasetKind` | type | `./core/ServerSampledDataset` | — |
 | `ServerSampledPoints` | interface | `./core/ServerSampledDataset` | — |
 | `StaticDataset` | class | `./core/StaticDataset` | — |
+| `StaticDatasetField` | type | `./core/StaticDataset` | — |
+| `StaticDatasetFromObjectsOptions` | interface | `./core/StaticDataset` | — |
 | `StaticOhlcDataset` | class | `./core/OhlcDataset` | — |
 | `TextOverlayConfig` | interface | `./ui/Chart` | — |
 | `ThemeColor` | type | `./ui/theme` | — |
