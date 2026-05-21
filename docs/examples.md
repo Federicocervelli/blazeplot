@@ -121,11 +121,11 @@ const dataset = new UniformRingBuffer(60_000, {
 });
 
 const chart = new Chart(element);
-chart.addLine({ dataset, name: "signal" });
+const series = chart.addLine({ dataset, name: "signal" });
 chart.start();
 
 const timer = setInterval(() => {
-  dataset.appendY(new Float32Array([Math.random(), Math.random(), Math.random()]));
+  series.appendY(new Float32Array([Math.random(), Math.random(), Math.random()]));
 }, 50);
 
 const cleanup = () => {
@@ -134,7 +134,7 @@ const cleanup = () => {
 };
 ```
 
-`chart.start()` activates render scheduling. Static charts render when chart-owned state changes, while appends through BlazePlot datasets request another frame automatically. Use `chart.start({ renderLoop: "continuous" })` only for custom animations or external data mutation that BlazePlot cannot observe. Stop scheduling with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
+`chart.start()` activates render scheduling. Static charts render when chart-owned state changes, while appends through the returned series (`series.append(...)`, `series.appendY(...)`, `series.appendOhlc(...)`) request another frame automatically. If you mutate a dataset directly, call `series.markDirty()` afterward so LOD state and on-demand rendering wake up. Use `chart.start({ renderLoop: "continuous" })` only for custom animations that redraw even without chart-owned state changes. Stop scheduling with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
 
 ## Server-sampled min/max buckets
 
@@ -152,12 +152,12 @@ const dataset = new ServerSampledDataset({
 });
 
 const chart = new Chart(element);
-chart.addLine({ dataset, name: "server buckets", downsample: "server" });
+const series = chart.addLine({ dataset, name: "server buckets", downsample: "server" });
 chart.fitToData();
 chart.start();
 ```
 
-Bucket ranges should be sorted and non-overlapping for predictable picking, bounds, and visible-data export. Use `dataset.replace(...)` when a new viewport response arrives.
+Bucket ranges should be sorted and non-overlapping for predictable picking, bounds, and visible-data export. Use `dataset.replace(...)` when a new viewport response arrives, then call `series.markDirty()` so on-demand rendering and LOD state update.
 
 ## Financial OHLC and candlesticks
 
@@ -181,7 +181,7 @@ chart.fitToData();
 chart.start();
 ```
 
-OHLC bounds use high/low values, while generic `getY()` returns close. See [Data semantics](./data-semantics.md#ohlc-datasets).
+OHLC bounds use high/low values, while generic `getY()` returns close. For live OHLC streams, append through the returned series with `series.appendOhlc(...)` or update the active candle with `series.updateLastOhlc(...)`; direct `dataset.push(...)` / `dataset.updateLast(...)` calls need a follow-up `series.markDirty()`. See [Data semantics](./data-semantics.md#ohlc-datasets).
 
 ## Linked charts
 

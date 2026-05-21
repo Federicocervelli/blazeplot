@@ -6,8 +6,8 @@ BlazePlot is fast when the data model and the visible range match how the render
 
 | Situation | Prefer | Why |
 |---|---|---|
-| Appending irregular telemetry | `RingBuffer` with batched `append(...)` | Keeps a bounded rolling history without reallocating arrays. |
-| Appending fixed-rate telemetry | `UniformRingBuffer.appendY(...)` | Avoids storing repeated X values. |
+| Appending irregular telemetry | `RingBuffer` with batched `series.append(...)` | Keeps a bounded rolling history without reallocating arrays and wakes on-demand rendering. |
+| Appending fixed-rate telemetry | `UniformRingBuffer` with `series.appendY(...)` | Avoids storing repeated X values and wakes on-demand rendering. |
 | Rendering dense historical ranges | Built-in LOD or `ServerSampledDataset` | Reduces visible work while preserving extrema. |
 | Rendering a small exact viewport | `downsample: "none"` | Avoids sampler overhead when visible points are already bounded. |
 | Backend already has min/max buckets | `ServerSampledDataset` + `downsample: "server"` | Prevents double-sampling on the client. |
@@ -16,10 +16,11 @@ BlazePlot is fast when the data model and the visible range match how the render
 ## Streaming data
 
 - Use `RingBuffer` for irregular live samples and `UniformRingBuffer` for fixed-rate samples.
-- For fixed-rate data, append only Y batches with `appendY(...)` so you do not store or copy repeated X values.
+- For fixed-rate data, append only Y batches with `series.appendY(...)` so you do not store or copy repeated X values.
 - Set capacity to the largest history window you need to keep in memory.
-- Append typed-array batches when possible instead of one sample at a time, for example `Float64Array` X plus `Float32Array` Y for `append(...)` or `Float32Array` Y for `appendY(...)`.
+- Append typed-array batches through the returned series when possible instead of one sample at a time, for example `Float64Array` X plus `Float32Array` Y for `series.append(...)` or `Float32Array` Y for `series.appendY(...)`.
 - Keep X values sorted in logical order. Binary search, picking, and LOD depend on it.
+- Prefer series APIs for live writes. They mark LOD state dirty and request a frame in the default on-demand render loop. If you mutate a dataset directly, call `series.markDirty()` afterward.
 - Choose an overflow mode intentionally:
   - `"wrap"` for rolling live windows,
   - `"drop-new"` when backpressure is safer than overwriting history,
@@ -47,7 +48,7 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 - Create charts once. Update datasets and keep the chart lifecycle active instead of recreating the chart.
 - Call `chart.start()` once for an active chart lifecycle, or after a matching `chart.stop()`. Do not call it repeatedly from reactive render paths.
 - Use `chart.stop()` when a chart is hidden or inactive, then `chart.start()` again when it should resume rendering.
-- The default render loop is on demand: static charts render after chart-owned state changes and then idle. Use `chart.start({ renderLoop: "continuous" })` only for custom animation loops or externally mutated data that BlazePlot cannot observe.
+- The default render loop is on demand: static charts render after chart-owned state changes and then idle. Appends through series APIs wake the chart automatically. Use `chart.start({ renderLoop: "continuous" })` only for custom animation loops; direct dataset mutation still needs `series.markDirty()` so LOD state is rebuilt.
 - Remove unused series with `chart.removeSeries(series)`.
 - Dispose charts on unmount with `chart.dispose()`.
 - Keep optional features in subpath imports, for example `blazeplot/plugins/tooltip`, so chart-only bundles stay smaller.
