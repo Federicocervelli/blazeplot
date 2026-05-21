@@ -57,3 +57,5 @@ Call `chart.dispose()` when the chart is removed from the page.
 - Dense line and bar views use level-of-detail extraction by default; use `downsample: "none"` only when the visible point count is bounded.
 
 For import paths and public symbols, see the [API reference](./api-reference.md).
+
+Maintainers should follow the [documentation contribution guide](./documentation-contributions.md) before adding or restructuring docs.

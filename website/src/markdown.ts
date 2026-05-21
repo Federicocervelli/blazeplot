@@ -273,9 +273,11 @@ function normalizeHref(href: string): string {
   const hashRoute = appRouteFromHash(href);
   if (hashRoute) return appHref(hashRoute);
   if (href.startsWith("#")) return href;
-  if (href.endsWith(".md")) {
-    const slug = href.split("/").pop()?.replace(/\.md$/, "") ?? "examples";
-    return appHref(`docs/${slug}`);
+  const mdMatch = href.match(/(?:^|\/)([^/#?]+)\.md(?:(#[^?]+))?$/);
+  if (mdMatch) {
+    const slug = mdMatch[1] ?? "examples";
+    const anchor = mdMatch[2] ?? "";
+    return `${appHref(`docs/${slug}`)}${anchor}`;
   }
   return href;
 }

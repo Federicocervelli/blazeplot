@@ -1,6 +1,20 @@
 # Examples
 
-These are small patterns you can copy into an app. For complete runnable cases, open the [interactive previews](#previews). If you are new to BlazePlot, start with the [Overview](./overview.md) first.
+These are small patterns you can copy into an app. For complete runnable cases, open the [interactive previews](#previews) in the docs site. If you are new to BlazePlot, start with the [Overview](./overview.md) first.
+
+## Choose a starting point
+
+| If you have | Use |
+|---|---|
+| Fixed X/Y arrays | `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` |
+| Irregular live samples | `RingBuffer` with `overflow: "wrap"` for a rolling window |
+| Fixed-rate telemetry | `UniformRingBuffer` and `appendY(...)` so repeated X values are derived, not stored |
+| Historical OHLC data | `StaticOhlcDataset` with `chart.addOhlc(...)` or `chart.addCandlestick(...)` |
+| Server-reduced min/max buckets | `ServerSampledDataset` with `downsample: "server"` |
+| React ownership of the DOM | `BlazeChart` from `blazeplot/react` |
+| Multiple charts sharing an X range | `createLinkedCharts` from `blazeplot/linked` |
+
+All built-in datasets expect sorted X values. If source data arrives out of order, sort it before constructing the dataset or write a custom dataset that exposes sorted logical access.
 
 ## Basic line chart
 
@@ -16,6 +30,12 @@ chart.fitToData();
 chart.start();
 ```
 
+Dispose charts when the owning page, component, or panel is removed:
+
+```ts
+chart.dispose();
+```
+
 ## Live line chart
 
 Use a ring buffer when old samples can fall out of the visible history window.
@@ -28,14 +48,44 @@ const chart = new Chart(element);
 chart.addLine({ dataset, name: "live" });
 chart.start();
 
-setInterval(() => {
+const timer = setInterval(() => {
   dataset.push(Date.now(), Math.random());
   chart.fitToData({ x: true, y: true });
-  chart.render();
 }, 100);
+
+const cleanup = () => {
+  clearInterval(timer);
+  chart.dispose();
+};
 ```
 
 Keep appended X values sorted. See [Data semantics](./data-semantics.md) and [Performance recipes](./performance-recipes.md) for the details.
+
+If samples arrive at a fixed interval, prefer `UniformRingBuffer`:
+
+```ts
+import { Chart, UniformRingBuffer } from "blazeplot";
+
+const dataset = new UniformRingBuffer(60_000, {
+  xStart: performance.now(),
+  xStep: 16.6667,
+});
+
+const chart = new Chart(element);
+chart.addLine({ dataset, name: "signal" });
+chart.start();
+
+const timer = setInterval(() => {
+  dataset.appendY(new Float32Array([Math.random(), Math.random(), Math.random()]));
+}, 50);
+
+const cleanup = () => {
+  clearInterval(timer);
+  chart.dispose();
+};
+```
+
+`chart.start()` owns the animation loop, so dataset changes are picked up on the next frame. Stop the loop with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
 
 ## Financial OHLC and candlesticks
 
