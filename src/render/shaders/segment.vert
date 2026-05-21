@@ -1,14 +1,17 @@
 attribute float aX;
 attribute float aMinY;
 attribute float aMaxY;
-attribute float aSelect;
+attribute vec2 aCorner;
 
 uniform vec2 uScale;
 uniform vec2 uOffset;
+uniform vec2 uCanvasSize;
+uniform float uLineWidth;
 
 void main() {
-  float y = (aSelect < 0.5) ? aMinY : aMaxY;
-  vec2 position = vec2(aX, y);
-  vec2 clipSpace = position * uScale + uOffset;
-  gl_Position = vec4(clipSpace, 0.0, 1.0);
+  float y = mix(aMinY, aMaxY, aCorner.y);
+  vec2 centerClip = vec2(aX, y) * uScale + uOffset;
+  float halfWidthClip = max(1.0, uLineWidth) / max(1.0, uCanvasSize.x);
+  float clipX = centerClip.x + aCorner.x * halfWidthClip * 2.0;
+  gl_Position = vec4(clipX, centerClip.y, 0.0, 1.0);
 }

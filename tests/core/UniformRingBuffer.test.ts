@@ -78,6 +78,21 @@ describe("UniformRingBuffer", () => {
     expect(Array.from(segments)).toEqual([2, -1, 8, 6, 2, 7]);
   });
 
+  it("anchors min/max buckets to zoom and data so panning does not resample every segment", () => {
+    const buf = new UniformRingBuffer(64, { xStart: 0, xStep: 1, blockSize: 4 });
+    buf.appendY(Array.from({ length: 64 }, (_, i) => i % 7));
+
+    const first = new Float32Array(12);
+    const second = new Float32Array(12);
+    const firstCount = buf.copyMinMaxSegments({ xMin: 0, xMax: 32, yMin: -1, yMax: 8 }, first, 4, "instanced", 0);
+    const secondCount = buf.copyMinMaxSegments({ xMin: 0.1, xMax: 32.1, yMin: -1, yMax: 8 }, second, 4, "instanced", 0);
+
+    expect(firstCount).toBe(4);
+    expect(secondCount).toBe(4);
+    expect([first[0], first[3], first[6], first[9]]).toEqual([4, 13, 22, 31]);
+    expect([second[0], second[3], second[6], second[9]]).toEqual([4, 13, 22, 31]);
+  });
+
   it("preserves skipped gaps when visible sampling strides", () => {
     const buf = new UniformRingBuffer(5, { xStart: 0, xStep: 1, blockSize: 2 });
     buf.appendY([4, NaN, 7, 9, 10]);

@@ -3,6 +3,7 @@ export type AxisPosition = "inside" | "outside";
 export interface NormalizedAxisConfig {
   readonly visible: boolean;
   readonly position: AxisPosition;
+  readonly title?: unknown;
 }
 
 export interface ChartLayoutConfig {
@@ -30,6 +31,9 @@ export interface ChartLayoutElements {
 export const LEFT_AXIS_GUTTER_CSS = 52;
 export const RIGHT_AXIS_GUTTER_CSS = 52;
 export const BOTTOM_AXIS_GUTTER_CSS = 28;
+export const LEFT_AXIS_TITLE_GUTTER_CSS = 76;
+export const RIGHT_AXIS_TITLE_GUTTER_CSS = 76;
+export const BOTTOM_AXIS_TITLE_GUTTER_CSS = 48;
 
 export class ChartLayout implements ChartLayoutElements {
   readonly root: HTMLDivElement;
@@ -93,9 +97,12 @@ export class ChartLayout implements ChartLayoutElements {
     const hasOutsideY = config.y.visible && config.y.position === "outside";
     const hasOutsideY2 = config.y2.visible && config.y2.position === "outside";
     const hasOutsideX = config.x.visible && config.x.position === "outside";
+    const yGutter = config.y.title ? LEFT_AXIS_TITLE_GUTTER_CSS : LEFT_AXIS_GUTTER_CSS;
+    const y2Gutter = config.y2.title ? RIGHT_AXIS_TITLE_GUTTER_CSS : RIGHT_AXIS_GUTTER_CSS;
+    const xGutter = config.x.title ? BOTTOM_AXIS_TITLE_GUTTER_CSS : BOTTOM_AXIS_GUTTER_CSS;
 
-    this.root.style.gridTemplateColumns = `${hasOutsideY ? LEFT_AXIS_GUTTER_CSS : 0}px minmax(0, 1fr) ${hasOutsideY2 ? RIGHT_AXIS_GUTTER_CSS : 0}px`;
-    this.root.style.gridTemplateRows = `minmax(0, 1fr) ${hasOutsideX ? BOTTOM_AXIS_GUTTER_CSS : 0}px`;
+    this.root.style.gridTemplateColumns = `${hasOutsideY ? yGutter : 0}px minmax(0, 1fr) ${hasOutsideY2 ? y2Gutter : 0}px`;
+    this.root.style.gridTemplateRows = `minmax(0, 1fr) ${hasOutsideX ? xGutter : 0}px`;
     this.yAxis.style.display = hasOutsideY ? "block" : "none";
     this.y2Axis.style.display = hasOutsideY2 ? "block" : "none";
     this.xAxis.style.display = hasOutsideX ? "block" : "none";

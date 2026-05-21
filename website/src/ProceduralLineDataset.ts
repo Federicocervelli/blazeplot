@@ -188,35 +188,37 @@ export class ProceduralLineDataset implements AppendableDataset, YAppendableData
     const visible = end - start;
     if (visible <= 0) return 0;
 
-    const segmentCount = Math.min(maxSegments, visible);
+    const viewportSamples = Math.max(1, Math.ceil(this.fromTime(viewport.xMax) - this.fromTime(viewport.xMin)) + 1);
+    const stride = Math.max(1, Math.ceil(viewportSamples / maxSegments));
     const firstOrdinal = this.firstX();
-    for (let segment = 0; segment < segmentCount; segment++) {
-      const segmentStart = start + Math.floor((segment * visible) / segmentCount);
-      const segmentEnd = Math.min(
-        end,
-        start + Math.max(
-          Math.floor(((segment + 1) * visible) / segmentCount),
-          Math.floor((segment * visible) / segmentCount) + 1,
-        ),
-      );
+    const alignedStart = start - positiveModulo(firstOrdinal + start, stride);
+
+    let written = 0;
+    for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += stride) {
+      const segmentStart = Math.max(0, bucketStart);
+      const segmentEnd = Math.min(this._length, bucketStart + stride);
+      if (segmentEnd <= start || segmentStart >= end) continue;
+
       const range = this.rangeMinMaxByIndex(segmentStart, segmentEnd)!;
-      const x = this.toTime(firstOrdinal + segmentStart + ((segmentEnd - segmentStart) >> 1)) - xOrigin;
+      const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
+      const x = this.toTime(firstOrdinal + representative) - xOrigin;
 
       if (layout === "line-list") {
-        const offset = segment * 4;
+        const offset = written * 4;
         target[offset] = x;
         target[offset + 1] = range.minY;
         target[offset + 2] = x;
         target[offset + 3] = range.maxY;
       } else {
-        const offset = segment * 3;
+        const offset = written * 3;
         target[offset] = x;
         target[offset + 1] = range.minY;
         target[offset + 2] = range.maxY;
       }
+      written++;
     }
 
-    return segmentCount;
+    return written;
   }
 
   private rangeMinMaxByIndex(start: number, end: number): { minY: number; maxY: number } | null {

@@ -321,11 +321,11 @@ type MutableRenderProjection = {
 };
 
 function normalizeAxisConfig(config: boolean | AxisConfig | undefined): ResolvedAxisConfig {
-  if (config === false) return { visible: false, position: "inside" };
-  if (config === true || config === undefined) return { visible: true, position: "inside" };
+  if (config === false) return { visible: false, position: "outside" };
+  if (config === true || config === undefined) return { visible: true, position: "outside" };
   return {
     visible: config.visible !== false,
-    position: config.position ?? "inside",
+    position: config.position ?? "outside",
     scale: config.scale,
     tickFormat: config.tickFormat,
     timezone: config.timezone,
@@ -340,16 +340,16 @@ function normalizeAxisConfig(config: boolean | AxisConfig | undefined): Resolved
 function normalizeAxesConfig(axes: ChartOptions["axes"]): ResolvedAxesConfig {
   if (axes === false) {
     return {
-      x: { visible: false, position: "inside" },
-      y: { visible: false, position: "inside" },
-      y2: { visible: false, position: "inside" },
+      x: { visible: false, position: "outside" },
+      y: { visible: false, position: "outside" },
+      y2: { visible: false, position: "outside" },
     };
   }
   if (axes === true || axes === undefined) {
     return {
-      x: { visible: true, position: "inside" },
-      y: { visible: true, position: "inside" },
-      y2: { visible: false, position: "inside" },
+      x: { visible: true, position: "outside" },
+      y: { visible: true, position: "outside" },
+      y2: { visible: false, position: "outside" },
     };
   }
   return {
@@ -367,17 +367,17 @@ function textOverlayVisible(config: string | TextOverlayConfig | undefined): boo
   return typeof config === "string" ? config.length > 0 : !!config && config.visible !== false && config.text.length > 0;
 }
 
-function colorsEqual(
-  a: readonly [number, number, number, number],
-  b: readonly [number, number, number, number],
-): boolean {
-  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2] && a[3] === b[3];
-}
-
 interface PickCandidate {
   readonly sample: SeriesSample;
   readonly series: SeriesStore;
   readonly seriesIndex: number;
+}
+
+interface ChartPickRect {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 interface ChartGpuResources {
@@ -454,6 +454,9 @@ export class Chart implements ChartPluginContext {
   private readonly rightProjection: MutableRenderProjection = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
   private lastPointerClientX: number = 0;
   private lastPointerClientY: number = 0;
+  private lastPointerPlotX: number = 0;
+  private lastPointerPlotY: number = 0;
+  private lastPointerButtons: number = 0;
   private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
   private currentXOrigin: number = 0;
@@ -468,11 +471,15 @@ export class Chart implements ChartPluginContext {
       this.pointerInPlot = true;
       this.lastPointerClientX = event.clientX;
       this.lastPointerClientY = event.clientY;
-      this.scheduleHoverRefresh();
+      this.lastPointerPlotX = event.offsetX;
+      this.lastPointerPlotY = event.offsetY;
+      this.lastPointerButtons = event.buttons;
+      this.refreshHover();
     }
     if (this.pointerSubscribers.pointermove.size > 0) this.emitPointerEvent("pointermove", event);
   };
   private readonly handlePointerDown = (event: PointerEvent): void => {
+    this.lastPointerButtons = event.buttons;
     if (event.pointerType === "touch") {
       this.pointerInPlot = false;
       this.emitHover(null);
@@ -480,7 +487,9 @@ export class Chart implements ChartPluginContext {
     this.emitPointerEvent("pointerdown", event);
   };
   private readonly handlePointerUp = (event: PointerEvent): void => {
+    this.lastPointerButtons = event.buttons;
     this.emitPointerEvent("pointerup", event);
+    this.refreshHover();
   };
   private readonly handleClick = (event: MouseEvent): void => {
     const pointerEvent = this.emitPointerEvent("click", event);
@@ -492,6 +501,7 @@ export class Chart implements ChartPluginContext {
   };
   private readonly handlePointerLeave = (): void => {
     this.pointerInPlot = false;
+    this.lastPointerButtons = 0;
     this.emitHover(null);
   };
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -647,7 +657,7 @@ export class Chart implements ChartPluginContext {
     this.camera.pan(intent);
     this.syncRightCameraX();
     this.emitViewportChange();
-    this.refreshHover();
+    this.scheduleHoverRefresh();
   }
 
   zoom(intent: ZoomIntent): void {
@@ -655,7 +665,7 @@ export class Chart implements ChartPluginContext {
     this.camera.zoom(intent);
     this.syncRightCameraX();
     this.emitViewportChange();
-    this.refreshHover();
+    this.scheduleHoverRefresh();
   }
 
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
@@ -1027,10 +1037,18 @@ export class Chart implements ChartPluginContext {
 
   pick(clientX: number, clientY: number, options: ChartPickOptions = {}): ChartHoverState | null {
     const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
+    return this.pickAtPlot(clientX - rect.left, clientY - rect.top, clientX, clientY, rect, options);
+  }
 
-    const plotX = clientX - rect.left;
-    const plotY = clientY - rect.top;
+  private pickAtPlot(
+    plotX: number,
+    plotY: number,
+    clientX: number,
+    clientY: number,
+    rect: ChartPickRect,
+    options: ChartPickOptions = {},
+  ): ChartHoverState | null {
+    if (rect.width <= 0 || rect.height <= 0) return null;
     if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
 
     const viewport = this.camera.viewport;
@@ -1425,49 +1443,13 @@ export class Chart implements ChartPluginContext {
   }
 
   private queueMinMaxLineBatch(series: SeriesStore): boolean {
-    if (series.config.mode !== "line" || !this.renderer.supportsInstancedSegments) return false;
-
-    const camera = this.cameraForSeries(series);
-    const viewport = camera.viewport;
-    const visibleSamples = series.visibleSampleCount(viewport);
-    const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
-    if (!dense) return false;
-
-    if (this.minMaxLineBatch && !this.canAppendToMinMaxLineBatch(this.minMaxLineBatch, series.style, camera)) {
-      this.flushMinMaxLineBatch();
-    }
-
-    const perSeriesCapacity = this.maxMinMaxSegments();
-    const batchCapacity = this.maxMinMaxBatchSegments();
-    if (perSeriesCapacity <= 0 || batchCapacity <= 0) return true;
-
-    if (this.minMaxLineBatch && this.minMaxLineBatch.segmentCount + perSeriesCapacity > batchCapacity) {
-      this.flushMinMaxLineBatch();
-    }
-
-    if (!this.minMaxLineBatch) {
-      this.minMaxLineBatch = {
-        camera,
-        style: series.style,
-        color: series.style.color,
-        segmentCount: 0,
-        seriesCount: 0,
-      };
-    }
-
-    const batch = this.minMaxLineBatch;
-    const targetOffset = batch.segmentCount * FLOATS_PER_MINMAX_SEGMENT_INSTANCE;
-    const target = this.minMaxInstanceData.subarray(targetOffset);
-    const segmentCount = series.copyMinMaxInstanced(viewport, target, perSeriesCapacity, this.currentXOrigin);
-    if (segmentCount > 0) {
-      batch.segmentCount += segmentCount;
-      batch.seriesCount++;
-    }
-    return true;
-  }
-
-  private canAppendToMinMaxLineBatch(batch: MinMaxLineBatch, style: SeriesStyle, camera: Camera2D): boolean {
-    return batch.camera === camera && batch.style.lineWidth === style.lineWidth && colorsEqual(batch.color, style.color);
+    void series;
+    // Dense min/max lines are rendered as data-space bucket rectangles in
+    // drawLineSeries so adjacent 1px buckets move with data while panning/live
+    // following. The old batched instanced path rendered pixel-width center
+    // columns; that made neighboring buckets appear to swap/stick on the pixel
+    // grid when the viewport moved.
+    return false;
   }
 
   private flushMinMaxLineBatch(): void {
@@ -1476,7 +1458,14 @@ export class Chart implements ChartPluginContext {
     if (!batch || batch.segmentCount <= 0) return;
 
     this.uploadMinMaxInstanceData(batch.segmentCount);
-    this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, batch.segmentCount, batch.style, this.projectionForCamera(batch.camera));
+    this.renderer.drawMinMaxSegmentsInstanced(
+      this.minMaxInstanceBuffer,
+      batch.segmentCount,
+      batch.style,
+      this.projectionForCamera(batch.camera),
+      this.canvas.width,
+      this.canvas.height,
+    );
     this.recordDraw("minmax", batch.segmentCount * 2);
     if (batch.seriesCount > 1) {
       this.stats.batchedDrawCalls = (this.stats.batchedDrawCalls ?? 0) + batch.seriesCount - 1;
@@ -1514,9 +1503,8 @@ export class Chart implements ChartPluginContext {
     if (dense && this.renderer.supportsInstancedSegments) {
       const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
       if (segmentCount <= 0) return;
-      this.uploadMinMaxInstanceData(segmentCount);
-      this.renderer.drawMinMaxSegmentsInstanced(this.minMaxInstanceBuffer, segmentCount, series.style, projection);
-      this.recordDraw("minmax", segmentCount * 2);
+      const vertexCount = this.writeBarBucketTriangles(segmentCount, viewport);
+      this.drawBarTriangles(vertexCount, series.style, projection, "minmax");
       return;
     }
 
@@ -1844,7 +1832,7 @@ export class Chart implements ChartPluginContext {
     vertexCount: number,
     style: SeriesStyle,
     projection: RenderProjection,
-    mode: "bars" | "area" = "bars",
+    mode: "bars" | "area" | "minmax" = "bars",
   ): void {
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount);
@@ -1910,7 +1898,7 @@ export class Chart implements ChartPluginContext {
     anchorX: number,
     clientX: number,
     clientY: number,
-    rect: DOMRect,
+    rect: ChartPickRect,
   ): ChartPickItem[] {
     const items: ChartPickItem[] = [];
     for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
@@ -1929,7 +1917,7 @@ export class Chart implements ChartPluginContext {
     seriesIndex: number,
     clientX: number,
     clientY: number,
-    rect: DOMRect,
+    rect: ChartPickRect,
   ): ChartPickItem {
     const camera = this.cameraForSeries(series);
     const [clipX, clipY] = camera.toClip(sample.x, sample.y);
@@ -1963,7 +1951,56 @@ export class Chart implements ChartPluginContext {
 
   private refreshHover(): void {
     if (!this.pointerInPlot) return;
-    this.emitHover(this.pick(this.lastPointerClientX, this.lastPointerClientY));
+    const rect = this.cachedPointerRect();
+    if (this.lastPointerButtons !== 0) {
+      this.emitHover(this.reprojectHoverState(this.currentHover, rect));
+      return;
+    }
+    this.emitHover(this.pickAtPlot(
+      this.lastPointerPlotX,
+      this.lastPointerPlotY,
+      this.lastPointerClientX,
+      this.lastPointerClientY,
+      rect,
+    ));
+  }
+
+  private cachedPointerRect(): ChartPickRect {
+    return {
+      left: this.lastPointerClientX - this.lastPointerPlotX,
+      top: this.lastPointerClientY - this.lastPointerPlotY,
+      width: this.canvas.clientWidth,
+      height: this.canvas.clientHeight,
+    };
+  }
+
+  private reprojectHoverState(state: ChartHoverState | null, rect: ChartPickRect): ChartHoverState | null {
+    if (!state || state.items.length === 0 || rect.width <= 0 || rect.height <= 0) return null;
+    const items: ChartPickItem[] = [];
+    for (const item of state.items) {
+      if (!item.series.visible) continue;
+      items.push(this.createPickItem(item, item.series, item.seriesIndex, this.lastPointerClientX, this.lastPointerClientY, rect));
+    }
+    if (items.length === 0) return null;
+
+    const anchorItem = items[0]!;
+    if (anchorItem.plotX < 0 || anchorItem.plotY < 0 || anchorItem.plotX > rect.width || anchorItem.plotY > rect.height) {
+      return null;
+    }
+
+    return {
+      clientX: this.lastPointerClientX,
+      clientY: this.lastPointerClientY,
+      plotX: this.lastPointerPlotX,
+      plotY: this.lastPointerPlotY,
+      dataX: state.dataX,
+      dataY: state.dataY,
+      anchorX: state.anchorX,
+      mode: state.mode,
+      group: state.group,
+      maxDistancePx: state.maxDistancePx,
+      items,
+    };
   }
 
   private emitHover(state: ChartHoverState | null): void {
@@ -2030,10 +2067,6 @@ export class Chart implements ChartPluginContext {
 
   private maxMinMaxSegments(): number {
     return Math.min(this.canvas.width, MINMAX_SEGMENT_CAPACITY);
-  }
-
-  private maxMinMaxBatchSegments(): number {
-    return Math.min(this.maxMinMaxSegments() * 4, MINMAX_BATCH_SEGMENT_CAPACITY);
   }
 
   private maxBarTriangleBars(): number {

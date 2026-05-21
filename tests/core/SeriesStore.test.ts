@@ -365,6 +365,62 @@ describe("SeriesStore", () => {
     expect(Array.from(raw.subarray(0, count * 2))).toEqual([55, 100]);
   });
 
+  it("anchors dense min/max buckets to data indices so panning does not resample every segment", () => {
+    const series = new SeriesStore(
+      new RingBuffer(128),
+      { mode: "line", capacity: 128, downsample: "minmax" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+    const x = Float64Array.from({ length: 64 }, (_, i) => i);
+    const y = Float32Array.from({ length: 64 }, (_, i) => i % 11);
+    series.append(x, y);
+
+    const a = new Float32Array(12);
+    const b = new Float32Array(12);
+    const countA = series.copyMinMaxInstanced({ xMin: 0, xMax: 31, yMin: -10, yMax: 20 }, a, 4);
+    const countB = series.copyMinMaxInstanced({ xMin: 1, xMax: 32, yMin: -10, yMax: 20 }, b, 4);
+
+    expect(countA).toBe(4);
+    expect(countB).toBe(4);
+    expect([a[0], a[3], a[6], a[9]]).toEqual([4, 12, 20, 28]);
+    expect([b[0], b[3], b[6], b[9]]).toEqual([4, 12, 20, 28]);
+
+    const c = new Float32Array(12);
+    const d = new Float32Array(12);
+    series.copyMinMaxInstanced({ xMin: 0, xMax: 32, yMin: -10, yMax: 20 }, c, 4);
+    series.copyMinMaxInstanced({ xMin: 0.1, xMax: 32.1, yMin: -10, yMax: 20 }, d, 4);
+    expect([c[0], c[3], c[6], c[9]]).toEqual([4, 13, 22, 31]);
+    expect([d[0], d[3], d[6], d[9]]).toEqual([4, 13, 22, 31]);
+  });
+
+  it("anchors dense raw/area samples to data indices so panning does not resample every point", () => {
+    const series = new SeriesStore(
+      new RingBuffer(128),
+      { mode: "line", capacity: 128, downsample: "minmax" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+    const x = Float64Array.from({ length: 64 }, (_, i) => i);
+    const y = Float32Array.from({ length: 64 }, (_, i) => i);
+    series.append(x, y);
+
+    const a = new Float32Array(8);
+    const b = new Float32Array(8);
+    const countA = series.copyRawVisible({ xMin: 0, xMax: 31, yMin: -10, yMax: 80 }, a, 4);
+    const countB = series.copyRawVisible({ xMin: 1, xMax: 32, yMin: -10, yMax: 80 }, b, 4);
+
+    expect(countA).toBe(4);
+    expect(countB).toBe(4);
+    expect([a[2], a[4], a[6]]).toEqual([8, 16, 24]);
+    expect([b[2], b[4], b[6]]).toEqual([8, 16, 24]);
+
+    const c = new Float32Array(8);
+    const d = new Float32Array(8);
+    series.copyRawVisible({ xMin: 0, xMax: 32, yMin: -10, yMax: 80 }, c, 4);
+    series.copyRawVisible({ xMin: 0.1, xMax: 32.1, yMin: -10, yMax: 80 }, d, 4);
+    expect([c[2], c[4], c[6]]).toEqual([9, 18, 27]);
+    expect([d[2], d[4], d[6]]).toEqual([9, 18, 27]);
+  });
+
   it("anchors dense scatter buckets to data indices so panning does not resample every point", () => {
     const x = Array.from({ length: 120 }, (_, i) => i);
     const y = Array.from({ length: 120 }, () => 1);
@@ -382,7 +438,7 @@ describe("SeriesStore", () => {
     const firstX = Array.from(first.subarray(0, firstCount * 2)).filter((_, index) => index % 2 === 0);
     const secondX = Array.from(second.subarray(0, secondCount * 2)).filter((_, index) => index % 2 === 0);
 
-    expect(firstX.slice(0, 6)).toEqual([8, 24, 40, 56, 72, 88]);
+    expect(firstX.slice(0, 6)).toEqual([5, 15, 25, 35, 45, 55]);
     expect(secondX.slice(0, 6)).toEqual(firstX.slice(0, 6));
   });
 

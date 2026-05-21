@@ -4,6 +4,7 @@ import { Chart, OhlcRingBuffer, ServerSampledDataset, StaticDataset, UniformRing
 import { createLinkedCharts } from "../../src/linked.ts";
 import { annotationsPlugin } from "../../src/plugins/annotations.ts";
 import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
+import { buildFlameGraphModel, flameGraphPlugin } from "../../src/plugins/flamegraph.ts";
 import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import { legendPlugin } from "../../src/plugins/legend.ts";
 import { navigatorPlugin } from "../../src/plugins/navigator.ts";
@@ -22,7 +23,7 @@ declare const __BLAZEPLOT_VERSION__: string;
 type Section = "home" | "docs" | "previews";
 type HomeDataMode = "static" | "streaming";
 type HomeChartMode = "line" | "ohlc" | "multi";
-type PreviewId = "live" | "features" | "linked" | "server-sampled" | "mobile";
+type PreviewId = "live" | "features" | "linked" | "server-sampled" | "flamechart" | "mobile";
 
 interface PreviewLink {
   title: string;
@@ -34,6 +35,7 @@ const PREVIEWS: readonly PreviewLink[] = [
   { title: "Feature gallery", id: "features" },
   { title: "Linked charts", id: "linked" },
   { title: "Server-sampled", id: "server-sampled" },
+  { title: "Flame chart", id: "flamechart" },
   { title: "Mobile", id: "mobile" },
 ] as const;
 
@@ -264,6 +266,7 @@ export class BlazeplotSite extends LitElement {
     if (id === "features") return this.renderFeaturePreview();
     if (id === "linked") return this.renderLinkedChartsPreview();
     if (id === "server-sampled") return this.renderServerSampledPreview();
+    if (id === "flamechart") return this.renderFlameChartPreview();
     if (id === "mobile") return this.renderMobilePreview();
     return this.renderLivePreview();
   }
@@ -362,6 +365,14 @@ export class BlazeplotSite extends LitElement {
     `;
   }
 
+  private renderFlameChartPreview(): TemplateResult {
+    return this.renderPreviewPanel(
+      "Flame chart",
+      "WebGL stack rectangles · gigantic synthetic render trace",
+      html`<div data-preview-chart="flamechart" class="h-full min-h-[520px] w-full"></div>`,
+    );
+  }
+
   private renderMobilePreview(): TemplateResult {
     return this.renderPreviewPanel(
       "Mobile interaction",
@@ -395,6 +406,7 @@ export class BlazeplotSite extends LitElement {
         else if (kind === "feature-hero") this.mountFeatureHeroChart(target);
         else if (kind === "feature-linked") this.mountFeatureLinkedCharts(target);
         else if (kind === "server-sampled") this.mountServerSampledChart(target);
+        else if (kind === "flamechart") this.mountFlameChartPreview(target);
         else if (kind === "mobile") this.mountMobileChart(target);
       } catch {
         target.replaceChildren();
@@ -745,6 +757,54 @@ export class BlazeplotSite extends LitElement {
     };
     raf = requestAnimationFrame(stream);
     this.previewDisposers.push(() => cancelAnimationFrame(raf));
+  }
+
+  private mountFlameChartPreview(target: HTMLElement): void {
+    const model = buildFlameGraphModel(this.flameChartStacks(), { flameChart: true, countName: "ms" });
+    const flame = flameGraphPlugin({
+      model,
+      search: null,
+      minFrameWidthPx: 1,
+      labelMinWidthPx: 18,
+      onFrameClick: ({ frame }) => {
+        chart.setViewport({ xMin: frame.start, xMax: frame.end, yMin: Math.max(0, frame.depth - 0.5), yMax: Math.min(model.maxDepth + 1, frame.depth + 3.5) });
+      },
+      tooltipFormatter: (pick) => `${pick.frame.name}\n${pick.frame.value.toFixed(1)} ms (${(pick.percent * 100).toFixed(2)}%)`,
+    });
+    const chart = new Chart(target, {
+      axes: { x: { position: "outside", title: "profile time (ms)" }, y: { position: "outside", title: "stack depth" } },
+      grid: false,
+      plugins: [interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true }), flame],
+      accessibility: { label: "Flame chart preview" },
+    });
+    this.previewCharts.push(chart);
+    chart.setViewport({ xMin: model.minX, xMax: model.maxX, yMin: 0, yMax: model.maxDepth + 1 });
+    chart.start();
+  }
+
+  private flameChartStackCount(): number {
+    return 75_000;
+  }
+
+  private flameChartStacks(): Array<{ stack: readonly string[]; value: number }> {
+    const roots = ["render", "render-worker", "render-scheduler", "render-flush", "render-io"] as const;
+    const stages = ["render", "render:diff", "render:layout", "render:paint", "render:compose", "render:serialize", "render:cache", "render:commit"] as const;
+    const leaves = ["lookup", "hydrate", "diff", "layout", "paint", "encode", "await", "notify", "measure", "raster", "commit", "flush"] as const;
+    const stackCount = this.flameChartStackCount();
+    return Array.from({ length: stackCount }, (_, i) => {
+      const stage = stages[(i * 5 + Math.floor(i / 97)) % stages.length]!;
+      const root = roots[(i + Math.floor(i / 4096)) % roots.length]!;
+      const leaf = leaves[(i * 7 + Math.floor(i / 43)) % leaves.length]!;
+      const nested = i % 3 === 0
+        ? ["hot-path", leaves[(i * 3) % leaves.length]!, `batch-${i % 128}`]
+        : i % 5 === 0
+          ? ["fallback", `retry-${i % 64}`]
+          : [`lane-${i % 256}`];
+      return {
+        stack: [root, stage, ...nested, leaf],
+        value: 0.4 + Math.abs(Math.sin(i * 0.23)) * 4 + (i % 211 === 0 ? 16 : 0) + (i % 997 === 0 ? 28 : 0),
+      };
+    });
   }
 
   private mountFeatureHeroChart(target: HTMLElement): void {
@@ -1475,6 +1535,7 @@ export class BlazeplotSite extends LitElement {
     if (relative === "features") return "previews/features";
     if (relative === "linked") return "previews/linked";
     if (relative === "server-sampled") return "previews/server-sampled";
+    if (relative === "flamechart") return "previews/flamechart";
     if (relative === "mobile") return "previews/mobile";
     return null;
   }

@@ -1,5 +1,7 @@
 import { Chart } from "@/index.ts";
 import type { ChartFrameStats, SeriesStore } from "@/index.ts";
+import { buildFlameGraphModel, flameGraphPlugin } from "@/plugins/flamegraph.ts";
+import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { ProceduralLineDataset } from "../../../website/src/ProceduralLineDataset.ts";
 
 interface ScenarioConfig {
@@ -17,6 +19,10 @@ interface ScenarioConfig {
   readonly measureMs: number;
   readonly warmupMs: number;
   readonly proceduralLine?: boolean;
+  readonly flameChartStacks?: number;
+  readonly flameChartPan?: boolean;
+  readonly flameMinFrameWidthPx?: number;
+  readonly interaction?: "hover" | "pan";
 }
 
 interface NumericSummary {
@@ -35,6 +41,8 @@ interface BenchmarkResult {
   readonly liveSamplesAppended: number;
   readonly totalLineSamples: number;
   readonly viewportSamples: number;
+  readonly flameChartFrames?: number;
+  readonly flameChartStacks?: number;
   readonly canvas: { readonly width: number; readonly height: number };
   readonly raf: {
     readonly frames: number;
@@ -108,6 +116,38 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     measureMs: 5_000,
     warmupMs: 1_000,
   },
+  "mixed-1m-hover": {
+    name: "mixed-1m-hover",
+    initialSamples: 1_000_000,
+    viewportSamples: 1_000_000,
+    capacity: 2_000_000,
+    fillBatchSize: 65_536,
+    liveBatchSize: 0,
+    sparseInterval: 512,
+    includeScatter: true,
+    includeBars: true,
+    yMin: -1.5,
+    yMax: 1.5,
+    measureMs: 3_000,
+    warmupMs: 500,
+    interaction: "hover",
+  },
+  "mixed-1m-pan": {
+    name: "mixed-1m-pan",
+    initialSamples: 1_000_000,
+    viewportSamples: 1_000_000,
+    capacity: 2_000_000,
+    fillBatchSize: 65_536,
+    liveBatchSize: 0,
+    sparseInterval: 512,
+    includeScatter: true,
+    includeBars: true,
+    yMin: -1.5,
+    yMax: 1.5,
+    measureMs: 3_000,
+    warmupMs: 500,
+    interaction: "pan",
+  },
   "line-5m-static": {
     name: "line-5m-static",
     initialSamples: 5_000_000,
@@ -137,6 +177,24 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     yMax: 1.5,
     measureMs: 5_000,
     warmupMs: 1_000,
+  },
+  "flamechart-360k-pan": {
+    name: "flamechart-360k-pan",
+    initialSamples: 2,
+    viewportSamples: 2,
+    capacity: 2,
+    fillBatchSize: 2,
+    liveBatchSize: 0,
+    sparseInterval: 1,
+    includeScatter: false,
+    includeBars: false,
+    yMin: 0,
+    yMax: 6,
+    measureMs: 3_000,
+    warmupMs: 500,
+    flameChartStacks: 75_000,
+    flameChartPan: true,
+    flameMinFrameWidthPx: 1,
   },
   "line-1b-procedural": {
     name: "line-1b-procedural",
@@ -171,8 +229,19 @@ const chartTarget = document.getElementById("chart") as HTMLElement | null;
 const statusTarget = document.getElementById("status") as HTMLElement | null;
 if (!chartTarget) throw new Error("No #chart container found");
 
+const flameChartStacks = config.flameChartStacks ? createFlameChartStacks(config.flameChartStacks) : null;
+const flameChartModel = flameChartStacks ? buildFlameGraphModel(flameChartStacks, { flameChart: true, countName: "ms" }) : null;
+
+const chartPlugins = flameChartModel
+  ? [flameGraphPlugin({ model: flameChartModel, tooltip: false, hoverHighlight: false, minFrameWidthPx: config.flameMinFrameWidthPx ?? 1 })]
+  : config.interaction === "hover"
+    ? [tooltipPlugin({ mode: "nearest-x", group: "x", highlight: true, formatter: (item) => `${item.x}, ${item.y}` })]
+    : [];
+
 const chart = new Chart(chartTarget, {
   axes: { x: { position: "outside" }, y: { position: "outside" } },
+  hover: config.interaction === "hover" ? { mode: "nearest-x", group: "x" } : undefined,
+  plugins: chartPlugins,
 });
 
 const lineDataset = config.proceduralLine ? new ProceduralLineDataset(config.capacity) : undefined;
@@ -232,7 +301,7 @@ window.__blazeplotBench = {
   snapshot,
 };
 
-chart.setViewport({ xMin: 0, xMax: config.viewportSamples, yMin: config.yMin, yMax: config.yMax });
+updateViewport();
 chart.start();
 void prepare();
 
@@ -299,6 +368,12 @@ async function measure(): Promise<BenchmarkResult> {
       nextX += config.liveBatchSize;
       liveSamplesAppended += config.liveBatchSize;
       updateViewport();
+    } else if (config.flameChartPan) {
+      updateViewport(now - startMs);
+    } else if (config.interaction === "hover") {
+      dispatchHover(now - startMs);
+    } else if (config.interaction === "pan") {
+      updatePan(now - startMs);
     }
 
     chart.getFrameStats(frameStats);
@@ -320,6 +395,8 @@ async function measure(): Promise<BenchmarkResult> {
     liveSamplesAppended,
     totalLineSamples: nextX,
     viewportSamples: config.viewportSamples,
+    flameChartFrames: flameChartModel?.frames.length,
+    flameChartStacks: config.flameChartStacks,
     canvas: { width: chart.canvas.width, height: chart.canvas.height },
     raf: {
       frames: rafDeltas.length,
@@ -392,12 +469,71 @@ function appendSparseSeries(
   if (bars && barY) bars.append(sparseX, barY);
 }
 
-function updateViewport(): void {
+function updateViewport(elapsedMs = 0): void {
+  if (flameChartModel) {
+    const span = flameChartModel.maxX - flameChartModel.minX;
+    const xWindow = span * 0.08;
+    const panRange = Math.max(0, span - xWindow);
+    const t = config.flameChartPan ? (elapsedMs / Math.max(1, config.measureMs)) : 0;
+    const xMin = flameChartModel.minX + panRange * (0.5 + 0.5 * Math.sin(t * Math.PI * 2));
+    chart.setViewport({
+      xMin,
+      xMax: xMin + xWindow,
+      yMin: config.yMin,
+      yMax: config.yMax,
+    });
+    return;
+  }
+
   chart.setViewport({
     xMin: Math.max(0, nextX - config.viewportSamples),
     xMax: Math.max(config.viewportSamples, nextX),
     yMin: config.yMin,
     yMax: config.yMax,
+  });
+}
+
+function dispatchHover(elapsedMs: number): void {
+  const rect = chart.canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return;
+  const t = elapsedMs / Math.max(1, config.measureMs);
+  const x = rect.left + rect.width * (0.08 + 0.84 * ((Math.sin(t * Math.PI * 2) + 1) * 0.5));
+  const y = rect.top + rect.height * (0.2 + 0.6 * ((Math.cos(t * Math.PI * 4) + 1) * 0.5));
+  chart.canvas.dispatchEvent(new PointerEvent("pointermove", {
+    bubbles: true,
+    cancelable: true,
+    clientX: x,
+    clientY: y,
+    pointerType: "mouse",
+    buttons: 0,
+  }));
+}
+
+function updatePan(elapsedMs: number): void {
+  const t = elapsedMs / Math.max(1, config.measureMs);
+  const span = config.viewportSamples;
+  const panRange = Math.max(0, nextX - span);
+  const xMin = panRange * (0.5 + 0.5 * Math.sin(t * Math.PI * 2));
+  chart.setViewport({ xMin, xMax: xMin + span, yMin: config.yMin, yMax: config.yMax });
+}
+
+function createFlameChartStacks(stackCount: number): Array<{ stack: readonly string[]; value: number }> {
+  const roots = ["render", "render-worker", "render-scheduler", "render-flush", "render-io"] as const;
+  const stages = ["render", "render:diff", "render:layout", "render:paint", "render:compose", "render:serialize", "render:cache", "render:commit"] as const;
+  const leaves = ["lookup", "hydrate", "diff", "layout", "paint", "encode", "await", "notify", "measure", "raster", "commit", "flush"] as const;
+  return Array.from({ length: stackCount }, (_, i) => {
+    const stage = stages[(i * 5 + Math.floor(i / 97)) % stages.length]!;
+    const root = roots[(i + Math.floor(i / 4096)) % roots.length]!;
+    const leaf = leaves[(i * 7 + Math.floor(i / 43)) % leaves.length]!;
+    const nested = i % 3 === 0
+      ? ["hot-path", leaves[(i * 3) % leaves.length]!, `batch-${i % 128}`]
+      : i % 5 === 0
+        ? ["fallback", `retry-${i % 64}`]
+        : [`lane-${i % 256}`];
+    return {
+      stack: [root, stage, ...nested, leaf],
+      value: 0.4 + Math.abs(Math.sin(i * 0.23)) * 4 + (i % 211 === 0 ? 16 : 0) + (i % 997 === 0 ? 28 : 0),
+    };
   });
 }
 

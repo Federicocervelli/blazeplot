@@ -1,5 +1,5 @@
 import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
-import { createLongPressTouchTracker, createPickMarker, formatCompactNumber, placeFixedWithinViewport, renderPickItems } from "./OverlayUtils.js";
+import { clamp, createLongPressTouchTracker, createPickMarker, formatCompactNumber, rgba, renderPickItems } from "./OverlayUtils.js";
 
 export interface TooltipPluginOptions {
   readonly className?: string;
@@ -37,11 +37,15 @@ interface TooltipPeer {
 
 const tooltipGroups = new Map<string, Set<TooltipPeer>>();
 
-function placeTooltip(container: HTMLElement, state: ChartHoverState, options: TooltipPluginOptions): void {
-  placeFixedWithinViewport(container, state.clientX, state.clientY, {
-    offsetX: options.offsetX ?? 12,
-    offsetY: options.offsetY ?? 12,
-  });
+function placeTooltip(container: HTMLElement, state: ChartHoverState, options: TooltipPluginOptions, size: { readonly width: number; readonly height: number }): void {
+  const margin = 4;
+  const width = Math.max(1, size.width || 240);
+  const height = Math.max(1, size.height || 80);
+  const viewportWidth = Math.max(1, globalThis.innerWidth || container.ownerDocument.documentElement.clientWidth);
+  const viewportHeight = Math.max(1, globalThis.innerHeight || container.ownerDocument.documentElement.clientHeight);
+  const x = clamp(state.clientX + (options.offsetX ?? 12), margin, Math.max(margin, viewportWidth - width - margin));
+  const y = clamp(state.clientY + (options.offsetY ?? 12), margin, Math.max(margin, viewportHeight - height - margin));
+  container.style.transform = `translate(${x}px, ${y}px)`;
 }
 
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
@@ -74,9 +78,17 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       chart.plotElement.appendChild(markerLayer);
 
       let lockedTooltipWidth = 0;
+      let tooltipSize = { width: 0, height: 0 };
+      const markers: HTMLDivElement[] = [];
+      const tooltipResizeObserver = typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            tooltipSize = { width: container.offsetWidth, height: container.offsetHeight };
+          })
+        : null;
+      tooltipResizeObserver?.observe(container);
 
       const lockTooltipWidth = (): void => {
-        if (options.lockWidth === false) return;
+        if (options.lockWidth !== true) return;
         const width = Math.ceil(container.getBoundingClientRect().width);
         if (width <= lockedTooltipWidth) return;
         lockedTooltipWidth = width;
@@ -95,11 +107,22 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       };
 
       const renderMarkers = (state: ChartHoverState | null): void => {
-        markerLayer.replaceChildren();
-        if (options.highlight === false || !state) return;
-
-        for (const item of state.items) {
-          markerLayer.appendChild(createPickMarker(item));
+        const items = options.highlight === false || !state ? [] : state.items;
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i]!;
+          let marker = markers[i];
+          if (!marker) {
+            marker = createPickMarker(item);
+            markers[i] = marker;
+            markerLayer.appendChild(marker);
+          }
+          marker.style.display = "block";
+          marker.style.left = `${item.plotX}px`;
+          marker.style.top = `${item.plotY}px`;
+          marker.style.background = rgba(item.series.style.color);
+        }
+        for (let i = items.length; i < markers.length; i++) {
+          markers[i]!.style.display = "none";
         }
       };
 
@@ -128,7 +151,10 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         container.style.display = "block";
         container.setAttribute("aria-hidden", "false");
         lockTooltipWidth();
-        placeTooltip(container, effectiveState, options);
+        if (tooltipSize.width <= 0 || tooltipSize.height <= 0) {
+          tooltipSize = { width: container.offsetWidth, height: container.offsetHeight };
+        }
+        placeTooltip(container, effectiveState, options, tooltipSize);
       };
 
       const renderSharedAtX = (dataX: number): void => {
@@ -230,6 +256,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
           peers?.delete(peer);
           if (peers?.size === 0) tooltipGroups.delete(options.syncGroup);
         }
+        tooltipResizeObserver?.disconnect();
         markerLayer.remove();
         container.remove();
       };

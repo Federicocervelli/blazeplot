@@ -34,13 +34,7 @@ export async function composeChartScreenshot(
     ctx.fillRect(0, 0, width, height);
   }
 
-  ctx.drawImage(
-    sourceCanvas,
-    (plotRect.left - rootRect.left) * scaleX,
-    (plotRect.top - rootRect.top) * scaleY,
-    plotRect.width * scaleX,
-    plotRect.height * scaleY,
-  );
+  drawCanvasesForScreenshot(ctx, layout.root, sourceCanvas, plotRect, rootRect, scaleX, scaleY);
   await drawSvgOverlaysForScreenshot(ctx, layout.root, rootRect, scaleX, scaleY);
   drawDomTextForScreenshot(ctx, layout.root, rootRect, scaleX, scaleY);
 
@@ -68,6 +62,35 @@ function screenshotBackground(options: ChartScreenshotOptions, themeBackground: 
   if (options.preset === "dark") return "#0b1020";
   if (options.preset === "light") return "#ffffff";
   return themeBackground;
+}
+
+function drawCanvasesForScreenshot(
+  ctx: CanvasRenderingContext2D,
+  root: HTMLElement,
+  fallbackCanvas: HTMLCanvasElement,
+  fallbackPlotRect: DOMRect,
+  rootRect: DOMRect,
+  scaleX: number,
+  scaleY: number,
+): void {
+  const canvases = Array.from(root.querySelectorAll<HTMLCanvasElement>("canvas"));
+  const sources = canvases.length > 0 ? canvases : [fallbackCanvas];
+  for (const canvas of sources) {
+    const style = getComputedStyle(canvas);
+    if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
+    const rect = canvas.isConnected ? canvas.getBoundingClientRect() : fallbackPlotRect;
+    if (rect.width <= 0 || rect.height <= 0 || canvas.width <= 0 || canvas.height <= 0) continue;
+    ctx.save();
+    ctx.globalAlpha = Number.isFinite(Number(style.opacity)) ? Number(style.opacity) : 1;
+    ctx.drawImage(
+      canvas,
+      (rect.left - rootRect.left) * scaleX,
+      (rect.top - rootRect.top) * scaleY,
+      rect.width * scaleX,
+      rect.height * scaleY,
+    );
+    ctx.restore();
+  }
 }
 
 async function drawSvgOverlaysForScreenshot(

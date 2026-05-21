@@ -52,6 +52,7 @@ const DEFAULT_CASES = [
   "annotations",
   "selection",
   "navigator",
+  "flamegraph",
   "scale-options",
   "overlay-layering",
   "context-restore",

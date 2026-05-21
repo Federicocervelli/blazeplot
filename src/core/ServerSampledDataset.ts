@@ -1,5 +1,15 @@
 import type { Dataset, MinMaxSegmentCopyDataset, MinMaxSegmentLayout, RangeMinMaxDataset, SampleCopyLayout, TimeRange, Viewport } from "./types.js";
 
+function stableBucketWidth(length: number, range: TimeRange | null, viewport: Viewport, maxBuckets: number): number {
+  const budget = Math.max(1, maxBuckets);
+  const xSpan = viewport.xMax - viewport.xMin;
+  if (!range || length <= 1 || !(xSpan > 0)) return 1;
+  const dataSpan = range.end - range.start;
+  if (!(dataSpan > 0)) return Math.max(1, Math.ceil(length / budget));
+  const estimatedVisibleSamples = Math.max(1, (xSpan / dataSpan) * (length - 1) + 1);
+  return Math.max(1, Math.ceil(estimatedVisibleSamples / budget));
+}
+
 export interface ServerSampledPoints {
   readonly x: ArrayLike<number>;
   readonly y: ArrayLike<number>;
@@ -176,17 +186,18 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     const floats = layout === "line-list" ? 4 : 3;
     if (count <= 0 || target.length < count * floats) return 0;
 
+    const bucketWidth = stableBucketWidth(this.length, this.range, viewport, maxSegments);
+    const alignedStart = Math.floor(start / bucketWidth) * bucketWidth;
+
     let written = 0;
-    for (let segment = 0; segment < count; segment++) {
-      const segmentStart = start + Math.floor((segment * visible) / count);
-      const segmentEnd = start + Math.max(
-        Math.floor(((segment + 1) * visible) / count),
-        Math.floor((segment * visible) / count) + 1,
-      );
-      const clampedEnd = Math.min(end, segmentEnd);
-      const range = this.rangeMinMaxY(segmentStart, clampedEnd);
+    for (let bucketStart = alignedStart; bucketStart < end && written < count; bucketStart += bucketWidth) {
+      const segmentStart = Math.max(0, bucketStart);
+      const segmentEnd = Math.min(this.length, bucketStart + bucketWidth);
+      if (segmentEnd <= start || segmentStart >= end) continue;
+
+      const range = this.rangeMinMaxY(segmentStart, segmentEnd);
       if (!range) continue;
-      const x = this.bucketX(segmentStart, clampedEnd) - xOrigin;
+      const x = this.bucketX(segmentStart, segmentEnd) - xOrigin;
       if (layout === "line-list") {
         const offset = written * 4;
         target[offset] = x;
