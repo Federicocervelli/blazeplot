@@ -33,8 +33,8 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 
 ## Reducing per-frame work
 
-- Create charts once. Update datasets and call `chart.render()` instead of recreating the chart.
-- Use `chart.start()` for continuous rendering, or call `chart.render()` after data/option changes when you control the frame loop yourself.
+- Create charts once. Update datasets and keep the chart's `start()` loop running instead of recreating the chart.
+- Use `chart.stop()` when a chart is hidden or inactive, then `chart.start()` again when it should resume rendering.
 - Remove unused series with `chart.removeSeries(series)`.
 - Dispose charts on unmount with `chart.dispose()`.
 - Keep optional features in subpath imports, for example `blazeplot/plugins/tooltip`, so chart-only bundles stay smaller.

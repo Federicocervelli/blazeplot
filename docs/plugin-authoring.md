@@ -33,7 +33,7 @@ export function examplePlugin(): ChartPlugin {
 - `chart.pick(clientX, clientY)` for nearest raw sample data.
 - `chart.clientToData(...)` and `chart.dataToPlot(...)` for coordinate conversion.
 - `chart.theme` and the `themechange` event for theme-aware UI.
-- `chart.requestRender()` or `chart.render()` when plugin state changes need a redraw.
+- `chart.start()` keeps plugin state changes visible on the next animation frame; use `chart.stop()` only when the chart should pause rendering.
 
 ## Layout guidance
 
