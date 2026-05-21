@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
 import { RingBuffer } from "../../src/core/RingBuffer.ts";
 import { StaticDataset } from "../../src/core/StaticDataset.ts";
+import { OhlcRingBuffer } from "../../src/core/OhlcDataset.ts";
 import { UniformRingBuffer } from "../../src/core/UniformRingBuffer.ts";
 import type { Dataset, RangeMinMaxDataset, TimeRange } from "../../src/core/types.ts";
 
@@ -171,6 +172,29 @@ describe("SeriesStore", () => {
     const count = series.copyRawVisible({ xMin: 10, xMax: 20, yMin: -10, yMax: 10 }, raw, 3);
     expect(count).toBe(3);
     expect(Array.from(raw)).toEqual([10, 4, 15, -1, 20, 7]);
+  });
+
+  it("appends and updates OHLC datasets through the series so on-demand charts become dirty", () => {
+    let dirtyCount = 0;
+    const dataset = new OhlcRingBuffer(8);
+    const series = new SeriesStore(
+      dataset,
+      { mode: "ohlc", capacity: 8, downsample: "none" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+      () => { dirtyCount += 1; },
+    );
+
+    series.appendOhlc([10], [1], [2], [0.5], [1.5]);
+    expect(dataset.length).toBe(1);
+    expect(dataset.getClose(0)).toBe(1.5);
+    expect(dirtyCount).toBe(1);
+
+    expect(series.updateLastOhlc(1.5, 3, 1, 2.5)).toBe(true);
+    expect(dataset.getOpen(0)).toBe(1.5);
+    expect(dataset.getHigh(0)).toBe(3);
+    expect(dataset.getLow(0)).toBe(1);
+    expect(dataset.getClose(0)).toBe(2.5);
+    expect(dirtyCount).toBe(2);
   });
 
   it("copies visible min/max segments", () => {
