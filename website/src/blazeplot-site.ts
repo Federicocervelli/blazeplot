@@ -492,15 +492,16 @@ export class BlazeplotSite extends LitElement {
     const humidity = chart.addLine({ capacity: 20_000, name: "humidity %" }, { color: [0.2, 0.85, 0.45, 1], lineWidth: 1.5 });
     const vibration = chart.addLine({ capacity: 20_000, name: "vibration RMS", yAxis: "right" }, { color: [0.2, 0.7, 1, 1], lineWidth: 1.5 });
 
-    const start = performance.now();
-    const epochStart = Date.now();
-    let elapsed = -60_000;
+    const streamStartMs = Date.now();
+    let nextSampleAt = streamStartMs - 60_000;
     let tick = 0;
     let timeoutId = 0;
     let dropoutUntil = -Infinity;
 
-    const sensorValues = (x: number): { temp: number; humidity: number; vibe: number } => {
-      const seconds = x / 1000;
+    const nextSensorInterval = (): number => 12 + Math.random() * 18;
+
+    const sensorValues = (timestampMs: number): { temp: number; humidity: number; vibe: number } => {
+      const seconds = (timestampMs - streamStartMs) / 1000;
       const dutyCycle = Math.sin(seconds * 0.23) > 0.72 ? 1 : 0;
       const temp = 24
         + Math.sin(seconds * 0.055) * 2.2
@@ -521,27 +522,28 @@ export class BlazeplotSite extends LitElement {
       return { temp, humidity, vibe };
     };
 
-    const isHistoricalDropout = (x: number): boolean => {
-      return (x > -45_000 && x < -43_700) || (x > -21_500 && x < -20_300) || (x > -7_800 && x < -7_000);
+    const isHistoricalDropout = (timestampMs: number): boolean => {
+      const offset = timestampMs - streamStartMs;
+      return (offset > -45_000 && offset < -43_700) || (offset > -21_500 && offset < -20_300) || (offset > -7_800 && offset < -7_000);
     };
 
-    const seedCount = 3_000;
-    const xs = new Float64Array(seedCount);
-    const temp = new Float32Array(seedCount);
-    const humid = new Float32Array(seedCount);
-    const vibe = new Float32Array(seedCount);
-    for (let i = 0; i < seedCount; i += 1) {
-      elapsed += 8 + Math.random() * 24;
-      xs[i] = epochStart + elapsed;
-      const values = sensorValues(elapsed);
-      const missing = isHistoricalDropout(elapsed);
-      temp[i] = missing ? NaN : values.temp;
-      humid[i] = missing ? NaN : values.humidity;
-      vibe[i] = missing ? NaN : values.vibe;
+    const seedX: number[] = [];
+    const seedTemp: number[] = [];
+    const seedHumidity: number[] = [];
+    const seedVibration: number[] = [];
+    while (nextSampleAt < streamStartMs) {
+      const timestamp = nextSampleAt;
+      const values = sensorValues(timestamp);
+      const missing = isHistoricalDropout(timestamp);
+      seedX.push(timestamp);
+      seedTemp.push(missing ? NaN : values.temp);
+      seedHumidity.push(missing ? NaN : values.humidity);
+      seedVibration.push(missing ? NaN : values.vibe);
+      nextSampleAt += nextSensorInterval();
     }
-    temperature.append({ x: xs, y: temp });
-    humidity.append({ x: xs, y: humid });
-    vibration.append({ x: xs, y: vibe });
+    temperature.append({ x: Float64Array.from(seedX), y: Float32Array.from(seedTemp) });
+    humidity.append({ x: Float64Array.from(seedX), y: Float32Array.from(seedHumidity) });
+    vibration.append({ x: Float64Array.from(seedX), y: Float32Array.from(seedVibration) });
 
     const updateStatus = (delay: number, batchCount: number, missingCount: number, values: { temp: number; humidity: number; vibe: number }): void => {
       if (!status) return;
@@ -552,30 +554,32 @@ export class BlazeplotSite extends LitElement {
     const schedule = (): void => {
       const delay = 70 + Math.random() * 110;
       timeoutId = window.setTimeout(() => {
-        const batchCount = 4 + Math.floor(Math.random() * 9);
-        const xBatch = new Float64Array(batchCount);
-        const tempBatch = new Float32Array(batchCount);
-        const humidityBatch = new Float32Array(batchCount);
-        const vibrationBatch = new Float32Array(batchCount);
+        const flushNow = Date.now();
+        const xBatch: number[] = [];
+        const tempBatch: number[] = [];
+        const humidityBatch: number[] = [];
+        const vibrationBatch: number[] = [];
         let missingCount = 0;
-        let latest = sensorValues(elapsed);
-        for (let i = 0; i < batchCount; i += 1) {
-          const nowElapsed = performance.now() - start;
-          elapsed = Math.max(elapsed + 8 + Math.random() * 24, nowElapsed - (batchCount - i) * 20);
-          if (elapsed > dropoutUntil && tick > 0 && tick % 240 === 0) dropoutUntil = elapsed + 850 + Math.random() * 450;
-          const missing = elapsed < dropoutUntil;
-          latest = sensorValues(elapsed);
-          xBatch[i] = epochStart + elapsed;
-          tempBatch[i] = missing ? NaN : latest.temp;
-          humidityBatch[i] = missing ? NaN : latest.humidity;
-          vibrationBatch[i] = missing ? NaN : latest.vibe;
+        let latest = sensorValues(nextSampleAt);
+        while (nextSampleAt <= flushNow && xBatch.length < 96) {
+          const timestamp = nextSampleAt;
+          if (timestamp > dropoutUntil && tick > 0 && tick % 600 === 0) dropoutUntil = timestamp + 850 + Math.random() * 450;
+          const missing = timestamp < dropoutUntil;
+          latest = sensorValues(timestamp);
+          xBatch.push(timestamp);
+          tempBatch.push(missing ? NaN : latest.temp);
+          humidityBatch.push(missing ? NaN : latest.humidity);
+          vibrationBatch.push(missing ? NaN : latest.vibe);
           if (missing) missingCount += 1;
           tick += 1;
+          nextSampleAt += nextSensorInterval();
         }
-        temperature.append({ x: xBatch, y: tempBatch });
-        humidity.append({ x: xBatch, y: humidityBatch });
-        vibration.append({ x: xBatch, y: vibrationBatch });
-        updateStatus(delay, batchCount, missingCount, latest);
+        if (xBatch.length > 0) {
+          temperature.append({ x: Float64Array.from(xBatch), y: Float32Array.from(tempBatch) });
+          humidity.append({ x: Float64Array.from(xBatch), y: Float32Array.from(humidityBatch) });
+          vibration.append({ x: Float64Array.from(xBatch), y: Float32Array.from(vibrationBatch) });
+          updateStatus(delay, xBatch.length, missingCount, latest);
+        }
         schedule();
       }, delay);
     };
