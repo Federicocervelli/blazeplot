@@ -134,7 +134,7 @@ const cleanup = () => {
 };
 ```
 
-`chart.start()` owns the animation loop, so dataset changes are picked up on the next frame. Stop the loop with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
+`chart.start()` activates render scheduling. Static charts render when chart-owned state changes, while appends through BlazePlot datasets request another frame automatically. Use `chart.start({ renderLoop: "continuous" })` only for custom animations or external data mutation that BlazePlot cannot observe. Stop scheduling with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
 
 ## Server-sampled min/max buckets
 

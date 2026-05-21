@@ -302,7 +302,7 @@ window.__blazeplotBench = {
 };
 
 updateViewport();
-chart.start();
+chart.start({ renderLoop: "continuous" });
 void prepare();
 
 async function prepare(): Promise<void> {

@@ -20,7 +20,7 @@ Check these first:
 1. **The host element has size.** BlazePlot fills its container; a `0px`-tall parent produces a `0px` plot.
 2. **The browser supports WebGL2.** BlazePlot does not include a Canvas2D or SVG fallback. Use `isWebGL2Available()` if you need to show a fallback UI.
 3. **The chart has a viewport.** Call `chart.fitToData()` after adding initial series, or set a viewport explicitly with `chart.setViewport(...)`.
-4. **The render loop is running.** Call `chart.start()` for animated/live charts. If you only need one frame, interactions and screenshots call into the render path as needed, but app code usually starts the loop.
+4. **Render scheduling is active.** Call `chart.start()` after setup. The default mode renders when chart-owned state changes and then idles; use `chart.start({ renderLoop: "continuous" })` only for custom animations or external data mutation.
 5. **The data is finite and sorted.** Built-in datasets expect ascending X values. Non-finite Y values create gaps.
 
 ```ts

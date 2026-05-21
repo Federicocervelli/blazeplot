@@ -114,6 +114,16 @@ export interface ChartBackendFactoryContext {
 
 export type ChartBackendFactory = (context: ChartBackendFactoryContext) => GpuBackend;
 
+export type ChartRenderLoop = "auto" | "continuous";
+
+export interface ChartStartOptions {
+  /**
+   * `auto` renders on demand after chart state changes. `continuous` renders on
+   * every animation frame for custom animations or external data mutation.
+   */
+  readonly renderLoop?: ChartRenderLoop;
+}
+
 export interface ChartOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly grid?: boolean;
@@ -125,6 +135,11 @@ export interface ChartOptions {
   readonly accessibility?: boolean | ChartAccessibilityOptions;
   readonly autoFitY?: boolean | ChartAutoFitYOptions;
   readonly followX?: boolean | ChartFollowXOptions;
+  /**
+   * Render scheduling mode used by `start()`. Defaults to `auto`, which renders
+   * once for static charts and then only when chart-owned state changes.
+   */
+  readonly renderLoop?: ChartRenderLoop;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
   /** Advanced hook for supplying a custom GPU backend. Defaults to WebGL2Backend. */
@@ -289,6 +304,7 @@ export interface ChartPluginContext {
   getFrameStats(target?: ChartFrameStats): ChartFrameStats;
   getHoverState(): ChartHoverState | null;
   setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
+  requestRender(): void;
   subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
   subscribe(event: "serieschange", callback: () => void): () => void;
   subscribe(event: "themechange", callback: () => void): () => void;
@@ -465,6 +481,8 @@ export class Chart implements ChartPluginContext {
   private _rafId: number = 0;
   private _hoverRafId: number = 0;
   private _restoreRenderRafId: number = 0;
+  private running: boolean = false;
+  private renderLoop: ChartRenderLoop = "auto";
   private webglContextLost: boolean = false;
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (event.pointerType !== "touch") {
@@ -535,6 +553,7 @@ export class Chart implements ChartPluginContext {
   };
 
   constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
+    this.renderLoop = options.renderLoop ?? "auto";
     this.resolvedTheme = resolveChartTheme(options.theme, target);
     this.normalizedAxes = normalizeAxesConfig(options.axes);
     this._gridVisible = options.grid !== false;
@@ -687,7 +706,7 @@ export class Chart implements ChartPluginContext {
       upColor: style?.upColor ?? color,
       downColor: style?.downColor ?? style?.fillColor ?? [color[0], color[1], color[2], color[3] * 0.45],
       wickColor: style?.wickColor ?? color,
-    });
+    }, () => this.requestRender());
     this.series.push(s);
     this.emitSeriesChange();
     return s;
@@ -769,12 +788,15 @@ export class Chart implements ChartPluginContext {
   }
 
   setXFollowPaused(paused: boolean): void {
+    if (this.xFollowPaused === paused) return;
     this.xFollowPaused = paused;
+    this.requestRender();
   }
 
   resumeXFollow(): void {
     this.xFollowPaused = false;
     this.applyFollowXPolicy();
+    this.requestRender();
   }
 
   fitToData(options: ChartFitToDataOptions = {}): boolean {
@@ -901,7 +923,10 @@ export class Chart implements ChartPluginContext {
 
   resize(dpr: number = globalThis.devicePixelRatio): boolean {
     const resized = this.applyCanvasSize(dpr);
-    if (resized) this.refreshHover();
+    if (resized) {
+      this.refreshHover();
+      this.requestRender();
+    }
     return resized;
   }
 
@@ -1009,7 +1034,9 @@ export class Chart implements ChartPluginContext {
   }
 
   setGridVisible(visible: boolean): void {
+    if (this._gridVisible === visible) return;
     this._gridVisible = visible;
+    this.requestRender();
   }
 
   getGridVisible(): boolean {
@@ -1077,16 +1104,35 @@ export class Chart implements ChartPluginContext {
     return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
-  start(): void {
-    const frame = (): void => {
-      this._rafId = requestAnimationFrame(frame);
-      this.render();
-    };
-    this._rafId = requestAnimationFrame(frame);
+  start(options: ChartStartOptions = {}): void {
+    this.renderLoop = options.renderLoop ?? this.options.renderLoop ?? this.renderLoop;
+    if (this.running) {
+      this.requestRender();
+      return;
+    }
+    this.running = true;
+    this.lastFrameAt = 0;
+    this.requestRender();
   }
 
   stop(): void {
-    cancelAnimationFrame(this._rafId);
+    this.running = false;
+    if (this._rafId !== 0) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = 0;
+    }
+  }
+
+  requestRender(): void {
+    if (!this.running || this._rafId !== 0) return;
+    this._rafId = requestAnimationFrame(() => {
+      this._rafId = 0;
+      if (!this.running) return;
+      this.render();
+      if (this.running && this.renderLoop === "continuous") {
+        this.requestRender();
+      }
+    });
   }
 
   private render(): void {
@@ -2050,15 +2096,18 @@ export class Chart implements ChartPluginContext {
       rightViewport: this.rightCamera.viewport,
     };
     for (const callback of this.viewportSubscribers) callback(event);
+    this.requestRender();
   }
 
   private emitSeriesChange(): void {
     for (const callback of this.seriesSubscribers) callback();
     this.refreshHover();
+    this.requestRender();
   }
 
   private emitThemeChange(): void {
     for (const callback of this.themeSubscribers) callback();
+    this.requestRender();
   }
 
   private emitRender(): void {
