@@ -67,12 +67,12 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-C0EKcqgG.js` | 53.2 KiB |
-| shared RingBuffer chunk | `dist/RingBuffer-DM9VrmtC.js` | 30.9 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-C-5oHd_W.js` | 18.4 KiB |
+| shared Chart chunk | `dist/Chart-Cv0AO42T.js` | 53.2 KiB |
+| shared RingBuffer chunk | `dist/RingBuffer-BD5o6QyI.js` | 31.7 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-Dt90gUdW.js` | 18.4 KiB |
 | shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-Bs4aiO8a.js` | 21.3 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-Cyh_mSWq.js` | 2.1 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-D--QlhQp.js` | 2.1 KiB |
 | lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
 | shared Tooltip chunk | `dist/Tooltip-D0WRT6Fj.js` | 5.7 KiB |
@@ -170,14 +170,19 @@ Generated from `dist/index.d.ts` after the package build.
 | `RingBufferOptions` | interface | `./core/RingBuffer` | — |
 | `RingBufferOverflow` | type | `./core/RingBuffer` | — |
 | `SampleCopyLayout` | type | `./core/types` | — |
+| `SeriesAppendData` | type | `./core/SeriesStore` | — |
 | `SeriesConfig` | interface | `./core/types` | — |
 | `SeriesDataBounds` | interface | `./core/SeriesStore` | — |
 | `SeriesDataBoundsOptions` | interface | `./core/SeriesStore` | — |
 | `SeriesMode` | type | `./core/types` | — |
+| `SeriesOhlcAppendData` | interface | `./core/SeriesStore` | — |
 | `SeriesOhlcSample` | interface | `./core/SeriesStore` | — |
+| `SeriesOhlcUpdateData` | interface | `./core/SeriesStore` | — |
 | `SeriesSample` | interface | `./core/types` | — |
+| `SeriesScalarOrArray` | type | `./core/SeriesStore` | — |
 | `SeriesStore` | class | `./core/SeriesStore` | — |
 | `SeriesStyle` | interface | `./core/types` | — |
+| `SeriesXYAppendData` | interface | `./core/SeriesStore` | — |
 | `SeriesYAxis` | type | `./core/types` | — |
 | `ServerSampledBuckets` | interface | `./core/ServerSampledDataset` | — |
 | `ServerSampledData` | type | `./core/ServerSampledDataset` | — |

@@ -382,7 +382,8 @@ export class BlazeplotSite extends LitElement {
       html`
         <section data-preview-chart="render-loop" class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[#aaa]">
           <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
-            <span>Default <code>chart.start()</code> should render once and idle; continuous should keep ticking.</span>
+            <span>Default <code>chart.start()</code> renders on demand; series appends should wake it without continuous RAF.</span>
+            <button data-render-loop-append type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">append sample</button>
             <button data-render-loop-request type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">request on-demand render</button>
             <button data-render-loop-pan type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">change viewport</button>
           </div>
@@ -669,7 +670,13 @@ export class BlazeplotSite extends LitElement {
         barSeries?.appendY(new Float32Array(batch.barY));
       }
       if (batch.ohlcCount > 0 && ohlcSeries && batch.ohlcX && batch.ohlcOpen && batch.ohlcHigh && batch.ohlcLow && batch.ohlcClose) {
-        ohlcSeries.appendOhlc(new Float64Array(batch.ohlcX), new Float32Array(batch.ohlcOpen), new Float32Array(batch.ohlcHigh), new Float32Array(batch.ohlcLow), new Float32Array(batch.ohlcClose));
+        ohlcSeries.append({
+          x: new Float64Array(batch.ohlcX),
+          open: new Float32Array(batch.ohlcOpen),
+          high: new Float32Array(batch.ohlcHigh),
+          low: new Float32Array(batch.ohlcLow),
+          close: new Float32Array(batch.ohlcClose),
+        });
       }
       t = batch.end;
       appendedSinceStats += batch.batchSize;
@@ -1202,12 +1209,12 @@ export class BlazeplotSite extends LitElement {
         currentHigh = price;
         currentLow = price;
         currentClose = price;
-        liveSeries.appendOhlc([bucketStart], [currentOpen], [currentHigh], [currentLow], [currentClose]);
+        liveSeries.append({ x: bucketStart, open: currentOpen, high: currentHigh, low: currentLow, close: currentClose });
       } else {
         currentHigh = Math.max(currentHigh, price);
         currentLow = Math.min(currentLow, price);
         currentClose = price;
-        liveSeries.updateLastOhlc(currentOpen, currentHigh, currentLow, currentClose);
+        liveSeries.updateLast({ open: currentOpen, high: currentHigh, low: currentLow, close: currentClose });
       }
       tradeCount += 1;
       if (liveDataset.length === 1) liveChart.fitToData({ padding: { x: 0.1, y: 0.1 } });
@@ -1289,24 +1296,26 @@ export class BlazeplotSite extends LitElement {
     const continuousTarget = target.querySelector<HTMLElement>("[data-render-loop-continuous]");
     const demandCount = target.querySelector<HTMLElement>("[data-render-loop-demand-count]");
     const continuousCount = target.querySelector<HTMLElement>("[data-render-loop-continuous-count]");
+    const appendButton = target.querySelector<HTMLButtonElement>("[data-render-loop-append]");
     const requestButton = target.querySelector<HTMLButtonElement>("[data-render-loop-request]");
     const panButton = target.querySelector<HTMLButtonElement>("[data-render-loop-pan]");
     if (!demandTarget || !continuousTarget || !demandCount || !continuousCount) throw new Error("Missing render-loop preview elements");
 
     const count = 720;
-    const x = Float32Array.from({ length: count }, (_, i) => i);
-    const y = Float32Array.from({ length: count }, (_, i) => Math.sin(i * 0.035) + Math.sin(i * 0.11) * 0.22);
-    const makeChart = (element: HTMLElement, label: string): Chart => {
+    const signal = (x: number): number => Math.sin(x * 0.035) + Math.sin(x * 0.11) * 0.22;
+    const makeChart = (element: HTMLElement, label: string): { chart: Chart; series: SeriesStore } => {
+      const dataset = new UniformRingBuffer(count * 2);
+      for (let i = 0; i < count; i += 1) dataset.push(i, signal(i));
       const chart = new Chart(element, {
         axes: { x: { position: "outside" }, y: { position: "outside" } },
         grid: true,
         plugins: [interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true })],
         accessibility: { label },
       });
-      chart.addLine({ dataset: new StaticDataset(x, y), name: label }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
+      const series = chart.addLine({ dataset, name: label }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
       chart.setViewport({ xMin: 0, xMax: count - 1, yMin: -1.4, yMax: 1.4 });
       this.previewCharts.push(chart);
-      return chart;
+      return { chart, series };
     };
 
     const demand = makeChart(demandTarget, "on-demand");
@@ -1314,11 +1323,12 @@ export class BlazeplotSite extends LitElement {
     let demandRenders = 0;
     let continuousRenders = 0;
     let panOffset = 0;
-    this.previewDisposers.push(demand.subscribe("render", () => { demandRenders += 1; }));
-    this.previewDisposers.push(continuous.subscribe("render", () => { continuousRenders += 1; }));
+    let nextX = count;
+    this.previewDisposers.push(demand.chart.subscribe("render", () => { demandRenders += 1; }));
+    this.previewDisposers.push(continuous.chart.subscribe("render", () => { continuousRenders += 1; }));
 
-    demand.start();
-    continuous.start({ renderLoop: "continuous" });
+    demand.chart.start();
+    continuous.chart.start({ renderLoop: "continuous" });
 
     const refresh = (): void => {
       demandCount.textContent = String(demandRenders);
@@ -1327,15 +1337,22 @@ export class BlazeplotSite extends LitElement {
     const interval = window.setInterval(refresh, 100);
     this.previewDisposers.push(() => window.clearInterval(interval));
 
+    if (appendButton) {
+      const onClick = (): void => {
+        demand.series.append({ y: signal(nextX++) });
+      };
+      appendButton.addEventListener("click", onClick);
+      this.previewDisposers.push(() => appendButton.removeEventListener("click", onClick));
+    }
     if (requestButton) {
-      const onClick = (): void => demand.requestRender();
+      const onClick = (): void => demand.chart.requestRender();
       requestButton.addEventListener("click", onClick);
       this.previewDisposers.push(() => requestButton.removeEventListener("click", onClick));
     }
     if (panButton) {
       const onClick = (): void => {
         panOffset = (panOffset + 40) % 160;
-        demand.setViewport({ xMin: panOffset, xMax: panOffset + count - 1, yMin: -1.4, yMax: 1.4 });
+        demand.chart.setViewport({ xMin: panOffset, xMax: panOffset + count - 1, yMin: -1.4, yMax: 1.4 });
       };
       panButton.addEventListener("click", onClick);
       this.previewDisposers.push(() => panButton.removeEventListener("click", onClick));
@@ -1469,7 +1486,7 @@ export class BlazeplotSite extends LitElement {
       const dataset = new UniformRingBuffer(count * 2);
       for (let i = 0; i < count; i += 1) dataset.push(i, this.homeSignal(i, 0));
       const series = chart.addLine({ dataset, name: "line" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
-      return { append: (x) => series.append([x], [this.homeSignal(x, 0)]) };
+      return { append: (x) => series.append({ x, y: this.homeSignal(x, 0) }) };
     }
 
     const x = new Float32Array(count);
@@ -1488,7 +1505,7 @@ export class BlazeplotSite extends LitElement {
       const datasets = colors.map(() => new UniformRingBuffer(count * 2));
       for (let i = 0; i < count; i += 1) datasets.forEach((dataset, index) => dataset.push(i, this.homeSignal(i, index)));
       const series = datasets.map((dataset, index) => chart.addLine({ dataset, name: `series ${index + 1}` }, { color: colors[index]!, lineWidth: 1.5 }));
-      return { append: (x) => series.forEach((item, index) => item.append([x], [this.homeSignal(x, index)])) };
+      return { append: (x) => series.forEach((item, index) => item.append({ x, y: this.homeSignal(x, index) })) };
     }
 
     for (let series = 0; series < colors.length; series += 1) {
@@ -1512,7 +1529,7 @@ export class BlazeplotSite extends LitElement {
     );
     return this.homeDataMode === "streaming" ? { append: (x) => {
       const [open, high, low, close] = this.homeOhlcValues(x);
-      series.appendOhlc([x], [open], [high], [low], [close]);
+      series.append({ x, open, high, low, close });
     } } : null;
   }
 

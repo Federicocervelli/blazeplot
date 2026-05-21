@@ -125,7 +125,7 @@ const series = chart.addLine({ dataset, name: "signal" });
 chart.start();
 
 const timer = setInterval(() => {
-  series.appendY(new Float32Array([Math.random(), Math.random(), Math.random()]));
+  series.append({ y: new Float32Array([Math.random(), Math.random(), Math.random()]) });
 }, 50);
 
 const cleanup = () => {
@@ -134,7 +134,7 @@ const cleanup = () => {
 };
 ```
 
-`chart.start()` activates render scheduling. Static charts render when chart-owned state changes, while appends through the returned series (`series.append(...)`, `series.appendY(...)`, `series.appendOhlc(...)`) request another frame automatically. If you mutate a dataset directly, call `series.markDirty()` afterward so LOD state and on-demand rendering wake up. Use `chart.start({ renderLoop: "continuous" })` only for custom animations that redraw even without chart-owned state changes. Stop scheduling with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
+`chart.start()` activates render scheduling. Static charts render when chart-owned state changes, while appends through the returned series (`series.append({ x, y })`, `series.append({ y })`, `series.append({ x, open, high, low, close })`) request another frame automatically. If you mutate a dataset directly, call `series.markDirty()` afterward so LOD state and on-demand rendering wake up. Use `chart.start({ renderLoop: "continuous" })` only for custom animations that redraw even without chart-owned state changes. Stop scheduling with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
 
 ## Server-sampled min/max buckets
 
@@ -157,7 +157,7 @@ chart.fitToData();
 chart.start();
 ```
 
-Bucket ranges should be sorted and non-overlapping for predictable picking, bounds, and visible-data export. Use `dataset.replace(...)` when a new viewport response arrives, then call `series.markDirty()` so on-demand rendering and LOD state update.
+Bucket ranges should be sorted and non-overlapping for predictable picking, bounds, and visible-data export. Use `series.replace(...)` when a new viewport response arrives so on-demand rendering and LOD state update.
 
 ## Financial OHLC and candlesticks
 
@@ -181,7 +181,7 @@ chart.fitToData();
 chart.start();
 ```
 
-OHLC bounds use high/low values, while generic `getY()` returns close. For live OHLC streams, append through the returned series with `series.appendOhlc(...)` or update the active candle with `series.updateLastOhlc(...)`; direct `dataset.push(...)` / `dataset.updateLast(...)` calls need a follow-up `series.markDirty()`. See [Data semantics](./data-semantics.md#ohlc-datasets).
+OHLC bounds use high/low values, while generic `getY()` returns close. For live OHLC streams, append through the returned series with `series.append({ x, open, high, low, close })` or update the active candle with `series.updateLast({ open, high, low, close })`; direct `dataset.push(...)` / `dataset.updateLast(...)` calls need a follow-up `series.markDirty()`. See [Data semantics](./data-semantics.md#ohlc-datasets).
 
 ## Linked charts
 

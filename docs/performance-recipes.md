@@ -7,7 +7,7 @@ BlazePlot is fast when the data model and the visible range match how the render
 | Situation | Prefer | Why |
 |---|---|---|
 | Appending irregular telemetry | `RingBuffer` with batched `series.append(...)` | Keeps a bounded rolling history without reallocating arrays and wakes on-demand rendering. |
-| Appending fixed-rate telemetry | `UniformRingBuffer` with `series.appendY(...)` | Avoids storing repeated X values and wakes on-demand rendering. |
+| Appending fixed-rate telemetry | `UniformRingBuffer` with `series.append({ y })` | Avoids storing repeated X values and wakes on-demand rendering. |
 | Rendering dense historical ranges | Built-in LOD or `ServerSampledDataset` | Reduces visible work while preserving extrema. |
 | Rendering a small exact viewport | `downsample: "none"` | Avoids sampler overhead when visible points are already bounded. |
 | Backend already has min/max buckets | `ServerSampledDataset` + `downsample: "server"` | Prevents double-sampling on the client. |
@@ -16,9 +16,9 @@ BlazePlot is fast when the data model and the visible range match how the render
 ## Streaming data
 
 - Use `RingBuffer` for irregular live samples and `UniformRingBuffer` for fixed-rate samples.
-- For fixed-rate data, append only Y batches with `series.appendY(...)` so you do not store or copy repeated X values.
+- For fixed-rate data, append only Y batches with `series.append({ y })` so you do not store or copy repeated X values.
 - Set capacity to the largest history window you need to keep in memory.
-- Append typed-array batches through the returned series when possible instead of one sample at a time, for example `Float64Array` X plus `Float32Array` Y for `series.append(...)` or `Float32Array` Y for `series.appendY(...)`.
+- Append typed-array batches through the returned series when possible instead of one sample at a time, for example `series.append({ x: Float64Array, y: Float32Array })` or `series.append({ y: Float32Array })`.
 - Keep X values sorted in logical order. Binary search, picking, and LOD depend on it.
 - Prefer series APIs for live writes. They mark LOD state dirty and request a frame in the default on-demand render loop. If you mutate a dataset directly, call `series.markDirty()` afterward.
 - Choose an overflow mode intentionally:
