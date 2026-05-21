@@ -10,7 +10,7 @@ BlazePlot docs should help a developer decide what to build, copy a correct star
 4. Prefer one small, complete example over several partial snippets.
 5. Run the smallest relevant checks before opening or merging the change.
 
-For generated reference updates, run `bun run docs:readme` after `bun run build`. Do not hand-edit `docs/api-reference.md` or the generated README section.
+For generated reference updates, run `bun run docs:readme`. That command builds the package, regenerates `docs/api-reference.md`, and updates the generated README section. Do not hand-edit `docs/api-reference.md` or the generated README section.
 
 ## What useful docs look like
 
@@ -36,8 +36,8 @@ Use this checklist in PR descriptions for docs changes.
 |---|---|
 | Read changed docs in `bun run dev` | Any website-visible docs change |
 | `bun run typecheck` | Code snippets reference TypeScript APIs or docs nav changes |
-| `bun run build` | Package exports, generated declarations, or website imports changed |
-| `bun run docs:readme` | Generated API reference or README docs section needs refresh |
+| `bun run build` | Package exports or website imports changed |
+| `bun run docs:readme` | Generated API reference, declarations, or README docs section needs refresh |
 | `bun run pages:build` | Website docs routing, markdown rendering, or nav changed |
 
 ## Page ownership
@@ -52,4 +52,3 @@ Use this checklist in PR descriptions for docs changes.
 | `docs/plugin-authoring.md` | Public plugin contract for custom UI/behavior |
 | `docs/theming-and-layout.md` | Theme tokens, axes, gutters, and responsive layout |
 | `docs/api-reference.md` | Generated import paths and public symbols |
-
