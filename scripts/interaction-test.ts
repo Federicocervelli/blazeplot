@@ -153,9 +153,11 @@ async function runLiveFollowCase(options: Options, serverUrl: string): Promise<v
     let snapshot = await waitForReady(cdp, options.timeoutMs);
     assert(snapshot.viewport.xMax >= 1_020, "followLatestX can use a live x clock ahead of the newest sample");
     assert(close(spanX(snapshot.viewport), 100, 0.1), "followLatestX uses the configured rolling window");
-    await sleep(80);
+    const initialRenderEvents = snapshot.renderEvents;
+    await sleep(120);
     snapshot = await getRequiredSnapshot(cdp);
-    assert(snapshot.viewport.xMax >= 1_050, "live x clock advances follow viewport between data appends");
+    assert(snapshot.viewport.xMax >= 1_080, "live x clock advances follow viewport between data appends");
+    assert(snapshot.renderEvents > initialRenderEvents + 2, "live x clock keeps auto render loop active while following");
 
     await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
     await sleep(40);
@@ -164,7 +166,7 @@ async function runLiveFollowCase(options: Options, serverUrl: string): Promise<v
 
     await sleep(180);
     snapshot = await getRequiredSnapshot(cdp);
-    assert(snapshot.viewport.xMax >= 1_050, "resumeAfterMs resumes live follow after inactivity");
+    assert(snapshot.viewport.xMax >= 1_100, "resumeAfterMs resumes live follow after inactivity");
     console.log("✓ live follow: helper pins, pauses, and resumes the rolling x window");
   } finally {
     cdp.close();

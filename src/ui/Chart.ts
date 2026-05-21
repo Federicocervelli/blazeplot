@@ -1262,6 +1262,12 @@ export class Chart implements ChartPluginContext {
       this._hoverRafId = 0;
     }
     this.refreshHover();
+    if (this.running && this.renderLoop === "auto" && this.shouldAnimateFollowX()) this.requestRender();
+  }
+
+  private shouldAnimateFollowX(): boolean {
+    const config = this.followXConfig;
+    return !!config && config.enabled !== false && !this.xFollowPaused && typeof config.currentX === "function";
   }
 
   dispose(): void {

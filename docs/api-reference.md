@@ -67,12 +67,12 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-Cm6_LUgJ.js` | 54.8 KiB |
+| shared Chart chunk | `dist/Chart-DW8V95MZ.js` | 55.0 KiB |
 | shared streaming data chunk | `dist/UniformRingBuffer-zewj9EWq.js` | 44.2 KiB |
 | shared OhlcDataset chunk | `dist/OhlcDataset-5knDb_Pp.js` | 9.9 KiB |
 | shared AxisController chunk | `dist/AxisController-CCk21uVK.js` | 13.8 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-Bs4aiO8a.js` | 21.3 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-B8TiqAml.js` | 2.1 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore--XDAXxgi.js` | 2.1 KiB |
 | lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
 | shared Tooltip chunk | `dist/Tooltip-D0WRT6Fj.js` | 5.7 KiB |
