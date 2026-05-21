@@ -48,9 +48,41 @@ function hasExplicitGaps(dataset: Dataset): dataset is Dataset & { isGap(index: 
   return typeof dataset.isGap === "function";
 }
 
+function toArrayLike(value: SeriesScalarOrArray): ArrayLike<number> {
+  return typeof value === "number" ? [value] : value;
+}
+
+function isOhlcAppendData(data: SeriesAppendData): data is SeriesOhlcAppendData {
+  return "open" in data && "high" in data && "low" in data && "close" in data;
+}
+
 const NEAREST_POINT_LEAF_SIZE = 64;
 const SCATTER_INTERVAL_LEAF_SIZE = 64;
 const SCATTER_BUCKET_RANGE_PRUNE_SIZE = 1024;
+
+export type SeriesScalarOrArray = number | ArrayLike<number>;
+
+export interface SeriesXYAppendData {
+  readonly x?: SeriesScalarOrArray;
+  readonly y: SeriesScalarOrArray;
+}
+
+export interface SeriesOhlcAppendData {
+  readonly x: SeriesScalarOrArray;
+  readonly open: SeriesScalarOrArray;
+  readonly high: SeriesScalarOrArray;
+  readonly low: SeriesScalarOrArray;
+  readonly close: SeriesScalarOrArray;
+}
+
+export interface SeriesOhlcUpdateData {
+  readonly open: number;
+  readonly high: number;
+  readonly low: number;
+  readonly close: number;
+}
+
+export type SeriesAppendData = SeriesXYAppendData | SeriesOhlcAppendData;
 
 export interface SeriesDataBounds {
   readonly xMin: number;
@@ -138,7 +170,29 @@ export class SeriesStore {
     this.onDirty?.();
   }
 
-  append(x: ArrayLike<number>, y: ArrayLike<number>): void {
+  append(data: SeriesAppendData): void;
+  append(x: ArrayLike<number>, y: ArrayLike<number>): void;
+  append(first: SeriesAppendData | ArrayLike<number>, y?: ArrayLike<number>): void {
+    if (y !== undefined) {
+      this.appendXY(first as ArrayLike<number>, y);
+      return;
+    }
+    const data = first as SeriesAppendData;
+    if (isOhlcAppendData(data)) {
+      this.appendOhlc(
+        toArrayLike(data.x),
+        toArrayLike(data.open),
+        toArrayLike(data.high),
+        toArrayLike(data.low),
+        toArrayLike(data.close),
+      );
+      return;
+    }
+    if (data.x === undefined) this.appendY(toArrayLike(data.y));
+    else this.appendXY(toArrayLike(data.x), toArrayLike(data.y));
+  }
+
+  private appendXY(x: ArrayLike<number>, y: ArrayLike<number>): void {
     if (!("push" in this.dataset)) {
       throw new TypeError("SeriesStore dataset is not appendable.");
     }
@@ -175,6 +229,10 @@ export class SeriesStore {
     this.onDirty?.();
   }
 
+  updateLast(data: SeriesOhlcUpdateData): boolean {
+    return this.updateLastOhlc(data.open, data.high, data.low, data.close);
+  }
+
   updateLastOhlc(open: number, high: number, low: number, close: number): boolean {
     if (!hasOhlcAppend(this.dataset) || typeof this.dataset.updateLast !== "function") {
       throw new TypeError("SeriesStore dataset does not support OHLC updateLast.");
@@ -186,6 +244,18 @@ export class SeriesStore {
       this.onDirty?.();
     }
     return updated;
+  }
+
+  replace(data: unknown): void {
+    if (!("replace" in this.dataset) || typeof this.dataset.replace !== "function") {
+      throw new TypeError("SeriesStore dataset does not support replace.");
+    }
+
+    (this.dataset.replace as (data: unknown) => void)(data);
+    this._useDatasetRangeMinMax = hasRangeMinMaxY(this.dataset);
+    this._useRawMinMaxScan = false;
+    this._dirty = true;
+    this.onDirty?.();
   }
 
   markDirty(): void {

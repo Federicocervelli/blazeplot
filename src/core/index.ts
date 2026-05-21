@@ -12,5 +12,5 @@ export { OhlcRingBuffer, StaticOhlcDataset } from "./OhlcDataset.js";
 export type { OhlcRingBufferOptions } from "./OhlcDataset.js";
 export { MinMaxPyramid } from "./MinMaxPyramid.js";
 export { SeriesStore } from "./SeriesStore.js";
-export type { SeriesDataBounds, SeriesDataBoundsOptions, SeriesOhlcSample } from "./SeriesStore.js";
+export type { SeriesAppendData, SeriesDataBounds, SeriesDataBoundsOptions, SeriesOhlcAppendData, SeriesOhlcSample, SeriesOhlcUpdateData, SeriesScalarOrArray, SeriesXYAppendData } from "./SeriesStore.js";
 export { DataCursor } from "./DataCursor.js";

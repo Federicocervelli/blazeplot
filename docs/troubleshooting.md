@@ -60,7 +60,7 @@ const series = chart.addLine({ dataset, name: "signal" });
 chart.start();
 
 // Good: marks data/LOD dirty and requests a render.
-series.appendY(new Float32Array([1, 2, 3]));
+series.append({ y: new Float32Array([1, 2, 3]) });
 ```
 
 If you mutate a dataset directly, BlazePlot cannot observe that write. Call `series.markDirty()` afterward:
@@ -70,7 +70,7 @@ dataset.appendY(new Float32Array([1, 2, 3]));
 series.markDirty();
 ```
 
-For OHLC streams, use `series.appendOhlc(...)` / `series.updateLastOhlc(...)` rather than calling `OhlcRingBuffer` methods directly.
+For OHLC streams, use `series.append({ x, open, high, low, close })` / `series.updateLast({ open, high, low, close })` rather than calling `OhlcRingBuffer` methods directly.
 
 ## Performance drops over time
 
