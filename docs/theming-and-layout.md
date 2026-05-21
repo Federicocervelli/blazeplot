@@ -13,6 +13,16 @@ chart.setTheme({
 
 Theme values are merged with the default theme, so you can override only the tokens you need. Colors accept CSS color strings; renderer-facing colors also accept RGBA arrays in 0-1 range.
 
+## Quick decisions
+
+| Goal | Use |
+|---|---|
+| Brand colors or dark mode | `theme` at construction time, then `chart.setTheme(...)` for runtime changes. |
+| Compact dashboards | Inside axes, fewer visible axes, smaller title/axis fonts, and plugin layout reservations. |
+| External controls or legends | A plugin with `chart.setLayoutReservation(...)`; avoid hard-coded margins. |
+| Screenshot-safe overlays | Built-in DOM/SVG overlays or plugin-owned elements inside the chart root. |
+| Mobile layouts | Inside axes, fewer ticks, touch interactions, and controls outside the plot. |
+
 ## Theme tokens
 
 | Token group | Options |
@@ -72,7 +82,20 @@ For small screens, prefer:
 
 ## Accessibility and contrast
 
-- Provide `accessibility: { label: "..." }` so the chart has useful screen-reader context.
+Provide accessible text at chart construction time. BlazePlot marks the canvas as hidden from assistive technology and puts the label on the chart root.
+
+```ts
+const chart = new Chart(element, {
+  title: "Latency",
+  subtitle: "p95 by region",
+  accessibility: {
+    label: "Latency chart showing p95 latency by region",
+    description: "Use the table below the chart for exact values.",
+  },
+});
+```
+
 - Keep axis text readable against the background.
 - Use grid colors as decoration, not as the only way to understand the chart.
 - Pick series colors that remain distinct for dense data and common color-vision differences.
+- Put exact values in nearby tables or exports when the chart is part of a critical workflow.
