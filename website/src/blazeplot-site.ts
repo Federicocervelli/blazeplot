@@ -476,7 +476,7 @@ export class BlazeplotSite extends LitElement {
     const liveButton = root.querySelector<HTMLButtonElement>("[data-sensor-live]");
 
     const chart = new Chart(target, {
-      axes: { x: { position: "outside" }, y: { position: "outside" }, y2: { visible: true, position: "outside" } },
+      axes: { x: { position: "outside", scale: "time" }, y: { position: "outside" }, y2: { visible: true, position: "outside" } },
       grid: true,
       autoFitY: { padding: { y: 0.15 }, yAxis: "both" },
       plugins: [
@@ -493,6 +493,7 @@ export class BlazeplotSite extends LitElement {
     const vibration = chart.addLine({ capacity: 20_000, name: "vibration RMS", yAxis: "right" }, { color: [0.2, 0.7, 1, 1], lineWidth: 1.5 });
 
     const start = performance.now();
+    const epochStart = Date.now();
     let elapsed = -60_000;
     let tick = 0;
     let timeoutId = 0;
@@ -531,7 +532,7 @@ export class BlazeplotSite extends LitElement {
     const vibe = new Float32Array(seedCount);
     for (let i = 0; i < seedCount; i += 1) {
       elapsed += 8 + Math.random() * 24;
-      xs[i] = elapsed;
+      xs[i] = epochStart + elapsed;
       const values = sensorValues(elapsed);
       const missing = isHistoricalDropout(elapsed);
       temp[i] = missing ? NaN : values.temp;
@@ -564,7 +565,7 @@ export class BlazeplotSite extends LitElement {
           if (elapsed > dropoutUntil && tick > 0 && tick % 240 === 0) dropoutUntil = elapsed + 850 + Math.random() * 450;
           const missing = elapsed < dropoutUntil;
           latest = sensorValues(elapsed);
-          xBatch[i] = elapsed;
+          xBatch[i] = epochStart + elapsed;
           tempBatch[i] = missing ? NaN : latest.temp;
           humidityBatch[i] = missing ? NaN : latest.humidity;
           vibrationBatch[i] = missing ? NaN : latest.vibe;
