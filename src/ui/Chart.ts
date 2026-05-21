@@ -263,6 +263,12 @@ export interface ChartFollowXOptions {
   readonly pauseOnInteraction?: boolean;
   /** Resume automatically this many milliseconds after a pan/zoom interaction. */
   readonly resumeAfterMs?: number;
+  /**
+   * Optional live X clock for smooth scrolling streams. When provided, the
+   * follow window uses the larger of latest data X and `currentX()` so time
+   * axes can advance continuously between batched sensor/network updates.
+   */
+  readonly currentX?: () => number;
   readonly visibleOnly?: boolean;
   readonly series?: readonly SeriesStore[];
 }
@@ -949,6 +955,8 @@ export class Chart implements ChartPluginContext {
       const range = series.xRange;
       if (range) xMax = Math.max(xMax, range.end);
     }
+    const clockX = config.currentX?.();
+    if (Number.isFinite(clockX)) xMax = Math.max(xMax, clockX!);
     if (!Number.isFinite(xMax)) return;
 
     const currentSpan = this.camera.xMax - this.camera.xMin;

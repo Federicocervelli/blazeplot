@@ -48,7 +48,7 @@ const chart = new Chart(element, {
 });
 ```
 
-You can also enable it after construction with `chart.followLatestX(...)`. If the user pans or zooms and `pauseOnInteraction` is enabled, call `chart.resumeLatestXFollow()` when they click your "live" button, or set `resumeAfterMs` to resume automatically.
+You can also enable it after construction with `chart.followLatestX(...)`. For timestamped streams that arrive in batches, add `currentX: () => Date.now()` so the viewport scrolls smoothly between batch arrivals. If the user pans or zooms and `pauseOnInteraction` is enabled, call `chart.resumeLatestXFollow()` when they click your "live" button, or set `resumeAfterMs` to resume automatically.
 
 ## Live data does not repaint until interaction
 

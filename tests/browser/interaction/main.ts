@@ -161,7 +161,9 @@ try {
     }
     item.setViewport(initialViewport);
     if (caseName === "live-follow") {
-      item.followLatestX({ window: 100, pauseOnInteraction: true, resumeAfterMs: 120 });
+      let currentX = 1_020;
+      item.followLatestX({ window: 100, pauseOnInteraction: true, resumeAfterMs: 120, currentX: () => currentX });
+      window.setTimeout(() => { currentX = 1_050; item.requestRender(); }, 20);
     }
     if (caseName === "lifecycle") {
       item.start();
