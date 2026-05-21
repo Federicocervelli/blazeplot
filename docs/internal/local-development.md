@@ -75,7 +75,7 @@ Use `bun run docs:bundle-size` to print the current bundle-size table and `bun r
 
 ## Release candidate checklist
 
-Release commands and branch policy live in [Release and benchmark notes](../release-and-benchmarks.md). The short version:
+Release commands and branch policy live in [Release and benchmark notes](../release-and-benchmarks.md), with a copy-paste checklist in [Release checklist](./release-checklist.md). The short version:
 
 1. Branch from updated `development`.
 2. Bump with `bun run version:patch`, `version:minor`, or `version:major`.
