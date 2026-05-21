@@ -1,0 +1,40 @@
+name: Documentation improvement
+description: Suggest a clearer example, missing guide, or docs fix
+title: "docs: "
+labels: [documentation]
+body:
+  - type: textarea
+    id: page
+    attributes:
+      label: Page or section
+      description: Link the page, heading, or file that needs improvement.
+      placeholder: "docs/examples.md#live-line-chart"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is confusing or missing?
+      description: Describe the user path that currently gets stuck.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement
+      description: If possible, describe the example, explanation, or source-backed correction that would help.
+    validations:
+      required: false
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Primary audience
+      options:
+        - First-time user
+        - App developer
+        - Plugin author
+        - Maintainer/release work
+        - Performance/debugging
+        - Other
+    validations:
+      required: true

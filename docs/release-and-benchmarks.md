@@ -20,6 +20,8 @@ GitHub Pages publishes both active branches into one site:
 
 The Pages workflow runs on pushes to either `main` or `development`, checks out both branches, builds each Lit website with the correct Vite `base`, and deploys a combined artifact. Legacy preview routes redirect to the integrated `#previews` view.
 
+For a copy-paste release PR checklist, see [Internal release checklist](./internal/release-checklist.md). For workflow ownership and failure modes, see [GitHub workflow runbook](./internal/github-workflows.md).
+
 ## Preparing a release candidate
 
 ```bash

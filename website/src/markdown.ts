@@ -27,7 +27,31 @@ const HTML_ESCAPE: Record<string, string> = {
   '"': "&quot;",
 };
 
-export function renderMarkdown(markdown: string): string {
+const GITHUB_SOURCE_BASE = "https://github.com/Federicocervelli/blazeplot/blob/development/";
+
+const DOC_ROUTE_BY_SOURCE_PATH: Readonly<Record<string, string>> = {
+  "docs/README.md": "docs/docs-map",
+  "docs/api-reference.md": "docs/api-reference",
+  "docs/browser-support.md": "docs/browser-support",
+  "docs/built-in-plugins.md": "docs/built-in-plugins",
+  "docs/data-semantics.md": "docs/data-semantics",
+  "docs/documentation-contributions.md": "docs/documentation-contributions",
+  "docs/examples.md": "docs/examples",
+  "docs/overview.md": "docs/overview",
+  "docs/performance-recipes.md": "docs/performance-recipes",
+  "docs/plugin-authoring.md": "docs/plugin-authoring",
+  "docs/release-and-benchmarks.md": "docs/release-and-benchmarks",
+  "docs/roadmap.md": "docs/roadmap",
+  "docs/theming-and-layout.md": "docs/theming-and-layout",
+  "docs/troubleshooting.md": "docs/troubleshooting",
+  "docs/versioning-and-migration.md": "docs/versioning-and-migration",
+};
+
+export interface RenderMarkdownOptions {
+  readonly sourcePath?: string;
+}
+
+export function renderMarkdown(markdown: string, options: RenderMarkdownOptions = {}): string {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const html: string[] = [];
   let inCode = false;
@@ -39,7 +63,7 @@ export function renderMarkdown(markdown: string): string {
 
   const flushParagraph = (): void => {
     if (paragraph.length === 0) return;
-    html.push(`<p>${parseInline(paragraph.join(" "))}</p>`);
+    html.push(`<p>${parseInline(paragraph.join(" "), options)}</p>`);
     paragraph = [];
   };
 
@@ -51,7 +75,7 @@ export function renderMarkdown(markdown: string): string {
 
   const flushBlockquote = (): void => {
     if (blockquote.length === 0) return;
-    html.push(`<blockquote>${blockquote.map((line) => `<p>${parseInline(line)}</p>`).join("")}</blockquote>`);
+    html.push(`<blockquote>${blockquote.map((line) => `<p>${parseInline(line, options)}</p>`).join("")}</blockquote>`);
     blockquote = [];
   };
 
@@ -100,7 +124,7 @@ export function renderMarkdown(markdown: string): string {
     const summary = /^<summary>(.*)<\/summary>$/iu.exec(trimmed);
     if (summary) {
       closeFlow();
-      html.push(`<summary>${parseInlineHtml(summary[1] ?? "")}</summary>`);
+      html.push(`<summary>${parseInlineHtml(summary[1] ?? "", options)}</summary>`);
       continue;
     }
 
@@ -118,7 +142,7 @@ export function renderMarkdown(markdown: string): string {
         tableRows.push(splitTableRow(tableLine));
         index += 1;
       }
-      html.push(renderTable(tableRows));
+      html.push(renderTable(tableRows, options));
       continue;
     }
 
@@ -129,7 +153,7 @@ export function renderMarkdown(markdown: string): string {
       const text = heading[2] ?? "";
       const level = marker.length;
       const id = slugify(text);
-      html.push(`<h${level} id="${id}">${parseInline(text)}</h${level}>`);
+      html.push(`<h${level} id="${id}">${parseInline(text, options)}</h${level}>`);
       continue;
     }
 
@@ -155,7 +179,7 @@ export function renderMarkdown(markdown: string): string {
         html.push("<ul>");
         list = "ul";
       }
-      html.push(`<li>${parseInline(unordered[1] ?? "")}</li>`);
+      html.push(`<li>${parseInline(unordered[1] ?? "", options)}</li>`);
       continue;
     }
 
@@ -168,7 +192,7 @@ export function renderMarkdown(markdown: string): string {
         html.push("<ol>");
         list = "ol";
       }
-      html.push(`<li>${parseInline(ordered[1] ?? "")}</li>`);
+      html.push(`<li>${parseInline(ordered[1] ?? "", options)}</li>`);
       continue;
     }
 
@@ -213,12 +237,12 @@ function splitTableRow(row: string): string[] {
   return cells;
 }
 
-function renderTable(rows: readonly string[][]): string {
+function renderTable(rows: readonly string[][], options: RenderMarkdownOptions = {}): string {
   const [head = [], ...body] = rows;
   const hasVisibleHead = head.some((cell) => cell.trim() !== "");
-  const headHtml = hasVisibleHead ? `<thead><tr>${head.map((cell) => `<th>${parseInline(cell)}</th>`).join("")}</tr></thead>` : "";
+  const headHtml = hasVisibleHead ? `<thead><tr>${head.map((cell) => `<th>${parseInline(cell, options)}</th>`).join("")}</tr></thead>` : "";
   const bodyHtml = body
-    .map((row) => `<tr>${row.map((cell) => `<td>${parseInline(cell)}</td>`).join("")}</tr>`)
+    .map((row) => `<tr>${row.map((cell) => `<td>${parseInline(cell, options)}</td>`).join("")}</tr>`)
     .join("");
   return `<div class="table-wrap"><table>${headHtml}<tbody>${bodyHtml}</tbody></table></div>`;
 }
@@ -238,20 +262,20 @@ function highlightCode(code: string, language: string): string {
   return hljs.highlightAuto(code, ["typescript", "javascript", "xml", "bash"]).value;
 }
 
-function parseInline(value: string): string {
-  return parseInlineEscaped(escapeHtml(value));
+function parseInline(value: string, options: RenderMarkdownOptions): string {
+  return parseInlineEscaped(escapeHtml(value), options);
 }
 
-function parseInlineHtml(value: string): string {
+function parseInlineHtml(value: string, options: RenderMarkdownOptions): string {
   let rendered = escapeHtml(value);
   rendered = rendered.replace(/&lt;code&gt;([\s\S]*?)&lt;\/code&gt;/giu, (_match: string, code: string) => `<code>${code}</code>`);
-  return parseInlineEscaped(rendered);
+  return parseInlineEscaped(rendered, options);
 }
 
-function parseInlineEscaped(value: string): string {
+function parseInlineEscaped(value: string, options: RenderMarkdownOptions): string {
   let rendered = value;
   rendered = rendered.replace(/\[!\[([^\]]*)]\(([^)]+)\)]\(([^)]+)\)/g, (_match: string, alt: string, src: string, href: string) => {
-    const safeHref = normalizeHref(href);
+    const safeHref = normalizeHref(href, options);
     const target = safeHref.startsWith("http") ? "_blank" : "_self";
     return `<a href="${escapeAttribute(safeHref)}" target="${target}" rel="noreferrer"><img src="${escapeAttribute(normalizeImageSrc(src))}" alt="${escapeAttribute(alt)}"></a>`;
   });
@@ -262,24 +286,47 @@ function parseInlineEscaped(value: string): string {
   rendered = rendered.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   rendered = rendered.replace(/\b_([^_]+)_\b/g, "<em>$1</em>");
   rendered = rendered.replace(/\[([^\]]+)]\(([^)]+)\)/g, (_match: string, label: string, href: string) => {
-    const safeHref = normalizeHref(href);
+    const safeHref = normalizeHref(href, options);
     return `<a href="${escapeAttribute(safeHref)}" target="${safeHref.startsWith("http") ? "_blank" : "_self"}" rel="noreferrer">${label}</a>`;
   });
   return rendered;
 }
 
-function normalizeHref(href: string): string {
+function normalizeHref(href: string, options: RenderMarkdownOptions): string {
   if (/^https?:\/\//.test(href)) return href;
   const hashRoute = appRouteFromHash(href);
   if (hashRoute) return appHref(hashRoute);
   if (href.startsWith("#")) return href;
-  const mdMatch = href.match(/(?:^|\/)([^/#?]+)\.md(?:(#[^?]+))?$/);
+  const mdMatch = href.match(/^([^#?]+\.md)(#[^?]+)?$/);
   if (mdMatch) {
-    const slug = mdMatch[1] ?? "examples";
+    const markdownPath = normalizeMarkdownPath(mdMatch[1] ?? "", options.sourcePath);
     const anchor = mdMatch[2] ?? "";
-    return `${appHref(`docs/${slug}`)}${anchor}`;
+    const route = DOC_ROUTE_BY_SOURCE_PATH[markdownPath];
+    if (route) return `${appHref(route)}${anchor}`;
+    return `${GITHUB_SOURCE_BASE}${markdownPath}${anchor}`;
   }
   return href;
+}
+
+function normalizeMarkdownPath(hrefPath: string, sourcePath: string | undefined): string {
+  if (hrefPath.startsWith("./") || hrefPath.startsWith("../")) {
+    const sourceDirectory = sourcePath?.includes("/") ? sourcePath.slice(0, sourcePath.lastIndexOf("/")) : "";
+    return normalizePath(`${sourceDirectory}/${hrefPath}`);
+  }
+  return normalizePath(hrefPath);
+}
+
+function normalizePath(path: string): string {
+  const segments: string[] = [];
+  for (const segment of path.split("/")) {
+    if (!segment || segment === ".") continue;
+    if (segment === "..") {
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  return segments.join("/");
 }
 
 function appRouteFromHash(href: string): string | null {
@@ -290,7 +337,8 @@ function appRouteFromHash(href: string): string | null {
 }
 
 function appHref(route: string): string {
-  const normalizedBase = import.meta.env.BASE_URL.endsWith("/") ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+  const baseUrl = import.meta.env?.BASE_URL ?? "/";
+  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   const normalizedRoute = route.replace(/^\/+|\/+$/gu, "");
   return normalizedRoute === "" || normalizedRoute === "home" ? normalizedBase : `${normalizedBase}${normalizedRoute}`;
 }

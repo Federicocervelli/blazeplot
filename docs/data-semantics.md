@@ -2,6 +2,18 @@
 
 BlazePlot expects finite, sorted X values. Y values are normally finite; non-finite Y values are treated as gaps by built-in datasets. The library does not sort or fully validate built-in datasets on every update; that would be too expensive for large live streams.
 
+## Pick the right dataset
+
+| Source shape | Dataset | Notes |
+|---|---|---|
+| Fixed X/Y arrays | `StaticDataset` | Best for already-loaded history or immutable snapshots. |
+| Irregular live samples | `RingBuffer` | Stores explicit X/Y pairs and keeps a bounded history. |
+| Fixed-rate live samples | `UniformRingBuffer` | Stores Y values only and derives X from `xStart + index * xStep`. |
+| Historical OHLC/candles | `StaticOhlcDataset` | Bounds and fitting use high/low values. |
+| Live OHLC/candles | `OhlcRingBuffer` | Rolling OHLC history with explicit time values. |
+| Server-reduced buckets | `ServerSampledDataset` | Use `downsample: "server"` for min/max buckets. |
+| Custom remote/procedural data | `Dataset` or `AcceleratedDataset` | Implement sorted logical access and only the fast paths your data can answer cheaply. |
+
 ## Empty datasets
 
 Empty datasets:

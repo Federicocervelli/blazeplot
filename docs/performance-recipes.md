@@ -2,6 +2,17 @@
 
 BlazePlot is fast when the data model and the visible range match how the renderer works. The most important rules are simple: keep X sorted, batch writes, avoid rebuilding charts, and let LOD handle dense views.
 
+## Decision guide
+
+| Situation | Prefer | Why |
+|---|---|---|
+| Appending irregular telemetry | `RingBuffer` with batched `append(...)` | Keeps a bounded rolling history without reallocating arrays. |
+| Appending fixed-rate telemetry | `UniformRingBuffer.appendY(...)` | Avoids storing repeated X values. |
+| Rendering dense historical ranges | Built-in LOD or `ServerSampledDataset` | Reduces visible work while preserving extrema. |
+| Rendering a small exact viewport | `downsample: "none"` | Avoids sampler overhead when visible points are already bounded. |
+| Backend already has min/max buckets | `ServerSampledDataset` + `downsample: "server"` | Prevents double-sampling on the client. |
+| Chart is hidden but still mounted | `chart.stop()` | Avoids unnecessary frames; call `chart.start()` when visible again. |
+
 ## Streaming data
 
 - Use `RingBuffer` for irregular live samples and `UniformRingBuffer` for fixed-rate samples.
@@ -34,6 +45,7 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 ## Reducing per-frame work
 
 - Create charts once. Update datasets and keep the chart's `start()` loop running instead of recreating the chart.
+- Call `chart.start()` once for an active chart lifecycle, or after a matching `chart.stop()`. Do not call it repeatedly from reactive render paths.
 - Use `chart.stop()` when a chart is hidden or inactive, then `chart.start()` again when it should resume rendering.
 - Remove unused series with `chart.removeSeries(series)`.
 - Dispose charts on unmount with `chart.dispose()`.
