@@ -10,7 +10,7 @@ Use this table before reaching for a generic chart example. The dataset choice d
 |---|---|
 | Fixed X/Y arrays or object rows | `createChart(...)` for the shortest setup, or `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` when you need manual control |
 | Irregular live samples | `RingBuffer` with `overflow: "wrap"` for a rolling window |
-| Fixed-rate telemetry | `UniformRingBuffer` and `appendY(...)` so repeated X values are derived, not stored |
+| Fixed-rate telemetry | `UniformRingBuffer` with `series.append({ y })` so repeated X values are derived, not stored |
 | Historical OHLC data | `StaticOhlcDataset` with `chart.addOhlc(...)` or `chart.addCandlestick(...)` |
 | Server-reduced min/max buckets | `ServerSampledDataset` with `downsample: "server"` |
 | React ownership of the DOM | `BlazeChart` from `blazeplot/react` |

@@ -170,7 +170,9 @@ export class SeriesStore {
     this.onDirty?.();
   }
 
+  /** Append XY, implicit-X, or OHLC data and request an on-demand render. */
   append(data: SeriesAppendData): void;
+  /** @deprecated Use `append({ x, y })` instead. */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void;
   append(first: SeriesAppendData | ArrayLike<number>, y?: ArrayLike<number>): void {
     if (y !== undefined) {
@@ -203,6 +205,7 @@ export class SeriesStore {
     this.onDirty?.();
   }
 
+  /** @deprecated Use `append({ y })` instead. */
   appendY(y: ArrayLike<number>): void {
     if (!hasAppendY(this.dataset)) {
       throw new TypeError("SeriesStore dataset does not support appendY.");
@@ -213,6 +216,7 @@ export class SeriesStore {
     this.onDirty?.();
   }
 
+  /** @deprecated Use `append({ x, open, high, low, close })` instead. */
   appendOhlc(
     x: ArrayLike<number>,
     open: ArrayLike<number>,
@@ -229,10 +233,12 @@ export class SeriesStore {
     this.onDirty?.();
   }
 
+  /** Update the latest OHLC/candlestick sample and request an on-demand render. */
   updateLast(data: SeriesOhlcUpdateData): boolean {
     return this.updateLastOhlc(data.open, data.high, data.low, data.close);
   }
 
+  /** @deprecated Use `updateLast({ open, high, low, close })` instead. */
   updateLastOhlc(open: number, high: number, low: number, close: number): boolean {
     if (!hasOhlcAppend(this.dataset) || typeof this.dataset.updateLast !== "function") {
       throw new TypeError("SeriesStore dataset does not support OHLC updateLast.");
