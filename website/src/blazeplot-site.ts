@@ -328,7 +328,7 @@ export class BlazeplotSite extends LitElement {
       html`
         <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[#aaa]">
           <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
-            <span>Irregular sensor updates use <code>chart.addLine({ capacity })</code> and <code>series.append({ x, y })</code>; <code>followLatestX</code> keeps a 30s live window.</span>
+            <span>Irregular sensor updates use <code>chart.addLine({ capacity })</code> and <code>series.append({ x, y })</code>; simulated dropouts append <code>NaN</code> to show line breaks.</span>
             <button data-sensor-live type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">resume live</button>
             <span data-sensor-status class="text-[#777]">booting…</span>
           </div>
@@ -495,6 +495,7 @@ export class BlazeplotSite extends LitElement {
     let elapsed = -60_000;
     let tick = 0;
     let timeoutId = 0;
+    let dropoutRemaining = 0;
 
     const sensorValues = (x: number): { temp: number; vibe: number } => {
       const seconds = x / 1000;
@@ -511,15 +512,18 @@ export class BlazeplotSite extends LitElement {
       elapsed += 60 + Math.random() * 210;
       xs[i] = elapsed;
       const values = sensorValues(elapsed);
-      temp[i] = values.temp;
-      vibe[i] = values.vibe;
+      const historicalDropout = (i >= 82 && i <= 91) || (i >= 228 && i <= 238);
+      temp[i] = historicalDropout ? NaN : values.temp;
+      vibe[i] = historicalDropout ? NaN : values.vibe;
     }
     temperature.append({ x: xs, y: temp });
     vibration.append({ x: xs, y: vibe });
 
-    const updateStatus = (delay: number, values: { temp: number; vibe: number }): void => {
+    const updateStatus = (delay: number, values: { temp: number; vibe: number }, missing: boolean): void => {
       if (!status) return;
-      status.textContent = `sample ${tick.toLocaleString()} · next ${Math.round(delay)}ms · temp ${values.temp.toFixed(2)}°C · vibration ${values.vibe.toFixed(2)}`;
+      status.textContent = missing
+        ? `sample ${tick.toLocaleString()} · next ${Math.round(delay)}ms · sensor dropout → NaN gap`
+        : `sample ${tick.toLocaleString()} · next ${Math.round(delay)}ms · temp ${values.temp.toFixed(2)}°C · vibration ${values.vibe.toFixed(2)}`;
     };
 
     const schedule = (): void => {
@@ -527,11 +531,14 @@ export class BlazeplotSite extends LitElement {
       timeoutId = window.setTimeout(() => {
         const nowElapsed = performance.now() - start;
         elapsed = Math.max(elapsed + 1, nowElapsed);
+        if (dropoutRemaining <= 0 && tick > 0 && tick % 36 === 0) dropoutRemaining = 5;
+        const missing = dropoutRemaining > 0;
+        if (missing) dropoutRemaining -= 1;
         const values = sensorValues(elapsed);
-        temperature.append({ x: elapsed, y: values.temp });
-        vibration.append({ x: elapsed, y: values.vibe });
+        temperature.append({ x: elapsed, y: missing ? NaN : values.temp });
+        vibration.append({ x: elapsed, y: missing ? NaN : values.vibe });
         tick += 1;
-        updateStatus(delay, values);
+        updateStatus(delay, values, missing);
         schedule();
       }, delay);
     };
