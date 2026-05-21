@@ -12,6 +12,8 @@ BlazePlot docs should help a developer decide what to build, copy a correct star
 
 For generated reference updates, run `bun run docs:readme`. That command builds the package, regenerates `docs/api-reference.md`, and updates the generated README section. Do not hand-edit `docs/api-reference.md` or the generated README section.
 
+Related maintainer runbook: [Local development](./internal/local-development.md).
+
 ## What useful docs look like
 
 - Say who the page is for in the first paragraph.

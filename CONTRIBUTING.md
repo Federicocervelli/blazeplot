@@ -19,6 +19,8 @@ bun test
 bun run build
 ```
 
+For a fuller command reference, see [`docs/internal/local-development.md`](docs/internal/local-development.md).
+
 For browser-backed benchmarks and visual/interaction tests, set Chrome explicitly when needed:
 
 ```bash
@@ -51,7 +53,7 @@ Documentation should be practical rather than broad marketing copy:
 - Prefer one complete example over several partial fragments.
 - Update `docs/api-reference.md` and the generated README section through `bun run docs:readme`; do not edit those generated sections by hand.
 
-See [`docs/documentation-contributions.md`](docs/documentation-contributions.md) for the docs-specific workflow.
+See [`docs/documentation-contributions.md`](docs/documentation-contributions.md) for the docs-specific workflow and [`docs/internal/local-development.md`](docs/internal/local-development.md) for local validation commands.
 
 ## Pull request expectations
 
