@@ -9,8 +9,23 @@ function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
   return "getOpen" in dataset && "getHigh" in dataset && "getLow" in dataset && "getClose" in dataset;
 }
 
+interface AppendableOhlcDataset extends OhlcDataset {
+  append(
+    x: ArrayLike<number>,
+    open: ArrayLike<number>,
+    high: ArrayLike<number>,
+    low: ArrayLike<number>,
+    close: ArrayLike<number>,
+  ): void;
+  updateLast?(open: number, high: number, low: number, close: number): boolean;
+}
+
 function hasAppendY(dataset: Dataset): dataset is YAppendableDataset {
   return "appendY" in dataset;
+}
+
+function hasOhlcAppend(dataset: Dataset): dataset is AppendableOhlcDataset {
+  return isOhlcDataset(dataset) && "append" in dataset;
 }
 
 function hasCopySamplesRange(dataset: Dataset): dataset is RangeSampleCopyDataset {
@@ -142,6 +157,35 @@ export class SeriesStore {
     this.dataset.appendY(y);
     this._dirty = true;
     this.onDirty?.();
+  }
+
+  appendOhlc(
+    x: ArrayLike<number>,
+    open: ArrayLike<number>,
+    high: ArrayLike<number>,
+    low: ArrayLike<number>,
+    close: ArrayLike<number>,
+  ): void {
+    if (!hasOhlcAppend(this.dataset)) {
+      throw new TypeError("SeriesStore dataset does not support OHLC append.");
+    }
+
+    this.dataset.append(x, open, high, low, close);
+    this._dirty = true;
+    this.onDirty?.();
+  }
+
+  updateLastOhlc(open: number, high: number, low: number, close: number): boolean {
+    if (!hasOhlcAppend(this.dataset) || typeof this.dataset.updateLast !== "function") {
+      throw new TypeError("SeriesStore dataset does not support OHLC updateLast.");
+    }
+
+    const updated = this.dataset.updateLast(open, high, low, close);
+    if (updated) {
+      this._dirty = true;
+      this.onDirty?.();
+    }
+    return updated;
   }
 
   markDirty(): void {
