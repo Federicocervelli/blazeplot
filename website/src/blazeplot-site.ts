@@ -23,7 +23,7 @@ declare const __BLAZEPLOT_VERSION__: string;
 type Section = "home" | "docs" | "previews";
 type HomeDataMode = "static" | "streaming";
 type HomeChartMode = "line" | "ohlc" | "multi";
-type PreviewId = "live" | "features" | "linked" | "server-sampled" | "flamechart" | "mobile";
+type PreviewId = "live" | "features" | "linked" | "server-sampled" | "flamechart" | "render-loop" | "mobile";
 
 interface PreviewLink {
   title: string;
@@ -36,6 +36,7 @@ const PREVIEWS: readonly PreviewLink[] = [
   { title: "Linked charts", id: "linked" },
   { title: "Server-sampled", id: "server-sampled" },
   { title: "Flame chart", id: "flamechart" },
+  { title: "Render loop", id: "render-loop" },
   { title: "Mobile", id: "mobile" },
 ] as const;
 
@@ -267,6 +268,7 @@ export class BlazeplotSite extends LitElement {
     if (id === "linked") return this.renderLinkedChartsPreview();
     if (id === "server-sampled") return this.renderServerSampledPreview();
     if (id === "flamechart") return this.renderFlameChartPreview();
+    if (id === "render-loop") return this.renderRenderLoopPreview();
     if (id === "mobile") return this.renderMobilePreview();
     return this.renderLivePreview();
   }
@@ -373,6 +375,32 @@ export class BlazeplotSite extends LitElement {
     );
   }
 
+  private renderRenderLoopPreview(): TemplateResult {
+    return this.renderPreviewPanel(
+      "Render loop",
+      "default on-demand rendering vs explicit continuous rendering",
+      html`
+        <section data-preview-chart="render-loop" class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[#aaa]">
+          <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
+            <span>Default <code>chart.start()</code> should render once and idle; continuous should keep ticking.</span>
+            <button data-render-loop-request type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">request on-demand render</button>
+            <button data-render-loop-pan type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">change viewport</button>
+          </div>
+          <div class="grid min-h-0 grid-cols-2 gap-3">
+            <div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border border-[#222]">
+              <div class="border-b border-[#222] px-2 py-1">on-demand renders: <span data-render-loop-demand-count>0</span></div>
+              <div data-render-loop-demand class="min-h-0"></div>
+            </div>
+            <div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border border-[#222]">
+              <div class="border-b border-[#222] px-2 py-1">continuous renders: <span data-render-loop-continuous-count>0</span></div>
+              <div data-render-loop-continuous class="min-h-0"></div>
+            </div>
+          </div>
+        </section>
+      `,
+    );
+  }
+
   private renderMobilePreview(): TemplateResult {
     return this.renderPreviewPanel(
       "Mobile interaction",
@@ -407,6 +435,7 @@ export class BlazeplotSite extends LitElement {
         else if (kind === "feature-linked") this.mountFeatureLinkedCharts(target);
         else if (kind === "server-sampled") this.mountServerSampledChart(target);
         else if (kind === "flamechart") this.mountFlameChartPreview(target);
+        else if (kind === "render-loop") this.mountRenderLoopPreview(target);
         else if (kind === "mobile") this.mountMobileChart(target);
       } catch {
         target.replaceChildren();
@@ -1253,6 +1282,64 @@ export class BlazeplotSite extends LitElement {
     connectLiveTrades();
     sampledChart.start();
     liveChart.start();
+  }
+
+  private mountRenderLoopPreview(target: HTMLElement): void {
+    const demandTarget = target.querySelector<HTMLElement>("[data-render-loop-demand]");
+    const continuousTarget = target.querySelector<HTMLElement>("[data-render-loop-continuous]");
+    const demandCount = target.querySelector<HTMLElement>("[data-render-loop-demand-count]");
+    const continuousCount = target.querySelector<HTMLElement>("[data-render-loop-continuous-count]");
+    const requestButton = target.querySelector<HTMLButtonElement>("[data-render-loop-request]");
+    const panButton = target.querySelector<HTMLButtonElement>("[data-render-loop-pan]");
+    if (!demandTarget || !continuousTarget || !demandCount || !continuousCount) throw new Error("Missing render-loop preview elements");
+
+    const count = 720;
+    const x = Float32Array.from({ length: count }, (_, i) => i);
+    const y = Float32Array.from({ length: count }, (_, i) => Math.sin(i * 0.035) + Math.sin(i * 0.11) * 0.22);
+    const makeChart = (element: HTMLElement, label: string): Chart => {
+      const chart = new Chart(element, {
+        axes: { x: { position: "outside" }, y: { position: "outside" } },
+        grid: true,
+        plugins: [interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true })],
+        accessibility: { label },
+      });
+      chart.addLine({ dataset: new StaticDataset(x, y), name: label }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
+      chart.setViewport({ xMin: 0, xMax: count - 1, yMin: -1.4, yMax: 1.4 });
+      this.previewCharts.push(chart);
+      return chart;
+    };
+
+    const demand = makeChart(demandTarget, "on-demand");
+    const continuous = makeChart(continuousTarget, "continuous");
+    let demandRenders = 0;
+    let continuousRenders = 0;
+    let panOffset = 0;
+    this.previewDisposers.push(demand.subscribe("render", () => { demandRenders += 1; }));
+    this.previewDisposers.push(continuous.subscribe("render", () => { continuousRenders += 1; }));
+
+    demand.start();
+    continuous.start({ renderLoop: "continuous" });
+
+    const refresh = (): void => {
+      demandCount.textContent = String(demandRenders);
+      continuousCount.textContent = String(continuousRenders);
+    };
+    const interval = window.setInterval(refresh, 100);
+    this.previewDisposers.push(() => window.clearInterval(interval));
+
+    if (requestButton) {
+      const onClick = (): void => demand.requestRender();
+      requestButton.addEventListener("click", onClick);
+      this.previewDisposers.push(() => requestButton.removeEventListener("click", onClick));
+    }
+    if (panButton) {
+      const onClick = (): void => {
+        panOffset = (panOffset + 40) % 160;
+        demand.setViewport({ xMin: panOffset, xMax: panOffset + count - 1, yMin: -1.4, yMax: 1.4 });
+      };
+      panButton.addEventListener("click", onClick);
+      this.previewDisposers.push(() => panButton.removeEventListener("click", onClick));
+    }
   }
 
   private mountMobileChart(target: HTMLElement): void {
