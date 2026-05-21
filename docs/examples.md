@@ -142,8 +142,21 @@ Bucket ranges should be sorted and non-overlapping for predictable picking, boun
 Use `StaticOhlcDataset` for historical data or `OhlcRingBuffer` for live feeds.
 
 ```ts
+import { Chart, StaticOhlcDataset } from "blazeplot";
+
+const dataset = new StaticOhlcDataset(
+  [0, 1, 2, 3],
+  [100, 104, 102, 108],
+  [106, 107, 110, 112],
+  [98, 101, 101, 105],
+  [104, 102, 108, 111],
+);
+
+const chart = new Chart(element);
 chart.addOhlc({ dataset, name: "OHLC" });
 chart.addCandlestick({ dataset, name: "candles" });
+chart.fitToData();
+chart.start();
 ```
 
 OHLC bounds use high/low values, while generic `getY()` returns close. See [Data semantics](./data-semantics.md#ohlc-datasets).

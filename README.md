@@ -84,13 +84,20 @@ A chart only needs a host element. For regular arrays, wrap your data in a `Stat
 Use the tree-shakable `blazeplot/data` subpath when you only need data helpers. It collects raw rows from the current visible x range, a committed selection plugin state, or the full chart, then serializes them as CSV or JSON.
 
 ```ts
-import { Chart } from "blazeplot";
+import { Chart, StaticDataset } from "blazeplot";
 import { chartDataToCSV, chartDataToJSON, exportSelectedChartData, exportVisibleChartData, rollingMean } from "blazeplot/data";
 import { downloadBlob } from "blazeplot/export";
 import { selectionPlugin } from "blazeplot/plugins/selection";
 
+const element = document.getElementById("chart");
+if (!element) throw new Error("Missing #chart element");
+
+const x = [0, 1, 2, 3, 4];
+const y = [3, 5, 4, 8, 7];
 const selection = selectionPlugin();
 const chart = new Chart(element, { plugins: [selection] });
+chart.addLine({ dataset: new StaticDataset(x, y), name: "requests" });
+chart.setViewport({ xMin: 0, xMax: 4, yMin: 0, yMax: 10 });
 
 const visible = exportVisibleChartData(chart);
 const csv = chartDataToCSV(visible);
