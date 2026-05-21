@@ -55,6 +55,12 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      - name: Setup Node
+        if: steps.cloudflare.outputs.configured == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Cache Bun package downloads
         if: steps.cloudflare.outputs.configured == 'true'
         uses: actions/cache@v4
@@ -78,15 +84,19 @@ jobs:
       - name: Deploy to Cloudflare Pages
         if: steps.cloudflare.outputs.configured == 'true'
         id: deploy
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: bun
-          wranglerVersion: "3.114.17"
-          preCommands: wrangler pages project create ${{ env.CLOUDFLARE_PAGES_PROJECT }} --production-branch main || true
-          command: pages deploy build/pages --project-name=${{ env.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ steps.branch.outputs.name }} --commit-hash=${{ steps.branch.outputs.sha }}
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npx --yes wrangler@4 pages project create "${CLOUDFLARE_PAGES_PROJECT}" --production-branch main || true
+          npx --yes wrangler@4 pages deploy build/pages \
+            --project-name="${CLOUDFLARE_PAGES_PROJECT}" \
+            --branch="${{ steps.branch.outputs.name }}" \
+            --commit-hash="${{ steps.branch.outputs.sha }}" | tee wrangler-deploy.log
+          deployment_url=$(grep -Eo 'https://[^ ]+\.pages\.dev' wrangler-deploy.log | head -n 1)
+          alias_url=$(grep -Eo 'https://[^ ]+\.pages\.dev' wrangler-deploy.log | tail -n 1)
+          echo "deployment-url=${deployment_url}" >> "$GITHUB_OUTPUT"
+          echo "pages-deployment-alias-url=${alias_url}" >> "$GITHUB_OUTPUT"
 
       - name: Write preview summary
         if: steps.cloudflare.outputs.configured == 'true'
