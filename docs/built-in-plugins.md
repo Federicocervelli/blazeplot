@@ -22,8 +22,25 @@ Use it when users should control the viewport directly. If your app owns all cam
 ## Tooltip, crosshair, and legend
 
 - `tooltipPlugin` shows nearest picked samples and can sync tooltips across a group.
-- `crosshairPlugin` draws cursor guides and can sync across a group.
+- `crosshairPlugin` draws cursor guides, supports ruler measurements, and can sync across a group.
 - `legendPlugin` displays series names/colors and can toggle visibility.
+
+Use the `group` or `syncGroup` options when several charts should share hover state.
+
+```ts
+import { Chart } from "blazeplot";
+import { crosshairPlugin } from "blazeplot/plugins/crosshair";
+import { legendPlugin } from "blazeplot/plugins/legend";
+import { tooltipPlugin } from "blazeplot/plugins/tooltip";
+
+const chart = new Chart(element, {
+  plugins: [
+    tooltipPlugin({ syncGroup: "dashboard", mode: "nearest-x" }),
+    crosshairPlugin({ group: "dashboard", mode: "ruler", rulerModifier: "shift" }),
+    legendPlugin({ position: "top-right", toggleOnClick: true }),
+  ],
+});
+```
 
 Legends are positioned inside the chart root. They do not reserve outside layout space. If you need external controls, create your own plugin and use layout reservations; see [Plugin authoring](./plugin-authoring.md).
 
