@@ -27,19 +27,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout main preview
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main
           path: branches/main
 
       - name: Checkout development preview
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: development
           path: branches/development
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
@@ -81,10 +81,10 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: build/pages
 
       - name: Deploy Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

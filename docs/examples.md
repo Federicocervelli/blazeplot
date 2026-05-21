@@ -8,7 +8,7 @@ Use this table before reaching for a generic chart example. The dataset choice d
 
 | If you have | Use |
 |---|---|
-| Fixed X/Y arrays | `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` |
+| Fixed X/Y arrays or object rows | `createChart(...)` for the shortest setup, or `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` when you need manual control |
 | Irregular live samples | `RingBuffer` with `overflow: "wrap"` for a rolling window |
 | Fixed-rate telemetry | `UniformRingBuffer` and `appendY(...)` so repeated X values are derived, not stored |
 | Historical OHLC data | `StaticOhlcDataset` with `chart.addOhlc(...)` or `chart.addCandlestick(...)` |
@@ -34,31 +34,53 @@ All built-in datasets expect sorted X values. If source data arrives out of orde
 Most examples follow the same lifecycle:
 
 1. create a sized host element;
-2. create a dataset that matches the data source;
-3. create one chart instance;
-4. add one or more series;
-5. initialize the viewport with `fitToData()` or live-window options;
-6. call `chart.start()` once;
-7. clean up timers, subscriptions, workers, plugin handles, and the chart when the owner unmounts.
+2. use `createChart(...)` for static data, or create a dataset that matches the data source;
+3. add one or more series;
+4. initialize the viewport with `fitToData()`, `autoFit`, or live-window options;
+5. call `chart.start()` once if you are using the lower-level constructor;
+6. clean up timers, subscriptions, workers, plugin handles, and the chart when the owner unmounts.
 
 ## Basic line chart
 
 ```ts
-import { Chart, StaticDataset } from "blazeplot";
+import { createChart } from "blazeplot";
 
-const chart = new Chart(element);
-chart.addLine({
-  dataset: new StaticDataset([0, 1, 2], [3, 6, 4]),
-  name: "values",
+const chart = createChart(element, {
+  series: [{ type: "line", x: [0, 1, 2], y: [3, 6, 4], name: "values" }],
 });
-chart.fitToData();
-chart.start();
 ```
 
 Dispose charts when the owning page, component, or panel is removed:
 
 ```ts
 chart.dispose();
+```
+
+Object rows are accepted without writing a dataset class:
+
+```ts
+import { createChart } from "blazeplot";
+
+const rows = [
+  { time: 1700000000000, requests: 120 },
+  { time: 1700000001000, requests: 132 },
+  { time: 1700000002000, requests: 118 },
+];
+
+const chart = createChart(element, {
+  series: [{ type: "line", data: rows, x: "time", y: "requests", sort: true }],
+});
+```
+
+Use the lower-level API when you want explicit lifecycle control:
+
+```ts
+import { Chart, StaticDataset } from "blazeplot";
+
+const chart = new Chart(element);
+chart.addLine({ dataset: new StaticDataset([0, 1, 2], [3, 6, 4]), name: "values" });
+chart.fitToData();
+chart.start();
 ```
 
 ## Live line chart
@@ -142,8 +164,21 @@ Bucket ranges should be sorted and non-overlapping for predictable picking, boun
 Use `StaticOhlcDataset` for historical data or `OhlcRingBuffer` for live feeds.
 
 ```ts
+import { Chart, StaticOhlcDataset } from "blazeplot";
+
+const dataset = new StaticOhlcDataset(
+  [0, 1, 2, 3],
+  [100, 104, 102, 108],
+  [106, 107, 110, 112],
+  [98, 101, 101, 105],
+  [104, 102, 108, 111],
+);
+
+const chart = new Chart(element);
 chart.addOhlc({ dataset, name: "OHLC" });
 chart.addCandlestick({ dataset, name: "candles" });
+chart.fitToData();
+chart.start();
 ```
 
 OHLC bounds use high/low values, while generic `getY()` returns close. See [Data semantics](./data-semantics.md#ohlc-datasets).

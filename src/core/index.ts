@@ -7,6 +7,7 @@ export type { RingBufferOptions, RingBufferOverflow } from "./RingBuffer.js";
 export { UniformRingBuffer } from "./UniformRingBuffer.js";
 export type { UniformRingBufferOptions } from "./UniformRingBuffer.js";
 export { StaticDataset } from "./StaticDataset.js";
+export type { StaticDatasetField, StaticDatasetFromObjectsOptions } from "./StaticDataset.js";
 export { OhlcRingBuffer, StaticOhlcDataset } from "./OhlcDataset.js";
 export type { OhlcRingBufferOptions } from "./OhlcDataset.js";
 export { MinMaxPyramid } from "./MinMaxPyramid.js";

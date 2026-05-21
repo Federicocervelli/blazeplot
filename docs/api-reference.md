@@ -6,8 +6,8 @@ This page is generated from the built package. Use it as an index of import path
 
 | Task | Start here |
 |---|---|
-| Create and render a chart | `Chart`, `ChartOptions`, `chart.addLine(...)`, `chart.fitToData()`, `chart.start()` |
-| Static X/Y arrays | `StaticDataset` |
+| Create and render a chart | `createChart(...)` for common static charts; `Chart`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` for manual control |
+| Static X/Y arrays or object rows | `createChart(...)`, `StaticDataset`, `StaticDataset.fromObjects(...)` |
 | Live irregular data | `RingBuffer` |
 | Live fixed-rate data | `UniformRingBuffer` |
 | OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |
@@ -50,7 +50,7 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 0.7 KiB |
+| root entry | `dist/index.js` | 1.6 KiB |
 | core subpath entry | `dist/core.js` | 0.7 KiB |
 | interaction subpath entry | `dist/interaction.js` | 0.1 KiB |
 | render subpath entry | `dist/render.js` | 0.3 KiB |
@@ -132,6 +132,14 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartTheme` | interface | `./ui/theme` | — |
 | `ChartTitleConfig` | interface | `./ui/Chart` | — |
 | `ChartViewportChangeEvent` | interface | `./ui/Chart` | — |
+| `createChart` | function | `./createChart` | Create a chart from a compact declarative config. This helper is intentionally thin: it returns the underlying `Chart` instance, so advanced code can still use the full imperative API after setup. |
+| `CreateChartArraySeries` | interface | `./createChart` | — |
+| `CreateChartDatasetSeries` | interface | `./createChart` | — |
+| `CreateChartObjectSeries` | interface | `./createChart` | — |
+| `CreateChartOptions` | interface | `./createChart` | High-level chart configuration for common first-render cases. Use `createChart(...)` when you have static arrays, object rows, or a simple streaming buffer and want BlazePlot to create the chart, add series, fit the initial viewport, and start rendering in one call. |
+| `CreateChartSeries` | type | `./createChart` | — |
+| `CreateChartSeriesType` | type | `./createChart` | — |
+| `CreateChartStreamingSeries` | interface | `./createChart` | — |
 | `CssColor` | type | `./ui/theme` | — |
 | `CustomAxisScale` | interface | `./interaction/AxisController` | — |
 | `Dataset` | interface | `./core/types` | — |
@@ -177,6 +185,8 @@ Generated from `dist/index.d.ts` after the package build.
 | `ServerSampledDatasetKind` | type | `./core/ServerSampledDataset` | — |
 | `ServerSampledPoints` | interface | `./core/ServerSampledDataset` | — |
 | `StaticDataset` | class | `./core/StaticDataset` | — |
+| `StaticDatasetField` | type | `./core/StaticDataset` | — |
+| `StaticDatasetFromObjectsOptions` | interface | `./core/StaticDataset` | — |
 | `StaticOhlcDataset` | class | `./core/OhlcDataset` | — |
 | `TextOverlayConfig` | interface | `./ui/Chart` | — |
 | `ThemeColor` | type | `./ui/theme` | — |

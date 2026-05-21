@@ -13,13 +13,13 @@ bun add blazeplot
 
 ## Quick start
 
-Create a sized container, create a chart, add data, fit the camera, and start the render loop.
+Create a sized container and pass simple array data to `createChart(...)`. The helper creates the chart, adds the series, fits the camera, and starts the render loop.
 
 ```html
 <div id="chart" style="width:100%;height:400px"></div>
 
 <script type="module">
-  import { Chart, StaticDataset } from "blazeplot";
+  import { createChart } from "blazeplot";
 
   const x = Array.from({ length: 1000 }, (_, i) => i);
   const y = x.map((value) => Math.sin(value * 0.02));
@@ -27,14 +27,15 @@ Create a sized container, create a chart, add data, fit the camera, and start th
   const element = document.getElementById("chart");
   if (!element) throw new Error("Missing chart element");
 
-  const chart = new Chart(element);
-  chart.addLine({ dataset: new StaticDataset(x, y), name: "sine" });
-  chart.fitToData();
-  chart.start();
+  const chart = createChart(element, {
+    series: [{ type: "line", x, y, name: "sine" }],
+  });
 </script>
 ```
 
 Call `chart.dispose()` when the chart is removed from the page.
+
+For streaming data, custom datasets, or manual lifecycle control, use the lower-level `Chart` constructor with `StaticDataset`, `RingBuffer`, or another dataset type.
 
 If the chart appears blank, check that the host element has a non-zero height, WebGL2 is available, and the viewport has been initialized. See [Troubleshooting](./troubleshooting.md) for the full checklist.
 

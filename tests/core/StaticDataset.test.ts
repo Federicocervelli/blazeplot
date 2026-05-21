@@ -23,6 +23,46 @@ describe("StaticDataset", () => {
     expect(ds.range).toEqual({ start: 0, end: 3 });
   });
 
+  it("creates datasets from object rows", () => {
+    const ds = StaticDataset.fromObjects([
+      { time: 10, value: 3 },
+      { time: 20, value: 8 },
+    ], { x: "time", y: "value" });
+
+    expect(ds.length).toBe(2);
+    expect(ds.getX(0)).toBe(10);
+    expect(ds.getY(1)).toBe(8);
+  });
+
+  it("can sort object rows by x", () => {
+    const ds = StaticDataset.fromObjects([
+      { time: 30, value: 9 },
+      { time: 10, value: 3 },
+      { time: 20, value: 8 },
+    ], { x: "time", y: "value", sort: true });
+
+    expect(Array.from({ length: ds.length }, (_, index) => ds.getX(index))).toEqual([10, 20, 30]);
+    expect(Array.from({ length: ds.length }, (_, index) => ds.getY(index))).toEqual([3, 8, 9]);
+  });
+
+  it("supports accessor functions for object rows", () => {
+    const ds = StaticDataset.fromObjects([
+      [10, 3],
+      [20, 8],
+    ], {
+      x: (row) => row[0]!,
+      y: (row) => row[1]!,
+    });
+
+    expect(ds.getX(1)).toBe(20);
+    expect(ds.getY(1)).toBe(8);
+  });
+
+  it("throws when object rows have invalid x values", () => {
+    expect(() => StaticDataset.fromObjects([{ time: undefined, value: 3 }], { x: "time", y: "value" }))
+      .toThrow(TypeError);
+  });
+
   it("handles mismatched x and y lengths", () => {
     const ds = new StaticDataset(
       new Float64Array([0, 1, 2]),
