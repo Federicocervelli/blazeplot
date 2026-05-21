@@ -112,6 +112,36 @@ const chart = new Chart(element, { plugins: [navigator] });
 navigator.refresh();
 ```
 
+## Flame graphs and status spans
+
+`flameGraphPlugin` adds an optional WebGL2 overlay for FlameGraph-style stack traces and lane/status charts. It lives in its own subpath so the core XY renderer stays small.
+
+```ts
+import { Chart } from "blazeplot";
+import { buildFlameGraphModel, flameGraphPlugin } from "blazeplot/plugins/flamegraph";
+
+const model = buildFlameGraphModel([
+  { stack: ["root", "parse", "tokenize"], value: 28 },
+  { stack: ["root", "render", "paint"], value: 16 },
+]);
+
+const flame = flameGraphPlugin({
+  model,
+  search: "render",
+  hoverHighlight: true,
+  hoverHighlightColor: [1, 0.95, 0.35, 1],
+  onFrameClick: ({ frame }) => console.log(frame.name, frame.value),
+});
+
+const chart = new Chart(element, {
+  axes: false,
+  grid: false,
+  plugins: [flame],
+});
+```
+
+Use `parseFoldedStacks(text)` for Brendan Gregg folded-stack text, `buildFlameGraphModel(..., { flameChart: true })` for chronological unmerged stacks, or `buildStatusChartModel(spans)` for explicit `{ start, end, depth }` intervals. The plugin renders rectangles in WebGL2 and labels on a 2D canvas overlay; `chart.screenshot()` includes both overlay canvases.
+
 ## Linked charts
 
 For dashboards with shared X ranges, use `blazeplot/linked`. It can add synced crosshair and tooltip plugins for you. See [Examples](./examples.md#linked-charts).

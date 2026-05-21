@@ -13,7 +13,7 @@ This page is generated from the built package. Use it as an index of import path
 | OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |
 | Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |
 | Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |
-| Tooltips, legends, annotations, selection | `blazeplot/plugins/*` subpaths |
+| Tooltips, legends, annotations, selection, flame graphs | `blazeplot/plugins/*` subpaths |
 | React | `blazeplot/react` and `BlazeChart` |
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
@@ -40,6 +40,7 @@ Guides: [Docs map](./README.md), [Overview](./overview.md), [Examples](./example
 | `blazeplot/plugins/selection` | Built-in brush/range selection plugin. |
 | `blazeplot/plugins/crosshair` | Built-in crosshair and ruler plugin. |
 | `blazeplot/plugins/navigator` | Built-in overview/navigator plugin. |
+| `blazeplot/plugins/flamegraph` | Built-in WebGL flame graph and status-span plugin. |
 
 The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; use the README performance section for the aggregate core runtime size.
 
@@ -65,16 +66,17 @@ Generated from `dist/` after the package build.
 | legend plugin | `dist/plugins/legend.js` | 2.8 KiB |
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
-| shared Chart chunk | `dist/Chart-D1ISQl_J.js` | 57.0 KiB |
-| shared RingBuffer chunk | `dist/RingBuffer-Bd5JaRf4.js` | 29.6 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-1cMrc6BC.js` | 17.3 KiB |
+| flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
+| shared Chart chunk | `dist/Chart-DW0dVv_v.js` | 52.5 KiB |
+| shared RingBuffer chunk | `dist/RingBuffer-D65bSlae.js` | 30.3 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-C2PAL6iF.js` | 17.9 KiB |
 | shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB |
-| shared WebGL2Backend chunk | `dist/WebGL2Backend-wxbXnm0h.js` | 20.9 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DDrAyfEg.js` | 2.1 KiB |
-| lazy screenshot chunk | `dist/screenshot-BVw2v67J.js` | 3.0 KiB |
-| shared OverlayUtils chunk | `dist/OverlayUtils-Gk-tb2Ak.js` | 3.1 KiB |
-| shared Tooltip chunk | `dist/Tooltip-DDEQ32oy.js` | 4.8 KiB |
-| shared Crosshair chunk | `dist/Crosshair-CYiuaxpk.js` | 8.8 KiB |
+| shared WebGL2Backend chunk | `dist/WebGL2Backend-Bs4aiO8a.js` | 21.3 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-C1yWp7-o.js` | 2.1 KiB |
+| lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
+| shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
+| shared Tooltip chunk | `dist/Tooltip-D0WRT6Fj.js` | 5.7 KiB |
+| shared Crosshair chunk | `dist/Crosshair-B0iu8h16.js` | 8.8 KiB |
 
 ### All public exports
 

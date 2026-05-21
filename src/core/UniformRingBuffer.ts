@@ -213,21 +213,22 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const visible = end - start;
     if (visible <= 0) return 0;
 
-    const segmentCount = Math.min(maxSegments, visible);
+    const viewportSamples = Math.max(1, Math.ceil((viewport.xMax - viewport.xMin) / this.xStep) + 1);
+    const stride = Math.max(1, Math.ceil(viewportSamples / maxSegments));
+    const firstOrdinal = Math.round(this.firstX() / this.xStep);
+    const alignedStart = start - positiveModulo(firstOrdinal + start, stride);
+
     let written = 0;
-    for (let segment = 0; segment < segmentCount; segment++) {
-      const segmentStart = start + Math.floor((segment * visible) / segmentCount);
-      const segmentEnd = Math.min(
-        end,
-        start + Math.max(
-          Math.floor(((segment + 1) * visible) / segmentCount),
-          Math.floor((segment * visible) / segmentCount) + 1,
-        ),
-      );
+    for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += stride) {
+      const segmentStart = Math.max(0, bucketStart);
+      const segmentEnd = Math.min(this._length, bucketStart + stride);
+      if (segmentEnd <= start || segmentStart >= end) continue;
+
       const range = this.rangeMinMaxY(segmentStart, segmentEnd);
       if (!range) continue;
 
-      const x = this.firstX() + (segmentStart + ((segmentEnd - segmentStart) >> 1)) * this.xStep - xOrigin;
+      const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
+      const x = this.firstX() + representative * this.xStep - xOrigin;
       if (layout === "line-list") {
         const offset = written * 4;
         target[offset] = x;

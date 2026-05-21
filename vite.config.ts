@@ -43,6 +43,7 @@ export default defineConfig(({ command, mode }) => {
           "plugins/selection": resolve(__dirname, "src/plugins/selection.ts"),
           "plugins/crosshair": resolve(__dirname, "src/plugins/crosshair.ts"),
           "plugins/navigator": resolve(__dirname, "src/plugins/navigator.ts"),
+          "plugins/flamegraph": resolve(__dirname, "src/plugins/flamegraph.ts"),
         },
         formats: ["es"],
         fileName: (_format, entryName) => `${entryName}.js`,

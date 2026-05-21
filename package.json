@@ -98,6 +98,10 @@
       "types": "./dist/plugins/navigator.d.ts",
       "import": "./dist/plugins/navigator.js"
     },
+    "./plugins/flamegraph": {
+      "types": "./dist/plugins/flamegraph.d.ts",
+      "import": "./dist/plugins/flamegraph.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

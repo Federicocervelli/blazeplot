@@ -222,12 +222,12 @@ export class MinMaxPyramid {
     return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
   }
 
-  query(_viewport: Viewport, pixelWidth: number, xRange: { start: number; length: number }): LODView {
+  query(_viewport: Viewport, pixelWidth: number, xRange: { start: number; length: number; levelLength?: number }): LODView {
     if (pixelWidth <= 0 || xRange.length <= 0) {
       return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel: 0 };
     }
 
-    const visibleSamples = xRange.length;
+    const visibleSamples = xRange.levelLength ?? xRange.length;
     const samplesPerPixel = Math.max(1, visibleSamples / pixelWidth);
     const level = Math.min(
       Math.max(0, Math.ceil(Math.log2(samplesPerPixel)) - 1),

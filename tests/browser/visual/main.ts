@@ -3,6 +3,7 @@ import type { ChartFrameStats, ChartPlugin } from "@/index.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
+import { buildFlameGraphModel, flameGraphPlugin } from "@/plugins/flamegraph.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { navigatorPlugin } from "@/plugins/navigator.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
@@ -41,6 +42,7 @@ const CASES = [
   "annotations",
   "selection",
   "navigator",
+  "flamegraph",
   "scale-options",
   "overlay-layering",
   "context-restore",
@@ -116,6 +118,16 @@ function optionsForCase(name: VisualCase): ConstructorParameters<typeof Chart>[1
   ] }));
   if (name === "selection") plugins.push(selectionPlugin({ mode: "xy" }));
   if (name === "navigator") plugins.push(navigatorPlugin({ height: 72 }));
+  if (name === "flamegraph") plugins.push(flameGraphPlugin({
+    model: buildFlameGraphModel([
+      { stack: ["root", "parse", "tokenize"], value: 28 },
+      { stack: ["root", "parse", "ast"], value: 18 },
+      { stack: ["root", "render", "layout"], value: 22 },
+      { stack: ["root", "render", "paint"], value: 16 },
+      { stack: ["root", "idle"], value: 12 },
+    ]),
+    search: "render",
+  }));
   if (name === "scale-options") {
     return {
       axes: {
@@ -166,6 +178,9 @@ function setupCase(name: VisualCase, chart: Chart): void {
     case "navigator":
     case "overlay-layering":
       addLine(chart);
+      break;
+    case "flamegraph":
+      addFlameGraphBaseline(chart);
       break;
     case "scale-options":
       addScaleOptions(chart);
@@ -278,6 +293,13 @@ function addOhlc(chart: Chart, mode: "ohlc" | "candlestick"): void {
   chart.setViewport({ xMin: -1, xMax: count, yMin: 6, yMax: 14 });
 }
 
+function addFlameGraphBaseline(chart: Chart): void {
+  const x = Float64Array.from({ length: 2 }, (_, i) => i * 96);
+  const y = new Float32Array([0, 0]);
+  chart.addLine({ dataset: new StaticDataset(x, y), name: "baseline" }, { color: [0, 0, 0, 0], lineWidth: 1 });
+  chart.setViewport({ xMin: 0, xMax: 96, yMin: 0, yMax: 4 });
+}
+
 function addScaleOptions(chart: Chart): void {
   const x = Float64Array.from({ length: 256 }, (_, i) => 2 ** (i / 32));
   const y = Float32Array.from({ length: 256 }, (_, i) => Math.sin(i * 0.12) * 8);
@@ -307,6 +329,10 @@ function assertCaseDom(name: VisualCase, chart: Chart): void {
   if (name === "annotations") assert(!!root.querySelector(".blazeplot-annotations"), "annotations layer exists");
   if (name === "selection") assert(!!root.querySelector(".blazeplot-selection-brush"), "selection layer exists");
   if (name === "navigator") assert(!!root.querySelector(".blazeplot-navigator"), "navigator exists");
+  if (name === "flamegraph") {
+    assert(!!root.querySelector(".blazeplot-flamegraph-canvas"), "flamegraph webgl canvas exists");
+    assert(!!root.querySelector(".blazeplot-flamegraph-labels"), "flamegraph label canvas exists");
+  }
   if (name === "overlay-layering") {
     const legend = root.querySelector<HTMLElement>(".blazeplot-legend");
     const tooltipMarkers = root.querySelector<HTMLElement>(".blazeplot-tooltip-markers");
