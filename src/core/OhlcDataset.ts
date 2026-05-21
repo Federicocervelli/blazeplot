@@ -127,12 +127,16 @@ export class OhlcRingBuffer implements OhlcDataset {
   }
 
   updateLast(open: number, high: number, low: number, close: number): boolean {
-    if (this._length <= 0) return false;
-    const index = this.logicalToPhysical(this._length - 1);
-    this.openData[index] = open;
-    this.highData[index] = high;
-    this.lowData[index] = low;
-    this.closeData[index] = close;
+    return this.updateAt(this._length - 1, open, high, low, close);
+  }
+
+  updateAt(index: number, open: number, high: number, low: number, close: number): boolean {
+    if (!this.isValidIndex(index)) return false;
+    const physical = this.logicalToPhysical(index);
+    this.openData[physical] = open;
+    this.highData[physical] = high;
+    this.lowData[physical] = low;
+    this.closeData[physical] = close;
     return true;
   }
 
@@ -206,8 +210,12 @@ export class OhlcRingBuffer implements OhlcDataset {
     return (this._head - this._length + index + this.capacity) % this.capacity;
   }
 
+  private isValidIndex(index: number): boolean {
+    return Number.isInteger(index) && index >= 0 && index < this._length;
+  }
+
   private assertValidIndex(index: number): void {
-    if (!Number.isInteger(index) || index < 0 || index >= this._length) {
+    if (!this.isValidIndex(index)) {
       throw new RangeError(`OhlcRingBuffer index out of range: ${index}`);
     }
   }

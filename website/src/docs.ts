@@ -5,6 +5,7 @@ import dataSemantics from "../../docs/data-semantics.md?raw";
 import docsMap from "../../docs/README.md?raw";
 import documentationContributions from "../../docs/documentation-contributions.md?raw";
 import examples from "../../docs/examples.md?raw";
+import liveData from "../../docs/live-data.md?raw";
 import overview from "../../docs/overview.md?raw";
 import performanceRecipes from "../../docs/performance-recipes.md?raw";
 import releaseBenchmarks from "../../docs/release-and-benchmarks.md?raw";
@@ -48,6 +49,13 @@ export const DOC_PAGES: readonly DocPage[] = [
     description: "Copy-paste patterns for chart setup, plugins, data feeds, and exports.",
     sourcePath: "docs/examples.md",
     markdown: examples,
+  },
+  {
+    slug: "live-data",
+    title: "Live data",
+    description: "Streaming appends, fixed-rate shortcuts, sample updates, and follow-latest behavior.",
+    sourcePath: "docs/live-data.md",
+    markdown: liveData,
   },
   {
     slug: "performance-recipes",
@@ -137,7 +145,7 @@ export const DOC_PAGES: readonly DocPage[] = [
 
 export const DOC_NAV_SECTIONS: readonly DocNavSection[] = [
   { title: "Start", slugs: ["overview", "docs-map", "examples"] },
-  { title: "Data and performance", slugs: ["data-semantics", "performance-recipes"] },
+  { title: "Data and performance", slugs: ["live-data", "data-semantics", "performance-recipes"] },
   { title: "UI", slugs: ["built-in-plugins", "theming-and-layout", "plugin-authoring"] },
   { title: "Reference", slugs: ["troubleshooting", "browser-support", "versioning-and-migration", "api-reference"] },
 ] as const;

@@ -8,7 +8,7 @@ Use this map to decide where a topic belongs before adding or moving documentati
 |---|---|---|
 | Decide whether BlazePlot fits an app | [Overview](./overview.md) | [Browser support](./browser-support.md), [Performance recipes](./performance-recipes.md) |
 | Build the first chart | [Overview](./overview.md) | [Examples](./examples.md), [Troubleshooting](./troubleshooting.md) |
-| Stream or downsample data | [Data semantics](./data-semantics.md) | [Performance recipes](./performance-recipes.md), [Examples](./examples.md#live-line-chart) |
+| Stream or downsample data | [Live data](./live-data.md) | [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), [Examples](./examples.md#live-line-chart) |
 | Add interaction or overlays | [Built-in plugins](./built-in-plugins.md) | [Theming and layout](./theming-and-layout.md), [Plugin authoring](./plugin-authoring.md) |
 | Build a dashboard | [Examples](./examples.md#linked-charts) | [Built-in plugins](./built-in-plugins.md), [Performance recipes](./performance-recipes.md) |
 | Debug a chart | [Troubleshooting](./troubleshooting.md) | [Browser support](./browser-support.md), [Data semantics](./data-semantics.md) |
@@ -27,6 +27,7 @@ These pages are visible on the docs site and should be useful to package users.
 
 ### Data and performance
 
+- [Live data](./live-data.md) — streaming appends, fixed-rate shorthand, sample updates, OHLC live candles, and follow-latest behavior.
 - [Data semantics](./data-semantics.md) — sorted X values, gaps, bounds, ring buffers, server-sampled data, picking, and export behavior.
 - [Performance recipes](./performance-recipes.md) — data-shape choices, LOD guidance, streaming patterns, and browser budgets.
 

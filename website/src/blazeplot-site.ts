@@ -23,7 +23,7 @@ declare const __BLAZEPLOT_VERSION__: string;
 type Section = "home" | "docs" | "previews";
 type HomeDataMode = "static" | "streaming";
 type HomeChartMode = "line" | "ohlc" | "multi";
-type PreviewId = "live" | "features" | "linked" | "server-sampled" | "flamechart" | "render-loop" | "mobile";
+type PreviewId = "live" | "sensor" | "features" | "linked" | "server-sampled" | "flamechart" | "render-loop" | "mobile";
 
 interface PreviewLink {
   title: string;
@@ -32,6 +32,7 @@ interface PreviewLink {
 
 const PREVIEWS: readonly PreviewLink[] = [
   { title: "Live performance", id: "live" },
+  { title: "Sensor stream", id: "sensor" },
   { title: "Feature gallery", id: "features" },
   { title: "Linked charts", id: "linked" },
   { title: "Server-sampled", id: "server-sampled" },
@@ -264,6 +265,7 @@ export class BlazeplotSite extends LitElement {
   }
 
   private renderSelectedPreview(id: PreviewId): TemplateResult {
+    if (id === "sensor") return this.renderSensorStreamPreview();
     if (id === "features") return this.renderFeaturePreview();
     if (id === "linked") return this.renderLinkedChartsPreview();
     if (id === "server-sampled") return this.renderServerSampledPreview();
@@ -317,6 +319,25 @@ export class BlazeplotSite extends LitElement {
         </section>
       </section>
     `;
+  }
+
+  private renderSensorStreamPreview(): TemplateResult {
+    return this.renderPreviewPanel(
+      "Sensor stream",
+      "irregular WebSocket-style timestamps · follow-latest helper",
+      html`
+        <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[#aaa]">
+          <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
+            <span>Dense IoT gateway stream: irregular batched timestamps, jitter, dropouts, and vibration spikes via <code>series.append({ x, y })</code>.</span>
+            <button data-sensor-live type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">resume live</button>
+            <span data-sensor-status class="text-[#777]">booting…</span>
+          </div>
+          <div class="relative min-h-0 border border-[#222]">
+            <div data-preview-chart="sensor" class="h-full min-h-0 w-full"></div>
+          </div>
+        </section>
+      `,
+    );
   }
 
   private renderFeaturePreview(): TemplateResult {
@@ -432,6 +453,7 @@ export class BlazeplotSite extends LitElement {
       const kind = target.dataset.previewChart;
       try {
         if (kind === "live") this.mountLivePreviewChart(target);
+        else if (kind === "sensor") this.mountSensorStreamPreview(target);
         else if (kind === "feature-hero") this.mountFeatureHeroChart(target);
         else if (kind === "feature-linked") this.mountFeatureLinkedCharts(target);
         else if (kind === "server-sampled") this.mountServerSampledChart(target);
@@ -446,6 +468,131 @@ export class BlazeplotSite extends LitElement {
         target.append(fallback);
       }
     }
+  }
+
+  private mountSensorStreamPreview(target: HTMLElement): void {
+    const root = target.closest<HTMLElement>("section") ?? target;
+    const status = root.querySelector<HTMLElement>("[data-sensor-status]");
+    const liveButton = root.querySelector<HTMLButtonElement>("[data-sensor-live]");
+
+    const chart = new Chart(target, {
+      axes: { x: { position: "outside", scale: "time" }, y: { position: "outside" }, y2: { visible: true, position: "outside" } },
+      grid: true,
+      autoFitY: { padding: { y: 0.15 }, yAxis: "both" },
+      plugins: [
+        interactionsPlugin({ minDragDistancePx: 4 }),
+        tooltipPlugin(),
+        crosshairPlugin({ snap: "nearest-x", label: true }),
+        legendPlugin({ position: "top-left" }),
+      ],
+    });
+    this.previewCharts.push(chart);
+
+    const temperature = chart.addLine({ capacity: 20_000, name: "temperature °C" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
+    const humidity = chart.addLine({ capacity: 20_000, name: "humidity %" }, { color: [0.2, 0.85, 0.45, 1], lineWidth: 1.5 });
+    const vibration = chart.addLine({ capacity: 20_000, name: "vibration RMS", yAxis: "right" }, { color: [0.2, 0.7, 1, 1], lineWidth: 1.5 });
+
+    const streamStartMs = Date.now();
+    let nextSampleAt = streamStartMs - 60_000;
+    let tick = 0;
+    let timeoutId = 0;
+    let dropoutUntil = -Infinity;
+
+    const nextSensorInterval = (): number => 12 + Math.random() * 18;
+
+    const sensorValues = (timestampMs: number): { temp: number; humidity: number; vibe: number } => {
+      const seconds = (timestampMs - streamStartMs) / 1000;
+      const dutyCycle = Math.sin(seconds * 0.23) > 0.72 ? 1 : 0;
+      const temp = 24
+        + Math.sin(seconds * 0.055) * 2.2
+        + Math.sin(seconds * 0.72) * 0.42
+        + dutyCycle * 0.9
+        + (Math.random() - 0.5) * 0.18;
+      const humidity = 50
+        - (temp - 24) * 1.45
+        + Math.sin(seconds * 0.031 + 1.7) * 3.8
+        + (Math.random() - 0.5) * 0.35;
+      const spike = Math.random() < 0.012 ? 0.4 + Math.random() * 0.8 : 0;
+      const vibe = 0.42
+        + Math.abs(Math.sin(seconds * 16.5)) * 0.075
+        + Math.sin(seconds * 0.9) * 0.035
+        + dutyCycle * 0.16
+        + spike
+        + Math.random() * 0.035;
+      return { temp, humidity, vibe };
+    };
+
+    const isHistoricalDropout = (timestampMs: number): boolean => {
+      const offset = timestampMs - streamStartMs;
+      return (offset > -45_000 && offset < -43_700) || (offset > -21_500 && offset < -20_300) || (offset > -7_800 && offset < -7_000);
+    };
+
+    const seedX: number[] = [];
+    const seedTemp: number[] = [];
+    const seedHumidity: number[] = [];
+    const seedVibration: number[] = [];
+    while (nextSampleAt < streamStartMs) {
+      const timestamp = nextSampleAt;
+      const values = sensorValues(timestamp);
+      const missing = isHistoricalDropout(timestamp);
+      seedX.push(timestamp);
+      seedTemp.push(missing ? NaN : values.temp);
+      seedHumidity.push(missing ? NaN : values.humidity);
+      seedVibration.push(missing ? NaN : values.vibe);
+      nextSampleAt += nextSensorInterval();
+    }
+    temperature.append({ x: Float64Array.from(seedX), y: Float32Array.from(seedTemp) });
+    humidity.append({ x: Float64Array.from(seedX), y: Float32Array.from(seedHumidity) });
+    vibration.append({ x: Float64Array.from(seedX), y: Float32Array.from(seedVibration) });
+
+    const updateStatus = (delay: number, batchCount: number, missingCount: number, values: { temp: number; humidity: number; vibe: number }): void => {
+      if (!status) return;
+      const dropout = missingCount > 0 ? ` · ${missingCount} dropout gaps` : "";
+      status.textContent = `samples ${tick.toLocaleString()} · batch ${batchCount} · next ${Math.round(delay)}ms · ${values.temp.toFixed(2)}°C · ${values.humidity.toFixed(1)}% RH · ${values.vibe.toFixed(3)} RMS${dropout}`;
+    };
+
+    const schedule = (): void => {
+      const delay = 70 + Math.random() * 110;
+      timeoutId = window.setTimeout(() => {
+        const flushNow = Date.now();
+        const xBatch: number[] = [];
+        const tempBatch: number[] = [];
+        const humidityBatch: number[] = [];
+        const vibrationBatch: number[] = [];
+        let missingCount = 0;
+        let latest = sensorValues(nextSampleAt);
+        while (nextSampleAt <= flushNow && xBatch.length < 96) {
+          const timestamp = nextSampleAt;
+          if (timestamp > dropoutUntil && tick > 0 && tick % 600 === 0) dropoutUntil = timestamp + 850 + Math.random() * 450;
+          const missing = timestamp < dropoutUntil;
+          latest = sensorValues(timestamp);
+          xBatch.push(timestamp);
+          tempBatch.push(missing ? NaN : latest.temp);
+          humidityBatch.push(missing ? NaN : latest.humidity);
+          vibrationBatch.push(missing ? NaN : latest.vibe);
+          if (missing) missingCount += 1;
+          tick += 1;
+          nextSampleAt += nextSensorInterval();
+        }
+        if (xBatch.length > 0) {
+          temperature.append({ x: Float64Array.from(xBatch), y: Float32Array.from(tempBatch) });
+          humidity.append({ x: Float64Array.from(xBatch), y: Float32Array.from(humidityBatch) });
+          vibration.append({ x: Float64Array.from(xBatch), y: Float32Array.from(vibrationBatch) });
+          updateStatus(delay, xBatch.length, missingCount, latest);
+        }
+        schedule();
+      }, delay);
+    };
+
+    const onLive = (): void => chart.resumeLatestXFollow();
+    liveButton?.addEventListener("click", onLive);
+    if (liveButton) this.previewDisposers.push(() => liveButton.removeEventListener("click", onLive));
+    this.previewDisposers.push(() => window.clearTimeout(timeoutId));
+
+    chart.fitToData({ padding: { x: 0.02, y: 0.12 } });
+    chart.followLatestX({ window: 30_000, pauseOnInteraction: true, currentX: () => Date.now() });
+    chart.start();
+    schedule();
   }
 
   private mountLivePreviewChart(target: HTMLElement): void {
@@ -1645,6 +1792,7 @@ export class BlazeplotSite extends LitElement {
     if (relative === "home") return "home";
     if (relative === "previews" || relative.startsWith("previews/") || relative.startsWith("docs/")) return relative;
     if (relative === "features") return "previews/features";
+    if (relative === "sensor") return "previews/sensor";
     if (relative === "linked") return "previews/linked";
     if (relative === "server-sampled") return "previews/server-sampled";
     if (relative === "flamechart") return "previews/flamechart";

@@ -158,6 +158,14 @@ describe("SeriesStore", () => {
     expect(series.dataBounds({ xMin: 10 })).toBeNull();
   });
 
+  it("exposes x range even when latest samples are gaps", () => {
+    const series = makeSeries();
+    series.append({ x: [1, 2, 3], y: [4, NaN, NaN] });
+
+    expect(series.xRange).toEqual({ start: 1, end: 3 });
+    expect(series.dataBounds()).toEqual({ xMin: 1, xMax: 1, yMin: 4, yMax: 4 });
+  });
+
   it("appends y-only batches to datasets that support implicit x", () => {
     const series = new SeriesStore(
       new UniformRingBuffer(4, { xStart: 10, xStep: 5 }),
@@ -183,6 +191,62 @@ describe("SeriesStore", () => {
     expect(series.sampleAt(3)).toEqual({ index: 3, x: 4, y: 7 });
   });
 
+  it("appends XY row arrays through the generic series API", () => {
+    const series = makeSeries();
+    series.append([
+      { x: 1, y: 4 },
+      { x: 2, y: 5 },
+      { x: 3, y: 6 },
+    ]);
+
+    expect(series.length).toBe(3);
+    expect(series.sampleAt(2)).toEqual({ index: 2, x: 3, y: 6 });
+  });
+
+  it("appends implicit-X row arrays through the generic series API", () => {
+    const series = new SeriesStore(
+      new UniformRingBuffer(4, { xStart: 10, xStep: 5 }),
+      { mode: "line", capacity: 4, downsample: "minmax" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    series.append([{ y: 4 }, { y: -1 }, { y: 7 }]);
+
+    expect(series.length).toBe(3);
+    expect(series.sampleAt(2)).toEqual({ index: 2, x: 20, y: 7 });
+  });
+
+  it("updates XY samples through updateAt and updateLast", () => {
+    let dirtyCount = 0;
+    const series = new SeriesStore(
+      new RingBuffer(8),
+      { mode: "line", capacity: 8, downsample: "minmax" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+      () => { dirtyCount += 1; },
+    );
+    series.append({ x: [1, 2, 3], y: [4, 5, 6] });
+
+    expect(series.updateAt(1, { y: 50 })).toBe(true);
+    expect(series.sampleAt(1)).toEqual({ index: 1, x: 2, y: 50 });
+    expect(series.updateLast({ x: 4, y: 7 })).toBe(true);
+    expect(series.sampleAt(2)).toEqual({ index: 2, x: 4, y: 7 });
+    expect(series.updateAt(99, { y: 1 })).toBe(false);
+    expect(dirtyCount).toBe(3);
+  });
+
+  it("updates implicit-X samples through updateLast without changing derived X values", () => {
+    const series = new SeriesStore(
+      new UniformRingBuffer(4, { xStart: 10, xStep: 5 }),
+      { mode: "line", capacity: 4, downsample: "minmax" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+    series.append({ y: [4, -1, 7] });
+
+    expect(series.updateLast({ y: 11 })).toBe(true);
+    expect(series.sampleAt(2)).toEqual({ index: 2, x: 20, y: 11 });
+    expect(() => series.updateAt(1, { x: 15, y: 12 })).toThrow("mutable XY dataset");
+  });
+
   it("appends and updates OHLC datasets through the generic series API so on-demand charts become dirty", () => {
     let dirtyCount = 0;
     const dataset = new OhlcRingBuffer(8);
@@ -194,16 +258,27 @@ describe("SeriesStore", () => {
     );
 
     series.append({ x: 10, open: 1, high: 2, low: 0.5, close: 1.5 });
-    expect(dataset.length).toBe(1);
+    series.append([
+      { x: 11, open: 2, high: 4, low: 1.5, close: 3 },
+      { x: 12, open: 3, high: 5, low: 2.5, close: 4 },
+    ]);
+    expect(dataset.length).toBe(3);
     expect(dataset.getClose(0)).toBe(1.5);
-    expect(dirtyCount).toBe(1);
+    expect(dataset.getClose(2)).toBe(4);
+    expect(dirtyCount).toBe(2);
+
+    expect(series.updateAt(1, { open: 2.5, high: 4.5, low: 2, close: 3.5 })).toBe(true);
+    expect(dataset.getOpen(1)).toBe(2.5);
+    expect(dataset.getHigh(1)).toBe(4.5);
+    expect(dataset.getLow(1)).toBe(2);
+    expect(dataset.getClose(1)).toBe(3.5);
 
     expect(series.updateLast({ open: 1.5, high: 3, low: 1, close: 2.5 })).toBe(true);
-    expect(dataset.getOpen(0)).toBe(1.5);
-    expect(dataset.getHigh(0)).toBe(3);
-    expect(dataset.getLow(0)).toBe(1);
-    expect(dataset.getClose(0)).toBe(2.5);
-    expect(dirtyCount).toBe(2);
+    expect(dataset.getOpen(2)).toBe(1.5);
+    expect(dataset.getHigh(2)).toBe(3);
+    expect(dataset.getLow(2)).toBe(1);
+    expect(dataset.getClose(2)).toBe(2.5);
+    expect(dirtyCount).toBe(4);
   });
 
   it("copies visible min/max segments", () => {

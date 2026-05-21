@@ -19,6 +19,8 @@ const chart = new Chart(element, {
 
 Use it when users should control the viewport directly. If your app owns all camera changes, leave it out and call chart camera/viewport APIs yourself.
 
+For live charts using `chart.followLatestX(...)`, double-click/tap reset resumes latest-X follow by default so a reset action behaves like a "back to live" action. Set `resumeFollowOnReset: false` if your reset button should keep the chart paused on a historical viewport.
+
 ## Tooltip, crosshair, and legend
 
 - `tooltipPlugin` shows nearest picked samples and can sync tooltips across a group.

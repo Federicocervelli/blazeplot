@@ -88,18 +88,17 @@ chart.start();
 Use a ring buffer when old samples can fall out of the visible history window.
 
 ```ts
-import { Chart, RingBuffer } from "blazeplot";
+import { Chart } from "blazeplot";
 
-const dataset = new RingBuffer(60_000, { overflow: "wrap" });
 const chart = new Chart(element, {
-  followX: { window: 60_000, pauseOnInteraction: true },
+  followX: { window: 60_000, pauseOnInteraction: true, resumeAfterMs: 3000 },
   autoFitY: { padding: { y: 0.1 } },
 });
-chart.addLine({ dataset, name: "live" });
+const series = chart.addLine({ capacity: 60_000, name: "live" });
 chart.start();
 
 const timer = setInterval(() => {
-  dataset.push(Date.now(), Math.random());
+  series.append({ x: Date.now(), y: Math.random() });
 }, 100);
 
 const cleanup = () => {
@@ -108,20 +107,15 @@ const cleanup = () => {
 };
 ```
 
-Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. Use `chart.resumeXFollow()` from a "live" button if the user pans away and wants to jump back. See [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
+Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. For timestamped streams, `chart.followLatestX({ currentX: () => Date.now(), ... })` scrolls smoothly between batched updates. You can also enable or change follow behavior at runtime with `chart.followLatestX(...)`, stop it with `chart.stopFollowingLatestX()`, and call `chart.resumeLatestXFollow()` from a "live" button if the user pans away and wants to jump back. Double-click/tap reset in the interactions plugin resumes follow by default. See [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
 
-If samples arrive at a fixed interval, prefer `UniformRingBuffer`:
+If samples arrive at a fixed interval, use the `{ capacity, xStep }` shorthand so BlazePlot creates an implicit-X buffer:
 
 ```ts
-import { Chart, UniformRingBuffer } from "blazeplot";
-
-const dataset = new UniformRingBuffer(60_000, {
-  xStart: performance.now(),
-  xStep: 16.6667,
-});
+import { Chart } from "blazeplot";
 
 const chart = new Chart(element);
-const series = chart.addLine({ dataset, name: "signal" });
+const series = chart.addLine({ capacity: 60_000, xStart: performance.now(), xStep: 16.6667, name: "signal" });
 chart.start();
 
 const timer = setInterval(() => {
@@ -134,7 +128,7 @@ const cleanup = () => {
 };
 ```
 
-`chart.start()` activates render scheduling. Static charts render when chart-owned state changes, while appends through the returned series (`series.append({ x, y })`, `series.append({ y })`, `series.append({ x, open, high, low, close })`) request another frame automatically. If you mutate a dataset directly, call `series.markDirty()` afterward so LOD state and on-demand rendering wake up. Use `chart.start({ renderLoop: "continuous" })` only for custom animations that redraw even without chart-owned state changes. Stop scheduling with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
+`chart.start()` activates render scheduling. Static charts render when chart-owned state changes, while appends through the returned series (`series.append({ x, y })`, `series.append({ y })`, `series.append({ x, open, high, low, close })`) request another frame automatically. You can also append convenient object rows like `series.append([{ x: 1, y: 4 }, { x: 2, y: 5 }])` or `series.append([{ y: 4 }, { y: 5 }])`; use typed-array batches for high-throughput streams. To refine existing samples, use `series.updateLast({ y })`, `series.updateLast({ x, y })`, or `series.updateAt(index, { y })`. If you mutate a dataset directly, call `series.markDirty()` afterward so LOD state and on-demand rendering wake up. Use `chart.start({ renderLoop: "continuous" })` only for custom animations that redraw even without chart-owned state changes. Stop scheduling with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
 
 ## Server-sampled min/max buckets
 
@@ -181,7 +175,7 @@ chart.fitToData();
 chart.start();
 ```
 
-OHLC bounds use high/low values, while generic `getY()` returns close. For live OHLC streams, append through the returned series with `series.append({ x, open, high, low, close })` or update the active candle with `series.updateLast({ open, high, low, close })`; direct `dataset.push(...)` / `dataset.updateLast(...)` calls need a follow-up `series.markDirty()`. See [Data semantics](./data-semantics.md#ohlc-datasets).
+OHLC bounds use high/low values, while generic `getY()` returns close. For live OHLC streams, append through the returned series with `series.append({ x, open, high, low, close })`, append row batches like `series.append([{ x, open, high, low, close }])`, update a candle with `series.updateAt(index, { open, high, low, close })`, or update the active candle with `series.updateLast({ open, high, low, close })`; direct `dataset.push(...)` / `dataset.updateLast(...)` calls need a follow-up `series.markDirty()`. See [Data semantics](./data-semantics.md#ohlc-datasets).
 
 ## Linked charts
 

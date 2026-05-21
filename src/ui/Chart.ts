@@ -1,6 +1,7 @@
 import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, SeriesYAxis, Viewport } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
+import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import { Renderer } from "../render/Renderer.js";
 import type { RenderProjection } from "../render/Renderer.js";
 import { isWebGL2Available, WebGL2Backend } from "../render/WebGL2Backend.js";
@@ -42,7 +43,9 @@ function normalizeFitPadding(padding: number | ChartFitToDataPadding | undefined
 }
 
 function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: number): boolean {
-  const scale = Math.max(1, Math.abs(aMin), Math.abs(aMax), Math.abs(bMin), Math.abs(bMax));
+  const aSpan = Math.abs(aMax - aMin);
+  const bSpan = Math.abs(bMax - bMin);
+  const scale = Math.max(1, aSpan, bSpan);
   const epsilon = scale * 1e-9;
   return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
 }
@@ -260,6 +263,14 @@ export interface ChartFollowXOptions {
   readonly enabled?: boolean;
   readonly window?: number;
   readonly pauseOnInteraction?: boolean;
+  /** Resume automatically this many milliseconds after a pan/zoom interaction. */
+  readonly resumeAfterMs?: number;
+  /**
+   * Optional live X clock for smooth scrolling streams. When provided, the
+   * follow window uses the larger of latest data X and `currentX()` so time
+   * axes can advance continuously between batched sensor/network updates.
+   */
+  readonly currentX?: () => number;
   readonly visibleOnly?: boolean;
   readonly series?: readonly SeriesStore[];
 }
@@ -301,6 +312,13 @@ export interface ChartPluginContext {
   getSeriesState(): ChartSeriesState[];
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void;
   setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number }): void;
+  followLatestX(options?: ChartFollowXOptions): void;
+  stopFollowingLatestX(): void;
+  isFollowingLatestX(): boolean;
+  isLatestXFollowPaused(): boolean;
+  setXFollowPaused(paused: boolean): void;
+  resumeXFollow(): void;
+  resumeLatestXFollow(): void;
   getFrameStats(target?: ChartFrameStats): ChartFrameStats;
   getHoverState(): ChartHoverState | null;
   setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
@@ -477,7 +495,9 @@ export class Chart implements ChartPluginContext {
   private lastFrameAt: number = 0;
   private currentXOrigin: number = 0;
   private minMaxLineBatch: MinMaxLineBatch | null = null;
+  private followXConfig: ChartFollowXOptions | null = null;
   private xFollowPaused: boolean = false;
+  private xFollowResumeTimer: ReturnType<typeof setTimeout> | null = null;
   private _rafId: number = 0;
   private _hoverRafId: number = 0;
   private _restoreRenderRafId: number = 0;
@@ -554,6 +574,7 @@ export class Chart implements ChartPluginContext {
 
   constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
     this.renderLoop = options.renderLoop ?? "auto";
+    this.followXConfig = this.resolveInitialFollowX(options.followX);
     this.resolvedTheme = resolveChartTheme(options.theme, target);
     this.normalizedAxes = normalizeAxesConfig(options.axes);
     this._gridVisible = options.grid !== false;
@@ -741,6 +762,12 @@ export class Chart implements ChartPluginContext {
     if (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity <= 0) {
       throw new TypeError("Series capacity must be a positive integer when no dataset is provided.");
     }
+    if (config.xStep !== undefined || config.xStart !== undefined) {
+      if (config.overflow !== undefined && config.overflow !== "wrap") {
+        throw new TypeError("Series shorthand { capacity, xStep } uses UniformRingBuffer and currently supports only wrap overflow.");
+      }
+      return new UniformRingBuffer(capacity, { xStart: config.xStart, xStep: config.xStep });
+    }
     return new RingBuffer(capacity, { overflow: config.overflow });
   }
 
@@ -775,6 +802,7 @@ export class Chart implements ChartPluginContext {
   }
 
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void {
+    if (v.xMin !== undefined || v.xMax !== undefined) this.pauseXFollowForInteraction();
     this.camera.setViewport(v);
     this.rightCamera.setViewport(v);
     this.emitViewportChange();
@@ -787,13 +815,43 @@ export class Chart implements ChartPluginContext {
     this.refreshHover();
   }
 
+  followLatestX(options: ChartFollowXOptions = {}): void {
+    this.followXConfig = { ...options, enabled: options.enabled ?? true };
+    this.clearXFollowResumeTimer();
+    this.xFollowPaused = false;
+    this.applyFollowXPolicy();
+    this.requestRender();
+  }
+
+  stopFollowingLatestX(): void {
+    if (!this.followXConfig && !this.xFollowPaused) return;
+    this.followXConfig = null;
+    this.xFollowPaused = false;
+    this.clearXFollowResumeTimer();
+    this.requestRender();
+  }
+
+  isFollowingLatestX(): boolean {
+    return !!this.followXConfig && this.followXConfig.enabled !== false && !this.xFollowPaused;
+  }
+
+  isLatestXFollowPaused(): boolean {
+    return !!this.followXConfig && this.xFollowPaused;
+  }
+
   setXFollowPaused(paused: boolean): void {
+    this.clearXFollowResumeTimer();
     if (this.xFollowPaused === paused) return;
     this.xFollowPaused = paused;
     this.requestRender();
   }
 
   resumeXFollow(): void {
+    this.resumeLatestXFollow();
+  }
+
+  resumeLatestXFollow(): void {
+    this.clearXFollowResumeTimer();
     this.xFollowPaused = false;
     this.applyFollowXPolicy();
     this.requestRender();
@@ -867,33 +925,54 @@ export class Chart implements ChartPluginContext {
     return changed;
   }
 
+  private resolveInitialFollowX(option: ChartOptions["followX"]): ChartFollowXOptions | null {
+    if (!option) return null;
+    if (option === true) return { enabled: true };
+    if (option.enabled === false) return null;
+    return { ...option, enabled: true };
+  }
+
   private pauseXFollowForInteraction(): void {
-    const option = this.options.followX;
-    if (!option) return;
-    const config = typeof option === "object" ? option : undefined;
-    if (config?.pauseOnInteraction === false) return;
+    const config = this.followXConfig;
+    if (!config || config.pauseOnInteraction === false) return;
     this.xFollowPaused = true;
+    this.scheduleXFollowResume(config.resumeAfterMs);
+  }
+
+  private scheduleXFollowResume(resumeAfterMs: number | undefined): void {
+    this.clearXFollowResumeTimer();
+    if (typeof resumeAfterMs !== "number" || !Number.isFinite(resumeAfterMs) || resumeAfterMs <= 0) return;
+    this.xFollowResumeTimer = setTimeout(() => {
+      this.xFollowResumeTimer = null;
+      this.resumeLatestXFollow();
+    }, resumeAfterMs);
+  }
+
+  private clearXFollowResumeTimer(): void {
+    if (this.xFollowResumeTimer === null) return;
+    clearTimeout(this.xFollowResumeTimer);
+    this.xFollowResumeTimer = null;
   }
 
   private applyFollowXPolicy(): void {
-    const option = this.options.followX;
-    if (!option || this.xFollowPaused) return;
-    const config = typeof option === "object" ? option : undefined;
-    if (config?.enabled === false) return;
+    const config = this.followXConfig;
+    if (!config || this.xFollowPaused || config.enabled === false) return;
 
-    const visibleOnly = config?.visibleOnly !== false;
-    const candidates = config?.series ?? this.series;
+    const visibleOnly = config.visibleOnly !== false;
+    const candidates = config.series ?? this.series;
     let xMax = -Infinity;
     for (const series of candidates) {
       if (!this.series.includes(series)) continue;
       if (visibleOnly && !series.visible) continue;
-      const bounds = series.dataBounds();
-      if (bounds) xMax = Math.max(xMax, bounds.xMax);
+      const range = series.xRange;
+      if (range) xMax = Math.max(xMax, range.end);
     }
+    const clockX = config.currentX?.();
+    if (Number.isFinite(clockX)) xMax = Math.max(xMax, clockX!);
     if (!Number.isFinite(xMax)) return;
 
     const currentSpan = this.camera.xMax - this.camera.xMin;
-    const span = typeof config?.window === "number" && Number.isFinite(config.window) && config.window > 0
+    const span = typeof config.window === "number" && Number.isFinite(config.window) && config.window > 0
       ? config.window
       : currentSpan;
     const xMin = xMax - span;
@@ -1195,10 +1274,17 @@ export class Chart implements ChartPluginContext {
       this._hoverRafId = 0;
     }
     this.refreshHover();
+    if (this.running && this.renderLoop === "auto" && this.shouldAnimateFollowX()) this.requestRender();
+  }
+
+  private shouldAnimateFollowX(): boolean {
+    const config = this.followXConfig;
+    return !!config && config.enabled !== false && !this.xFollowPaused && typeof config.currentX === "function";
   }
 
   dispose(): void {
     this.stop();
+    this.clearXFollowResumeTimer();
     this.resizeObserver?.disconnect();
     if (this._hoverRafId !== 0) cancelAnimationFrame(this._hoverRafId);
     this._hoverRafId = 0;

@@ -43,24 +43,24 @@ For live telemetry, prefer `followX` over repeatedly calling `fitToData()` on ev
 
 ```ts
 const chart = new Chart(element, {
-  followX: { window: 60_000, pauseOnInteraction: true },
+  followX: { window: 60_000, pauseOnInteraction: true, resumeAfterMs: 3000 },
   autoFitY: { padding: { y: 0.1 } },
 });
 ```
 
-If the user pans or zooms and `pauseOnInteraction` is enabled, call `chart.resumeXFollow()` when they click your "live" button.
+You can also enable it after construction with `chart.followLatestX(...)`. For timestamped streams that arrive in batches, add `currentX: () => Date.now()` so the viewport scrolls smoothly between batch arrivals. If the user pans or zooms and `pauseOnInteraction` is enabled, call `chart.resumeLatestXFollow()` when they click your "live" button, or set `resumeAfterMs` to resume automatically.
 
 ## Live data does not repaint until interaction
 
 The default render loop is on demand. It wakes automatically for chart-owned changes, including appends through the returned series object:
 
 ```ts
-const dataset = new UniformRingBuffer(120_000, { xStart: Date.now(), xStep: 1000 });
-const series = chart.addLine({ dataset, name: "signal" });
+const series = chart.addLine({ capacity: 120_000, xStart: Date.now(), xStep: 1000, name: "signal" });
 chart.start();
 
 // Good: marks data/LOD dirty and requests a render.
 series.append({ y: new Float32Array([1, 2, 3]) });
+series.updateLast({ y: 4 });
 ```
 
 If you mutate a dataset directly, BlazePlot cannot observe that write. Call `series.markDirty()` afterward:

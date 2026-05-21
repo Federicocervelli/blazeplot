@@ -89,6 +89,23 @@ export class RingBuffer {
     return { x: this.getX(index), y: this.getY(index) };
   }
 
+  update(index: number, x: number, y: number): boolean {
+    if (!this.isValidIndex(index)) return false;
+    const physical = this.logicalToPhysical(index);
+    this.xData[physical] = x;
+    this.yData[physical] = y;
+    this.setTreeLeaf(physical, y);
+    return true;
+  }
+
+  updateY(index: number, y: number): boolean {
+    if (!this.isValidIndex(index)) return false;
+    const physical = this.logicalToPhysical(index);
+    this.yData[physical] = y;
+    this.setTreeLeaf(physical, y);
+    return true;
+  }
+
   getX(index: number): number {
     this.assertValidIndex(index);
     return this.xData[this.logicalToPhysical(index)]!;
@@ -239,8 +256,12 @@ export class RingBuffer {
     return (this._head - this._length + index + this.capacity) % this.capacity;
   }
 
+  private isValidIndex(index: number): boolean {
+    return Number.isInteger(index) && index >= 0 && index < this._length;
+  }
+
   private assertValidIndex(index: number): void {
-    if (!Number.isInteger(index) || index < 0 || index >= this._length) {
+    if (!this.isValidIndex(index)) {
       throw new RangeError(`RingBuffer index out of range: ${index}`);
     }
   }

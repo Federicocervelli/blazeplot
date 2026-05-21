@@ -125,8 +125,8 @@ This page is generated from the built package. Use it as an index of import path
 |---|---|
 | Create and render a chart | `createChart(...)` for common static charts; `Chart`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` for manual lifecycle control |
 | Static X/Y arrays or object rows | `createChart(...)`, `StaticDataset`, `StaticDataset.fromObjects(...)` |
-| Live irregular data | `RingBuffer` |
-| Live fixed-rate data | `UniformRingBuffer` |
+| Live irregular data | `chart.addLine({ capacity })`, `RingBuffer`, [Live data](docs/live-data.md) |
+| Live fixed-rate data | `chart.addLine({ capacity, xStep })`, `UniformRingBuffer`, [Live data](docs/live-data.md) |
 | OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |
 | Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |
 | Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |
@@ -135,7 +135,7 @@ This page is generated from the built package. Use it as an index of import path
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
 
-Guides: [Docs map](docs/README.md), [Overview](docs/overview.md), [Examples](docs/examples.md), [Data semantics](docs/data-semantics.md), [Performance recipes](docs/performance-recipes.md), [Built-in plugins](docs/built-in-plugins.md), [Plugin authoring](docs/plugin-authoring.md), [Theming and layout](docs/theming-and-layout.md), [Troubleshooting](docs/troubleshooting.md), [Browser support](docs/browser-support.md), [Migration](docs/versioning-and-migration.md), [Roadmap](docs/roadmap.md).
+Guides: [Docs map](docs/README.md), [Overview](docs/overview.md), [Examples](docs/examples.md), [Live data](docs/live-data.md), [Data semantics](docs/data-semantics.md), [Performance recipes](docs/performance-recipes.md), [Built-in plugins](docs/built-in-plugins.md), [Plugin authoring](docs/plugin-authoring.md), [Theming and layout](docs/theming-and-layout.md), [Troubleshooting](docs/troubleshooting.md), [Browser support](docs/browser-support.md), [Migration](docs/versioning-and-migration.md), [Roadmap](docs/roadmap.md).
 
 ### Package entry points
 
@@ -176,7 +176,7 @@ Generated from `dist/` after the package build.
 | linked core entry | `dist/linked-core.js` | 0.1 KiB |
 | data entry | `dist/data.js` | 4.9 KiB |
 | export entry | `dist/export.js` | 1.3 KiB |
-| interactions plugin | `dist/plugins/interactions.js` | 15.3 KiB |
+| interactions plugin | `dist/plugins/interactions.js` | 15.4 KiB |
 | annotations plugin | `dist/plugins/annotations.js` | 9.3 KiB |
 | navigator plugin | `dist/plugins/navigator.js` | 8.6 KiB |
 | selection plugin | `dist/plugins/selection.js` | 5.3 KiB |
@@ -184,12 +184,12 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-Cv0AO42T.js` | 53.2 KiB |
-| shared RingBuffer chunk | `dist/RingBuffer-BD5o6QyI.js` | 31.7 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-Dt90gUdW.js` | 18.4 KiB |
-| shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB |
+| shared Chart chunk | `dist/Chart-CZqcEYre.js` | 55.2 KiB |
+| shared streaming data chunk | `dist/UniformRingBuffer-zewj9EWq.js` | 44.2 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-5knDb_Pp.js` | 9.9 KiB |
+| shared AxisController chunk | `dist/AxisController-CCk21uVK.js` | 13.8 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-Bs4aiO8a.js` | 21.3 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-D--QlhQp.js` | 2.1 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-AecBKx1P.js` | 2.1 KiB |
 | lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
 | shared Tooltip chunk | `dist/Tooltip-D0WRT6Fj.js` | 5.7 KiB |
@@ -288,18 +288,24 @@ Generated from `dist/index.d.ts` after the package build.
 | `RingBufferOverflow` | type | `./core/RingBuffer` | — |
 | `SampleCopyLayout` | type | `./core/types` | — |
 | `SeriesAppendData` | type | `./core/SeriesStore` | — |
+| `SeriesAppendRow` | type | `./core/SeriesStore` | — |
 | `SeriesConfig` | interface | `./core/types` | — |
 | `SeriesDataBounds` | interface | `./core/SeriesStore` | — |
 | `SeriesDataBoundsOptions` | interface | `./core/SeriesStore` | — |
 | `SeriesMode` | type | `./core/types` | — |
-| `SeriesOhlcAppendData` | interface | `./core/SeriesStore` | — |
+| `SeriesObjectAppendData` | type | `./core/SeriesStore` | — |
+| `SeriesOhlcAppendData` | interface | `./core/SeriesStore` | Object form for appending one OHLC sample or a batch of OHLC arrays. |
+| `SeriesOhlcAppendRow` | interface | `./core/SeriesStore` | Convenient object-row form for appending one OHLC sample inside a row batch. |
 | `SeriesOhlcSample` | interface | `./core/SeriesStore` | — |
 | `SeriesOhlcUpdateData` | interface | `./core/SeriesStore` | — |
 | `SeriesSample` | interface | `./core/types` | — |
 | `SeriesScalarOrArray` | type | `./core/SeriesStore` | — |
 | `SeriesStore` | class | `./core/SeriesStore` | — |
 | `SeriesStyle` | interface | `./core/types` | — |
-| `SeriesXYAppendData` | interface | `./core/SeriesStore` | — |
+| `SeriesUpdateData` | type | `./core/SeriesStore` | — |
+| `SeriesXYAppendData` | interface | `./core/SeriesStore` | Object form for appending one XY sample or a batch of X/Y arrays. |
+| `SeriesXYAppendRow` | interface | `./core/SeriesStore` | Convenient object-row form for appending one XY sample inside a row batch. |
+| `SeriesXYUpdateData` | interface | `./core/SeriesStore` | — |
 | `SeriesYAxis` | type | `./core/types` | — |
 | `ServerSampledBuckets` | interface | `./core/ServerSampledDataset` | — |
 | `ServerSampledData` | type | `./core/ServerSampledDataset` | — |
@@ -316,6 +322,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `TypedSeriesConfig` | type | `./ui/Chart` | — |
 | `UniformRingBuffer` | class | `./core/UniformRingBuffer` | High-throughput ring buffer for uniformly spaced X values. Store only Y samples and derive X as `xStart + index * xStep`. This is the fastest built-in dataset for live telemetry, signals, and other fixed-rate streams because appends copy a single typed array and min/max extraction uses a block segment tree over the physical ring. |
 | `UniformRingBufferOptions` | interface | `./core/UniformRingBuffer` | — |
+| `UpdatableDataset` | interface | `./core/types` | — |
 | `Viewport` | interface | `./core/types` | — |
 | `ViewportPolicy` | interface | `./interaction/types` | — |
 | `VisiblePointCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for point/scatter datasets. Implementations should cull against the full 2D viewport and may sample in screen space so dense point clouds respond to both X and Y zoom. |
@@ -323,6 +330,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `WebGL2Backend` | class | `./render/WebGL2Backend` | — |
 | `WebGL2UnavailableError` | class | `./render/WebGL2Backend` | — |
 | `YAppendableDataset` | interface | `./core/types` | — |
+| `YUpdatableDataset` | interface | `./core/types` | — |
 | `ZoomAxis` | type | `./interaction/types` | — |
 | `ZoomIntent` | interface | `./interaction/types` | — |
 <!-- README_DOCS_END -->

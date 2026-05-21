@@ -1,4 +1,4 @@
-export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, SeriesSample, LODStrategy, BufferOverflowStrategy, Dataset, AcceleratedDataset, OhlcDataset, AppendableDataset, YAppendableDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout } from "./types.js";
+export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, SeriesSample, LODStrategy, BufferOverflowStrategy, Dataset, AcceleratedDataset, OhlcDataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout } from "./types.js";
 
 export { ServerSampledDataset } from "./ServerSampledDataset.js";
 export type { ServerSampledBuckets, ServerSampledData, ServerSampledDatasetKind, ServerSampledPoints } from "./ServerSampledDataset.js";
@@ -12,5 +12,5 @@ export { OhlcRingBuffer, StaticOhlcDataset } from "./OhlcDataset.js";
 export type { OhlcRingBufferOptions } from "./OhlcDataset.js";
 export { MinMaxPyramid } from "./MinMaxPyramid.js";
 export { SeriesStore } from "./SeriesStore.js";
-export type { SeriesAppendData, SeriesDataBounds, SeriesDataBoundsOptions, SeriesOhlcAppendData, SeriesOhlcSample, SeriesOhlcUpdateData, SeriesScalarOrArray, SeriesXYAppendData } from "./SeriesStore.js";
+export type { SeriesAppendData, SeriesAppendRow, SeriesDataBounds, SeriesDataBoundsOptions, SeriesObjectAppendData, SeriesOhlcAppendData, SeriesOhlcAppendRow, SeriesOhlcSample, SeriesOhlcUpdateData, SeriesScalarOrArray, SeriesUpdateData, SeriesXYAppendData, SeriesXYAppendRow, SeriesXYUpdateData } from "./SeriesStore.js";
 export { DataCursor } from "./DataCursor.js";

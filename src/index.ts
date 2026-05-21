@@ -7,7 +7,7 @@ export type { ChartTheme, ResolvedChartTheme, RgbaColor, CssColor, ThemeColor } 
 export type { AxisPosition } from "./ui/ChartLayout.js";
 export { SeriesStore } from "./core/SeriesStore.js";
 export { RingBuffer } from "./core/RingBuffer.js";
-export type { SeriesAppendData, SeriesDataBounds, SeriesDataBoundsOptions, SeriesOhlcAppendData, SeriesOhlcSample, SeriesOhlcUpdateData, SeriesScalarOrArray, SeriesXYAppendData } from "./core/SeriesStore.js";
+export type { SeriesAppendData, SeriesAppendRow, SeriesDataBounds, SeriesDataBoundsOptions, SeriesObjectAppendData, SeriesOhlcAppendData, SeriesOhlcAppendRow, SeriesOhlcSample, SeriesOhlcUpdateData, SeriesScalarOrArray, SeriesUpdateData, SeriesXYAppendData, SeriesXYAppendRow, SeriesXYUpdateData } from "./core/SeriesStore.js";
 export type { RingBufferOptions, RingBufferOverflow } from "./core/RingBuffer.js";
 export { UniformRingBuffer } from "./core/UniformRingBuffer.js";
 export type { UniformRingBufferOptions } from "./core/UniformRingBuffer.js";
@@ -23,5 +23,5 @@ export type { AttributeSpec, BufferSpec, DrawSpec, GpuBackend, GpuBuffer, GpuCap
 export { Camera2D } from "./interaction/Camera2D.js";
 export { AxisController } from "./interaction/AxisController.js";
 export type { AxisControllerAxisOptions, AxisControllerOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
-export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, SeriesSample, LODStrategy, BufferOverflowStrategy, Dataset, AcceleratedDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout, AppendableDataset, YAppendableDataset } from "./core/types.js";
+export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, SeriesSample, LODStrategy, BufferOverflowStrategy, Dataset, AcceleratedDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset } from "./core/types.js";
 export type { PanIntent, ZoomAxis, ZoomIntent, ViewportPolicy } from "./interaction/types.js";

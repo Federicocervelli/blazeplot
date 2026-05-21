@@ -158,6 +158,14 @@ export interface YAppendableDataset extends Dataset {
   clear(): void;
 }
 
+export interface UpdatableDataset extends Dataset {
+  update(index: number, x: number, y: number): boolean;
+}
+
+export interface YUpdatableDataset extends Dataset {
+  updateY(index: number, y: number): boolean;
+}
+
 export type LODStrategy = "minmax" | "none" | "server";
 export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
 
@@ -171,6 +179,18 @@ export interface SeriesSample {
 export interface SeriesConfig {
   readonly mode: SeriesMode;
   readonly capacity?: number;
+  /**
+   * Optional X value for the first sample when BlazePlot creates an implicit-X
+   * dataset for this series. Only used when `dataset` is omitted and `xStep` is
+   * provided.
+   */
+  readonly xStart?: number;
+  /**
+   * Optional fixed X spacing for live streams. When `dataset` is omitted,
+   * `{ capacity, xStep }` creates a `UniformRingBuffer`, so callers can append
+   * with `series.append({ y })` without manually constructing a dataset.
+   */
+  readonly xStep?: number;
   readonly downsample?: LODStrategy;
   readonly overflow?: BufferOverflowStrategy;
   readonly dataset?: Dataset;
