@@ -37,6 +37,23 @@ It builds both branch previews in one deployment artifact:
 
 The workflow checks out both branches into `branches/main` and `branches/development`, builds each site with its correct Vite base, then assembles one Pages artifact. Keep the copy step in sync with website routes that need duplicate SPA fallbacks, such as `/previews` and `/development/previews`.
 
+## Cloudflare Pages Preview
+
+File: `.github/workflows/cloudflare-pages-preview.yml`
+
+Runs on pushes to feature branches, excluding `main` and `development`, and by manual dispatch.
+
+It builds the Lit website with `BLAZEPLOT_PAGES_BASE=/` and deploys `build/pages` to the `blazeplot` Cloudflare Pages project using Wrangler direct upload. Each branch receives a Cloudflare Pages preview alias, for example:
+
+- `fix-idempotent-chart-start.blazeplot.pages.dev`
+
+Before enabling the workflow, configure these repository secrets:
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
+
+The API token needs Cloudflare Pages edit access for the account that owns the Pages project. The first successful run attempts to create the `blazeplot` Pages project with `main` as the production branch if it does not already exist.
+
 ## Release
 
 File: `.github/workflows/release.yml`
@@ -62,6 +79,7 @@ Before merging workflow changes:
 - Confirm the changed workflow still has the minimum permissions it needs.
 - Confirm Bun version changes are reflected in `package.json#packageManager` and docs.
 - Run `bun run typecheck` and `bun run pages:build` for docs/workflow documentation changes.
+- For Cloudflare preview workflow changes, confirm the repository has `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` secrets before expecting deploys to pass.
 - For release workflow changes, inspect the generated YAML diff carefully; syntax errors only show up in GitHub Actions after push.
 - If package contents, exports, or publish behavior changed, run `bun run test:package` and `bun run test:exports`.
 
