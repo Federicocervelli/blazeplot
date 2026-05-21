@@ -68,11 +68,11 @@ describe("Renderer", () => {
 
     expect(backend.programs).toHaveLength(6);
     expect(backend.createdBuffers.slice(0, 3)).toEqual([
-      { usage: "static", type: "float", length: 2 },
+      { usage: "static", type: "float", length: 8 },
       { usage: "static", type: "float", length: 8 },
       { usage: "static", type: "float", length: 8 },
     ]);
-    expect(Array.from(backend.updates[0]!.data)).toEqual([0, 1]);
+    expect(Array.from(backend.updates[0]!.data)).toEqual([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]);
     expect(Array.from(backend.updates[1]!.data)).toEqual([-1, -1, 1, -1, -1, 1, 1, 1]);
     expect(Array.from(backend.updates[2]!.data)).toEqual([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]);
   });
@@ -104,6 +104,21 @@ describe("Renderer", () => {
     expect(Array.from(backend.draws.at(-2)!.uniforms.uScale as Float32Array)).toEqual([2, 3]);
     expect(backend.draws.at(-1)).toMatchObject({ primitive: "triangle_strip", count: 8, attributes: { position: positions } });
     expect(backend.draws.at(-1)!.uniforms.uColor).toEqual([0, 1, 0, 0.5]);
+  });
+
+  it("renders instanced min/max segments as pixel-width quads", () => {
+    const { renderer, backend, positions } = makeRenderer(true);
+    const projection = { scaleX: 1, scaleY: 2, offsetX: 0, offsetY: -1 };
+    const style = { color: [1, 1, 0, 1] as const, lineWidth: 2 };
+
+    renderer.drawMinMaxSegmentsInstanced(positions, 12, style, projection, 800, 400);
+
+    const draw = backend.draws.at(-1)!;
+    expect(draw).toMatchObject({ primitive: "triangle_strip", count: 4, instances: 12 });
+    expect(draw.attributes.aCorner).toMatchObject({ divisor: 0, stride: 8, offset: 0, size: 2 });
+    expect(draw.attributes.aX).toMatchObject({ buffer: positions, divisor: 1, stride: 12, offset: 0 });
+    expect(Array.from(draw.uniforms.uCanvasSize as Float32Array)).toEqual([800, 400]);
+    expect(draw.uniforms.uLineWidth).toBe(2);
   });
 
   it("uses instanced draw specs for points and bars when supported", () => {

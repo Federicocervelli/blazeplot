@@ -193,11 +193,12 @@ export class SeriesStore {
     const end = this.dataset.upperBoundX(viewport.xMax);
 
     const length = Math.max(0, end - start);
+    const levelLength = this.estimatedVisibleSamplesForViewport(viewport);
     if (this._useDatasetRangeMinMax) {
-      return this.queryRangeMinMax(start, length, pixelWidth);
+      return this.queryRangeMinMax(viewport, start, length, pixelWidth);
     }
 
-    return this.pyramid.query(viewport, pixelWidth, { start, length });
+    return this.pyramid.query(viewport, pixelWidth, { start, length, levelLength });
   }
 
   visibleSampleCount(viewport: Viewport): number {
@@ -691,7 +692,7 @@ export class SeriesStore {
     }
 
     const fullRangeInside = fullRange !== null && fullRange.minY >= yMin && fullRange.maxY <= yMax;
-    return this.copyVisiblePointBuckets(start, end, yMin, yMax, target, maxPoints, xOrigin, fullRangeInside, hasIntervalBounds);
+    return this.copyVisiblePointBuckets(viewport, start, end, yMin, yMax, target, maxPoints, xOrigin, fullRangeInside, hasIntervalBounds);
   }
 
   private copyVisiblePointRange(
@@ -717,6 +718,7 @@ export class SeriesStore {
   }
 
   private copyVisiblePointBuckets(
+    viewport: Viewport,
     start: number,
     end: number,
     yMin: number,
@@ -727,8 +729,7 @@ export class SeriesStore {
     fullRangeInside: boolean,
     hasIntervalBounds: boolean,
   ): number {
-    const sourceCount = end - start;
-    const bucketWidth = this.stableScatterBucketWidth(sourceCount, maxPoints);
+    const bucketWidth = this.stableSampleBucketWidthForViewport(viewport, maxPoints);
     const alignedStart = Math.floor(start / bucketWidth) * bucketWidth;
     let count = 0;
 
@@ -789,10 +790,19 @@ export class SeriesStore {
     return count;
   }
 
-  private stableScatterBucketWidth(sourceCount: number, maxPoints: number): number {
-    const targetWidth = Math.max(1, Math.ceil(sourceCount / Math.max(1, maxPoints)));
-    if (targetWidth <= 8) return targetWidth;
-    return Math.ceil(targetWidth / 8) * 8;
+  private estimatedVisibleSamplesForViewport(viewport: Viewport): number {
+    const xSpan = viewport.xMax - viewport.xMin;
+    const range = this.dataset.range;
+    if (!range || this.dataset.length <= 1 || !(xSpan > 0)) return Math.max(1, this.dataset.length);
+
+    const dataSpan = range.end - range.start;
+    if (!(dataSpan > 0)) return Math.max(1, this.dataset.length);
+
+    return Math.max(1, (xSpan / dataSpan) * (this.dataset.length - 1) + 1);
+  }
+
+  private stableSampleBucketWidthForViewport(viewport: Viewport, maxPoints: number): number {
+    return Math.max(1, Math.ceil(this.estimatedVisibleSamplesForViewport(viewport) / Math.max(1, maxPoints)));
   }
 
   private copyVisiblePointsExact(
@@ -865,7 +875,8 @@ export class SeriesStore {
     const visible = end - start;
     if (visible <= 0) return 0;
 
-    const stride = Math.max(1, Math.ceil(visible / maxPoints));
+    const stride = this.stableSampleBucketWidthForViewport(viewport, maxPoints);
+    const alignedStart = Math.floor(start / stride) * stride;
     let count = 0;
     let lastIndex = -1;
     let lastWasGap = false;
@@ -898,10 +909,14 @@ export class SeriesStore {
       return true;
     };
 
-    for (let i = start; i < end; i += stride) {
-      if (lastIndex >= 0 && i > lastIndex + 1 && this.hasGapInRange(lastIndex + 1, i) && !writeGap()) break;
-      if (!writeSample(i)) break;
-      lastIndex = i;
+    for (let bucketStart = alignedStart; bucketStart < end; bucketStart += stride) {
+      const bucketEnd = Math.min(end, bucketStart + stride);
+      const visibleStart = Math.max(start, bucketStart);
+      if (bucketEnd <= visibleStart) continue;
+      const index = visibleStart;
+      if (lastIndex >= 0 && index > lastIndex + 1 && this.hasGapInRange(lastIndex + 1, index) && !writeGap()) break;
+      if (!writeSample(index)) break;
+      lastIndex = index;
     }
 
     return count;
@@ -975,20 +990,19 @@ export class SeriesStore {
     const visible = end - start;
     if (visible <= 0) return 0;
 
-    const segmentCount = Math.min(maxSegments, visible);
+    const bucketWidth = this.stableSampleBucketWidthForViewport(viewport, maxSegments);
+    const alignedStart = Math.floor(start / bucketWidth) * bucketWidth;
     let written = 0;
-    for (let segment = 0; segment < segmentCount; segment++) {
-      const segmentStart = start + Math.floor((segment * visible) / segmentCount);
-      const segmentEnd = start + Math.max(
-        Math.floor(((segment + 1) * visible) / segmentCount),
-        Math.floor((segment * visible) / segmentCount) + 1,
-      );
-      const clampedEnd = Math.min(end, segmentEnd);
+    for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += bucketWidth) {
+      const bucketEnd = Math.min(this.dataset.length, bucketStart + bucketWidth);
+      const segmentStart = Math.max(0, bucketStart);
+      if (bucketEnd <= start || segmentStart >= end) continue;
 
-      const range = this.minMaxForRange(segmentStart, clampedEnd);
+      const range = this.minMaxForRange(segmentStart, bucketEnd);
       if (!range) continue;
 
-      const x = this.dataset.getX(segmentStart + ((clampedEnd - segmentStart) >> 1)) - xOrigin;
+      const representative = Math.max(segmentStart, Math.min(bucketEnd - 1, bucketStart + (bucketWidth >> 1)));
+      const x = this.dataset.getX(representative) - xOrigin;
       const { minY, maxY } = range;
       if (layout === "line-list") {
         const offset = written * 4;
@@ -1018,12 +1032,12 @@ export class SeriesStore {
     return this.pyramid.rangeMinMax(this.dataset, start, end);
   }
 
-  private queryRangeMinMax(start: number, length: number, pixelWidth: number): LODView {
+  private queryRangeMinMax(viewport: Viewport, start: number, length: number, pixelWidth: number): LODView {
     if (pixelWidth <= 0 || length <= 0 || !hasRangeMinMaxY(this.dataset)) {
       return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel: 0 };
     }
 
-    const samplesPerPixel = Math.max(1, length / pixelWidth);
+    const samplesPerPixel = Math.max(1, this.estimatedVisibleSamplesForViewport(viewport) / pixelWidth);
     const level = Math.max(0, Math.ceil(Math.log2(samplesPerPixel)) - 1);
     const bucketSampleWidth = 2 ** (level + 1);
     const queryStart = Math.max(0, start);

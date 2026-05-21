@@ -23,6 +23,7 @@ const expectedExports = {
   "blazeplot/plugins/selection": ["selectionPlugin"],
   "blazeplot/plugins/crosshair": ["crosshairPlugin"],
   "blazeplot/plugins/navigator": ["navigatorPlugin"],
+  "blazeplot/plugins/flamegraph": ["flameGraphPlugin", "buildFlameGraphModel", "buildStatusChartModel", "parseFoldedStacks"],
 } as const;
 
 const packageJsonPath = resolve(dirname(fileURLToPath(import.meta.url)), "../package.json");

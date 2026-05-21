@@ -41,7 +41,7 @@ Theme values are merged with the default theme, so you can override only the tok
 
 ## Axes and gutters
 
-- Outside axes reserve real CSS-pixel gutters for labels: 52px on the left/right Y sides and 28px on the bottom X side.
+- Outside axes are the default and reserve real CSS-pixel gutters for tick labels: 52px on the left/right Y sides and 28px on the bottom X side. Gutters expand when an outside axis has a title.
 - Inside axes draw labels over the plot and are useful for compact layouts.
 - Use `axes: { x: { position: "inside" }, y: { position: "inside" } }` when space is tight.
 - Titles and axis titles are built-in DOM text overlays and are included in `chart.screenshot()` output.

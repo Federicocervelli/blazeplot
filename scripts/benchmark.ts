@@ -340,9 +340,11 @@ function throwIfPageErrored(pageErrors: readonly string[]): void {
 
 function assertRenderableBenchmarkResult(value: unknown): void {
   if (!value || typeof value !== "object") throw new Error("Benchmark did not return an object result");
-  const result = value as { finalStats?: { renderMode?: unknown; drawCalls?: unknown; pointsRendered?: unknown } };
+  const result = value as { finalStats?: { renderMode?: unknown; drawCalls?: unknown; pointsRendered?: unknown }; flameChartFrames?: unknown };
   const finalStats = result.finalStats;
   if (!finalStats || typeof finalStats !== "object") throw new Error("Benchmark result is missing finalStats");
+  const isFlameChart = typeof result.flameChartFrames === "number" && result.flameChartFrames > 0;
+  if (isFlameChart) return;
   if (finalStats.renderMode === "none") throw new Error("Benchmark completed without rendering any chart content");
   if (typeof finalStats.drawCalls !== "number" || finalStats.drawCalls <= 0) throw new Error("Benchmark completed with zero draw calls");
   if (typeof finalStats.pointsRendered !== "number" || finalStats.pointsRendered <= 0) throw new Error("Benchmark completed with zero rendered points");
