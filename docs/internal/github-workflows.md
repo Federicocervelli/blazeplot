@@ -58,7 +58,7 @@ When those secrets are absent, the workflow exits successfully after a notice an
 
 This repository has the required Cloudflare secrets configured. If preview deploys start skipping again, check whether those repository secrets were removed or expired.
 
-The workflow pins Wrangler 3.x because `cloudflare/wrangler-action@v3` currently executes under Node 20 on GitHub-hosted runners, while Wrangler 4.x requires Node 22 or newer.
+The workflow uses `actions/setup-node@v4` with Node 24 and runs `npx wrangler@4` directly. Wrangler 4.x requires Node 22 or newer, while `cloudflare/wrangler-action@v3` currently executes under Node 20 on GitHub-hosted runners.
 
 ## Release
 
