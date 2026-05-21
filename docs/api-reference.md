@@ -13,7 +13,7 @@ This page is generated from the built package. Use it as an index of import path
 | OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |
 | Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |
 | Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |
-| Tooltips, legends, annotations, selection, flame graphs | `blazeplot/plugins/*` subpaths |
+| Tooltips, legends, annotations, selection | `blazeplot/plugins/*` subpaths |
 | React | `blazeplot/react` and `BlazeChart` |
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
@@ -40,7 +40,7 @@ Guides: [Docs map](./README.md), [Overview](./overview.md), [Examples](./example
 | `blazeplot/plugins/selection` | Built-in brush/range selection plugin. |
 | `blazeplot/plugins/crosshair` | Built-in crosshair and ruler plugin. |
 | `blazeplot/plugins/navigator` | Built-in overview/navigator plugin. |
-| `blazeplot/plugins/flamegraph` | Built-in WebGL flame graph and status-span plugin. |
+| `blazeplot/plugins/flamegraph` | Package subpath export. |
 
 The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; use the README performance section for the aggregate core runtime size.
 
@@ -69,7 +69,7 @@ Generated from `dist/` after the package build.
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
 | shared Chart chunk | `dist/Chart-DW0dVv_v.js` | 52.5 KiB |
 | shared RingBuffer chunk | `dist/RingBuffer-D65bSlae.js` | 30.3 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-C2PAL6iF.js` | 17.9 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-BXrhHC06.js` | 18.4 KiB |
 | shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-Bs4aiO8a.js` | 21.3 KiB |
 | shared LinkedChartsCore chunk | `dist/LinkedChartsCore-C1yWp7-o.js` | 2.1 KiB |
