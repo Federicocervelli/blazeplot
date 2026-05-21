@@ -123,7 +123,7 @@ This page is generated from the built package. Use it as an index of import path
 
 | Task | Start here |
 |---|---|
-| Create and render a chart | `createChart(...)` for common static charts; `Chart`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` for manual control |
+| Create and render a chart | `createChart(...)` for common static charts; `Chart`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` for manual lifecycle control |
 | Static X/Y arrays or object rows | `createChart(...)`, `StaticDataset`, `StaticDataset.fromObjects(...)` |
 | Live irregular data | `RingBuffer` |
 | Live fixed-rate data | `UniformRingBuffer` |
@@ -184,12 +184,12 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-DW0dVv_v.js` | 52.5 KiB |
-| shared RingBuffer chunk | `dist/RingBuffer-D65bSlae.js` | 30.3 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-BXrhHC06.js` | 18.4 KiB |
+| shared Chart chunk | `dist/Chart--uSTdDoH.js` | 53.2 KiB |
+| shared RingBuffer chunk | `dist/RingBuffer-CZcmIZuh.js` | 30.4 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-BZAnN-zt.js` | 18.4 KiB |
 | shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-Bs4aiO8a.js` | 21.3 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-C1yWp7-o.js` | 2.1 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DfipI_r6.js` | 2.1 KiB |
 | lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
 | shared Tooltip chunk | `dist/Tooltip-D0WRT6Fj.js` | 5.7 KiB |
