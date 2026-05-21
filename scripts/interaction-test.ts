@@ -59,6 +59,7 @@ interface InteractionSnapshot {
   visibleTooltips: number;
   crosshairX: number | null;
   tooltipLeft: number | null;
+  renderEvents: number;
   error?: string | null;
 }
 
@@ -87,10 +88,24 @@ async function main(): Promise<void> {
     await runLinkedCase(options, serverUrl);
     await runMobileCase(options, serverUrl);
     await runMobileLongPressCase(options, serverUrl);
+    await runLifecycleCase(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
     if (userDataDir && !options.keepBrowser) await rm(userDataDir, { recursive: true, force: true });
+  }
+}
+
+async function runLifecycleCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "lifecycle");
+  try {
+    const snapshot = await waitForReady(cdp, options.timeoutMs);
+    await sleep(250);
+    const after = await getRequiredSnapshot(cdp);
+    assert(after.renderEvents === snapshot.renderEvents, "stop cancels all render loops after duplicate start calls");
+    console.log("✓ lifecycle: duplicate start is idempotent and stop cancels rendering");
+  } finally {
+    cdp.close();
   }
 }
 

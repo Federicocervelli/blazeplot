@@ -65,13 +65,13 @@ Generated from `dist/` after the package build.
 | legend plugin | `dist/plugins/legend.js` | 2.8 KiB |
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
-| shared Chart chunk | `dist/Chart-D1ISQl_J.js` | 57.0 KiB |
+| shared Chart chunk | `dist/Chart-DtLXAqBz.js` | 57.1 KiB |
 | shared RingBuffer chunk | `dist/RingBuffer-Bd5JaRf4.js` | 29.6 KiB |
 | shared OhlcDataset chunk | `dist/OhlcDataset-CvR874hx.js` | 17.8 KiB |
 | shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-wxbXnm0h.js` | 20.9 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DDrAyfEg.js` | 2.1 KiB |
-| lazy screenshot chunk | `dist/screenshot-BVw2v67J.js` | 3.0 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-B_fcq4bd.js` | 2.1 KiB |
+| lazy screenshot chunk | `dist/screenshot-B7i1AFbs.js` | 3.0 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-Gk-tb2Ak.js` | 3.1 KiB |
 | shared Tooltip chunk | `dist/Tooltip-DDEQ32oy.js` | 4.8 KiB |
 | shared Crosshair chunk | `dist/Crosshair-CYiuaxpk.js` | 8.8 KiB |

@@ -462,6 +462,7 @@ export class Chart implements ChartPluginContext {
   private _rafId: number = 0;
   private _hoverRafId: number = 0;
   private _restoreRenderRafId: number = 0;
+  private running: boolean = false;
   private webglContextLost: boolean = false;
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (event.pointerType !== "touch") {
@@ -1060,7 +1061,10 @@ export class Chart implements ChartPluginContext {
   }
 
   start(): void {
+    if (this.running) return;
+    this.running = true;
     const frame = (): void => {
+      if (!this.running) return;
       this._rafId = requestAnimationFrame(frame);
       this.render();
     };
@@ -1068,7 +1072,11 @@ export class Chart implements ChartPluginContext {
   }
 
   stop(): void {
-    cancelAnimationFrame(this._rafId);
+    this.running = false;
+    if (this._rafId !== 0) {
+      cancelAnimationFrame(this._rafId);
+      this._rafId = 0;
+    }
   }
 
   private render(): void {

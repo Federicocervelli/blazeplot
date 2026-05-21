@@ -30,6 +30,7 @@ interface InteractionSnapshot {
   readonly visibleTooltips: number;
   readonly crosshairX: number | null;
   readonly tooltipLeft: number | null;
+  readonly renderEvents: number;
   readonly error: string | null;
 }
 
@@ -44,11 +45,11 @@ declare global {
   }
 }
 
-type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress";
+type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle";
 
 const params = new URLSearchParams(window.location.search);
 const rawCase = params.get("case");
-const caseName: InteractionCase = rawCase === "selection" || rawCase === "linked" || rawCase === "mobile" || rawCase === "mobile-longpress" ? rawCase : "interactions";
+const caseName: InteractionCase = rawCase === "selection" || rawCase === "linked" || rawCase === "mobile" || rawCase === "mobile-longpress" || rawCase === "lifecycle" ? rawCase : "interactions";
 const chartTarget = requireElement<HTMLElement>("chart");
 const statusTarget = requireElement<HTMLElement>("status");
 const caseTarget = requireElement<HTMLElement>("caseName");
@@ -59,6 +60,7 @@ let state: InteractionSnapshot["state"] = "booting";
 let error: string | null = null;
 let hoverItems = 0;
 let hoverEvents = 0;
+let renderEvents = 0;
 let crosshairMoves = 0;
 let selectionCommits = 0;
 let selectionBounds: InteractionSnapshot["selectionBounds"] = null;
@@ -107,6 +109,9 @@ for (const item of charts) {
     hoverEvents++;
     hoverItems = hover?.items.length ?? 0;
   });
+  item.subscribe("render", () => {
+    renderEvents++;
+  });
 }
 
 window.__blazeplotInteractionTest = {
@@ -127,6 +132,7 @@ window.__blazeplotInteractionTest = {
     visibleTooltips: countVisible(".blazeplot-tooltip"),
     crosshairX: crosshairX(),
     tooltipLeft: tooltipLeft(),
+    renderEvents,
     error,
   }),
   resetViewport: () => {
@@ -140,7 +146,13 @@ try {
     const y = Float32Array.from({ length: 1_000 }, (_, i) => Math.sin(i * 0.025 + chartIndex * 0.8));
     item.addLine({ dataset: new StaticDataset(x, y), name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
     item.setViewport(initialViewport);
-    item.start();
+    if (caseName === "lifecycle") {
+      item.start();
+      item.start();
+      item.stop();
+    } else {
+      item.start();
+    }
   }
   window.setTimeout(() => {
     state = "ready";
