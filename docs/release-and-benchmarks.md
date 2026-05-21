@@ -20,6 +20,14 @@ GitHub Pages publishes both active branches into one site:
 
 The Pages workflow runs on pushes to either `main` or `development`, checks out both branches, builds each Lit website with the correct Vite `base`, and deploys a combined artifact. Legacy preview routes redirect to the integrated `#previews` view.
 
+Feature branch browser previews are deployed to Cloudflare Pages when repository Cloudflare secrets are configured. Pushes to feature branches deploy the website build to the `blazeplot` Pages project and expose a branch alias:
+
+- `https://<branch-alias>.blazeplot.pages.dev/`
+
+Cloudflare lowercases aliases and replaces non-alphanumeric branch characters with hyphens, so `fix/idempotent-chart-start` becomes:
+
+- `https://fix-idempotent-chart-start.blazeplot.pages.dev/`
+
 For a copy-paste release PR checklist, see [Internal release checklist](./internal/release-checklist.md). For workflow ownership and failure modes, see [GitHub workflow runbook](./internal/github-workflows.md).
 
 ## Preparing a release candidate
