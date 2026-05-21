@@ -590,7 +590,7 @@ export class BlazeplotSite extends LitElement {
     this.previewDisposers.push(() => window.clearTimeout(timeoutId));
 
     chart.fitToData({ padding: { x: 0.02, y: 0.12 } });
-    chart.followLatestX({ window: 30_000, pauseOnInteraction: true, resumeAfterMs: 4000, currentX: () => Date.now() });
+    chart.followLatestX({ window: 30_000, pauseOnInteraction: true, currentX: () => Date.now() });
     chart.start();
     schedule();
   }
