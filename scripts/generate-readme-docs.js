@@ -226,7 +226,7 @@ function renderGeneratedDocs(options = {}) {
     "",
     "| Task | Start here |",
     "|---|---|",
-    "| Create and render a chart | `createChart(...)` for common static charts; `Chart`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` for manual control |",
+    "| Create and render a chart | `createChart(...)` for common static charts; `Chart`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` for manual lifecycle control |",
     "| Static X/Y arrays or object rows | `createChart(...)`, `StaticDataset`, `StaticDataset.fromObjects(...)` |",
     "| Live irregular data | `RingBuffer` |",
     "| Live fixed-rate data | `UniformRingBuffer` |",

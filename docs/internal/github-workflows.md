@@ -37,6 +37,38 @@ It builds both branch previews in one deployment artifact:
 
 The workflow checks out both branches into `branches/main` and `branches/development`, builds each site with its correct Vite base, then assembles one Pages artifact. Keep the copy step in sync with website routes that need duplicate SPA fallbacks, such as `/previews` and `/development/previews`.
 
+## Cloudflare Pages Preview
+
+File: `.github/workflows/cloudflare-pages-preview.yml`
+
+Runs only by manual dispatch. Use it when a maintainer wants a browser preview for a feature or PR branch.
+
+It builds the Lit website with `BLAZEPLOT_PAGES_BASE=/` and deploys `build/pages` to the `blazeplot` Cloudflare Pages project using Wrangler direct upload. Each dispatched branch receives a Cloudflare Pages preview alias, for example:
+
+- `fix-idempotent-chart-start.blazeplot.pages.dev`
+
+Before enabling the workflow, configure these repository secrets:
+
+- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN`
+
+The API token needs Cloudflare Pages edit access for the account that owns the Pages project. The first successful run attempts to create the `blazeplot` Pages project with `main` as the production branch if it does not already exist.
+
+When those secrets are absent, the workflow exits successfully after a notice and skips the build/deploy steps. That keeps feature branch PRs green before Cloudflare is configured.
+
+This repository has the required Cloudflare secrets configured. If preview deploys start skipping again, check whether those repository secrets were removed or expired.
+
+The workflow uses `actions/setup-node@v4` with Node 24 and runs `npx wrangler@4` directly. Wrangler 4.x requires Node 22 or newer, while `cloudflare/wrangler-action@v3` currently executes under Node 20 on GitHub-hosted runners.
+
+To request a preview:
+
+1. Open GitHub Actions.
+2. Select `Cloudflare Pages Preview`.
+3. Choose `Run workflow`.
+4. Select the feature or PR branch.
+
+Do not run this workflow for unreviewed external-contributor code. The build runs with Cloudflare deployment credentials available to the job.
+
 ## Release
 
 File: `.github/workflows/release.yml`
@@ -51,7 +83,7 @@ It only publishes when `package.json` contains a version whose tag does not alre
 4. Fails if npm already has the version but the git tag is missing.
 5. Appends release benchmarks if missing.
 6. Packs and publishes to npm with provenance.
-7. Creates the git tag and GitHub Release.
+7. Creates the `vX.Y.Z` tag and GitHub Release.
 
 The release workflow supports both an `NPM_TOKEN` secret and npm trusted publishing/OIDC. If neither is configured correctly, publish will fail after CI and before tag creation.
 
@@ -62,6 +94,7 @@ Before merging workflow changes:
 - Confirm the changed workflow still has the minimum permissions it needs.
 - Confirm Bun version changes are reflected in `package.json#packageManager` and docs.
 - Run `bun run typecheck` and `bun run pages:build` for docs/workflow documentation changes.
+- For Cloudflare preview workflow changes, confirm the repository has `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` secrets before expecting manually dispatched deploys to pass.
 - For release workflow changes, inspect the generated YAML diff carefully; syntax errors only show up in GitHub Actions after push.
 - If package contents, exports, or publish behavior changed, run `bun run test:package` and `bun run test:exports`.
 
