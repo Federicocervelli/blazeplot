@@ -184,12 +184,12 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-C3qQZhhU.js` | 53.2 KiB |
-| shared RingBuffer chunk | `dist/RingBuffer-B8e0xnmt.js` | 32.9 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-BVoQgtRt.js` | 18.4 KiB |
+| shared Chart chunk | `dist/Chart-DNFSrD8o.js` | 53.2 KiB |
+| shared RingBuffer chunk | `dist/RingBuffer-DKebdYRz.js` | 34.7 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-kclkVNw-.js` | 18.7 KiB |
 | shared AxisController chunk | `dist/AxisController-CUL9i0MS.js` | 13.6 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-Bs4aiO8a.js` | 21.3 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-BJffVjKR.js` | 2.1 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DTnlaoIp.js` | 2.1 KiB |
 | lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
 | shared Tooltip chunk | `dist/Tooltip-D0WRT6Fj.js` | 5.7 KiB |
@@ -302,8 +302,10 @@ Generated from `dist/index.d.ts` after the package build.
 | `SeriesScalarOrArray` | type | `./core/SeriesStore` | — |
 | `SeriesStore` | class | `./core/SeriesStore` | — |
 | `SeriesStyle` | interface | `./core/types` | — |
+| `SeriesUpdateData` | type | `./core/SeriesStore` | — |
 | `SeriesXYAppendData` | interface | `./core/SeriesStore` | Object form for appending one XY sample or a batch of X/Y arrays. |
 | `SeriesXYAppendRow` | interface | `./core/SeriesStore` | Convenient object-row form for appending one XY sample inside a row batch. |
+| `SeriesXYUpdateData` | interface | `./core/SeriesStore` | — |
 | `SeriesYAxis` | type | `./core/types` | — |
 | `ServerSampledBuckets` | interface | `./core/ServerSampledDataset` | — |
 | `ServerSampledData` | type | `./core/ServerSampledDataset` | — |
@@ -320,6 +322,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `TypedSeriesConfig` | type | `./ui/Chart` | — |
 | `UniformRingBuffer` | class | `./core/UniformRingBuffer` | High-throughput ring buffer for uniformly spaced X values. Store only Y samples and derive X as `xStart + index * xStep`. This is the fastest built-in dataset for live telemetry, signals, and other fixed-rate streams because appends copy a single typed array and min/max extraction uses a block segment tree over the physical ring. |
 | `UniformRingBufferOptions` | interface | `./core/UniformRingBuffer` | — |
+| `UpdatableDataset` | interface | `./core/types` | — |
 | `Viewport` | interface | `./core/types` | — |
 | `ViewportPolicy` | interface | `./interaction/types` | — |
 | `VisiblePointCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for point/scatter datasets. Implementations should cull against the full 2D viewport and may sample in screen space so dense point clouds respond to both X and Y zoom. |
@@ -327,6 +330,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `WebGL2Backend` | class | `./render/WebGL2Backend` | — |
 | `WebGL2UnavailableError` | class | `./render/WebGL2Backend` | — |
 | `YAppendableDataset` | interface | `./core/types` | — |
+| `YUpdatableDataset` | interface | `./core/types` | — |
 | `ZoomAxis` | type | `./interaction/types` | — |
 | `ZoomIntent` | interface | `./interaction/types` | — |
 <!-- README_DOCS_END -->

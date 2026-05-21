@@ -1,4 +1,4 @@
-import type { Dataset, AppendableDataset, YAppendableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
 function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
@@ -17,6 +17,7 @@ interface AppendableOhlcDataset extends OhlcDataset {
     low: ArrayLike<number>,
     close: ArrayLike<number>,
   ): void;
+  updateAt?(index: number, open: number, high: number, low: number, close: number): boolean;
   updateLast?(open: number, high: number, low: number, close: number): boolean;
 }
 
@@ -26,6 +27,14 @@ function hasAppendY(dataset: Dataset): dataset is YAppendableDataset {
 
 function hasOhlcAppend(dataset: Dataset): dataset is AppendableOhlcDataset {
   return isOhlcDataset(dataset) && "append" in dataset;
+}
+
+function hasUpdate(dataset: Dataset): dataset is UpdatableDataset {
+  return typeof (dataset as Partial<UpdatableDataset>).update === "function";
+}
+
+function hasUpdateY(dataset: Dataset): dataset is YUpdatableDataset {
+  return typeof (dataset as Partial<YUpdatableDataset>).updateY === "function";
 }
 
 function hasCopySamplesRange(dataset: Dataset): dataset is RangeSampleCopyDataset {
@@ -58,6 +67,10 @@ function isOhlcAppendData(data: SeriesObjectAppendData | SeriesAppendRow): data 
 
 function isAppendRowArray(data: SeriesAppendData): data is readonly SeriesAppendRow[] {
   return Array.isArray(data);
+}
+
+function isOhlcUpdateData(data: SeriesUpdateData): data is SeriesOhlcUpdateData {
+  return "open" in data && "high" in data && "low" in data && "close" in data;
 }
 
 const NEAREST_POINT_LEAF_SIZE = 64;
@@ -96,6 +109,11 @@ export interface SeriesOhlcAppendRow {
   readonly close: number;
 }
 
+export interface SeriesXYUpdateData {
+  readonly x?: number;
+  readonly y: number;
+}
+
 export interface SeriesOhlcUpdateData {
   readonly open: number;
   readonly high: number;
@@ -103,6 +121,7 @@ export interface SeriesOhlcUpdateData {
   readonly close: number;
 }
 
+export type SeriesUpdateData = SeriesXYUpdateData | SeriesOhlcUpdateData;
 export type SeriesAppendRow = SeriesXYAppendRow | SeriesOhlcAppendRow;
 export type SeriesObjectAppendData = SeriesXYAppendData | SeriesOhlcAppendData;
 export type SeriesAppendData = SeriesObjectAppendData | readonly SeriesAppendRow[];
@@ -146,6 +165,7 @@ export class SeriesStore {
   private readonly onDirty?: () => void;
 
   private _dirty: boolean = false;
+  private _forceFullPyramidRebuild: boolean = false;
   private _useDatasetRangeMinMax: boolean = false;
   private _useRawMinMaxScan: boolean = false;
   private _lastBuildLength: number = 0;
@@ -272,8 +292,7 @@ export class SeriesStore {
 
     const appendable = this.dataset as AppendableDataset;
     appendable.append(x, y);
-    this._dirty = true;
-    this.onDirty?.();
+    this.markDataMutated(false);
   }
 
   /** @deprecated Use `append({ y })` instead. */
@@ -287,8 +306,7 @@ export class SeriesStore {
     }
 
     this.dataset.appendY(y);
-    this._dirty = true;
-    this.onDirty?.();
+    this.markDataMutated(false);
   }
 
   /** @deprecated Use `append({ x, open, high, low, close })` instead. */
@@ -314,27 +332,63 @@ export class SeriesStore {
     }
 
     this.dataset.append(x, open, high, low, close);
-    this._dirty = true;
-    this.onDirty?.();
+    this.markDataMutated(false);
   }
 
-  /** Update the latest OHLC/candlestick sample and request an on-demand render. */
-  updateLast(data: SeriesOhlcUpdateData): boolean {
-    return this.updateLastOhlc(data.open, data.high, data.low, data.close);
+  /** Update the latest XY/OHLC sample and request an on-demand render. */
+  updateLast(data: SeriesUpdateData): boolean {
+    return this.updateAt(this.dataset.length - 1, data);
+  }
+
+  /** Update an existing XY/OHLC sample by logical index and request an on-demand render. */
+  updateAt(index: number, data: SeriesUpdateData): boolean {
+    if (isOhlcUpdateData(data)) return this.updateOhlcAt(index, data.open, data.high, data.low, data.close);
+    return this.updateXYAt(index, data);
+  }
+
+  private updateXYAt(index: number, data: SeriesXYUpdateData): boolean {
+    if (index < 0 || index >= this.dataset.length) return false;
+
+    let updated = false;
+    if (data.x !== undefined) {
+      if (!hasUpdate(this.dataset)) {
+        throw new TypeError("SeriesStore dataset does not support XY update.");
+      }
+      updated = this.dataset.update(index, data.x, data.y);
+    } else if (hasUpdateY(this.dataset)) {
+      updated = this.dataset.updateY(index, data.y);
+    } else if (hasUpdate(this.dataset)) {
+      updated = this.dataset.update(index, this.dataset.getX(index), data.y);
+    } else {
+      throw new TypeError("SeriesStore dataset does not support Y update.");
+    }
+
+    if (updated) this.markDataMutated(true);
+    return updated;
+  }
+
+  private updateOhlcAt(index: number, open: number, high: number, low: number, close: number): boolean {
+    if (index < 0 || index >= this.dataset.length) return false;
+    if (!hasOhlcAppend(this.dataset)) {
+      throw new TypeError("SeriesStore dataset does not support OHLC update.");
+    }
+
+    let updated = false;
+    if (typeof this.dataset.updateAt === "function") {
+      updated = this.dataset.updateAt(index, open, high, low, close);
+    } else if (index === this.dataset.length - 1 && typeof this.dataset.updateLast === "function") {
+      updated = this.dataset.updateLast(open, high, low, close);
+    } else {
+      throw new TypeError("SeriesStore dataset does not support OHLC updateAt.");
+    }
+
+    if (updated) this.markDataMutated(true);
+    return updated;
   }
 
   /** @deprecated Use `updateLast({ open, high, low, close })` instead. */
   updateLastOhlc(open: number, high: number, low: number, close: number): boolean {
-    if (!hasOhlcAppend(this.dataset) || typeof this.dataset.updateLast !== "function") {
-      throw new TypeError("SeriesStore dataset does not support OHLC updateLast.");
-    }
-
-    const updated = this.dataset.updateLast(open, high, low, close);
-    if (updated) {
-      this._dirty = true;
-      this.onDirty?.();
-    }
-    return updated;
+    return this.updateOhlcAt(this.dataset.length - 1, open, high, low, close);
   }
 
   replace(data: unknown): void {
@@ -345,12 +399,16 @@ export class SeriesStore {
     (this.dataset.replace as (data: unknown) => void)(data);
     this._useDatasetRangeMinMax = hasRangeMinMaxY(this.dataset);
     this._useRawMinMaxScan = false;
-    this._dirty = true;
-    this.onDirty?.();
+    this.markDataMutated(true);
   }
 
   markDirty(): void {
+    this.markDataMutated(true);
+  }
+
+  private markDataMutated(forceFullPyramidRebuild: boolean): void {
     this._dirty = true;
+    this._forceFullPyramidRebuild ||= forceFullPyramidRebuild;
     this.onDirty?.();
   }
 
@@ -362,6 +420,7 @@ export class SeriesStore {
     (this.dataset as AppendableDataset).clear();
     this._useDatasetRangeMinMax = hasRangeMinMaxY(this.dataset);
     this._useRawMinMaxScan = false;
+    this._forceFullPyramidRebuild = false;
     if (this.pyramid && !this._useDatasetRangeMinMax) this.pyramid.build(this.dataset);
     this._lastBuildLength = this.dataset.length;
     this._lastBuildRangeStart = this.dataset.range?.start ?? NaN;
@@ -378,6 +437,10 @@ export class SeriesStore {
       if (hasRangeMinMaxY(this.dataset)) {
         this._useDatasetRangeMinMax = true;
         this._useRawMinMaxScan = false;
+      } else if (this._forceFullPyramidRebuild) {
+        this.pyramid.build(this.dataset);
+        this._useDatasetRangeMinMax = false;
+        this._useRawMinMaxScan = false;
       } else if (shiftedAtCapacity) {
         this._useDatasetRangeMinMax = false;
         this._useRawMinMaxScan = true;
@@ -389,6 +452,7 @@ export class SeriesStore {
       this._lastBuildLength = length;
       this._lastBuildRangeStart = rangeStart;
     }
+    this._forceFullPyramidRebuild = false;
     this._dirty = false;
   }
 

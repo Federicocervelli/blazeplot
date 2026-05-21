@@ -158,6 +158,14 @@ export interface YAppendableDataset extends Dataset {
   clear(): void;
 }
 
+export interface UpdatableDataset extends Dataset {
+  update(index: number, x: number, y: number): boolean;
+}
+
+export interface YUpdatableDataset extends Dataset {
+  updateY(index: number, y: number): boolean;
+}
+
 export type LODStrategy = "minmax" | "none" | "server";
 export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
 

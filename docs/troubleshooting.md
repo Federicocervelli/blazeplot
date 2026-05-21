@@ -61,6 +61,7 @@ chart.start();
 
 // Good: marks data/LOD dirty and requests a render.
 series.append({ y: new Float32Array([1, 2, 3]) });
+series.updateLast({ y: 4 });
 ```
 
 If you mutate a dataset directly, BlazePlot cannot observe that write. Call `series.markDirty()` afterward:

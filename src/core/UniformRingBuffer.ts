@@ -126,6 +126,14 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     this.maxTree.fill(-Infinity);
   }
 
+  updateY(index: number, y: number): boolean {
+    if (!this.isValidIndex(index)) return false;
+    const physical = this.logicalToPhysical(index);
+    this.yData[physical] = y;
+    this.recomputePhysicalBlockRange(physical, physical + 1);
+    return true;
+  }
+
   getX(index: number): number {
     this.assertValidIndex(index);
     return this.firstX() + index * this.xStep;
@@ -455,8 +463,12 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return (this._head - this._length + index + this.capacity) % this.capacity;
   }
 
+  private isValidIndex(index: number): boolean {
+    return Number.isInteger(index) && index >= 0 && index < this._length;
+  }
+
   private assertValidIndex(index: number): void {
-    if (!Number.isInteger(index) || index < 0 || index >= this._length) {
+    if (!this.isValidIndex(index)) {
       throw new RangeError(`UniformRingBuffer index out of range: ${index}`);
     }
   }
