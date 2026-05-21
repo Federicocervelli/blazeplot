@@ -60,6 +60,8 @@ interface InteractionSnapshot {
   crosshairX: number | null;
   tooltipLeft: number | null;
   renderEvents: number;
+  followingLatestX: boolean;
+  latestXFollowPaused: boolean;
   error?: string | null;
 }
 
@@ -91,6 +93,7 @@ async function main(): Promise<void> {
     await runLifecycleCase(options, serverUrl);
     await runRenderLoopCase(options, serverUrl);
     await runContinuousRenderLoopCase(options, serverUrl);
+    await runLiveFollowCase(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
@@ -141,6 +144,45 @@ async function runContinuousRenderLoopCase(options: Options, serverUrl: string):
     const after = await getRequiredSnapshot(cdp);
     assert(after.renderEvents > snapshot.renderEvents + 2, "continuous render loop keeps rendering across frames");
     console.log("✓ render loop: continuous mode keeps requestAnimationFrame active");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function runLiveFollowCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "live-follow");
+  try {
+    let snapshot = await waitForReady(cdp, options.timeoutMs);
+    const epochLikeX = 1_700_000_000_000;
+    assert(snapshot.viewport.xMax >= epochLikeX + 1_020, "followLatestX can use a live x clock ahead of the newest sample");
+    assert(close(spanX(snapshot.viewport), 100, 0.1), "followLatestX uses the configured rolling window");
+    const initialRenderEvents = snapshot.renderEvents;
+    await sleep(120);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.viewport.xMax >= epochLikeX + 1_080, "live x clock advances follow viewport between data appends");
+    assert(snapshot.renderEvents > initialRenderEvents + 2, "live x clock keeps auto render loop active while following");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(40);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.latestXFollowPaused, "setViewport pauses live follow for interaction-style changes");
+    assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1), "setViewport applies the requested historical viewport while paused");
+
+    const center = centerOf(snapshot.canvasRect);
+    await doubleClick(cdp, center.x, center.y);
+    await sleep(80);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.followingLatestX, "double-click reset resumes latest-X follow by default");
+    assert(snapshot.viewport.xMax >= epochLikeX + 1_100, "double-click reset returns a live-follow chart to the latest x window");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(40);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.latestXFollowPaused, "setViewport can pause live follow again after reset");
+    await sleep(180);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.viewport.xMax >= epochLikeX + 1_200, "resumeAfterMs resumes live follow after inactivity");
+    console.log("✓ live follow: helper pins, pauses, reset-resumes, and auto-resumes the rolling x window");
   } finally {
     cdp.close();
   }

@@ -56,7 +56,7 @@ For finite-to-finite session breaks, insert an explicit gap marker sample.
 
 `RingBuffer` stores explicit X/Y samples and supports three overflow modes: `"wrap"`, `"drop-new"`, and `"error"`. The default is `"wrap"`, which keeps the newest samples and preserves logical order after the physical buffer wraps.
 
-`UniformRingBuffer` is for fixed-rate data. It stores Y values and derives X as `xStart + index * xStep`; `xStep` must be positive. Prefer it for telemetry or signal data where every sample is evenly spaced.
+`UniformRingBuffer` is for fixed-rate data. It stores Y values and derives X as `xStart + index * xStep`; `xStep` must be positive. Prefer it for telemetry or signal data where every sample is evenly spaced. For chart-owned series, `chart.addLine({ capacity, xStart, xStep })` creates this dataset for you.
 
 ## Server-sampled datasets
 

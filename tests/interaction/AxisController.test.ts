@@ -33,6 +33,16 @@ describe("AxisController", () => {
     expect(axis.getXTickValues(160, 10)).toEqual([0, 100]);
   });
 
+  it("increases the tick step instead of truncating the right side", () => {
+    const camera = new Camera2D();
+    camera.setViewport({ xMin: 1234, xMax: 31234, yMin: -1, yMax: 1 });
+
+    const axis = new AxisController(camera);
+    const ticks = axis.getXTickValues(960, 12);
+
+    expect(ticks).toEqual([0, 5000, 10000, 15000, 20000, 25000, 30000, 35000]);
+  });
+
   it("reuses target arrays for tick generation", () => {
     const camera = new Camera2D();
     camera.setViewport({ xMin: 0, xMax: 20, yMin: -1, yMax: 1 });

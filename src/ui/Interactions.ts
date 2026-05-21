@@ -19,6 +19,11 @@ export interface InteractionsPluginOptions {
   readonly axisHoverFilter?: string;
   readonly shiftDragPan?: boolean;
   readonly doubleClickReset?: boolean;
+  /**
+   * When double-click/tap reset is used on a live-follow chart, resume the
+   * chart's latest-X follow after applying the reset viewport. Defaults to true.
+   */
+  readonly resumeFollowOnReset?: boolean;
   readonly resetViewport?: () => Viewport;
   readonly touchPan?: boolean;
   readonly pinchZoom?: boolean;
@@ -454,6 +459,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const resetToCapturedViewport = (): void => {
         const target = options.resetViewport?.() ?? resetViewport ?? normalizeViewport(chart.getViewport());
         chart.setViewport(target);
+        if (options.resumeFollowOnReset !== false) chart.resumeLatestXFollow();
       };
 
       const onDoubleClick = (event: MouseEvent): void => {

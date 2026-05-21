@@ -1,4 +1,4 @@
-import type { Dataset, AppendableDataset, YAppendableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
 function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
@@ -17,6 +17,7 @@ interface AppendableOhlcDataset extends OhlcDataset {
     low: ArrayLike<number>,
     close: ArrayLike<number>,
   ): void;
+  updateAt?(index: number, open: number, high: number, low: number, close: number): boolean;
   updateLast?(open: number, high: number, low: number, close: number): boolean;
 }
 
@@ -26,6 +27,14 @@ function hasAppendY(dataset: Dataset): dataset is YAppendableDataset {
 
 function hasOhlcAppend(dataset: Dataset): dataset is AppendableOhlcDataset {
   return isOhlcDataset(dataset) && "append" in dataset;
+}
+
+function hasUpdate(dataset: Dataset): dataset is UpdatableDataset {
+  return typeof (dataset as Partial<UpdatableDataset>).update === "function";
+}
+
+function hasUpdateY(dataset: Dataset): dataset is YUpdatableDataset {
+  return typeof (dataset as Partial<YUpdatableDataset>).updateY === "function";
 }
 
 function hasCopySamplesRange(dataset: Dataset): dataset is RangeSampleCopyDataset {
@@ -52,7 +61,15 @@ function toArrayLike(value: SeriesScalarOrArray): ArrayLike<number> {
   return typeof value === "number" ? [value] : value;
 }
 
-function isOhlcAppendData(data: SeriesAppendData): data is SeriesOhlcAppendData {
+function isOhlcAppendData(data: SeriesObjectAppendData | SeriesAppendRow): data is SeriesOhlcAppendData | SeriesOhlcAppendRow {
+  return typeof data === "object" && data !== null && "open" in data && "high" in data && "low" in data && "close" in data;
+}
+
+function isAppendRowArray(data: SeriesAppendData): data is readonly SeriesAppendRow[] {
+  return Array.isArray(data);
+}
+
+function isOhlcUpdateData(data: SeriesUpdateData): data is SeriesOhlcUpdateData {
   return "open" in data && "high" in data && "low" in data && "close" in data;
 }
 
@@ -62,17 +79,39 @@ const SCATTER_BUCKET_RANGE_PRUNE_SIZE = 1024;
 
 export type SeriesScalarOrArray = number | ArrayLike<number>;
 
+/** Object form for appending one XY sample or a batch of X/Y arrays. */
 export interface SeriesXYAppendData {
   readonly x?: SeriesScalarOrArray;
   readonly y: SeriesScalarOrArray;
 }
 
+/** Object form for appending one OHLC sample or a batch of OHLC arrays. */
 export interface SeriesOhlcAppendData {
   readonly x: SeriesScalarOrArray;
   readonly open: SeriesScalarOrArray;
   readonly high: SeriesScalarOrArray;
   readonly low: SeriesScalarOrArray;
   readonly close: SeriesScalarOrArray;
+}
+
+/** Convenient object-row form for appending one XY sample inside a row batch. */
+export interface SeriesXYAppendRow {
+  readonly x?: number;
+  readonly y: number;
+}
+
+/** Convenient object-row form for appending one OHLC sample inside a row batch. */
+export interface SeriesOhlcAppendRow {
+  readonly x: number;
+  readonly open: number;
+  readonly high: number;
+  readonly low: number;
+  readonly close: number;
+}
+
+export interface SeriesXYUpdateData {
+  readonly x?: number;
+  readonly y: number;
 }
 
 export interface SeriesOhlcUpdateData {
@@ -82,7 +121,10 @@ export interface SeriesOhlcUpdateData {
   readonly close: number;
 }
 
-export type SeriesAppendData = SeriesXYAppendData | SeriesOhlcAppendData;
+export type SeriesUpdateData = SeriesXYUpdateData | SeriesOhlcUpdateData;
+export type SeriesAppendRow = SeriesXYAppendRow | SeriesOhlcAppendRow;
+export type SeriesObjectAppendData = SeriesXYAppendData | SeriesOhlcAppendData;
+export type SeriesAppendData = SeriesObjectAppendData | readonly SeriesAppendRow[];
 
 export interface SeriesDataBounds {
   readonly xMin: number;
@@ -123,6 +165,7 @@ export class SeriesStore {
   private readonly onDirty?: () => void;
 
   private _dirty: boolean = false;
+  private _forceFullPyramidRebuild: boolean = false;
   private _useDatasetRangeMinMax: boolean = false;
   private _useRawMinMaxScan: boolean = false;
   private _lastBuildLength: number = 0;
@@ -164,13 +207,17 @@ export class SeriesStore {
     return this._visible;
   }
 
+  get xRange(): TimeRange | null {
+    return this.dataset.range;
+  }
+
   setVisible(visible: boolean): void {
     if (this._visible === visible) return;
     this._visible = visible;
     this.onDirty?.();
   }
 
-  /** Append XY, implicit-X, or OHLC data and request an on-demand render. */
+  /** Append XY, implicit-X, OHLC, or row-array data and request an on-demand render. */
   append(data: SeriesAppendData): void;
   /** @deprecated Use `append({ x, y })` instead. */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void;
@@ -180,8 +227,12 @@ export class SeriesStore {
       return;
     }
     const data = first as SeriesAppendData;
+    if (isAppendRowArray(data)) {
+      this.appendRows(data);
+      return;
+    }
     if (isOhlcAppendData(data)) {
-      this.appendOhlc(
+      this.appendOhlcArrays(
         toArrayLike(data.x),
         toArrayLike(data.open),
         toArrayLike(data.high),
@@ -190,30 +241,76 @@ export class SeriesStore {
       );
       return;
     }
-    if (data.x === undefined) this.appendY(toArrayLike(data.y));
+    if (data.x === undefined) this.appendYArray(toArrayLike(data.y));
     else this.appendXY(toArrayLike(data.x), toArrayLike(data.y));
+  }
+
+  private appendRows(rows: readonly SeriesAppendRow[]): void {
+    if (rows.length === 0) return;
+
+    const first = rows[0]!;
+    if (isOhlcAppendData(first)) {
+      const x = new Float64Array(rows.length);
+      const open = new Float64Array(rows.length);
+      const high = new Float64Array(rows.length);
+      const low = new Float64Array(rows.length);
+      const close = new Float64Array(rows.length);
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]!;
+        if (!isOhlcAppendData(row)) {
+          throw new TypeError("SeriesStore OHLC row appends cannot mix OHLC and XY rows.");
+        }
+        x[i] = row.x;
+        open[i] = row.open;
+        high[i] = row.high;
+        low[i] = row.low;
+        close[i] = row.close;
+      }
+      this.appendOhlcArrays(x, open, high, low, close);
+      return;
+    }
+
+    const explicitX = first.x !== undefined;
+    const x = explicitX ? new Float64Array(rows.length) : null;
+    const y = new Float64Array(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]!;
+      if (isOhlcAppendData(row)) {
+        throw new TypeError("SeriesStore XY row appends cannot mix XY and OHLC rows.");
+      }
+      if ((row.x !== undefined) !== explicitX) {
+        throw new TypeError("SeriesStore XY row appends cannot mix explicit and implicit x values.");
+      }
+      if (explicitX) x![i] = row.x!;
+      y[i] = row.y;
+    }
+
+    if (x) this.appendXY(x, y);
+    else this.appendYArray(y);
   }
 
   private appendXY(x: ArrayLike<number>, y: ArrayLike<number>): void {
     if (!("push" in this.dataset)) {
-      throw new TypeError("SeriesStore dataset is not appendable.");
+      throw new TypeError("series.append({ x, y }) requires an appendable XY dataset such as RingBuffer. Provide x/y values or create the series with chart.addLine({ capacity }).");
     }
 
     const appendable = this.dataset as AppendableDataset;
     appendable.append(x, y);
-    this._dirty = true;
-    this.onDirty?.();
+    this.markDataMutated(false);
   }
 
   /** @deprecated Use `append({ y })` instead. */
   appendY(y: ArrayLike<number>): void {
+    this.appendYArray(y);
+  }
+
+  private appendYArray(y: ArrayLike<number>): void {
     if (!hasAppendY(this.dataset)) {
-      throw new TypeError("SeriesStore dataset does not support appendY.");
+      throw new TypeError("series.append({ y }) requires an implicit-X dataset such as UniformRingBuffer. Use series.append({ x, y }) or create the series with chart.addLine({ capacity, xStep }).");
     }
 
     this.dataset.appendY(y);
-    this._dirty = true;
-    this.onDirty?.();
+    this.markDataMutated(false);
   }
 
   /** @deprecated Use `append({ x, open, high, low, close })` instead. */
@@ -224,59 +321,110 @@ export class SeriesStore {
     low: ArrayLike<number>,
     close: ArrayLike<number>,
   ): void {
+    this.appendOhlcArrays(x, open, high, low, close);
+  }
+
+  private appendOhlcArrays(
+    x: ArrayLike<number>,
+    open: ArrayLike<number>,
+    high: ArrayLike<number>,
+    low: ArrayLike<number>,
+    close: ArrayLike<number>,
+  ): void {
     if (!hasOhlcAppend(this.dataset)) {
-      throw new TypeError("SeriesStore dataset does not support OHLC append.");
+      throw new TypeError("series.append({ x, open, high, low, close }) requires an appendable OHLC dataset such as OhlcRingBuffer.");
     }
 
     this.dataset.append(x, open, high, low, close);
-    this._dirty = true;
-    this.onDirty?.();
+    this.markDataMutated(false);
   }
 
-  /** Update the latest OHLC/candlestick sample and request an on-demand render. */
-  updateLast(data: SeriesOhlcUpdateData): boolean {
-    return this.updateLastOhlc(data.open, data.high, data.low, data.close);
+  /** Update the latest XY/OHLC sample and request an on-demand render. */
+  updateLast(data: SeriesUpdateData): boolean {
+    return this.updateAt(this.dataset.length - 1, data);
+  }
+
+  /** Update an existing XY/OHLC sample by logical index and request an on-demand render. */
+  updateAt(index: number, data: SeriesUpdateData): boolean {
+    if (isOhlcUpdateData(data)) return this.updateOhlcAt(index, data.open, data.high, data.low, data.close);
+    return this.updateXYAt(index, data);
+  }
+
+  private updateXYAt(index: number, data: SeriesXYUpdateData): boolean {
+    if (index < 0 || index >= this.dataset.length) return false;
+
+    let updated = false;
+    if (data.x !== undefined) {
+      if (!hasUpdate(this.dataset)) {
+        throw new TypeError("series.updateAt(index, { x, y }) requires a mutable XY dataset such as RingBuffer.");
+      }
+      updated = this.dataset.update(index, data.x, data.y);
+    } else if (hasUpdateY(this.dataset)) {
+      updated = this.dataset.updateY(index, data.y);
+    } else if (hasUpdate(this.dataset)) {
+      updated = this.dataset.update(index, this.dataset.getX(index), data.y);
+    } else {
+      throw new TypeError("series.updateAt(index, { y }) requires a mutable dataset such as RingBuffer or UniformRingBuffer.");
+    }
+
+    if (updated) this.markDataMutated(true);
+    return updated;
+  }
+
+  private updateOhlcAt(index: number, open: number, high: number, low: number, close: number): boolean {
+    if (index < 0 || index >= this.dataset.length) return false;
+    if (!hasOhlcAppend(this.dataset)) {
+      throw new TypeError("series.updateAt(index, { open, high, low, close }) requires a mutable OHLC dataset such as OhlcRingBuffer.");
+    }
+
+    let updated = false;
+    if (typeof this.dataset.updateAt === "function") {
+      updated = this.dataset.updateAt(index, open, high, low, close);
+    } else if (index === this.dataset.length - 1 && typeof this.dataset.updateLast === "function") {
+      updated = this.dataset.updateLast(open, high, low, close);
+    } else {
+      throw new TypeError("series.updateAt(index, { open, high, low, close }) requires an OHLC dataset with updateAt support; use OhlcRingBuffer for mutable candles.");
+    }
+
+    if (updated) this.markDataMutated(true);
+    return updated;
   }
 
   /** @deprecated Use `updateLast({ open, high, low, close })` instead. */
   updateLastOhlc(open: number, high: number, low: number, close: number): boolean {
-    if (!hasOhlcAppend(this.dataset) || typeof this.dataset.updateLast !== "function") {
-      throw new TypeError("SeriesStore dataset does not support OHLC updateLast.");
-    }
-
-    const updated = this.dataset.updateLast(open, high, low, close);
-    if (updated) {
-      this._dirty = true;
-      this.onDirty?.();
-    }
-    return updated;
+    return this.updateOhlcAt(this.dataset.length - 1, open, high, low, close);
   }
 
   replace(data: unknown): void {
     if (!("replace" in this.dataset) || typeof this.dataset.replace !== "function") {
-      throw new TypeError("SeriesStore dataset does not support replace.");
+      throw new TypeError("series.replace(...) requires a dataset with replace(...) support, such as ServerSampledDataset.");
     }
 
     (this.dataset.replace as (data: unknown) => void)(data);
     this._useDatasetRangeMinMax = hasRangeMinMaxY(this.dataset);
     this._useRawMinMaxScan = false;
-    this._dirty = true;
-    this.onDirty?.();
+    this.markDataMutated(true);
   }
 
   markDirty(): void {
+    this.markDataMutated(true);
+  }
+
+  private markDataMutated(forceFullPyramidRebuild: boolean): void {
     this._dirty = true;
+    this._forceFullPyramidRebuild ||= forceFullPyramidRebuild;
     this.onDirty?.();
   }
 
   clear(): void {
     if (!("clear" in this.dataset)) {
-      throw new TypeError("SeriesStore dataset is not clearable.");
+      throw new TypeError("series.clear() requires a clearable dataset such as RingBuffer, UniformRingBuffer, or OhlcRingBuffer.");
     }
 
     (this.dataset as AppendableDataset).clear();
     this._useDatasetRangeMinMax = hasRangeMinMaxY(this.dataset);
     this._useRawMinMaxScan = false;
+    this._forceFullPyramidRebuild = false;
     if (this.pyramid && !this._useDatasetRangeMinMax) this.pyramid.build(this.dataset);
     this._lastBuildLength = this.dataset.length;
     this._lastBuildRangeStart = this.dataset.range?.start ?? NaN;
@@ -293,6 +441,10 @@ export class SeriesStore {
       if (hasRangeMinMaxY(this.dataset)) {
         this._useDatasetRangeMinMax = true;
         this._useRawMinMaxScan = false;
+      } else if (this._forceFullPyramidRebuild) {
+        this.pyramid.build(this.dataset);
+        this._useDatasetRangeMinMax = false;
+        this._useRawMinMaxScan = false;
       } else if (shiftedAtCapacity) {
         this._useDatasetRangeMinMax = false;
         this._useRawMinMaxScan = true;
@@ -304,6 +456,7 @@ export class SeriesStore {
       this._lastBuildLength = length;
       this._lastBuildRangeStart = rangeStart;
     }
+    this._forceFullPyramidRebuild = false;
     this._dirty = false;
   }
 
