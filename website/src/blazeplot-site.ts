@@ -328,7 +328,7 @@ export class BlazeplotSite extends LitElement {
       html`
         <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[#aaa]">
           <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
-            <span>Irregular sensor updates use <code>chart.addLine({ capacity })</code> and <code>series.append({ x, y })</code>; simulated dropouts append <code>NaN</code> to show line breaks.</span>
+            <span>Dense IoT gateway stream: irregular batched timestamps, jitter, dropouts, and vibration spikes via <code>series.append({ x, y })</code>.</span>
             <button data-sensor-live type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">resume live</button>
             <span data-sensor-status class="text-[#777]">booting…</span>
           </div>
@@ -476,9 +476,9 @@ export class BlazeplotSite extends LitElement {
     const liveButton = root.querySelector<HTMLButtonElement>("[data-sensor-live]");
 
     const chart = new Chart(target, {
-      axes: { x: { position: "outside" }, y: { position: "outside" } },
+      axes: { x: { position: "outside" }, y: { position: "outside" }, y2: { visible: true, position: "outside" } },
       grid: true,
-      autoFitY: { padding: { y: 0.15 } },
+      autoFitY: { padding: { y: 0.15 }, yAxis: "both" },
       plugins: [
         interactionsPlugin({ minDragDistancePx: 4 }),
         tooltipPlugin(),
@@ -488,57 +488,93 @@ export class BlazeplotSite extends LitElement {
     });
     this.previewCharts.push(chart);
 
-    const temperature = chart.addLine({ capacity: 5_000, name: "temperature °C" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
-    const vibration = chart.addLine({ capacity: 5_000, name: "vibration" }, { color: [0.2, 0.7, 1, 1], lineWidth: 1.5 });
+    const temperature = chart.addLine({ capacity: 20_000, name: "temperature °C" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
+    const humidity = chart.addLine({ capacity: 20_000, name: "humidity %" }, { color: [0.2, 0.85, 0.45, 1], lineWidth: 1.5 });
+    const vibration = chart.addLine({ capacity: 20_000, name: "vibration RMS", yAxis: "right" }, { color: [0.2, 0.7, 1, 1], lineWidth: 1.5 });
 
     const start = performance.now();
     let elapsed = -60_000;
     let tick = 0;
     let timeoutId = 0;
-    let dropoutRemaining = 0;
+    let dropoutUntil = -Infinity;
 
-    const sensorValues = (x: number): { temp: number; vibe: number } => {
+    const sensorValues = (x: number): { temp: number; humidity: number; vibe: number } => {
       const seconds = x / 1000;
-      const temp = 22 + Math.sin(seconds * 0.32) * 2.5 + Math.sin(seconds * 0.057) * 1.2 + (Math.random() - 0.5) * 0.28;
-      const vibe = 4 + Math.sin(seconds * 1.7) * 0.75 + Math.sin(seconds * 0.23) * 0.45 + (Math.random() - 0.5) * 0.45;
-      return { temp, vibe };
+      const dutyCycle = Math.sin(seconds * 0.23) > 0.72 ? 1 : 0;
+      const temp = 24
+        + Math.sin(seconds * 0.055) * 2.2
+        + Math.sin(seconds * 0.72) * 0.42
+        + dutyCycle * 0.9
+        + (Math.random() - 0.5) * 0.18;
+      const humidity = 50
+        - (temp - 24) * 1.45
+        + Math.sin(seconds * 0.031 + 1.7) * 3.8
+        + (Math.random() - 0.5) * 0.35;
+      const spike = Math.random() < 0.012 ? 0.4 + Math.random() * 0.8 : 0;
+      const vibe = 0.42
+        + Math.abs(Math.sin(seconds * 16.5)) * 0.075
+        + Math.sin(seconds * 0.9) * 0.035
+        + dutyCycle * 0.16
+        + spike
+        + Math.random() * 0.035;
+      return { temp, humidity, vibe };
     };
 
-    const seedCount = 360;
+    const isHistoricalDropout = (x: number): boolean => {
+      return (x > -45_000 && x < -43_700) || (x > -21_500 && x < -20_300) || (x > -7_800 && x < -7_000);
+    };
+
+    const seedCount = 3_000;
     const xs = new Float64Array(seedCount);
     const temp = new Float32Array(seedCount);
+    const humid = new Float32Array(seedCount);
     const vibe = new Float32Array(seedCount);
     for (let i = 0; i < seedCount; i += 1) {
-      elapsed += 60 + Math.random() * 210;
+      elapsed += 8 + Math.random() * 24;
       xs[i] = elapsed;
       const values = sensorValues(elapsed);
-      const historicalDropout = (i >= 82 && i <= 91) || (i >= 228 && i <= 238);
-      temp[i] = historicalDropout ? NaN : values.temp;
-      vibe[i] = historicalDropout ? NaN : values.vibe;
+      const missing = isHistoricalDropout(elapsed);
+      temp[i] = missing ? NaN : values.temp;
+      humid[i] = missing ? NaN : values.humidity;
+      vibe[i] = missing ? NaN : values.vibe;
     }
     temperature.append({ x: xs, y: temp });
+    humidity.append({ x: xs, y: humid });
     vibration.append({ x: xs, y: vibe });
 
-    const updateStatus = (delay: number, values: { temp: number; vibe: number }, missing: boolean): void => {
+    const updateStatus = (delay: number, batchCount: number, missingCount: number, values: { temp: number; humidity: number; vibe: number }): void => {
       if (!status) return;
-      status.textContent = missing
-        ? `sample ${tick.toLocaleString()} · next ${Math.round(delay)}ms · sensor dropout → NaN gap`
-        : `sample ${tick.toLocaleString()} · next ${Math.round(delay)}ms · temp ${values.temp.toFixed(2)}°C · vibration ${values.vibe.toFixed(2)}`;
+      const dropout = missingCount > 0 ? ` · ${missingCount} dropout gaps` : "";
+      status.textContent = `samples ${tick.toLocaleString()} · batch ${batchCount} · next ${Math.round(delay)}ms · ${values.temp.toFixed(2)}°C · ${values.humidity.toFixed(1)}% RH · ${values.vibe.toFixed(3)} RMS${dropout}`;
     };
 
     const schedule = (): void => {
-      const delay = 45 + Math.random() * 260;
+      const delay = 70 + Math.random() * 110;
       timeoutId = window.setTimeout(() => {
-        const nowElapsed = performance.now() - start;
-        elapsed = Math.max(elapsed + 1, nowElapsed);
-        if (dropoutRemaining <= 0 && tick > 0 && tick % 36 === 0) dropoutRemaining = 5;
-        const missing = dropoutRemaining > 0;
-        if (missing) dropoutRemaining -= 1;
-        const values = sensorValues(elapsed);
-        temperature.append({ x: elapsed, y: missing ? NaN : values.temp });
-        vibration.append({ x: elapsed, y: missing ? NaN : values.vibe });
-        tick += 1;
-        updateStatus(delay, values, missing);
+        const batchCount = 4 + Math.floor(Math.random() * 9);
+        const xBatch = new Float64Array(batchCount);
+        const tempBatch = new Float32Array(batchCount);
+        const humidityBatch = new Float32Array(batchCount);
+        const vibrationBatch = new Float32Array(batchCount);
+        let missingCount = 0;
+        let latest = sensorValues(elapsed);
+        for (let i = 0; i < batchCount; i += 1) {
+          const nowElapsed = performance.now() - start;
+          elapsed = Math.max(elapsed + 8 + Math.random() * 24, nowElapsed - (batchCount - i) * 20);
+          if (elapsed > dropoutUntil && tick > 0 && tick % 240 === 0) dropoutUntil = elapsed + 850 + Math.random() * 450;
+          const missing = elapsed < dropoutUntil;
+          latest = sensorValues(elapsed);
+          xBatch[i] = elapsed;
+          tempBatch[i] = missing ? NaN : latest.temp;
+          humidityBatch[i] = missing ? NaN : latest.humidity;
+          vibrationBatch[i] = missing ? NaN : latest.vibe;
+          if (missing) missingCount += 1;
+          tick += 1;
+        }
+        temperature.append({ x: xBatch, y: tempBatch });
+        humidity.append({ x: xBatch, y: humidityBatch });
+        vibration.append({ x: xBatch, y: vibrationBatch });
+        updateStatus(delay, batchCount, missingCount, latest);
         schedule();
       }, delay);
     };
