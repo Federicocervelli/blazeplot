@@ -162,7 +162,8 @@ try {
     item.setViewport(initialViewport);
     if (caseName === "live-follow") {
       const clockStartedAt = performance.now();
-      item.followLatestX({ window: 100, pauseOnInteraction: true, resumeAfterMs: 120, currentX: () => 1_020 + performance.now() - clockStartedAt });
+      const epochLikeX = 1_700_000_000_000;
+      item.followLatestX({ window: 100, pauseOnInteraction: true, resumeAfterMs: 120, currentX: () => epochLikeX + 1_020 + performance.now() - clockStartedAt });
     }
     if (caseName === "lifecycle") {
       item.start();

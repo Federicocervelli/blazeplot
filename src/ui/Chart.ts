@@ -43,7 +43,9 @@ function normalizeFitPadding(padding: number | ChartFitToDataPadding | undefined
 }
 
 function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: number): boolean {
-  const scale = Math.max(1, Math.abs(aMin), Math.abs(aMax), Math.abs(bMin), Math.abs(bMax));
+  const aSpan = Math.abs(aMax - aMin);
+  const bSpan = Math.abs(bMax - bMin);
+  const scale = Math.max(1, aSpan, bSpan);
   const epsilon = scale * 1e-9;
   return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
 }
