@@ -23,7 +23,7 @@ declare const __BLAZEPLOT_VERSION__: string;
 type Section = "home" | "docs" | "previews";
 type HomeDataMode = "static" | "streaming";
 type HomeChartMode = "line" | "ohlc" | "multi";
-type PreviewId = "live" | "features" | "linked" | "server-sampled" | "flamechart" | "render-loop" | "mobile";
+type PreviewId = "live" | "sensor" | "features" | "linked" | "server-sampled" | "flamechart" | "render-loop" | "mobile";
 
 interface PreviewLink {
   title: string;
@@ -32,6 +32,7 @@ interface PreviewLink {
 
 const PREVIEWS: readonly PreviewLink[] = [
   { title: "Live performance", id: "live" },
+  { title: "Sensor stream", id: "sensor" },
   { title: "Feature gallery", id: "features" },
   { title: "Linked charts", id: "linked" },
   { title: "Server-sampled", id: "server-sampled" },
@@ -264,6 +265,7 @@ export class BlazeplotSite extends LitElement {
   }
 
   private renderSelectedPreview(id: PreviewId): TemplateResult {
+    if (id === "sensor") return this.renderSensorStreamPreview();
     if (id === "features") return this.renderFeaturePreview();
     if (id === "linked") return this.renderLinkedChartsPreview();
     if (id === "server-sampled") return this.renderServerSampledPreview();
@@ -317,6 +319,25 @@ export class BlazeplotSite extends LitElement {
         </section>
       </section>
     `;
+  }
+
+  private renderSensorStreamPreview(): TemplateResult {
+    return this.renderPreviewPanel(
+      "Sensor stream",
+      "irregular WebSocket-style timestamps · follow-latest helper",
+      html`
+        <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[#aaa]">
+          <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
+            <span>Irregular sensor updates use <code>chart.addLine({ capacity })</code> and <code>series.append({ x, y })</code>; <code>followLatestX</code> keeps a 30s live window.</span>
+            <button data-sensor-live type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">resume live</button>
+            <span data-sensor-status class="text-[#777]">booting…</span>
+          </div>
+          <div class="relative min-h-0 border border-[#222]">
+            <div data-preview-chart="sensor" class="h-full min-h-0 w-full"></div>
+          </div>
+        </section>
+      `,
+    );
   }
 
   private renderFeaturePreview(): TemplateResult {
@@ -432,6 +453,7 @@ export class BlazeplotSite extends LitElement {
       const kind = target.dataset.previewChart;
       try {
         if (kind === "live") this.mountLivePreviewChart(target);
+        else if (kind === "sensor") this.mountSensorStreamPreview(target);
         else if (kind === "feature-hero") this.mountFeatureHeroChart(target);
         else if (kind === "feature-linked") this.mountFeatureLinkedCharts(target);
         else if (kind === "server-sampled") this.mountServerSampledChart(target);
@@ -446,6 +468,83 @@ export class BlazeplotSite extends LitElement {
         target.append(fallback);
       }
     }
+  }
+
+  private mountSensorStreamPreview(target: HTMLElement): void {
+    const root = target.closest<HTMLElement>("section") ?? target;
+    const status = root.querySelector<HTMLElement>("[data-sensor-status]");
+    const liveButton = root.querySelector<HTMLButtonElement>("[data-sensor-live]");
+
+    const chart = new Chart(target, {
+      axes: { x: { position: "outside" }, y: { position: "outside" } },
+      grid: true,
+      autoFitY: { padding: { y: 0.15 } },
+      plugins: [
+        interactionsPlugin({ minDragDistancePx: 4 }),
+        tooltipPlugin(),
+        crosshairPlugin({ snap: "nearest-x", label: true }),
+        legendPlugin({ position: "top-left" }),
+      ],
+    });
+    this.previewCharts.push(chart);
+
+    const temperature = chart.addLine({ capacity: 5_000, name: "temperature °C" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
+    const vibration = chart.addLine({ capacity: 5_000, name: "vibration" }, { color: [0.2, 0.7, 1, 1], lineWidth: 1.5 });
+
+    const start = performance.now();
+    let elapsed = -60_000;
+    let tick = 0;
+    let timeoutId = 0;
+
+    const sensorValues = (x: number): { temp: number; vibe: number } => {
+      const seconds = x / 1000;
+      const temp = 22 + Math.sin(seconds * 0.32) * 2.5 + Math.sin(seconds * 0.057) * 1.2 + (Math.random() - 0.5) * 0.28;
+      const vibe = 4 + Math.sin(seconds * 1.7) * 0.75 + Math.sin(seconds * 0.23) * 0.45 + (Math.random() - 0.5) * 0.45;
+      return { temp, vibe };
+    };
+
+    const seedCount = 360;
+    const xs = new Float64Array(seedCount);
+    const temp = new Float32Array(seedCount);
+    const vibe = new Float32Array(seedCount);
+    for (let i = 0; i < seedCount; i += 1) {
+      elapsed += 60 + Math.random() * 210;
+      xs[i] = elapsed;
+      const values = sensorValues(elapsed);
+      temp[i] = values.temp;
+      vibe[i] = values.vibe;
+    }
+    temperature.append({ x: xs, y: temp });
+    vibration.append({ x: xs, y: vibe });
+
+    const updateStatus = (delay: number, values: { temp: number; vibe: number }): void => {
+      if (!status) return;
+      status.textContent = `sample ${tick.toLocaleString()} · next ${Math.round(delay)}ms · temp ${values.temp.toFixed(2)}°C · vibration ${values.vibe.toFixed(2)}`;
+    };
+
+    const schedule = (): void => {
+      const delay = 45 + Math.random() * 260;
+      timeoutId = window.setTimeout(() => {
+        const nowElapsed = performance.now() - start;
+        elapsed = Math.max(elapsed + 1, nowElapsed);
+        const values = sensorValues(elapsed);
+        temperature.append({ x: elapsed, y: values.temp });
+        vibration.append({ x: elapsed, y: values.vibe });
+        tick += 1;
+        updateStatus(delay, values);
+        schedule();
+      }, delay);
+    };
+
+    const onLive = (): void => chart.resumeLatestXFollow();
+    liveButton?.addEventListener("click", onLive);
+    if (liveButton) this.previewDisposers.push(() => liveButton.removeEventListener("click", onLive));
+    this.previewDisposers.push(() => window.clearTimeout(timeoutId));
+
+    chart.fitToData({ padding: { x: 0.02, y: 0.12 } });
+    chart.followLatestX({ window: 30_000, pauseOnInteraction: true, resumeAfterMs: 4000 });
+    chart.start();
+    schedule();
   }
 
   private mountLivePreviewChart(target: HTMLElement): void {
@@ -1645,6 +1744,7 @@ export class BlazeplotSite extends LitElement {
     if (relative === "home") return "home";
     if (relative === "previews" || relative.startsWith("previews/") || relative.startsWith("docs/")) return relative;
     if (relative === "features") return "previews/features";
+    if (relative === "sensor") return "previews/sensor";
     if (relative === "linked") return "previews/linked";
     if (relative === "server-sampled") return "previews/server-sampled";
     if (relative === "flamechart") return "previews/flamechart";
