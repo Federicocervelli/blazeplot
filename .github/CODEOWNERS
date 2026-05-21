@@ -1,0 +1,7 @@
+# Default owner for repository changes.
+* @Federicocervelli
+
+# Release and package surfaces are especially sensitive.
+.github/workflows/ @Federicocervelli
+package.json @Federicocervelli
+bun.lock @Federicocervelli

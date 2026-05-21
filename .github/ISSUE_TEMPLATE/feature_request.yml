@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest a chart type, API, plugin, or workflow improvement
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to build, and where does BlazePlot fall short today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the API, behavior, docs, or workflow you would expect.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Chart type / renderer
+        - Dataset / data pipeline
+        - Interactions / plugins
+        - React wrapper
+        - Linked charts
+        - Export / screenshots
+        - Performance / benchmarks
+        - Documentation
+        - Packaging / build
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing workarounds, other libraries, or API shapes you considered.
+  - type: textarea
+    id: data-shape
+    attributes:
+      label: Data shape and scale
+      description: If relevant, include point counts, update rate, series count, browser/device, or latency constraints.

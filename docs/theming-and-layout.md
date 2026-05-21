@@ -13,6 +13,16 @@ chart.setTheme({
 
 Theme values are merged with the default theme, so you can override only the tokens you need. Colors accept CSS color strings; renderer-facing colors also accept RGBA arrays in 0-1 range.
 
+## Quick decisions
+
+| Goal | Use |
+|---|---|
+| Brand colors or dark mode | `theme` at construction time, then `chart.setTheme(...)` for runtime changes. |
+| Compact dashboards | Inside axes, fewer visible axes, smaller title/axis fonts, and plugin layout reservations. |
+| External controls or legends | A plugin with `chart.setLayoutReservation(...)`; avoid hard-coded margins. |
+| Screenshot-safe overlays | Built-in DOM/SVG overlays or plugin-owned elements inside the chart root. |
+| Mobile layouts | Inside axes, fewer ticks, touch interactions, and controls outside the plot. |
+
 ## Theme tokens
 
 | Token group | Options |
@@ -36,6 +46,23 @@ Theme values are merged with the default theme, so you can override only the tok
 - Use `axes: { x: { position: "inside" }, y: { position: "inside" } }` when space is tight.
 - Titles and axis titles are built-in DOM text overlays and are included in `chart.screenshot()` output.
 
+Axis options live under `ChartOptions.axes`. Use them for time ticks, log/symlog scales, category labels, custom tick formatting, reversed axes, and left/right Y-axis placement.
+
+```ts
+const chart = new Chart(element, {
+  axes: {
+    x: { scale: "time", timezone: "utc", title: "Time" },
+    y: { scale: "symlog", symlogConstant: 1, title: "Latency" },
+    y2: { visible: true, position: "outside", title: "Requests" },
+  },
+});
+
+chart.addLine({ dataset: latencyDataset, name: "p95 latency" });
+chart.addBar({ dataset: requestDataset, name: "requests", yAxis: "right" });
+```
+
+Use `scale: "log"` only for positive domains. Use `scale: "symlog"` when values can cross zero. For categorical axes, pass numeric category indexes as data and provide labels with `categories`.
+
 ## Plugin layout
 
 Plugins that need space outside the plot should use `chart.setLayoutReservation(id, reservation)`. This avoids overlapping axes and keeps screenshots consistent. Plot overlays, such as crosshairs or custom markers, should attach to `chart.plotElement`.
@@ -55,7 +82,20 @@ For small screens, prefer:
 
 ## Accessibility and contrast
 
-- Provide `accessibility: { label: "..." }` so the chart has useful screen-reader context.
+Provide accessible text at chart construction time. BlazePlot marks the canvas as hidden from assistive technology and puts the label on the chart root.
+
+```ts
+const chart = new Chart(element, {
+  title: "Latency",
+  subtitle: "p95 by region",
+  accessibility: {
+    label: "Latency chart showing p95 latency by region",
+    description: "Use the table below the chart for exact values.",
+  },
+});
+```
+
 - Keep axis text readable against the background.
 - Use grid colors as decoration, not as the only way to understand the chart.
 - Pick series colors that remain distinct for dense data and common color-vision differences.
+- Put exact values in nearby tables or exports when the chart is part of a critical workflow.

@@ -18,7 +18,7 @@ This page is generated from the built package. Use it as an index of import path
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
 
-Guides: [Overview](./overview.md), [Examples](./examples.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), [Built-in plugins](./built-in-plugins.md), and [Plugin authoring](./plugin-authoring.md).
+Guides: [Docs map](./README.md), [Overview](./overview.md), [Examples](./examples.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), [Built-in plugins](./built-in-plugins.md), [Plugin authoring](./plugin-authoring.md), [Theming and layout](./theming-and-layout.md), [Troubleshooting](./troubleshooting.md), [Browser support](./browser-support.md), [Migration](./versioning-and-migration.md), [Roadmap](./roadmap.md).
 
 ### Package entry points
 
@@ -40,6 +40,8 @@ Guides: [Overview](./overview.md), [Examples](./examples.md), [Data semantics](.
 | `blazeplot/plugins/selection` | Built-in brush/range selection plugin. |
 | `blazeplot/plugins/crosshair` | Built-in crosshair and ruler plugin. |
 | `blazeplot/plugins/navigator` | Built-in overview/navigator plugin. |
+
+The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; use the README performance section for the aggregate core runtime size.
 
 ### Bundle size summary
 
