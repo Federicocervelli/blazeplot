@@ -238,13 +238,22 @@ export class AxisController {
     if (!Number.isFinite(range) || range <= 0) return target;
 
     const targetTicks = Math.max(2, Math.min(maxTicks, Math.floor(pixelSize / minPixelSpacing)));
-    const step = this.niceStep(range / (targetTicks - 1));
-    const firstIndex = Math.floor(min / step);
-    const lastIndex = Math.ceil(max / step);
+    const maxGeneratedTicks = maxTicks + 2;
+    let step = this.niceStep(range / (targetTicks - 1));
+    let firstIndex = Math.floor(min / step);
+    let lastIndex = Math.ceil(max / step);
 
-    for (let index = firstIndex; index <= lastIndex && target.length < maxTicks + 2; index++) {
+    while (lastIndex - firstIndex + 1 > maxGeneratedTicks) {
+      step = this.nextNiceStep(step);
+      firstIndex = Math.floor(min / step);
+      lastIndex = Math.ceil(max / step);
+    }
+
+    for (let index = firstIndex; index <= lastIndex; index++) {
       target.push(this.normalizeTick(index * step, step));
     }
+
+    if (target.length > maxGeneratedTicks) target.length = maxGeneratedTicks;
 
     return target;
   }
@@ -410,6 +419,15 @@ export class AxisController {
     if (normalized <= 1.5) return magnitude;
     if (normalized <= 3) return 2 * magnitude;
     if (normalized <= 7) return 5 * magnitude;
+    return 10 * magnitude;
+  }
+
+  private nextNiceStep(step: number): number {
+    if (!Number.isFinite(step) || step <= 0) return 1;
+    const magnitude = 10 ** Math.floor(Math.log10(step));
+    const normalized = step / magnitude;
+    if (normalized < 2) return 2 * magnitude;
+    if (normalized < 5) return 5 * magnitude;
     return 10 * magnitude;
   }
 
