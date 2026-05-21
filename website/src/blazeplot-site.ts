@@ -196,7 +196,7 @@ export class BlazeplotSite extends LitElement {
           <div data-home-chart class="h-[260px] w-full sm:h-[320px] md:h-[360px]"></div>
         </div>
       </section>
-      <article class="article border-t border-[#222] pt-8">${unsafeHTML(renderMarkdown(overviewMarkdown))}</article>
+      <article class="article border-t border-[#222] pt-8">${unsafeHTML(renderMarkdown(overviewMarkdown, { sourcePath: "docs/overview.md" }))}</article>
     `;
   }
 
@@ -205,8 +205,9 @@ export class BlazeplotSite extends LitElement {
   private renderDocs(doc: DocPage): TemplateResult {
     return html`
       <section>
-        <div class="mb-4 flex justify-end border-b border-[#222] pb-2">
-          <a href=${`https://github.com/Federicocervelli/blazeplot/blob/development/docs/${doc.slug}.md`} target="_blank" rel="noreferrer" class="text-[12px] text-[#555] no-underline hover:text-[#fc4a05]">source</a>
+        <div class="mb-4 flex justify-between gap-4 border-b border-[#222] pb-2">
+          <a href=${this.appHref("docs/docs-map")} class="text-[12px] text-[#555] no-underline hover:text-[#fc4a05]">all docs</a>
+          <a href=${`https://github.com/Federicocervelli/blazeplot/blob/development/${doc.sourcePath}`} target="_blank" rel="noreferrer" class="text-[12px] text-[#555] no-underline hover:text-[#fc4a05]">source</a>
         </div>
         <div class="flex flex-col gap-5 md:flex-row md:gap-6">
           <nav class="-mx-3 flex shrink-0 gap-5 overflow-x-auto px-3 text-sm md:mx-0 md:block md:w-[200px] md:space-y-4 md:overflow-visible md:px-0">
@@ -230,7 +231,7 @@ export class BlazeplotSite extends LitElement {
           </nav>
           <article class="article flex-1 min-w-0">
             <p class="mb-5 mt-0 text-sm text-[#888]">${doc.description}</p>
-            ${unsafeHTML(renderMarkdown(doc.markdown))}
+            ${unsafeHTML(renderMarkdown(doc.markdown, { sourcePath: doc.sourcePath }))}
           </article>
         </div>
       </section>
