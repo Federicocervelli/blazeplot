@@ -7,7 +7,7 @@ export type { ChartTheme, ResolvedChartTheme, RgbaColor, CssColor, ThemeColor } 
 export type { AxisPosition } from "./ui/ChartLayout.js";
 export { SeriesStore } from "./core/SeriesStore.js";
 export { RingBuffer } from "./core/RingBuffer.js";
-export type { SeriesAppendData, SeriesDataBounds, SeriesDataBoundsOptions, SeriesOhlcAppendData, SeriesOhlcSample, SeriesOhlcUpdateData, SeriesScalarOrArray, SeriesXYAppendData } from "./core/SeriesStore.js";
+export type { SeriesAppendData, SeriesAppendRow, SeriesDataBounds, SeriesDataBoundsOptions, SeriesObjectAppendData, SeriesOhlcAppendData, SeriesOhlcAppendRow, SeriesOhlcSample, SeriesOhlcUpdateData, SeriesScalarOrArray, SeriesXYAppendData, SeriesXYAppendRow } from "./core/SeriesStore.js";
 export type { RingBufferOptions, RingBufferOverflow } from "./core/RingBuffer.js";
 export { UniformRingBuffer } from "./core/UniformRingBuffer.js";
 export type { UniformRingBufferOptions } from "./core/UniformRingBuffer.js";

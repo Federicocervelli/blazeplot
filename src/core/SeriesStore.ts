@@ -52,8 +52,12 @@ function toArrayLike(value: SeriesScalarOrArray): ArrayLike<number> {
   return typeof value === "number" ? [value] : value;
 }
 
-function isOhlcAppendData(data: SeriesAppendData): data is SeriesOhlcAppendData {
-  return "open" in data && "high" in data && "low" in data && "close" in data;
+function isOhlcAppendData(data: SeriesObjectAppendData | SeriesAppendRow): data is SeriesOhlcAppendData | SeriesOhlcAppendRow {
+  return typeof data === "object" && data !== null && "open" in data && "high" in data && "low" in data && "close" in data;
+}
+
+function isAppendRowArray(data: SeriesAppendData): data is readonly SeriesAppendRow[] {
+  return Array.isArray(data);
 }
 
 const NEAREST_POINT_LEAF_SIZE = 64;
@@ -62,17 +66,34 @@ const SCATTER_BUCKET_RANGE_PRUNE_SIZE = 1024;
 
 export type SeriesScalarOrArray = number | ArrayLike<number>;
 
+/** Object form for appending one XY sample or a batch of X/Y arrays. */
 export interface SeriesXYAppendData {
   readonly x?: SeriesScalarOrArray;
   readonly y: SeriesScalarOrArray;
 }
 
+/** Object form for appending one OHLC sample or a batch of OHLC arrays. */
 export interface SeriesOhlcAppendData {
   readonly x: SeriesScalarOrArray;
   readonly open: SeriesScalarOrArray;
   readonly high: SeriesScalarOrArray;
   readonly low: SeriesScalarOrArray;
   readonly close: SeriesScalarOrArray;
+}
+
+/** Convenient object-row form for appending one XY sample inside a row batch. */
+export interface SeriesXYAppendRow {
+  readonly x?: number;
+  readonly y: number;
+}
+
+/** Convenient object-row form for appending one OHLC sample inside a row batch. */
+export interface SeriesOhlcAppendRow {
+  readonly x: number;
+  readonly open: number;
+  readonly high: number;
+  readonly low: number;
+  readonly close: number;
 }
 
 export interface SeriesOhlcUpdateData {
@@ -82,7 +103,9 @@ export interface SeriesOhlcUpdateData {
   readonly close: number;
 }
 
-export type SeriesAppendData = SeriesXYAppendData | SeriesOhlcAppendData;
+export type SeriesAppendRow = SeriesXYAppendRow | SeriesOhlcAppendRow;
+export type SeriesObjectAppendData = SeriesXYAppendData | SeriesOhlcAppendData;
+export type SeriesAppendData = SeriesObjectAppendData | readonly SeriesAppendRow[];
 
 export interface SeriesDataBounds {
   readonly xMin: number;
@@ -170,7 +193,7 @@ export class SeriesStore {
     this.onDirty?.();
   }
 
-  /** Append XY, implicit-X, or OHLC data and request an on-demand render. */
+  /** Append XY, implicit-X, OHLC, or row-array data and request an on-demand render. */
   append(data: SeriesAppendData): void;
   /** @deprecated Use `append({ x, y })` instead. */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void;
@@ -180,8 +203,12 @@ export class SeriesStore {
       return;
     }
     const data = first as SeriesAppendData;
+    if (isAppendRowArray(data)) {
+      this.appendRows(data);
+      return;
+    }
     if (isOhlcAppendData(data)) {
-      this.appendOhlc(
+      this.appendOhlcArrays(
         toArrayLike(data.x),
         toArrayLike(data.open),
         toArrayLike(data.high),
@@ -190,8 +217,52 @@ export class SeriesStore {
       );
       return;
     }
-    if (data.x === undefined) this.appendY(toArrayLike(data.y));
+    if (data.x === undefined) this.appendYArray(toArrayLike(data.y));
     else this.appendXY(toArrayLike(data.x), toArrayLike(data.y));
+  }
+
+  private appendRows(rows: readonly SeriesAppendRow[]): void {
+    if (rows.length === 0) return;
+
+    const first = rows[0]!;
+    if (isOhlcAppendData(first)) {
+      const x = new Float64Array(rows.length);
+      const open = new Float64Array(rows.length);
+      const high = new Float64Array(rows.length);
+      const low = new Float64Array(rows.length);
+      const close = new Float64Array(rows.length);
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]!;
+        if (!isOhlcAppendData(row)) {
+          throw new TypeError("SeriesStore OHLC row appends cannot mix OHLC and XY rows.");
+        }
+        x[i] = row.x;
+        open[i] = row.open;
+        high[i] = row.high;
+        low[i] = row.low;
+        close[i] = row.close;
+      }
+      this.appendOhlcArrays(x, open, high, low, close);
+      return;
+    }
+
+    const explicitX = first.x !== undefined;
+    const x = explicitX ? new Float64Array(rows.length) : null;
+    const y = new Float64Array(rows.length);
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]!;
+      if (isOhlcAppendData(row)) {
+        throw new TypeError("SeriesStore XY row appends cannot mix XY and OHLC rows.");
+      }
+      if ((row.x !== undefined) !== explicitX) {
+        throw new TypeError("SeriesStore XY row appends cannot mix explicit and implicit x values.");
+      }
+      if (explicitX) x![i] = row.x!;
+      y[i] = row.y;
+    }
+
+    if (x) this.appendXY(x, y);
+    else this.appendYArray(y);
   }
 
   private appendXY(x: ArrayLike<number>, y: ArrayLike<number>): void {
@@ -207,6 +278,10 @@ export class SeriesStore {
 
   /** @deprecated Use `append({ y })` instead. */
   appendY(y: ArrayLike<number>): void {
+    this.appendYArray(y);
+  }
+
+  private appendYArray(y: ArrayLike<number>): void {
     if (!hasAppendY(this.dataset)) {
       throw new TypeError("SeriesStore dataset does not support appendY.");
     }
@@ -218,6 +293,16 @@ export class SeriesStore {
 
   /** @deprecated Use `append({ x, open, high, low, close })` instead. */
   appendOhlc(
+    x: ArrayLike<number>,
+    open: ArrayLike<number>,
+    high: ArrayLike<number>,
+    low: ArrayLike<number>,
+    close: ArrayLike<number>,
+  ): void {
+    this.appendOhlcArrays(x, open, high, low, close);
+  }
+
+  private appendOhlcArrays(
     x: ArrayLike<number>,
     open: ArrayLike<number>,
     high: ArrayLike<number>,

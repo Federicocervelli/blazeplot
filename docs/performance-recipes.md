@@ -18,7 +18,7 @@ BlazePlot is fast when the data model and the visible range match how the render
 - Use `RingBuffer` for irregular live samples and `UniformRingBuffer` for fixed-rate samples.
 - For fixed-rate data, append only Y batches with `series.append({ y })` so you do not store or copy repeated X values.
 - Set capacity to the largest history window you need to keep in memory.
-- Append typed-array batches through the returned series when possible instead of one sample at a time, for example `series.append({ x: Float64Array, y: Float32Array })` or `series.append({ y: Float32Array })`.
+- Append typed-array batches through the returned series when possible instead of one sample at a time, for example `series.append({ x: Float64Array, y: Float32Array })` or `series.append({ y: Float32Array })`. Object-row batches such as `series.append([{ x, y }, ...])` are convenient for moderate-rate feeds and examples.
 - Keep X values sorted in logical order. Binary search, picking, and LOD depend on it.
 - Prefer series APIs for live writes. They mark LOD state dirty and request a frame in the default on-demand render loop. If you mutate a dataset directly, call `series.markDirty()` afterward.
 - Choose an overflow mode intentionally:
