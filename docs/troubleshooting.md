@@ -8,6 +8,7 @@ Use this page when a chart renders blank, feels slow, or behaves differently fro
 |---|---|---|
 | Empty area or no plot | Host size, WebGL2, viewport, render loop, sorted finite data | [Blank chart](#blank-chart) |
 | Live view keeps resetting | Repeated `fitToData()` calls instead of `followX` | [Live chart keeps jumping away from the latest data](#live-chart-keeps-jumping-away-from-the-latest-data) |
+| Live data only updates after pan/zoom | Direct dataset mutation without `series.markDirty()` | [Live data does not repaint until interaction](#live-data-does-not-repaint-until-interaction) |
 | Chart slows down over time | Per-point appends, chart recreation, hidden render loops, DOM overlays | [Performance drops over time](#performance-drops-over-time) |
 | Log axis fails | Zero or negative viewport values | [Log axis throws a domain error](#log-axis-throws-a-domain-error) |
 | React chart remounts | Unstable `options` identity or missing effect cleanup | [React chart recreates unexpectedly](#react-chart-recreates-unexpectedly) |
@@ -20,7 +21,7 @@ Check these first:
 1. **The host element has size.** BlazePlot fills its container; a `0px`-tall parent produces a `0px` plot.
 2. **The browser supports WebGL2.** BlazePlot does not include a Canvas2D or SVG fallback. Use `isWebGL2Available()` if you need to show a fallback UI.
 3. **The chart has a viewport.** Call `chart.fitToData()` after adding initial series, or set a viewport explicitly with `chart.setViewport(...)`.
-4. **Render scheduling is active.** Call `chart.start()` after setup. The default mode renders when chart-owned state changes and then idles; use `chart.start({ renderLoop: "continuous" })` only for custom animations or external data mutation.
+4. **Render scheduling is active.** Call `chart.start()` after setup. The default mode renders when chart-owned state changes and then idles; append through series APIs or call `series.markDirty()` after direct dataset mutation. Use `chart.start({ renderLoop: "continuous" })` only for custom animations.
 5. **The data is finite and sorted.** Built-in datasets expect ascending X values. Non-finite Y values create gaps.
 
 ```ts
@@ -48,6 +49,28 @@ const chart = new Chart(element, {
 ```
 
 If the user pans or zooms and `pauseOnInteraction` is enabled, call `chart.resumeXFollow()` when they click your "live" button.
+
+## Live data does not repaint until interaction
+
+The default render loop is on demand. It wakes automatically for chart-owned changes, including appends through the returned series object:
+
+```ts
+const dataset = new UniformRingBuffer(120_000, { xStart: Date.now(), xStep: 1000 });
+const series = chart.addLine({ dataset, name: "signal" });
+chart.start();
+
+// Good: marks data/LOD dirty and requests a render.
+series.appendY(new Float32Array([1, 2, 3]));
+```
+
+If you mutate a dataset directly, BlazePlot cannot observe that write. Call `series.markDirty()` afterward:
+
+```ts
+dataset.appendY(new Float32Array([1, 2, 3]));
+series.markDirty();
+```
+
+For OHLC streams, use `series.appendOhlc(...)` / `series.updateLastOhlc(...)` rather than calling `OhlcRingBuffer` methods directly.
 
 ## Performance drops over time
 
