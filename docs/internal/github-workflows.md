@@ -54,6 +54,8 @@ Before enabling the workflow, configure these repository secrets:
 
 The API token needs Cloudflare Pages edit access for the account that owns the Pages project. The first successful run attempts to create the `blazeplot` Pages project with `main` as the production branch if it does not already exist.
 
+When those secrets are absent, the workflow exits successfully after a notice and skips the build/deploy steps. That keeps feature branch PRs green before Cloudflare is configured.
+
 ## Release
 
 File: `.github/workflows/release.yml`
