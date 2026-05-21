@@ -2,6 +2,7 @@ import apiReference from "../../docs/api-reference.md?raw";
 import browserSupport from "../../docs/browser-support.md?raw";
 import builtInPlugins from "../../docs/built-in-plugins.md?raw";
 import dataSemantics from "../../docs/data-semantics.md?raw";
+import docsMap from "../../docs/README.md?raw";
 import documentationContributions from "../../docs/documentation-contributions.md?raw";
 import examples from "../../docs/examples.md?raw";
 import overview from "../../docs/overview.md?raw";
@@ -31,6 +32,12 @@ export const DOC_PAGES: readonly DocPage[] = [
     title: "Overview",
     description: "Install BlazePlot, create your first chart, and understand the main tradeoffs.",
     markdown: overview,
+  },
+  {
+    slug: "docs-map",
+    title: "Docs map",
+    description: "Reader paths, page ownership, and where each documentation topic belongs.",
+    markdown: docsMap,
   },
   {
     slug: "examples",
@@ -113,7 +120,7 @@ export const DOC_PAGES: readonly DocPage[] = [
 ] as const;
 
 export const DOC_NAV_SECTIONS: readonly DocNavSection[] = [
-  { title: "Start", slugs: ["overview", "examples"] },
+  { title: "Start", slugs: ["overview", "docs-map", "examples"] },
   { title: "Core", slugs: ["data-semantics", "performance-recipes"] },
   { title: "UI", slugs: ["built-in-plugins", "theming-and-layout", "plugin-authoring"] },
   { title: "Reference", slugs: ["troubleshooting", "browser-support", "api-reference"] },

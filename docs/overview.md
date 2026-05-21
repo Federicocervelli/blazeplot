@@ -38,6 +38,22 @@ Call `chart.dispose()` when the chart is removed from the page.
 
 If the chart appears blank, check that the host element has a non-zero height, WebGL2 is available, and the viewport has been initialized. See [Troubleshooting](./troubleshooting.md) for the full checklist.
 
+## Documentation map
+
+| Goal | Read |
+|---|---|
+| Copy a working pattern | [Examples](./examples.md) |
+| Understand sorted data, gaps, bounds, and export behavior | [Data semantics](./data-semantics.md) |
+| Choose datasets, downsampling, and live update patterns | [Performance recipes](./performance-recipes.md) |
+| Add tooltips, legends, selection, annotations, crosshair, or navigator | [Built-in plugins](./built-in-plugins.md) |
+| Build custom chart UI or behavior | [Plugin authoring](./plugin-authoring.md) |
+| Style axes, gutters, themes, and responsive layouts | [Theming and layout](./theming-and-layout.md) |
+| Debug blank charts, live viewport issues, React lifecycle, or screenshots | [Troubleshooting](./troubleshooting.md) |
+| Check browser/SSR/clipboard support | [Browser support](./browser-support.md) |
+| Review import paths and public symbols | [API reference](./api-reference.md) |
+
+For a maintainer-oriented page list, see [Documentation map](./README.md).
+
 ## What is included
 
 | Area | What to use |
@@ -47,7 +63,7 @@ If the chart appears blank, check that the host element has a non-zero height, W
 | Chart types | Line, area, scatter, bar, OHLC, and candlestick series. |
 | Interaction | Optional `interactionsPlugin` for wheel zoom, shift-drag/axis pan, box zoom, touch pan, and pinch zoom. |
 | Live viewport helpers | `followX` for rolling windows and `autoFitY` for visible-range Y fitting. |
-| Plugins | Legend, tooltip, crosshair, annotations, selection, and navigator plugins. See [Examples](./examples.md). |
+| Plugins | Legend, tooltip, crosshair, annotations, selection, and navigator plugins. See [Built-in plugins](./built-in-plugins.md). |
 | Layout and themes | Theme tokens, inside/outside axes, titles, and plugin layout reservations. See [Theming and layout](./theming-and-layout.md). |
 | React | `blazeplot/react` for the `BlazeChart` React component. |
 | Exports | Screenshot, clipboard, and CSV/JSON data helpers. |
@@ -59,7 +75,5 @@ If the chart appears blank, check that the host element has a non-zero height, W
 - Plugins are opt-in so the base chart stays small.
 - Dense line and bar views use level-of-detail extraction by default; use `downsample: "none"` only when the visible point count is bounded.
 - `fitToData()` is an explicit fit/reset operation. For live charts, use `followX` and `autoFitY` instead of fitting on every sample.
-
-For import paths and public symbols, see the [API reference](./api-reference.md).
 
 Maintainers should follow the [documentation contribution guide](./documentation-contributions.md) before adding or restructuring docs.

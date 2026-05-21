@@ -127,7 +127,7 @@ This page is generated from the built package. Use it as an index of import path
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
 
-Guides: [Overview](docs/overview.md), [Examples](docs/examples.md), [Data semantics](docs/data-semantics.md), [Performance recipes](docs/performance-recipes.md), [Built-in plugins](docs/built-in-plugins.md), [Plugin authoring](docs/plugin-authoring.md), [Theming and layout](docs/theming-and-layout.md), [Troubleshooting](docs/troubleshooting.md), [Roadmap](docs/roadmap.md).
+Guides: [Docs map](docs/README.md), [Overview](docs/overview.md), [Examples](docs/examples.md), [Data semantics](docs/data-semantics.md), [Performance recipes](docs/performance-recipes.md), [Built-in plugins](docs/built-in-plugins.md), [Plugin authoring](docs/plugin-authoring.md), [Theming and layout](docs/theming-and-layout.md), [Troubleshooting](docs/troubleshooting.md), [Browser support](docs/browser-support.md), [Migration](docs/versioning-and-migration.md), [Roadmap](docs/roadmap.md).
 
 ### Package entry points
 

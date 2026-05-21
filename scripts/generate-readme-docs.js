@@ -201,6 +201,7 @@ function renderPublicExports(exports) {
 function renderGuideLinks(basePath) {
   const prefix = basePath ? `${basePath.replace(/\/$/, "")}/` : "";
   return [
+    `[Docs map](${prefix}README.md)`,
     `[Overview](${prefix}overview.md)`,
     `[Examples](${prefix}examples.md)`,
     `[Data semantics](${prefix}data-semantics.md)`,
@@ -209,6 +210,8 @@ function renderGuideLinks(basePath) {
     `[Plugin authoring](${prefix}plugin-authoring.md)`,
     `[Theming and layout](${prefix}theming-and-layout.md)`,
     `[Troubleshooting](${prefix}troubleshooting.md)`,
+    `[Browser support](${prefix}browser-support.md)`,
+    `[Migration](${prefix}versioning-and-migration.md)`,
     `[Roadmap](${prefix}roadmap.md)`,
   ].join(", ");
 }

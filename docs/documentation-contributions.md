@@ -12,7 +12,7 @@ BlazePlot docs should help a developer decide what to build, copy a correct star
 
 For generated reference updates, run `bun run docs:readme`. That command builds the package, regenerates `docs/api-reference.md`, and updates the generated README section. Do not hand-edit `docs/api-reference.md` or the generated README section.
 
-Related maintainer runbook: [Local development](./internal/local-development.md).
+Related maintainer runbook: [Local development](./internal/local-development.md). Page map: [Documentation map](./README.md).
 
 ## What useful docs look like
 
@@ -46,6 +46,7 @@ Use this checklist in PR descriptions for docs changes.
 
 | Page | Purpose |
 |---|---|
+| `docs/README.md` | Documentation map, reader paths, and organization rules |
 | `docs/overview.md` | First chart, package fit, and main tradeoffs |
 | `docs/examples.md` | Copy-paste usage patterns for app developers |
 | `docs/data-semantics.md` | Dataset ordering, gaps, bounds, and export behavior |
