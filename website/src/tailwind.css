@@ -103,3 +103,9 @@
 .article tbody tr:hover td {
   @apply bg-[#0a0a0a] text-[#d4d4d4];
 }
+.article td strong {
+  @apply rounded border border-[#fc4a05]/35 bg-[#fc4a05]/10 px-1 py-0.5 font-semibold text-[#ff7a18];
+}
+.article tbody tr:hover td strong {
+  @apply text-[#ff9a3c];
+}
