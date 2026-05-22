@@ -394,7 +394,7 @@ function renderBenchmarkComparisonDocs() {
     "",
     `| Scenario | ${libraryHeader.join(" | ")} |`,
     `|---|${libraries.map(() => "---:").join("|")}|`,
-    ...report.scenarios.map((scenario) => `| ${[scenario.name, ...libraries.map((id) => formatReadyCell(scenario, id))].map(markdownEscape).join(" | ")} |`),
+    ...report.scenarios.map((scenario) => `| ${[scenario.name, ...libraries.map((id) => formatReadyCell(scenario, id, true))].map(markdownEscape).join(" | ")} |`),
     "",
     "## Runtime measurements",
     "",
@@ -408,14 +408,13 @@ function renderBenchmarkComparisonDocs() {
     for (const result of scenario.results) {
       const library = report.libraries?.[result.library] ?? { name: result.library };
       const measurement = result.measurement;
-      const work = workSummary(result);
       lines.push(`| ${[
         scenario.name,
         library.name,
-        measurement ? formatNumber(measurement.rafFps, 1) : result.ok ? "—" : "failed",
-        measurement ? formatNumber(measurement.rafFrameMs?.p95, 2) : "—",
-        work ? formatNumber(work.p50, 2) : "—",
-        work ? formatNumber(work.p95, 2) : "—",
+        formatMeasurementCell(scenario, result.library, "rafFps", true),
+        formatMeasurementCell(scenario, result.library, "rafP95", true),
+        formatMeasurementCell(scenario, result.library, "workP50", true),
+        formatMeasurementCell(scenario, result.library, "workP95", true),
         measurement?.pointsRendered ? integer(measurement.pointsRendered.p50) : "—",
         measurement?.drawCalls ? formatNumber(measurement.drawCalls.p50, 0) : "—",
         measurement ? integer(measurement.samplesAppended) : "—",
@@ -442,14 +441,14 @@ function renderComparisonPerformanceBlock(report, size) {
   const libraryHeader = libraries.map((id) => libraryVersionLabel(report, id));
   const readyRows = report.scenarios.map((scenario) => [
     scenario.name,
-    ...libraries.map((id) => formatReadyCell(scenario, id)),
+    ...libraries.map((id) => formatReadyCell(scenario, id, true)),
   ]);
   const measuredRows = report.scenarios
     .filter((scenario) => scenario.operation !== "static")
     .flatMap((scenario) => [
-      [`${scenario.name} RAF FPS`, ...libraries.map((id) => formatMeasurementCell(scenario, id, "rafFps"))],
-      [`${scenario.name} RAF p95 ms`, ...libraries.map((id) => formatMeasurementCell(scenario, id, "rafP95"))],
-      [`${scenario.name} work p95 ms`, ...libraries.map((id) => formatMeasurementCell(scenario, id, "workP95"))],
+      [`${scenario.name} RAF FPS`, ...libraries.map((id) => formatMeasurementCell(scenario, id, "rafFps", true))],
+      [`${scenario.name} RAF p95 ms`, ...libraries.map((id) => formatMeasurementCell(scenario, id, "rafP95", true))],
+      [`${scenario.name} work p95 ms`, ...libraries.map((id) => formatMeasurementCell(scenario, id, "workP95", true))],
     ]);
   const runtimeComparisons = runtimeComparisonTables(report);
   const machine = report.environment?.machine;
@@ -495,23 +494,58 @@ function renderComparisonPerformanceBlock(report, size) {
   ].join("\n");
 }
 
-function formatReadyCell(scenario, libraryId) {
+function formatReadyCell(scenario, libraryId, highlightBest = false) {
   const result = scenario.results.find((entry) => entry.library === libraryId);
   if (!result) return "—";
   if (!result.ok) return "failed";
-  return formatNumber(result.readyMs, 1);
+  const value = result.readyMs;
+  const best = highlightBest ? bestResultValue(scenario, (entry) => entry.readyMs, "min") : undefined;
+  return formatMaybeBestNumber(value, 1, best);
 }
 
-function formatMeasurementCell(scenario, libraryId, metric) {
+function formatMeasurementCell(scenario, libraryId, metric, highlightBest = false) {
   const result = scenario.results.find((entry) => entry.library === libraryId);
-  const measurement = result?.measurement;
   if (!result) return "—";
   if (!result.ok) return "failed";
-  if (!measurement) return "—";
-  if (metric === "rafFps") return formatNumber(measurement.rafFps, 1);
-  if (metric === "rafP95") return formatNumber(measurement.rafFrameMs?.p95, 2);
-  if (metric === "workP95") return formatNumber(workSummary(result)?.p95, 2);
-  return "—";
+  const value = measurementMetricValue(result, metric);
+  const best = highlightBest ? bestResultValue(scenario, (entry) => measurementMetricValue(entry, metric), measurementMetricDirection(metric)) : undefined;
+  return formatMaybeBestNumber(value, measurementMetricDigits(metric), best);
+}
+
+function measurementMetricValue(result, metric) {
+  const measurement = result.measurement;
+  if (!measurement) return undefined;
+  if (metric === "rafFps") return measurement.rafFps;
+  if (metric === "rafP95") return measurement.rafFrameMs?.p95;
+  if (metric === "workP50") return workSummary(result)?.p50;
+  if (metric === "workP95") return workSummary(result)?.p95;
+  return undefined;
+}
+
+function measurementMetricDirection(metric) {
+  return metric === "rafFps" ? "max" : "min";
+}
+
+function measurementMetricDigits(metric) {
+  return metric === "rafFps" ? 1 : 2;
+}
+
+function bestResultValue(scenario, valueForResult, direction) {
+  const values = scenario.results
+    .filter((result) => result.ok)
+    .map(valueForResult)
+    .filter((value) => typeof value === "number" && Number.isFinite(value));
+  if (values.length === 0) return undefined;
+  return direction === "max" ? Math.max(...values) : Math.min(...values);
+}
+
+function formatMaybeBestNumber(value, digits, best) {
+  const formatted = formatNumber(value, digits);
+  return isBestValue(value, best, digits) ? `**${formatted}**` : formatted;
+}
+
+function isBestValue(value, best, digits) {
+  return typeof value === "number" && typeof best === "number" && Number.isFinite(value) && Number.isFinite(best) && value.toFixed(digits) === best.toFixed(digits);
 }
 
 function runtimeComparisonTables(report) {

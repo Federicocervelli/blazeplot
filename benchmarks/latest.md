@@ -1,6 +1,6 @@
 # Latest BlazePlot comparison benchmark
 
-Generated: 2026-05-22T13:43:33.116Z
+Generated: 2026-05-22T14:56:48.781Z
 Command: `bun run bench:compare --width 1600 --height 900`
 Publishable: yes
 
@@ -12,18 +12,18 @@ Publishable: yes
 - Executable: brave
 - GPU/WebGL: ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 3050 Laptop GPU/PCIe/SSE2, OpenGL 4.5.0)
 - Canvas: 1600×900 CSS px; DPR 1
-- Library prewarm: 260.4 ms before measured runs
+- Library prewarm: 177.6 ms before measured runs
 - Setup warmup runs: 1 discarded run(s) before each measured library/scenario
 
 ## Scenario data preparation
 
 | Scenario | Samples | Visible samples | Data prep ms |
 |---|---:|---:|---:|
-| line-100k-static | 100,000 | 100,000 | 10.0 |
-| line-1m-static | 1,000,000 | 1,000,000 | 135.2 |
-| line-1m-pan | 1,000,000 | 100,000 | 98.4 |
-| line-1m-stream | 1,000,000 | 100,000 | 75.2 |
-| line-10m-pan | 10,000,000 | 5,000,000 | 1365.2 |
+| line-100k-static | 100,000 | 100,000 | 11.2 |
+| line-1m-static | 1,000,000 | 1,000,000 | 165.9 |
+| line-1m-pan | 1,000,000 | 100,000 | 115.9 |
+| line-1m-stream | 1,000,000 | 100,000 | 101.0 |
+| line-10m-pan | 10,000,000 | 5,000,000 | 1776.7 |
 
 ## Initial chart ready time
 
@@ -31,21 +31,21 @@ Ready time includes library chart construction plus the first browser frame afte
 
 | Scenario | Library | Version | Ready ms | Heap after ready | First frame details |
 |---|---|---:|---:|---:|---|
-| line-100k-static | BlazePlot | 0.3.11 | 11.4 | 13.1 MiB | minmax, 4.60 ms render, 9,234 pts, 1 draws |
-| line-100k-static | uPlot | 1.6.32 | 8.4 | 12.9 MiB | — |
-| line-100k-static | Chart.js | 4.5.1 | 13.1 | 12.3 MiB | — |
-| line-1m-static | BlazePlot | 0.3.11 | 15.5 | 64.1 MiB | minmax, 8.30 ms render, 9,288 pts, 1 draws |
-| line-1m-static | uPlot | 1.6.32 | 20.5 | 76.6 MiB | — |
-| line-1m-static | Chart.js | 4.5.1 | 25.1 | 62.4 MiB | — |
-| line-1m-pan | BlazePlot | 0.3.11 | 12.9 | 74.6 MiB | minmax, 6.40 ms render, 9,234 pts, 1 draws |
-| line-1m-pan | uPlot | 1.6.32 | 8.3 | 63.3 MiB | — |
-| line-1m-pan | Chart.js | 4.5.1 | 12.3 | 62.6 MiB | — |
-| line-1m-stream | BlazePlot | 0.3.11 | 33.4 | 63.9 MiB | minmax, 10.70 ms render, 9,234 pts, 1 draws |
-| line-1m-stream | uPlot | 1.6.32 | 11.5 | 82.9 MiB | — |
-| line-1m-stream | Chart.js | 4.5.1 | 15.0 | 63.1 MiB | — |
-| line-10m-pan | BlazePlot | 0.3.11 | 33.0 | 590.4 MiB | minmax, 21.60 ms render, 9,288 pts, 1 draws |
-| line-10m-pan | uPlot | 1.6.32 | 60.5 | 607.4 MiB | — |
-| line-10m-pan | Chart.js | 4.5.1 | 68.9 | 581.4 MiB | — |
+| line-100k-static | BlazePlot | 0.3.11 | 20.7 | 13.1 MiB | minmax, 4.50 ms render, 9,234 pts, 1 draws |
+| line-100k-static | uPlot | 1.6.32 | **9.1** | 12.3 MiB | — |
+| line-100k-static | Chart.js | 4.5.1 | 14.1 | 12.3 MiB | — |
+| line-1m-static | BlazePlot | 0.3.11 | **21.6** | 64.1 MiB | minmax, 10.60 ms render, 9,288 pts, 1 draws |
+| line-1m-static | uPlot | 1.6.32 | 28.8 | 76.2 MiB | — |
+| line-1m-static | Chart.js | 4.5.1 | 30.9 | 62.4 MiB | — |
+| line-1m-pan | BlazePlot | 0.3.11 | 13.4 | 74.6 MiB | minmax, 6.90 ms render, 9,234 pts, 1 draws |
+| line-1m-pan | uPlot | 1.6.32 | **12.1** | 63.3 MiB | — |
+| line-1m-pan | Chart.js | 4.5.1 | 16.5 | 62.6 MiB | — |
+| line-1m-stream | BlazePlot | 0.3.11 | 42.1 | 75.4 MiB | minmax, 19.00 ms render, 9,234 pts, 1 draws |
+| line-1m-stream | uPlot | 1.6.32 | 21.0 | 69.5 MiB | — |
+| line-1m-stream | Chart.js | 4.5.1 | **20.2** | 63.1 MiB | — |
+| line-10m-pan | BlazePlot | 0.3.11 | **52.6** | 585.5 MiB | minmax, 33.60 ms render, 9,288 pts, 1 draws |
+| line-10m-pan | uPlot | 1.6.32 | 81.8 | 607.4 MiB | — |
+| line-10m-pan | Chart.js | 4.5.1 | 115.2 | 579.3 MiB | — |
 
 ## Automated pan and streaming measurements
 
@@ -53,15 +53,15 @@ These rows are collected without user interaction after the command starts. RAF 
 
 | Scenario | Library | RAF FPS | RAF p95 ms | Work p50 ms | Work p95 ms | Points p50 | Draws p50 | Appended | Heap after measure |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| line-1m-pan | BlazePlot | 120.2 | 8.40 | 0.90 | 1.20 | 9,234 | 1 | 0 | 67.4 MiB |
-| line-1m-pan | uPlot | 114.5 | 8.40 | 1.80 | 2.50 | — | — | 0 | 75.3 MiB |
-| line-1m-pan | Chart.js | 120.2 | 8.40 | 3.00 | 3.60 | — | — | 0 | 86.5 MiB |
-| line-1m-stream | BlazePlot | 120.2 | 8.40 | 0.90 | 1.20 | 9,234 | 1 | 183,932 | 77.0 MiB |
-| line-1m-stream | uPlot | 120.2 | 8.40 | 1.80 | 2.30 | — | — | 184,086 | 85.4 MiB |
-| line-1m-stream | Chart.js | 119.8 | 8.40 | 2.90 | 3.50 | — | — | 184,197 | 96.6 MiB |
-| line-10m-pan | BlazePlot | 92.9 | 16.70 | 10.10 | 10.90 | 9,288 | 1 | 0 | 579.8 MiB |
-| line-10m-pan | uPlot | 22.1 | 50.00 | 44.60 | 46.90 | — | — | 0 | 586.6 MiB |
-| line-10m-pan | Chart.js | 21.3 | 50.00 | 45.80 | 48.10 | — | — | 0 | 598.6 MiB |
+| line-1m-pan | BlazePlot | 119.5 | **8.40** | **0.90** | **2.50** | 9,234 | 1 | 0 | 67.7 MiB |
+| line-1m-pan | uPlot | **119.8** | **8.40** | 1.90 | 5.10 | — | — | 0 | 79.8 MiB |
+| line-1m-pan | Chart.js | 116.2 | **8.40** | 3.50 | 8.30 | — | — | 0 | 77.0 MiB |
+| line-1m-stream | BlazePlot | **119.8** | **8.40** | **0.90** | **2.50** | 9,234 | 1 | 183,877 | 76.6 MiB |
+| line-1m-stream | uPlot | **119.8** | **8.40** | 2.00 | 6.10 | — | — | 183,988 | 82.3 MiB |
+| line-1m-stream | Chart.js | 118.8 | **8.40** | 3.60 | 8.10 | — | — | 183,724 | 88.2 MiB |
+| line-10m-pan | BlazePlot | **66.4** | **25.00** | **13.00** | **20.60** | 9,288 | 1 | 0 | 602.7 MiB |
+| line-10m-pan | uPlot | 17.6 | 83.30 | 48.40 | 79.30 | — | — | 0 | 592.9 MiB |
+| line-10m-pan | Chart.js | 15.3 | 74.90 | 61.40 | 77.00 | — | — | 0 | 583.5 MiB |
 
 ## BlazePlot vs uPlot runtime delta
 
@@ -69,9 +69,9 @@ Higher ratios favor BlazePlot. FPS ratio is BlazePlot RAF FPS divided by uPlot R
 
 | Scenario | FPS ratio | Work p95 ratio | BlazePlot FPS | uPlot FPS | BlazePlot work p95 | uPlot work p95 |
 |---|---:|---:|---:|---:|---:|---:|
-| line-1m-pan | 1.05× | 2.08× | 120.2 | 114.5 | 1.20 | 2.50 |
-| line-1m-stream | 1.00× | 1.92× | 120.2 | 120.2 | 1.20 | 2.30 |
-| line-10m-pan | 4.21× | 4.30× | 92.9 | 22.1 | 10.90 | 46.90 |
+| line-1m-pan | 1.00× | 2.04× | 119.5 | 119.8 | 2.50 | 5.10 |
+| line-1m-stream | 1.00× | 2.44× | 119.8 | 119.8 | 2.50 | 6.10 |
+| line-10m-pan | 3.78× | 3.85× | 66.4 | 17.6 | 20.60 | 79.30 |
 
 ## Failures
 
