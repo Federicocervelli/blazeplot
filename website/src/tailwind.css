@@ -109,3 +109,13 @@
 .article tbody tr:hover td strong {
   @apply text-[#ff9a3c];
 }
+
+.article .doc-chart-card {
+  @apply my-5 overflow-hidden rounded border border-[#222] bg-black;
+}
+.article .doc-chart-card figcaption {
+  @apply border-b border-[#222] bg-[#080808] px-3 py-2 text-[12px] text-[#888];
+}
+.article .doc-chart {
+  @apply h-[260px] w-full min-w-0 bg-black sm:h-[300px];
+}

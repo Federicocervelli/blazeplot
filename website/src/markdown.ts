@@ -114,6 +114,15 @@ export function renderMarkdown(markdown: string, options: RenderMarkdownOptions 
       continue;
     }
 
+    const chartDirective = /^:::\s*chart\s+([a-z0-9-]+)(?:\s+(.*))?$/iu.exec(trimmed);
+    if (chartDirective) {
+      closeFlow();
+      const id = chartDirective[1] ?? "";
+      const label = chartDirective[2]?.trim() || id.replace(/-/g, " ");
+      html.push(`<figure class="doc-chart-card"><figcaption>${parseInline(label, options)}</figcaption><div class="doc-chart" data-doc-chart="${escapeAttribute(id)}" role="img" aria-label="${escapeAttribute(label)}"></div></figure>`);
+      continue;
+    }
+
     const detailsTag = /^<\/?details>$/iu.exec(trimmed);
     if (detailsTag) {
       closeFlow();

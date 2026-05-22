@@ -1,6 +1,6 @@
 # Examples
 
-These are small patterns you can copy into an app. For complete runnable cases, open the [interactive previews](https://blazeplot.cervelli.dev/previews). If you are new to BlazePlot, start with the [Overview](./overview.md) first.
+These are small patterns you can copy into an app. The public docs instantiate the same kind of chart next to the snippets so you can see the result before copying the code. For larger runnable cases, open the [interactive previews](https://blazeplot.cervelli.dev/previews). If you are new to BlazePlot, start with the [Overview](./overview.md) first.
 
 ## Choose a starting point
 
@@ -50,6 +50,8 @@ const chart = createChart(element, {
 });
 ```
 
+:::chart basic-line Basic line chart
+
 Dispose charts when the owning page, component, or panel is removed:
 
 ```ts
@@ -71,6 +73,8 @@ const chart = createChart(element, {
   series: [{ type: "line", data: rows, x: "time", y: "requests", sort: true }],
 });
 ```
+
+:::chart object-rows Object rows with timestamp X values
 
 Use the lower-level API when you want explicit lifecycle control:
 
@@ -107,6 +111,8 @@ const cleanup = () => {
 };
 ```
 
+:::chart live-line Rolling live line chart
+
 Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. For timestamped streams, `chart.followLatestX({ currentX: () => Date.now(), ... })` scrolls smoothly between batched updates. You can also enable or change follow behavior at runtime with `chart.followLatestX(...)`, stop it with `chart.stopFollowingLatestX()`, and call `chart.resumeLatestXFollow()` from a "live" button if the user pans away and wants to jump back. Double-click/tap reset in the interactions plugin resumes follow by default. See [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
 
 If samples arrive at a fixed interval, use the `{ capacity, xStep }` shorthand so BlazePlot creates an implicit-X buffer:
@@ -127,6 +133,8 @@ const cleanup = () => {
   chart.dispose();
 };
 ```
+
+:::chart fixed-rate Fixed-rate implicit-X stream
 
 `chart.start()` activates render scheduling. Static charts render when chart-owned state changes, while appends through the returned series (`series.append({ x, y })`, `series.append({ y })`, `series.append({ x, open, high, low, close })`) request another frame automatically. You can also append convenient object rows like `series.append([{ x: 1, y: 4 }, { x: 2, y: 5 }])` or `series.append([{ y: 4 }, { y: 5 }])`; use typed-array batches for high-throughput streams. To refine existing samples, use `series.updateLast({ y })`, `series.updateLast({ x, y })`, or `series.updateAt(index, { y })`. If you mutate a dataset directly, call `series.markDirty()` afterward so LOD state and on-demand rendering wake up. Use `chart.start({ renderLoop: "continuous" })` only for custom animations that redraw even without chart-owned state changes. Stop scheduling with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
 
@@ -150,6 +158,8 @@ const series = chart.addLine({ dataset, name: "server buckets", downsample: "ser
 chart.fitToData();
 chart.start();
 ```
+
+:::chart server-sampled Server-sampled min/max buckets
 
 Bucket ranges should be sorted and non-overlapping for predictable picking, bounds, and visible-data export. Use `series.replace(...)` when a new viewport response arrives so on-demand rendering and LOD state update.
 
@@ -175,6 +185,8 @@ chart.fitToData();
 chart.start();
 ```
 
+:::chart financial OHLC and candlestick series
+
 OHLC bounds use high/low values, while generic `getY()` returns close. For live OHLC streams, append through the returned series with `series.append({ x, open, high, low, close })`, append row batches like `series.append([{ x, open, high, low, close }])`, update a candle with `series.updateAt(index, { open, high, low, close })`, or update the active candle with `series.updateLast({ open, high, low, close })`; direct `dataset.push(...)` / `dataset.updateLast(...)` calls need a follow-up `series.markDirty()`. See [Data semantics](./data-semantics.md#ohlc-datasets).
 
 ## Linked charts
@@ -199,6 +211,8 @@ linked.setXRange(xMin, xMax);
 linked.dispose();
 ```
 
+:::chart linked Linked charts with a shared X range
+
 Use `blazeplot/linked-core` if you want the linked chart layout without importing tooltip or crosshair sync helpers.
 
 ## Built-in plugins
@@ -220,6 +234,8 @@ const chart = new Chart(element, {
 });
 ```
 
+:::chart plugins Interactions, legend, and tooltip plugins
+
 Available plugin subpaths are listed in the [API reference](./api-reference.md#package-entry-points). To write your own plugin, see [Plugin authoring](./plugin-authoring.md).
 
 ## Annotations
@@ -239,6 +255,8 @@ const chart = new Chart(element, {
   ],
 });
 ```
+
+:::chart annotations Annotation plugin with an event marker
 
 ## Export image and data
 
