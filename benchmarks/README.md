@@ -1,6 +1,6 @@
 # Benchmarks
 
-`bun run bench:compare` runs the public comparison benchmark for BlazePlot, uPlot, and Chart.js in a real headed browser. After launch, the run is fully automatic: the script starts Vite, opens Chrome/Chromium/Brave with remote debugging, prewarms each selected library with a dense chart after module load, runs one discarded setup warmup per library/scenario, drives every measured scenario, closes the browser, and overwrites the latest result files. The default scenario set includes setup, pan, streaming, and a dense 10M-point pan stress case to expose FPS/work-time gaps at high data volumes.
+`bun run bench:compare` runs the public comparison benchmark for BlazePlot, uPlot, and Chart.js in a real headed browser. After launch, the run is fully automatic: the script starts Vite, opens Chrome/Chromium/Brave with remote debugging, prewarms each selected library with a dense chart after module load, runs one discarded setup warmup per library/scenario, drives every measured scenario, closes the browser, and overwrites the latest result files. The default scenario set includes setup, pan, streaming, and a dense 10M-point pan stress case to expose FPS/work-time gaps at high data volumes. The 10M case uses BlazePlot's best-practice accelerated dataset path rather than forcing BlazePlot through raw-array scans.
 
 ```bash
 bun run bench:compare

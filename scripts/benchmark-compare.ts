@@ -143,7 +143,7 @@ interface LibraryInfo {
   version: string;
 }
 
-const OFFICIAL_SCENARIOS = ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-pan"] as const;
+const OFFICIAL_SCENARIOS = ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-accelerated-pan"] as const;
 const OFFICIAL_LIBRARIES = ["blazeplot", "uplot", "chartjs"] as const;
 const RUNTIME_COMPARISONS = [
   { primaryLibrary: "blazeplot", referenceLibrary: "uplot" },
@@ -330,7 +330,7 @@ function parseArgs(args: readonly string[]): Options {
 }
 
 function printHelpAndExit(): never {
-  console.log(`Usage: bun run bench:compare [options]\n\nRuns the public comparison suite in a headed browser by default and overwrites benchmarks/latest.json + benchmarks/latest.md. No user interaction is required after launch.\n\nOptions:\n  --scenario <name[,name]>   Scenario(s) to run (default: line-100k-static,line-1m-static,line-1m-pan,line-1m-stream,line-10m-pan)\n  --library <name[,name]>    Libraries to run (default: blazeplot,uplot,chartjs)\n  --measure-ms <ms>          Override non-static scenario measurement duration\n  --warmup-ms <ms>           Override scenario warmup duration\n  --width <px>               Chart width in CSS pixels (default: 1280)\n  --height <px>              Chart height in CSS pixels (default: 720)\n  --port <port>              Vite server port (default: 41732)\n  --debug-port <port>        Chrome DevTools port (default: 9224)\n  --setup-timeout-ms <ms>    Page readiness timeout (default: 600000)\n  --initial-delay-ms <ms>    Settle delay after page ready before running (default: 1000)\n  --setup-warmup-runs <n>    Discarded setup runs before each measured library/scenario (default: 1)\n  --out-dir <path>           Output directory (default: benchmarks)\n  --url <url>                Use an already-running Vite server instead of starting one\n  --chrome <path>            Chrome/Chromium/Brave executable path\n  --headless                 Debug-only: run headless and mark the result non-publishable\n  --keep-browser             Leave browser profile/process around for debugging\n`);
+  console.log(`Usage: bun run bench:compare [options]\n\nRuns the public comparison suite in a headed browser by default and overwrites benchmarks/latest.json + benchmarks/latest.md. No user interaction is required after launch.\n\nOptions:\n  --scenario <name[,name]>   Scenario(s) to run (default: line-100k-static,line-1m-static,line-1m-pan,line-1m-stream,line-10m-accelerated-pan)\n  --library <name[,name]>    Libraries to run (default: blazeplot,uplot,chartjs)\n  --measure-ms <ms>          Override non-static scenario measurement duration\n  --warmup-ms <ms>           Override scenario warmup duration\n  --width <px>               Chart width in CSS pixels (default: 1280)\n  --height <px>              Chart height in CSS pixels (default: 720)\n  --port <port>              Vite server port (default: 41732)\n  --debug-port <port>        Chrome DevTools port (default: 9224)\n  --setup-timeout-ms <ms>    Page readiness timeout (default: 600000)\n  --initial-delay-ms <ms>    Settle delay after page ready before running (default: 1000)\n  --setup-warmup-runs <n>    Discarded setup runs before each measured library/scenario (default: 1)\n  --out-dir <path>           Output directory (default: benchmarks)\n  --url <url>                Use an already-running Vite server instead of starting one\n  --chrome <path>            Chrome/Chromium/Brave executable path\n  --headless                 Debug-only: run headless and mark the result non-publishable\n  --keep-browser             Leave browser profile/process around for debugging\n`);
   process.exit(0);
 }
 
@@ -468,12 +468,12 @@ function renderMarkdown(report: CompareReport): string {
     "",
     "## Scenario data preparation",
     "",
-    "| Scenario | Samples | Visible samples | Data prep ms |",
-    "|---|---:|---:|---:|",
+    "| Scenario | Description | Samples | Visible samples | Data prep ms |",
+    "|---|---|---:|---:|---:|",
   );
 
   for (const scenario of report.scenarios) {
-    lines.push(`| ${escapeMd(scenario.name)} | ${integer(scenario.sampleCount)} | ${integer(scenario.viewportSamples)} | ${fixed(scenario.dataPrepMs, 1)} |`);
+    lines.push(`| ${escapeMd(scenario.name)} | ${escapeMd(scenario.title)} | ${integer(scenario.sampleCount)} | ${integer(scenario.viewportSamples)} | ${fixed(scenario.dataPrepMs, 1)} |`);
   }
 
   lines.push(
