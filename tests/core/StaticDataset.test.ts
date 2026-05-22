@@ -119,6 +119,21 @@ describe("StaticDataset", () => {
     expect(() => ds.getY(0.5)).toThrow(RangeError);
   });
 
+  it("provides min/max ranges and render segments without upfront LOD builds", () => {
+    const ds = new StaticDataset(
+      new Float64Array([0, 1, 2, 3, 4, 5]),
+      new Float32Array([3, 7, NaN, 9, 5, 2]),
+    );
+
+    expect(ds.rangeMinMaxY(0, 6)).toEqual({ minY: 2, maxY: 9 });
+    expect(ds.rangeMinMaxY(2, 3)).toBeNull();
+
+    const target = new Float32Array(12);
+    const count = ds.copyMinMaxSegments({ xMin: 0, xMax: 5, yMin: 0, yMax: 10 }, target, 4, "instanced", 0);
+    expect(count).toBeGreaterThan(0);
+    expect(Array.from(target.slice(0, count * 3)).some(Number.isNaN)).toBe(false);
+  });
+
   it("works with SeriesStore as a non-appendable dataset", () => {
     const ds = new StaticDataset(
       new Float64Array([0, 1, 2, 3, 4, 5]),

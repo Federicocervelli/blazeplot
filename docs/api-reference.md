@@ -18,7 +18,7 @@ This page is generated from the built package. Use it as an index of import path
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
 
-Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./examples.md), [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance](./performance-recipes.md), [Plugins](./built-in-plugins.md), [Theme & layout](./theming-and-layout.md), [Author plugins](./plugin-authoring.md), [Troubleshooting](./troubleshooting.md), [Browser](./browser-support.md), [Migration](./versioning-and-migration.md), [Roadmap](./roadmap.md).
+Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./examples.md), [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance](./performance-recipes.md), [Benchmarks](./benchmarks.md), [Plugins](./built-in-plugins.md), [Theme & layout](./theming-and-layout.md), [Author plugins](./plugin-authoring.md), [Troubleshooting](./troubleshooting.md), [Browser](./browser-support.md), [Migration](./versioning-and-migration.md), [Roadmap](./roadmap.md).
 
 ### Package entry points
 
@@ -67,12 +67,12 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-C7axsZD0.js` | 55.2 KiB |
+| shared Chart chunk | `dist/Chart-Bl4erFBO.js` | 55.2 KiB |
 | shared streaming data chunk | `dist/UniformRingBuffer-zewj9EWq.js` | 44.2 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-5knDb_Pp.js` | 9.9 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-u2Eao8OX.js` | 11.2 KiB |
 | shared AxisController chunk | `dist/AxisController-CCk21uVK.js` | 13.8 KiB |
-| shared WebGL2Backend chunk | `dist/WebGL2Backend-Bs4aiO8a.js` | 21.3 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DqKWyI9F.js` | 2.1 KiB |
+| shared WebGL2Backend chunk | `dist/WebGL2Backend-DivtLMNz.js` | 22.0 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-BxD1tCts.js` | 2.1 KiB |
 | lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
 | shared Tooltip chunk | `dist/Tooltip-D0WRT6Fj.js` | 5.7 KiB |

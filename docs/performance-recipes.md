@@ -57,4 +57,4 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 
 GPU upload size, draw calls, and DOM overlays all matter. Large legends, many annotation labels, or very frequent layout changes can hurt performance even when the WebGL plot is fast.
 
-Use the browser tests and benchmark commands in [Release and benchmark notes](./release-and-benchmarks.md#benchmark-and-bundle-size-commands) when checking a performance-sensitive change.
+Use the browser tests and benchmark commands in [Release and benchmark notes](./release-and-benchmarks.md#benchmark-and-bundle-size-commands) when checking a performance-sensitive change. Public comparison tables live in the generated [Benchmarks](./benchmarks.md) page.

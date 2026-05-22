@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BlazePlot comparison benchmark</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #0b1020;
+        color: #d8e1ff;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      }
+
+      body {
+        padding: 16px;
+      }
+
+      #status {
+        white-space: pre-wrap;
+        margin: 0 0 12px;
+        line-height: 1.45;
+      }
+
+      #mount {
+        display: inline-block;
+        background: #121a32;
+        border: 1px solid rgba(216, 225, 255, 0.18);
+        box-shadow: 0 12px 36px rgba(0, 0, 0, 0.28);
+      }
+
+      .bench-case {
+        position: relative;
+        overflow: hidden;
+        background: #ffffff;
+      }
+    </style>
+  </head>
+  <body>
+    <pre id="status">comparison benchmark: loading</pre>
+    <div id="mount"></div>
+    <script type="module" src="/compare/main.ts"></script>
+  </body>
+</html>

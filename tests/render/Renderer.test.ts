@@ -63,18 +63,17 @@ function makeRenderer(instancing: boolean = true): { renderer: Renderer; backend
 }
 
 describe("Renderer", () => {
-  it("initializes shader programs and static geometry buffers through the backend contract", () => {
-    const { backend } = makeRenderer();
+  it("lazily initializes shader programs and static geometry buffers through the backend contract", () => {
+    const { renderer, backend, positions } = makeRenderer();
 
-    expect(backend.programs).toHaveLength(6);
-    expect(backend.createdBuffers.slice(0, 3)).toEqual([
-      { usage: "static", type: "float", length: 8 },
-      { usage: "static", type: "float", length: 8 },
-      { usage: "static", type: "float", length: 8 },
-    ]);
-    expect(Array.from(backend.updates[0]!.data)).toEqual([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]);
-    expect(Array.from(backend.updates[1]!.data)).toEqual([-1, -1, 1, -1, -1, 1, 1, 1]);
-    expect(Array.from(backend.updates[2]!.data)).toEqual([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]);
+    expect(backend.programs).toHaveLength(0);
+    expect(backend.createdBuffers).toEqual([{ usage: "stream", type: "float", length: 16 }]);
+
+    renderer.drawMinMaxSegmentsInstanced(positions, 12, { color: [1, 1, 1, 1], lineWidth: 1 }, { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 }, 800, 400);
+
+    expect(backend.programs).toHaveLength(1);
+    expect(backend.createdBuffers.at(-1)).toEqual({ usage: "static", type: "float", length: 8 });
+    expect(Array.from(backend.updates.at(-1)!.data)).toEqual([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]);
   });
 
   it("delegates clear, viewport, buffer updates, and dispose", () => {

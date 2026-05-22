@@ -5,6 +5,7 @@ import examples from "../../docs/examples.md?raw";
 import liveData from "../../docs/live-data.md?raw";
 import dataSemantics from "../../docs/data-semantics.md?raw";
 import performanceRecipes from "../../docs/performance-recipes.md?raw";
+import benchmarks from "../../docs/benchmarks.md?raw";
 import builtInPlugins from "../../docs/built-in-plugins.md?raw";
 import themingAndLayout from "../../docs/theming-and-layout.md?raw";
 import pluginAuthoring from "../../docs/plugin-authoring.md?raw";
@@ -71,6 +72,13 @@ export const DOC_PAGES: readonly DocPage[] = [
     description: "Practical guidance for streaming, LOD, dense data, and browser budgets.",
     sourcePath: "docs/performance-recipes.md",
     markdown: performanceRecipes,
+  },
+  {
+    slug: "benchmarks",
+    title: "Benchmarks",
+    description: "Generated headed-browser comparisons against uPlot and Chart.js.",
+    sourcePath: "docs/benchmarks.md",
+    markdown: benchmarks,
   },
   {
     slug: "built-in-plugins",
@@ -146,7 +154,7 @@ export const DOC_PAGES: readonly DocPage[] = [
 
 export const DOC_NAV_SECTIONS: readonly DocNavSection[] = [
   { title: "Start", slugs: ["overview","docs-map","examples"] },
-  { title: "Data and performance", slugs: ["live-data","data-semantics","performance-recipes"] },
+  { title: "Data and performance", slugs: ["live-data","data-semantics","performance-recipes","benchmarks"] },
   { title: "UI", slugs: ["built-in-plugins","theming-and-layout","plugin-authoring"] },
   { title: "Reference", slugs: ["troubleshooting","browser-support","versioning-and-migration","api-reference"] },
 ] as const;
