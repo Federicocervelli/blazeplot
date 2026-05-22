@@ -2,10 +2,14 @@ import type { SeriesYAxis } from "../core/types.js";
 import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
 import { createLongPressTouchTracker, createPickMarker, formatCompactNumber, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
 
+/** Axis drawn by the crosshair overlay. */
 export type CrosshairAxis = "x" | "y" | "xy";
+/** Optional snapping strategy for crosshair positions. */
 export type CrosshairSnapMode = "none" | "nearest-x" | "nearest-point";
+/** Crosshair display behavior. */
 export type CrosshairMode = "crosshair" | "ruler";
 
+/** Crosshair position in client and data coordinates. */
 export interface CrosshairPosition {
   readonly dataX: number;
   readonly dataY: number;
@@ -14,6 +18,7 @@ export interface CrosshairPosition {
   readonly items: readonly ChartPickItem[];
 }
 
+/** Measurement emitted while ruler mode is active. */
 export interface RulerMeasurement {
   readonly start: CrosshairPosition;
   readonly end: CrosshairPosition;
@@ -23,8 +28,10 @@ export interface RulerMeasurement {
   readonly sampleCount: number;
 }
 
+/** Events emitted by the crosshair plugin. */
 export type CrosshairEventType = "move" | "measurestart" | "measurechange" | "measureend";
 
+/** Options for crosshair and ruler overlays. */
 export interface CrosshairPluginOptions {
   readonly mode?: CrosshairMode;
   readonly axis?: CrosshairAxis;
@@ -63,6 +70,7 @@ interface Peer {
 
 const groups = new Map<string, Set<Peer>>();
 
+/** Crosshair plugin with imperative show, hide, and measurement hooks. */
 export interface CrosshairPlugin extends ChartPlugin {
   getPosition(): CrosshairPosition | null;
   getMeasurement(): RulerMeasurement | null;
@@ -146,6 +154,7 @@ function renderDefaultLabel(
   );
 }
 
+/** Create a plugin that renders synchronized crosshair or ruler overlays. */
 export function crosshairPlugin(options: CrosshairPluginOptions = {}): CrosshairPlugin {
   const axis = options.axis ?? "xy";
   const yAxis = options.yAxis ?? "left";

@@ -2,10 +2,14 @@ import type { SeriesSample, SeriesYAxis, Viewport } from "../core/types.js";
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartPlugin, ChartPluginContext, ChartSeriesState } from "./Chart.js";
 
+/** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
+/** Lifecycle event emitted by a selection plugin. */
 export type SelectionEventType = "start" | "update" | "commit" | "clear";
+/** Selection phase used for collecting selected samples. */
 export type SelectionSamplePhase = "commit" | "update" | "none";
 
+/** Selected data-domain bounds. */
 export interface SelectionBounds {
   readonly xMin: number;
   readonly xMax: number;
@@ -13,6 +17,7 @@ export interface SelectionBounds {
   readonly yMax: number;
 }
 
+/** Selected plot-coordinate bounds in CSS pixels. */
 export interface SelectionPlotBounds {
   readonly left: number;
   readonly top: number;
@@ -20,6 +25,7 @@ export interface SelectionPlotBounds {
   readonly height: number;
 }
 
+/** Samples from one series captured by a selection. */
 export interface SelectionSeriesSamples {
   readonly series: SeriesStore;
   readonly seriesIndex: number;
@@ -31,6 +37,7 @@ export interface SelectionSeriesSamples {
   readonly truncated: boolean;
 }
 
+/** Current or committed selection state. */
 export interface SelectionState {
   readonly mode: SelectionMode;
   readonly yAxis: SeriesYAxis;
@@ -39,12 +46,14 @@ export interface SelectionState {
   readonly samples: readonly SelectionSeriesSamples[];
 }
 
+/** Event payload emitted during selection changes. */
 export interface SelectionEvent {
   readonly type: SelectionEventType;
   readonly selection: SelectionState | null;
   readonly sourceEvent?: PointerEvent | KeyboardEvent;
 }
 
+/** Options for drag-to-select chart interaction. */
 export interface SelectionPluginOptions {
   readonly mode?: SelectionMode;
   readonly yAxis?: SeriesYAxis;
@@ -64,6 +73,7 @@ export interface SelectionPluginOptions {
   readonly onSeriesSelectionChange?: (series: ChartSeriesState, selected: boolean, samples: SelectionSeriesSamples | null, selection: SelectionState | null) => void;
 }
 
+/** Selection plugin with imperative state access. */
 export interface SelectionPlugin extends ChartPlugin {
   clear(): void;
   getSelection(): SelectionState | null;
@@ -161,6 +171,7 @@ function collectSeriesSamples(
   return results;
 }
 
+/** Create a plugin that lets users select chart ranges by dragging. */
 export function selectionPlugin(options: SelectionPluginOptions = {}): SelectionPlugin {
   const mode = options.mode ?? "xy";
   const yAxis = options.yAxis ?? "left";

@@ -35,6 +35,7 @@ void main() {
   outColor = vColor;
 }`;
 
+/** Input frame for building a flame graph model. */
 export interface FlameGraphFrame<T = unknown> {
   readonly name: string;
   readonly start: number;
@@ -46,17 +47,20 @@ export interface FlameGraphFrame<T = unknown> {
   readonly parent?: number;
 }
 
+/** Frame with computed layout fields used for rendering and picking. */
 export interface FlameGraphRenderableFrame<T = unknown> extends FlameGraphFrame<T> {
   readonly end: number;
   readonly index: number;
 }
 
+/** Index range for frames at one rendered depth. */
 export interface FlameGraphLevelIndex {
   readonly depth: number;
   readonly indices: readonly number[];
   readonly starts: readonly number[];
 }
 
+/** Prepared flame graph model consumed by the plugin. */
 export interface FlameGraphModel<T = unknown> {
   readonly frames: readonly FlameGraphRenderableFrame<T>[];
   readonly levels: readonly FlameGraphLevelIndex[];
@@ -67,6 +71,7 @@ export interface FlameGraphModel<T = unknown> {
   readonly countName: string;
 }
 
+/** Parsed folded-stack sample. */
 export interface FlameGraphFoldedStack<T = unknown> {
   readonly stack: string | readonly string[];
   readonly value: number;
@@ -74,6 +79,7 @@ export interface FlameGraphFoldedStack<T = unknown> {
   readonly metadata?: T;
 }
 
+/** Time span used to build a status-chart style model. */
 export interface FlameGraphStatusSpan<T = unknown> {
   readonly name: string;
   readonly start: number;
@@ -85,6 +91,7 @@ export interface FlameGraphStatusSpan<T = unknown> {
   readonly metadata?: T;
 }
 
+/** Options for building a flame graph model from frames or folded stacks. */
 export interface BuildFlameGraphModelOptions {
   readonly separator?: string;
   readonly flameChart?: boolean;
@@ -94,10 +101,12 @@ export interface BuildFlameGraphModelOptions {
   readonly sort?: boolean | ((a: string, b: string) => number);
 }
 
+/** Options for building a status-chart model from spans. */
 export interface BuildStatusChartModelOptions {
   readonly countName?: string;
 }
 
+/** Result from picking a flame graph frame. */
 export interface FlameGraphPick<T = unknown> {
   readonly frame: FlameGraphRenderableFrame<T>;
   readonly plotX: number;
@@ -109,6 +118,7 @@ export interface FlameGraphPick<T = unknown> {
   readonly percent: number;
 }
 
+/** Options for the flame graph plugin. */
 export interface FlameGraphPluginOptions<T = unknown> {
   readonly model?: FlameGraphModel<T>;
   readonly foldedStacks?: string | readonly FlameGraphFoldedStack<T>[];
@@ -134,6 +144,7 @@ export interface FlameGraphPluginOptions<T = unknown> {
   readonly zIndex?: number;
 }
 
+/** Flame graph plugin with imperative model and selection hooks. */
 export interface FlameGraphPlugin<T = unknown> extends ChartPlugin {
   setModel(model: FlameGraphModel<T>): void;
   setFoldedStacks(stacks: string | readonly FlameGraphFoldedStack<T>[], options?: BuildFlameGraphModelOptions): void;
@@ -179,6 +190,7 @@ interface WebGLState {
   capacity: number;
 }
 
+/** Parse folded stack text into stack samples. */
 export function parseFoldedStacks<T = unknown>(input: string, separator = ";"): FlameGraphFoldedStack<T>[] {
   const stacks: FlameGraphFoldedStack<T>[] = [];
   for (const rawLine of input.split(/\r?\n/)) {
@@ -195,6 +207,7 @@ export function parseFoldedStacks<T = unknown>(input: string, separator = ";"): 
   return stacks;
 }
 
+/** Build a renderable flame graph model from frames or folded stacks. */
 export function buildFlameGraphModel<T = unknown>(
   input: string | readonly FlameGraphFoldedStack<T>[],
   options: BuildFlameGraphModelOptions = {},
@@ -246,6 +259,7 @@ export function buildFlameGraphModel<T = unknown>(
   return finalizeModel(frames, root.value, options.countName ?? "samples");
 }
 
+/** Build a flame-graph-compatible model from categorical status spans. */
 export function buildStatusChartModel<T = unknown>(
   spans: readonly FlameGraphStatusSpan<T>[],
   options: BuildStatusChartModelOptions = {},
@@ -272,6 +286,7 @@ export function buildStatusChartModel<T = unknown>(
   return finalizeModel(frames, Number.isFinite(maxX - minX) ? maxX - minX : 0, options.countName ?? "time");
 }
 
+/** Create a plugin that renders flame graph or status chart models. */
 export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T> = {}): FlameGraphPlugin<T> {
   let chart: ChartPluginContext | null = null;
   let model = initialModel(options);
@@ -589,6 +604,7 @@ function pickVisibleFrame<T>(visible: readonly VisibleFrame<T>[], plotX: number,
   return null;
 }
 
+/** Return the rendered frame at a model coordinate, if any. */
 export function pickFrame<T>(model: FlameGraphModel<T>, dataX: number, dataY: number): FlameGraphRenderableFrame<T> | null {
   const depth = Math.floor(dataY);
   const level = model.levels[depth];

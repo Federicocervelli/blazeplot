@@ -1,6 +1,7 @@
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
 
+/** Options for the overview navigator plugin. */
 export interface NavigatorPluginOptions {
   readonly height?: number;
   readonly placement?: "bottom" | "top";
@@ -24,6 +25,7 @@ export interface NavigatorPluginOptions {
   readonly onRangeChange?: (range: { readonly xMin: number; readonly xMax: number }) => void;
 }
 
+/** Navigator plugin with an imperative viewport update hook. */
 export interface NavigatorPlugin extends ChartPlugin {
   refresh(): void;
 }
@@ -114,6 +116,7 @@ function pathForSeries(series: SeriesStore, domain: Domain, width: number, heigh
   return path;
 }
 
+/** Create a plugin that renders a draggable X-range overview. */
 export function navigatorPlugin(options: NavigatorPluginOptions = {}): NavigatorPlugin {
   const height = Math.max(24, options.height ?? 56);
   const margin = Math.max(0, options.margin ?? 8);

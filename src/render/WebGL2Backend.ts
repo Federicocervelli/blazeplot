@@ -21,19 +21,23 @@ interface AttributeInfo {
   readonly type: number;
 }
 
+/** Error thrown when a WebGL2 backend cannot be created. */
 export class WebGL2UnavailableError extends Error {
+  /** Create an unavailable-WebGL2 error. */
   constructor(message = "BlazePlot requires WebGL2, but this browser/context does not support it.") {
     super(message);
     this.name = "WebGL2UnavailableError";
   }
 }
 
+/** Return whether the current environment can create a WebGL2 context. */
 export function isWebGL2Available(): boolean {
   if (typeof document === "undefined") return false;
   const canvas = document.createElement("canvas");
   return canvas.getContext("webgl2") !== null;
 }
 
+/** Native WebGL2 implementation of BlazePlot's GPU backend. */
 export class WebGL2Backend implements GpuBackend {
   private readonly gl: WebGL2RenderingContext;
   private readonly resources: WebGL2Resources;
@@ -44,6 +48,7 @@ export class WebGL2Backend implements GpuBackend {
   private enabledAttributes: Set<number> = new Set();
   readonly capabilities: GpuBackend["capabilities"];
 
+  /** Create a WebGL2 backend for a canvas. */
   constructor(private readonly canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", {
       alpha: true,
@@ -70,6 +75,7 @@ export class WebGL2Backend implements GpuBackend {
     this.gl.disable(this.gl.STENCIL_TEST);
   }
 
+  /** Allocate a GPU buffer from a buffer spec. */
   createBuffer(spec: BufferSpec): GpuBuffer {
     const { buffer } = this.resources.acquire(spec.length, spec.usage, spec.type);
     return {
@@ -81,6 +87,7 @@ export class WebGL2Backend implements GpuBackend {
     } as NativeGpuBuffer;
   }
 
+  /** Upload typed-array data into a GPU buffer. */
   updateBuffer(buffer: GpuBuffer, data: Float32Array | Uint16Array, offset: number = 0): void {
     if (data.length + offset > buffer.length) {
       throw new RangeError("GPU buffer update exceeds allocated buffer length.");
@@ -92,6 +99,7 @@ export class WebGL2Backend implements GpuBackend {
     this.gl.bufferSubData(nativeBuffer.target, offset * bytesPerElement, data);
   }
 
+  /** Compile and link a GPU program. */
   createProgram(vert: string, frag: string): GpuProgram {
     const vertexShader = this.compileShader(this.gl.VERTEX_SHADER, vert);
     const fragmentShader = this.compileShader(this.gl.FRAGMENT_SHADER, frag);
@@ -125,6 +133,7 @@ export class WebGL2Backend implements GpuBackend {
     } as NativeGpuProgram;
   }
 
+  /** Issue a draw call described by a draw spec. */
   draw(spec: DrawSpec): void {
     if (spec.count <= 0 || (spec.instances !== undefined && spec.instances <= 0)) return;
 
@@ -157,6 +166,7 @@ export class WebGL2Backend implements GpuBackend {
     }
   }
 
+  /** Release a GPU resource owned by this backend. */
   dispose(resource: GpuResource): void {
     if (this.isNativeBuffer(resource)) {
       this.resources.release(resource.buffer);
@@ -169,6 +179,7 @@ export class WebGL2Backend implements GpuBackend {
     }
   }
 
+  /** Clear the active framebuffer. */
   clear(r: number, g: number, b: number, a: number): void {
     this.updateFullViewport();
     this.gl.disable(this.gl.SCISSOR_TEST);
@@ -176,15 +187,18 @@ export class WebGL2Backend implements GpuBackend {
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
   }
 
+  /** Set the WebGL viewport in pixels. */
   viewport(x: number, y: number, w: number, h: number): void {
     this.updateFullViewport();
     this.scissorBox = { x, y, w, h };
   }
 
+  /** Return the underlying WebGL2 rendering context. */
   getContext(): WebGL2RenderingContext {
     return this.gl;
   }
 
+  /** Release pooled resources owned by the backend. */
   destroy(): void {
     for (const location of this.enabledAttributes) {
       this.gl.disableVertexAttribArray(location);
@@ -432,6 +446,6 @@ export class WebGL2Backend implements GpuBackend {
 
 /**
  * Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API.
- * @deprecated Use WebGL2Backend.
+ * @deprecated Effective next patch release. Use WebGL2Backend.
  */
 export const ReglBackend: typeof WebGL2Backend = WebGL2Backend;

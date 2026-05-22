@@ -1,11 +1,13 @@
 import { Chart } from "./Chart.js";
 import type { ChartOptions, ChartPlugin, ChartSelectEvent, ChartViewportChangeEvent } from "./Chart.js";
 
+/** Options for one chart panel in a linked layout. */
 export interface LinkedChartPanelOptions {
   readonly options?: ChartOptions;
   readonly className?: string;
 }
 
+/** Options for creating a grid of linked chart panels. */
 export interface LinkedChartsCoreOptions {
   readonly rows?: number;
   readonly columns?: number;
@@ -16,6 +18,7 @@ export interface LinkedChartsCoreOptions {
   readonly className?: string;
 }
 
+/** Handle returned by linked chart helpers. */
 export interface LinkedChartsHandle {
   readonly root: HTMLDivElement;
   readonly charts: readonly Chart[];
@@ -39,10 +42,12 @@ function cssSize(value: number | string | undefined, fallback: string): string {
 
 let linkedChartsId = 0;
 
+/** Create linked charts without optional tooltip or crosshair sync plugins. */
 export function createLinkedCharts(target: HTMLElement, options: LinkedChartsCoreOptions): LinkedChartsHandle {
   return createLinkedChartsWithPlugins(target, options);
 }
 
+/** Create linked charts with optional sync plugin factories. */
 export function createLinkedChartsWithPlugins(
   target: HTMLElement,
   options: LinkedChartsPluginOptions,
@@ -135,6 +140,7 @@ export function createLinkedChartsWithPlugins(
   };
 }
 
+/** Marker plugin for shared plugin arrays used by linked chart layouts. */
 export function linkedChartsPlugin(): ChartPlugin {
   return {
     install() {

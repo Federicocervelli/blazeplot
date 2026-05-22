@@ -10,11 +10,13 @@ function stableBucketWidth(length: number, range: TimeRange | null, viewport: Vi
   return Math.max(1, Math.ceil(estimatedVisibleSamples / budget));
 }
 
+/** Server-provided point samples. */
 export interface ServerSampledPoints {
   readonly x: ArrayLike<number>;
   readonly y: ArrayLike<number>;
 }
 
+/** Server-provided min/max buckets. */
 export interface ServerSampledBuckets {
   readonly xStart: ArrayLike<number>;
   readonly xEnd: ArrayLike<number>;
@@ -22,10 +24,12 @@ export interface ServerSampledBuckets {
   readonly maxY: ArrayLike<number>;
 }
 
+/** Data accepted by `ServerSampledDataset.replace`. */
 export type ServerSampledData =
   | ({ readonly kind: "points" } & ServerSampledPoints)
   | ({ readonly kind: "minmax" } & ServerSampledBuckets);
 
+/** Current server-sampled payload shape. */
 export type ServerSampledDatasetKind = "points" | "minmax";
 
 /**
@@ -43,18 +47,22 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
   private minY = new Float32Array(0);
   private maxY = new Float32Array(0);
 
+  /** Create a dataset from server-sampled points or buckets. */
   constructor(data?: ServerSampledData) {
     if (data) this.replace(data);
   }
 
+  /** Current sample representation stored by the dataset. */
   get sampleKind(): ServerSampledDatasetKind {
     return this.kind;
   }
 
+  /** Number of server-sampled points or buckets. */
   get length(): number {
     return this.kind === "points" ? this.x.length : this.xStart.length;
   }
 
+  /** X range covered by samples, or `null` when empty. */
   get range(): TimeRange | null {
     if (this.length === 0) return null;
     return this.kind === "points"
@@ -62,11 +70,13 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
       : { start: this.xStart[0]!, end: this.xEnd[this.xEnd.length - 1]! };
   }
 
+  /** Replace the dataset with point or bucket data. */
   replace(data: ServerSampledData): void {
     if (data.kind === "points") this.replacePoints(data);
     else this.replaceBuckets(data);
   }
 
+  /** Replace the dataset with sampled point data. */
   replacePoints(data: ServerSampledPoints): void {
     const length = Math.min(data.x.length, data.y.length);
     this.kind = "points";
@@ -78,6 +88,7 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     this.maxY = new Float32Array(0);
   }
 
+  /** Replace the dataset with sampled min/max buckets. */
   replaceBuckets(data: ServerSampledBuckets): void {
     const length = Math.min(data.xStart.length, data.xEnd.length, data.minY.length, data.maxY.length);
     this.kind = "minmax";
@@ -89,26 +100,31 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     this.y = new Float32Array(0);
   }
 
+  /** Remove all server-sampled data. */
   clear(): void {
     this.replacePoints({ x: [], y: [] });
   }
 
+  /** Return the X value at a logical index. */
   getX(index: number): number {
     this.assertIndex(index);
     return this.kind === "points" ? this.x[index]! : (this.xStart[index]! + this.xEnd[index]!) * 0.5;
   }
 
+  /** Return the Y value, or bucket midpoint for min/max data. */
   getY(index: number): number {
     this.assertIndex(index);
     return this.kind === "points" ? this.y[index]! : (this.minY[index]! + this.maxY[index]!) * 0.5;
   }
 
+  /** Return whether the sample should be rendered as a gap. */
   isGap(index: number): boolean {
     if (this.kind === "points") return !Number.isFinite(this.getY(index));
     this.assertIndex(index);
     return !Number.isFinite(this.minY[index]!) || !Number.isFinite(this.maxY[index]!);
   }
 
+  /** Return the first logical index whose X value is at least `value`. */
   lowerBoundX(value: number): number {
     const values = this.kind === "points" ? this.x : this.xEnd;
     let lo = 0;
@@ -121,6 +137,7 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     return lo;
   }
 
+  /** Return the first logical index whose X value is greater than `value`. */
   upperBoundX(value: number): number {
     const values = this.kind === "points" ? this.x : this.xStart;
     let lo = 0;
@@ -133,6 +150,7 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     return lo;
   }
 
+  /** Return min/max Y values for a logical index range. */
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
@@ -150,6 +168,7 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
   }
 
+  /** Copy sampled points for a logical range into a render buffer. */
   copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number): number {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
@@ -178,6 +197,7 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     return written;
   }
 
+  /** Copy sampled min/max buckets for a viewport into a render buffer. */
   copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, layout: MinMaxSegmentLayout, xOrigin: number): number {
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);

@@ -1,17 +1,21 @@
+/** Placement for chart axis labels and ticks. */
 export type AxisPosition = "inside" | "outside";
 
+/** Normalized visibility and placement for one axis. */
 export interface NormalizedAxisConfig {
   readonly visible: boolean;
   readonly position: AxisPosition;
   readonly title?: unknown;
 }
 
+/** Layout configuration for chart axes. */
 export interface ChartLayoutConfig {
   readonly x: NormalizedAxisConfig;
   readonly y: NormalizedAxisConfig;
   readonly y2: NormalizedAxisConfig;
 }
 
+/** DOM elements created or managed by `ChartLayout`. */
 export interface ChartLayoutElements {
   readonly root: HTMLDivElement;
   readonly plot: HTMLDivElement;
@@ -28,13 +32,20 @@ export interface ChartLayoutElements {
   readonly y2AxisTitle: HTMLDivElement;
 }
 
+/** Default left-axis gutter width in CSS pixels. */
 export const LEFT_AXIS_GUTTER_CSS = 52;
+/** Default right-axis gutter width in CSS pixels. */
 export const RIGHT_AXIS_GUTTER_CSS = 52;
+/** Default bottom-axis gutter height in CSS pixels. */
 export const BOTTOM_AXIS_GUTTER_CSS = 28;
+/** Default left-axis title gutter width in CSS pixels. */
 export const LEFT_AXIS_TITLE_GUTTER_CSS = 76;
+/** Default right-axis title gutter width in CSS pixels. */
 export const RIGHT_AXIS_TITLE_GUTTER_CSS = 76;
+/** Default bottom-axis title gutter height in CSS pixels. */
 export const BOTTOM_AXIS_TITLE_GUTTER_CSS = 48;
 
+/** DOM layout manager for chart chrome, axes, titles, and canvas. */
 export class ChartLayout implements ChartLayoutElements {
   readonly root: HTMLDivElement;
   readonly plot: HTMLDivElement;
@@ -54,6 +65,7 @@ export class ChartLayout implements ChartLayoutElements {
   private readonly originalCanvasCssText: string;
   private readonly originalCanvasParent: HTMLElement | null;
 
+  /** Create chart layout DOM around a target element or canvas. */
   constructor(target: HTMLElement, config: ChartLayoutConfig) {
     const canvasTarget = target instanceof HTMLCanvasElement ? target : null;
     this.externalCanvas = canvasTarget !== null;
@@ -93,6 +105,7 @@ export class ChartLayout implements ChartLayoutElements {
     this.update(config);
   }
 
+  /** Update axis visibility and layout placement. */
   update(config: ChartLayoutConfig): void {
     const hasOutsideY = config.y.visible && config.y.position === "outside";
     const hasOutsideY2 = config.y2.visible && config.y2.position === "outside";
@@ -110,6 +123,7 @@ export class ChartLayout implements ChartLayoutElements {
     this.cornerRight.style.display = hasOutsideX && hasOutsideY2 ? "block" : "none";
   }
 
+  /** Restore external canvas state and remove layout DOM. */
   dispose(): void {
     if (this.externalCanvas && this.originalCanvasParent) {
       this.canvas.style.cssText = this.originalCanvasCssText;

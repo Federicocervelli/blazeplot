@@ -1,3 +1,4 @@
+/** Visible data-domain bounds for one chart camera. */
 export interface Viewport {
   readonly xMin: number;
   readonly xMax: number;
@@ -5,6 +6,7 @@ export interface Viewport {
   readonly yMax: number;
 }
 
+/** Min/max aggregate for a contiguous X range. */
 export interface LODBucket {
   readonly xStart: number;
   readonly xEnd: number;
@@ -12,6 +14,7 @@ export interface LODBucket {
   readonly maxY: number;
 }
 
+/** Renderer-ready level-of-detail bucket buffer. */
 export interface LODView {
   readonly buckets: Float32Array;
   readonly bucketCount: number;
@@ -19,11 +22,13 @@ export interface LODView {
   readonly samplesPerPixel: number;
 }
 
+/** Inclusive data X range. */
 export interface TimeRange {
   readonly start: number;
   readonly end: number;
 }
 
+/** Visual styling shared by built-in series renderers. */
 export interface SeriesStyle {
   readonly color: readonly [number, number, number, number];
   readonly lineWidth: number;
@@ -37,9 +42,12 @@ export interface SeriesStyle {
   readonly wickColor?: readonly [number, number, number, number];
 }
 
+/** Built-in renderer mode for a series. */
 export type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar" | "ohlc" | "candlestick";
+/** Y axis used to scale and render a series. */
 export type SeriesYAxis = "left" | "right";
 
+/** Sorted XY data source consumed by chart series. */
 export interface Dataset {
   readonly length: number;
   readonly range: TimeRange | null;
@@ -55,11 +63,14 @@ export interface Dataset {
   upperBoundX(x: number): number;
 }
 
+/** Dataset that can answer min/max Y queries for index ranges. */
 export interface RangeMinMaxDataset extends Dataset {
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null;
 }
 
+/** Vertex layout requested when copying raw samples into a render buffer. */
 export type SampleCopyLayout = "points" | "area";
+/** Vertex layout requested when copying min/max segments into a render buffer. */
 export type MinMaxSegmentLayout = "line-list" | "instanced";
 
 /**
@@ -140,6 +151,7 @@ export interface AcceleratedDataset extends
   VisibleSampleCopyDataset,
   MinMaxSegmentCopyDataset {}
 
+/** Dataset that provides open, high, low, and close values per sample. */
 export interface OhlcDataset extends Dataset {
   getOpen(index: number): number;
   getHigh(index: number): number;
@@ -147,28 +159,35 @@ export interface OhlcDataset extends Dataset {
   getClose(index: number): number;
 }
 
+/** Dataset that accepts appended explicit X/Y samples. */
 export interface AppendableDataset extends Dataset {
   push(x: number, y: number): void;
   append(x: ArrayLike<number>, y: ArrayLike<number>): void;
   clear(): void;
 }
 
+/** Dataset that accepts appended Y samples with implicit X values. */
 export interface YAppendableDataset extends Dataset {
   appendY(y: ArrayLike<number>): void;
   clear(): void;
 }
 
+/** Dataset that supports updating existing X/Y samples. */
 export interface UpdatableDataset extends Dataset {
   update(index: number, x: number, y: number): boolean;
 }
 
+/** Dataset that supports updating existing Y values. */
 export interface YUpdatableDataset extends Dataset {
   updateY(index: number, y: number): boolean;
 }
 
+/** Downsampling strategy used when a series is denser than the plot. */
 export type LODStrategy = "minmax" | "none" | "server";
+/** Behavior when a fixed-capacity streaming buffer is full. */
 export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
 
+/** One data sample returned by picking and dataset queries. */
 export interface SeriesSample {
   readonly index: number;
   readonly x: number;
@@ -176,6 +195,7 @@ export interface SeriesSample {
   readonly distancePx?: number;
 }
 
+/** Configuration for adding a series to a chart. */
 export interface SeriesConfig {
   readonly mode: SeriesMode;
   readonly capacity?: number;

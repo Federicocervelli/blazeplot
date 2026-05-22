@@ -1,5 +1,6 @@
 import type { Chart, ChartPlugin, ChartPluginContext, ChartSeriesState } from "./Chart.js";
 
+/** Options for the built-in series legend plugin. */
 export interface LegendPluginOptions {
   readonly className?: string;
   readonly position?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -79,6 +80,7 @@ function renderDefaultLegend(
   }
 }
 
+/** Create a plugin that renders a clickable series legend. */
 export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {

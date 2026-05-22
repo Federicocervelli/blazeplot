@@ -1,3 +1,4 @@
+/** Return the first index whose value is greater than or equal to `value`. */
 export function lowerBound(length: number, valueAt: (index: number) => number, value: number): number {
   let lo = 0;
   let hi = length;
@@ -9,6 +10,7 @@ export function lowerBound(length: number, valueAt: (index: number) => number, v
   return lo;
 }
 
+/** Return the first index whose value is greater than `value`. */
 export function upperBound(length: number, valueAt: (index: number) => number, value: number): number {
   let lo = 0;
   let hi = length;

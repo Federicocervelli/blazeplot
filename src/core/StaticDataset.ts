@@ -1,8 +1,10 @@
 import { lowerBound, upperBound } from "./search.js";
 import type { Dataset, TimeRange } from "./types.js";
 
+/** Object-row field selector used by `StaticDataset.fromObjects`. */
 export type StaticDatasetField<Row> = keyof Row | ((row: Row, index: number) => number);
 
+/** Options for building a static dataset from object rows. */
 export interface StaticDatasetFromObjectsOptions<Row> {
   readonly x: StaticDatasetField<Row>;
   readonly y: StaticDatasetField<Row>;
@@ -18,6 +20,7 @@ function readNumericField<Row>(row: Row, index: number, field: StaticDatasetFiel
   return Number(row[field]);
 }
 
+/** Immutable sorted XY dataset backed by typed arrays. */
 export class StaticDataset implements Dataset {
   /**
    * Copy object rows into a static X/Y dataset.
@@ -48,38 +51,46 @@ export class StaticDataset implements Dataset {
     );
   }
 
+  /** Create an immutable XY dataset from parallel arrays. */
   constructor(
     private readonly xData: ArrayLike<number>,
     private readonly yData: ArrayLike<number>,
   ) {}
 
+  /** Number of samples. */
   get length(): number {
     return Math.min(this.xData.length, this.yData.length);
   }
 
+  /** X range covered by samples, or `null` when empty. */
   get range(): TimeRange | null {
     if (this.length === 0) return null;
     return { start: this.xData[0]!, end: this.xData[this.length - 1]! };
   }
 
+  /** Return the X value at a logical index. */
   getX(index: number): number {
     this.assertValidIndex(index);
     return this.xData[index]!;
   }
 
+  /** Return the Y value at a logical index. */
   getY(index: number): number {
     this.assertValidIndex(index);
     return this.yData[index]!;
   }
 
+  /** Return whether the sample should be rendered as a gap. */
   isGap(index: number): boolean {
     return !Number.isFinite(this.getY(index));
   }
 
+  /** Return the first logical index whose X value is at least `x`. */
   lowerBoundX(x: number): number {
     return lowerBound(this.length, (index) => this.xData[index]!, x);
   }
 
+  /** Return the first logical index whose X value is greater than `x`. */
   upperBoundX(x: number): number {
     return upperBound(this.length, (index) => this.xData[index]!, x);
   }

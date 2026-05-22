@@ -8,17 +8,21 @@ interface PoolEntry {
 
 const POOL_SIZES = [1024, 4096, 16384, 32768, 131072];
 
+/** WebGL buffer acquired from the resource pool. */
 export interface WebGL2ResourceBuffer {
   readonly buffer: WebGLBuffer;
   readonly byteCapacity: number;
 }
 
+/** Small WebGL2 buffer pool used by the native backend. */
 export class WebGL2Resources {
   private readonly pool: PoolEntry[] = [];
   private preAllocated: boolean = false;
 
+  /** Create a resource pool for a WebGL2 context. */
   constructor(private readonly gl: WebGL2RenderingContext) {}
 
+  /** Preallocate common streaming buffer sizes. */
   preAllocate(): void {
     if (this.preAllocated) return;
     this.preAllocated = true;
@@ -46,6 +50,7 @@ export class WebGL2Resources {
     return { buffer: entry.buffer, byteCapacity: entry.byteCapacity };
   }
 
+  /** Mark a pooled buffer as available for reuse. */
   release(buffer: WebGLBuffer): void {
     for (const entry of this.pool) {
       if (entry.buffer === buffer) {
@@ -55,6 +60,7 @@ export class WebGL2Resources {
     }
   }
 
+  /** Delete all pooled WebGL buffers. */
   destroy(): void {
     for (const entry of this.pool) {
       this.gl.deleteBuffer(entry.buffer);

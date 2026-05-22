@@ -1,8 +1,11 @@
 import type { Camera2D } from "./Camera2D.js";
 
+/** Axis dimension targeted by axis helpers. */
 export type AxisRenderTarget = "x" | "y";
+/** Built-in axis scale names. */
 export type BuiltInAxisScale = "linear" | "time" | "log" | "symlog" | "categorical";
 
+/** Custom scale hooks for tick generation, formatting, and coordinate mapping. */
 export interface CustomAxisScale {
   readonly type: "custom";
   ticks?(min: number, max: number, maxTicks: number): readonly number[];
@@ -11,11 +14,16 @@ export interface CustomAxisScale {
   fromScreen?(value: number): number;
 }
 
+/** Built-in scale name or custom scale implementation. */
 export type AxisScale = BuiltInAxisScale | CustomAxisScale;
+/** Time zone used for built-in time tick formatting. */
 export type AxisTimeZone = "local" | "utc";
+/** Function form for formatting axis tick values. */
 export type AxisTickFormatter = (value: number, axis: AxisRenderTarget) => string;
+/** Built-in format string or custom tick formatter. */
 export type AxisTickFormat = string | AxisTickFormatter;
 
+/** Scale and formatting options for one axis. */
 export interface AxisControllerAxisOptions {
   readonly scale?: AxisScale;
   readonly tickFormat?: AxisTickFormat;
@@ -26,6 +34,7 @@ export interface AxisControllerAxisOptions {
   readonly reversed?: boolean;
 }
 
+/** Options for the X and Y axes controlled by an `AxisController`. */
 export interface AxisControllerOptions {
   readonly x?: AxisControllerAxisOptions;
   readonly y?: AxisControllerAxisOptions;
@@ -79,21 +88,25 @@ const MONTH_LONG = "January February March April May June July August September 
 const WEEKDAY_SHORT = "Sun Mon Tue Wed Thu Fri Sat".split(" ");
 const WEEKDAY_LONG = "Sunday Monday Tuesday Wednesday Thursday Friday Saturday".split(" ");
 
+/** Computes axis tick values and labels for a camera. */
 export class AxisController {
   private options: AxisControllerOptions;
   private lastXTimeInterval: TimeInterval | null = null;
   private lastYTimeInterval: TimeInterval | null = null;
 
+  /** Create an axis controller for a camera and optional scale settings. */
   constructor(private readonly camera: Camera2D, options: AxisControllerOptions = {}) {
     this.options = options;
   }
 
+  /** Replace axis scale and formatting options. */
   setOptions(options: AxisControllerOptions): void {
     this.options = options;
     this.lastXTimeInterval = null;
     this.lastYTimeInterval = null;
   }
 
+  /** Generate X-axis tick values for the current viewport. */
   getXTickValues(canvasWidth: number, maxTicks: number = 10, target: number[] = []): number[] {
     const axisOptions = this.options.x;
     if (axisOptions?.scale === "time") {
@@ -105,6 +118,7 @@ export class AxisController {
     return this.getScaledTickValues(this.camera.xMin, this.camera.xMax, canvasWidth, maxTicks, 80, target, axisOptions, "x");
   }
 
+  /** Generate Y-axis tick values for the current viewport. */
   getYTickValues(canvasHeight: number, maxTicks: number = 10, target: number[] = []): number[] {
     const axisOptions = this.options.y;
     if (axisOptions?.scale === "time") {
@@ -116,6 +130,7 @@ export class AxisController {
     return this.getScaledTickValues(this.camera.yMin, this.camera.yMax, canvasHeight, maxTicks, 48, target, axisOptions, "y");
   }
 
+  /** Throw when the current domain is invalid for the configured scale. */
   validateDomain(axis: AxisRenderTarget): void {
     const options = axis === "x" ? this.options.x : this.options.y;
     const min = axis === "x" ? this.camera.xMin : this.camera.yMin;
@@ -139,6 +154,7 @@ export class AxisController {
     }
   }
 
+  /** Format a tick value for the requested axis. */
   formatValue(value: number, axis: AxisRenderTarget = "y"): string {
     const axisOptions = axis === "x" ? this.options.x : this.options.y;
     const tickFormat = axisOptions?.tickFormat;

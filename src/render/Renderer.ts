@@ -10,6 +10,7 @@ const DEFAULT_BAR_WIDTH_DATA = 0.8;
 const DEFAULT_BASELINE = 0;
 const DEFAULT_LINE_WIDTH_PX = 1;
 
+/** Linear projection uniforms used by renderer draw calls. */
 export interface RenderProjection {
   readonly scaleX: number;
   readonly scaleY: number;
@@ -17,6 +18,7 @@ export interface RenderProjection {
   readonly offsetY: number;
 }
 
+/** Low-level renderer for built-in series primitives. */
 export class Renderer {
   private readonly lineProgram: GpuProgram;
   private readonly segmentProgram: GpuProgram;
@@ -31,6 +33,7 @@ export class Renderer {
   private readonly offsetUniform: Float32Array = new Float32Array(2);
   private readonly canvasSizeUniform: Float32Array = new Float32Array(2);
 
+  /** Create a renderer backed by a GPU abstraction. */
   constructor(private backend: GpuBackend) {
     this.lineProgram = this.backend.createProgram(ShaderPrograms.line.vert, ShaderPrograms.line.frag);
     this.segmentProgram = this.backend.createProgram(ShaderPrograms.segment.vert, ShaderPrograms.segment.frag);
@@ -49,55 +52,68 @@ export class Renderer {
     this.backend.updateBuffer(this.barCornerBuffer, new Float32Array([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]));
   }
 
+  /** Whether the backend supports instanced min/max segments. */
   get supportsInstancedSegments(): boolean {
     return this.backend.capabilities.instancing;
   }
 
+  /** Whether the backend supports instanced point sprites. */
   get supportsInstancedPoints(): boolean {
     return this.backend.capabilities.instancing;
   }
 
+  /** Whether the backend supports instanced bar rendering. */
   get supportsInstancedBars(): boolean {
     return this.backend.capabilities.instancing;
   }
 
+  /** Clear the active framebuffer. */
   clear(r: number, g: number, b: number, a: number): void {
     this.backend.clear(r, g, b, a);
   }
 
+  /** Allocate a streaming float buffer. */
   createFloatBuffer(floatCount: number): GpuBuffer {
     return this.backend.createBuffer({ usage: "stream", type: "float", length: floatCount });
   }
 
+  /** Upload float data into an existing buffer. */
   updateFloatBuffer(buffer: GpuBuffer, data: Float32Array, floatCount: number = data.length): void {
     const count = Math.max(0, Math.min(floatCount, data.length));
     this.backend.updateBuffer(buffer, count === data.length ? data : data.subarray(0, count));
   }
 
+  /** Set the rendering viewport in pixels. */
   viewport(x: number, y: number, width: number, height: number): void {
     this.backend.viewport(x, y, width, height);
   }
 
+  /** Return the underlying WebGL2 context when available. */
   getWebGLContext(): WebGL2RenderingContext | null {
     return this.backend.getContext?.() ?? null;
   }
 
+  /** Draw independent line segments from data-space positions. */
   drawLines(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
     this.drawLinePrimitive("lines", positions, count, style, projection);
   }
 
+  /** Draw a continuous line strip from data-space positions. */
   drawLineStrip(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
     this.drawLinePrimitive("line_strip", positions, count, style, projection);
   }
 
+  /** Draw a continuous line strip from clip-space positions. */
   drawClipLineStrip(positions: GpuBuffer, count: number, style: SeriesStyle): void {
     this.drawClipPrimitive("line_strip", positions, count, style);
   }
 
+  /** Draw independent line segments from clip-space positions. */
   drawClipLines(positions: GpuBuffer, count: number, style: SeriesStyle): void {
     this.drawClipPrimitive("lines", positions, count, style);
   }
 
+  /** Draw min/max vertical segments from data-space positions. */
   drawMinMaxSegments(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
     this.drawLines(positions, count, style, projection);
   }
@@ -200,6 +216,7 @@ export class Renderer {
     });
   }
 
+  /** Draw filled area geometry from data-space positions. */
   drawAreaStrip(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
     this.writeProjectionUniforms(projection);
 
@@ -273,6 +290,7 @@ export class Renderer {
     });
   }
 
+  /** Draw pre-expanded bar triangles from data-space positions. */
   drawBarTriangles(positions: GpuBuffer, vertexCount: number, style: SeriesStyle, projection: RenderProjection): void {
     this.drawTrianglePrimitive(positions, vertexCount, style, projection);
   }
@@ -335,6 +353,7 @@ export class Renderer {
     this.offsetUniform[1] = projection.offsetY;
   }
 
+  /** Release renderer-owned GPU resources. */
   dispose(): void {
     this.backend.destroy();
   }

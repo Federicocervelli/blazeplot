@@ -3,6 +3,7 @@ import type { SeriesStore } from "./core/SeriesStore.js";
 import type { Chart, ChartSeriesState } from "./ui/Chart.js";
 import type { SelectionState } from "./ui/Selection.js";
 
+/** Exported representation of one chart data sample. */
 export interface ChartDataSample {
   readonly index: number;
   readonly x: number;
@@ -13,6 +14,7 @@ export interface ChartDataSample {
   readonly close?: number;
 }
 
+/** Exported samples and metadata for one chart series. */
 export interface ChartDataSeries {
   readonly seriesIndex: number;
   readonly id?: string;
@@ -24,14 +26,17 @@ export interface ChartDataSeries {
   readonly truncated: boolean;
 }
 
+/** Source range used for a chart data export. */
 export type ChartDataSource = "all" | "visible" | "selection";
 
+/** Chart data collected for serialization or custom processing. */
 export interface ChartDataExport {
   readonly source: ChartDataSource;
   readonly bounds: Viewport | null;
   readonly series: readonly ChartDataSeries[];
 }
 
+/** Options for collecting data from chart series. */
 export interface ChartDataExportOptions {
   /** Limit export to visible chart series. Defaults to true. */
   readonly visibleOnly?: boolean;
@@ -43,12 +48,14 @@ export interface ChartDataExportOptions {
   readonly includeYRange?: boolean;
 }
 
+/** CSV serialization options for chart data exports. */
 export interface ChartDataCsvOptions {
   readonly header?: boolean;
   readonly delimiter?: string;
   readonly newline?: string;
 }
 
+/** JSON serialization options for chart data exports. */
 export interface ChartDataJsonOptions {
   readonly space?: number | string;
 }
@@ -60,20 +67,25 @@ interface DataRange {
   readonly yAxis?: SeriesYAxis;
 }
 
+/** Simple X/Y sample used by data resampling helpers. */
 export interface XYSample {
   readonly x: number;
   readonly y: number;
 }
 
+/** Reducer used when multiple samples fall into one output bucket. */
 export type SampleReducer = "mean" | "sum" | "min" | "max" | "first" | "last";
+/** X position assigned to a resampled bucket. */
 export type ResampleX = "start" | "center" | "end";
 
+/** Options shared by resampling helpers. */
 export interface ResampleOptions {
   readonly reducer?: SampleReducer;
   readonly align?: number;
   readonly x?: ResampleX;
 }
 
+/** Output sample produced by fixed-width X binning. */
 export interface BinnedSample extends XYSample {
   readonly xStart: number;
   readonly xEnd: number;
@@ -82,6 +94,7 @@ export interface BinnedSample extends XYSample {
   readonly maxY: number;
 }
 
+/** Output sample produced by rolling mean smoothing. */
 export interface RollingMeanSample extends XYSample {
   readonly count: number;
 }

@@ -1,9 +1,11 @@
 import type { ChartPickItem } from "./Chart.js";
 
+/** Return the display label for a picked series item. */
 export function labelOfPickItem(item: ChartPickItem): string {
   return item.name ?? item.id ?? `${item.mode} ${item.seriesIndex + 1}`;
 }
 
+/** Format a number compactly for overlay labels. */
 export function formatCompactNumber(value: number): string {
   if (!Number.isFinite(value)) return String(value);
   const abs = Math.abs(value);
@@ -11,14 +13,17 @@ export function formatCompactNumber(value: number): string {
   return Number(value.toPrecision(6)).toString();
 }
 
+/** Convert a normalized RGBA tuple to a CSS color string. */
 export function rgba(color: readonly [number, number, number, number]): string {
   return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
 }
 
+/** Clamp a number to an inclusive range. */
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Position a fixed element near a client point while keeping it onscreen. */
 export function placeFixedWithinViewport(
   element: HTMLElement,
   clientX: number,
@@ -35,6 +40,7 @@ export function placeFixedWithinViewport(
   element.style.transform = `translate(${x}px, ${y}px)`;
 }
 
+/** Position an absolute element inside a plot-sized box. */
 export function placeAbsoluteWithinBox(
   element: HTMLElement,
   x: number,
@@ -51,6 +57,7 @@ export function placeAbsoluteWithinBox(
   element.style.top = `${top}px`;
 }
 
+/** Render picked series values into an overlay container. */
 export function renderPickItems<TContext>(
   container: HTMLElement,
   items: readonly ChartPickItem[],
@@ -68,12 +75,14 @@ export function renderPickItems<TContext>(
   container.innerHTML = html;
 }
 
+/** Visual options for the hover/selection pick marker. */
 export interface PickMarkerOptions {
   readonly sizePx?: number;
   readonly strokeColor?: string;
   readonly strokeWidthPx?: number;
 }
 
+/** Create a marker element for a picked series point. */
 export function createPickMarker(item: ChartPickItem, options: PickMarkerOptions = {}): HTMLDivElement {
   const marker = document.createElement("div");
   marker.style.position = "absolute";
@@ -89,12 +98,14 @@ export function createPickMarker(item: ChartPickItem, options: PickMarkerOptions
   return marker;
 }
 
+/** Options for long-press touch tracking. */
 export interface LongPressTouchTrackerOptions {
   readonly delayMs: () => number | false | undefined;
   readonly onPoint: (clientX: number, clientY: number) => void;
   readonly movementThresholdPx?: number;
 }
 
+/** Touch/pointer handlers for long-press interactions. */
 export interface LongPressTouchTracker {
   clear(): void;
   schedule(clientX: number, clientY: number): void;
@@ -105,6 +116,7 @@ export interface LongPressTouchTracker {
   clearIfTouchPointer(event: PointerEvent): void;
 }
 
+/** Create a touch tracker that activates after a stationary long press. */
 export function createLongPressTouchTracker(options: LongPressTouchTrackerOptions): LongPressTouchTracker {
   const movementThresholdPx = options.movementThresholdPx ?? 8;
   let timer: number | null = null;

@@ -4,6 +4,7 @@ function positiveModulo(value: number, modulo: number): number {
   return ((value % modulo) + modulo) % modulo;
 }
 
+/** Options for implicit-X streaming buffers. */
 export interface UniformRingBufferOptions {
   /** X value for the first appended sample. Defaults to 0. */
   readonly xStart?: number;
@@ -25,7 +26,9 @@ type MinMaxLayout = MinMaxSegmentLayout;
  * a block segment tree over the physical ring.
  */
 export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset {
+  /** Maximum number of retained samples. */
   readonly capacity: number;
+  /** Distance between consecutive derived X values. */
   readonly xStep: number;
   private readonly blockSize: number;
   private readonly yData: Float32Array;
@@ -38,6 +41,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
   private _head = 0;
   private _nextX: number;
 
+  /** Create an implicit-X ring buffer with fixed spacing. */
   constructor(capacity: number, options: UniformRingBufferOptions = {}) {
     if (!Number.isInteger(capacity) || capacity <= 0) {
       throw new RangeError("UniformRingBuffer capacity must be a positive integer.");
@@ -70,20 +74,24 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     this.maxTree.fill(-Infinity);
   }
 
+  /** Number of retained samples. */
   get length(): number {
     return this._length;
   }
 
+  /** X range covered by retained samples, or `null` when empty. */
   get range(): TimeRange | null {
     if (this._length === 0) return null;
     return { start: this.firstX(), end: this.getX(this._length - 1) };
   }
 
+  /** Append one sample, using `x` to seed the stream when empty. */
   push(x: number, y: number): void {
     if (this._length === 0 && Number.isFinite(x)) this._nextX = x;
     this.appendY([y]);
   }
 
+  /** Append Y samples while seeding the first X value from `x` when needed. */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
     const requested = Math.min(x.length, y.length);
     if (requested <= 0) return;
@@ -105,6 +113,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     this.appendValues(y, 0, requested);
   }
 
+  /** Append Y samples using the next derived X values. */
   appendY(y: ArrayLike<number>): void {
     const requested = y.length;
     if (requested <= 0) return;
@@ -117,6 +126,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     this.appendValues(y, 0, requested);
   }
 
+  /** Remove all retained samples. */
   clear(): void {
     this._length = 0;
     this._head = 0;
@@ -126,6 +136,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     this.maxTree.fill(-Infinity);
   }
 
+  /** Replace the Y value at a logical index. */
   updateY(index: number, y: number): boolean {
     if (!this.isValidIndex(index)) return false;
     const physical = this.logicalToPhysical(index);
@@ -134,30 +145,36 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return true;
   }
 
+  /** Return the derived X value at a logical index. */
   getX(index: number): number {
     this.assertValidIndex(index);
     return this.firstX() + index * this.xStep;
   }
 
+  /** Return the Y value at a logical index. */
   getY(index: number): number {
     this.assertValidIndex(index);
     return this.yData[this.logicalToPhysical(index)]!;
   }
 
+  /** Return whether the sample should be rendered as a gap. */
   isGap(index: number): boolean {
     return !Number.isFinite(this.getY(index));
   }
 
+  /** Return the first logical index whose derived X value is at least `x`. */
   lowerBoundX(x: number): number {
     if (this._length === 0) return 0;
     return Math.max(0, Math.min(this._length, Math.ceil((x - this.firstX()) / this.xStep)));
   }
 
+  /** Return the first logical index whose derived X value is greater than `x`. */
   upperBoundX(x: number): number {
     if (this._length === 0) return 0;
     return Math.max(0, Math.min(this._length, Math.floor((x - this.firstX()) / this.xStep) + 1));
   }
 
+  /** Return min/max Y values for a logical index range. */
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this._length, Math.ceil(end));
@@ -174,6 +191,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return { minY: Math.min(first.minY, second.minY), maxY: Math.max(first.maxY, second.maxY) };
   }
 
+  /** Copy visible samples into a packed render buffer. */
   copyVisibleSamples(
     viewport: Viewport,
     target: Float32Array,
@@ -194,6 +212,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
   }
 
+  /** Copy a logical sample range into a packed render buffer. */
   copySamplesRange(
     start: number,
     end: number,
@@ -206,6 +225,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return this.copyStridedSamples(Math.max(0, Math.floor(start)), Math.min(this._length, Math.ceil(end)), 1, target, maxPoints, layout, baseline, xOrigin);
   }
 
+  /** Copy min/max segments for the viewport into a render buffer. */
   copyMinMaxSegments(
     viewport: Viewport,
     target: Float32Array,
