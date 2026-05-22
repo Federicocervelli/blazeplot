@@ -20,7 +20,7 @@ const docsEndMarker = "<!-- README_DOCS_END -->";
 const performanceStartMarker = "<!-- README_PERFORMANCE_START -->";
 const performanceEndMarker = "<!-- README_PERFORMANCE_END -->";
 const officialComparisonLibraries = ["blazeplot", "uplot", "chartjs"];
-const officialComparisonScenarios = ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-pan"];
+const officialComparisonScenarios = ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-accelerated-pan"];
 const runtimeComparisonPairs = [
   { primaryLibrary: "blazeplot", referenceLibrary: "uplot" },
 ];
@@ -368,9 +368,9 @@ function renderBenchmarkComparisonDocs() {
     "",
     "## Scenario data preparation",
     "",
-    "| Scenario | Samples | Visible samples | Data prep ms |",
-    "|---|---:|---:|---:|",
-    ...report.scenarios.map((scenario) => `| ${markdownEscape(scenario.name)} | ${integer(scenario.sampleCount)} | ${integer(scenario.viewportSamples)} | ${formatNumber(scenario.dataPrepMs, 1)} |`),
+    "| Scenario | Description | Samples | Visible samples | Data prep ms |",
+    "|---|---|---:|---:|---:|",
+    ...report.scenarios.map((scenario) => `| ${markdownEscape(scenario.name)} | ${markdownEscape(scenario.title ?? "—")} | ${integer(scenario.sampleCount)} | ${integer(scenario.viewportSamples)} | ${formatNumber(scenario.dataPrepMs, 1)} |`),
     "",
   ];
 

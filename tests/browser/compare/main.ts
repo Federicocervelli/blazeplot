@@ -13,12 +13,13 @@ import {
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { Chart, StaticDataset } from "@/index.ts";
-import type { SeriesStore } from "@/index.ts";
+import type { AcceleratedDataset, Dataset, MinMaxSegmentLayout, SampleCopyLayout, SeriesStore, TimeRange, Viewport } from "@/index.ts";
 
 ChartJs.register(LineController, LineElement, PointElement, LinearScale, Decimation, Legend, Tooltip);
 
 type LibraryId = "blazeplot" | "uplot" | "chartjs";
 type ScenarioOperation = "static" | "pan" | "stream";
+type BlazePlotDataPath = "prepared-arrays" | "accelerated-dataset";
 type BenchmarkState = "prewarming" | "ready" | "running" | "done" | "error";
 type UPlotData = ConstructorParameters<typeof uPlot>[1];
 type ChartJsPoint = { x: number; y: number };
@@ -33,6 +34,7 @@ interface ScenarioConfig {
   readonly measureMs: number;
   readonly warmupMs: number;
   readonly streamBatchSize?: number;
+  readonly blazeplotDataPath?: BlazePlotDataPath;
   readonly yMin: number;
   readonly yMax: number;
 }
@@ -153,7 +155,7 @@ interface BenchmarkController {
 }
 
 const DEFAULT_LIBRARIES: readonly LibraryId[] = ["blazeplot", "uplot", "chartjs"];
-const DEFAULT_SCENARIOS = ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-pan"] as const;
+const DEFAULT_SCENARIOS = ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-accelerated-pan"] as const;
 const SCENARIOS: Record<string, ScenarioConfig> = {
   "line-100k-static": {
     name: "line-100k-static",
@@ -211,14 +213,15 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     yMin: -1.25,
     yMax: 1.25,
   },
-  "line-10m-pan": {
-    name: "line-10m-pan",
-    title: "10M point line, automated pan over 5M visible samples",
+  "line-10m-accelerated-pan": {
+    name: "line-10m-accelerated-pan",
+    title: "10M point line, automated pan over 5M visible samples using BlazePlot's accelerated dataset path",
     sampleCount: 10_000_000,
     viewportSamples: 5_000_000,
     operation: "pan",
     measureMs: 3_000,
     warmupMs: 250,
+    blazeplotDataPath: "accelerated-dataset",
     yMin: -1.25,
     yMax: 1.25,
   },
@@ -336,7 +339,7 @@ async function runComparison(): Promise<PageBenchmarkResult> {
       await settleFrames(1);
 
       const prepStartedAt = performance.now();
-      const data = createBenchmarkData(scenario.sampleCount, selectedLibraries);
+      const data = createBenchmarkData(scenario, selectedLibraries);
       const dataPrepMs = performance.now() - prepStartedAt;
       const libraryResults: LibraryResult[] = [];
 
@@ -409,7 +412,7 @@ async function prewarmLibraries(): Promise<void> {
     yMin: -1.25,
     yMax: 1.25,
   };
-  const data = createBenchmarkData(scenario.sampleCount, selectedLibraries);
+  const data = createBenchmarkData(scenario, selectedLibraries);
   for (const library of selectedLibraries) {
     renderStatus(`prewarming ${library}`);
     const host = createHost();
@@ -516,7 +519,7 @@ function createBlazePlotInstance(host: HTMLElement, scenario: ScenarioConfig, da
   const series = streaming
     ? createBlazePlotStreamingSeries(chart, scenario, data)
     : chart.addLine({
-        dataset: new StaticDataset(requireBenchmarkData(data.xFloat, "BlazePlot x data"), requireBenchmarkData(data.yFloat, "BlazePlot y data")),
+        dataset: createBlazePlotDataset(scenario, data),
         downsample: "minmax",
         name: "Benchmark line",
       }, { color: [0.23, 0.45, 0.95, 1], lineWidth: 1 });
@@ -534,6 +537,11 @@ function createBlazePlotInstance(host: HTMLElement, scenario: ScenarioConfig, da
     stats: () => chartStats(chart),
     destroy: () => chart.dispose(),
   };
+}
+
+function createBlazePlotDataset(scenario: ScenarioConfig, data: BenchmarkData): Dataset {
+  if (scenario.blazeplotDataPath === "accelerated-dataset") return new ProceduralBenchmarkDataset(scenario.sampleCount);
+  return new StaticDataset(requireBenchmarkData(data.xFloat, "BlazePlot x data"), requireBenchmarkData(data.yFloat, "BlazePlot y data"));
 }
 
 function createBlazePlotStreamingSeries(chart: Chart, scenario: ScenarioConfig, data: BenchmarkData): SeriesStore {
@@ -723,6 +731,10 @@ async function measureInstance(instance: BenchmarkInstance, scenario: ScenarioCo
   };
 }
 
+function positiveModulo(value: number, modulo: number): number {
+  return ((value % modulo) + modulo) % modulo;
+}
+
 function createHost(): HTMLElement {
   mount!.replaceChildren();
   const host = document.createElement("div");
@@ -733,8 +745,153 @@ function createHost(): HTMLElement {
   return host;
 }
 
-function createBenchmarkData(sampleCount: number, libraries: readonly LibraryId[]): BenchmarkData {
-  const needsBlazePlot = libraries.includes("blazeplot");
+class ProceduralBenchmarkDataset implements AcceleratedDataset {
+  private static readonly minY = -0.95;
+  private static readonly maxY = 0.95;
+
+  constructor(readonly length: number) {
+    if (!Number.isInteger(length) || length <= 0) throw new RangeError("Procedural benchmark dataset length must be positive.");
+  }
+
+  get range(): TimeRange {
+    return { start: 0, end: this.length - 1 };
+  }
+
+  getX(index: number): number {
+    this.assertValidIndex(index);
+    return index;
+  }
+
+  getY(index: number): number {
+    this.assertValidIndex(index);
+    return sampleY(index);
+  }
+
+  lowerBoundX(x: number): number {
+    return Math.max(0, Math.min(this.length, Math.ceil(x)));
+  }
+
+  upperBoundX(x: number): number {
+    return Math.max(0, Math.min(this.length, Math.floor(x) + 1));
+  }
+
+  rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this.length, Math.ceil(end));
+    return to > from ? { minY: ProceduralBenchmarkDataset.minY, maxY: ProceduralBenchmarkDataset.maxY } : null;
+  }
+
+  copySamplesRange(
+    start: number,
+    end: number,
+    target: Float32Array,
+    maxPoints: number,
+    layout: SampleCopyLayout,
+    baseline: number,
+    xOrigin: number,
+  ): number {
+    return this.copyStridedSamples(Math.max(0, Math.floor(start)), Math.min(this.length, Math.ceil(end)), 1, target, maxPoints, layout, baseline, xOrigin);
+  }
+
+  copyVisibleSamples(
+    viewport: Viewport,
+    target: Float32Array,
+    maxPoints: number,
+    layout: SampleCopyLayout,
+    baseline: number,
+    xOrigin: number,
+  ): number {
+    const start = this.lowerBoundX(viewport.xMin);
+    const end = this.upperBoundX(viewport.xMax);
+    const visible = Math.max(0, end - start);
+    const stride = Math.max(1, Math.ceil(visible / Math.max(1, maxPoints)));
+    const alignedStart = start + positiveModulo(-start, stride);
+    return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
+  }
+
+  copyMinMaxSegments(
+    viewport: Viewport,
+    target: Float32Array,
+    maxSegments: number,
+    layout: MinMaxSegmentLayout,
+    xOrigin: number,
+  ): number {
+    const floatsPerSegment = layout === "line-list" ? 4 : 3;
+    if (maxSegments <= 0 || target.length < maxSegments * floatsPerSegment) return 0;
+
+    const start = this.lowerBoundX(viewport.xMin);
+    const end = this.upperBoundX(viewport.xMax);
+    const visible = end - start;
+    if (visible <= 0) return 0;
+
+    const stride = Math.max(1, Math.ceil(visible / maxSegments));
+    const alignedStart = start - (start % stride);
+    let written = 0;
+
+    for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += stride) {
+      const segmentStart = Math.max(0, bucketStart);
+      const segmentEnd = Math.min(this.length, bucketStart + stride);
+      if (segmentEnd <= start || segmentStart >= end) continue;
+
+      const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
+      const x = representative - xOrigin;
+      if (layout === "line-list") {
+        const offset = written * 4;
+        target[offset] = x;
+        target[offset + 1] = ProceduralBenchmarkDataset.minY;
+        target[offset + 2] = x;
+        target[offset + 3] = ProceduralBenchmarkDataset.maxY;
+      } else {
+        const offset = written * 3;
+        target[offset] = x;
+        target[offset + 1] = ProceduralBenchmarkDataset.minY;
+        target[offset + 2] = ProceduralBenchmarkDataset.maxY;
+      }
+      written++;
+    }
+
+    return written;
+  }
+
+  private copyStridedSamples(
+    from: number,
+    to: number,
+    stride: number,
+    target: Float32Array,
+    maxPoints: number,
+    layout: SampleCopyLayout,
+    baseline: number,
+    xOrigin: number,
+  ): number {
+    const floatsPerSample = layout === "points" ? 2 : 4;
+    if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
+
+    const count = Math.min(maxPoints, Math.max(0, Math.ceil((to - from) / stride)));
+    for (let i = 0, index = from; i < count; i++, index += stride) {
+      const x = index - xOrigin;
+      if (layout === "points") {
+        const offset = i * 2;
+        target[offset] = x;
+        target[offset + 1] = sampleY(index);
+      } else {
+        const offset = i * 4;
+        target[offset] = x;
+        target[offset + 1] = baseline;
+        target[offset + 2] = x;
+        target[offset + 3] = sampleY(index);
+      }
+    }
+    return count;
+  }
+
+  private assertValidIndex(index: number): void {
+    if (!Number.isInteger(index) || index < 0 || index >= this.length) throw new RangeError(`Procedural benchmark dataset index out of range: ${index}`);
+  }
+}
+
+function createBenchmarkData(scenario: ScenarioConfig, libraries: readonly LibraryId[]): BenchmarkData {
+  const sampleCount = scenario.sampleCount;
+  const needsBlazePlot = libraries.includes("blazeplot") && scenario.blazeplotDataPath !== "accelerated-dataset";
   const needsUPlot = libraries.includes("uplot");
   const needsChartJs = libraries.includes("chartjs");
   const xFloat = needsBlazePlot ? new Float64Array(sampleCount) : undefined;
