@@ -7,6 +7,12 @@ dist
 build
 *.tgz
 
+# benchmark outputs: keep only the blessed latest reference files
+benchmarks/*
+!benchmarks/README.md
+!benchmarks/latest.json
+!benchmarks/latest.md
+
 # code coverage
 coverage
 *.lcov

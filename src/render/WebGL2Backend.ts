@@ -69,7 +69,6 @@ export class WebGL2Backend implements GpuBackend {
       instancing: typeof gl.vertexAttribDivisor === "function" && typeof gl.drawArraysInstanced === "function",
     };
     this.resources = new WebGL2Resources(gl);
-    this.resources.preAllocate();
 
     this.gl.disable(this.gl.DEPTH_TEST);
     this.gl.disable(this.gl.STENCIL_TEST);

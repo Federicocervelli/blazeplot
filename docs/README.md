@@ -30,6 +30,7 @@ These pages are visible on the docs site and should be useful to package users.
 - [Live data](./live-data.md) — streaming appends, fixed-rate shorthand, sample updates, OHLC live candles, and follow-latest behavior.
 - [Data semantics](./data-semantics.md) — sorted X values, gaps, bounds, ring buffers, server-sampled data, picking, and export behavior.
 - [Performance recipes](./performance-recipes.md) — data-shape choices, LOD guidance, streaming patterns, and browser budgets.
+- [Benchmarks](./benchmarks.md) — generated headed-browser comparison tables from the latest publishable local run.
 
 ### UI and extension
 
@@ -63,4 +64,4 @@ These pages are primarily for contributors and release maintainers.
 - Keep performance decisions in `performance-recipes.md`.
 - Keep plugin usage in `built-in-plugins.md`; custom plugin lifecycle belongs in `plugin-authoring.md`.
 - Keep maintainer-only process in `documentation-contributions.md` or `docs/internal/*`.
-- Do not hand-edit generated sections in `README.md` or `docs/api-reference.md`; run `bun run docs:readme` instead.
+- Do not hand-edit generated sections in `README.md`, `docs/api-reference.md`, or `docs/benchmarks.md`; run `bun run docs:readme` instead.

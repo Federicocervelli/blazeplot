@@ -48,6 +48,14 @@
     "order": 60
   },
   {
+    "slug": "benchmarks",
+    "title": "Benchmarks",
+    "description": "Generated headed-browser comparisons against uPlot and Chart.js.",
+    "sourcePath": "docs/benchmarks.md",
+    "section": "Data and performance",
+    "order": 65
+  },
+  {
     "slug": "built-in-plugins",
     "title": "Plugins",
     "description": "Use optional interaction, tooltip, legend, annotation, selection, crosshair, and navigator plugins.",

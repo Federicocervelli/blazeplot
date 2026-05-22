@@ -46,6 +46,7 @@ If the chart appears blank, check that the host element has a non-zero height, W
 | Copy a working pattern | [Examples](./examples.md) |
 | Understand sorted data, gaps, bounds, and export behavior | [Data semantics](./data-semantics.md) |
 | Choose datasets, downsampling, and live update patterns | [Performance recipes](./performance-recipes.md) |
+| Compare headed-browser benchmark results | [Benchmarks](./benchmarks.md) |
 | Add tooltips, legends, selection, annotations, crosshair, or navigator | [Built-in plugins](./built-in-plugins.md) |
 | Build custom chart UI or behavior | [Plugin authoring](./plugin-authoring.md) |
 | Style axes, gutters, themes, and responsive layouts | [Theming and layout](./theming-and-layout.md) |

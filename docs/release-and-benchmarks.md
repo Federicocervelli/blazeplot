@@ -68,6 +68,7 @@ On pushes to `main` and manual dispatches, `.github/workflows/release.yml`:
 - `bun run docs:bundle-size`: prints the bundle-size markdown summary for the current `dist/` build.
 - `bun run bundle:analyze`: reports built chunk raw/gzip sizes and source-map generated-byte contributors for investigating bundle growth. Hidden source maps remain in local `dist/` builds for this command, but `.map` files are excluded from the published npm package to keep tarballs small.
 - `bun run bench:ci`: fast smoke benchmark used by CI.
+- `bun run bench:compare`: manual-only headed comparison benchmark for BlazePlot, uPlot, and Chart.js. It runs automatically after launch and overwrites `benchmarks/latest.json` plus `benchmarks/latest.md`.
 - `bun run test:visual`: browser visual chart tests used by CI; writes PNGs and `summary.json` to `build/visual-tests/`.
 - `bun run test:interaction`: browser input automation used by CI for hover, crosshair, zoom, pan, reset, and selection.
 - `bun run bench -- --scenario <name>`: run one benchmark scenario and print JSON.
@@ -75,6 +76,14 @@ On pushes to `main` and manual dispatches, `.github/workflows/release.yml`:
 - `bun run release:benchmarks`: append benchmark tables to `changelogs/v<package.version>.md`.
 
 Browser detection checks `BLAZEPLOT_BENCH_CHROME`, `CHROME_PATH`, then common Chrome/Chromium/Brave binaries.
+
+## Public comparison benchmarks
+
+Public comparison numbers are intentionally separate from CI smoke benchmarks. `bun run bench:compare` defaults to a headed browser, prewarms each selected library with a dense chart after module load, runs one discarded setup warmup per library/scenario, drives every measured scenario through Chrome DevTools Protocol, and requires no user interaction after the command starts. The latest run is stored in `benchmarks/latest.json` and summarized in `benchmarks/latest.md`; historical comparison artifacts are not kept in-repo.
+
+The comparison suite currently covers BlazePlot, uPlot, and Chart.js across 100k/1M static line setup, 1M pan over a 100k visible window, 1M live streaming append while following the latest 100k samples, and a 10M dense-pan stress case with 5M visible samples. Results are marked non-publishable when the browser is headless, the detected WebGL renderer appears to be software-rendered, the run omits any official scenario/library, or any library/scenario run fails.
+
+When a publishable `benchmarks/latest.json` exists, `bun run docs:readme` generates the README performance section from that file. If that file is missing, the README only documents how to run the manual benchmark and avoids public competitor numbers. If the file exists but is non-publishable, docs generation fails instead of silently promoting bad data.
 
 ## Reading release benchmark tables
 

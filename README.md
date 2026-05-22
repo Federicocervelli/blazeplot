@@ -17,21 +17,45 @@ Built on native WebGL2 with no rendering runtime dependency.
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core chart runtime is intentionally compact: the production build for `blazeplot` (without optional plugins) is about **146 KiB raw / 33 KiB gzip**. Optional plugins and helpers ship as separate subpath entries.
+The core chart runtime is intentionally compact: the production build for `blazeplot` (without optional plugins) is about **148 KiB raw / 33 KiB gzip**. Optional plugins and helpers ship as separate subpath entries.
 
-A minimal 1,000-point line chart renders its first frame in about **0.3 ms median / 0.5 ms p95** of render work (640×360 canvas, HeadlessChrome 148, SwiftShader). Chart construction and WebGL setup takes about **19 ms median**.
+Latest manual headed comparison: 2026-05-22T13:43:33.116Z on AMD Ryzen 5 5600H with Radeon Graphics (12 logical CPUs), ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 3050 Laptop GPU/PCIe/SSE2, OpenGL 4.5.0), Chrome/148.0.7778.167. The harness prewarms each selected library before measured runs (260.4 ms total) and discards 1 setup warmup run(s) before each displayed row. Source: `benchmarks/latest.json`.
 
-Size and first-draw comparison (vendor-published figures, best value bolded):
+Initial chart ready time in milliseconds (chart construction plus first browser frame after shared data preparation):
 
-| Library | Version | Size | First draw |
+| Scenario | BlazePlot 0.3.11 | uPlot 1.6.32 | Chart.js 4.5.1 |
 |---|---:|---:|---:|
-| **BlazePlot** | 0.3.11 | **146 KiB raw / 33 KiB gzip** | **0.3 ms render** (19 ms setup) |
-| Chart.js | 4.5.1 | 1,562 KB tarball (5.9 MB unpacked) | — |
-| Plotly.js | 3.5.0 | 4.6 MB min (1.4 MB gzip) | — |
-| LightningChart JS | 5.2.1 | 1.2–1.5 MB JS (25.5 MB unpacked) | — |
-| SciChart.js | 5.x | 1.9 MB JS + ~1 MB WASM | ~250 ms init |
+| line-100k-static | 11.4 | 8.4 | 13.1 |
+| line-1m-static | 15.5 | 20.5 | 25.1 |
+| line-1m-pan | 12.9 | 8.3 | 12.3 |
+| line-1m-stream | 33.4 | 11.5 | 15.0 |
+| line-10m-pan | 33.0 | 60.5 | 68.9 |
 
-References: BlazePlot — [this release build](https://github.com/Federicocervelli/blazeplot) and local benchmark. Chart.js — [4.5.1](https://github.com/chartjs/Chart.js/releases/tag/v4.5.1). Plotly.js — [3.5.0](https://github.com/plotly/plotly.js/tree/v3.5.0). LightningChart JS — [5.2.1](https://www.npmjs.com/package/@arction/lcjs). SciChart.js — [5.x](https://www.npmjs.com/package/scichart).
+Automated pan/stream measurements (no user interaction after launch). Work time uses BlazePlot internal chart frame time when available and otherwise the synchronous library update/redraw call:
+
+| Metric | BlazePlot 0.3.11 | uPlot 1.6.32 | Chart.js 4.5.1 |
+|---|---:|---:|---:|
+| line-1m-pan RAF FPS | 120.2 | 114.5 | 120.2 |
+| line-1m-pan RAF p95 ms | 8.40 | 8.40 | 8.40 |
+| line-1m-pan work p95 ms | 1.20 | 2.50 | 3.60 |
+| line-1m-stream RAF FPS | 120.2 | 120.2 | 119.8 |
+| line-1m-stream RAF p95 ms | 8.40 | 8.40 | 8.40 |
+| line-1m-stream work p95 ms | 1.20 | 2.30 | 3.50 |
+| line-10m-pan RAF FPS | 92.9 | 22.1 | 21.3 |
+| line-10m-pan RAF p95 ms | 16.70 | 50.00 | 50.00 |
+| line-10m-pan work p95 ms | 10.90 | 46.90 | 48.10 |
+
+BlazePlot vs uPlot runtime ratios. Higher favors BlazePlot; FPS is BlazePlot/uPlot and work p95 is uPlot/BlazePlot:
+
+| Scenario | FPS ratio | Work p95 ratio | BlazePlot FPS | uPlot FPS | BlazePlot work p95 | uPlot work p95 |
+|---|---:|---:|---:|---:|---:|---:|
+| line-1m-pan | 1.05× | 2.08× | 120.2 | 114.5 | 1.20 | 2.50 |
+| line-1m-stream | 1.00× | 1.92× | 120.2 | 120.2 | 1.20 | 2.30 |
+| line-10m-pan | 4.21× | 4.30× | 92.9 | 22.1 | 10.90 | 46.90 |
+
+Full generated benchmark details: [docs/benchmarks.md](docs/benchmarks.md).
+
+Command: `bun run bench:compare --width 1600 --height 900`
 <!-- README_PERFORMANCE_END -->
 
 ## Installation
@@ -137,7 +161,7 @@ This page is generated from the built package. Use it as an index of import path
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
 
-Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](docs/examples.md), [Live data](docs/live-data.md), [Data semantics](docs/data-semantics.md), [Performance](docs/performance-recipes.md), [Plugins](docs/built-in-plugins.md), [Theme & layout](docs/theming-and-layout.md), [Author plugins](docs/plugin-authoring.md), [Troubleshooting](docs/troubleshooting.md), [Browser](docs/browser-support.md), [Migration](docs/versioning-and-migration.md), [Roadmap](docs/roadmap.md).
+Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](docs/examples.md), [Live data](docs/live-data.md), [Data semantics](docs/data-semantics.md), [Performance](docs/performance-recipes.md), [Benchmarks](docs/benchmarks.md), [Plugins](docs/built-in-plugins.md), [Theme & layout](docs/theming-and-layout.md), [Author plugins](docs/plugin-authoring.md), [Troubleshooting](docs/troubleshooting.md), [Browser](docs/browser-support.md), [Migration](docs/versioning-and-migration.md), [Roadmap](docs/roadmap.md).
 
 ### Package entry points
 
@@ -186,12 +210,12 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-C7axsZD0.js` | 55.2 KiB |
+| shared Chart chunk | `dist/Chart-Bl4erFBO.js` | 55.2 KiB |
 | shared streaming data chunk | `dist/UniformRingBuffer-zewj9EWq.js` | 44.2 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-5knDb_Pp.js` | 9.9 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-u2Eao8OX.js` | 11.2 KiB |
 | shared AxisController chunk | `dist/AxisController-CCk21uVK.js` | 13.8 KiB |
-| shared WebGL2Backend chunk | `dist/WebGL2Backend-Bs4aiO8a.js` | 21.3 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-DqKWyI9F.js` | 2.1 KiB |
+| shared WebGL2Backend chunk | `dist/WebGL2Backend-DivtLMNz.js` | 22.0 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-BxD1tCts.js` | 2.1 KiB |
 | lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
 | shared Tooltip chunk | `dist/Tooltip-D0WRT6Fj.js` | 5.7 KiB |
@@ -347,6 +371,7 @@ bun run build           # Package build (JS + declarations)
 bun test                # Tests
 bun run typecheck       # TypeScript strict check
 bun run bench:ci        # Headless browser benchmark smoke test
+bun run bench:compare   # Manual headed BlazePlot/uPlot/Chart.js comparison benchmark
 bun run version:patch   # Prepare package.json + changelog for a patch release PR
 bun run release:benchmarks  # Append benchmark results to the current release changelog
 ```
