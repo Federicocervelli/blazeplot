@@ -13,12 +13,12 @@ This page is generated from the built package. Use it as an index of import path
 | OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |
 | Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |
 | Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |
-| Tooltips, legends, annotations, selection | `blazeplot/plugins/*` subpaths |
+| Tooltips, legends, annotations, selection, flame graphs | `blazeplot/plugins/*` subpaths |
 | React | `blazeplot/react` and `BlazeChart` |
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
 
-Guides: [Docs map](./README.md), [Overview](./overview.md), [Examples](./examples.md), [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), [Built-in plugins](./built-in-plugins.md), [Plugin authoring](./plugin-authoring.md), [Theming and layout](./theming-and-layout.md), [Troubleshooting](./troubleshooting.md), [Browser support](./browser-support.md), [Migration](./versioning-and-migration.md), [Roadmap](./roadmap.md).
+Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./examples.md), [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance](./performance-recipes.md), [Plugins](./built-in-plugins.md), [Theme & layout](./theming-and-layout.md), [Author plugins](./plugin-authoring.md), [Troubleshooting](./troubleshooting.md), [Browser](./browser-support.md), [Migration](./versioning-and-migration.md), [Roadmap](./roadmap.md).
 
 ### Package entry points
 
@@ -40,7 +40,7 @@ Guides: [Docs map](./README.md), [Overview](./overview.md), [Examples](./example
 | `blazeplot/plugins/selection` | Built-in brush/range selection plugin. |
 | `blazeplot/plugins/crosshair` | Built-in crosshair and ruler plugin. |
 | `blazeplot/plugins/navigator` | Built-in overview/navigator plugin. |
-| `blazeplot/plugins/flamegraph` | Package subpath export. |
+| `blazeplot/plugins/flamegraph` | Built-in flame graph and status-span plugin. |
 
 The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; use the README performance section for the aggregate core runtime size.
 
@@ -163,7 +163,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `PanIntent` | interface | `./interaction/types` | — |
 | `RangeMinMaxDataset` | interface | `./core/types` | — |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
-| `ReglBackend` | const | `./render/WebGL2Backend` | Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API. |
+| `ReglBackend` | const | `./render/WebGL2Backend` | Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API. Deprecated: Use WebGL2Backend. |
 | `ResolvedChartTheme` | interface | `./ui/theme` | — |
 | `RgbaColor` | type | `./ui/theme` | — |
 | `RingBuffer` | class | `./core/RingBuffer` | — |

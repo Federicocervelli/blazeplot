@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { gzipSync } from "node:zlib";
 import ts from "typescript";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
@@ -10,9 +11,17 @@ const apiReferencePath = resolve(root, "docs/api-reference.md");
 const readmePath = resolve(root, "README.md");
 const packagePath = resolve(root, "package.json");
 const distIndexPath = resolve(root, "dist/index.d.ts");
+const docsPagesPath = resolve(root, "docs/pages.json");
+const performanceBaselinePath = resolve(root, "docs/performance-baseline.json");
 
-const startMarker = "<!-- README_DOCS_START -->";
-const endMarker = "<!-- README_DOCS_END -->";
+const docsStartMarker = "<!-- README_DOCS_START -->";
+const docsEndMarker = "<!-- README_DOCS_END -->";
+const performanceStartMarker = "<!-- README_PERFORMANCE_START -->";
+const performanceEndMarker = "<!-- README_PERFORMANCE_END -->";
+
+const args = new Set(process.argv.slice(2));
+const check = args.has("--check");
+const checkExportDescriptions = args.has("--check-export-descriptions");
 
 const pkg = JSON.parse(readFileSync(packagePath, "utf-8"));
 
@@ -37,7 +46,14 @@ const exportDescriptions = new Map([
   ["./plugins/selection", "Built-in brush/range selection plugin."],
   ["./plugins/crosshair", "Built-in crosshair and ruler plugin."],
   ["./plugins/navigator", "Built-in overview/navigator plugin."],
+  ["./plugins/flamegraph", "Built-in flame graph and status-span plugin."],
 ]);
+
+validateExportDescriptions();
+if (checkExportDescriptions && process.argv.length <= 3) {
+  console.log("Package export descriptions cover every public subpath.");
+  process.exit(0);
+}
 
 const sourceCache = new Map();
 const declarationCache = new Map();
@@ -67,18 +83,20 @@ function code(value) {
   return `\`${markdownEscape(value)}\``;
 }
 
-function nodeText(node, source) {
-  return markdownEscape(printer.printNode(ts.EmitHint.Unspecified, node, source));
-}
-
 function jsDoc(node) {
   const docs = node.jsDoc;
   if (!docs || docs.length === 0) return "";
-  return docs
-    .map((doc) => typeof doc.comment === "string" ? doc.comment : "")
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+  const parts = [];
+  for (const doc of docs) {
+    if (typeof doc.comment === "string" && doc.comment.trim()) parts.push(doc.comment.trim());
+    for (const tag of doc.tags ?? []) {
+      if (tag.tagName?.text === "deprecated") {
+        const text = typeof tag.comment === "string" ? tag.comment.trim() : "";
+        parts.push(text ? `Deprecated: ${text}` : "Deprecated.");
+      }
+    }
+  }
+  return parts.join(" ").trim();
 }
 
 function declarationKind(node) {
@@ -160,10 +178,23 @@ function collectPublicExports() {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function validateExportDescriptions() {
+  const missing = Object.keys(pkg.exports ?? {})
+    .filter((key) => key !== "./package.json" && !exportDescriptions.has(key));
+  if (missing.length > 0) {
+    throw new Error(`Missing package export descriptions for: ${missing.join(", ")}`);
+  }
+}
+
+function readDocPages() {
+  return JSON.parse(readFileSync(docsPagesPath, "utf8"))
+    .sort((a, b) => a.order - b.order || a.slug.localeCompare(b.slug));
+}
+
 function renderEntrypoints() {
   const rows = Object.keys(pkg.exports ?? {})
     .filter((key) => key !== "./package.json")
-    .map((key) => `| ${code(packageEntryName(key))} | ${exportDescriptions.get(key) ?? "Package subpath export."} |`);
+    .map((key) => `| ${code(packageEntryName(key))} | ${exportDescriptions.get(key)} |`);
 
   return [
     "### Package entry points",
@@ -204,22 +235,11 @@ function guideLink(basePath, file) {
 }
 
 function renderGuideLinks(basePath) {
-  const prefix = basePath ? `${basePath.replace(/\/$/, "")}/` : "";
-  return [
-    `[Docs map](${prefix}README.md)`,
-    `[Overview](${prefix}overview.md)`,
-    `[Examples](${prefix}examples.md)`,
-    `[Live data](${prefix}live-data.md)`,
-    `[Data semantics](${prefix}data-semantics.md)`,
-    `[Performance recipes](${prefix}performance-recipes.md)`,
-    `[Built-in plugins](${prefix}built-in-plugins.md)`,
-    `[Plugin authoring](${prefix}plugin-authoring.md)`,
-    `[Theming and layout](${prefix}theming-and-layout.md)`,
-    `[Troubleshooting](${prefix}troubleshooting.md)`,
-    `[Browser support](${prefix}browser-support.md)`,
-    `[Migration](${prefix}versioning-and-migration.md)`,
-    `[Roadmap](${prefix}roadmap.md)`,
-  ].join(", ");
+  return readDocPages()
+    .filter((page) => !page.sourcePath.startsWith("docs/internal/"))
+    .filter((page) => page.slug !== "api-reference" && page.slug !== "documentation-contributions" && page.slug !== "release-and-benchmarks")
+    .map((page) => `[${page.title === "Data" ? "Data semantics" : page.title}](${guideLink(basePath, page.sourcePath.replace(/^docs\//, ""))})`)
+    .join(", ");
 }
 
 function renderGeneratedDocs(options = {}) {
@@ -239,7 +259,7 @@ function renderGeneratedDocs(options = {}) {
     "| OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |",
     "| Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |",
     "| Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |",
-    "| Tooltips, legends, annotations, selection | `blazeplot/plugins/*` subpaths |",
+    "| Tooltips, legends, annotations, selection, flame graphs | `blazeplot/plugins/*` subpaths |",
     "| React | `blazeplot/react` and `BlazeChart` |",
     "| Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |",
     "| Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |",
@@ -248,7 +268,7 @@ function renderGeneratedDocs(options = {}) {
   ].join("\n");
 
   const parts = [
-    startMarker,
+    docsStartMarker,
     "## API reference",
     "",
     commonApiMap,
@@ -260,28 +280,115 @@ function renderGeneratedDocs(options = {}) {
     renderBundleSizeSummary(),
   ];
   parts.push("", renderPublicExports(publicExports));
-  parts.push(endMarker);
+  parts.push(docsEndMarker);
   return parts.join("\n");
+}
+
+function renderPerformanceBlock() {
+  const baseline = JSON.parse(readFileSync(performanceBaselinePath, "utf8"));
+  const core = collectCoreRuntimeSize();
+  const size = `${formatKiB(core.rawBytes)} raw / ${formatKiB(core.gzipBytes)} gzip`;
+  const first = baseline.firstFrame;
+  const rows = [
+    `| **BlazePlot** | ${pkg.version} | **${size}** | **${first.renderMedianMs} ms render** (${first.setupMedianMs} ms setup) |`,
+    ...baseline.competitors.map((entry) => `| ${entry.library} | ${entry.version} | ${entry.size} | ${entry.firstDraw} |`),
+  ];
+  const references = [
+    "BlazePlot — [this release build](https://github.com/Federicocervelli/blazeplot) and local benchmark",
+    ...baseline.competitors.map((entry) => `${entry.library} — [${entry.version}](${entry.reference})`),
+  ].join(". ");
+
+  return [
+    performanceStartMarker,
+    "## Performance",
+    "",
+    `The core chart runtime is intentionally compact: the production build for \`blazeplot\` (without optional plugins) is about **${size}**. Optional plugins and helpers ship as separate subpath entries.`,
+    "",
+    `A minimal ${first.sampleCount.toLocaleString("en-US")}-point line chart renders its first frame in about **${first.renderMedianMs} ms median / ${first.renderP95Ms} ms p95** of render work (${first.canvas} canvas, ${first.browser}, ${first.renderer}). Chart construction and WebGL setup takes about **${first.setupMedianMs} ms median**.`,
+    "",
+    "Size and first-draw comparison (vendor-published figures, best value bolded):",
+    "",
+    "| Library | Version | Size | First draw |",
+    "|---|---:|---:|---:|",
+    ...rows,
+    "",
+    `References: ${references}.`,
+    performanceEndMarker,
+  ].join("\n");
+}
+
+function collectCoreRuntimeSize() {
+  const files = [
+    "dist/index.js",
+    ...findDistFiles(/^Chart-.*\.js$/),
+    ...findDistFiles(/^(RingBuffer|UniformRingBuffer)-.*\.js$/),
+    ...findDistFiles(/^OhlcDataset-.*\.js$/),
+    ...findDistFiles(/^AxisController-.*\.js$/),
+    ...findDistFiles(/^WebGL2Backend-.*\.js$/),
+  ];
+  const buffers = files.map((file) => readFileSync(resolve(root, file)));
+  return {
+    rawBytes: files.reduce((sum, file) => sum + statSync(resolve(root, file)).size, 0),
+    gzipBytes: gzipSync(Buffer.concat(buffers)).length,
+  };
+}
+
+function findDistFiles(pattern) {
+  const files = execFileSync("node", ["-e", "const {readdirSync}=require('fs'); console.log(readdirSync('dist').join('\\n'))"], { cwd: root, encoding: "utf8" })
+    .split("\n")
+    .filter(Boolean)
+    .filter((file) => pattern.test(file))
+    .map((file) => `dist/${file}`);
+  if (files.length !== 1) throw new Error(`Expected exactly one dist file matching ${pattern}, found ${files.length}.`);
+  return files;
+}
+
+function formatKiB(bytes) {
+  return `${Math.round(bytes / 1024)} KiB`;
+}
+
+function replaceBlock(content, startMarker, endMarker, block, label) {
+  const start = content.indexOf(startMarker);
+  const end = content.indexOf(endMarker);
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`${label} generated markers were not found.`);
+  }
+  const before = content.slice(0, start);
+  const after = content.slice(end + endMarker.length);
+  return `${before}${block}${after}`;
 }
 
 const apiGeneratedBlock = renderGeneratedDocs({ guideBasePath: "." });
 const apiGenerated = apiGeneratedBlock
-  .replace(startMarker, "")
-  .replace(endMarker, "")
+  .replace(docsStartMarker, "")
+  .replace(docsEndMarker, "")
   .trim();
 
-writeFileSync(apiReferencePath, `${apiGenerated}\n`);
-if (existsSync(readmePath)) {
+const nextApi = `${apiGenerated}\n`;
+let nextReadme = existsSync(readmePath) ? readFileSync(readmePath, "utf-8") : "";
+if (nextReadme) {
   const readmeGeneratedBlock = renderGeneratedDocs({ guideBasePath: "docs" });
-  const readme = readFileSync(readmePath, "utf-8");
-  const start = readme.indexOf(startMarker);
-  const end = readme.indexOf(endMarker);
-  if (start === -1 || end === -1 || end < start) {
-    throw new Error("README generated docs markers were not found.");
+  if (!nextReadme.includes(performanceStartMarker)) {
+    nextReadme = nextReadme.replace(/^## Performance[\s\S]*?\n## Installation/m, `${performanceStartMarker}\n## Performance\n\n${performanceEndMarker}\n\n## Installation`);
   }
-  const before = readme.slice(0, start);
-  const after = readme.slice(end + endMarker.length);
-  writeFileSync(readmePath, `${before}${readmeGeneratedBlock}${after}`);
+  nextReadme = replaceBlock(nextReadme, performanceStartMarker, performanceEndMarker, renderPerformanceBlock(), "README performance");
+  nextReadme = replaceBlock(nextReadme, docsStartMarker, docsEndMarker, readmeGeneratedBlock, "README docs");
 }
-console.log("Generated docs/api-reference.md from TypeScript declarations.");
-console.log("Updated README generated docs section.");
+
+if (check) {
+  const currentApi = readFileSync(apiReferencePath, "utf8");
+  const currentReadme = readFileSync(readmePath, "utf8");
+  const stale = [];
+  if (currentApi !== nextApi) stale.push("docs/api-reference.md");
+  if (currentReadme !== nextReadme) stale.push("README.md");
+  if (stale.length > 0) {
+    console.error(`${stale.join(", ")} is stale. Run \`bun run docs:readme\`.`);
+    process.exit(1);
+  }
+  console.log("Generated README/API docs are fresh.");
+} else {
+  writeFileSync(apiReferencePath, nextApi);
+  if (nextReadme) writeFileSync(readmePath, nextReadme);
+  console.log("Generated docs/api-reference.md from TypeScript declarations.");
+  console.log("Updated README generated docs and performance sections.");
+}

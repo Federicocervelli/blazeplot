@@ -14,9 +14,10 @@ Built for people who have hit the performance ceiling of Chart.js, Plotly, and s
 
 Built on native WebGL2 with no rendering runtime dependency.
 
+<!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core chart runtime is intentionally compact: the production build for `blazeplot` (without optional plugins) is about **139 KiB raw / 34 KiB gzip**. Optional plugins and helpers ship as separate subpath entries.
+The core chart runtime is intentionally compact: the production build for `blazeplot` (without optional plugins) is about **146 KiB raw / 33 KiB gzip**. Optional plugins and helpers ship as separate subpath entries.
 
 A minimal 1,000-point line chart renders its first frame in about **0.3 ms median / 0.5 ms p95** of render work (640×360 canvas, HeadlessChrome 148, SwiftShader). Chart construction and WebGL setup takes about **19 ms median**.
 
@@ -24,13 +25,14 @@ Size and first-draw comparison (vendor-published figures, best value bolded):
 
 | Library | Version | Size | First draw |
 |---|---:|---:|---:|
-| **BlazePlot** | 0.3.5 | **139 KiB raw / 34 KiB gzip** | **0.3 ms render** (19 ms setup) |
+| **BlazePlot** | 0.3.10 | **146 KiB raw / 33 KiB gzip** | **0.3 ms render** (19 ms setup) |
 | Chart.js | 4.5.1 | 1,562 KB tarball (5.9 MB unpacked) | — |
 | Plotly.js | 3.5.0 | 4.6 MB min (1.4 MB gzip) | — |
 | LightningChart JS | 5.2.1 | 1.2–1.5 MB JS (25.5 MB unpacked) | — |
 | SciChart.js | 5.x | 1.9 MB JS + ~1 MB WASM | ~250 ms init |
 
-References: BlazePlot — [this release build](https://github.com/Federicocervelli/blazeplot) and local benchmark. Chart.js — [v4.5.1](https://github.com/chartjs/Chart.js/releases/tag/v4.5.1). Plotly.js — [v3.5.0](https://github.com/plotly/plotly.js/tree/v3.5.0). LightningChart JS — [v5.2.1](https://www.npmjs.com/package/@arction/lcjs). SciChart.js — [v5](https://www.npmjs.com/package/scichart).
+References: BlazePlot — [this release build](https://github.com/Federicocervelli/blazeplot) and local benchmark. Chart.js — [4.5.1](https://github.com/chartjs/Chart.js/releases/tag/v4.5.1). Plotly.js — [3.5.0](https://github.com/plotly/plotly.js/tree/v3.5.0). LightningChart JS — [5.2.1](https://www.npmjs.com/package/@arction/lcjs). SciChart.js — [5.x](https://www.npmjs.com/package/scichart).
+<!-- README_PERFORMANCE_END -->
 
 ## Installation
 
@@ -130,12 +132,12 @@ This page is generated from the built package. Use it as an index of import path
 | OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |
 | Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |
 | Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |
-| Tooltips, legends, annotations, selection | `blazeplot/plugins/*` subpaths |
+| Tooltips, legends, annotations, selection, flame graphs | `blazeplot/plugins/*` subpaths |
 | React | `blazeplot/react` and `BlazeChart` |
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
 
-Guides: [Docs map](docs/README.md), [Overview](docs/overview.md), [Examples](docs/examples.md), [Live data](docs/live-data.md), [Data semantics](docs/data-semantics.md), [Performance recipes](docs/performance-recipes.md), [Built-in plugins](docs/built-in-plugins.md), [Plugin authoring](docs/plugin-authoring.md), [Theming and layout](docs/theming-and-layout.md), [Troubleshooting](docs/troubleshooting.md), [Browser support](docs/browser-support.md), [Migration](docs/versioning-and-migration.md), [Roadmap](docs/roadmap.md).
+Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](docs/examples.md), [Live data](docs/live-data.md), [Data semantics](docs/data-semantics.md), [Performance](docs/performance-recipes.md), [Plugins](docs/built-in-plugins.md), [Theme & layout](docs/theming-and-layout.md), [Author plugins](docs/plugin-authoring.md), [Troubleshooting](docs/troubleshooting.md), [Browser](docs/browser-support.md), [Migration](docs/versioning-and-migration.md), [Roadmap](docs/roadmap.md).
 
 ### Package entry points
 
@@ -157,7 +159,7 @@ Guides: [Docs map](docs/README.md), [Overview](docs/overview.md), [Examples](doc
 | `blazeplot/plugins/selection` | Built-in brush/range selection plugin. |
 | `blazeplot/plugins/crosshair` | Built-in crosshair and ruler plugin. |
 | `blazeplot/plugins/navigator` | Built-in overview/navigator plugin. |
-| `blazeplot/plugins/flamegraph` | Package subpath export. |
+| `blazeplot/plugins/flamegraph` | Built-in flame graph and status-span plugin. |
 
 The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; use the README performance section for the aggregate core runtime size.
 
@@ -280,7 +282,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `PanIntent` | interface | `./interaction/types` | — |
 | `RangeMinMaxDataset` | interface | `./core/types` | — |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
-| `ReglBackend` | const | `./render/WebGL2Backend` | Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API. |
+| `ReglBackend` | const | `./render/WebGL2Backend` | Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API. Deprecated: Use WebGL2Backend. |
 | `ResolvedChartTheme` | interface | `./ui/theme` | — |
 | `RgbaColor` | type | `./ui/theme` | — |
 | `RingBuffer` | class | `./core/RingBuffer` | — |
