@@ -1,0 +1,133 @@
+[
+  {
+    "slug": "overview",
+    "title": "Overview",
+    "description": "Install BlazePlot, create your first chart, and understand the main tradeoffs.",
+    "sourcePath": "docs/overview.md",
+    "section": "Start",
+    "order": 10
+  },
+  {
+    "slug": "docs-map",
+    "title": "Docs map",
+    "description": "Reader paths, page ownership, and where each documentation topic belongs.",
+    "sourcePath": "docs/README.md",
+    "section": "Start",
+    "order": 20
+  },
+  {
+    "slug": "examples",
+    "title": "Examples",
+    "description": "Copy-paste patterns for chart setup, plugins, data feeds, and exports.",
+    "sourcePath": "docs/examples.md",
+    "section": "Start",
+    "order": 30
+  },
+  {
+    "slug": "live-data",
+    "title": "Live data",
+    "description": "Streaming appends, fixed-rate shortcuts, sample updates, and follow-latest behavior.",
+    "sourcePath": "docs/live-data.md",
+    "section": "Data and performance",
+    "order": 40
+  },
+  {
+    "slug": "data-semantics",
+    "title": "Data",
+    "description": "How BlazePlot interprets series data, ordering, ring buffers, and sampling.",
+    "sourcePath": "docs/data-semantics.md",
+    "section": "Data and performance",
+    "order": 50
+  },
+  {
+    "slug": "performance-recipes",
+    "title": "Performance",
+    "description": "Practical guidance for streaming, LOD, dense data, and browser budgets.",
+    "sourcePath": "docs/performance-recipes.md",
+    "section": "Data and performance",
+    "order": 60
+  },
+  {
+    "slug": "built-in-plugins",
+    "title": "Plugins",
+    "description": "Use optional interaction, tooltip, legend, annotation, selection, crosshair, and navigator plugins.",
+    "sourcePath": "docs/built-in-plugins.md",
+    "section": "UI",
+    "order": 70
+  },
+  {
+    "slug": "theming-and-layout",
+    "title": "Theme & layout",
+    "description": "Chart theme tokens, axis placement, gutters, and responsive layout behavior.",
+    "sourcePath": "docs/theming-and-layout.md",
+    "section": "UI",
+    "order": 80
+  },
+  {
+    "slug": "plugin-authoring",
+    "title": "Author plugins",
+    "description": "Build lightweight chart plugins without coupling them to the core renderer.",
+    "sourcePath": "docs/plugin-authoring.md",
+    "section": "UI",
+    "order": 90
+  },
+  {
+    "slug": "troubleshooting",
+    "title": "Troubleshooting",
+    "description": "Fix blank charts, live viewport issues, performance drift, and common React mistakes.",
+    "sourcePath": "docs/troubleshooting.md",
+    "section": "Reference",
+    "order": 100
+  },
+  {
+    "slug": "browser-support",
+    "title": "Browser",
+    "description": "Runtime requirements and WebGL2 support expectations.",
+    "sourcePath": "docs/browser-support.md",
+    "section": "Reference",
+    "order": 110
+  },
+  {
+    "slug": "versioning-and-migration",
+    "title": "Migration",
+    "description": "Semver policy, migration expectations, and public API stability notes.",
+    "sourcePath": "docs/versioning-and-migration.md",
+    "section": "Reference",
+    "order": 120
+  },
+  {
+    "slug": "api-reference",
+    "title": "API reference",
+    "description": "Generated package entry point, symbol, bundle size, and public API reference.",
+    "sourcePath": "docs/api-reference.md",
+    "section": "Reference",
+    "order": 130
+  },
+  {
+    "slug": "release-and-benchmarks",
+    "title": "Release",
+    "description": "Release flow, benchmark commands, and how to read generated performance tables.",
+    "sourcePath": "docs/release-and-benchmarks.md",
+    "section": "Maintainers",
+    "order": 140,
+    "nav": false
+  },
+  {
+    "slug": "roadmap",
+    "title": "Roadmap",
+    "description": "Current status, near-term priorities, and non-goals for BlazePlot.",
+    "sourcePath": "docs/roadmap.md",
+    "section": "Maintainers",
+    "order": 150,
+    "nav": false
+  },
+  {
+    "slug": "documentation-contributions",
+    "title": "Docs process",
+    "description": "How to make BlazePlot docs concrete, source-checked, and useful.",
+    "sourcePath": "docs/documentation-contributions.md",
+    "section": "Maintainers",
+    "order": 160,
+    "nav": false
+  }
+]
