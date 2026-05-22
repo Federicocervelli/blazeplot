@@ -25,7 +25,7 @@ Size and first-draw comparison (vendor-published figures, best value bolded):
 
 | Library | Version | Size | First draw |
 |---|---:|---:|---:|
-| **BlazePlot** | 0.3.10 | **146 KiB raw / 33 KiB gzip** | **0.3 ms render** (19 ms setup) |
+| **BlazePlot** | 0.3.11 | **146 KiB raw / 33 KiB gzip** | **0.3 ms render** (19 ms setup) |
 | Chart.js | 4.5.1 | 1,562 KB tarball (5.9 MB unpacked) | — |
 | Plotly.js | 3.5.0 | 4.6 MB min (1.4 MB gzip) | — |
 | LightningChart JS | 5.2.1 | 1.2–1.5 MB JS (25.5 MB unpacked) | — |
