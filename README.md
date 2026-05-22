@@ -19,39 +19,39 @@ Built on native WebGL2 with no rendering runtime dependency.
 
 The core chart runtime is intentionally compact: the production build for `blazeplot` (without optional plugins) is about **148 KiB raw / 33 KiB gzip**. Optional plugins and helpers ship as separate subpath entries.
 
-Latest manual headed comparison: 2026-05-22T13:43:33.116Z on AMD Ryzen 5 5600H with Radeon Graphics (12 logical CPUs), ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 3050 Laptop GPU/PCIe/SSE2, OpenGL 4.5.0), Chrome/148.0.7778.167. The harness prewarms each selected library before measured runs (260.4 ms total) and discards 1 setup warmup run(s) before each displayed row. Source: `benchmarks/latest.json`.
+Latest manual headed comparison: 2026-05-22T14:56:48.781Z on AMD Ryzen 5 5600H with Radeon Graphics (12 logical CPUs), ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 3050 Laptop GPU/PCIe/SSE2, OpenGL 4.5.0), Chrome/148.0.7778.167. The harness prewarms each selected library before measured runs (177.6 ms total) and discards 1 setup warmup run(s) before each displayed row. Source: `benchmarks/latest.json`.
 
 Initial chart ready time in milliseconds (chart construction plus first browser frame after shared data preparation):
 
 | Scenario | BlazePlot 0.3.11 | uPlot 1.6.32 | Chart.js 4.5.1 |
 |---|---:|---:|---:|
-| line-100k-static | 11.4 | 8.4 | 13.1 |
-| line-1m-static | 15.5 | 20.5 | 25.1 |
-| line-1m-pan | 12.9 | 8.3 | 12.3 |
-| line-1m-stream | 33.4 | 11.5 | 15.0 |
-| line-10m-pan | 33.0 | 60.5 | 68.9 |
+| line-100k-static | 20.7 | **9.1** | 14.1 |
+| line-1m-static | **21.6** | 28.8 | 30.9 |
+| line-1m-pan | 13.4 | **12.1** | 16.5 |
+| line-1m-stream | 42.1 | 21.0 | **20.2** |
+| line-10m-pan | **52.6** | 81.8 | 115.2 |
 
 Automated pan/stream measurements (no user interaction after launch). Work time uses BlazePlot internal chart frame time when available and otherwise the synchronous library update/redraw call:
 
 | Metric | BlazePlot 0.3.11 | uPlot 1.6.32 | Chart.js 4.5.1 |
 |---|---:|---:|---:|
-| line-1m-pan RAF FPS | 120.2 | 114.5 | 120.2 |
-| line-1m-pan RAF p95 ms | 8.40 | 8.40 | 8.40 |
-| line-1m-pan work p95 ms | 1.20 | 2.50 | 3.60 |
-| line-1m-stream RAF FPS | 120.2 | 120.2 | 119.8 |
-| line-1m-stream RAF p95 ms | 8.40 | 8.40 | 8.40 |
-| line-1m-stream work p95 ms | 1.20 | 2.30 | 3.50 |
-| line-10m-pan RAF FPS | 92.9 | 22.1 | 21.3 |
-| line-10m-pan RAF p95 ms | 16.70 | 50.00 | 50.00 |
-| line-10m-pan work p95 ms | 10.90 | 46.90 | 48.10 |
+| line-1m-pan RAF FPS | 119.5 | **119.8** | 116.2 |
+| line-1m-pan RAF p95 ms | **8.40** | **8.40** | **8.40** |
+| line-1m-pan work p95 ms | **2.50** | 5.10 | 8.30 |
+| line-1m-stream RAF FPS | **119.8** | **119.8** | 118.8 |
+| line-1m-stream RAF p95 ms | **8.40** | **8.40** | **8.40** |
+| line-1m-stream work p95 ms | **2.50** | 6.10 | 8.10 |
+| line-10m-pan RAF FPS | **66.4** | 17.6 | 15.3 |
+| line-10m-pan RAF p95 ms | **25.00** | 83.30 | 74.90 |
+| line-10m-pan work p95 ms | **20.60** | 79.30 | 77.00 |
 
 BlazePlot vs uPlot runtime ratios. Higher favors BlazePlot; FPS is BlazePlot/uPlot and work p95 is uPlot/BlazePlot:
 
 | Scenario | FPS ratio | Work p95 ratio | BlazePlot FPS | uPlot FPS | BlazePlot work p95 | uPlot work p95 |
 |---|---:|---:|---:|---:|---:|---:|
-| line-1m-pan | 1.05× | 2.08× | 120.2 | 114.5 | 1.20 | 2.50 |
-| line-1m-stream | 1.00× | 1.92× | 120.2 | 120.2 | 1.20 | 2.30 |
-| line-10m-pan | 4.21× | 4.30× | 92.9 | 22.1 | 10.90 | 46.90 |
+| line-1m-pan | 1.00× | 2.04× | 119.5 | 119.8 | 2.50 | 5.10 |
+| line-1m-stream | 1.00× | 2.44× | 119.8 | 119.8 | 2.50 | 6.10 |
+| line-10m-pan | 3.78× | 3.85× | 66.4 | 17.6 | 20.60 | 79.30 |
 
 Full generated benchmark details: [docs/benchmarks.md](docs/benchmarks.md).
 

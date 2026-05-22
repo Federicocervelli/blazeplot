@@ -59,6 +59,9 @@ interface NumericSummary {
   p95: number;
 }
 
+type MetricDirection = "min" | "max";
+type MeasurementMetric = "rafFps" | "rafP95" | "workP50" | "workP95";
+
 interface MeasurementResult {
   durationMs: number;
   frames: number;
@@ -486,7 +489,7 @@ function renderMarkdown(report: CompareReport): string {
   for (const scenario of report.scenarios) {
     for (const result of scenario.results) {
       const library = report.libraries[result.library] ?? { name: result.library, version: "unknown" };
-      lines.push(`| ${escapeMd(scenario.name)} | ${escapeMd(library.name)} | ${escapeMd(library.version)} | ${result.ok ? fixed(result.readyMs ?? 0, 1) : "failed"} | ${formatNullableBytes(result.heapAfterReadyBytes)} | ${escapeMd(firstFrameDetails(result))} |`);
+      lines.push(`| ${escapeMd(scenario.name)} | ${escapeMd(library.name)} | ${escapeMd(library.version)} | ${formatReadyCell(scenario, result)} | ${formatNullableBytes(result.heapAfterReadyBytes)} | ${escapeMd(firstFrameDetails(result))} |`);
     }
   }
 
@@ -504,14 +507,13 @@ function renderMarkdown(report: CompareReport): string {
     for (const result of scenario.results) {
       const library = report.libraries[result.library] ?? { name: result.library, version: "unknown" };
       const measurement = result.measurement;
-      const work = workSummary(result);
       lines.push([
         scenario.name,
         library.name,
-        measurement ? fixed(measurement.rafFps, 1) : result.ok ? "—" : "failed",
-        measurement ? fixed(measurement.rafFrameMs.p95, 2) : "—",
-        work ? fixed(work.p50, 2) : "—",
-        work ? fixed(work.p95, 2) : "—",
+        formatMeasurementCell(scenario, result, "rafFps"),
+        formatMeasurementCell(scenario, result, "rafP95"),
+        formatMeasurementCell(scenario, result, "workP50"),
+        formatMeasurementCell(scenario, result, "workP95"),
         measurement?.pointsRendered ? integer(measurement.pointsRendered.p50) : "—",
         measurement?.drawCalls ? fixed(measurement.drawCalls.p50, 0) : "—",
         measurement ? integer(measurement.samplesAppended) : "—",
@@ -548,6 +550,60 @@ function renderMarkdown(report: CompareReport): string {
 function workSummary(result: LibraryResult): NumericSummary | undefined {
   const measurement = result.measurement;
   return measurement?.chartFrameMs ?? measurement?.updateMs;
+}
+
+function formatReadyCell(scenario: ScenarioResult, result: LibraryResult): string {
+  if (!result.ok) return "failed";
+  const best = bestResultValue(scenario, (entry) => entry.readyMs, "min");
+  return formatMaybeBestNumber(result.readyMs, 1, best);
+}
+
+function formatMeasurementCell(scenario: ScenarioResult, result: LibraryResult, metric: MeasurementMetric): string {
+  if (!result.ok) return "failed";
+  const value = measurementMetricValue(result, metric);
+  const best = bestResultValue(scenario, (entry) => measurementMetricValue(entry, metric), measurementMetricDirection(metric));
+  return formatMaybeBestNumber(value, measurementMetricDigits(metric), best);
+}
+
+function measurementMetricValue(result: LibraryResult, metric: MeasurementMetric): number | undefined {
+  const measurement = result.measurement;
+  if (!measurement) return undefined;
+  switch (metric) {
+    case "rafFps":
+      return measurement.rafFps;
+    case "rafP95":
+      return measurement.rafFrameMs.p95;
+    case "workP50":
+      return workSummary(result)?.p50;
+    case "workP95":
+      return workSummary(result)?.p95;
+  }
+}
+
+function measurementMetricDirection(metric: MeasurementMetric): MetricDirection {
+  return metric === "rafFps" ? "max" : "min";
+}
+
+function measurementMetricDigits(metric: MeasurementMetric): number {
+  return metric === "rafFps" ? 1 : 2;
+}
+
+function bestResultValue(scenario: ScenarioResult, valueForResult: (result: LibraryResult) => number | undefined, direction: MetricDirection): number | undefined {
+  const values = scenario.results
+    .filter((result) => result.ok)
+    .map(valueForResult)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (values.length === 0) return undefined;
+  return direction === "max" ? Math.max(...values) : Math.min(...values);
+}
+
+function formatMaybeBestNumber(value: number | undefined, digits: number, best: number | undefined): string {
+  const formatted = typeof value === "number" ? fixed(value, digits) : "—";
+  return isBestValue(value, best, digits) ? `**${formatted}**` : formatted;
+}
+
+function isBestValue(value: number | undefined, best: number | undefined, digits: number): boolean {
+  return typeof value === "number" && typeof best === "number" && Number.isFinite(value) && Number.isFinite(best) && value.toFixed(digits) === best.toFixed(digits);
 }
 
 function runtimeComparisonTables(report: CompareReport): Array<{
