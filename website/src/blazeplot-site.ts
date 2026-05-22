@@ -82,7 +82,7 @@ export class BlazeplotSite extends LitElement {
   }
 
   override render(): TemplateResult {
-    const doc = getDocPage(this.docSlug);
+    const doc = getDocPage(this.docSlug) ?? DOC_PAGES[0]!;
     return html`
       <div class="min-h-screen bg-black text-[#e5e5e5] font-mono text-[13px] leading-relaxed" @click=${this.handleRouteClick}>
         ${this.renderTopbar()}
@@ -1811,7 +1811,8 @@ export class BlazeplotSite extends LitElement {
     if (route.startsWith("docs/")) {
       const slug = route.slice(5);
       this.section = "docs";
-      this.docSlug = getDocPage(slug).slug;
+      const page = getDocPage(slug) ?? DOC_PAGES[0]!;
+      this.docSlug = page.slug;
     } else if (route === "previews" || route.startsWith("previews/")) {
       this.section = "previews";
       const id = route.split("/")[1] as PreviewId | undefined;
