@@ -1,6 +1,7 @@
 import type { ChartPlugin, ChartPluginContext, ChartPointerEventState } from "./Chart.js";
 import type { SeriesYAxis } from "../core/types.js";
 
+/** Label styling for annotation overlays. */
 export interface AnnotationLabelOptions {
   readonly text: string;
   readonly position?: "start" | "center" | "end" | "top" | "bottom" | "left" | "right";
@@ -10,6 +11,7 @@ export interface AnnotationLabelOptions {
   readonly offsetY?: number;
 }
 
+/** Common fields shared by all annotation types. */
 export interface AnnotationBase {
   readonly id?: string;
   readonly visible?: boolean;
@@ -18,6 +20,7 @@ export interface AnnotationBase {
   readonly label?: string | AnnotationLabelOptions;
 }
 
+/** Vertical annotation line at a data X value. */
 export interface XLineAnnotation extends AnnotationBase {
   readonly type: "x-line";
   readonly x: number;
@@ -26,6 +29,7 @@ export interface XLineAnnotation extends AnnotationBase {
   readonly dash?: string;
 }
 
+/** Horizontal annotation line at a data Y value. */
 export interface YLineAnnotation extends AnnotationBase {
   readonly type: "y-line";
   readonly y: number;
@@ -34,6 +38,7 @@ export interface YLineAnnotation extends AnnotationBase {
   readonly dash?: string;
 }
 
+/** Vertical band annotation spanning an X range. */
 export interface XRangeAnnotation extends AnnotationBase {
   readonly type: "x-range";
   readonly xMin: number;
@@ -43,6 +48,7 @@ export interface XRangeAnnotation extends AnnotationBase {
   readonly borderWidth?: number;
 }
 
+/** Horizontal band annotation spanning a Y range. */
 export interface YRangeAnnotation extends AnnotationBase {
   readonly type: "y-range";
   readonly yMin: number;
@@ -52,6 +58,7 @@ export interface YRangeAnnotation extends AnnotationBase {
   readonly borderWidth?: number;
 }
 
+/** Rectangular annotation spanning X and Y ranges. */
 export interface BoxAnnotation extends AnnotationBase {
   readonly type: "box";
   readonly xMin: number;
@@ -63,6 +70,7 @@ export interface BoxAnnotation extends AnnotationBase {
   readonly borderWidth?: number;
 }
 
+/** Point marker annotation at one data coordinate. */
 export interface PointAnnotation extends AnnotationBase {
   readonly type: "point";
   readonly x: number;
@@ -74,6 +82,7 @@ export interface PointAnnotation extends AnnotationBase {
   readonly shape?: "circle" | "diamond" | "cross";
 }
 
+/** Free-standing text label annotation. */
 export interface LabelAnnotation extends AnnotationBase {
   readonly type: "label";
   readonly x: number;
@@ -84,6 +93,7 @@ export interface LabelAnnotation extends AnnotationBase {
   readonly backgroundColor?: string;
 }
 
+/** Any annotation supported by `annotationsPlugin`. */
 export type Annotation =
   | XLineAnnotation
   | YLineAnnotation
@@ -93,6 +103,7 @@ export type Annotation =
   | PointAnnotation
   | LabelAnnotation;
 
+/** Screen bounds used for annotation hit testing. */
 export interface AnnotationHitBounds {
   readonly xMin?: number;
   readonly xMax?: number;
@@ -102,6 +113,7 @@ export interface AnnotationHitBounds {
   readonly y?: number;
 }
 
+/** Event payload emitted when pointer state changes over an annotation. */
 export interface AnnotationHitEvent {
   readonly annotation: Annotation;
   readonly clientX: number;
@@ -114,8 +126,10 @@ export interface AnnotationHitEvent {
   readonly source?: ChartPointerEventState;
 }
 
+/** Pointer interaction event type for annotations. */
 export type AnnotationHitEventType = "hover" | "click";
 
+/** Options for the annotation overlay plugin. */
 export interface AnnotationsPluginOptions {
   readonly annotations?: readonly Annotation[];
   readonly className?: string;
@@ -128,6 +142,7 @@ export interface AnnotationsPluginOptions {
   readonly onClick?: (event: AnnotationHitEvent) => void;
 }
 
+/** Annotation plugin with imperative annotation updates. */
 export interface AnnotationsPlugin extends ChartPlugin {
   add(annotation: Annotation): void;
   remove(id: string): boolean;
@@ -256,6 +271,7 @@ function createHitEvent(chart: ChartPluginContext, annotation: Annotation, clien
   };
 }
 
+/** Create a plugin that renders lines, ranges, boxes, points, and labels. */
 export function annotationsPlugin(options: AnnotationsPluginOptions = {}): AnnotationsPlugin {
   let annotations = [...(options.annotations ?? [])];
   let chartRef: ChartPluginContext | null = null;

@@ -4,6 +4,7 @@ import type { BufferOverflowStrategy, Dataset, LODStrategy, SeriesMode, SeriesSt
 import { Chart } from "./ui/Chart.js";
 import type { ChartFitToDataOptions, ChartOptions } from "./ui/Chart.js";
 
+/** Series modes supported by the declarative `createChart` helper. */
 export type CreateChartSeriesType = Extract<SeriesMode, "line" | "area" | "scatter" | "bar">;
 
 interface CreateChartSeriesBase {
@@ -16,15 +17,18 @@ interface CreateChartSeriesBase {
   readonly style?: Partial<SeriesStyle>;
 }
 
+/** Declarative series backed by an existing BlazePlot dataset. */
 export interface CreateChartDatasetSeries extends CreateChartSeriesBase {
   readonly dataset: Dataset;
 }
 
+/** Declarative series backed by parallel X and Y arrays. */
 export interface CreateChartArraySeries extends CreateChartSeriesBase {
   readonly x: ArrayLike<number>;
   readonly y: ArrayLike<number>;
 }
 
+/** Declarative series backed by object rows and field selectors. */
 export interface CreateChartObjectSeries<Row> extends CreateChartSeriesBase {
   readonly data: readonly Row[];
   readonly x: StaticDatasetField<Row>;
@@ -32,11 +36,13 @@ export interface CreateChartObjectSeries<Row> extends CreateChartSeriesBase {
   readonly sort?: boolean;
 }
 
+/** Declarative empty streaming series with an internally-created ring buffer. */
 export interface CreateChartStreamingSeries extends CreateChartSeriesBase {
   readonly capacity: number;
   readonly overflow?: BufferOverflowStrategy;
 }
 
+/** Any series shape accepted by `createChart`. */
 export type CreateChartSeries<Row = Record<string, unknown>> =
   | CreateChartDatasetSeries
   | CreateChartArraySeries

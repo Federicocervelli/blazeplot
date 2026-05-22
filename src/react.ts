@@ -2,6 +2,7 @@ import * as React from "react";
 import { Chart } from "./ui/Chart.js";
 import type { ChartOptions } from "./ui/Chart.js";
 
+/** Props for the React chart host component. */
 export interface BlazeChartProps {
   readonly options?: ChartOptions;
   readonly className?: string;
@@ -19,6 +20,7 @@ function setRef<T>(ref: React.Ref<T> | undefined, value: T | null): void {
   }
 }
 
+/** React component that creates and owns an imperative `Chart` instance. */
 export const BlazeChart = React.forwardRef<Chart | null, BlazeChartProps>(function BlazeChart(props, forwardedRef) {
   const hostRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<Chart | null>(null);

@@ -2,8 +2,10 @@ import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "../interaction/types.js";
 import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
 
+/** Static or dynamic axis choice for wheel and drag interactions. */
 export type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
 
+/** Options for mouse, wheel, touch, and keyboard chart interactions. */
 export interface InteractionsPluginOptions {
   readonly axis?: InteractionAxisOption;
   readonly viewportPolicy?: ViewportPolicy;
@@ -155,6 +157,7 @@ function applySelectionAxis(
   };
 }
 
+/** Create a plugin that enables pan, zoom, and touch interactions. */
 export function interactionsPlugin(options: InteractionsPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {

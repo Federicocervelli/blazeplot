@@ -3,12 +3,14 @@ import type { ChartLayout } from "./ChartLayout.js";
 import { rgbaCss } from "./theme.js";
 import type { ResolvedChartTheme } from "./theme.js";
 
+/** DOM and theme inputs used to compose a screenshot blob. */
 export interface ComposeChartScreenshotContext {
   readonly layout: ChartLayout;
   readonly canvas: HTMLCanvasElement;
   readonly theme: ResolvedChartTheme;
 }
 
+/** Compose the chart canvas and DOM overlays into one image blob. */
 export async function composeChartScreenshot(
   context: ComposeChartScreenshotContext,
   options: ChartScreenshotOptions = {},

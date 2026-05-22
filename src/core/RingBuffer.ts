@@ -1,13 +1,17 @@
 import { lowerBound, upperBound } from "./search.js";
 import type { TimeRange } from "./types.js";
 
+/** Fixed-capacity buffer behavior when new samples exceed capacity. */
 export type RingBufferOverflow = "wrap" | "drop-new" | "error";
 
+/** Options for `RingBuffer`. */
 export interface RingBufferOptions {
   readonly overflow?: RingBufferOverflow;
 }
 
+/** Fixed-capacity sorted XY buffer for explicit X values. */
 export class RingBuffer {
+  /** Maximum number of retained samples. */
   readonly capacity: number;
   private _length: number = 0;
   private _head: number = 0;
@@ -19,6 +23,7 @@ export class RingBuffer {
   private readonly maxTree: Float32Array;
   private readonly overflow: RingBufferOverflow;
 
+  /** Create an explicit-X ring buffer with a fixed sample capacity. */
   constructor(capacity: number, options: RingBufferOptions = {}) {
     if (!Number.isInteger(capacity) || capacity <= 0) {
       throw new RangeError("RingBuffer capacity must be a positive integer.");
@@ -35,15 +40,18 @@ export class RingBuffer {
     this.maxTree.fill(-Infinity);
   }
 
+  /** Number of retained samples. */
   get length(): number {
     return this._length;
   }
 
+  /** X range covered by retained samples, or `null` when empty. */
   get range(): TimeRange | null {
     if (this._length === 0) return null;
     return { start: this.getX(0), end: this.getX(this._length - 1) };
   }
 
+  /** Append one XY sample. */
   push(x: number, y: number): void {
     if (this._length >= this.capacity) {
       if (this.overflow === "drop-new") return;
@@ -57,6 +65,7 @@ export class RingBuffer {
     if (this._length < this.capacity) this._length++;
   }
 
+  /** Append matching X and Y arrays. */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
     const requested = Math.min(x.length, y.length);
     if (requested <= 0) return;
@@ -84,11 +93,13 @@ export class RingBuffer {
     this.appendNoWrap(x, y, 0, requested);
   }
 
+  /** Return a sample by logical index, or `null` when out of range. */
   get(index: number): { x: number; y: number } | null {
     if (index < 0 || index >= this._length) return null;
     return { x: this.getX(index), y: this.getY(index) };
   }
 
+  /** Replace a sample by logical index. */
   update(index: number, x: number, y: number): boolean {
     if (!this.isValidIndex(index)) return false;
     const physical = this.logicalToPhysical(index);
@@ -98,6 +109,7 @@ export class RingBuffer {
     return true;
   }
 
+  /** Replace only the Y value at a logical index. */
   updateY(index: number, y: number): boolean {
     if (!this.isValidIndex(index)) return false;
     const physical = this.logicalToPhysical(index);
@@ -106,28 +118,34 @@ export class RingBuffer {
     return true;
   }
 
+  /** Return the X value at a logical index. */
   getX(index: number): number {
     this.assertValidIndex(index);
     return this.xData[this.logicalToPhysical(index)]!;
   }
 
+  /** Return the Y value at a logical index. */
   getY(index: number): number {
     this.assertValidIndex(index);
     return this.yData[this.logicalToPhysical(index)]!;
   }
 
+  /** Return whether the sample should be rendered as a gap. */
   isGap(index: number): boolean {
     return !Number.isFinite(this.getY(index));
   }
 
+  /** Return the first logical index whose X value is at least `x`. */
   lowerBoundX(x: number): number {
     return lowerBound(this._length, (index) => this.getX(index), x);
   }
 
+  /** Return the first logical index whose X value is greater than `x`. */
   upperBoundX(x: number): number {
     return upperBound(this._length, (index) => this.getX(index), x);
   }
 
+  /** Return min/max Y values for a logical index range. */
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this._length, Math.ceil(end));
@@ -149,6 +167,7 @@ export class RingBuffer {
     };
   }
 
+  /** Remove all retained samples. */
   clear(): void {
     this._length = 0;
     this._head = 0;

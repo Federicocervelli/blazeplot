@@ -1,6 +1,7 @@
 import type { Viewport } from "../core/types.js";
 import type { PanIntent, ZoomIntent } from "./types.js";
 
+/** Camera that maps data domains to clip, screen, and plot coordinates. */
 export class Camera2D {
   private _xMin: number = 0;
   private _xMax: number = 1;
@@ -9,57 +10,70 @@ export class Camera2D {
   private _xReversed: boolean = false;
   private _yReversed: boolean = false;
 
+  /** Minimum visible X value. */
   get xMin(): number {
     return this._xMin;
   }
 
+  /** Maximum visible X value. */
   get xMax(): number {
     return this._xMax;
   }
 
+  /** Minimum visible Y value. */
   get yMin(): number {
     return this._yMin;
   }
 
+  /** Maximum visible Y value. */
   get yMax(): number {
     return this._yMax;
   }
 
+  /** Whether X increases right-to-left in screen space. */
   get xReversed(): boolean {
     return this._xReversed;
   }
 
+  /** Whether Y increases top-to-bottom in screen space. */
   get yReversed(): boolean {
     return this._yReversed;
   }
 
+  /** Current data-domain viewport. */
   get viewport(): Viewport {
     return { xMin: this._xMin, xMax: this._xMax, yMin: this._yMin, yMax: this._yMax };
   }
 
+  /** Scale from data X to clip-space X. */
   get xScale(): number {
     return (this._xReversed ? -2 : 2) / (this._xMax - this._xMin);
   }
 
+  /** Offset from data X to clip-space X. */
   get xOffset(): number {
     const offset = -(this._xMin + this._xMax) / (this._xMax - this._xMin);
     return this._xReversed ? -offset : offset;
   }
 
+  /** Scale from data Y to clip-space Y. */
   get yScale(): number {
     return (this._yReversed ? -2 : 2) / (this._yMax - this._yMin);
   }
 
+  /** Offset from data Y to clip-space Y. */
   get yOffset(): number {
     const offset = -(this._yMin + this._yMax) / (this._yMax - this._yMin);
     return this._yReversed ? -offset : offset;
   }
 
+  /** Configure reversed screen-space axes. */
   setReversed(v: { x?: boolean; y?: boolean }): void {
     if (v.x !== undefined) this._xReversed = v.x;
     if (v.y !== undefined) this._yReversed = v.y;
   }
 
+  /** Replace viewport bounds, preserving unspecified edges. */
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void {
     const next = {
       xMin: v.xMin ?? this._xMin,
@@ -74,6 +88,7 @@ export class Camera2D {
     this._yMax = next.yMax;
   }
 
+  /** Pan the viewport by data or pixel deltas. */
   pan(intent: PanIntent): void {
     const { dx, dy } = intent;
     Camera2D.assertFinite("dx", dx);
@@ -88,6 +103,7 @@ export class Camera2D {
     });
   }
 
+  /** Zoom the viewport around a normalized center point. */
   zoom(intent: ZoomIntent): void {
     const { factor, cx, cy, axis } = intent;
     Camera2D.assertFinite("factor", factor);
@@ -109,6 +125,7 @@ export class Camera2D {
     });
   }
 
+  /** Convert data coordinates to clip-space coordinates. */
   toClip(x: number, y: number): [number, number] {
     return [
       x * this.xScale + this.xOffset,
@@ -116,6 +133,7 @@ export class Camera2D {
     ];
   }
 
+  /** Convert clip-space coordinates to canvas pixel coordinates. */
   toScreen(clipX: number, clipY: number, canvasWidth: number, canvasHeight: number): [number, number] {
     return [
       (clipX + 1) * 0.5 * canvasWidth,
@@ -123,6 +141,7 @@ export class Camera2D {
     ];
   }
 
+  /** Convert canvas pixel coordinates to data coordinates. */
   screenToData(screenX: number, screenY: number, canvasWidth: number, canvasHeight: number): [number, number] {
     if (canvasWidth <= 0 || canvasHeight <= 0) throw new RangeError("Camera2D screen size must be positive.");
     const clipX = (screenX / canvasWidth) * 2 - 1;
@@ -133,6 +152,7 @@ export class Camera2D {
     ];
   }
 
+  /** Return an independent copy of the camera state. */
   clone(): Camera2D {
     const c = new Camera2D();
     c.setViewport(this.viewport);

@@ -2,15 +2,18 @@ import type { Camera2D } from "../interaction/Camera2D.js";
 import type { AxisController } from "../interaction/AxisController.js";
 import type { ChartLayoutElements, ChartLayoutConfig } from "./ChartLayout.js";
 
+/** Visual options for SVG axis overlays. */
 export interface AxisOverlayOptions {
   readonly font?: string;
   readonly color?: string;
 }
 
+/** Axis layout configuration consumed by `AxisOverlay`. */
 export type AxisOverlayConfig = ChartLayoutConfig;
 
 type RenderAxis = "x" | "y" | "y2";
 
+/** SVG overlay that renders chart axes and ticks. */
 export class AxisOverlay {
   private xPool: HTMLDivElement[] = [];
   private yPool: HTMLDivElement[] = [];
@@ -19,12 +22,14 @@ export class AxisOverlay {
   private readonly yTicks: number[] = [];
   private readonly y2Ticks: number[] = [];
 
+  /** Create an axis overlay attached to a chart layout. */
   constructor(
     private readonly layout: ChartLayoutElements,
     private readonly config: AxisOverlayConfig,
     private options: AxisOverlayOptions = {},
   ) {}
 
+  /** Update axis overlay styling. */
   setOptions(options: AxisOverlayOptions): void {
     this.options = options;
     for (const el of [...this.xPool, ...this.yPool, ...this.y2Pool]) {
@@ -33,6 +38,7 @@ export class AxisOverlay {
     }
   }
 
+  /** Render axis ticks from the latest camera and axis controller state. */
   update(camera: Camera2D, axis: AxisController, rightCamera: Camera2D = camera, rightAxis: AxisController = axis): void {
     const plotW = Math.max(1, this.layout.plot.clientWidth);
     const plotH = Math.max(1, this.layout.plot.clientHeight);
@@ -60,6 +66,7 @@ export class AxisOverlay {
     this.updateAxis(this.y2Pool, this.y2Ticks, "y2", rightCamera, plotW, plotH, rightAxis);
   }
 
+  /** Remove all axis overlay DOM nodes. */
   dispose(): void {
     for (const el of this.xPool) el.remove();
     for (const el of this.yPool) el.remove();

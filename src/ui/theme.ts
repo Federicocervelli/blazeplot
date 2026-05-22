@@ -1,7 +1,11 @@
+/** RGBA color tuple with 0-1 channel values. */
 export type RgbaColor = readonly [number, number, number, number];
+/** CSS color string accepted by theme options. */
 export type CssColor = string;
+/** Color value accepted by chart theme options. */
 export type ThemeColor = RgbaColor | CssColor;
 
+/** Partial chart theme supplied by callers. */
 export interface ChartTheme {
   readonly backgroundColor?: ThemeColor;
   readonly gridColor?: ThemeColor;
@@ -24,6 +28,7 @@ export interface ChartTheme {
   readonly axisTitleFont?: string;
 }
 
+/** Fully resolved chart theme with concrete RGBA values. */
 export interface ResolvedChartTheme {
   readonly backgroundColor: RgbaColor;
   readonly backgroundCssColor: string;
@@ -56,6 +61,7 @@ const DEFAULT_SERIES_COLORS: readonly RgbaColor[] = [
   [0.25, 0.85, 0.95, 1.0],
 ];
 
+/** Default dark chart theme. */
 export const DEFAULT_CHART_THEME: ResolvedChartTheme = {
   backgroundColor: [0.02, 0.02, 0.02, 1],
   backgroundCssColor: "rgba(5, 5, 5, 1)",
@@ -79,6 +85,7 @@ export const DEFAULT_CHART_THEME: ResolvedChartTheme = {
   axisTitleFont: "12px system-ui, sans-serif",
 };
 
+/** Merge a partial theme with defaults and resolve CSS colors. */
 export function resolveChartTheme(theme: ChartTheme | undefined, context?: Element): ResolvedChartTheme {
   if (!theme) return DEFAULT_CHART_THEME;
 
@@ -115,6 +122,7 @@ export function resolveChartTheme(theme: ChartTheme | undefined, context?: Eleme
   };
 }
 
+/** Resolve a theme color to an RGBA tuple. */
 export function resolveThemeColor(color: ThemeColor | undefined, fallback: RgbaColor, context?: Element): RgbaColor {
   if (!color) return fallback;
   if (typeof color !== "string") return color;
@@ -124,15 +132,18 @@ export function resolveThemeColor(color: ThemeColor | undefined, fallback: RgbaC
   return parseCssColor(resolved ?? color) ?? parseCssColor(normalized ?? "") ?? fallback;
 }
 
+/** Convert a theme color to a CSS color string. */
 export function themeColorToCss(color: ThemeColor | undefined, fallback: string): string {
   if (!color) return fallback;
   return typeof color === "string" ? color : rgbaCss(color);
 }
 
+/** Convert a 0-1 RGBA tuple to an `rgba(...)` CSS string. */
 export function rgbaCss(color: RgbaColor): string {
   return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
 }
 
+/** Resolve a CSS color to a computed RGB(A) string. */
 export function resolveCssColor(color: string, context?: Element): string | null {
   const doc = context?.ownerDocument ?? globalThis.document;
   if (!doc?.documentElement || typeof getComputedStyle === "undefined") return null;

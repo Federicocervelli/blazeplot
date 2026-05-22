@@ -77,6 +77,7 @@ const NEAREST_POINT_LEAF_SIZE = 64;
 const SCATTER_INTERVAL_LEAF_SIZE = 64;
 const SCATTER_BUCKET_RANGE_PRUNE_SIZE = 1024;
 
+/** Single numeric sample value or a batch of values. */
 export type SeriesScalarOrArray = number | ArrayLike<number>;
 
 /** Object form for appending one XY sample or a batch of X/Y arrays. */
@@ -109,11 +110,13 @@ export interface SeriesOhlcAppendRow {
   readonly close: number;
 }
 
+/** Object form for updating one XY sample. */
 export interface SeriesXYUpdateData {
   readonly x?: number;
   readonly y: number;
 }
 
+/** Object form for updating one OHLC sample. */
 export interface SeriesOhlcUpdateData {
   readonly open: number;
   readonly high: number;
@@ -121,11 +124,16 @@ export interface SeriesOhlcUpdateData {
   readonly close: number;
 }
 
+/** Any supported update payload for the last or indexed sample. */
 export type SeriesUpdateData = SeriesXYUpdateData | SeriesOhlcUpdateData;
+/** Any supported object row for batched appends. */
 export type SeriesAppendRow = SeriesXYAppendRow | SeriesOhlcAppendRow;
+/** Any object payload for appending one or more samples. */
 export type SeriesObjectAppendData = SeriesXYAppendData | SeriesOhlcAppendData;
+/** Any payload accepted by `SeriesStore.append`. */
 export type SeriesAppendData = SeriesObjectAppendData | readonly SeriesAppendRow[];
 
+/** Data bounds for a series over an optional X range. */
 export interface SeriesDataBounds {
   readonly xMin: number;
   readonly xMax: number;
@@ -133,6 +141,7 @@ export interface SeriesDataBounds {
   readonly yMax: number;
 }
 
+/** OHLC sample returned by series queries. */
 export interface SeriesOhlcSample extends SeriesSample {
   readonly open: number;
   readonly high: number;
@@ -140,6 +149,7 @@ export interface SeriesOhlcSample extends SeriesSample {
   readonly close: number;
 }
 
+/** X-range filter for `SeriesStore.dataBounds`. */
 export interface SeriesDataBoundsOptions {
   readonly xMin?: number;
   readonly xMax?: number;
@@ -157,6 +167,7 @@ function interpolateY(x0: number, y0: number, x1: number, y1: number, x: number)
   return y0 + (y1 - y0) * t;
 }
 
+/** Runtime wrapper around a dataset, renderer mode, style, and LOD cache. */
 export class SeriesStore {
   readonly config: SeriesConfig;
   readonly style: SeriesStyle;
@@ -172,6 +183,7 @@ export class SeriesStore {
   private _lastBuildRangeStart: number = NaN;
   private _visible: boolean = true;
 
+  /** Create a series wrapper around a dataset and rendering configuration. */
   constructor(dataset: Dataset, config: SeriesConfig, style: SeriesStyle, onDirty?: () => void) {
     this.dataset = dataset;
     this.config = config;
@@ -187,30 +199,37 @@ export class SeriesStore {
     this._lastBuildRangeStart = dataset.range?.start ?? NaN;
   }
 
+  /** Return whether this series maintains a min/max LOD pyramid. */
   get hasLOD(): boolean {
     return this.pyramid !== null;
   }
 
+  /** Return whether the dataset can provide server-side min/max ranges. */
   get hasServerMinMax(): boolean {
     return this.config.downsample === "server" && hasCopyMinMaxSegments(this.dataset);
   }
 
+  /** Return whether derived series data needs rebuilding. */
   get dirty(): boolean {
     return this._dirty;
   }
 
+  /** Number of samples in the backing dataset. */
   get length(): number {
     return this.dataset.length;
   }
 
+  /** Return whether the series participates in rendering and queries. */
   get visible(): boolean {
     return this._visible;
   }
 
+  /** X range covered by the backing dataset. */
   get xRange(): TimeRange | null {
     return this.dataset.range;
   }
 
+  /** Show or hide the series and request a redraw when changed. */
   setVisible(visible: boolean): void {
     if (this._visible === visible) return;
     this._visible = visible;
@@ -219,8 +238,11 @@ export class SeriesStore {
 
   /** Append XY, implicit-X, OHLC, or row-array data and request an on-demand render. */
   append(data: SeriesAppendData): void;
-  /** @deprecated Use `append({ x, y })` instead. */
+  /**
+   * @deprecated Effective next patch release. Use `append({ x, y })` instead.
+   */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void;
+  /** Append data in the supported object, row, or legacy array forms. */
   append(first: SeriesAppendData | ArrayLike<number>, y?: ArrayLike<number>): void {
     if (y !== undefined) {
       this.appendXY(first as ArrayLike<number>, y);
@@ -299,7 +321,9 @@ export class SeriesStore {
     this.markDataMutated(false);
   }
 
-  /** @deprecated Use `append({ y })` instead. */
+  /**
+   * @deprecated Effective next patch release. Use `append({ y })` instead.
+   */
   appendY(y: ArrayLike<number>): void {
     this.appendYArray(y);
   }
@@ -313,7 +337,9 @@ export class SeriesStore {
     this.markDataMutated(false);
   }
 
-  /** @deprecated Use `append({ x, open, high, low, close })` instead. */
+  /**
+   * @deprecated Effective next patch release. Use `append({ x, open, high, low, close })` instead.
+   */
   appendOhlc(
     x: ArrayLike<number>,
     open: ArrayLike<number>,
@@ -390,11 +416,14 @@ export class SeriesStore {
     return updated;
   }
 
-  /** @deprecated Use `updateLast({ open, high, low, close })` instead. */
+  /**
+   * @deprecated Effective next patch release. Use `updateLast({ open, high, low, close })` instead.
+   */
   updateLastOhlc(open: number, high: number, low: number, close: number): boolean {
     return this.updateOhlcAt(this.dataset.length - 1, open, high, low, close);
   }
 
+  /** Replace data in datasets that support wholesale replacement. */
   replace(data: unknown): void {
     if (!("replace" in this.dataset) || typeof this.dataset.replace !== "function") {
       throw new TypeError("series.replace(...) requires a dataset with replace(...) support, such as ServerSampledDataset.");
@@ -406,6 +435,7 @@ export class SeriesStore {
     this.markDataMutated(true);
   }
 
+  /** Mark the series as needing derived-data rebuild. */
   markDirty(): void {
     this.markDataMutated(true);
   }
@@ -416,6 +446,7 @@ export class SeriesStore {
     this.onDirty?.();
   }
 
+  /** Clear appendable dataset contents and reset derived state. */
   clear(): void {
     if (!("clear" in this.dataset)) {
       throw new TypeError("series.clear() requires a clearable dataset such as RingBuffer, UniformRingBuffer, or OhlcRingBuffer.");
@@ -432,6 +463,7 @@ export class SeriesStore {
     this.onDirty?.();
   }
 
+  /** Rebuild or extend LOD state after data changes. */
   rebuildPyramid(): void {
     if (!this._dirty) return;
     if (this.pyramid) {
@@ -460,6 +492,7 @@ export class SeriesStore {
     this._dirty = false;
   }
 
+  /** Query an LOD view for the current viewport and pixel width. */
   query(viewport: Viewport, pixelWidth: number): LODView {
     if (!this.pyramid) {
       return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel: 0 };
@@ -482,12 +515,14 @@ export class SeriesStore {
     return this.pyramid.query(viewport, pixelWidth, { start, length, levelLength });
   }
 
+  /** Count samples whose X values overlap a viewport. */
   visibleSampleCount(viewport: Viewport): number {
     const start = this.dataset.lowerBoundX(viewport.xMin);
     const end = this.dataset.upperBoundX(viewport.xMax);
     return Math.max(0, end - start);
   }
 
+  /** Return an XY sample by logical index. */
   sampleAt(index: number): SeriesSample | null {
     if (index < 0 || index >= this.dataset.length) return null;
     const y = this.dataset.getY(index);
@@ -495,6 +530,7 @@ export class SeriesStore {
     return { index, x: this.dataset.getX(index), y };
   }
 
+  /** Return an OHLC sample by logical index when available. */
   ohlcAt(index: number): SeriesOhlcSample | null {
     if (index < 0 || index >= this.dataset.length || !isOhlcDataset(this.dataset)) return null;
     const close = this.dataset.getClose(index);
@@ -509,6 +545,7 @@ export class SeriesStore {
     };
   }
 
+  /** Compute data bounds for visible or full series data. */
   dataBounds(options: SeriesDataBoundsOptions = {}): SeriesDataBounds | null {
     if (this.dataset.length <= 0) return null;
 
@@ -548,6 +585,7 @@ export class SeriesStore {
     return { xMin, xMax, yMin, yMax };
   }
 
+  /** Find the nearest sample by X value, optionally constrained to a viewport. */
   nearestSampleByX(x: number, viewport?: Viewport): SeriesSample | null {
     const range = this.visibleIndexRange(viewport);
     if (range.start >= range.end) return null;
@@ -666,6 +704,7 @@ export class SeriesStore {
     return sample ? { ...sample, distancePx: Math.sqrt(bestDistanceSq) } : null;
   }
 
+  /** Copy visible XY samples into a render buffer. */
   copyRawVisible(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
     return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0, xOrigin);
   }
@@ -719,34 +758,42 @@ export class SeriesStore {
     return count;
   }
 
+  /** Copy visible XY samples with line gaps clipped to the viewport. */
   copyRawVisibleClipped(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
     return this.copyClippedVisibleLine(viewport, target, maxPoints, xOrigin, "data");
   }
 
+  /** Copy visible XY samples converted to clip space. */
   copyRawVisibleClipSpace(viewport: Viewport, target: Float32Array, maxPoints: number): number {
     return this.copyClippedVisibleLine(viewport, target, maxPoints, 0, "clip");
   }
 
+  /** Copy a logical XY range into a render buffer. */
   copyRawRange(start: number, end: number, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
     return this.copySampleRange(start, end, target, maxPoints, "points", 0, xOrigin);
   }
 
+  /** Copy visible area-series vertices into a render buffer. */
   copyAreaVisible(viewport: Viewport, target: Float32Array, maxPoints: number, baseline: number = 0, xOrigin: number = 0): number {
     return this.copyVisibleSamples(viewport, target, maxPoints, "area", baseline, xOrigin) * 2;
   }
 
+  /** Copy an area-series index range into a render buffer. */
   copyAreaRange(start: number, end: number, target: Float32Array, maxPoints: number, baseline: number = 0, xOrigin: number = 0): number {
     return this.copySampleRange(start, end, target, maxPoints, "area", baseline, xOrigin) * 2;
   }
 
+  /** Copy visible min/max line segments into a render buffer. */
   copyMinMaxVisible(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number = 0): number {
     return this.copyMinMaxSegments(viewport, target, maxSegments, "line-list", xOrigin) * 2;
   }
 
+  /** Copy visible min/max segment instances into a render buffer. */
   copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number = 0): number {
     return this.copyMinMaxSegments(viewport, target, maxSegments, "instanced", xOrigin);
   }
 
+  /** Copy OHLC candle geometry for a logical index range. */
   copyOhlcRange(start: number, end: number, target: Float32Array, maxCandles: number, tickWidth: number, xOrigin: number = 0): number {
     if (!isOhlcDataset(this.dataset) || maxCandles <= 0 || target.length < maxCandles * 12) return 0;
 
@@ -779,6 +826,7 @@ export class SeriesStore {
     return count;
   }
 
+  /** Copy OHLC tuples for a logical index range. */
   copyOhlcTuplesRange(start: number, end: number, target: Float32Array, maxCandles: number, xOrigin: number = 0): number {
     if (!isOhlcDataset(this.dataset) || maxCandles <= 0 || target.length < maxCandles * 5) return 0;
 
@@ -798,6 +846,7 @@ export class SeriesStore {
     return count;
   }
 
+  /** Return the logical index range overlapping a viewport. */
   visibleIndexRange(viewport: Viewport | undefined, outerPadding: number = 0): { start: number; end: number } {
     if (!viewport) return { start: 0, end: this.dataset.length };
     const pad = Math.max(0, Math.floor(outerPadding));

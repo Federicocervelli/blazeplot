@@ -6,6 +6,7 @@ function isGap(source: Dataset, index: number, y: number): boolean {
   return !Number.isFinite(y) || source.isGap?.(index) === true;
 }
 
+/** Incremental min/max pyramid used for dense line and bar downsampling. */
 export class MinMaxPyramid {
   private levels: Float32Array[] = [];
   private levelLengths: Uint32Array;
@@ -13,6 +14,7 @@ export class MinMaxPyramid {
   private _builtLen: number = 0;
   private _lastRangeStart: number = NaN;
 
+  /** Create a min/max pyramid using fixed-size buckets. */
   constructor(readonly bucketSize: number = 2) {
     if (!Number.isInteger(bucketSize) || bucketSize < 2) {
       throw new RangeError("MinMaxPyramid bucketSize must be an integer >= 2.");
@@ -22,6 +24,7 @@ export class MinMaxPyramid {
     this.levelSampleWidths = new Uint32Array(MAX_LEVELS);
   }
 
+  /** Rebuild all pyramid levels from the source dataset. */
   build(source: Dataset): void {
     this.levels = [];
     this.levelLengths.fill(0);
@@ -78,6 +81,7 @@ export class MinMaxPyramid {
     this._lastRangeStart = source.range?.start ?? NaN;
   }
 
+  /** Extend pyramid levels after new samples are appended. */
   incrementalBuild(source: Dataset): void {
     const newLen = source.length;
     const rangeStart = source.range?.start ?? NaN;
@@ -174,6 +178,7 @@ export class MinMaxPyramid {
     this.levels[level] = next;
   }
 
+  /** Return min/max Y values for a source index range. */
   rangeMinMax(source: Dataset, start: number, end: number): { minY: number; maxY: number } | null {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(source.length, Math.ceil(end));
@@ -222,6 +227,7 @@ export class MinMaxPyramid {
     return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
   }
 
+  /** Select a pyramid level appropriate for the requested pixel width. */
   query(_viewport: Viewport, pixelWidth: number, xRange: { start: number; length: number; levelLength?: number }): LODView {
     if (pixelWidth <= 0 || xRange.length <= 0) {
       return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel: 0 };

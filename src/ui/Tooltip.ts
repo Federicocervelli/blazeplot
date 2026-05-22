@@ -1,6 +1,7 @@
 import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
 import { clamp, createLongPressTouchTracker, createPickMarker, formatCompactNumber, rgba, renderPickItems } from "./OverlayUtils.js";
 
+/** Options for the built-in hover tooltip plugin. */
 export interface TooltipPluginOptions {
   readonly className?: string;
   readonly mode?: ChartPickMode;
@@ -48,6 +49,7 @@ function placeTooltip(container: HTMLElement, state: ChartHoverState, options: T
   container.style.transform = `translate(${x}px, ${y}px)`;
 }
 
+/** Create a plugin that displays picked data values in a tooltip. */
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {

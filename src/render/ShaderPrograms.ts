@@ -10,6 +10,7 @@ import barVert from "./shaders/bar.vert?raw";
 import barRangeVert from "./shaders/bar-range.vert?raw";
 import barFrag from "./shaders/bar.frag?raw";
 
+/** GLSL sources for the built-in renderer programs. */
 export const ShaderPrograms = {
   line: { vert: lineVert, frag: lineFrag },
   segment: { vert: segmentVert, frag: segmentFrag },

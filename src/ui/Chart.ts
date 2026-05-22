@@ -64,6 +64,7 @@ function paddedDomain(min: number, max: number, padding: number, includeZero: bo
   return { min: nextMin - amount, max: nextMax + amount };
 }
 
+/** Shared text styling for chart titles and axis titles. */
 export interface TextOverlayConfig {
   readonly text: string;
   readonly visible?: boolean;
@@ -73,12 +74,15 @@ export interface TextOverlayConfig {
   readonly offsetY?: number;
 }
 
+/** Axis title text and styling. */
 export interface AxisTitleConfig extends TextOverlayConfig {}
 
+/** Chart title or subtitle text and alignment. */
 export interface ChartTitleConfig extends TextOverlayConfig {
   readonly align?: "left" | "center" | "right";
 }
 
+/** Axis visibility, placement, scale, tick formatting, and title options. */
 export interface AxisConfig extends AxisControllerAxisOptions {
   readonly visible?: boolean;
   readonly position?: AxisPosition;
@@ -88,15 +92,19 @@ export interface AxisConfig extends AxisControllerAxisOptions {
   readonly title?: string | AxisTitleConfig;
 }
 
+/** Strategy used to find data points near a pointer location. */
 export type ChartPickMode = "nearest-x" | "nearest-point";
+/** Whether picks include all series sharing the same X value. */
 export type ChartPickGroup = "x" | "none";
 
+/** Options for hover and pointer hit-testing. */
 export interface ChartPickOptions {
   readonly mode?: ChartPickMode;
   readonly group?: ChartPickGroup;
   readonly maxDistancePx?: number;
 }
 
+/** ARIA and keyboard-navigation options for the chart root. */
 export interface ChartAccessibilityOptions {
   readonly enabled?: boolean;
   readonly label?: string;
@@ -105,20 +113,25 @@ export interface ChartAccessibilityOptions {
   readonly keyboard?: boolean | ChartKeyboardOptions;
 }
 
+/** Keyboard pan and zoom behavior for accessible charts. */
 export interface ChartKeyboardOptions {
   readonly enabled?: boolean;
   readonly panFraction?: number;
   readonly zoomFactor?: number;
 }
 
+/** Context passed to a custom GPU backend factory. */
 export interface ChartBackendFactoryContext {
   readonly canvas: HTMLCanvasElement;
 }
 
+/** Creates the GPU backend used by a chart. */
 export type ChartBackendFactory = (context: ChartBackendFactoryContext) => GpuBackend;
 
+/** Render loop scheduling mode. */
 export type ChartRenderLoop = "auto" | "continuous";
 
+/** Options accepted by `Chart.start()`. */
 export interface ChartStartOptions {
   /**
    * `auto` renders on demand after chart state changes. `continuous` renders on
@@ -127,6 +140,7 @@ export interface ChartStartOptions {
   readonly renderLoop?: ChartRenderLoop;
 }
 
+/** Constructor options for `Chart`. */
 export interface ChartOptions {
   readonly viewportPolicy?: ViewportPolicy;
   readonly grid?: boolean;
@@ -149,8 +163,10 @@ export interface ChartOptions {
   readonly backendFactory?: ChartBackendFactory;
 }
 
+/** Series configuration used by typed helpers such as `addLine`. */
 export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
 
+/** Runtime state for one chart series. */
 export interface ChartSeriesState {
   readonly series: SeriesStore;
   readonly index: number;
@@ -162,6 +178,7 @@ export interface ChartSeriesState {
   readonly yAxis: SeriesYAxis;
 }
 
+/** A picked data point with series metadata and screen coordinates. */
 export interface ChartPickItem extends SeriesSample {
   readonly series: SeriesStore;
   readonly seriesIndex: number;
@@ -174,8 +191,10 @@ export interface ChartPickItem extends SeriesSample {
   readonly clientY: number;
 }
 
+/** Pointer events that can be subscribed to through `Chart.subscribe`. */
 export type ChartPointerEventType = "click" | "dblclick" | "pointerdown" | "pointerup" | "pointermove";
 
+/** Pointer event payload expressed in both screen and data coordinates. */
 export interface ChartPointerEventState {
   readonly type: ChartPointerEventType;
   readonly clientX: number;
@@ -193,19 +212,23 @@ export interface ChartPointerEventState {
   readonly items: readonly ChartPickItem[];
 }
 
+/** Click payload for the nearest chart series item. */
 export interface ChartSeriesClickEvent extends ChartPointerEventState {
   readonly item: ChartPickItem;
 }
 
+/** Emitted after the visible domain changes. */
 export interface ChartViewportChangeEvent {
   readonly viewport: Viewport;
   readonly rightViewport: Viewport;
 }
 
+/** Selection event payload emitted by selection plugins or custom code. */
 export interface ChartSelectEvent<T = unknown> {
   readonly selection: T;
 }
 
+/** Current hover hit-test result, including pointer position and picked items. */
 export interface ChartHoverState {
   readonly clientX: number;
   readonly clientY: number;
@@ -220,8 +243,10 @@ export interface ChartHoverState {
   readonly items: readonly ChartPickItem[];
 }
 
+/** Built-in screenshot background presets. */
 export type ChartScreenshotPreset = "theme" | "transparent" | "dark" | "light";
 
+/** Options for exporting the chart as an image blob. */
 export interface ChartScreenshotOptions {
   readonly type?: string;
   readonly quality?: number;
@@ -233,11 +258,13 @@ export interface ChartScreenshotOptions {
   readonly preset?: ChartScreenshotPreset;
 }
 
+/** Fractional padding applied when fitting domains to data. */
 export interface ChartFitToDataPadding {
   readonly x?: number;
   readonly y?: number;
 }
 
+/** Options for fitting the viewport to series data bounds. */
 export interface ChartFitToDataOptions {
   readonly series?: readonly SeriesStore[];
   readonly visibleOnly?: boolean;
@@ -250,6 +277,7 @@ export interface ChartFitToDataOptions {
   readonly xMax?: number;
 }
 
+/** Options for automatically refitting Y as the X viewport changes. */
 export interface ChartAutoFitYOptions {
   readonly enabled?: boolean;
   readonly yAxis?: SeriesYAxis | "both";
@@ -259,6 +287,7 @@ export interface ChartAutoFitYOptions {
   readonly series?: readonly SeriesStore[];
 }
 
+/** Options for keeping the X viewport anchored to the latest data. */
 export interface ChartFollowXOptions {
   readonly enabled?: boolean;
   readonly window?: number;
@@ -275,6 +304,7 @@ export interface ChartFollowXOptions {
   readonly series?: readonly SeriesStore[];
 }
 
+/** Extra CSS-pixel space reserved around the plot by plugins or overlays. */
 export interface ChartLayoutReservation {
   readonly top?: number;
   readonly right?: number;
@@ -282,6 +312,7 @@ export interface ChartLayoutReservation {
   readonly left?: number;
 }
 
+/** Mutable render metrics from the last frame. */
 export interface ChartFrameStats {
   fps: number;
   frameMs: number;
@@ -293,6 +324,7 @@ export interface ChartFrameStats {
   batchedDrawCalls?: number;
 }
 
+/** Limited chart API exposed to plugins. */
 export interface ChartPluginContext {
   readonly canvas: HTMLCanvasElement;
   readonly rootElement: HTMLElement;
@@ -323,6 +355,7 @@ export interface ChartPluginContext {
   getHoverState(): ChartHoverState | null;
   setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
   requestRender(): void;
+  /** Subscribe to chart events and receive an unsubscribe callback. */
   subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
   subscribe(event: "serieschange", callback: () => void): () => void;
   subscribe(event: "themechange", callback: () => void): () => void;
@@ -335,10 +368,12 @@ export interface ChartPluginContext {
   emitSelect(selection: unknown): void;
 }
 
+/** Disposable handle returned by a plugin. */
 export interface ChartPluginHandle {
   dispose(): void;
 }
 
+/** Plugin installer for extending chart behavior. */
 export interface ChartPlugin {
   install(chart: ChartPluginContext): void | (() => void) | ChartPluginHandle;
 }
@@ -430,7 +465,9 @@ interface MinMaxLineBatch {
   seriesCount: number;
 }
 
+/** Imperative WebGL chart instance for rendering, interaction, and plugins. */
 export class Chart implements ChartPluginContext {
+  /** Return whether the current environment can create a WebGL2 context. */
   static isWebGL2Available(): boolean {
     return isWebGL2Available();
   }
@@ -504,6 +541,7 @@ export class Chart implements ChartPluginContext {
   private running: boolean = false;
   private renderLoop: ChartRenderLoop = "auto";
   private webglContextLost: boolean = false;
+  private readonly options: ChartOptions;
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (event.pointerType !== "touch") {
       this.pointerInPlot = true;
@@ -572,7 +610,9 @@ export class Chart implements ChartPluginContext {
     this.scheduleRenderAfterRestore();
   };
 
-  constructor(target: HTMLElement, private readonly options: ChartOptions = {}) {
+  /** Create a chart inside `target`. Call `start()` to begin rendering. */
+  constructor(target: HTMLElement, options: ChartOptions = {}) {
+    this.options = options;
     this.renderLoop = options.renderLoop ?? "auto";
     this.followXConfig = this.resolveInitialFollowX(options.followX);
     this.resolvedTheme = resolveChartTheme(options.theme, target);
@@ -635,48 +675,59 @@ export class Chart implements ChartPluginContext {
     return this.options.backendFactory?.({ canvas: this.layout.canvas }) ?? new WebGL2Backend(this.layout.canvas);
   }
 
+  /** Canvas element used for chart rendering. */
   get canvas(): HTMLCanvasElement {
     return this.layout.canvas;
   }
 
+  /** Root DOM element managed by the chart. */
   get rootElement(): HTMLElement {
     return this.layout.root;
   }
 
+  /** Plot-area DOM element containing the canvas. */
   get plotElement(): HTMLElement {
     return this.layout.plot;
   }
 
+  /** X-axis DOM element. */
   get xAxisElement(): HTMLElement {
     return this.layout.xAxis;
   }
 
+  /** Primary Y-axis DOM element. */
   get yAxisElement(): HTMLElement {
     return this.layout.yAxis;
   }
 
+  /** Secondary Y-axis DOM element. */
   get y2AxisElement(): HTMLElement {
     return this.layout.y2Axis;
   }
 
+  /** Resolved theme currently used by the chart. */
   get theme(): ResolvedChartTheme {
     return this.resolvedTheme;
   }
 
+  /** Return the underlying WebGL2 context when the default backend is used. */
   getWebGLContext(): WebGL2RenderingContext | null {
     return this.renderer.getWebGLContext();
   }
 
+  /** Return the camera controlling the requested Y axis. */
   getCamera(yAxis: SeriesYAxis = "left"): Camera2D {
     return yAxis === "right" ? this.rightCamera : this.camera;
   }
 
+  /** Convert data coordinates to plot-local CSS-pixel coordinates. */
   dataToPlot(x: number, y: number, yAxis: SeriesYAxis = "left"): [number, number] {
     const camera = this.getCamera(yAxis);
     const [clipX, clipY] = camera.toClip(x, y);
     return camera.toScreen(clipX, clipY, this.canvas.clientWidth, this.canvas.clientHeight);
   }
 
+  /** Convert viewport client coordinates to data coordinates, or `null` outside the plot. */
   clientToData(clientX: number, clientY: number, yAxis: SeriesYAxis = "left"): [number, number] | null {
     const rect = this.canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
@@ -688,10 +739,12 @@ export class Chart implements ChartPluginContext {
     return this.getCamera(yAxis).screenToData(plotX, plotY, rect.width, rect.height);
   }
 
+  /** Return the visible data domain for the requested Y axis. */
   getViewport(yAxis: SeriesYAxis = "left"): Viewport {
     return this.getCamera(yAxis).viewport;
   }
 
+  /** Pan the chart by data-domain or screen-pixel deltas. */
   pan(intent: PanIntent): void {
     this.pauseXFollowForInteraction();
     this.camera.pan(intent);
@@ -700,6 +753,7 @@ export class Chart implements ChartPluginContext {
     this.scheduleHoverRefresh();
   }
 
+  /** Zoom around a data or screen anchor. */
   zoom(intent: ZoomIntent): void {
     this.pauseXFollowForInteraction();
     this.camera.zoom(intent);
@@ -708,6 +762,7 @@ export class Chart implements ChartPluginContext {
     this.scheduleHoverRefresh();
   }
 
+  /** Add a series with an explicit mode and optional style overrides. */
   addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
@@ -733,26 +788,32 @@ export class Chart implements ChartPluginContext {
     return s;
   }
 
+  /** Add a line series. */
   addLine(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     return this.addSeries({ ...config, mode: "line" }, style);
   }
 
+  /** Add an area series. */
   addArea(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     return this.addSeries({ ...config, mode: "area" }, style);
   }
 
+  /** Add a scatter series. */
   addScatter(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     return this.addSeries({ ...config, mode: "scatter" }, style);
   }
 
+  /** Add a bar series. */
   addBar(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     return this.addSeries({ ...config, mode: "bar" }, style);
   }
 
+  /** Add an OHLC series. */
   addOhlc(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     return this.addSeries({ ...config, mode: "ohlc" }, style);
   }
 
+  /** Add a candlestick series. */
   addCandlestick(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     return this.addSeries({ ...config, mode: "candlestick" }, style);
   }
@@ -771,6 +832,7 @@ export class Chart implements ChartPluginContext {
     return new RingBuffer(capacity, { overflow: config.overflow });
   }
 
+  /** Remove a series from the chart. */
   removeSeries(series: SeriesStore): boolean {
     const index = this.series.indexOf(series);
     if (index === -1) return false;
@@ -780,6 +842,7 @@ export class Chart implements ChartPluginContext {
     return true;
   }
 
+  /** Show or hide a series; returns `false` if the series is not attached. */
   setSeriesVisible(series: SeriesStore, visible: boolean): boolean {
     if (!this.series.includes(series)) return false;
     if (series.visible === visible) return true;
@@ -788,6 +851,7 @@ export class Chart implements ChartPluginContext {
     return true;
   }
 
+  /** Return metadata for all attached series. */
   getSeriesState(): ChartSeriesState[] {
     return this.series.map((series, index) => ({
       series,
@@ -801,6 +865,7 @@ export class Chart implements ChartPluginContext {
     }));
   }
 
+  /** Update the shared X domain and left-axis Y domain. */
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void {
     if (v.xMin !== undefined || v.xMax !== undefined) this.pauseXFollowForInteraction();
     this.camera.setViewport(v);
@@ -809,12 +874,14 @@ export class Chart implements ChartPluginContext {
     this.refreshHover();
   }
 
+  /** Update only the Y domain for the selected axis. */
   setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number }): void {
     this.getCamera(yAxis).setViewport(v);
     this.emitViewportChange();
     this.refreshHover();
   }
 
+  /** Keep the X viewport following the latest visible data. */
   followLatestX(options: ChartFollowXOptions = {}): void {
     this.followXConfig = { ...options, enabled: options.enabled ?? true };
     this.clearXFollowResumeTimer();
@@ -823,6 +890,7 @@ export class Chart implements ChartPluginContext {
     this.requestRender();
   }
 
+  /** Disable latest-X following. */
   stopFollowingLatestX(): void {
     if (!this.followXConfig && !this.xFollowPaused) return;
     this.followXConfig = null;
@@ -831,14 +899,17 @@ export class Chart implements ChartPluginContext {
     this.requestRender();
   }
 
+  /** Return whether latest-X following is enabled. */
   isFollowingLatestX(): boolean {
     return !!this.followXConfig && this.followXConfig.enabled !== false && !this.xFollowPaused;
   }
 
+  /** Return whether latest-X following is temporarily paused. */
   isLatestXFollowPaused(): boolean {
     return !!this.followXConfig && this.xFollowPaused;
   }
 
+  /** Pause or resume latest-X following without changing its options. */
   setXFollowPaused(paused: boolean): void {
     this.clearXFollowResumeTimer();
     if (this.xFollowPaused === paused) return;
@@ -846,10 +917,12 @@ export class Chart implements ChartPluginContext {
     this.requestRender();
   }
 
+  /** Resume latest-X following after an interaction pause. */
   resumeXFollow(): void {
     this.resumeLatestXFollow();
   }
 
+  /** Alias for `resumeXFollow()`. */
   resumeLatestXFollow(): void {
     this.clearXFollowResumeTimer();
     this.xFollowPaused = false;
@@ -857,6 +930,7 @@ export class Chart implements ChartPluginContext {
     this.requestRender();
   }
 
+  /** Fit the viewport to data bounds; returns `false` when no bounds are available. */
   fitToData(options: ChartFitToDataOptions = {}): boolean {
     const fitX = options.x !== false;
     const fitY = options.y !== false;
@@ -1000,6 +1074,7 @@ export class Chart implements ChartPluginContext {
     });
   }
 
+  /** Resize the canvas to match its layout size and device pixel ratio. */
   resize(dpr: number = globalThis.devicePixelRatio): boolean {
     const resized = this.applyCanvasSize(dpr);
     if (resized) {
@@ -1009,6 +1084,7 @@ export class Chart implements ChartPluginContext {
     return resized;
   }
 
+  /** Copy the latest render metrics into `target` and return it. */
   getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none", batchedDrawCalls: 0 }): ChartFrameStats {
     target.fps = this.stats.fps;
     target.frameMs = this.stats.frameMs;
@@ -1020,10 +1096,12 @@ export class Chart implements ChartPluginContext {
     return target;
   }
 
+  /** Return the latest hover state, or `null` when nothing is hovered. */
   getHoverState(): ChartHoverState | null {
     return this.currentHover;
   }
 
+  /** Reserve or release plot-adjacent layout space for a plugin or overlay. */
   setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void {
     if (reservation) {
       this.layoutReservations.set(id, reservation);
@@ -1034,6 +1112,7 @@ export class Chart implements ChartPluginContext {
     this.resize();
   }
 
+  /** Subscribe to chart events and receive an unsubscribe callback. */
   subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
   subscribe(event: "serieschange", callback: () => void): () => void;
   subscribe(event: "themechange", callback: () => void): () => void;
@@ -1100,11 +1179,13 @@ export class Chart implements ChartPluginContext {
     return () => this.seriesSubscribers.delete(cb);
   }
 
+  /** Emit a selection event to `select` subscribers. */
   emitSelect(selection: unknown): void {
     const event: ChartSelectEvent = { selection };
     for (const callback of this.selectSubscribers) callback(event);
   }
 
+  /** Replace the chart theme and request a render. */
   setTheme(theme?: ChartTheme): void {
     this.resolvedTheme = resolveChartTheme(theme, this.layout.root);
     this.applyTheme();
@@ -1112,16 +1193,19 @@ export class Chart implements ChartPluginContext {
     this.refreshHover();
   }
 
+  /** Show or hide grid lines. */
   setGridVisible(visible: boolean): void {
     if (this._gridVisible === visible) return;
     this._gridVisible = visible;
     this.requestRender();
   }
 
+  /** Return whether grid lines are visible. */
   getGridVisible(): boolean {
     return this._gridVisible;
   }
 
+  /** Replace axis configuration and rebuild axis overlays. */
   setAxes(axes: ChartOptions["axes"]): void {
     this.normalizedAxes = normalizeAxesConfig(axes);
     this.applyAxisDirections();
@@ -1141,6 +1225,7 @@ export class Chart implements ChartPluginContext {
     this.refreshHover();
   }
 
+  /** Hit-test a client-coordinate point against visible series. */
   pick(clientX: number, clientY: number, options: ChartPickOptions = {}): ChartHoverState | null {
     const rect = this.canvas.getBoundingClientRect();
     return this.pickAtPlot(clientX - rect.left, clientY - rect.top, clientX, clientY, rect, options);
@@ -1176,6 +1261,7 @@ export class Chart implements ChartPluginContext {
     return { clientX, clientY, plotX, plotY, dataX, dataY, anchorX, mode, group, maxDistancePx, items };
   }
 
+  /** Render the chart to an image blob. */
   async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
     this.render();
 
@@ -1183,6 +1269,7 @@ export class Chart implements ChartPluginContext {
     return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
+  /** Start the render loop. */
   start(options: ChartStartOptions = {}): void {
     this.renderLoop = options.renderLoop ?? this.options.renderLoop ?? this.renderLoop;
     if (this.running) {
@@ -1194,6 +1281,7 @@ export class Chart implements ChartPluginContext {
     this.requestRender();
   }
 
+  /** Stop the render loop. */
   stop(): void {
     this.running = false;
     if (this._rafId !== 0) {
@@ -1202,6 +1290,7 @@ export class Chart implements ChartPluginContext {
     }
   }
 
+  /** Schedule a render when using the on-demand render loop. */
   requestRender(): void {
     if (!this.running || this._rafId !== 0) return;
     this._rafId = requestAnimationFrame(() => {
@@ -1282,6 +1371,7 @@ export class Chart implements ChartPluginContext {
     return !!config && config.enabled !== false && !this.xFollowPaused && typeof config.currentX === "function";
   }
 
+  /** Stop rendering and release DOM, plugin, and GPU resources. */
   dispose(): void {
     this.stop();
     this.clearXFollowResumeTimer();
