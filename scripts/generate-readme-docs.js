@@ -25,10 +25,6 @@ const checkExportDescriptions = args.has("--check-export-descriptions");
 
 const pkg = JSON.parse(readFileSync(packagePath, "utf-8"));
 
-if (!existsSync(distIndexPath)) {
-  throw new Error("dist/index.d.ts not found. Run `bun run build` before generating README docs.");
-}
-
 const exportDescriptions = new Map([
   [".", "Core chart, data, interaction, rendering types, and low-level primitives."],
   ["./core", "Data structures, datasets, LOD helpers, and series storage without chart UI."],
@@ -53,6 +49,10 @@ validateExportDescriptions();
 if (checkExportDescriptions && process.argv.length <= 3) {
   console.log("Package export descriptions cover every public subpath.");
   process.exit(0);
+}
+
+if (!existsSync(distIndexPath)) {
+  throw new Error("dist/index.d.ts not found. Run `bun run build` before generating README docs.");
 }
 
 const sourceCache = new Map();
