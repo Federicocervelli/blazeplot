@@ -2,7 +2,7 @@
   <img src="assets/blazeplot.png" alt="BlazePlot" width="720" />
 </p>
 
-<noscript><a href="https://liberapay.com/cervelli/donate"><img src="https://img.shields.io/liberapay/patrons/cervelli.svg?logo=liberapay"></a></noscript>
+[![Sponsor](https://img.shields.io/github/sponsors/Federicocervelli?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Federicocervelli)
 [![npm version](https://img.shields.io/npm/v/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![npm downloads](https://img.shields.io/npm/dt/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)

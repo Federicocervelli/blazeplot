@@ -169,8 +169,8 @@ export class BlazeplotSite extends LitElement {
               <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot npm downloads">
                 <img src="https://img.shields.io/npm/dt/blazeplot.svg" alt="npm downloads" class="block h-5" />
               </a>
-              <a href="https://liberapay.com/cervelli/donate" target="_blank" rel="noreferrer" aria-label="Donate to BlazePlot">
-                <img src="https://img.shields.io/liberapay/patrons/cervelli.svg?logo=liberapay" alt="Liberapay patrons" class="block h-5" />
+              <a href="https://github.com/sponsors/Federicocervelli" target="_blank" rel="noreferrer" aria-label="Sponsor BlazePlot on GitHub">
+                <img src="https://img.shields.io/github/sponsors/Federicocervelli?logo=githubsponsors&label=sponsor&color=EA4AAA" alt="GitHub Sponsors" class="block h-5" />
               </a>
             </div>
           </div>
