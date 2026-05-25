@@ -3,6 +3,8 @@ import bash from "highlight.js/lib/languages/bash";
 import javascript from "highlight.js/lib/languages/javascript";
 import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
+import { DOC_PAGES } from "./docs.ts";
+import { appHref, appRouteFromHash } from "./site/shared.ts";
 
 hljs.registerLanguage("bash", bash);
 hljs.registerLanguage("javascript", javascript);
@@ -29,23 +31,9 @@ const HTML_ESCAPE: Record<string, string> = {
 
 const GITHUB_SOURCE_BASE = "https://github.com/Federicocervelli/blazeplot/blob/development/";
 
-const DOC_ROUTE_BY_SOURCE_PATH: Readonly<Record<string, string>> = {
-  "docs/README.md": "docs/docs-map",
-  "docs/api-reference.md": "docs/api-reference",
-  "docs/browser-support.md": "docs/browser-support",
-  "docs/built-in-plugins.md": "docs/built-in-plugins",
-  "docs/data-semantics.md": "docs/data-semantics",
-  "docs/documentation-contributions.md": "docs/documentation-contributions",
-  "docs/examples.md": "docs/examples",
-  "docs/overview.md": "docs/overview",
-  "docs/performance-recipes.md": "docs/performance-recipes",
-  "docs/plugin-authoring.md": "docs/plugin-authoring",
-  "docs/release-and-benchmarks.md": "docs/release-and-benchmarks",
-  "docs/roadmap.md": "docs/roadmap",
-  "docs/theming-and-layout.md": "docs/theming-and-layout",
-  "docs/troubleshooting.md": "docs/troubleshooting",
-  "docs/versioning-and-migration.md": "docs/versioning-and-migration",
-};
+const DOC_ROUTE_BY_SOURCE_PATH: Readonly<Record<string, string>> = Object.fromEntries(
+  DOC_PAGES.map((page) => [page.sourcePath, `docs/${page.slug}`]),
+);
 
 export interface RenderMarkdownOptions {
   readonly sourcePath?: string;
@@ -336,20 +324,6 @@ function normalizePath(path: string): string {
     segments.push(segment);
   }
   return segments.join("/");
-}
-
-function appRouteFromHash(href: string): string | null {
-  const hash = href.replace(/^#/, "").replace(/^\/+|\/+$/gu, "");
-  if (hash === "home") return "home";
-  if (hash === "previews" || hash.startsWith("previews/") || hash.startsWith("docs/")) return hash;
-  return null;
-}
-
-function appHref(route: string): string {
-  const baseUrl = import.meta.env?.BASE_URL ?? "/";
-  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
-  const normalizedRoute = route.replace(/^\/+|\/+$/gu, "");
-  return normalizedRoute === "" || normalizedRoute === "home" ? normalizedBase : `${normalizedBase}${normalizedRoute}`;
 }
 
 function normalizeImageSrc(src: string): string {
