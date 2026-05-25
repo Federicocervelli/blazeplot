@@ -226,6 +226,8 @@ export class BlazeplotPreviewsPage extends LitElement {
 
 }
 
-if (!customElements.get("blazeplot-previews")) {
-  customElements.define("blazeplot-previews", BlazeplotPreviewsPage);
+export function defineBlazeplotPreviewsPage(): void {
+  if (!customElements.get("blazeplot-previews")) {
+    customElements.define("blazeplot-previews", BlazeplotPreviewsPage);
+  }
 }

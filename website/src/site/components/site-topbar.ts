@@ -77,6 +77,8 @@ export class BlazeplotTopbar extends LitElement {
   }
 }
 
-if (!customElements.get("blazeplot-topbar")) {
-  customElements.define("blazeplot-topbar", BlazeplotTopbar);
+export function defineBlazeplotTopbar(): void {
+  if (!customElements.get("blazeplot-topbar")) {
+    customElements.define("blazeplot-topbar", BlazeplotTopbar);
+  }
 }
