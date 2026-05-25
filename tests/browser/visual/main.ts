@@ -33,6 +33,7 @@ const CASES = [
   "area",
   "scatter",
   "bar",
+  "histogram",
   "ohlc",
   "candlestick",
   "axes-title-grid",
@@ -163,6 +164,9 @@ function setupCase(name: VisualCase, chart: Chart): void {
     case "bar":
       addBar(chart);
       break;
+    case "histogram":
+      addHistogram(chart);
+      break;
     case "ohlc":
       addOhlc(chart, "ohlc");
       break;
@@ -268,6 +272,12 @@ function addBar(chart: Chart): void {
   const y = Float32Array.from({ length: 96 }, (_, i) => 0.2 + Math.abs(Math.sin(i * 0.17)));
   chart.addBar({ dataset: new StaticDataset(x, y), name: "bar" }, { barWidth: 0.8, baseline: 0 });
   chart.setViewport({ xMin: -1, xMax: 96, yMin: -0.1, yMax: 1.4 });
+}
+
+function addHistogram(chart: Chart): void {
+  const values = Float64Array.from({ length: 256 }, (_, i) => 50 + Math.sin(i * 0.41) * 18 + Math.cos(i * 0.13) * 8);
+  chart.addHistogram({ values, binSize: 4, name: "histogram" }, { baseline: 0 });
+  chart.fitToData({ includeZero: true, padding: { x: 0.02, y: 0.08 } });
 }
 
 function addOhlc(chart: Chart, mode: "ohlc" | "candlestick"): void {

@@ -1,11 +1,12 @@
 import { StaticDataset } from "./core/StaticDataset.js";
 import type { StaticDatasetField } from "./core/StaticDataset.js";
+import type { HistogramBinThresholds, HistogramNormalization } from "./core/Histogram.js";
 import type { BufferOverflowStrategy, Dataset, LODStrategy, SeriesMode, SeriesStyle, SeriesYAxis } from "./core/types.js";
 import { Chart } from "./ui/Chart.js";
 import type { ChartFitToDataOptions, ChartOptions } from "./ui/Chart.js";
 
 /** Series modes supported by the declarative `createChart` helper. */
-export type CreateChartSeriesType = Extract<SeriesMode, "line" | "area" | "scatter" | "bar">;
+export type CreateChartSeriesType = Extract<SeriesMode, "line" | "area" | "scatter" | "bar"> | "histogram";
 
 interface CreateChartSeriesBase {
   readonly type?: CreateChartSeriesType;
@@ -42,12 +43,32 @@ export interface CreateChartStreamingSeries extends CreateChartSeriesBase {
   readonly overflow?: BufferOverflowStrategy;
 }
 
+interface CreateChartHistogramSeriesOptions extends CreateChartSeriesBase {
+  readonly values: ArrayLike<number>;
+  readonly binSize?: number;
+  readonly binCount?: number;
+  readonly thresholds?: HistogramBinThresholds;
+  readonly min?: number;
+  readonly max?: number;
+  readonly align?: number;
+  readonly normalize?: HistogramNormalization;
+  readonly includeEmpty?: boolean;
+  readonly includeMax?: boolean;
+}
+
+/** Declarative histogram series backed by raw one-dimensional values. */
+export type CreateChartHistogramSeries = CreateChartHistogramSeriesOptions & (
+  | { readonly type: "histogram"; readonly mode?: "histogram" }
+  | { readonly mode: "histogram"; readonly type?: "histogram" }
+);
+
 /** Any series shape accepted by `createChart`. */
 export type CreateChartSeries<Row = Record<string, unknown>> =
   | CreateChartDatasetSeries
   | CreateChartArraySeries
   | CreateChartObjectSeries<Row>
-  | CreateChartStreamingSeries;
+  | CreateChartStreamingSeries
+  | CreateChartHistogramSeries;
 
 /**
  * High-level chart configuration for common first-render cases.
@@ -82,8 +103,32 @@ export function createChart<Row = Record<string, unknown>>(
   const { series = [], autoFit = true, start = true, ...chartOptions } = options;
   const chart = new Chart(target, chartOptions);
 
+  let hasHistogram = false;
   for (const item of series) {
     const mode = resolveSeriesMode(item);
+    if (mode === "histogram") {
+      if (!("values" in item)) {
+        throw new TypeError("createChart histogram series require a values array.");
+      }
+      hasHistogram = true;
+      chart.addHistogram({
+        values: item.values,
+        binSize: item.binSize,
+        binCount: item.binCount,
+        thresholds: item.thresholds,
+        min: item.min,
+        max: item.max,
+        align: item.align,
+        normalize: item.normalize,
+        includeEmpty: item.includeEmpty,
+        includeMax: item.includeMax,
+        downsample: item.downsample,
+        id: item.id,
+        name: item.name,
+        yAxis: item.yAxis,
+      }, item.style);
+      continue;
+    }
     chart.addSeries({
       mode,
       dataset: resolveSeriesDataset(item),
@@ -97,7 +142,7 @@ export function createChart<Row = Record<string, unknown>>(
   }
 
   if (autoFit) {
-    chart.fitToData(typeof autoFit === "object" ? autoFit : undefined);
+    chart.fitToData(typeof autoFit === "object" ? autoFit : hasHistogram ? { includeZero: true } : undefined);
   }
   if (start) {
     chart.start();
