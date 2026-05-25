@@ -1,9 +1,9 @@
 import { LitElement, html, nothing, type TemplateResult } from "lit";
 import { DOC_PAGES, getDocPage } from "./docs.ts";
-import "./site/components/docs-page.ts";
-import "./site/components/home-page.ts";
-import "./site/components/previews-page.ts";
-import "./site/components/site-topbar.ts";
+import { defineBlazeplotDocsPage } from "./site/components/docs-page.ts";
+import { defineBlazeplotHomePage } from "./site/components/home-page.ts";
+import { defineBlazeplotPreviewsPage } from "./site/components/previews-page.ts";
+import { defineBlazeplotTopbar } from "./site/components/site-topbar.ts";
 import { appHref, appRouteFromHash, appRouteFromPath, PREVIEWS, type PreviewId, type Section } from "./site/shared.ts";
 import { siteStyles } from "./site/styles.ts";
 
@@ -133,6 +133,11 @@ export class BlazeplotSite extends LitElement {
 }
 
 export function defineBlazeplotSite(): void {
+  defineBlazeplotTopbar();
+  defineBlazeplotHomePage();
+  defineBlazeplotDocsPage();
+  defineBlazeplotPreviewsPage();
+
   if (!customElements.get("blazeplot-site")) {
     customElements.define("blazeplot-site", BlazeplotSite);
   }

@@ -254,6 +254,8 @@ export class BlazeplotHomePage extends LitElement {
   }
 }
 
-if (!customElements.get("blazeplot-home")) {
-  customElements.define("blazeplot-home", BlazeplotHomePage);
+export function defineBlazeplotHomePage(): void {
+  if (!customElements.get("blazeplot-home")) {
+    customElements.define("blazeplot-home", BlazeplotHomePage);
+  }
 }
