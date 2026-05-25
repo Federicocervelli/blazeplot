@@ -282,6 +282,8 @@ export class BlazeplotDocsPage extends LitElement {
   }
 }
 
-if (!customElements.get("blazeplot-docs")) {
-  customElements.define("blazeplot-docs", BlazeplotDocsPage);
+export function defineBlazeplotDocsPage(): void {
+  if (!customElements.get("blazeplot-docs")) {
+    customElements.define("blazeplot-docs", BlazeplotDocsPage);
+  }
 }
