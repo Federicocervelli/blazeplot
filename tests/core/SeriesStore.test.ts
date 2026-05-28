@@ -4,6 +4,7 @@ import { RingBuffer } from "../../src/core/RingBuffer.ts";
 import { StaticDataset } from "../../src/core/StaticDataset.ts";
 import { OhlcRingBuffer } from "../../src/core/OhlcDataset.ts";
 import { UniformRingBuffer } from "../../src/core/UniformRingBuffer.ts";
+import { histogramDataset } from "../../src/core/Histogram.ts";
 import type { Dataset, RangeMinMaxDataset, TimeRange } from "../../src/core/types.ts";
 
 function makeSeries(): SeriesStore {
@@ -156,6 +157,17 @@ describe("SeriesStore", () => {
     expect(series.dataBounds()).toEqual({ xMin: 0, xMax: 3, yMin: -4, yMax: 8 });
     expect(series.dataBounds({ xMin: 1.5, xMax: 3 })).toEqual({ xMin: 2, xMax: 3, yMin: -4, yMax: 8 });
     expect(series.dataBounds({ xMin: 10 })).toBeNull();
+  });
+
+  it("includes interval-backed sample ranges in data bounds", () => {
+    const dataset = histogramDataset([0.2, 0.8, 1.2], { binSize: 1, min: 0, max: 2 });
+    const series = new SeriesStore(
+      dataset,
+      { mode: "bar", dataset, downsample: "none" },
+      { color: [1, 1, 1, 1], lineWidth: 1, baseline: 0, barWidth: 1 },
+    );
+
+    expect(series.dataBounds()).toEqual({ xMin: 0, xMax: 2, yMin: 0, yMax: 2 });
   });
 
   it("exposes x range even when latest samples are gaps", () => {

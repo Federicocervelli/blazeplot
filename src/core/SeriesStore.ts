@@ -577,8 +577,11 @@ export class SeriesStore {
       const low = ohlc ? ohlc.getLow(i) : range?.minY ?? y;
       const high = ohlc ? ohlc.getHigh(i) : range?.maxY ?? low;
       if (!Number.isFinite(x) || !Number.isFinite(low) || !Number.isFinite(high)) continue;
-      xMin = Math.min(xMin, x);
-      xMax = Math.max(xMax, x);
+      const xRange = this.xRangeAt(i);
+      const sampleXMin = xRange && Number.isFinite(xRange.xStart) ? xRange.xStart : x;
+      const sampleXMax = xRange && Number.isFinite(xRange.xEnd) ? xRange.xEnd : x;
+      xMin = Math.min(xMin, sampleXMin, sampleXMax);
+      xMax = Math.max(xMax, sampleXMin, sampleXMax);
       yMin = Math.min(yMin, low, high);
       yMax = Math.max(yMax, low, high);
     }
