@@ -574,7 +574,7 @@ export class Chart implements ChartPluginContext {
       this.lastPointerPlotX = event.offsetX;
       this.lastPointerPlotY = event.offsetY;
       this.lastPointerButtons = event.buttons;
-      this.refreshHover();
+      this.scheduleHoverRefresh();
     }
     if (this.pointerSubscribers.pointermove.size > 0) this.emitPointerEvent("pointermove", event);
   };

@@ -234,9 +234,18 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       chart.canvas.addEventListener("touchend", longPress.clear);
       chart.canvas.addEventListener("touchcancel", longPress.clear);
 
-      const unsubscribeHover = chart.subscribe("hover", (state) => {
+      let hoverRaf = 0;
+      let pendingHoverState: ChartHoverState | null = null;
+      const flushHover = (): void => {
+        hoverRaf = 0;
+        const state = pendingHoverState;
+        pendingHoverState = null;
         render(state);
         notifyPeers(state);
+      };
+      const unsubscribeHover = chart.subscribe("hover", (state) => {
+        pendingHoverState = state;
+        if (hoverRaf === 0) hoverRaf = requestAnimationFrame(flushHover);
       });
       const unsubscribeTheme = chart.subscribe("themechange", () => {
         applyTheme();
@@ -253,6 +262,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         chart.canvas.removeEventListener("touchmove", longPress.onTouchMove, { capture: true });
         chart.canvas.removeEventListener("touchend", longPress.clear);
         chart.canvas.removeEventListener("touchcancel", longPress.clear);
+        if (hoverRaf !== 0) cancelAnimationFrame(hoverRaf);
         unsubscribeHover();
         unsubscribeTheme();
         if (peer && options.syncGroup) {
