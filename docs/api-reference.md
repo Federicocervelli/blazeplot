@@ -56,7 +56,7 @@ Generated from `dist/` after the package build.
 | render subpath entry | `dist/render.js` | 0.3 KiB |
 | react entry | `dist/react.js` | 0.7 KiB |
 | linked entry | `dist/linked.js` | 0.4 KiB |
-| linked core entry | `dist/linked-core.js` | 0.1 KiB |
+| linked core entry | `dist/linked-*.js` | 0.1 KiB |
 | data entry | `dist/data.js` | 5.1 KiB |
 | export entry | `dist/export.js` | 1.3 KiB |
 | interactions plugin | `dist/plugins/interactions.js` | 15.4 KiB |
@@ -67,16 +67,16 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-DniudEGP.js` | 57.2 KiB |
-| shared streaming data chunk | `dist/UniformRingBuffer-DVJiaja6.js` | 44.0 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-BzaK030U.js` | 8.6 KiB |
-| shared AxisController chunk | `dist/AxisController-B5zX7JBz.js` | 13.8 KiB |
-| shared WebGL2Backend chunk | `dist/WebGL2Backend-DDGRc0UJ.js` | 22.0 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-BLcR3ldB.js` | 2.1 KiB |
-| lazy screenshot chunk | `dist/screenshot-CljRIqNW.js` | 3.5 KiB |
-| shared OverlayUtils chunk | `dist/OverlayUtils-YP9KSKL4.js` | 3.1 KiB |
-| shared Tooltip chunk | `dist/Tooltip-a9NkZoPg.js` | 5.8 KiB |
-| shared Crosshair chunk | `dist/Crosshair-CmD1HvkI.js` | 10.3 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 57.2 KiB |
+| shared streaming data chunk | `dist/UniformRingBuffer-*.js` | 44.0 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-*.js` | 8.6 KiB |
+| shared AxisController chunk | `dist/AxisController-*.js` | 13.8 KiB |
+| shared WebGL2Backend chunk | `dist/WebGL2Backend-*.js` | 22.0 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-*.js` | 2.1 KiB |
+| lazy screenshot chunk | `dist/screenshot-*.js` | 3.5 KiB |
+| shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 3.1 KiB |
+| shared Tooltip chunk | `dist/Tooltip-*.js` | 5.8 KiB |
+| shared Crosshair chunk | `dist/Crosshair-*.js` | 10.4 KiB |
 
 ### All public exports
 

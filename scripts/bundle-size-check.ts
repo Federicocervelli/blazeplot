@@ -98,7 +98,7 @@ export function bundleSizeFailures(report: BundleSizeReport): string[] {
 
 export function renderBundleSizeMarkdown(report: BundleSizeReport): string {
   const rows = [...report.entryChunks, ...report.sharedChunks.flatMap((chunk) => chunk.entries)]
-    .map((entry) => `| ${markdownEscape(entry.label)} | \`${entry.path}\` | ${formatBytes(entry.sizeBytes)} |`);
+    .map((entry) => `| ${markdownEscape(entry.label)} | \`${displayPath(entry.path)}\` | ${formatBytes(entry.sizeBytes)} |`);
 
   const lines = [
     "### Bundle size summary",
@@ -154,6 +154,10 @@ function parseArgs(args: readonly string[]): { markdown: boolean } {
 function printHelpAndExit(): never {
   console.log(`Usage: bun scripts/bundle-size-check.ts [--markdown]\n\nChecks built dist chunk sizes against package budgets.\n\nOptions:\n  --markdown   Print a README-ready markdown summary instead of enforcing budgets\n`);
   process.exit(0);
+}
+
+function displayPath(path: string): string {
+  return path.replace(/-[A-Za-z0-9_]+\.js$/u, "-*.js");
 }
 
 function formatBytes(bytes: number): string {
