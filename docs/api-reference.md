@@ -50,33 +50,33 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 2.3 KiB |
-| core subpath entry | `dist/core.js` | 0.8 KiB |
-| interaction subpath entry | `dist/interaction.js` | 0.1 KiB |
-| render subpath entry | `dist/render.js` | 0.3 KiB |
-| react entry | `dist/react.js` | 0.7 KiB |
-| linked entry | `dist/linked.js` | 0.4 KiB |
-| linked core entry | `dist/linked-*.js` | 0.1 KiB |
-| data entry | `dist/data.js` | 5.1 KiB |
-| export entry | `dist/export.js` | 1.3 KiB |
-| interactions plugin | `dist/plugins/interactions.js` | 15.4 KiB |
-| annotations plugin | `dist/plugins/annotations.js` | 9.3 KiB |
-| navigator plugin | `dist/plugins/navigator.js` | 8.6 KiB |
-| selection plugin | `dist/plugins/selection.js` | 5.3 KiB |
-| legend plugin | `dist/plugins/legend.js` | 2.8 KiB |
-| tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
-| crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
-| flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 57.2 KiB |
-| shared streaming data chunk | `dist/UniformRingBuffer-*.js` | 44.0 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-*.js` | 8.6 KiB |
-| shared AxisController chunk | `dist/AxisController-*.js` | 13.8 KiB |
-| shared WebGL2Backend chunk | `dist/WebGL2Backend-*.js` | 22.0 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-*.js` | 2.1 KiB |
-| lazy screenshot chunk | `dist/screenshot-*.js` | 3.5 KiB |
-| shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 3.1 KiB |
-| shared Tooltip chunk | `dist/Tooltip-*.js` | 5.8 KiB |
-| shared Crosshair chunk | `dist/Crosshair-*.js` | 10.4 KiB |
+| root entry | `dist/index.js` | 2 KiB |
+| core subpath entry | `dist/core.js` | 1 KiB |
+| interaction subpath entry | `dist/interaction.js` | 0 KiB |
+| render subpath entry | `dist/render.js` | 0 KiB |
+| react entry | `dist/react.js` | 1 KiB |
+| linked entry | `dist/linked.js` | 0 KiB |
+| linked core entry | `dist/linked-*.js` | 0 KiB |
+| data entry | `dist/data.js` | 5 KiB |
+| export entry | `dist/export.js` | 1 KiB |
+| interactions plugin | `dist/plugins/interactions.js` | 15 KiB |
+| annotations plugin | `dist/plugins/annotations.js` | 9 KiB |
+| navigator plugin | `dist/plugins/navigator.js` | 9 KiB |
+| selection plugin | `dist/plugins/selection.js` | 5 KiB |
+| legend plugin | `dist/plugins/legend.js` | 3 KiB |
+| tooltip plugin entry | `dist/plugins/tooltip.js` | 0 KiB |
+| crosshair plugin entry | `dist/plugins/crosshair.js` | 0 KiB |
+| flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 57 KiB |
+| shared streaming data chunk | `dist/UniformRingBuffer-*.js` | 44 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-*.js` | 9 KiB |
+| shared AxisController chunk | `dist/AxisController-*.js` | 14 KiB |
+| shared WebGL2Backend chunk | `dist/WebGL2Backend-*.js` | 22 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-*.js` | 2 KiB |
+| lazy screenshot chunk | `dist/screenshot-*.js` | 4 KiB |
+| shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 3 KiB |
+| shared Tooltip chunk | `dist/Tooltip-*.js` | 6 KiB |
+| shared Crosshair chunk | `dist/Crosshair-*.js` | 10 KiB |
 
 ### All public exports
 

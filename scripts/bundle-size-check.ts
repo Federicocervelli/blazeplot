@@ -161,7 +161,7 @@ function displayPath(path: string): string {
 }
 
 function formatBytes(bytes: number): string {
-  return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${Math.round(bytes / 1024)} KiB`;
 }
 
 function markdownEscape(value: string): string {
