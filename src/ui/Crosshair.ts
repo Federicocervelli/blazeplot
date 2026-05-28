@@ -221,6 +221,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   const measureEndSubscribers = new Set<(measurement: RulerMeasurement) => void>();
 
   const setVisible = (visible: boolean): void => {
+    if (root) root.style.display = visible ? "block" : "none";
     if (lineLayer) lineLayer.style.display = visible ? "block" : "none";
     if (overlayLayer) overlayLayer.style.display = visible ? "block" : "none";
   };
@@ -368,7 +369,9 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
 
       root = document.createElement("div");
       root.className = "blazeplot-crosshair";
-      root.style.display = "contents";
+      root.style.position = "absolute";
+      root.style.inset = "0";
+      root.style.display = "none";
       root.style.pointerEvents = "none";
 
       lineLayer = createCrosshairLayer("blazeplot-crosshair-lines", options.zIndex ?? 0);
