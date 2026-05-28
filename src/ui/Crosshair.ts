@@ -153,7 +153,7 @@ function createXRangeHighlight(item: ChartPickItem, chart: Chart, strokeColor: s
   marker.style.width = `${Math.max(2, Math.abs(rightX - leftX))}px`;
   marker.style.height = `${Math.max(2, Math.abs(baselineY - valueY))}px`;
   marker.style.border = `${strokeWidth}px solid ${strokeColor ?? "#f8fafc"}`;
-  marker.style.background = rgba(item.series.style.color).replace(/, [^)]+\)$/u, ", 0.35)");
+  marker.style.background = `linear-gradient(${rgba(item.series.style.color).replace(/, [^)]+\)$/u, ", 0.38)")}, ${rgba(item.series.style.color).replace(/, [^)]+\)$/u, ", 0.38)")}), ${chart.theme.backgroundCssColor}`;
   marker.style.boxShadow = "0 0 0 1px rgba(4, 8, 16, 0.85)";
   marker.style.boxSizing = "border-box";
   return marker;
