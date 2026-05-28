@@ -2,7 +2,7 @@
   <img src="assets/blazeplot.png" alt="BlazePlot" width="720" />
 </p>
 
-[![Sponsor](https://img.shields.io/github/sponsors/Federicocervelli?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Federicocervelli)
+[![Sponsor](https://img.shields.io/badge/sponsor-GitHub%20Sponsors-EA4AAA?logo=githubsponsors)](https://github.com/sponsors/Federicocervelli)
 [![npm version](https://img.shields.io/npm/v/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![npm downloads](https://img.shields.io/npm/dt/blazeplot.svg)](https://www.npmjs.com/package/blazeplot)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
