@@ -159,6 +159,17 @@ function createXRangeHighlight(item: ChartPickItem, chart: Chart, strokeColor: s
   return marker;
 }
 
+function createCrosshairLayer(className: string, zIndex: number): HTMLDivElement {
+  const layer = document.createElement("div");
+  layer.className = className;
+  layer.style.position = "absolute";
+  layer.style.inset = "0";
+  layer.style.display = "none";
+  layer.style.pointerEvents = "none";
+  layer.style.zIndex = String(zIndex);
+  return layer;
+}
+
 function renderDefaultLabel(
   position: CrosshairPosition,
   container: HTMLElement,
@@ -360,21 +371,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       root.style.display = "contents";
       root.style.pointerEvents = "none";
 
-      lineLayer = document.createElement("div");
-      lineLayer.className = "blazeplot-crosshair-lines";
-      lineLayer.style.position = "absolute";
-      lineLayer.style.inset = "0";
-      lineLayer.style.display = "none";
-      lineLayer.style.pointerEvents = "none";
-      lineLayer.style.zIndex = String(options.zIndex ?? 0);
-
-      overlayLayer = document.createElement("div");
-      overlayLayer.className = "blazeplot-crosshair-overlay";
-      overlayLayer.style.position = "absolute";
-      overlayLayer.style.inset = "0";
-      overlayLayer.style.display = "none";
-      overlayLayer.style.pointerEvents = "none";
-      overlayLayer.style.zIndex = String(options.zIndex ?? 22);
+      lineLayer = createCrosshairLayer("blazeplot-crosshair-lines", options.zIndex ?? 0);
+      overlayLayer = createCrosshairLayer("blazeplot-crosshair-overlay", options.zIndex ?? 22);
 
       vertical = document.createElement("div");
       vertical.style.position = "absolute";
