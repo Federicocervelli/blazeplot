@@ -1,8 +1,12 @@
-import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRange, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
 function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
   return "rangeMinMaxY" in dataset;
+}
+
+function hasXRange(dataset: Dataset): dataset is XRangeDataset {
+  return "getXRange" in dataset;
 }
 
 function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
@@ -520,6 +524,11 @@ export class SeriesStore {
     const start = this.dataset.lowerBoundX(viewport.xMin);
     const end = this.dataset.upperBoundX(viewport.xMax);
     return Math.max(0, end - start);
+  }
+
+  /** Return the represented X interval for a logical index when the dataset exposes interval metadata. */
+  xRangeAt(index: number): XRange | null {
+    return hasXRange(this.dataset) ? this.dataset.getXRange(index) : null;
   }
 
   /** Return an XY sample by logical index. */

@@ -13,6 +13,8 @@ export type AxisOverlayConfig = ChartLayoutConfig;
 
 type RenderAxis = "x" | "y" | "y2";
 
+const AXIS_LABEL_COLLISION_GAP_PX = 2;
+
 /** SVG overlay that renders chart axes and ticks. */
 export class AxisOverlay {
   private xPool: HTMLDivElement[] = [];
@@ -117,21 +119,28 @@ export class AxisOverlay {
       pool[i]!.style.display = "none";
     }
 
-    for (let i = 0; i < values.length; i++) {
-      const el = pool[i]!;
-      const value = values[i]!;
-      const text = controller.formatValue(value, axis === "x" ? "x" : "y");
-      if (el.textContent !== text) {
-        el.textContent = text;
-      }
-      el.style.display = "block";
-
-      if (axis === "x") {
+    if (axis === "x") {
+      const labels: Array<{ el: HTMLDivElement; left: number; right: number; edge: boolean }> = [];
+      for (let i = 0; i < values.length; i++) {
+        const el = pool[i]!;
+        const value = values[i]!;
+        const text = controller.formatValue(value, "x");
+        if (el.textContent !== text) el.textContent = text;
         const [clipX] = camera.toClip(value, camera.yMin);
         const screenX = (clipX + 1) * 0.5 * plotW;
-        el.style.left = `${screenX}px`;
+        if (screenX < 0 || screenX > plotW) {
+          el.style.display = "none";
+          continue;
+        }
+        el.style.display = "block";
+        const labelWidth = Math.max(1, el.offsetWidth);
+        const centeredLeft = screenX - labelWidth * 0.5;
+        const maxLeft = Math.max(0, plotW - labelWidth);
+        const labelLeft = Math.min(Math.max(0, centeredLeft), maxLeft);
+        const edge = labelLeft === 0 || labelLeft === maxLeft;
+        el.style.left = `${labelLeft}px`;
         el.style.right = "auto";
-        el.style.transform = "translateX(-50%)";
+        el.style.transform = "none";
         if (this.config.x.position === "outside") {
           el.style.top = "4px";
           el.style.bottom = "auto";
@@ -139,21 +148,61 @@ export class AxisOverlay {
           el.style.top = "auto";
           el.style.bottom = "4px";
         }
-      } else {
-        const isRight = axis === "y2";
-        const config = isRight ? this.config.y2 : this.config.y;
-        const [, clipY] = camera.toClip(camera.xMin, value);
-        const screenY = (1 - clipY) * 0.5 * plotH;
-        el.style.top = `${screenY}px`;
-        el.style.bottom = "auto";
-        el.style.transform = "translateY(-50%)";
-        if (config.position === "outside") {
-          el.style.left = isRight ? "4px" : "auto";
-          el.style.right = isRight ? "auto" : "4px";
+        labels.push({ el, left: labelLeft, right: labelLeft + labelWidth, edge });
+      }
+
+      const placed: Array<{ left: number; right: number }> = [];
+      for (const label of [...labels].sort((a, b) => Number(b.edge) - Number(a.edge) || a.left - b.left)) {
+        const overlaps = placed.some((used) => label.left < used.right + AXIS_LABEL_COLLISION_GAP_PX && label.right > used.left - AXIS_LABEL_COLLISION_GAP_PX);
+        if (overlaps) {
+          label.el.style.display = "none";
         } else {
-          el.style.left = isRight ? "auto" : "4px";
-          el.style.right = isRight ? "4px" : "auto";
+          placed.push({ left: label.left, right: label.right });
         }
+      }
+      return;
+    }
+
+    const isRight = axis === "y2";
+    const config = isRight ? this.config.y2 : this.config.y;
+    const labels: Array<{ el: HTMLDivElement; top: number; bottom: number; edge: boolean }> = [];
+    for (let i = 0; i < values.length; i++) {
+      const el = pool[i]!;
+      const value = values[i]!;
+      const text = controller.formatValue(value, "y");
+      if (el.textContent !== text) el.textContent = text;
+      const [, clipY] = camera.toClip(camera.xMin, value);
+      const screenY = (1 - clipY) * 0.5 * plotH;
+      if (screenY < 0 || screenY > plotH) {
+        el.style.display = "none";
+        continue;
+      }
+      el.style.display = "block";
+      const labelHeight = Math.max(1, el.offsetHeight);
+      const centeredTop = screenY - labelHeight * 0.5;
+      const maxTop = Math.max(0, plotH - labelHeight);
+      const labelTop = Math.min(Math.max(0, centeredTop), maxTop);
+      const edge = labelTop === 0 || labelTop === maxTop;
+      el.style.top = `${labelTop}px`;
+      el.style.bottom = "auto";
+      el.style.transform = "none";
+      if (config.position === "outside") {
+        el.style.left = isRight ? "4px" : "auto";
+        el.style.right = isRight ? "auto" : "4px";
+      } else {
+        el.style.left = isRight ? "auto" : "4px";
+        el.style.right = isRight ? "4px" : "auto";
+      }
+      labels.push({ el, top: labelTop, bottom: labelTop + labelHeight, edge });
+    }
+
+    const placed: Array<{ top: number; bottom: number }> = [];
+    for (const label of [...labels].sort((a, b) => Number(b.edge) - Number(a.edge) || a.top - b.top)) {
+      const overlaps = placed.some((used) => label.top < used.bottom + AXIS_LABEL_COLLISION_GAP_PX && label.bottom > used.top - AXIS_LABEL_COLLISION_GAP_PX);
+      if (overlaps) {
+        label.el.style.display = "none";
+      } else {
+        placed.push({ top: label.top, bottom: label.bottom });
       }
     }
   }

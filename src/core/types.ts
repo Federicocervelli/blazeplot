@@ -63,6 +63,17 @@ export interface Dataset {
   upperBoundX(x: number): number;
 }
 
+/** Data-domain X interval represented by one dataset sample. */
+export interface XRange {
+  readonly xStart: number;
+  readonly xEnd: number;
+}
+
+/** Dataset whose sample X values represent intervals rather than points. */
+export interface XRangeDataset extends Dataset {
+  getXRange(index: number): XRange | null;
+}
+
 /** Dataset that can answer min/max Y queries for index ranges. */
 export interface RangeMinMaxDataset extends Dataset {
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null;
