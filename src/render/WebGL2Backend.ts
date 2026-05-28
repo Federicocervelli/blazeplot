@@ -445,6 +445,6 @@ export class WebGL2Backend implements GpuBackend {
 
 /**
  * Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API.
- * @deprecated Effective next patch release. Use WebGL2Backend.
+ * @deprecated Use WebGL2Backend; removal target: 0.4.0.
  */
 export const ReglBackend: typeof WebGL2Backend = WebGL2Backend;

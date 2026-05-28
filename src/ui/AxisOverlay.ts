@@ -15,6 +15,25 @@ type RenderAxis = "x" | "y" | "y2";
 
 const AXIS_LABEL_COLLISION_GAP_PX = 2;
 
+interface AxisLabelInterval {
+  readonly el: HTMLDivElement;
+  readonly start: number;
+  readonly end: number;
+  readonly edge: boolean;
+}
+
+function hideOverlappingLabels(labels: readonly AxisLabelInterval[]): void {
+  const placed: Array<{ start: number; end: number }> = [];
+  for (const label of [...labels].sort((a, b) => Number(b.edge) - Number(a.edge) || a.start - b.start)) {
+    const overlaps = placed.some((used) => label.start < used.end + AXIS_LABEL_COLLISION_GAP_PX && label.end > used.start - AXIS_LABEL_COLLISION_GAP_PX);
+    if (overlaps) {
+      label.el.style.display = "none";
+    } else {
+      placed.push({ start: label.start, end: label.end });
+    }
+  }
+}
+
 /** SVG overlay that renders chart axes and ticks. */
 export class AxisOverlay {
   private xPool: HTMLDivElement[] = [];
@@ -120,7 +139,7 @@ export class AxisOverlay {
     }
 
     if (axis === "x") {
-      const labels: Array<{ el: HTMLDivElement; left: number; right: number; edge: boolean }> = [];
+      const labels: AxisLabelInterval[] = [];
       for (let i = 0; i < values.length; i++) {
         const el = pool[i]!;
         const value = values[i]!;
@@ -148,24 +167,16 @@ export class AxisOverlay {
           el.style.top = "auto";
           el.style.bottom = "4px";
         }
-        labels.push({ el, left: labelLeft, right: labelLeft + labelWidth, edge });
+        labels.push({ el, start: labelLeft, end: labelLeft + labelWidth, edge });
       }
 
-      const placed: Array<{ left: number; right: number }> = [];
-      for (const label of [...labels].sort((a, b) => Number(b.edge) - Number(a.edge) || a.left - b.left)) {
-        const overlaps = placed.some((used) => label.left < used.right + AXIS_LABEL_COLLISION_GAP_PX && label.right > used.left - AXIS_LABEL_COLLISION_GAP_PX);
-        if (overlaps) {
-          label.el.style.display = "none";
-        } else {
-          placed.push({ left: label.left, right: label.right });
-        }
-      }
+      hideOverlappingLabels(labels);
       return;
     }
 
     const isRight = axis === "y2";
     const config = isRight ? this.config.y2 : this.config.y;
-    const labels: Array<{ el: HTMLDivElement; top: number; bottom: number; edge: boolean }> = [];
+    const labels: AxisLabelInterval[] = [];
     for (let i = 0; i < values.length; i++) {
       const el = pool[i]!;
       const value = values[i]!;
@@ -193,17 +204,9 @@ export class AxisOverlay {
         el.style.left = isRight ? "auto" : "4px";
         el.style.right = isRight ? "4px" : "auto";
       }
-      labels.push({ el, top: labelTop, bottom: labelTop + labelHeight, edge });
+      labels.push({ el, start: labelTop, end: labelTop + labelHeight, edge });
     }
 
-    const placed: Array<{ top: number; bottom: number }> = [];
-    for (const label of [...labels].sort((a, b) => Number(b.edge) - Number(a.edge) || a.top - b.top)) {
-      const overlaps = placed.some((used) => label.top < used.bottom + AXIS_LABEL_COLLISION_GAP_PX && label.bottom > used.top - AXIS_LABEL_COLLISION_GAP_PX);
-      if (overlaps) {
-        label.el.style.display = "none";
-      } else {
-        placed.push({ top: label.top, bottom: label.bottom });
-      }
-    }
+    hideOverlappingLabels(labels);
   }
 }

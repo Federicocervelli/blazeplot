@@ -74,7 +74,7 @@ Generated from `dist/` after the package build.
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-*.js` | 22 KiB |
 | shared LinkedChartsCore chunk | `dist/LinkedChartsCore-*.js` | 2 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 4 KiB |
-| shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 3 KiB |
+| shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 4 KiB |
 | shared Tooltip chunk | `dist/Tooltip-*.js` | 6 KiB |
 | shared Crosshair chunk | `dist/Crosshair-*.js` | 10 KiB |
 
@@ -85,7 +85,7 @@ Generated from `dist/index.d.ts` after the package build.
 | Export | Kind | Source | JSDoc summary |
 |---|---|---|---|
 | `AcceleratedDataset` | interface | `./core/types` | Convenience contract for maximum-performance custom datasets. Implement this when a dataset can provide fast exact sample copies, stable viewport sampling, range min/max queries, and renderer-ready min/max buckets. |
-| `AppendableDataset` | interface | `./core/types` | Dataset that accepts appended explicit X/Y samples. |
+| `AppendableDataset` | interface | `./core/types` | Dataset that accepts appended X/Y samples; implementations may store X values explicitly or use them to seed implicit X spacing. |
 | `AttributeSpec` | interface | `./render/types` | Vertex attribute binding for a draw call. |
 | `AxisConfig` | interface | `./ui/Chart` | Axis visibility, placement, scale, tick formatting, and title options. |
 | `AxisController` | class | `./interaction/AxisController` | Computes axis tick values and labels for a camera. |
@@ -174,7 +174,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `PrecomputedHistogramSeriesConfig` | interface | `./ui/Chart` | Series configuration for `Chart.addHistogram(...)` from precomputed bins. |
 | `RangeMinMaxDataset` | interface | `./core/types` | Dataset that can answer min/max Y queries for index ranges. |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
-| `ReglBackend` | const | `./render/WebGL2Backend` | Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API. Deprecated: Effective next patch release. Use WebGL2Backend. |
+| `ReglBackend` | const | `./render/WebGL2Backend` | Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API. Deprecated: Use WebGL2Backend; removal target: 0.4.0. |
 | `ResolvedChartTheme` | interface | `./ui/theme` | Fully resolved chart theme with concrete RGBA values. |
 | `RgbaColor` | type | `./ui/theme` | RGBA color tuple with 0-1 channel values. |
 | `RingBuffer` | class | `./core/RingBuffer` | Fixed-capacity sorted XY buffer for explicit X values. |

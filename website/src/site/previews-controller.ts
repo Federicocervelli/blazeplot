@@ -38,6 +38,17 @@ export class PreviewChartsController implements ReactiveController {
     this.disposePreviewCharts();
   }
 
+  private requireControl<T extends HTMLElement>(root: ParentNode, selector: string): T {
+    const control = root.querySelector<T>(selector);
+    if (!control) throw new Error(`Missing preview control: ${selector}`);
+    return control;
+  }
+
+  private addDisposableListener<K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void {
+    element.addEventListener(type, listener as EventListener);
+    this.previewDisposers.push(() => element.removeEventListener(type, listener as EventListener));
+  }
+
   private get previewIndex(): number {
     const index = PREVIEWS.findIndex((preview) => preview.id === this.host.previewId);
     return index >= 0 ? index : 0;
@@ -195,11 +206,7 @@ export class PreviewChartsController implements ReactiveController {
 
   private mountLivePreviewChart(target: HTMLElement): void {
     const liveRoot = target.closest<HTMLElement>("[data-live-preview-root]") ?? target;
-    const requireControl = <T extends HTMLElement>(selector: string): T => {
-      const element = liveRoot.querySelector<T>(selector);
-      if (!element) throw new Error(`Missing live preview control ${selector}`);
-      return element;
-    };
+    const requireControl = <T extends HTMLElement>(selector: string): T => this.requireControl<T>(liveRoot, selector);
     const overlay = requireControl<HTMLElement>("[data-live-overlay]");
     const overlayText = requireControl<HTMLSpanElement>("[data-live-overlay-text]");
     const copyIcon = requireControl<HTMLButtonElement>("[data-live-copy]");
@@ -331,10 +338,7 @@ export class PreviewChartsController implements ReactiveController {
     dataWorker.addEventListener("message", onWorkerMessage);
     this.previewDisposers.push(() => dataWorker.removeEventListener("message", onWorkerMessage));
 
-    const addListener = <K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void => {
-      element.addEventListener(type, listener as EventListener);
-      this.previewDisposers.push(() => element.removeEventListener(type, listener as EventListener));
-    };
+    const addListener = <K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void => this.addDisposableListener(element, type, listener);
 
     const historySamples = (): number => Math.max(1, viewSamples);
     const sparseHistoryCapacity = (): number => Math.ceil(historySamples() / SPARSE_INTERVAL) + 2;
@@ -796,11 +800,7 @@ export class PreviewChartsController implements ReactiveController {
 
     const root = target.closest<HTMLElement>("[data-server-sampled-root]");
     if (!root) throw new Error("Missing server sampled root");
-    const requireControl = <T extends HTMLElement>(selector: string): T => {
-      const element = root.querySelector<T>(selector);
-      if (!element) throw new Error(`Missing server sampled control ${selector}`);
-      return element;
-    };
+    const requireControl = <T extends HTMLElement>(selector: string): T => this.requireControl<T>(root, selector);
 
     const sampledChartEl = requireControl<HTMLDivElement>("[data-server-sampled-chart]");
     const liveChartEl = requireControl<HTMLDivElement>("[data-server-live-chart]");
@@ -888,10 +888,7 @@ export class PreviewChartsController implements ReactiveController {
     liveChart.plotElement.appendChild(candleHighlightOverlay);
     this.previewDisposers.push(() => candleHighlightOverlay.remove());
 
-    const addListener = <K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void => {
-      element.addEventListener(type, listener as EventListener);
-      this.previewDisposers.push(() => element.removeEventListener(type, listener as EventListener));
-    };
+    const addListener = <K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void => this.addDisposableListener(element, type, listener);
 
     const loadKlines = async (): Promise<void> => {
       const symbol = symbolSelect.value;

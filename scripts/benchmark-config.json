@@ -1,0 +1,7 @@
+{
+  "libraries": ["blazeplot", "uplot", "chartjs"],
+  "scenarios": ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-accelerated-pan"],
+  "runtimeComparisons": [
+    { "primaryLibrary": "blazeplot", "referenceLibrary": "uplot" }
+  ]
+}

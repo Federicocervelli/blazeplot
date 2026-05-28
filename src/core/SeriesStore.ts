@@ -243,7 +243,7 @@ export class SeriesStore {
   /** Append XY, implicit-X, OHLC, or row-array data and request an on-demand render. */
   append(data: SeriesAppendData): void;
   /**
-   * @deprecated Effective next patch release. Use `append({ x, y })` instead.
+   * @deprecated Use `append({ x, y })` instead; removal target: 0.4.0.
    */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void;
   /** Append data in the supported object, row, or legacy array forms. */
@@ -326,7 +326,7 @@ export class SeriesStore {
   }
 
   /**
-   * @deprecated Effective next patch release. Use `append({ y })` instead.
+   * @deprecated Use `append({ y })` instead; removal target: 0.4.0.
    */
   appendY(y: ArrayLike<number>): void {
     this.appendYArray(y);
@@ -342,7 +342,7 @@ export class SeriesStore {
   }
 
   /**
-   * @deprecated Effective next patch release. Use `append({ x, open, high, low, close })` instead.
+   * @deprecated Use `append({ x, open, high, low, close })` instead; removal target: 0.4.0.
    */
   appendOhlc(
     x: ArrayLike<number>,
@@ -421,7 +421,7 @@ export class SeriesStore {
   }
 
   /**
-   * @deprecated Effective next patch release. Use `updateLast({ open, high, low, close })` instead.
+   * @deprecated Use `updateLast({ open, high, low, close })` instead; removal target: 0.4.0.
    */
   updateLastOhlc(open: number, high: number, low: number, close: number): boolean {
     return this.updateOhlcAt(this.dataset.length - 1, open, high, low, close);

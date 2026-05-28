@@ -152,7 +152,7 @@ export function exportSelectedChartData(
   }, options);
 }
 
-/** Collect all raw samples from chart series, optionally constrained by options.series and visibleOnly. */
+/** Collect raw samples from visible chart series by default; pass visibleOnly: false to include hidden series. */
 export function exportAllChartData(chart: Chart, options: ChartDataExportOptions = {}): ChartDataExport {
   return collectChartData(chart, { source: "all", bounds: null }, options);
 }

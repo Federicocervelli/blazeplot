@@ -170,7 +170,7 @@ export interface OhlcDataset extends Dataset {
   getClose(index: number): number;
 }
 
-/** Dataset that accepts appended explicit X/Y samples. */
+/** Dataset that accepts appended X/Y samples; implementations may store X values explicitly or use them to seed implicit X spacing. */
 export interface AppendableDataset extends Dataset {
   push(x: number, y: number): void;
   append(x: ArrayLike<number>, y: ArrayLike<number>): void;

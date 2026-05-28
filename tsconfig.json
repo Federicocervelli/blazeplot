@@ -9,6 +9,7 @@
     "jsx": "react-jsx",
     "allowJs": false,
     "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
 

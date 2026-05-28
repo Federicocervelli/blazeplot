@@ -19,11 +19,10 @@ const docsStartMarker = "<!-- README_DOCS_START -->";
 const docsEndMarker = "<!-- README_DOCS_END -->";
 const performanceStartMarker = "<!-- README_PERFORMANCE_START -->";
 const performanceEndMarker = "<!-- README_PERFORMANCE_END -->";
-const officialComparisonLibraries = ["blazeplot", "uplot", "chartjs"];
-const officialComparisonScenarios = ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-accelerated-pan"];
-const runtimeComparisonPairs = [
-  { primaryLibrary: "blazeplot", referenceLibrary: "uplot" },
-];
+const officialComparisonConfig = JSON.parse(readFileSync(resolve(root, "scripts/benchmark-config.json"), "utf-8"));
+const officialComparisonLibraries = officialComparisonConfig.libraries;
+const officialComparisonScenarios = officialComparisonConfig.scenarios;
+const runtimeComparisonPairs = officialComparisonConfig.runtimeComparisons;
 
 const args = new Set(process.argv.slice(2));
 const check = args.has("--check");

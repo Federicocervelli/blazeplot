@@ -21,3 +21,8 @@ export function upperBound(length: number, valueAt: (index: number) => number, v
   }
   return lo;
 }
+
+/** Return the first array index whose value is greater than `value`. */
+export function upperBoundArray(values: readonly number[], value: number): number {
+  return upperBound(values.length, (index) => values[index]!, value);
+}

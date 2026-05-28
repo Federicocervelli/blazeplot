@@ -157,7 +157,7 @@ function printHelpAndExit(): never {
 }
 
 function displayPath(path: string): string {
-  return path.replace(/-[A-Za-z0-9_]+\.js$/u, "-*.js");
+  return path.replace(/-[A-Za-z0-9_-]+\.js$/u, "-*.js");
 }
 
 function formatBytes(bytes: number): string {

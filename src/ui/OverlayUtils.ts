@@ -1,4 +1,5 @@
-import type { ChartPickItem } from "./Chart.js";
+import type { SeriesYAxis } from "../core/types.js";
+import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPluginContext } from "./Chart.js";
 
 /** Return the display label for a picked series item. */
 export function labelOfPickItem(item: ChartPickItem): string {
@@ -23,14 +24,34 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Shared absolute overlay layer options. */
+export interface OverlayLayerOptions {
+  readonly zIndex?: number | string;
+  readonly display?: string;
+  readonly inset?: string;
+  readonly pointerEvents?: string;
+}
+
+/** Create a plot overlay layer with consistent positioning and pointer behavior. */
+export function createOverlayLayer(className: string, options: OverlayLayerOptions = {}): HTMLDivElement {
+  const layer = document.createElement("div");
+  layer.className = className;
+  layer.style.position = "absolute";
+  if (options.inset !== undefined) layer.style.inset = options.inset;
+  layer.style.display = options.display ?? "none";
+  layer.style.pointerEvents = options.pointerEvents ?? "none";
+  if (options.zIndex !== undefined) layer.style.zIndex = String(options.zIndex);
+  return layer;
+}
+
 /** Position a fixed element near a client point while keeping it onscreen. */
 export function placeFixedWithinViewport(
   element: HTMLElement,
   clientX: number,
   clientY: number,
-  options: { readonly offsetX: number; readonly offsetY: number; readonly margin?: number },
+  options: { readonly offsetX: number; readonly offsetY: number; readonly margin?: number; readonly size?: { readonly width: number; readonly height: number } },
 ): void {
-  const rect = element.getBoundingClientRect();
+  const rect = options.size ?? element.getBoundingClientRect();
   const margin = options.margin ?? 4;
   const doc = element.ownerDocument;
   const viewportWidth = Math.max(1, globalThis.innerWidth || doc.documentElement.clientWidth);
@@ -80,6 +101,29 @@ export interface PickMarkerOptions {
   readonly sizePx?: number;
   readonly strokeColor?: string;
   readonly strokeWidthPx?: number;
+}
+
+/** Options for picking chart items at a data-X value. */
+export interface PickAtDataXOptions {
+  readonly yAxis?: SeriesYAxis;
+  readonly mode?: ChartPickMode;
+  readonly group?: ChartPickGroup;
+  readonly maxDistancePx?: number;
+}
+
+/** Pick chart items at a data-X value using midpoint Y for pointer-based pick APIs. */
+export function pickAtDataX(chart: ChartPluginContext, dataX: number, options: PickAtDataXOptions = {}): ChartHoverState | null {
+  const yAxis = options.yAxis ?? "left";
+  const rect = chart.canvas.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const viewport = chart.getViewport(yAxis);
+  const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
+  const [plotX, plotY] = chart.dataToPlot(dataX, dataY, yAxis);
+  return chart.pick(rect.left + plotX, rect.top + plotY, {
+    mode: options.mode ?? "nearest-x",
+    group: options.group ?? "x",
+    maxDistancePx: options.maxDistancePx,
+  });
 }
 
 /** Create a marker element for a picked series point. */
