@@ -1,4 +1,4 @@
-import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, SeriesYAxis, Viewport } from "../core/types.js";
+import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, SeriesYAxis, Viewport, XRange } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
@@ -180,6 +180,8 @@ export interface ChartSeriesState {
 
 /** A picked data point with series metadata and screen coordinates. */
 export interface ChartPickItem extends SeriesSample {
+  /** Optional represented X interval for interval-backed samples. */
+  readonly xRange?: XRange;
   readonly series: SeriesStore;
   readonly seriesIndex: number;
   readonly id?: string;
@@ -2148,8 +2150,10 @@ export class Chart implements ChartPluginContext {
     const itemClientY = rect.top + plotY;
     const dx = itemClientX - clientX;
     const dy = itemClientY - clientY;
+    const xRange = series.xRangeAt(sample.index);
     return {
       ...sample,
+      ...(xRange ? { xRange } : {}),
       distancePx: Math.hypot(dx, dy),
       series,
       seriesIndex,

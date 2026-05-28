@@ -17,7 +17,7 @@ Built on native WebGL2 with no rendering runtime dependency.
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core chart runtime is intentionally compact: the production build for `blazeplot` (without optional plugins) is about **148 KiB raw / 33 KiB gzip**. Optional plugins and helpers ship as separate subpath entries.
+The core chart runtime is intentionally compact: the production build for `blazeplot` (without optional plugins) is about **149 KiB raw / 34 KiB gzip**. Optional plugins and helpers ship as separate subpath entries.
 
 Latest manual headed comparison: 2026-05-22T15:20:02.565Z on AMD Ryzen 5 5600H with Radeon Graphics (12 logical CPUs), ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 3050 Laptop GPU/PCIe/SSE2, OpenGL 4.5.0), Chrome/148.0.7778.167. The harness prewarms each selected library before measured runs (317.4 ms total) and discards 1 setup warmup run(s) before each displayed row. Source: `benchmarks/latest.json`.
 
@@ -210,16 +210,16 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-Bl4erFBO.js` | 55.2 KiB |
-| shared streaming data chunk | `dist/UniformRingBuffer-zewj9EWq.js` | 44.2 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-u2Eao8OX.js` | 11.2 KiB |
+| shared Chart chunk | `dist/Chart-BXL4MXf-.js` | 56.5 KiB |
+| shared streaming data chunk | `dist/UniformRingBuffer-C5yCnNeR.js` | 44.3 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-DmFKmNbM.js` | 11.2 KiB |
 | shared AxisController chunk | `dist/AxisController-CCk21uVK.js` | 13.8 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-DivtLMNz.js` | 22.0 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-BxD1tCts.js` | 2.1 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-CYBw2rB_.js` | 2.1 KiB |
 | lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
-| shared Tooltip chunk | `dist/Tooltip-D0WRT6Fj.js` | 5.7 KiB |
-| shared Crosshair chunk | `dist/Crosshair-B0iu8h16.js` | 8.8 KiB |
+| shared Tooltip chunk | `dist/Tooltip-D7t8uZIg.js` | 5.8 KiB |
+| shared Crosshair chunk | `dist/Crosshair-BViz8JUB.js` | 9.9 KiB |
 
 ### All public exports
 
