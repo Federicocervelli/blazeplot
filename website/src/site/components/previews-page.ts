@@ -7,19 +7,34 @@ export class BlazeplotPreviewsPage extends LitElement {
   static override styles = siteStyles;
   static override properties = {
     previewId: { type: String },
+    previewNavOpen: { state: true },
   };
 
   declare previewId: PreviewId;
+  declare private previewNavOpen: boolean;
 
   constructor() {
     super();
     this.previewId = "live";
+    this.previewNavOpen = false;
     new PreviewChartsController(this);
   }
 
   private get previewIndex(): number {
     const index = PREVIEWS.findIndex((preview) => preview.id === this.previewId);
     return index >= 0 ? index : 0;
+  }
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    window.addEventListener("blazeplot-previews-nav-toggle", this.togglePreviewNav);
+    window.addEventListener("keydown", this.onKeyDown);
+  }
+
+  override disconnectedCallback(): void {
+    window.removeEventListener("blazeplot-previews-nav-toggle", this.togglePreviewNav);
+    window.removeEventListener("keydown", this.onKeyDown);
+    super.disconnectedCallback();
   }
 
   override render(): TemplateResult {
@@ -32,7 +47,31 @@ export class BlazeplotPreviewsPage extends LitElement {
     const selected = PREVIEWS[this.previewIndex] ?? PREVIEWS[0]!;
     return html`
       <section class="grid h-[calc(100dvh-82px)] min-h-[640px] min-w-[760px] grid-rows-[auto_minmax(0,1fr)] sm:h-[calc(100dvh-58px)]">
-        <nav class="mb-2 flex gap-5 overflow-x-auto border-b border-[#1a1a1a] text-[12px] leading-none">
+        ${this.previewNavOpen ? html`
+          <div class="fixed inset-0 z-[60] bg-black/70 md:hidden" @click=${this.closePreviewNav}>
+            <aside class="h-full w-[min(86vw,340px)] border-r border-[#222] bg-black shadow-2xl" role="dialog" aria-modal="true" aria-label="Preview navigation" @click=${this.stopPropagation}>
+              <div class="sticky top-0 flex items-center justify-between border-b border-[#222] bg-[#0a0a0a] px-4 py-3">
+                <div class="flex items-center gap-2 text-sm font-semibold text-[#e5e5e5]">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  Previews
+                </div>
+                <button type="button" class="inline-flex h-8 w-8 items-center justify-center rounded border border-[#222] text-[#888] hover:border-[#fc4a05] hover:text-[#fc4a05]" aria-label="Close preview navigation" @click=${this.closePreviewNav}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
+              <nav class="space-y-1 overflow-y-auto p-4 text-sm">
+                ${PREVIEWS.map((p, i) => html`
+                  <button
+                    type="button"
+                    @click=${() => { this.selectPreview(i); this.closePreviewNav(); }}
+                    class="block w-full rounded border-0 px-3 py-2 text-left font-mono ${i === this.previewIndex ? "bg-[#111] text-[#e5e5e5]" : "bg-transparent text-[#888] hover:bg-[#0a0a0a] hover:text-[#fc4a05]"}"
+                  >${p.title}</button>
+                `)}
+              </nav>
+            </aside>
+          </div>
+        ` : ""}
+        <nav class="mb-2 hidden gap-5 overflow-x-auto border-b border-[#1a1a1a] text-[12px] leading-none md:flex">
           ${PREVIEWS.map(
             (p, i) => html`
               <button
@@ -235,9 +274,29 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   /* ── Lit-rendered preview charts ── */
 
+  private readonly togglePreviewNav = (): void => {
+    this.previewNavOpen = !this.previewNavOpen;
+  };
+
+  private readonly closePreviewNav = (): void => {
+    this.previewNavOpen = false;
+  };
+
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") this.closePreviewNav();
+  };
+
+  private readonly stopPropagation = (event: Event): void => {
+    event.stopPropagation();
+  };
+
   private selectPreview(index: number): void {
     const selected = PREVIEWS[index];
-    if (!selected || selected.id === this.previewId) return;
+    if (!selected) return;
+    if (selected.id === this.previewId) {
+      this.closePreviewNav();
+      return;
+    }
     this.dispatchEvent(new CustomEvent<PreviewId>("preview-select", { detail: selected.id, bubbles: true, composed: true }));
   }
 

@@ -19,25 +19,39 @@ export class BlazeplotDocsPage extends LitElement {
   static override styles = siteStyles;
   static override properties = {
     doc: { attribute: false },
+    docsNavOpen: { state: true },
   };
 
   declare doc: DocPage;
+  declare private docsNavOpen: boolean;
   private docCharts: Chart[] = [];
 
   constructor() {
     super();
     this.doc = DOC_PAGES[0]!;
+    this.docsNavOpen = false;
   }
   private docDisposers: Array<() => void> = [];
   private mountedDocSlug: string | null = null;
 
+  override connectedCallback(): void {
+    super.connectedCallback();
+    window.addEventListener("blazeplot-docs-nav-toggle", this.toggleDocsNav);
+    window.addEventListener("keydown", this.onKeyDown);
+  }
+
   override disconnectedCallback(): void {
+    window.removeEventListener("blazeplot-docs-nav-toggle", this.toggleDocsNav);
+    window.removeEventListener("keydown", this.onKeyDown);
     this.disposeDocCharts();
     super.disconnectedCallback();
   }
 
   override updated(changedProperties: PropertyValues): void {
-    if (changedProperties.has("doc")) this.disposeDocCharts();
+    if (changedProperties.has("doc")) {
+      this.docsNavOpen = false;
+      this.disposeDocCharts();
+    }
     this.mountDocCharts(this.doc);
   }
 
@@ -49,34 +63,73 @@ export class BlazeplotDocsPage extends LitElement {
           <a href=${appHref("docs/docs-map")} class="text-[12px] text-[#555] no-underline hover:text-[#fc4a05]">all docs</a>
           <a href=${`https://github.com/Federicocervelli/blazeplot/blob/development/${doc.sourcePath}`} target="_blank" rel="noreferrer" class="text-[12px] text-[#555] no-underline hover:text-[#fc4a05]">source</a>
         </div>
-        <div class="flex flex-col gap-5 md:flex-row md:gap-6">
-          <nav class="-mx-3 flex shrink-0 gap-5 overflow-x-auto px-3 text-sm md:mx-0 md:block md:w-[200px] md:space-y-4 md:overflow-visible md:px-0">
-            ${DOC_NAV_SECTIONS.map((section) => html`
-              <div class="contents md:block">
-                <div class="hidden px-3 pb-1 text-[11px] uppercase tracking-[0.16em] text-[#555] md:block">${section.title}</div>
-                <div class="contents md:block md:space-y-0.5">
-                  ${section.slugs.map((slug) => {
-                    const page = DOC_PAGES.find((candidate) => candidate.slug === slug);
-                    if (!page) return "";
-                    return html`
-                      <a
-                        href=${appHref(`docs/${page.slug}`)}
-                        class="block shrink-0 whitespace-nowrap rounded px-3 py-1.5 no-underline ${page.slug === doc.slug ? "bg-[#111] text-[#e5e5e5]" : "text-[#888] hover:bg-[#0a0a0a] hover:text-[#fc4a05]"}"
-                      >${page.title}</a>
-                    `;
-                  })}
+        <p class="mb-5 mt-0 text-sm text-[#888]">${doc.description}</p>
+        ${this.docsNavOpen ? html`
+          <div class="fixed inset-0 z-[60] bg-black/70 md:hidden" @click=${this.closeDocsNav}>
+            <aside class="h-full w-[min(86vw,340px)] border-r border-[#222] bg-black shadow-2xl" role="dialog" aria-modal="true" aria-label="Docs navigation" @click=${this.stopPropagation}>
+              <div class="sticky top-0 flex items-center justify-between border-b border-[#222] bg-[#0a0a0a] px-4 py-3">
+                <div class="flex items-center gap-2 text-sm font-semibold text-[#e5e5e5]">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                  Docs
                 </div>
+                <button type="button" class="inline-flex h-8 w-8 items-center justify-center rounded border border-[#222] text-[#888] hover:border-[#fc4a05] hover:text-[#fc4a05]" aria-label="Close docs navigation" @click=${this.closeDocsNav}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
               </div>
-            `)}
+              <nav class="space-y-4 overflow-y-auto p-4 text-sm">
+                ${this.renderDocsNav(doc, true)}
+              </nav>
+            </aside>
+          </div>
+        ` : ""}
+        <div class="flex flex-col gap-5 md:flex-row md:gap-6">
+          <nav class="hidden shrink-0 pt-0 text-sm md:sticky md:top-[72px] md:block md:h-fit md:w-[200px] md:self-start md:space-y-4 md:overflow-visible md:px-0 md:pt-0">
+            ${this.renderDocsNav(doc, false)}
           </nav>
-          <article class="article flex-1 min-w-0">
-            <p class="mb-5 mt-0 text-sm text-[#888]">${doc.description}</p>
+          <article class="article flex-1 min-w-0 pt-0 md:pt-0">
             ${unsafeHTML(renderMarkdown(doc.markdown, { sourcePath: doc.sourcePath }))}
           </article>
         </div>
       </section>
     `;
   }
+
+  private renderDocsNav(doc: DocPage, closeOnSelect: boolean): TemplateResult[] {
+    return DOC_NAV_SECTIONS.map((section) => html`
+      <div class="block">
+        <div class="px-3 pb-1 text-[11px] uppercase tracking-[0.16em] text-[#555]">${section.title}</div>
+        <div class="space-y-0.5">
+          ${section.slugs.map((slug) => {
+            const page = DOC_PAGES.find((candidate) => candidate.slug === slug);
+            if (!page) return "";
+            return html`
+              <a
+                href=${appHref(`docs/${page.slug}`)}
+                class="block rounded px-3 py-1.5 no-underline ${page.slug === doc.slug ? "bg-[#111] text-[#e5e5e5]" : "text-[#888] hover:bg-[#0a0a0a] hover:text-[#fc4a05]"}"
+                @click=${closeOnSelect ? this.closeDocsNav : undefined}
+              >${page.title}</a>
+            `;
+          })}
+        </div>
+      </div>
+    `);
+  }
+
+  private readonly toggleDocsNav = (): void => {
+    this.docsNavOpen = !this.docsNavOpen;
+  };
+
+  private readonly closeDocsNav = (): void => {
+    this.docsNavOpen = false;
+  };
+
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") this.closeDocsNav();
+  };
+
+  private readonly stopPropagation = (event: Event): void => {
+    event.stopPropagation();
+  };
 
   private mountDocCharts(doc: DocPage): void {
     if (this.mountedDocSlug === doc.slug && (this.docCharts.length > 0 || this.docDisposers.length > 0)) return;
