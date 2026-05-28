@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { arch, cpus, platform, release, tmpdir, totalmem } from "node:os";
 import { basename, join, resolve } from "node:path";
+import officialConfig from "./benchmark-config.json";
 
 interface Options {
   scenarios: string[];
@@ -143,11 +144,9 @@ interface LibraryInfo {
   version: string;
 }
 
-const OFFICIAL_SCENARIOS = ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-accelerated-pan"] as const;
-const OFFICIAL_LIBRARIES = ["blazeplot", "uplot", "chartjs"] as const;
-const RUNTIME_COMPARISONS = [
-  { primaryLibrary: "blazeplot", referenceLibrary: "uplot" },
-] as const;
+const OFFICIAL_SCENARIOS = officialConfig.scenarios;
+const OFFICIAL_LIBRARIES = officialConfig.libraries;
+const RUNTIME_COMPARISONS = officialConfig.runtimeComparisons;
 
 interface CompareReport {
   schemaVersion: 1;

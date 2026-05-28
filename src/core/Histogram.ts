@@ -1,3 +1,4 @@
+import { upperBoundArray } from "./search.js";
 import { StaticDataset } from "./StaticDataset.js";
 import type { XRange, XRangeDataset } from "./types.js";
 
@@ -130,7 +131,7 @@ export function histogram(values: ArrayLike<number>, options: HistogramOptions =
       if (binIndex < 0) binIndex = 0;
       if (binIndex >= counted.length) binIndex = counted.length - 1;
     } else {
-      binIndex = upperBound(edges.edges, value) - 1;
+      binIndex = upperBoundArray(edges.edges, value) - 1;
     }
 
     counted[binIndex]!.count++;
@@ -360,17 +361,6 @@ function inferUniformWidth(edges: readonly number[]): number | null {
     if (Math.abs(width - firstWidth) > scale * EDGE_EQUALITY_EPSILON) return null;
   }
   return firstWidth;
-}
-
-function upperBound(values: readonly number[], needle: number): number {
-  let low = 0;
-  let high = values.length;
-  while (low < high) {
-    const mid = low + ((high - low) >> 1);
-    if (values[mid]! <= needle) low = mid + 1;
-    else high = mid;
-  }
-  return low;
 }
 
 function hasExplicitEdgeThresholds(options: HistogramOptions): boolean {

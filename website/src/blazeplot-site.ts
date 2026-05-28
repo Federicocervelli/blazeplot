@@ -43,7 +43,7 @@ export class BlazeplotSite extends LitElement {
     const doc = getDocPage(this.docSlug) ?? DOC_PAGES[0]!;
     return html`
       <div class="min-h-screen bg-black text-[#e5e5e5] font-mono text-[13px] leading-relaxed" @click=${this.handleRouteClick} @preview-select=${this.handlePreviewSelect}>
-        <blazeplot-topbar class="block"></blazeplot-topbar>
+        <blazeplot-topbar class="sticky top-0 z-50 block" .section=${this.section}></blazeplot-topbar>
         <main class="w-full ${this.section === "previews" ? "overflow-auto px-0 pb-0 pt-1.5" : "mx-auto max-w-[1180px] px-3 pb-5 pt-3 sm:px-4 sm:pb-8 sm:pt-4"}">
           ${this.section === "home" ? html`<blazeplot-home class="block"></blazeplot-home>` : nothing}
           ${this.section === "docs" ? html`<blazeplot-docs class="block" .doc=${doc}></blazeplot-docs>` : nothing}

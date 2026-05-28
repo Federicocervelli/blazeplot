@@ -1,5 +1,5 @@
 import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
-import { clamp, createLongPressTouchTracker, createPickMarker, formatCompactNumber, rgba, renderPickItems } from "./OverlayUtils.js";
+import { clamp, createLongPressTouchTracker, createOverlayLayer, createPickMarker, formatCompactNumber, pickAtDataX, rgba, renderPickItems } from "./OverlayUtils.js";
 
 /** Options for the built-in hover tooltip plugin. */
 export interface TooltipPluginOptions {
@@ -82,12 +82,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       const tooltipParent = chart.rootElement.ownerDocument.body ?? chart.rootElement;
       tooltipParent.appendChild(container);
 
-      const markerLayer = document.createElement("div");
-      markerLayer.className = "blazeplot-tooltip-markers";
-      markerLayer.style.position = "absolute";
-      markerLayer.style.inset = "0";
-      markerLayer.style.zIndex = "25";
-      markerLayer.style.pointerEvents = "none";
+      const markerLayer = createOverlayLayer("blazeplot-tooltip-markers", { inset: "0", display: "block", zIndex: 25 });
       chart.plotElement.appendChild(markerLayer);
 
       let lockedTooltipWidth = 0;
@@ -171,11 +166,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       };
 
       const renderSharedAtX = (dataX: number): void => {
-        const viewport = chart.getViewport();
-        const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
-        const [plotX, plotY] = chart.dataToPlot(dataX, dataY);
-        const rect = chart.canvas.getBoundingClientRect();
-        render(chart.pick(rect.left + plotX, rect.top + plotY, {
+        render(pickAtDataX(chart, dataX, {
           mode: options.mode ?? "nearest-x",
           group: options.group ?? "x",
           maxDistancePx: options.maxDistancePx,
@@ -243,9 +234,18 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       chart.canvas.addEventListener("touchend", longPress.clear);
       chart.canvas.addEventListener("touchcancel", longPress.clear);
 
-      const unsubscribeHover = chart.subscribe("hover", (state) => {
+      let hoverRaf = 0;
+      let pendingHoverState: ChartHoverState | null = null;
+      const flushHover = (): void => {
+        hoverRaf = 0;
+        const state = pendingHoverState;
+        pendingHoverState = null;
         render(state);
         notifyPeers(state);
+      };
+      const unsubscribeHover = chart.subscribe("hover", (state) => {
+        pendingHoverState = state;
+        if (hoverRaf === 0) hoverRaf = requestAnimationFrame(flushHover);
       });
       const unsubscribeTheme = chart.subscribe("themechange", () => {
         applyTheme();
@@ -262,6 +262,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         chart.canvas.removeEventListener("touchmove", longPress.onTouchMove, { capture: true });
         chart.canvas.removeEventListener("touchend", longPress.clear);
         chart.canvas.removeEventListener("touchcancel", longPress.clear);
+        if (hoverRaf !== 0) cancelAnimationFrame(hoverRaf);
         unsubscribeHover();
         unsubscribeTheme();
         if (peer && options.syncGroup) {
