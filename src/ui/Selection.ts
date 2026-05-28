@@ -1,6 +1,7 @@
 import type { SeriesSample, SeriesYAxis, Viewport } from "../core/types.js";
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartPlugin, ChartPluginContext, ChartSeriesState } from "./Chart.js";
+import { clamp, createOverlayLayer } from "./OverlayUtils.js";
 
 /** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
@@ -89,10 +90,6 @@ interface DragState {
 
 const DEFAULT_FILL = "rgba(59, 130, 246, 0.16)";
 const DEFAULT_STROKE = "rgba(147, 197, 253, 0.95)";
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(value, max));
-}
 
 function normalizeBounds(a: [number, number], b: [number, number], current: Viewport, mode: SelectionMode): SelectionBounds {
   const xMin = Math.min(a[0], b[0]);
@@ -233,12 +230,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     install(chart: ChartPluginContext) {
       chartRef = chart;
       const canvas = chart.canvas;
-      overlay = document.createElement("div");
-      overlay.className = options.className ?? "blazeplot-selection-brush";
-      overlay.style.position = "absolute";
-      overlay.style.display = "none";
-      overlay.style.pointerEvents = "none";
-      overlay.style.zIndex = String(options.zIndex ?? 26);
+      overlay = createOverlayLayer(options.className ?? "blazeplot-selection-brush", { zIndex: options.zIndex ?? 26 });
       overlay.style.border = `1px solid ${options.stroke ?? DEFAULT_STROKE}`;
       overlay.style.background = options.fill ?? DEFAULT_FILL;
       chart.plotElement.appendChild(overlay);

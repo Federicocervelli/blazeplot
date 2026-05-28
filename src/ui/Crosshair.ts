@@ -1,6 +1,6 @@
 import type { SeriesYAxis } from "../core/types.js";
 import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
-import { createLongPressTouchTracker, createPickMarker, formatCompactNumber, placeAbsoluteWithinBox, renderPickItems, rgba } from "./OverlayUtils.js";
+import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, formatCompactNumber, pickAtDataX, placeAbsoluteWithinBox, renderPickItems, rgba } from "./OverlayUtils.js";
 
 /** Axis drawn by the crosshair overlay. */
 export type CrosshairAxis = "x" | "y" | "xy";
@@ -132,12 +132,12 @@ function resolvePosition(chart: ChartPluginContext, clientX: number, clientY: nu
 function resolveSharedPosition(chart: ChartPluginContext, dataX: number, yAxis: SeriesYAxis): CrosshairPosition | null {
   const rect = chart.canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
-
   const viewport = chart.getViewport(yAxis);
   const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
   const [plotX, plotY] = chart.dataToPlot(dataX, dataY, yAxis);
-  const picked = positionFromPick(chart, rect.left + plotX, rect.top + plotY, "nearest-x");
-  if (picked) return picked;
+  const picked = pickAtDataX(chart, dataX, { yAxis, mode: "nearest-x", group: "none" });
+  const item = picked?.items[0];
+  if (item) return { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: [item] };
   return { dataX, dataY, plotX, plotY, items: [] };
 }
 
@@ -157,17 +157,6 @@ function createXRangeHighlight(item: ChartPickItem, chart: Chart, strokeColor: s
   marker.style.boxShadow = "0 0 0 1px rgba(4, 8, 16, 0.85)";
   marker.style.boxSizing = "border-box";
   return marker;
-}
-
-function createCrosshairLayer(className: string, zIndex: number): HTMLDivElement {
-  const layer = document.createElement("div");
-  layer.className = className;
-  layer.style.position = "absolute";
-  layer.style.inset = "0";
-  layer.style.display = "none";
-  layer.style.pointerEvents = "none";
-  layer.style.zIndex = String(zIndex);
-  return layer;
 }
 
 function renderDefaultLabel(
@@ -374,8 +363,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       root.style.display = "none";
       root.style.pointerEvents = "none";
 
-      lineLayer = createCrosshairLayer("blazeplot-crosshair-lines", options.zIndex ?? 0);
-      overlayLayer = createCrosshairLayer("blazeplot-crosshair-overlay", options.zIndex ?? 22);
+      lineLayer = createOverlayLayer("blazeplot-crosshair-lines", { inset: "0", zIndex: options.zIndex ?? 0 });
+      overlayLayer = createOverlayLayer("blazeplot-crosshair-overlay", { inset: "0", zIndex: options.zIndex ?? 22 });
 
       vertical = document.createElement("div");
       vertical.style.position = "absolute";
@@ -393,12 +382,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       horizontal.style.borderTop = `${width} solid ${color}`;
       if (dash) horizontal.style.borderTopStyle = "dashed";
 
-      markerLayer = document.createElement("div");
-      markerLayer.className = "blazeplot-crosshair-markers";
-      markerLayer.style.position = "absolute";
-      markerLayer.style.inset = "0";
-      markerLayer.style.zIndex = "2";
-      markerLayer.style.pointerEvents = "none";
+      markerLayer = createOverlayLayer("blazeplot-crosshair-markers", { inset: "0", display: "block", zIndex: 2 });
 
       label = document.createElement("div");
       label.style.position = "absolute";

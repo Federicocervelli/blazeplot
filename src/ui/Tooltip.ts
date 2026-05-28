@@ -1,5 +1,5 @@
 import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
-import { clamp, createLongPressTouchTracker, createPickMarker, formatCompactNumber, rgba, renderPickItems } from "./OverlayUtils.js";
+import { clamp, createLongPressTouchTracker, createOverlayLayer, createPickMarker, formatCompactNumber, pickAtDataX, rgba, renderPickItems } from "./OverlayUtils.js";
 
 /** Options for the built-in hover tooltip plugin. */
 export interface TooltipPluginOptions {
@@ -82,12 +82,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       const tooltipParent = chart.rootElement.ownerDocument.body ?? chart.rootElement;
       tooltipParent.appendChild(container);
 
-      const markerLayer = document.createElement("div");
-      markerLayer.className = "blazeplot-tooltip-markers";
-      markerLayer.style.position = "absolute";
-      markerLayer.style.inset = "0";
-      markerLayer.style.zIndex = "25";
-      markerLayer.style.pointerEvents = "none";
+      const markerLayer = createOverlayLayer("blazeplot-tooltip-markers", { inset: "0", display: "block", zIndex: 25 });
       chart.plotElement.appendChild(markerLayer);
 
       let lockedTooltipWidth = 0;
@@ -171,11 +166,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       };
 
       const renderSharedAtX = (dataX: number): void => {
-        const viewport = chart.getViewport();
-        const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
-        const [plotX, plotY] = chart.dataToPlot(dataX, dataY);
-        const rect = chart.canvas.getBoundingClientRect();
-        render(chart.pick(rect.left + plotX, rect.top + plotY, {
+        render(pickAtDataX(chart, dataX, {
           mode: options.mode ?? "nearest-x",
           group: options.group ?? "x",
           maxDistancePx: options.maxDistancePx,

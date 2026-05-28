@@ -217,7 +217,7 @@ Generated from `dist/` after the package build.
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-*.js` | 22 KiB |
 | shared LinkedChartsCore chunk | `dist/LinkedChartsCore-*.js` | 2 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 4 KiB |
-| shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 3 KiB |
+| shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 4 KiB |
 | shared Tooltip chunk | `dist/Tooltip-*.js` | 6 KiB |
 | shared Crosshair chunk | `dist/Crosshair-*.js` | 10 KiB |
 

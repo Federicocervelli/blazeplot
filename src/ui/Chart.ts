@@ -978,12 +978,15 @@ export class Chart implements ChartPluginContext {
     this.requestRender();
   }
 
-  /** Resume latest-X following after an interaction pause. */
+  /**
+   * Resume latest-X following after an interaction pause.
+   * @deprecated Use `resumeLatestXFollow()` for clearer latest-data semantics.
+   */
   resumeXFollow(): void {
     this.resumeLatestXFollow();
   }
 
-  /** Alias for `resumeXFollow()`. */
+  /** Resume latest-X following after an interaction pause. */
   resumeLatestXFollow(): void {
     this.clearXFollowResumeTimer();
     this.xFollowPaused = false;

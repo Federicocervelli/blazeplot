@@ -14,6 +14,7 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { Chart, StaticDataset } from "@/index.ts";
 import type { AcceleratedDataset, Dataset, MinMaxSegmentLayout, SampleCopyLayout, SeriesStore, TimeRange, Viewport } from "@/index.ts";
+import officialConfig from "../../../scripts/benchmark-config.json";
 
 ChartJs.register(LineController, LineElement, PointElement, LinearScale, Decimation, Legend, Tooltip);
 
@@ -154,8 +155,8 @@ interface BenchmarkController {
   };
 }
 
-const DEFAULT_LIBRARIES: readonly LibraryId[] = ["blazeplot", "uplot", "chartjs"];
-const DEFAULT_SCENARIOS = ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-accelerated-pan"] as const;
+const DEFAULT_LIBRARIES = officialConfig.libraries as readonly LibraryId[];
+const DEFAULT_SCENARIOS = officialConfig.scenarios;
 const SCENARIOS: Record<string, ScenarioConfig> = {
   "line-100k-static": {
     name: "line-100k-static",
