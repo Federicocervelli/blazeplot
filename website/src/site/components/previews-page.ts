@@ -51,6 +51,7 @@ export class BlazeplotPreviewsPage extends LitElement {
   private renderSelectedPreview(id: PreviewId): TemplateResult {
     if (id === "sensor") return this.renderSensorStreamPreview();
     if (id === "features") return this.renderFeaturePreview();
+    if (id === "histogram") return this.renderHistogramPreview();
     if (id === "linked") return this.renderLinkedChartsPreview();
     if (id === "server-sampled") return this.renderServerSampledPreview();
     if (id === "flamechart") return this.renderFlameChartPreview();
@@ -137,6 +138,23 @@ export class BlazeplotPreviewsPage extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private renderHistogramPreview(): TemplateResult {
+    return this.renderPreviewPanel(
+      "Histogram",
+      "one-dimensional samples · fixed bins · density normalization",
+      html`
+        <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[#aaa]">
+          <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
+            <span>Latency distribution rendered through <code>chart.addHistogram(...)</code>; hover bars to inspect bucket ranges.</span>
+          </div>
+          <div class="relative min-h-0 border border-[#222]">
+            <div data-preview-chart="histogram" class="h-full min-h-0 w-full"></div>
+          </div>
+        </section>
+      `,
+    );
   }
 
   private renderLinkedChartsPreview(): TemplateResult {

@@ -27,8 +27,19 @@ function renderDefaultTooltip(state: ChartHoverState, container: HTMLElement, fo
     state.items,
     state,
     formatter,
-    (item) => `(${formatCompactNumber(item.x)}, ${formatCompactNumber(item.y)})`,
+    formatDefaultTooltipItem,
   );
+}
+
+function formatDefaultTooltipItem(item: ChartPickItem): string {
+  if (item.xRange) {
+    return `${formatXRange(item.xRange)}: ${formatCompactNumber(item.y)}`;
+  }
+  return `(${formatCompactNumber(item.x)}, ${formatCompactNumber(item.y)})`;
+}
+
+function formatXRange(range: NonNullable<ChartPickItem["xRange"]>): string {
+  return `${formatCompactNumber(range.xStart)}–${formatCompactNumber(range.xEnd)}`;
 }
 
 interface TooltipPeer {

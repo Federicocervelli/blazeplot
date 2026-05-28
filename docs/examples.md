@@ -9,6 +9,7 @@ Use this table before reaching for a generic chart example. The dataset choice d
 | If you have | Use |
 |---|---|
 | Fixed X/Y arrays or object rows | `createChart(...)` for the shortest setup, or `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` when you need manual control |
+| One-dimensional values that need a frequency distribution | `histogram(...)`, `chart.addHistogram(...)`, or `createChart({ series: [{ type: "histogram", values }] })` |
 | Irregular live samples | `RingBuffer` with `overflow: "wrap"` for a rolling window |
 | Fixed-rate telemetry | `UniformRingBuffer` with `series.append({ y })` so repeated X values are derived, not stored |
 | Historical OHLC data | `StaticOhlcDataset` with `chart.addOhlc(...)` or `chart.addCandlestick(...)` |
@@ -21,6 +22,7 @@ All built-in datasets expect sorted X values. If source data arrives out of orde
 ## On this page
 
 - [Basic line chart](#basic-line-chart) — static X/Y data and first render loop.
+- [Histogram](#histogram) — raw one-dimensional values rendered with bar buckets.
 - [Live line chart](#live-line-chart) — rolling windows, fixed-rate samples, and cleanup.
 - [Server-sampled min/max buckets](#server-sampled-minmax-buckets) — backend-reduced dense history.
 - [Financial OHLC and candlesticks](#financial-ohlc-and-candlesticks) — market-style series.
@@ -86,6 +88,38 @@ chart.addLine({ dataset: new StaticDataset([0, 1, 2], [3, 6, 4]), name: "values"
 chart.fitToData();
 chart.start();
 ```
+
+## Histogram
+
+Use histograms when you have one-dimensional measurements and want a frequency distribution. BlazePlot computes bucket centers/counts and renders them through the existing bar renderer.
+
+```ts
+import { createChart } from "blazeplot";
+
+const values = new Float64Array([12, 18, 19, 20, 21, 28, 33, 35, 36, 42]);
+
+const chart = createChart(element, {
+  series: [{ type: "histogram", values, binSize: 10, name: "latency" }],
+  axes: { x: { title: "Latency ms" }, y: { title: "Count" } },
+});
+```
+
+:::chart histogram Latency histogram
+
+For manual charts, precompute or inspect bins with the pure helper:
+
+```ts
+import { Chart, histogram } from "blazeplot";
+
+const bins = histogram(values, { binCount: 20, normalize: "density" });
+
+const chart = new Chart(element);
+chart.addHistogram({ histogram: bins, name: "latency density" });
+chart.fitToData({ includeZero: true });
+chart.start();
+```
+
+Normalization modes are `"count"`, `"probability"`, `"percent"`, and `"density"`. Bins are configurable with `binSize`, `binCount`, explicit `thresholds`, `min`, `max`, and `align`; fixed-size bins align to `0` by default, and the built-in tooltip presents interval-backed samples as bucket ranges rather than only midpoint coordinates. Use `histogram(...)` for one-dimensional value frequencies; use `binSamples(...)` when you already have X/Y samples and need to reduce Y values into fixed X intervals.
 
 ## Live line chart
 

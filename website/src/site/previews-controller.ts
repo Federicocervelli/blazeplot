@@ -1,5 +1,5 @@
 import { type ReactiveController, type ReactiveControllerHost } from "lit";
-import { Chart, OhlcRingBuffer, ServerSampledDataset, StaticDataset, UniformRingBuffer, type ChartFrameStats, type ChartPickGroup, type ChartPickMode, type ChartTheme, type SeriesStore, type ViewportPolicy } from "../../../src/index.ts";
+import { Chart, OhlcRingBuffer, ServerSampledDataset, StaticDataset, UniformRingBuffer, type ChartFrameStats, type ChartPickGroup, type ChartPickMode, type ChartTheme, type HistogramBin, type HistogramResult, type SeriesStore, type ViewportPolicy } from "../../../src/index.ts";
 import { createLinkedCharts } from "../../../src/linked.ts";
 import { annotationsPlugin } from "../../../src/plugins/annotations.ts";
 import { crosshairPlugin } from "../../../src/plugins/crosshair.ts";
@@ -56,6 +56,7 @@ export class PreviewChartsController implements ReactiveController {
         if (kind === "live") this.mountLivePreviewChart(target);
         else if (kind === "sensor") this.mountSensorStreamPreview(target);
         else if (kind === "feature-hero") this.mountFeatureHeroChart(target);
+        else if (kind === "histogram") this.mountHistogramPreview(target);
         else if (kind === "feature-linked") this.mountFeatureLinkedCharts(target);
         else if (kind === "server-sampled") this.mountServerSampledChart(target);
         else if (kind === "flamechart") this.mountFlameChartPreview(target);
@@ -585,6 +586,61 @@ export class PreviewChartsController implements ReactiveController {
         value: 0.4 + Math.abs(Math.sin(i * 0.23)) * 4 + (i % 211 === 0 ? 16 : 0) + (i % 997 === 0 ? 28 : 0),
       };
     });
+  }
+
+  private mountHistogramPreview(target: HTMLElement): void {
+    const binCount = 1_000_000;
+    const initialBins = 1_000;
+    const x = new Float64Array(binCount);
+    const y = new Float32Array(binCount);
+    const bins = new Array<HistogramBin>(binCount);
+    let total = 0;
+    let initialYMax = 0;
+    for (let index = 0; index < binCount; index++) {
+      const wave = 80
+        + Math.sin(index * 0.00031) * 34
+        + Math.sin(index * 0.017) * 18
+        + Math.sin(index * 0.071) * 9;
+      const burst = index % 12_001 < 120 ? 70 * (1 - (index % 12_001) / 120) : 0;
+      const count = Math.max(1, Math.round(wave + burst + (index % 997 === 0 ? 90 : 0)));
+      x[index] = index + 0.5;
+      y[index] = count;
+      bins[index] = { x: index + 0.5, y: count, xStart: index, xEnd: index + 1, count, index };
+      total += count;
+      if (index < initialBins && count > initialYMax) initialYMax = count;
+    }
+    const histogram: HistogramResult = {
+      bins,
+      x,
+      y,
+      binWidth: 1,
+      total,
+      underflow: 0,
+      overflow: 0,
+      invalid: 0,
+      min: 0,
+      max: binCount,
+    };
+
+    const chart = new Chart(target, {
+      axes: { x: { position: "outside", title: "bin" }, y: { position: "outside", title: "count" } },
+      grid: true,
+      hover: { mode: "nearest-x", group: "none" },
+      plugins: [
+        interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true }),
+        crosshairPlugin({ snap: "nearest-x", label: true, labelPlacement: "top-right", formatX: (value) => `bin ${Math.floor(value).toLocaleString()}`, formatY: (value) => value.toFixed(0) }),
+        legendPlugin({ position: "top-left" }),
+      ],
+      accessibility: { label: "Histogram preview" },
+    });
+    this.previewCharts.push(chart);
+
+    chart.addHistogram({ histogram, name: "1M bins" }, {
+      color: [0.988, 0.29, 0.02, 0.95],
+      baseline: 0,
+    });
+    chart.setViewport({ xMin: 0, xMax: initialBins, yMin: 0, yMax: initialYMax * 1.12 });
+    chart.start();
   }
 
   private mountFeatureHeroChart(target: HTMLElement): void {

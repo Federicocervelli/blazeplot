@@ -98,7 +98,7 @@ export function bundleSizeFailures(report: BundleSizeReport): string[] {
 
 export function renderBundleSizeMarkdown(report: BundleSizeReport): string {
   const rows = [...report.entryChunks, ...report.sharedChunks.flatMap((chunk) => chunk.entries)]
-    .map((entry) => `| ${markdownEscape(entry.label)} | \`${entry.path}\` | ${formatBytes(entry.sizeBytes)} |`);
+    .map((entry) => `| ${markdownEscape(entry.label)} | \`${displayPath(entry.path)}\` | ${formatBytes(entry.sizeBytes)} |`);
 
   const lines = [
     "### Bundle size summary",
@@ -156,8 +156,12 @@ function printHelpAndExit(): never {
   process.exit(0);
 }
 
+function displayPath(path: string): string {
+  return path.replace(/-[A-Za-z0-9_]+\.js$/u, "-*.js");
+}
+
 function formatBytes(bytes: number): string {
-  return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${Math.round(bytes / 1024)} KiB`;
 }
 
 function markdownEscape(value: string): string {

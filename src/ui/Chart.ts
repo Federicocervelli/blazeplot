@@ -1,7 +1,9 @@
-import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, SeriesYAxis, Viewport } from "../core/types.js";
+import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, SeriesYAxis, Viewport, XRange } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
+import { HistogramDataset, histogram } from "../core/Histogram.js";
+import type { HistogramBinThresholds, HistogramNormalization, HistogramResult } from "../core/Histogram.js";
 import { Renderer } from "../render/Renderer.js";
 import type { RenderProjection } from "../render/Renderer.js";
 import { isWebGL2Available, WebGL2Backend } from "../render/WebGL2Backend.js";
@@ -166,6 +168,26 @@ export interface ChartOptions {
 /** Series configuration used by typed helpers such as `addLine`. */
 export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
 
+/** Series configuration for `Chart.addHistogram(...)` from raw one-dimensional values. */
+export interface HistogramSeriesConfig extends Omit<TypedSeriesConfig, "dataset"> {
+  readonly values: ArrayLike<number>;
+  readonly histogram?: never;
+  readonly binSize?: number;
+  readonly binCount?: number;
+  readonly thresholds?: HistogramBinThresholds;
+  readonly min?: number;
+  readonly max?: number;
+  readonly align?: number;
+  readonly normalize?: HistogramNormalization;
+  readonly includeEmpty?: boolean;
+  readonly includeMax?: boolean;
+}
+
+/** Series configuration for `Chart.addHistogram(...)` from precomputed bins. */
+export interface PrecomputedHistogramSeriesConfig extends Omit<TypedSeriesConfig, "dataset"> {
+  readonly histogram: HistogramResult;
+}
+
 /** Runtime state for one chart series. */
 export interface ChartSeriesState {
   readonly series: SeriesStore;
@@ -180,6 +202,8 @@ export interface ChartSeriesState {
 
 /** A picked data point with series metadata and screen coordinates. */
 export interface ChartPickItem extends SeriesSample {
+  /** Optional represented X interval for interval-backed samples. */
+  readonly xRange?: XRange;
   readonly series: SeriesStore;
   readonly seriesIndex: number;
   readonly id?: string;
@@ -808,6 +832,43 @@ export class Chart implements ChartPluginContext {
     return this.addSeries({ ...config, mode: "bar" }, style);
   }
 
+  /** Add a histogram series using the existing bar renderer. */
+  addHistogram(
+    config: HistogramSeriesConfig | PrecomputedHistogramSeriesConfig,
+    style?: Partial<SeriesStyle>,
+  ): SeriesStore {
+    const result: HistogramResult = config.histogram !== undefined
+      ? config.histogram
+      : histogram(config.values, {
+        binSize: config.binSize,
+        binCount: config.binCount,
+        thresholds: config.thresholds,
+        min: config.min,
+        max: config.max,
+        align: config.align,
+        normalize: config.normalize,
+        includeEmpty: config.includeEmpty,
+        includeMax: config.includeMax,
+      });
+
+    if (result.binWidth === null && style?.barWidth === undefined && result.bins.length > 0) {
+      throw new TypeError("Chart.addHistogram requires style.barWidth for variable-width histogram bins.");
+    }
+
+    const { id, name, yAxis, downsample } = config;
+    return this.addBar({
+      id,
+      name,
+      yAxis,
+      downsample,
+      dataset: new HistogramDataset(result),
+    }, {
+      ...style,
+      baseline: style?.baseline ?? 0,
+      barWidth: style?.barWidth ?? result.binWidth ?? 0.8,
+    });
+  }
+
   /** Add an OHLC series. */
   addOhlc(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
     return this.addSeries({ ...config, mode: "ohlc" }, style);
@@ -1322,9 +1383,8 @@ export class Chart implements ChartPluginContext {
     this.applyAutoFitYPolicy();
 
     try {
-      const [r, g, b, a] = this.resolvedTheme.backgroundColor;
       this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
-      this.renderer.clear(r, g, b, a);
+      this.renderer.clear(0, 0, 0, 0);
 
       const viewport = this.camera.viewport;
       this.currentXOrigin = viewport.xMin;
@@ -2148,8 +2208,10 @@ export class Chart implements ChartPluginContext {
     const itemClientY = rect.top + plotY;
     const dx = itemClientX - clientX;
     const dy = itemClientY - clientY;
+    const xRange = series.xRangeAt(sample.index);
     return {
       ...sample,
+      ...(xRange ? { xRange } : {}),
       distancePx: Math.hypot(dx, dy),
       series,
       seriesIndex,

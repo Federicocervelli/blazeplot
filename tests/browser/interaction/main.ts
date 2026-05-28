@@ -210,7 +210,7 @@ function countVisible(selector: string): number {
 
 function crosshairX(): number | null {
   const crosshair = document.querySelector<HTMLElement>(".blazeplot-crosshair");
-  const vertical = crosshair?.firstElementChild as HTMLElement | null;
+  const vertical = crosshair?.querySelector<HTMLElement>(".blazeplot-crosshair-lines > div");
   if (!crosshair || !vertical || getComputedStyle(crosshair).display === "none") return null;
   const value = Number.parseFloat(vertical.style.left);
   return Number.isFinite(value) ? value : null;

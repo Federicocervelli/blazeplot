@@ -292,7 +292,7 @@ function renderGeneratedDocs(options = {}) {
 
 function renderPerformanceBlock() {
   const core = collectCoreRuntimeSize();
-  const size = `${formatKiB(core.rawBytes)} raw / ${formatKiB(core.gzipBytes)} gzip`;
+  const size = `${formatKiB(core.rawBytes)} raw`;
   if (existsSync(comparisonBenchmarkPath)) {
     const report = JSON.parse(readFileSync(comparisonBenchmarkPath, "utf8"));
     assertPublishableComparisonReport(report);

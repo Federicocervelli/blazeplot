@@ -90,6 +90,7 @@ export class BlazeplotDocsPage extends LitElement {
         const kind = target.dataset.docChart;
         if (kind === "basic-line") this.mountBasicLineDocChart(target);
         else if (kind === "object-rows") this.mountObjectRowsDocChart(target);
+        else if (kind === "histogram") this.mountHistogramDocChart(target);
         else if (kind === "live-line") this.mountLiveLineDocChart(target);
         else if (kind === "fixed-rate") this.mountFixedRateDocChart(target);
         else if (kind === "server-sampled") this.mountServerSampledDocChart(target);
@@ -131,6 +132,22 @@ export class BlazeplotDocsPage extends LitElement {
     const chart = this.createDocChart(target, { axes: { x: { position: "outside", scale: "time" }, y: { position: "outside" } }, plugins: [tooltipPlugin({ mode: "nearest-x" }), crosshairPlugin({ snap: "nearest-x", label: true })] });
     chart.addLine({ dataset: StaticDataset.fromObjects(rows, { x: "time", y: "requests", sort: true }), name: "requests" }, { color: [0.2, 0.7, 1, 1], lineWidth: 2 });
     chart.fitToData({ padding: { x: 0.02, y: 0.15 } });
+    chart.start();
+  }
+
+  private mountHistogramDocChart(target: HTMLElement): void {
+    const values = new Float64Array(360);
+    for (let i = 0; i < values.length; i += 1) {
+      const group = i % 3;
+      const center = group === 0 ? 28 : group === 1 ? 48 : 66;
+      values[i] = center + Math.sin(i * 0.71) * 6 + Math.cos(i * 0.17) * 3;
+    }
+    const chart = this.createDocChart(target, {
+      axes: { x: { position: "outside", title: "Latency ms" }, y: { position: "outside", title: "Count" } },
+      plugins: [interactionsPlugin({ doubleClickReset: true }), tooltipPlugin({ mode: "nearest-x" })],
+    });
+    chart.addHistogram({ values, binSize: 5, name: "latency" }, { color: [0.988, 0.29, 0.02, 0.75] });
+    chart.fitToData({ includeZero: true, padding: { x: 0.04, y: 0.1 } });
     chart.start();
   }
 

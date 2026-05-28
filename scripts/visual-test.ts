@@ -43,6 +43,7 @@ const DEFAULT_CASES = [
   "area",
   "scatter",
   "bar",
+  "histogram",
   "ohlc",
   "candlestick",
   "axes-title-grid",

@@ -1,8 +1,12 @@
-import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRange, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, LODView, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 
 function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
   return "rangeMinMaxY" in dataset;
+}
+
+function hasXRange(dataset: Dataset): dataset is XRangeDataset {
+  return "getXRange" in dataset;
 }
 
 function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
@@ -522,6 +526,11 @@ export class SeriesStore {
     return Math.max(0, end - start);
   }
 
+  /** Return the represented X interval for a logical index when the dataset exposes interval metadata. */
+  xRangeAt(index: number): XRange | null {
+    return hasXRange(this.dataset) ? this.dataset.getXRange(index) : null;
+  }
+
   /** Return an XY sample by logical index. */
   sampleAt(index: number): SeriesSample | null {
     if (index < 0 || index >= this.dataset.length) return null;
@@ -568,8 +577,11 @@ export class SeriesStore {
       const low = ohlc ? ohlc.getLow(i) : range?.minY ?? y;
       const high = ohlc ? ohlc.getHigh(i) : range?.maxY ?? low;
       if (!Number.isFinite(x) || !Number.isFinite(low) || !Number.isFinite(high)) continue;
-      xMin = Math.min(xMin, x);
-      xMax = Math.max(xMax, x);
+      const xRange = this.xRangeAt(i);
+      const sampleXMin = xRange && Number.isFinite(xRange.xStart) ? xRange.xStart : x;
+      const sampleXMax = xRange && Number.isFinite(xRange.xEnd) ? xRange.xEnd : x;
+      xMin = Math.min(xMin, sampleXMin, sampleXMax);
+      xMax = Math.max(xMax, sampleXMin, sampleXMax);
       yMin = Math.min(yMin, low, high);
       yMax = Math.max(yMax, low, high);
     }
