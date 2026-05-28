@@ -156,7 +156,7 @@ export interface AnnotationsPlugin extends ChartPlugin {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-function svg<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
+function createSvgElement<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
   return document.createElementNS(SVG_NS, tag);
 }
 
@@ -316,7 +316,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
   return {
     install(chart: ChartPluginContext) {
       chartRef = chart;
-      overlay = svg("svg");
+      overlay = createSvgElement("svg");
       overlay.classList.add(options.className ?? "blazeplot-annotations");
       overlay.style.position = "absolute";
       overlay.style.inset = "0";
@@ -420,14 +420,14 @@ function drawAnnotation(
   const viewport = chart.getViewport(annotation.yAxis ?? "left");
   const xToPx = (x: number): number => ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * width;
   const yToPx = (y: number): number => ((viewport.yMax - y) / (viewport.yMax - viewport.yMin)) * height;
-  const group = svg("g");
+  const group = createSvgElement("g");
   if (annotation.className) group.classList.add(annotation.className);
 
   switch (annotation.type) {
     case "x-line": {
       const x = xToPx(annotation.x);
       if (x < 0 || x > width) return;
-      const line = svg("line");
+      const line = createSvgElement("line");
       line.setAttribute("x1", String(x));
       line.setAttribute("x2", String(x));
       line.setAttribute("y1", "0");
@@ -440,7 +440,7 @@ function drawAnnotation(
     case "y-line": {
       const y = yToPx(annotation.y);
       if (y < 0 || y > height) return;
-      const line = svg("line");
+      const line = createSvgElement("line");
       line.setAttribute("x1", "0");
       line.setAttribute("x2", String(width));
       line.setAttribute("y1", String(y));
@@ -500,7 +500,7 @@ function styleStroke(el: SVGElement, color: string, width: number = 1, dash?: st
 }
 
 function appendRect(group: SVGGElement, rect: { x: number; y: number; w: number; h: number }, fill: string, stroke?: string, strokeWidth: number = 0): void {
-  const el = svg("rect");
+  const el = createSvgElement("rect");
   el.setAttribute("x", String(rect.x));
   el.setAttribute("y", String(rect.y));
   el.setAttribute("width", String(rect.w));
@@ -518,7 +518,7 @@ function appendMarker(group: SVGGElement, x: number, y: number, radius: number, 
   const stroke = annotation.strokeColor ?? "rgba(0,0,0,0.35)";
   const strokeWidth = annotation.strokeWidth ?? 1;
   if (annotation.shape === "diamond") {
-    const polygon = svg("polygon");
+    const polygon = createSvgElement("polygon");
     polygon.setAttribute("points", `${x},${y - radius} ${x + radius},${y} ${x},${y + radius} ${x - radius},${y}`);
     polygon.setAttribute("fill", fill);
     polygon.setAttribute("stroke", stroke);
@@ -529,7 +529,7 @@ function appendMarker(group: SVGGElement, x: number, y: number, radius: number, 
 
   if (annotation.shape === "cross") {
     for (const [x1, y1, x2, y2] of [[x - radius, y, x + radius, y], [x, y - radius, x, y + radius]] as const) {
-      const line = svg("line");
+      const line = createSvgElement("line");
       line.setAttribute("x1", String(x1));
       line.setAttribute("y1", String(y1));
       line.setAttribute("x2", String(x2));
@@ -540,7 +540,7 @@ function appendMarker(group: SVGGElement, x: number, y: number, radius: number, 
     return;
   }
 
-  const circle = svg("circle");
+  const circle = createSvgElement("circle");
   circle.setAttribute("cx", String(x));
   circle.setAttribute("cy", String(y));
   circle.setAttribute("r", String(radius));
@@ -553,7 +553,7 @@ function appendMarker(group: SVGGElement, x: number, y: number, radius: number, 
 function appendStandaloneLabel(group: SVGGElement, annotation: LabelAnnotation, x: number, y: number, defaultColor: string, defaultFont: string): void {
   const text = appendText(group, annotation.text, x, y, "start", annotation.color ?? defaultColor, annotation.font ?? defaultFont);
   if (annotation.backgroundColor) {
-    const rect = svg("rect");
+    const rect = createSvgElement("rect");
     rect.setAttribute("x", String(x - 4));
     rect.setAttribute("y", String(y - 14));
     rect.setAttribute("width", String(Math.max(16, annotation.text.length * 7 + 8)));
@@ -572,7 +572,7 @@ function appendLabel(group: SVGGElement, label: string | AnnotationLabelOptions 
 }
 
 function appendText(group: SVGGElement, textValue: string, x: number, y: number, anchor: "start" | "middle" | "end", color: string, font: string): SVGTextElement {
-  const text = svg("text");
+  const text = createSvgElement("text");
   text.textContent = textValue;
   text.setAttribute("x", String(x));
   text.setAttribute("y", String(y));

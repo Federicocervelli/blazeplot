@@ -4,6 +4,7 @@ import type { ChartOptions } from "./ui/Chart.js";
 
 /** Props for the React chart host component. */
 export interface BlazeChartProps {
+  /** Chart options used at construction time. Changing object identity disposes and recreates the chart; keep stable with useMemo. */
   readonly options?: ChartOptions;
   readonly className?: string;
   readonly style?: React.CSSProperties;
