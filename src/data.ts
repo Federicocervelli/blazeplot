@@ -1,3 +1,6 @@
+export { HistogramDataset, histogram, histogramDataset } from "./core/Histogram.js";
+export type { HistogramBin, HistogramBinThresholds, HistogramNormalization, HistogramOptions, HistogramResult } from "./core/Histogram.js";
+
 import type { SeriesMode, SeriesYAxis, Viewport } from "./core/types.js";
 import type { SeriesStore } from "./core/SeriesStore.js";
 import type { Chart, ChartSeriesState } from "./ui/Chart.js";

@@ -50,14 +50,14 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 1.6 KiB |
-| core subpath entry | `dist/core.js` | 0.7 KiB |
+| root entry | `dist/index.js` | 2.3 KiB |
+| core subpath entry | `dist/core.js` | 0.8 KiB |
 | interaction subpath entry | `dist/interaction.js` | 0.1 KiB |
 | render subpath entry | `dist/render.js` | 0.3 KiB |
 | react entry | `dist/react.js` | 0.7 KiB |
 | linked entry | `dist/linked.js` | 0.4 KiB |
 | linked core entry | `dist/linked-core.js` | 0.1 KiB |
-| data entry | `dist/data.js` | 4.9 KiB |
+| data entry | `dist/data.js` | 5.1 KiB |
 | export entry | `dist/export.js` | 1.3 KiB |
 | interactions plugin | `dist/plugins/interactions.js` | 15.4 KiB |
 | annotations plugin | `dist/plugins/annotations.js` | 9.3 KiB |
@@ -67,16 +67,16 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0.1 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0.1 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20.7 KiB |
-| shared Chart chunk | `dist/Chart-BXL4MXf-.js` | 56.5 KiB |
-| shared streaming data chunk | `dist/UniformRingBuffer-C5yCnNeR.js` | 44.3 KiB |
-| shared OhlcDataset chunk | `dist/OhlcDataset-DmFKmNbM.js` | 11.2 KiB |
-| shared AxisController chunk | `dist/AxisController-CCk21uVK.js` | 13.8 KiB |
-| shared WebGL2Backend chunk | `dist/WebGL2Backend-DivtLMNz.js` | 22.0 KiB |
-| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-CYBw2rB_.js` | 2.1 KiB |
-| lazy screenshot chunk | `dist/screenshot-PUXj6UGd.js` | 3.5 KiB |
-| shared OverlayUtils chunk | `dist/OverlayUtils-BoCHW3n7.js` | 3.1 KiB |
-| shared Tooltip chunk | `dist/Tooltip-D7t8uZIg.js` | 5.8 KiB |
-| shared Crosshair chunk | `dist/Crosshair-BViz8JUB.js` | 9.9 KiB |
+| shared Chart chunk | `dist/Chart-DstwTTQs.js` | 57.2 KiB |
+| shared streaming data chunk | `dist/UniformRingBuffer-DVJiaja6.js` | 44.0 KiB |
+| shared OhlcDataset chunk | `dist/OhlcDataset-BzaK030U.js` | 8.6 KiB |
+| shared AxisController chunk | `dist/AxisController-B5zX7JBz.js` | 13.8 KiB |
+| shared WebGL2Backend chunk | `dist/WebGL2Backend-DDGRc0UJ.js` | 22.0 KiB |
+| shared LinkedChartsCore chunk | `dist/LinkedChartsCore-zxImWpgT.js` | 2.1 KiB |
+| lazy screenshot chunk | `dist/screenshot-CljRIqNW.js` | 3.5 KiB |
+| shared OverlayUtils chunk | `dist/OverlayUtils-YP9KSKL4.js` | 3.1 KiB |
+| shared Tooltip chunk | `dist/Tooltip-a9NkZoPg.js` | 5.8 KiB |
+| shared Crosshair chunk | `dist/Crosshair-C426MhNr.js` | 9.9 KiB |
 
 ### All public exports
 
@@ -135,6 +135,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `createChart` | function | `./createChart` | Create a chart from a compact declarative config. This helper is intentionally thin: it returns the underlying `Chart` instance, so advanced code can still use the full imperative API after setup. |
 | `CreateChartArraySeries` | interface | `./createChart` | Declarative series backed by parallel X and Y arrays. |
 | `CreateChartDatasetSeries` | interface | `./createChart` | Declarative series backed by an existing BlazePlot dataset. |
+| `CreateChartHistogramSeries` | type | `./createChart` | Declarative histogram series backed by raw one-dimensional values. |
 | `CreateChartObjectSeries` | interface | `./createChart` | Declarative series backed by object rows and field selectors. |
 | `CreateChartOptions` | interface | `./createChart` | High-level chart configuration for common first-render cases. Use `createChart(...)` when you have static arrays, object rows, or a simple streaming buffer and want BlazePlot to create the chart, add series, fit the initial viewport, and start rendering in one call. |
 | `CreateChartSeries` | type | `./createChart` | Any series shape accepted by `createChart`. |
@@ -150,6 +151,15 @@ Generated from `dist/index.d.ts` after the package build.
 | `GpuCapabilities` | interface | `./render/types` | Feature flags reported by a GPU backend. |
 | `GpuProgram` | interface | `./render/types` | Opaque handle for a linked GPU program. |
 | `GpuResource` | type | `./render/types` | GPU resource accepted by backend disposal. |
+| `histogram` | function | `./core/Histogram` | Convert one-dimensional finite values into histogram bins. |
+| `HistogramBin` | interface | `./core/Histogram` | One histogram bucket, suitable for rendering as a bar centered at `x`. |
+| `HistogramBinThresholds` | type | `./core/Histogram` | Explicit bin edges, or a requested number of equal-width bins. |
+| `histogramDataset` | function | `./core/Histogram` | Build a StaticDataset from histogram bucket centers and normalized counts. |
+| `HistogramDataset` | class | `./core/Histogram` | Static histogram dataset that preserves each bucket's X interval for picks and tooltips. |
+| `HistogramNormalization` | type | `./core/Histogram` | Histogram value normalization modes. |
+| `HistogramOptions` | interface | `./core/Histogram` | Options for converting one-dimensional values into histogram bins. |
+| `HistogramResult` | interface | `./core/Histogram` | Result of a histogram transform. |
+| `HistogramSeriesConfig` | interface | `./ui/Chart` | Series configuration for `Chart.addHistogram(...)` from raw one-dimensional values. |
 | `isWebGL2Available` | function | `./render/WebGL2Backend` | Return whether the current environment can create a WebGL2 context. |
 | `LODBucket` | interface | `./core/types` | Min/max aggregate for a contiguous X range. |
 | `LODStrategy` | type | `./core/types` | Downsampling strategy used when a series is denser than the plot. |
@@ -161,6 +171,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `OhlcRingBuffer` | class | `./core/OhlcDataset` | Fixed-capacity streaming buffer for OHLC/candlestick data. |
 | `OhlcRingBufferOptions` | interface | `./core/OhlcDataset` | Options for `OhlcRingBuffer`. |
 | `PanIntent` | interface | `./interaction/types` | Pan request expressed in data units or screen pixels. |
+| `PrecomputedHistogramSeriesConfig` | interface | `./ui/Chart` | Series configuration for `Chart.addHistogram(...)` from precomputed bins. |
 | `RangeMinMaxDataset` | interface | `./core/types` | Dataset that can answer min/max Y queries for index ranges. |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
 | `ReglBackend` | const | `./render/WebGL2Backend` | Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API. Deprecated: Effective next patch release. Use WebGL2Backend. |
@@ -212,6 +223,8 @@ Generated from `dist/index.d.ts` after the package build.
 | `VisibleSampleCopyDataset` | interface | `./core/types` | Optional high-performance stable visible sampling capability. Unlike copySamplesRange, this method may stride/downsample, but should choose samples anchored to data coordinates so streamed appends do not make existing sampled points jitter. |
 | `WebGL2Backend` | class | `./render/WebGL2Backend` | Native WebGL2 implementation of BlazePlot's GPU backend. |
 | `WebGL2UnavailableError` | class | `./render/WebGL2Backend` | Error thrown when a WebGL2 backend cannot be created. |
+| `XRange` | interface | `./core/types` | Data-domain X interval represented by one dataset sample. |
+| `XRangeDataset` | interface | `./core/types` | Dataset whose sample X values represent intervals rather than points. |
 | `YAppendableDataset` | interface | `./core/types` | Dataset that accepts appended Y samples with implicit X values. |
 | `YUpdatableDataset` | interface | `./core/types` | Dataset that supports updating existing Y values. |
 | `ZoomAxis` | type | `./interaction/types` | Axis affected by a zoom operation. |
