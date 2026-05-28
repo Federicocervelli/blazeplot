@@ -59,7 +59,7 @@ export class BlazeplotHomePage extends LitElement {
                 <img src="https://img.shields.io/npm/dt/blazeplot.svg" alt="npm downloads" class="block h-5" />
               </a>
               <a href="https://github.com/sponsors/Federicocervelli" target="_blank" rel="noreferrer" aria-label="Sponsor BlazePlot on GitHub">
-                <img src="https://img.shields.io/github/sponsors/Federicocervelli?logo=githubsponsors&label=sponsor&color=EA4AAA" alt="GitHub Sponsors" class="block h-5" />
+                <img src="https://img.shields.io/badge/sponsor-GitHub%20Sponsors-EA4AAA?logo=githubsponsors" alt="GitHub Sponsors" class="block h-5" />
               </a>
             </div>
           </div>
