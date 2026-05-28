@@ -1383,9 +1383,8 @@ export class Chart implements ChartPluginContext {
     this.applyAutoFitYPolicy();
 
     try {
-      const [r, g, b, a] = this.resolvedTheme.backgroundColor;
       this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
-      this.renderer.clear(r, g, b, a);
+      this.renderer.clear(0, 0, 0, 0);
 
       const viewport = this.camera.viewport;
       this.currentXOrigin = viewport.xMin;

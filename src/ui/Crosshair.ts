@@ -159,6 +159,17 @@ function createXRangeHighlight(item: ChartPickItem, chart: Chart, strokeColor: s
   return marker;
 }
 
+function createCrosshairLayer(className: string, zIndex: number): HTMLDivElement {
+  const layer = document.createElement("div");
+  layer.className = className;
+  layer.style.position = "absolute";
+  layer.style.inset = "0";
+  layer.style.display = "none";
+  layer.style.pointerEvents = "none";
+  layer.style.zIndex = String(zIndex);
+  return layer;
+}
+
 function renderDefaultLabel(
   position: CrosshairPosition,
   container: HTMLElement,
@@ -189,6 +200,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   const rulerModifier = options.rulerModifier ?? "none";
   let chartRef: ChartPluginContext | null = null;
   let root: HTMLDivElement | null = null;
+  let lineLayer: HTMLDivElement | null = null;
+  let overlayLayer: HTMLDivElement | null = null;
   let vertical: HTMLDivElement | null = null;
   let horizontal: HTMLDivElement | null = null;
   let markerLayer: HTMLDivElement | null = null;
@@ -208,7 +221,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   const measureEndSubscribers = new Set<(measurement: RulerMeasurement) => void>();
 
   const setVisible = (visible: boolean): void => {
-    if (root) root.style.display = visible ? "block" : "none";
+    if (lineLayer) lineLayer.style.display = visible ? "block" : "none";
+    if (overlayLayer) overlayLayer.style.display = visible ? "block" : "none";
   };
 
   const emitMove = (position: CrosshairPosition | null): void => {
@@ -271,7 +285,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
 
   const renderPosition = (position: CrosshairPosition | null): void => {
     renderMarkers(position);
-    if (!position || !root || !vertical || !horizontal || !label) {
+    if (!position || !lineLayer || !overlayLayer || !vertical || !horizontal || !label) {
       setVisible(false);
       return;
     }
@@ -354,11 +368,11 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
 
       root = document.createElement("div");
       root.className = "blazeplot-crosshair";
-      root.style.position = "absolute";
-      root.style.inset = "0";
-      root.style.display = "none";
+      root.style.display = "contents";
       root.style.pointerEvents = "none";
-      root.style.zIndex = String(options.zIndex ?? 22);
+
+      lineLayer = createCrosshairLayer("blazeplot-crosshair-lines", options.zIndex ?? 0);
+      overlayLayer = createCrosshairLayer("blazeplot-crosshair-overlay", options.zIndex ?? 22);
 
       vertical = document.createElement("div");
       vertical.style.position = "absolute";
@@ -407,11 +421,12 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       if (dash) rulerLine.setAttribute("stroke-dasharray", dash);
       rulerSvg.appendChild(rulerLine);
 
-      root.appendChild(vertical);
-      root.appendChild(horizontal);
-      root.appendChild(rulerSvg);
-      root.appendChild(markerLayer);
-      root.appendChild(label);
+      lineLayer.appendChild(vertical);
+      lineLayer.appendChild(horizontal);
+      lineLayer.appendChild(rulerSvg);
+      overlayLayer.appendChild(markerLayer);
+      overlayLayer.appendChild(label);
+      root.append(lineLayer, overlayLayer);
       chart.plotElement.appendChild(root);
 
       if (options.group) {
@@ -507,6 +522,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         }
         root?.remove();
         root = null;
+        lineLayer = null;
+        overlayLayer = null;
         vertical = null;
         horizontal = null;
         markerLayer = null;

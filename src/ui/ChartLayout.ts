@@ -173,6 +173,7 @@ export class ChartLayout implements ChartLayoutElements {
 
     this.canvas.style.position = "absolute";
     this.canvas.style.inset = "0";
+    this.canvas.style.zIndex = "1";
     this.canvas.style.display = "block";
     this.canvas.style.width = "100%";
     this.canvas.style.height = "100%";
