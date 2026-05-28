@@ -202,7 +202,7 @@ export interface ChartSeriesState {
 
 /** A picked data point with series metadata and screen coordinates. */
 export interface ChartPickItem extends SeriesSample {
-  /** Optional represented X interval for interval-backed samples such as histogram bins. */
+  /** Optional represented X interval for interval-backed samples. */
   readonly xRange?: XRange;
   readonly series: SeriesStore;
   readonly seriesIndex: number;

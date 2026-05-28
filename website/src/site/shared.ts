@@ -1,7 +1,7 @@
 export type Section = "home" | "docs" | "previews";
 export type HomeDataMode = "static" | "streaming";
 export type HomeChartMode = "line" | "ohlc" | "multi";
-export type PreviewId = "live" | "sensor" | "features" | "linked" | "server-sampled" | "flamechart" | "render-loop" | "mobile";
+export type PreviewId = "live" | "sensor" | "features" | "histogram" | "linked" | "server-sampled" | "flamechart" | "render-loop" | "mobile";
 
 export interface PreviewLink {
   title: string;
@@ -12,6 +12,7 @@ export const PREVIEWS: readonly PreviewLink[] = [
   { title: "Live performance", id: "live" },
   { title: "Sensor stream", id: "sensor" },
   { title: "Feature gallery", id: "features" },
+  { title: "Histogram", id: "histogram" },
   { title: "Linked charts", id: "linked" },
   { title: "Server-sampled", id: "server-sampled" },
   { title: "Flame chart", id: "flamechart" },
@@ -47,6 +48,7 @@ export function appRouteFromPath(pathname: string): string | null {
   if (relative === "home") return "home";
   if (relative === "previews" || relative.startsWith("previews/") || relative.startsWith("docs/")) return relative;
   if (relative === "features") return "previews/features";
+  if (relative === "histogram") return "previews/histogram";
   if (relative === "sensor") return "previews/sensor";
   if (relative === "linked") return "previews/linked";
   if (relative === "server-sampled") return "previews/server-sampled";

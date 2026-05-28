@@ -56,6 +56,7 @@ export class PreviewChartsController implements ReactiveController {
         if (kind === "live") this.mountLivePreviewChart(target);
         else if (kind === "sensor") this.mountSensorStreamPreview(target);
         else if (kind === "feature-hero") this.mountFeatureHeroChart(target);
+        else if (kind === "histogram") this.mountHistogramPreview(target);
         else if (kind === "feature-linked") this.mountFeatureLinkedCharts(target);
         else if (kind === "server-sampled") this.mountServerSampledChart(target);
         else if (kind === "flamechart") this.mountFlameChartPreview(target);
@@ -585,6 +586,39 @@ export class PreviewChartsController implements ReactiveController {
         value: 0.4 + Math.abs(Math.sin(i * 0.23)) * 4 + (i % 211 === 0 ? 16 : 0) + (i % 997 === 0 ? 28 : 0),
       };
     });
+  }
+
+  private mountHistogramPreview(target: HTMLElement): void {
+    const values = new Float64Array(18_000);
+    for (let index = 0; index < values.length; index++) {
+      const phase = index / values.length;
+      const cluster = index % 9;
+      const baseline = cluster < 5 ? 70 : cluster < 8 ? 115 : 165;
+      const seasonal = Math.sin(phase * Math.PI * 10) * 8 + Math.sin(index * 0.017) * 5;
+      const jitter = (Math.sin(index * 12.9898) * 43758.5453 % 1) * 10;
+      values[index] = baseline + seasonal + jitter + (index % 997 === 0 ? 85 : 0);
+    }
+
+    const chart = new Chart(target, {
+      axes: { x: { position: "outside", title: "latency (ms)" }, y: { position: "outside", title: "density" } },
+      grid: true,
+      hover: { mode: "nearest-x", group: "none" },
+      plugins: [
+        interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true }),
+        crosshairPlugin({ snap: "nearest-x", label: true, labelPlacement: "top-right", formatX: (value) => `${value.toFixed(0)} ms`, formatY: (value) => value.toFixed(4) }),
+        legendPlugin({ position: "top-left" }),
+      ],
+      accessibility: { label: "Histogram preview" },
+    });
+    this.previewCharts.push(chart);
+
+    chart.addHistogram({ values, binSize: 5, min: 40, max: 260, normalize: "density", name: "Latency density", downsample: "none" }, {
+      color: [0.988, 0.29, 0.02, 0.95],
+      baseline: 0,
+    });
+    chart.fitToData({ includeZero: true, padding: { y: 0.12 } });
+    chart.setViewport({ ...chart.getViewport(), xMin: 40, xMax: 260, yMin: 0 });
+    chart.start();
   }
 
   private mountFeatureHeroChart(target: HTMLElement): void {
