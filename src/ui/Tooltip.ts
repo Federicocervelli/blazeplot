@@ -1,5 +1,5 @@
 import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
-import { clamp, createLongPressTouchTracker, createOverlayLayer, createPickMarker, formatCompactNumber, pickAtDataX, rgba, renderPickItems } from "./OverlayUtils.js";
+import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, formatCompactNumber, pickAtDataX, placeFixedWithinViewport, renderPickItems, rgba } from "./OverlayUtils.js";
 
 /** Options for the built-in hover tooltip plugin. */
 export interface TooltipPluginOptions {
@@ -50,14 +50,14 @@ interface TooltipPeer {
 const tooltipGroups = new Map<string, Set<TooltipPeer>>();
 
 function placeTooltip(container: HTMLElement, state: ChartHoverState, options: TooltipPluginOptions, size: { readonly width: number; readonly height: number }): void {
-  const margin = 4;
-  const width = Math.max(1, size.width || 240);
-  const height = Math.max(1, size.height || 80);
-  const viewportWidth = Math.max(1, globalThis.innerWidth || container.ownerDocument.documentElement.clientWidth);
-  const viewportHeight = Math.max(1, globalThis.innerHeight || container.ownerDocument.documentElement.clientHeight);
-  const x = clamp(state.clientX + (options.offsetX ?? 12), margin, Math.max(margin, viewportWidth - width - margin));
-  const y = clamp(state.clientY + (options.offsetY ?? 12), margin, Math.max(margin, viewportHeight - height - margin));
-  container.style.transform = `translate(${x}px, ${y}px)`;
+  placeFixedWithinViewport(container, state.clientX, state.clientY, {
+    offsetX: options.offsetX ?? 12,
+    offsetY: options.offsetY ?? 12,
+    size: {
+      width: Math.max(1, size.width || 240),
+      height: Math.max(1, size.height || 80),
+    },
+  });
 }
 
 /** Create a plugin that displays picked data values in a tooltip. */

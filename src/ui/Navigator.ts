@@ -48,7 +48,7 @@ interface DragState {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-function svg<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
+function createSvgElement<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
   return document.createElementNS(SVG_NS, tag);
 }
 
@@ -169,7 +169,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     overlay.setAttribute("preserveAspectRatio", "none");
 
     while (paths.length < selectedSeries.length) {
-      const path = svg("path");
+      const path = createSvgElement("path");
       path.setAttribute("fill", "none");
       path.setAttribute("vector-effect", "non-scaling-stroke");
       overlay.insertBefore(path, windowRect);
@@ -265,16 +265,16 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         chart.setLayoutReservation(reservationId, placement === "top" ? { top: height + margin * 2 } : { bottom: height + margin * 2 });
       }
 
-      overlay = svg("svg");
+      overlay = createSvgElement("svg");
       overlay.style.width = "100%";
       overlay.style.height = "100%";
       overlay.setAttribute("aria-hidden", "true");
       overlay.style.display = "block";
-      windowRect = svg("rect");
-      leftHandle = svg("rect");
-      rightHandle = svg("rect");
-      leftHandleHit = svg("rect");
-      rightHandleHit = svg("rect");
+      windowRect = createSvgElement("rect");
+      leftHandle = createSvgElement("rect");
+      rightHandle = createSvgElement("rect");
+      leftHandleHit = createSvgElement("rect");
+      rightHandleHit = createSvgElement("rect");
       for (const handle of [leftHandle, rightHandle]) {
         handle.style.cursor = "ew-resize";
         handle.style.pointerEvents = "none";

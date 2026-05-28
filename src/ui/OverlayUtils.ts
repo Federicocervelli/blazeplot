@@ -49,9 +49,9 @@ export function placeFixedWithinViewport(
   element: HTMLElement,
   clientX: number,
   clientY: number,
-  options: { readonly offsetX: number; readonly offsetY: number; readonly margin?: number },
+  options: { readonly offsetX: number; readonly offsetY: number; readonly margin?: number; readonly size?: { readonly width: number; readonly height: number } },
 ): void {
-  const rect = element.getBoundingClientRect();
+  const rect = options.size ?? element.getBoundingClientRect();
   const margin = options.margin ?? 4;
   const doc = element.ownerDocument;
   const viewportWidth = Math.max(1, globalThis.innerWidth || doc.documentElement.clientWidth);

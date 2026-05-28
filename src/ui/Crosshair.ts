@@ -14,7 +14,7 @@ export type CrosshairLabelPlacement = "bottom-right" | "top-right" | "bottom-lef
 /** Custom renderer for crosshair pick highlights. */
 export type CrosshairHighlightRenderer = (position: CrosshairPosition, container: HTMLElement, chart: Chart) => void;
 
-/** Crosshair position in client and data coordinates. */
+/** Crosshair position in data coordinates and plot-relative CSS pixels. */
 export interface CrosshairPosition {
   readonly dataX: number;
   readonly dataY: number;
@@ -86,6 +86,12 @@ export interface CrosshairPlugin extends ChartPlugin {
   subscribe(event: "move", callback: (position: CrosshairPosition | null) => void): () => void;
   subscribe(event: "measurestart", callback: (position: CrosshairPosition) => void): () => void;
   subscribe(event: "measurechange" | "measureend", callback: (measurement: RulerMeasurement) => void): () => void;
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function createSvgElement<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
+  return document.createElementNS(SVG_NS, tag);
 }
 
 function countSamplesInRange(chart: ChartPluginContext, xMin: number, xMax: number): number {
@@ -394,7 +400,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       label.style.font = options.labelFont ?? chart.theme.tooltipFont;
       label.style.whiteSpace = "nowrap";
 
-      rulerSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      rulerSvg = createSvgElement("svg");
       rulerSvg.style.position = "absolute";
       rulerSvg.style.inset = "0";
       rulerSvg.style.width = "100%";
@@ -402,7 +408,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       rulerSvg.style.display = "none";
       rulerSvg.style.overflow = "hidden";
       rulerSvg.style.zIndex = "1";
-      rulerLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      rulerLine = createSvgElement("line");
       rulerLine.setAttribute("stroke", color);
       rulerLine.setAttribute("stroke-width", String(options.width ?? 1));
       if (dash) rulerLine.setAttribute("stroke-dasharray", dash);
