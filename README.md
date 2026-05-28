@@ -219,7 +219,7 @@ Generated from `dist/` after the package build.
 | lazy screenshot chunk | `dist/screenshot-CljRIqNW.js` | 3.5 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-YP9KSKL4.js` | 3.1 KiB |
 | shared Tooltip chunk | `dist/Tooltip-a9NkZoPg.js` | 5.8 KiB |
-| shared Crosshair chunk | `dist/Crosshair-Dk4xAusn.js` | 10.3 KiB |
+| shared Crosshair chunk | `dist/Crosshair-CmD1HvkI.js` | 10.3 KiB |
 
 ### All public exports
 
