@@ -270,27 +270,96 @@ export class BlazeplotDocsPage extends LitElement {
   }
 
   private mountFinancialDocChart(target: HTMLElement): void {
-    const count = 48;
+    const count = 180;
+    const barMs = 4 * 60 * 60 * 1000;
+    const start = Date.UTC(2026, 0, 5);
     const x = new Float64Array(count);
     const open = new Float32Array(count);
     const high = new Float32Array(count);
     const low = new Float32Array(count);
     const close = new Float32Array(count);
-    let price = 100;
+    const volume = new Float32Array(count);
+    let price = 184.2;
     for (let i = 0; i < count; i += 1) {
-      const delta = Math.sin(i * 0.37) * 1.6 + Math.cos(i * 0.11) * 0.8;
-      x[i] = i;
+      const drift = Math.sin(i * 0.043) * 0.85 + Math.cos(i * 0.137) * 0.38 + (i > 112 ? 0.18 : 0.03);
+      const body = Math.sin(i * 0.61) * 1.25 + Math.sin(i * 0.17) * 0.85 + drift;
+      const volatility = 1.8 + Math.abs(Math.sin(i * 0.23)) * 2.8 + (i === 88 || i === 142 ? 6 : 0);
+      x[i] = start + i * barMs;
       open[i] = price;
-      close[i] = price + delta;
-      high[i] = Math.max(open[i]!, close[i]!) + 0.8 + Math.abs(Math.sin(i)) * 0.8;
-      low[i] = Math.min(open[i]!, close[i]!) - 0.8 - Math.abs(Math.cos(i)) * 0.8;
+      close[i] = price + body;
+      high[i] = Math.max(open[i]!, close[i]!) + volatility * (0.45 + Math.abs(Math.sin(i * 0.61)) * 0.35);
+      low[i] = Math.min(open[i]!, close[i]!) - volatility * (0.45 + Math.abs(Math.cos(i * 0.53)) * 0.35);
+      volume[i] = 52 + Math.abs(body) * 18 + Math.abs(Math.sin(i * 0.31)) * 35 + (i === 88 || i === 142 ? 90 : 0);
       price = close[i]!;
     }
-    const dataset = new StaticOhlcDataset(x, open, high, low, close);
-    const chart = this.createDocChart(target, { plugins: [interactionsPlugin({ doubleClickReset: true }), tooltipPlugin({ mode: "nearest-x" })] });
-    chart.addCandlestick({ dataset, name: "candles" });
-    chart.fitToData({ padding: { x: 0.02, y: 0.12 } });
-    chart.start();
+
+    const candleDataset = new StaticOhlcDataset(x, open, high, low, close);
+    const volumeDataset = new StaticDataset(x, volume);
+    const lastClose = close[count - 1] ?? price;
+    const highWatermark = Math.max(...Array.from(high));
+    const lowWatermark = Math.min(...Array.from(low));
+    const priceAnnotations = annotationsPlugin({
+      annotations: [
+        { type: "y-line", y: lastClose, color: "#f59e0b", width: 1, dash: "4 4", label: { text: `last ${lastClose.toFixed(2)}`, position: "right", color: "#fbbf24" } },
+        { type: "y-range", yMin: lowWatermark, yMax: highWatermark, fillColor: "rgba(59,130,246,0.06)", borderColor: "rgba(59,130,246,0.22)", label: "range" },
+        { type: "x-range", xMin: x[86]!, xMax: x[92]!, fillColor: "rgba(245,158,11,0.10)", borderColor: "rgba(245,158,11,0.35)", label: "event" },
+        { type: "point", x: x[54]!, y: low[54]!, shape: "diamond", radius: 5, color: "#22c55e", strokeColor: "#052e16", strokeWidth: 1, label: { text: "buy", position: "bottom", color: "#86efac" } },
+        { type: "point", x: x[142]!, y: high[142]!, shape: "diamond", radius: 5, color: "#ef4444", strokeColor: "#450a0a", strokeWidth: 1, label: { text: "sell", position: "top", color: "#fca5a5" } },
+      ],
+    });
+    const linked = createLinkedCharts(target, {
+      rows: 2,
+      sharedX: true,
+      spacing: 0,
+      panels: [
+        {
+          options: this.docChartOptions({
+            axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
+            grid: true,
+            hover: { mode: "nearest-x", group: "x", maxDistancePx: 48 },
+            plugins: [
+              interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true }),
+              crosshairPlugin({
+                axis: "xy",
+                snap: "nearest-x",
+                label: true,
+                formatX: (value) => new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(value)),
+                formatY: (value) => value.toFixed(2),
+                formatter: (item) => {
+                  const candle = item.series.ohlcAt(item.index);
+                  if (!candle) return "";
+                  const change = candle.close - candle.open;
+                  return `O ${candle.open.toFixed(2)}  H ${candle.high.toFixed(2)}\nL ${candle.low.toFixed(2)}  C ${candle.close.toFixed(2)}\n${change >= 0 ? "+" : ""}${change.toFixed(2)}`;
+                },
+              }),
+              legendPlugin({ position: "top-left" }),
+              priceAnnotations,
+            ],
+          }),
+        },
+        {
+          options: this.docChartOptions({
+            axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
+            grid: true,
+            hover: { mode: "nearest-x", group: "x", maxDistancePx: 48 },
+            plugins: [interactionsPlugin({ wheelZoom: true, shiftDragPan: true, doubleClickReset: true }), crosshairPlugin({ axis: "xy", snap: "nearest-x", label: true }), legendPlugin({ position: "top-left" })],
+          }),
+        },
+      ],
+    });
+    linked.root.style.gridTemplateRows = "minmax(0,2.2fr) minmax(0,0.8fr)";
+    const priceChart = linked.charts[0];
+    const volumeChart = linked.charts[1];
+    priceChart?.addCandlestick(
+      { dataset: candleDataset, name: "BLAZEUSDT 4h" },
+      { barWidth: barMs * 0.7, lineWidth: 1, upColor: [0.13, 0.84, 0.49, 1], downColor: [0.94, 0.27, 0.27, 1], wickColor: [0.73, 0.78, 0.88, 1] },
+    );
+    volumeChart?.addBar({ dataset: volumeDataset, name: "volume", downsample: "none" }, { baseline: 0, barWidth: barMs * 0.68, color: [0.35, 0.55, 0.95, 0.58] });
+    priceChart?.fitToData({ padding: { x: 0.02, y: 0.12 } });
+    volumeChart?.fitToData({ includeZero: true, padding: { x: 0.02, y: 0.12 } });
+    linked.setXRange(x[30]!, x[count - 1]! + barMs);
+    for (const chart of linked.charts) chart.start();
+    this.docDisposers.push(() => { linked.dispose(); });
   }
 
   private mountLinkedDocChart(target: HTMLElement): void {

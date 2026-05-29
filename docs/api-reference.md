@@ -67,7 +67,7 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 57 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 58 KiB |
 | shared streaming data chunk | `dist/UniformRingBuffer-*.js` | 44 KiB |
 | shared OhlcDataset chunk | `dist/OhlcDataset-*.js` | 9 KiB |
 | shared AxisController chunk | `dist/AxisController-*.js` | 14 KiB |

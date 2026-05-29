@@ -101,12 +101,16 @@ export class BlazeplotHomePage extends LitElement {
     const initialCount = 420;
     let nextX = initialCount;
     let followLive = this.homeDataMode === "streaming";
+    const homeViewport = (xMin: number, xMax: number): { xMin: number; xMax: number; yMin: number; yMax: number } => {
+      const yRange = this.homeChartMode === "ohlc" ? this.homeOhlcYRange(xMin, xMax) : { yMin: -1.35, yMax: 1.35 };
+      return { xMin, xMax, ...yRange };
+    };
     const resetViewport = (): { xMin: number; xMax: number; yMin: number; yMax: number } => {
       if (this.homeDataMode === "streaming") {
         followLive = true;
-        return { xMin: nextX - initialCount, xMax: nextX - 1, yMin: -1.35, yMax: 1.35 };
+        return homeViewport(nextX - initialCount, nextX - 1);
       }
-      return { xMin: 0, xMax: initialCount - 1, yMin: -1.35, yMax: 1.35 };
+      return homeViewport(0, initialCount - 1);
     };
     const viewportPolicy: ViewportPolicy = {
       beforePan(_camera, intent) {
@@ -119,7 +123,7 @@ export class BlazeplotHomePage extends LitElement {
       },
       beforeRender: (camera) => {
         if (this.homeDataMode !== "streaming" || !followLive) return;
-        camera.setViewport({ xMin: nextX - initialCount, xMax: nextX - 1, yMin: -1.35, yMax: 1.35 });
+        camera.setViewport(homeViewport(nextX - initialCount, nextX - 1));
       },
     };
 
@@ -236,6 +240,21 @@ export class BlazeplotHomePage extends LitElement {
   private pushHomeOhlc(dataset: OhlcRingBuffer, x: number): void {
     const [open, high, low, close] = demoOhlcValues(x);
     dataset.push(x, open, high, low, close);
+  }
+
+  private homeOhlcYRange(xMin: number, xMax: number): { yMin: number; yMax: number } {
+    const start = Math.max(0, Math.floor(xMin));
+    const end = Math.max(start + 1, Math.ceil(xMax));
+    let min = Infinity;
+    let max = -Infinity;
+    for (let x = start; x <= end; x += 1) {
+      const [, high, low] = demoOhlcValues(x);
+      min = Math.min(min, low);
+      max = Math.max(max, high);
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return { yMin: -1.35, yMax: 1.35 };
+    const padding = Math.max(1, (max - min) * 0.12);
+    return { yMin: min - padding, yMax: max + padding };
   }
 
   private readonly handleHomeDataModeChange = (event: Event): void => {
