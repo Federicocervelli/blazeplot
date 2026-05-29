@@ -1855,15 +1855,20 @@ export class Chart implements ChartPluginContext {
 
   private drawOhlcSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport);
-    const maxCandles = Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_CANDLE);
+    const maxCandles = Math.min(
+      Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE),
+      Math.floor(this.barTriangleData.length / FLOATS_PER_OHLC_CANDLE),
+    );
+    const tickWidth = series.style.tickWidth ?? series.style.barWidth ?? 0.8;
+    const upStyle: SeriesStyle = { ...series.style, color: series.style.upColor ?? series.style.color };
+    const downStyle: SeriesStyle = { ...series.style, color: series.style.downColor ?? series.style.fillColor ?? series.style.color };
+
     for (let start = range.start; start < range.end;) {
-      const candleCount = series.copyOhlcRange(start, range.end, this.rawLineData, maxCandles, series.style.tickWidth ?? series.style.barWidth ?? 0.8, this.currentXOrigin);
+      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin);
       if (candleCount <= 0) break;
 
-      const vertexCount = candleCount * 6;
-      this.uploadRawLineData(vertexCount);
-      this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, projection);
-      this.recordDraw("raw", vertexCount);
+      this.drawOhlcLines(candleCount, tickWidth, "up", upStyle, projection);
+      this.drawOhlcLines(candleCount, tickWidth, "down", downStyle, projection);
       start += candleCount;
     }
   }
@@ -2071,6 +2076,47 @@ export class Chart implements ChartPluginContext {
       this.barTriangleData[dst + 3] = high;
     }
     return candleCount * 2;
+  }
+
+  private drawOhlcLines(
+    candleCount: number,
+    tickWidth: number,
+    direction: "up" | "down",
+    style: SeriesStyle,
+    projection: RenderProjection,
+  ): void {
+    const halfTick = tickWidth * 0.5;
+    let vertexCount = 0;
+    for (let i = 0; i < candleCount; i++) {
+      const src = i * FLOATS_PER_OHLC_TUPLE;
+      const x = this.rawLineData[src]!;
+      const open = this.rawLineData[src + 1]!;
+      const high = this.rawLineData[src + 2]!;
+      const low = this.rawLineData[src + 3]!;
+      const close = this.rawLineData[src + 4]!;
+      const isUp = close >= open;
+      if ((direction === "up") !== isUp) continue;
+
+      const dst = vertexCount * 2;
+      this.barTriangleData[dst] = x;
+      this.barTriangleData[dst + 1] = low;
+      this.barTriangleData[dst + 2] = x;
+      this.barTriangleData[dst + 3] = high;
+      this.barTriangleData[dst + 4] = x - halfTick;
+      this.barTriangleData[dst + 5] = open;
+      this.barTriangleData[dst + 6] = x;
+      this.barTriangleData[dst + 7] = open;
+      this.barTriangleData[dst + 8] = x;
+      this.barTriangleData[dst + 9] = close;
+      this.barTriangleData[dst + 10] = x + halfTick;
+      this.barTriangleData[dst + 11] = close;
+      vertexCount += 6;
+    }
+
+    if (vertexCount <= 0) return;
+    this.uploadBarTriangleData(vertexCount);
+    this.renderer.drawLines(this.barTriangleBuffer, vertexCount, style, projection);
+    this.recordDraw("raw", vertexCount);
   }
 
   private drawCandlestickBodies(
