@@ -63,7 +63,7 @@ jobs:
 
       - name: Cache Bun package downloads
         if: steps.cloudflare.outputs.configured == 'true'
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('bun.lock') }}
