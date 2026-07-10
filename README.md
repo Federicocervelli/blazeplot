@@ -17,7 +17,7 @@ Built on native WebGL2 with no rendering runtime dependency.
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core chart runtime is intentionally compact: the production build for `blazeplot` (without optional plugins) is about **151 KiB raw**. Optional plugins and helpers ship as separate subpath entries.
+The core chart runtime is intentionally compact: the production build for `blazeplot` (without optional plugins) is about **152 KiB raw**. Optional plugins and helpers ship as separate subpath entries.
 
 Latest manual headed comparison: 2026-05-22T15:20:02.565Z on AMD Ryzen 5 5600H with Radeon Graphics (12 logical CPUs), ANGLE (NVIDIA Corporation, NVIDIA GeForce RTX 3050 Laptop GPU/PCIe/SSE2, OpenGL 4.5.0), Chrome/148.0.7778.167. The harness prewarms each selected library before measured runs (317.4 ms total) and discards 1 setup warmup run(s) before each displayed row. Source: `benchmarks/latest.json`.
 
@@ -209,7 +209,7 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 58 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 59 KiB |
 | shared streaming data chunk | `dist/UniformRingBuffer-*.js` | 45 KiB |
 | shared OhlcDataset chunk | `dist/OhlcDataset-*.js` | 9 KiB |
 | shared AxisController chunk | `dist/AxisController-*.js` | 17 KiB |

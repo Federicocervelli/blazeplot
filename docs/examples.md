@@ -194,27 +194,65 @@ Bucket ranges should be sorted and non-overlapping for predictable picking, boun
 
 ## Financial OHLC and candlesticks
 
-Use `StaticOhlcDataset` for historical data or `OhlcRingBuffer` for live feeds.
+Use `StaticOhlcDataset` for historical bars or `OhlcRingBuffer` for live feeds. A market chart usually wants candles, volume, time axes, crosshair labels, and annotation overlays, not just raw OHLC sticks.
 
 ```ts
-import { Chart, StaticOhlcDataset } from "blazeplot";
+import { Chart, StaticDataset, StaticOhlcDataset } from "blazeplot";
+import { createLinkedCharts } from "blazeplot/linked";
+import { annotationsPlugin } from "blazeplot/plugins/annotations";
+import { crosshairPlugin } from "blazeplot/plugins/crosshair";
+import { interactionsPlugin } from "blazeplot/plugins/interactions";
+import { legendPlugin } from "blazeplot/plugins/legend";
 
-const dataset = new StaticOhlcDataset(
-  [0, 1, 2, 3],
-  [100, 104, 102, 108],
-  [106, 107, 110, 112],
-  [98, 101, 101, 105],
-  [104, 102, 108, 111],
-);
+const dayMs = 24 * 60 * 60 * 1000;
+const time = [1704067200000, 1704153600000, 1704240000000, 1704326400000];
+const open = [100, 104, 102, 108];
+const high = [106, 107, 110, 112];
+const low = [98, 101, 101, 105];
+const close = [104, 102, 108, 111];
+const volume = [42, 58, 76, 63];
 
-const chart = new Chart(element);
-chart.addOhlc({ dataset, name: "OHLC" });
-chart.addCandlestick({ dataset, name: "candles" });
-chart.fitToData();
-chart.start();
+const candles = new StaticOhlcDataset(time, open, high, low, close);
+const volumes = new StaticDataset(time, volume);
+const last = close.at(-1) ?? 0;
+
+const linked = createLinkedCharts(element, {
+  rows: 2,
+  sharedX: true,
+  spacing: 0,
+  panels: [
+    {
+      options: {
+        axes: { x: { position: "outside", scale: "time" }, y: { position: "outside" } },
+        grid: true,
+        plugins: [
+          interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true }),
+          crosshairPlugin({ axis: "xy", snap: "nearest-x", label: true }),
+          legendPlugin({ position: "top-left" }),
+          annotationsPlugin({ annotations: [{ type: "y-line", y: last, label: `last ${last}` }] }),
+        ],
+      },
+    },
+    {
+      options: {
+        axes: { x: { position: "outside", scale: "time" }, y: { position: "outside" } },
+        grid: true,
+        plugins: [interactionsPlugin(), crosshairPlugin({ axis: "xy", snap: "nearest-x", label: true })],
+      },
+    },
+  ],
+});
+
+const priceChart = linked.charts[0] as Chart | undefined;
+const volumeChart = linked.charts[1] as Chart | undefined;
+priceChart?.addCandlestick({ dataset: candles, name: "candles" }, { barWidth: dayMs * 0.7 });
+volumeChart?.addBar({ dataset: volumes, name: "volume" }, { baseline: 0, barWidth: dayMs * 0.7 });
+priceChart?.fitToData({ padding: { x: 0.02, y: 0.12 } });
+volumeChart?.fitToData({ includeZero: true, padding: { x: 0.02, y: 0.12 } });
+for (const chart of linked.charts) chart.start();
 ```
 
-:::chart financial OHLC and candlestick series
+:::chart financial Candlesticks, volume, crosshair, price line, and markers
 
 OHLC bounds use high/low values, while generic `getY()` returns close. For live OHLC streams, append through the returned series with `series.append({ x, open, high, low, close })`, append row batches like `series.append([{ x, open, high, low, close }])`, update a candle with `series.updateAt(index, { open, high, low, close })`, or update the active candle with `series.updateLast({ open, high, low, close })`; direct `dataset.push(...)` / `dataset.updateLast(...)` calls need a follow-up `series.markDirty()`. See [Data semantics](./data-semantics.md#ohlc-datasets).
 
