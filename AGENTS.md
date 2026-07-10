@@ -65,8 +65,8 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 
 ## Project Shape
 
-- Public top-level API exports live in `src/index.ts`; convenient chart creation lives in `src/createChart.ts`.
-- npm package output includes `dist/index.js` / `dist/index.d.ts` plus subpath entries for `core`, `interaction`, `render`, `react`, `linked`, `linked-core`, `data`, `export`, and built-in plugins under `plugins/*`. Keep `package.json#exports` and `vite.config.ts#build.lib.entry` in sync.
+- Public top-level API exports live in `src/index.ts`; charts are created with the `Chart` constructor.
+- npm package output includes `dist/index.js` / `dist/index.d.ts` plus subpath entries for `core`, `interaction`, `render`, `linked`, `linked-core`, `data`, `export`, and built-in plugins under `plugins/*`. Keep `package.json#exports` and `vite.config.ts#build.lib.entry` in sync.
 - Optional plugin subpaths currently include `legend`, `tooltip`, `interactions`, `annotations`, `selection`, `crosshair`, `navigator`, and `flamegraph`.
 - `src/core/` is the data engine and should not depend on UI, DOM, or GPU code.
 - `src/render/` owns the GPU abstraction, renderer orchestration, shader programs, WebGL2 resources, and native WebGL2 backend.

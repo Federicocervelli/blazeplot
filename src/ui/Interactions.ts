@@ -106,16 +106,13 @@ function clientToDataClamped(
   clientX: number,
   clientY: number,
   rect: DOMRect,
-  viewport: Viewport,
+  chart: ChartPluginContext,
 ): [number, number] | null {
   if (rect.width <= 0 || rect.height <= 0) return null;
-
-  const plotX = Math.max(0, Math.min(clientX - rect.left, rect.width));
-  const plotY = Math.max(0, Math.min(clientY - rect.top, rect.height));
-  return [
-    viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin),
-    viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin),
-  ];
+  return chart.clientToData(
+    rect.left + Math.max(0, Math.min(clientX - rect.left, rect.width)),
+    rect.top + Math.max(0, Math.min(clientY - rect.top, rect.height)),
+  );
 }
 
 function touchCenter(touches: TouchList): { x: number; y: number } | null {
@@ -185,6 +182,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       let drag: DragState | null = null;
       let touchGesture: TouchGestureState | null = null;
       let resetViewport: Viewport | null = null;
+      let resetRightViewport: Viewport | null = null;
       let lastTapTime = 0;
       let lastTapX = 0;
       let lastTapY = 0;
@@ -223,15 +221,27 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
 
       const captureResetViewport = (): void => {
         resetViewport ??= normalizeViewport(chart.getViewport());
+        resetRightViewport ??= normalizeViewport(chart.getViewport("right"));
       };
 
       const applyPanPolicy = (intent: PanIntent, panAxis: ZoomAxis, targetYAxis: SeriesYAxis = "left"): PanIntent | null => {
+        const camera = chart.getCamera(targetYAxis);
         const constrained = constrainPan(intent, panAxis);
-        return options.viewportPolicy?.beforePan?.(chart.getCamera(targetYAxis), constrained) ?? constrained;
+        const directed = {
+          dx: camera.xReversed ? -constrained.dx : constrained.dx,
+          dy: camera.yReversed ? -constrained.dy : constrained.dy,
+        };
+        return options.viewportPolicy?.beforePan?.(camera, directed) ?? directed;
       };
 
       const applyZoomPolicy = (intent: ZoomIntent, targetYAxis: SeriesYAxis = "left"): ZoomIntent | null => {
-        return options.viewportPolicy?.beforeZoom?.(chart.getCamera(targetYAxis), intent) ?? intent;
+        const camera = chart.getCamera(targetYAxis);
+        const directed = {
+          ...intent,
+          cx: camera.xReversed ? 1 - intent.cx : intent.cx,
+          cy: camera.yReversed ? 1 - intent.cy : intent.cy,
+        };
+        return options.viewportPolicy?.beforeZoom?.(camera, directed) ?? directed;
       };
 
       const hideSelection = (): void => {
@@ -345,15 +355,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           const dx = rect.width > 0 ? (drag.lastX - event.clientX) / rect.width : 0;
           const dy = rect.height > 0 ? (event.clientY - drag.lastY) / rect.height : 0;
           const intent = applyPanPolicy({ dx, dy }, drag.axis, drag.yAxis ?? "left");
-          if (intent) {
-            if (drag.yAxis && drag.axis === "y") {
-              const next = chart.getCamera(drag.yAxis).clone();
-              next.pan({ dx: 0, dy: intent.dy });
-              chart.setYViewport(drag.yAxis, { yMin: next.yMin, yMax: next.yMax });
-            } else {
-              chart.pan(intent);
-            }
-          }
+          if (intent) chart.pan(intent, drag.yAxis);
           drag.lastX = event.clientX;
           drag.lastY = event.clientY;
           return;
@@ -381,8 +383,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
 
         const current = chart.getViewport();
         const rect = canvas.getBoundingClientRect();
-        const start = clientToDataClamped(completed.startX, completed.startY, rect, current);
-        const end = clientToDataClamped(event.clientX, event.clientY, rect, current);
+        const start = clientToDataClamped(completed.startX, completed.startY, rect, chart);
+        const end = clientToDataClamped(event.clientX, event.clientY, rect, chart);
         if (!start || !end) return;
 
         const next = applySelectionAxis(current, start, end, resolveAxis(options.axis));
@@ -410,13 +412,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
             dy: rect.height > 0 && zoomAxis !== "x" ? (-event.deltaY * sensitivity) / rect.height : 0,
           }, zoomAxis, targetYAxis ?? "left");
           if (!panIntent || (Math.abs(panIntent.dx) < 1e-6 && Math.abs(panIntent.dy) < 1e-6)) return;
-          if (targetYAxis && zoomAxis === "y") {
-            const next = chart.getCamera(targetYAxis).clone();
-            next.pan({ dx: 0, dy: panIntent.dy });
-            chart.setYViewport(targetYAxis, { yMin: next.yMin, yMax: next.yMax });
-          } else {
-            chart.pan(panIntent);
-          }
+          chart.pan(panIntent, targetYAxis);
           return;
         }
 
@@ -431,13 +427,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         if (Math.abs(1 - factor) < 1e-4) return;
         const intent = applyZoomPolicy({ factor, cx, cy, axis: zoomAxis }, targetYAxis ?? "left");
         if (!intent) return;
-        if (targetYAxis && zoomAxis === "y") {
-          const next = chart.getCamera(targetYAxis).clone();
-          next.zoom(intent);
-          chart.setYViewport(targetYAxis, { yMin: next.yMin, yMax: next.yMax });
-        } else {
-          chart.zoom(intent);
-        }
+        chart.zoom(intent, targetYAxis);
       };
 
       const onCanvasWheel = (event: WheelEvent): void => {
@@ -462,6 +452,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const resetToCapturedViewport = (): void => {
         const target = options.resetViewport?.() ?? resetViewport ?? normalizeViewport(chart.getViewport());
         chart.setViewport(target);
+        if (resetRightViewport) chart.setYViewport("right", resetRightViewport);
         if (options.resumeFollowOnReset !== false) chart.resumeLatestXFollow();
       };
 
@@ -482,25 +473,13 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const applyTouchPan = (axis: ZoomAxis, yAxis: SeriesYAxis | undefined, dx: number, dy: number): void => {
         const intent = applyPanPolicy({ dx, dy }, axis, yAxis ?? "left");
         if (!intent) return;
-        if (yAxis && axis === "y") {
-          const next = chart.getCamera(yAxis).clone();
-          next.pan({ dx: 0, dy: intent.dy });
-          chart.setYViewport(yAxis, { yMin: next.yMin, yMax: next.yMax });
-        } else {
-          chart.pan(intent);
-        }
+        chart.pan(intent, yAxis);
       };
 
       const applyTouchZoom = (axis: ZoomAxis, yAxis: SeriesYAxis | undefined, factor: number, cx: number, cy: number): void => {
         const intent = applyZoomPolicy({ factor, cx, cy, axis }, yAxis ?? "left");
         if (!intent) return;
-        if (yAxis && axis === "y") {
-          const next = chart.getCamera(yAxis).clone();
-          next.zoom(intent);
-          chart.setYViewport(yAxis, { yMin: next.yMin, yMax: next.yMax });
-        } else {
-          chart.zoom(intent);
-        }
+        chart.zoom(intent, yAxis);
       };
 
       const onTouchStart = (event: TouchEvent): void => {

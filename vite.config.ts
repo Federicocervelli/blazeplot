@@ -31,7 +31,6 @@ export default defineConfig(({ command, mode }) => {
           core: resolve(__dirname, "src/core/index.ts"),
           interaction: resolve(__dirname, "src/interaction/index.ts"),
           render: resolve(__dirname, "src/render/index.ts"),
-          react: resolve(__dirname, "src/react.ts"),
           linked: resolve(__dirname, "src/linked.ts"),
           "linked-core": resolve(__dirname, "src/linked-core.ts"),
           data: resolve(__dirname, "src/data.ts"),
@@ -47,9 +46,6 @@ export default defineConfig(({ command, mode }) => {
         },
         formats: ["es"],
         fileName: (_format, entryName) => `${entryName}.js`,
-      },
-      rollupOptions: {
-        external: ["react"],
       },
     },
     server: {

@@ -6,15 +6,15 @@ This page is generated from the built package. Use it as an index of import path
 
 | Task | Start here |
 |---|---|
-| Create and render a chart | `createChart(...)` for common static charts; `Chart`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` for manual lifecycle control |
-| Static X/Y arrays or object rows | `createChart(...)`, `StaticDataset`, `StaticDataset.fromObjects(...)` |
+| Create and render a chart | `new Chart(...)`, `chart.addLine(...)`, `chart.fitToData()`, and `chart.start()` |
+| Static X/Y arrays or object rows | `StaticDataset`, `StaticDataset.fromObjects(...)` |
 | Live irregular data | `chart.addLine({ capacity })`, `RingBuffer`, [Live data](./live-data.md) |
 | Live fixed-rate data | `chart.addLine({ capacity, xStep })`, `UniformRingBuffer`, [Live data](./live-data.md) |
 | OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |
 | Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |
 | Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |
 | Tooltips, legends, annotations, selection, flame graphs | `blazeplot/plugins/*` subpaths |
-| React | `blazeplot/react` and `BlazeChart` |
+| React | Create and dispose `Chart` in an effect |
 | Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
 
@@ -28,7 +28,6 @@ Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./example
 | `blazeplot/core` | Data structures, datasets, LOD helpers, and series storage without chart UI. |
 | `blazeplot/interaction` | Camera, axis, pan/zoom intent, and viewport policy helpers without chart UI. |
 | `blazeplot/render` | Renderer and WebGL backend primitives without chart UI. |
-| `blazeplot/react` | React wrapper component. |
 | `blazeplot/linked` | Linked chart layout helpers with tooltip/crosshair sync factories. |
 | `blazeplot/linked-core` | Lean linked chart layout helpers without tooltip/crosshair sync imports. |
 | `blazeplot/data` | Pure chart data export and transform helpers. |
@@ -50,11 +49,10 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 2 KiB |
+| root entry | `dist/index.js` | 1 KiB |
 | core subpath entry | `dist/core.js` | 1 KiB |
 | interaction subpath entry | `dist/interaction.js` | 0 KiB |
 | render subpath entry | `dist/render.js` | 0 KiB |
-| react entry | `dist/react.js` | 1 KiB |
 | linked entry | `dist/linked.js` | 0 KiB |
 | linked core entry | `dist/linked-*.js` | 0 KiB |
 | data entry | `dist/data.js` | 5 KiB |
@@ -67,10 +65,10 @@ Generated from `dist/` after the package build.
 | tooltip plugin entry | `dist/plugins/tooltip.js` | 0 KiB |
 | crosshair plugin entry | `dist/plugins/crosshair.js` | 0 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 58 KiB |
-| shared streaming data chunk | `dist/UniformRingBuffer-*.js` | 44 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 59 KiB |
+| shared streaming data chunk | `dist/UniformRingBuffer-*.js` | 45 KiB |
 | shared OhlcDataset chunk | `dist/OhlcDataset-*.js` | 9 KiB |
-| shared AxisController chunk | `dist/AxisController-*.js` | 14 KiB |
+| shared AxisController chunk | `dist/AxisController-*.js` | 17 KiB |
 | shared WebGL2Backend chunk | `dist/WebGL2Backend-*.js` | 22 KiB |
 | shared LinkedChartsCore chunk | `dist/LinkedChartsCore-*.js` | 2 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 4 KiB |
@@ -132,15 +130,6 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartTheme` | interface | `./ui/theme` | Partial chart theme supplied by callers. |
 | `ChartTitleConfig` | interface | `./ui/Chart` | Chart title or subtitle text and alignment. |
 | `ChartViewportChangeEvent` | interface | `./ui/Chart` | Emitted after the visible domain changes. |
-| `createChart` | function | `./createChart` | Create a chart from a compact declarative config. This helper is intentionally thin: it returns the underlying `Chart` instance, so advanced code can still use the full imperative API after setup. |
-| `CreateChartArraySeries` | interface | `./createChart` | Declarative series backed by parallel X and Y arrays. |
-| `CreateChartDatasetSeries` | interface | `./createChart` | Declarative series backed by an existing BlazePlot dataset. |
-| `CreateChartHistogramSeries` | type | `./createChart` | Declarative histogram series backed by raw one-dimensional values. |
-| `CreateChartObjectSeries` | interface | `./createChart` | Declarative series backed by object rows and field selectors. |
-| `CreateChartOptions` | interface | `./createChart` | High-level chart configuration for common first-render cases. Use `createChart(...)` when you have static arrays, object rows, or a simple streaming buffer and want BlazePlot to create the chart, add series, fit the initial viewport, and start rendering in one call. |
-| `CreateChartSeries` | type | `./createChart` | Any series shape accepted by `createChart`. |
-| `CreateChartSeriesType` | type | `./createChart` | Series modes supported by the declarative `createChart` helper. |
-| `CreateChartStreamingSeries` | interface | `./createChart` | Declarative empty streaming series with an internally-created ring buffer. |
 | `CssColor` | type | `./ui/theme` | CSS color string accepted by theme options. |
 | `CustomAxisScale` | interface | `./interaction/AxisController` | Custom scale hooks for tick generation, formatting, and coordinate mapping. |
 | `Dataset` | interface | `./core/types` | Sorted XY data source consumed by chart series. |

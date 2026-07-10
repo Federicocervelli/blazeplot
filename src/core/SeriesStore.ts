@@ -80,6 +80,7 @@ function isOhlcUpdateData(data: SeriesUpdateData): data is SeriesOhlcUpdateData 
 const NEAREST_POINT_LEAF_SIZE = 64;
 const SCATTER_INTERVAL_LEAF_SIZE = 64;
 const SCATTER_BUCKET_RANGE_PRUNE_SIZE = 1024;
+const identity = (value: number): number => value;
 
 /** Single numeric sample value or a batch of values. */
 export type SeriesScalarOrArray = number | ArrayLike<number>;
@@ -567,23 +568,39 @@ export class SeriesStore {
     let yMin = Infinity;
     let yMax = -Infinity;
     const ohlc = isOhlcDataset(this.dataset) ? this.dataset : null;
-
     const rangeMinMax = !ohlc && hasRangeMinMaxY(this.dataset) ? this.dataset : null;
-    for (let i = start; i < end; i++) {
-      const x = this.dataset.getX(i);
-      const y = this.dataset.getY(i);
-      if (this.isGap(i, y)) continue;
-      const range = rangeMinMax?.rangeMinMaxY(i, i + 1);
-      const low = ohlc ? ohlc.getLow(i) : range?.minY ?? y;
-      const high = ohlc ? ohlc.getHigh(i) : range?.maxY ?? low;
-      if (!Number.isFinite(x) || !Number.isFinite(low) || !Number.isFinite(high)) continue;
-      const xRange = this.xRangeAt(i);
-      const sampleXMin = xRange && Number.isFinite(xRange.xStart) ? xRange.xStart : x;
-      const sampleXMax = xRange && Number.isFinite(xRange.xEnd) ? xRange.xEnd : x;
-      xMin = Math.min(xMin, sampleXMin, sampleXMax);
-      xMax = Math.max(xMax, sampleXMin, sampleXMax);
-      yMin = Math.min(yMin, low, high);
-      yMax = Math.max(yMax, low, high);
+
+    if (rangeMinMax && !hasXRange(this.dataset) && (!hasExplicitGaps(this.dataset) || rangeMinMax.rangeMinMaxExcludesGaps === true)) {
+      let first = start;
+      let last = end - 1;
+      while (first < end && this.isGap(first)) first++;
+      while (last >= first && this.isGap(last)) last--;
+      const range = first <= last ? rangeMinMax.rangeMinMaxY(first, last + 1) : null;
+      if (range) {
+        xMin = this.dataset.getX(first);
+        xMax = this.dataset.getX(last);
+        yMin = range.minY;
+        yMax = range.maxY;
+      }
+    }
+
+    if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+      for (let i = start; i < end; i++) {
+        const x = this.dataset.getX(i);
+        const y = this.dataset.getY(i);
+        if (this.isGap(i, y)) continue;
+        const range = rangeMinMax?.rangeMinMaxY(i, i + 1);
+        const low = ohlc ? ohlc.getLow(i) : range?.minY ?? y;
+        const high = ohlc ? ohlc.getHigh(i) : range?.maxY ?? low;
+        if (!Number.isFinite(x) || !Number.isFinite(low) || !Number.isFinite(high)) continue;
+        const xRange = this.xRangeAt(i);
+        const sampleXMin = xRange && Number.isFinite(xRange.xStart) ? xRange.xStart : x;
+        const sampleXMax = xRange && Number.isFinite(xRange.xEnd) ? xRange.xEnd : x;
+        xMin = Math.min(xMin, sampleXMin, sampleXMax);
+        xMax = Math.max(xMax, sampleXMin, sampleXMax);
+        yMin = Math.min(yMin, low, high);
+        yMax = Math.max(yMax, low, high);
+      }
     }
 
     if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || !Number.isFinite(yMin) || !Number.isFinite(yMax)) return null;
@@ -630,10 +647,14 @@ export class SeriesStore {
     plotWidth: number,
     plotHeight: number,
     maxDistancePx: number = Infinity,
+    xTransform: (value: number) => number = identity,
+    yTransform: (value: number) => number = identity,
   ): SeriesSample | null {
     const range = this.visibleIndexRange(viewport);
-    const xRange = viewport.xMax - viewport.xMin;
-    const yRange = viewport.yMax - viewport.yMin;
+    const transformedX = xTransform(x);
+    const transformedY = yTransform(y);
+    const xRange = xTransform(viewport.xMax) - xTransform(viewport.xMin);
+    const yRange = yTransform(viewport.yMax) - yTransform(viewport.yMin);
     if (range.start >= range.end || plotWidth <= 0 || plotHeight <= 0 || xRange <= 0 || yRange <= 0) return null;
 
     const xScale = plotWidth / xRange;
@@ -648,8 +669,8 @@ export class SeriesStore {
     const visitSample = (index: number): void => {
       const sampleY = this.dataset.getY(index);
       if (this.isGap(index, sampleY)) return;
-      const dx = (this.dataset.getX(index) - x) * xScale;
-      const dy = (sampleY - y) * yScale;
+      const dx = (xTransform(this.dataset.getX(index)) - transformedX) * xScale;
+      const dy = (yTransform(sampleY) - transformedY) * yScale;
       const d2 = dx * dx + dy * dy;
       if (d2 < bestDistanceSq || (bestIndex < 0 && d2 <= bestDistanceSq)) {
         bestDistanceSq = d2;
@@ -664,7 +685,7 @@ export class SeriesStore {
     if (nearest + 1 < range.end) visitSample(nearest + 1);
 
     if (this.hasPointIntervalBounds() && range.end - range.start > NEAREST_POINT_LEAF_SIZE) {
-      const rootBound = this.pointIntervalDistanceSq(range.start, range.end, x, y, xScale, yScale);
+      const rootBound = this.pointIntervalDistanceSq(range.start, range.end, transformedX, transformedY, xScale, yScale, xTransform, yTransform);
       const stack: PointSearchInterval[] = rootBound <= bestDistanceSq
         ? [{ start: range.start, end: range.end, lowerBoundSq: rootBound }]
         : [];
@@ -680,8 +701,8 @@ export class SeriesStore {
         }
 
         const mid = interval.start + (length >> 1);
-        const leftBound = this.pointIntervalDistanceSq(interval.start, mid, x, y, xScale, yScale);
-        const rightBound = this.pointIntervalDistanceSq(mid, interval.end, x, y, xScale, yScale);
+        const leftBound = this.pointIntervalDistanceSq(interval.start, mid, transformedX, transformedY, xScale, yScale, xTransform, yTransform);
+        const rightBound = this.pointIntervalDistanceSq(mid, interval.end, transformedX, transformedY, xScale, yScale, xTransform, yTransform);
         const left: PointSearchInterval = { start: interval.start, end: mid, lowerBoundSq: leftBound };
         const right: PointSearchInterval = { start: mid, end: interval.end, lowerBoundSq: rightBound };
 
@@ -697,8 +718,8 @@ export class SeriesStore {
       let left = Math.min(lower - 1, range.end - 1);
       let right = Math.max(lower, range.start);
       while (left >= range.start || right < range.end) {
-        const leftDxSq = left >= range.start ? this.pointXDistanceSq(left, x, xScale) : Infinity;
-        const rightDxSq = right < range.end ? this.pointXDistanceSq(right, x, xScale) : Infinity;
+        const leftDxSq = left >= range.start ? this.pointXDistanceSq(left, transformedX, xScale, xTransform) : Infinity;
+        const rightDxSq = right < range.end ? this.pointXDistanceSq(right, transformedX, xScale, xTransform) : Infinity;
         if (leftDxSq > bestDistanceSq && rightDxSq > bestDistanceSq) break;
 
         if (leftDxSq <= rightDxSq) {
@@ -873,8 +894,8 @@ export class SeriesStore {
     return !Number.isFinite(value) || (hasExplicitGaps(this.dataset) && this.dataset.isGap(index));
   }
 
-  private pointXDistanceSq(index: number, x: number, xScale: number): number {
-    const dx = (this.dataset.getX(index) - x) * xScale;
+  private pointXDistanceSq(index: number, x: number, xScale: number, xTransform: (value: number) => number): number {
+    const dx = (xTransform(this.dataset.getX(index)) - x) * xScale;
     return dx * dx;
   }
 
@@ -885,17 +906,20 @@ export class SeriesStore {
     y: number,
     xScale: number,
     yScale: number,
+    xTransform: (value: number) => number,
+    yTransform: (value: number) => number,
   ): number {
     if (end <= start) return Infinity;
 
-    const x0 = this.dataset.getX(start);
-    const x1 = this.dataset.getX(end - 1);
+    const x0 = xTransform(this.dataset.getX(start));
+    const x1 = xTransform(this.dataset.getX(end - 1));
     const dx = x < x0 ? (x0 - x) * xScale : x > x1 ? (x - x1) * xScale : 0;
 
     const range = this.pointIntervalMinMaxY(start, end);
     if (!range) return Infinity;
-
-    const dy = y < range.minY ? (range.minY - y) * yScale : y > range.maxY ? (y - range.maxY) * yScale : 0;
+    const minY = yTransform(range.minY);
+    const maxY = yTransform(range.maxY);
+    const dy = y < minY ? (minY - y) * yScale : y > maxY ? (y - maxY) * yScale : 0;
     return dx * dx + dy * dy;
   }
 

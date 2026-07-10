@@ -13,13 +13,13 @@ bun add blazeplot
 
 ## Quick start
 
-Create a sized container and pass simple array data to `createChart(...)`. The helper creates the chart, adds the series, fits the camera, and starts the render loop.
+Create a sized container, construct `Chart`, add a dataset-backed series, fit the camera, and start rendering.
 
 ```html
 <div id="chart" style="width:100%;height:400px"></div>
 
 <script type="module">
-  import { createChart } from "blazeplot";
+  import { Chart, StaticDataset } from "blazeplot";
 
   const x = Array.from({ length: 1000 }, (_, i) => i);
   const y = x.map((value) => Math.sin(value * 0.02));
@@ -27,15 +27,14 @@ Create a sized container and pass simple array data to `createChart(...)`. The h
   const element = document.getElementById("chart");
   if (!element) throw new Error("Missing chart element");
 
-  const chart = createChart(element, {
-    series: [{ type: "line", x, y, name: "sine" }],
-  });
+  const chart = new Chart(element);
+  chart.addLine({ dataset: new StaticDataset(x, y), name: "sine" });
+  chart.fitToData();
+  chart.start();
 </script>
 ```
 
 Call `chart.dispose()` when the chart is removed from the page.
-
-For streaming data, custom datasets, or manual lifecycle control, use the lower-level `Chart` constructor with `StaticDataset`, `RingBuffer`, or another dataset type.
 
 If the chart appears blank, check that the host element has a non-zero height, WebGL2 is available, and the viewport has been initialized. See [Troubleshooting](./troubleshooting.md) for the full checklist.
 
@@ -67,7 +66,7 @@ For a maintainer-oriented page list, see [Documentation map](./README.md).
 | Live viewport helpers | `followX` for rolling windows and `autoFitY` for visible-range Y fitting. |
 | Plugins | Legend, tooltip, crosshair, annotations, selection, and navigator plugins. See [Built-in plugins](./built-in-plugins.md). |
 | Layout and themes | Theme tokens, inside/outside axes, titles, and plugin layout reservations. See [Theming and layout](./theming-and-layout.md). |
-| React | `blazeplot/react` for the `BlazeChart` React component. |
+| React | Create and dispose the same `Chart` API in an effect. |
 | Exports | Screenshot, clipboard, and CSV/JSON data helpers. |
 
 ## Main tradeoffs

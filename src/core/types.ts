@@ -76,6 +76,8 @@ export interface XRangeDataset extends Dataset {
 
 /** Dataset that can answer min/max Y queries for index ranges. */
 export interface RangeMinMaxDataset extends Dataset {
+  /** Set when range queries exclude samples marked by `isGap()`. */
+  readonly rangeMinMaxExcludesGaps?: boolean;
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null;
 }
 

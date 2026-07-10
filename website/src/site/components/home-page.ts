@@ -7,7 +7,7 @@ import { tooltipPlugin } from "../../../../src/plugins/tooltip.ts";
 import { renderMarkdown } from "../../markdown.ts";
 import overviewMarkdown from "../../../../docs/overview.md?raw";
 import logoUrl from "../../blazeplot-dark-cropped.png";
-import { demoOhlcValues, demoSignal } from "../charts/signals.ts";
+import { demoOhlcValues, demoSignal, lineData } from "../charts/signals.ts";
 import { showChartFallback } from "../charts/dom.ts";
 import { siteStyles } from "../styles.ts";
 import type { HomeChartMode, HomeDataMode } from "../shared.ts";
@@ -193,12 +193,7 @@ export class BlazeplotHomePage extends LitElement {
       return { append: (x) => series.append({ x, y: demoSignal(x, 0) }) };
     }
 
-    const x = new Float32Array(count);
-    const y = new Float32Array(count);
-    for (let i = 0; i < count; i += 1) {
-      x[i] = i;
-      y[i] = demoSignal(i, 0);
-    }
+    const { x, y } = lineData(count);
     chart.addLine({ dataset: new StaticDataset(x, y), name: "line" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
     return null;
   }
@@ -213,12 +208,7 @@ export class BlazeplotHomePage extends LitElement {
     }
 
     for (let series = 0; series < colors.length; series += 1) {
-      const x = new Float32Array(count);
-      const y = new Float32Array(count);
-      for (let i = 0; i < count; i += 1) {
-        x[i] = i;
-        y[i] = demoSignal(i, series);
-      }
+      const { x, y } = lineData(count, series);
       chart.addLine({ dataset: new StaticDataset(x, y), name: `series ${series + 1}` }, { color: colors[series]!, lineWidth: 1.5 });
     }
     return null;

@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
-import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { arch, cpus, platform, release, tmpdir, totalmem } from "node:os";
 import { basename, join, resolve } from "node:path";
 import officialConfig from "./benchmark-config.json";
+import { CdpClient, attachConsoleLogging, createTarget, evaluate, readNonNegativeInteger as readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, throwIfPageErrored, waitForHttp } from "./browser-harness.js";
 
 interface Options {
   scenarios: string[];
@@ -22,19 +22,6 @@ interface Options {
   warmupMs?: number;
   headless: boolean;
   keepBrowser: boolean;
-}
-
-interface CdpResponse {
-  id?: number;
-  method?: string;
-  params?: unknown;
-  result?: unknown;
-  error?: { message: string; data?: string };
-}
-
-interface RemoteObjectResult {
-  result?: { value?: unknown; description?: string; subtype?: string };
-  exceptionDetails?: { text?: string; exception?: { description?: string } };
 }
 
 interface CompareSnapshot {
@@ -335,14 +322,6 @@ function printHelpAndExit(): never {
 
 function readCsv(raw: string): string[] {
   return raw.split(",").map((value) => value.trim()).filter(Boolean);
-}
-
-function readPositiveInteger(flag: string, raw: string): number {
-  const value = Number(raw);
-  if (!Number.isFinite(value) || value < 0 || Math.floor(value) !== value) {
-    throw new Error(`${flag} expects a non-negative integer, got ${raw}`);
-  }
-  return value;
 }
 
 async function createReport(options: Options, chromePath: string, browser: BrowserVersion, pageResult: PageBenchmarkResult): Promise<CompareReport> {
@@ -674,18 +653,6 @@ function firstFrameDetails(result: LibraryResult): string {
   return details.join(", ") || "—";
 }
 
-function startVite(port: number): Bun.Subprocess {
-  const proc = Bun.spawn({
-    cmd: ["bunx", "vite", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
-    stdout: "pipe",
-    stderr: "pipe",
-    env: { ...process.env, BLAZEPLOT_BENCH: "1" },
-  });
-  drain(proc.stdout, "vite");
-  drain(proc.stderr, "vite");
-  return proc;
-}
-
 function launchChrome(chromePath: string, userDataDir: string, opts: Options): Bun.Subprocess {
   const cmd = [
     chromePath,
@@ -706,36 +673,7 @@ function launchChrome(chromePath: string, userDataDir: string, opts: Options): B
     "about:blank",
   ];
   if (opts.headless) cmd.splice(1, 0, "--headless=new");
-  const proc = Bun.spawn({ cmd, stdout: "pipe", stderr: "pipe" });
-  drain(proc.stdout, "chrome");
-  drain(proc.stderr, "chrome");
-  return proc;
-}
-
-async function waitForHttp(url: string, timeoutMs: number): Promise<void> {
-  const startedAt = Date.now();
-  let lastError: unknown = null;
-  while (Date.now() - startedAt < timeoutMs) {
-    try {
-      const response = await fetch(url);
-      if (response.status < 500) return;
-      lastError = new Error(`HTTP ${response.status}`);
-    } catch (error) {
-      lastError = error;
-    }
-    await sleep(250);
-  }
-  throw new Error(`Timed out waiting for ${url}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
-}
-
-async function createTarget(debugPort: number, url: string): Promise<{ webSocketDebuggerUrl: string }> {
-  const endpoint = `http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(url)}`;
-  let response = await fetch(endpoint, { method: "PUT" });
-  if (!response.ok) response = await fetch(endpoint);
-  if (!response.ok) throw new Error(`Could not create Chrome target: HTTP ${response.status}`);
-  const payload = await response.json() as { webSocketDebuggerUrl?: string };
-  if (!payload.webSocketDebuggerUrl) throw new Error("Chrome target response did not include webSocketDebuggerUrl");
-  return { webSocketDebuggerUrl: payload.webSocketDebuggerUrl };
+  return spawnChrome(cmd);
 }
 
 async function waitForBenchmarkState(cdp: CdpClient, desiredState: CompareSnapshot["state"], timeoutMs: number): Promise<void> {
@@ -748,93 +686,6 @@ async function waitForBenchmarkState(cdp: CdpClient, desiredState: CompareSnapsh
   }
   const snapshot = await evaluate(cdp, "window.__blazeplotCompare?.snapshot?.() ?? null", true).catch(() => null);
   throw new Error(`Timed out waiting for comparison benchmark state '${desiredState}'. Last snapshot: ${JSON.stringify(snapshot)}`);
-}
-
-async function evaluate(cdp: CdpClient, expression: string, awaitPromise: boolean): Promise<unknown> {
-  const response = await cdp.send("Runtime.evaluate", {
-    expression,
-    awaitPromise,
-    returnByValue: true,
-    userGesture: false,
-  }) as RemoteObjectResult;
-  if (response.exceptionDetails) {
-    throw new Error(response.exceptionDetails.exception?.description ?? response.exceptionDetails.text ?? "Runtime.evaluate failed");
-  }
-  return response.result?.value;
-}
-
-function attachConsoleLogging(cdp: CdpClient, pageErrors: string[]): void {
-  cdp.on("Runtime.consoleAPICalled", (params) => {
-    const event = params as { type?: string; args?: Array<{ value?: unknown; description?: string }> };
-    const text = event.args?.map((arg) => String(arg.value ?? arg.description ?? "")).join(" ") ?? "";
-    if (text) process.stderr.write(`[page:${event.type ?? "log"}] ${text}\n`);
-  });
-  cdp.on("Runtime.exceptionThrown", (params) => {
-    const text = JSON.stringify(params);
-    pageErrors.push(text);
-    process.stderr.write(`[page:exception] ${text}\n`);
-  });
-}
-
-function throwIfPageErrored(pageErrors: readonly string[]): void {
-  if (pageErrors.length === 0) return;
-  throw new Error(`Benchmark page threw ${pageErrors.length} exception(s). First exception: ${pageErrors[0]}`);
-}
-
-function resolveChrome(explicit: string | undefined): string {
-  const envPath = explicit ?? process.env.BLAZEPLOT_BENCH_CHROME ?? process.env.CHROME_PATH;
-  if (envPath) {
-    if (!existsSync(envPath)) throw new Error(`Chrome executable does not exist: ${envPath}`);
-    return envPath;
-  }
-
-  const candidates = [
-    "google-chrome-stable",
-    "google-chrome",
-    "chromium-browser",
-    "chromium",
-    "chrome",
-    "brave-browser",
-    "brave-browser-stable",
-    "brave",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate.startsWith("/") && existsSync(candidate)) return candidate;
-    if (!candidate.startsWith("/")) {
-      const found = which(candidate);
-      if (found) return found;
-    }
-  }
-
-  throw new Error("Could not find Chrome/Chromium/Brave. Pass --chrome <path> or set BLAZEPLOT_BENCH_CHROME.");
-}
-
-function which(command: string): string | null {
-  const proc = Bun.spawnSync({ cmd: ["which", command], stdout: "pipe", stderr: "ignore" });
-  if (proc.exitCode !== 0) return null;
-  const path = proc.stdout.toString().trim();
-  return path.length > 0 ? path : null;
-}
-
-function drain(stream: ReadableStream<Uint8Array> | null, label: string): void {
-  if (!stream) return;
-  void (async () => {
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      const text = decoder.decode(value, { stream: true }).trimEnd();
-      if (text) process.stderr.write(`[${label}] ${text}\n`);
-    }
-  })();
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function fixed(value: number, digits: number): string {
@@ -858,67 +709,6 @@ function formatNullableBytes(value: number | null | undefined): string {
 
 function escapeMd(value: string | number): string {
   return String(value).replaceAll("|", "\\|");
-}
-
-class CdpClient {
-  private nextId = 1;
-  private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (reason: unknown) => void }>();
-  private readonly handlers = new Map<string, Array<(params: unknown) => void>>();
-
-  private constructor(private readonly socket: WebSocket) {
-    socket.addEventListener("message", (event) => this.handleMessage(event.data));
-    socket.addEventListener("close", () => {
-      for (const { reject } of this.pending.values()) reject(new Error("CDP socket closed"));
-      this.pending.clear();
-    });
-  }
-
-  static connect(url: string): Promise<CdpClient> {
-    const socket = new WebSocket(url);
-    return new Promise((resolvePromise, reject) => {
-      socket.addEventListener("open", () => resolvePromise(new CdpClient(socket)), { once: true });
-      socket.addEventListener("error", () => reject(new Error(`Could not connect to CDP websocket ${url}`)), { once: true });
-    });
-  }
-
-  send(method: string, params?: Record<string, unknown>): Promise<unknown> {
-    const id = this.nextId++;
-    const payload = params === undefined ? { id, method } : { id, method, params };
-    return new Promise((resolvePromise, reject) => {
-      this.pending.set(id, { resolve: resolvePromise, reject });
-      this.socket.send(JSON.stringify(payload));
-    });
-  }
-
-  on(method: string, handler: (params: unknown) => void): void {
-    const handlers = this.handlers.get(method) ?? [];
-    handlers.push(handler);
-    this.handlers.set(method, handlers);
-  }
-
-  close(): void {
-    this.socket.close();
-  }
-
-  private handleMessage(data: unknown): void {
-    const text = typeof data === "string" ? data : new TextDecoder().decode(data as ArrayBuffer);
-    const message = JSON.parse(text) as CdpResponse;
-    if (message.id !== undefined) {
-      const pending = this.pending.get(message.id);
-      if (!pending) return;
-      this.pending.delete(message.id);
-      if (message.error) {
-        pending.reject(new Error(`${message.error.message}${message.error.data ? `: ${message.error.data}` : ""}`));
-      } else {
-        pending.resolve(message.result);
-      }
-      return;
-    }
-
-    if (message.method) {
-      for (const handler of this.handlers.get(message.method) ?? []) handler(message.params);
-    }
-  }
 }
 
 void main();

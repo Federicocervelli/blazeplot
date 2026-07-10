@@ -91,4 +91,4 @@ export function ClientOnlyChart({ x, y }: { x: number[]; y: number[] }) {
 
 ## Dependencies
 
-The core renderer uses native WebGL2 directly and has no runtime rendering dependency. React is optional and is only needed when importing `blazeplot/react`.
+The renderer uses native WebGL2 directly and has no runtime rendering dependency.

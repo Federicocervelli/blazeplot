@@ -1,7 +1,5 @@
 export { Chart } from "./ui/Chart.js";
 export type { AxisConfig, AxisTitleConfig, ChartAccessibilityOptions, ChartAutoFitYOptions, ChartBackendFactory, ChartBackendFactoryContext, ChartFollowXOptions, ChartFitToDataOptions, ChartFitToDataPadding, ChartFrameStats, ChartKeyboardOptions, ChartLayoutReservation, ChartOptions, ChartPointerEventState, ChartPointerEventType, ChartScreenshotOptions, ChartScreenshotPreset, ChartSelectEvent, ChartSeriesClickEvent, ChartTitleConfig, ChartViewportChangeEvent, TextOverlayConfig, TypedSeriesConfig, HistogramSeriesConfig, PrecomputedHistogramSeriesConfig, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPickOptions, ChartPlugin, ChartPluginContext, ChartPluginHandle, ChartSeriesState } from "./ui/Chart.js";
-export { createChart } from "./createChart.js";
-export type { CreateChartArraySeries, CreateChartDatasetSeries, CreateChartHistogramSeries, CreateChartObjectSeries, CreateChartOptions, CreateChartSeries, CreateChartSeriesType, CreateChartStreamingSeries } from "./createChart.js";
 export { DEFAULT_CHART_THEME } from "./ui/theme.js";
 export type { ChartTheme, ResolvedChartTheme, RgbaColor, CssColor, ThemeColor } from "./ui/theme.js";
 export type { AxisPosition } from "./ui/ChartLayout.js";
