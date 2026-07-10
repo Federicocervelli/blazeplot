@@ -127,7 +127,6 @@ function writeSnippetProject(temp: string, snippets: readonly Snippet[]): void {
         "blazeplot/core": [join(root, "src/core/index.ts")],
         "blazeplot/interaction": [join(root, "src/interaction/index.ts")],
         "blazeplot/render": [join(root, "src/render/index.ts")],
-        "blazeplot/react": [join(root, "src/react.tsx")],
         "blazeplot/linked": [join(root, "src/linked.ts")],
         "blazeplot/linked-core": [join(root, "src/linked-core.ts")],
         "blazeplot/data": [join(root, "src/data.ts")],

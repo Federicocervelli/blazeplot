@@ -142,6 +142,36 @@ describe("AxisController", () => {
     expect(() => wideLinearAxis.validateDomain("x")).not.toThrow();
   });
 
+  it("maps logarithmic and reversed axes through clip space", () => {
+    const camera = new Camera2D();
+    camera.setViewport({ xMin: 1, xMax: 100, yMin: -10, yMax: 10 });
+    camera.setReversed({ x: true });
+    const axis = new AxisController(camera, {
+      x: { scale: "log" },
+      y: { scale: "symlog", symlogConstant: 1 },
+    });
+
+    expect(axis.valueToClip(1, "x")).toBeCloseTo(1);
+    expect(axis.valueToClip(10, "x")).toBeCloseTo(0);
+    expect(axis.valueToClip(100, "x")).toBeCloseTo(-1);
+    expect(axis.clipToValue(0, "x")).toBeCloseTo(10);
+    expect(axis.clipToValue(axis.valueToClip(-4, "y"), "y")).toBeCloseTo(-4);
+  });
+
+  it("pans and zooms nonlinear domains in scale space", () => {
+    const camera = new Camera2D();
+    camera.setViewport({ xMin: 1, xMax: 100, yMin: 1, yMax: 100 });
+    const axis = new AxisController(camera, { x: { scale: "log" }, y: { scale: "log" } });
+
+    axis.pan({ dx: 0.5, dy: 0 });
+    expect(camera.xMin).toBeCloseTo(10);
+    expect(camera.xMax).toBeCloseTo(1000);
+
+    axis.zoom({ factor: 2, cx: 0.5, cy: 0.5, axis: "y" });
+    expect(camera.yMin).toBeCloseTo(Math.sqrt(10));
+    expect(camera.yMax).toBeCloseTo(10 * Math.sqrt(10));
+  });
+
   it("formats categorical ticks from labels", () => {
     const camera = new Camera2D();
     camera.setViewport({ xMin: 0, xMax: 3, yMin: -1, yMax: 1 });

@@ -13,6 +13,7 @@ export interface RingBufferOptions {
 export class RingBuffer {
   /** Maximum number of retained samples. */
   readonly capacity: number;
+  readonly rangeMinMaxExcludesGaps = true;
   private _length: number = 0;
   private _head: number = 0;
 

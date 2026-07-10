@@ -7,7 +7,7 @@ BlazePlot expects finite, sorted X values. Y values are normally finite; non-fin
 | Source shape | Dataset | Notes |
 |---|---|---|
 | Fixed X/Y arrays | `StaticDataset` | Best for already-loaded history or immutable snapshots. |
-| Object rows | `StaticDataset.fromObjects(...)` or `createChart(...)` | Copies row fields or accessor results into sorted X/Y arrays. |
+| Object rows | `StaticDataset.fromObjects(...)` | Copies row fields or accessor results into sorted X/Y arrays. |
 | Irregular live samples | `RingBuffer` | Stores explicit X/Y pairs and keeps a bounded history. |
 | Fixed-rate live samples | `UniformRingBuffer` | Stores Y values only and derives X from `xStart + index * xStep`. |
 | Historical OHLC/candles | `StaticOhlcDataset` | Bounds and fitting use high/low values. |
@@ -61,7 +61,7 @@ For finite-to-finite session breaks, insert an explicit gap marker sample.
 
 ## Histograms and X/Y binning
 
-`histogram(values, options)` bins one-dimensional finite values by value range. It skips `NaN`, infinities, and non-number values, tracks underflow/overflow outside the chosen bin edges, and can normalize bucket heights as counts, probability, percent, or density. Fixed-size bins align to origin `0` by default; pass `align` to use another origin. `chart.addHistogram(...)` and declarative `type: "histogram"` series turn those buckets into a histogram dataset and render them as bars. Each rendered sample is centered at the bucket midpoint for the bar renderer, while the dataset exposes generic X-interval metadata that tooltip and picking code can present as a range.
+`histogram(values, options)` bins one-dimensional finite values by value range. It skips `NaN`, infinities, and non-number values, tracks underflow/overflow outside the chosen bin edges, and can normalize bucket heights as counts, probability, percent, or density. Fixed-size bins align to origin `0` by default; pass `align` to use another origin. `chart.addHistogram(...)` turns those buckets into a histogram dataset and renders them as bars. Each rendered sample is centered at the bucket midpoint for the bar renderer, while the dataset exposes generic X-interval metadata that tooltip and picking code can present as a range.
 
 `binSamples(samples, binSize, options)` is different: it expects existing `{ x, y }` samples and groups them by X interval with a Y reducer such as mean, sum, min, or max.
 

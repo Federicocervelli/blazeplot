@@ -28,6 +28,7 @@ type MinMaxLayout = MinMaxSegmentLayout;
 export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset {
   /** Maximum number of retained samples. */
   readonly capacity: number;
+  readonly rangeMinMaxExcludesGaps = true;
   /** Distance between consecutive derived X values. */
   readonly xStep: number;
   private readonly blockSize: number;

@@ -39,6 +39,7 @@ export type ServerSampledDatasetKind = "points" | "minmax";
  * instead of applying another client-side sampler.
  */
 export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMaxSegmentCopyDataset {
+  readonly rangeMinMaxExcludesGaps = true;
   private kind: ServerSampledDatasetKind = "points";
   private x = new Float64Array(0);
   private y = new Float32Array(0);

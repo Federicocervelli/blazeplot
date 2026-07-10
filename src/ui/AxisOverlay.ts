@@ -1,4 +1,3 @@
-import type { Camera2D } from "../interaction/Camera2D.js";
 import type { AxisController } from "../interaction/AxisController.js";
 import type { ChartLayoutElements, ChartLayoutConfig } from "./ChartLayout.js";
 
@@ -42,6 +41,7 @@ export class AxisOverlay {
   private readonly xTicks: number[] = [];
   private readonly yTicks: number[] = [];
   private readonly y2Ticks: number[] = [];
+  private readonly measureContext = document.createElement("canvas").getContext("2d");
 
   /** Create an axis overlay attached to a chart layout. */
   constructor(
@@ -60,7 +60,7 @@ export class AxisOverlay {
   }
 
   /** Render axis ticks from the latest camera and axis controller state. */
-  update(camera: Camera2D, axis: AxisController, rightCamera: Camera2D = camera, rightAxis: AxisController = axis): void {
+  update(axis: AxisController, rightAxis: AxisController = axis): void {
     const plotW = Math.max(1, this.layout.plot.clientWidth);
     const plotH = Math.max(1, this.layout.plot.clientHeight);
 
@@ -82,9 +82,9 @@ export class AxisOverlay {
       this.y2Ticks.length = 0;
     }
 
-    this.updateAxis(this.xPool, this.xTicks, "x", camera, plotW, plotH, axis);
-    this.updateAxis(this.yPool, this.yTicks, "y", camera, plotW, plotH, axis);
-    this.updateAxis(this.y2Pool, this.y2Ticks, "y2", rightCamera, plotW, plotH, rightAxis);
+    this.updateAxis(this.xPool, this.xTicks, "x", plotW, plotH, axis);
+    this.updateAxis(this.yPool, this.yTicks, "y", plotW, plotH, axis);
+    this.updateAxis(this.y2Pool, this.y2Ticks, "y2", plotW, plotH, rightAxis);
   }
 
   /** Remove all axis overlay DOM nodes. */
@@ -111,7 +111,6 @@ export class AxisOverlay {
     pool: HTMLDivElement[],
     values: number[],
     axis: RenderAxis,
-    camera: Camera2D,
     plotW: number,
     plotH: number,
     controller: AxisController,
@@ -145,14 +144,13 @@ export class AxisOverlay {
         const value = values[i]!;
         const text = controller.formatValue(value, "x");
         if (el.textContent !== text) el.textContent = text;
-        const [clipX] = camera.toClip(value, camera.yMin);
-        const screenX = (clipX + 1) * 0.5 * plotW;
+        const screenX = (controller.valueToClip(value, "x") + 1) * 0.5 * plotW;
         if (screenX < 0 || screenX > plotW) {
           el.style.display = "none";
           continue;
         }
         el.style.display = "block";
-        const labelWidth = Math.max(1, el.offsetWidth);
+        const labelWidth = this.measureLabel(text, "width");
         const centeredLeft = screenX - labelWidth * 0.5;
         const maxLeft = Math.max(0, plotW - labelWidth);
         const labelLeft = Math.min(Math.max(0, centeredLeft), maxLeft);
@@ -182,14 +180,13 @@ export class AxisOverlay {
       const value = values[i]!;
       const text = controller.formatValue(value, "y");
       if (el.textContent !== text) el.textContent = text;
-      const [, clipY] = camera.toClip(camera.xMin, value);
-      const screenY = (1 - clipY) * 0.5 * plotH;
+      const screenY = (1 - controller.valueToClip(value, "y")) * 0.5 * plotH;
       if (screenY < 0 || screenY > plotH) {
         el.style.display = "none";
         continue;
       }
       el.style.display = "block";
-      const labelHeight = Math.max(1, el.offsetHeight);
+      const labelHeight = this.measureLabel(text, "height");
       const centeredTop = screenY - labelHeight * 0.5;
       const maxTop = Math.max(0, plotH - labelHeight);
       const labelTop = Math.min(Math.max(0, centeredTop), maxTop);
@@ -208,5 +205,15 @@ export class AxisOverlay {
     }
 
     hideOverlappingLabels(labels);
+  }
+
+  private measureLabel(text: string, dimension: "width" | "height"): number {
+    const context = this.measureContext;
+    if (!context) return 12;
+    context.font = this.options.font ?? "11px ui-monospace, monospace, sans-serif";
+    const metrics = context.measureText(text);
+    return Math.max(1, dimension === "width"
+      ? Math.ceil(metrics.width)
+      : Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent));
   }
 }

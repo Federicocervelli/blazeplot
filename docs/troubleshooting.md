@@ -94,14 +94,16 @@ const chart = new Chart(element, {
 });
 ```
 
-## React chart recreates unexpectedly
+## React chart is duplicated or leaks
 
-`BlazeChart` recreates the chart when the `options` object identity changes. Keep options stable with `useMemo`, and clean up your own timers, workers, and subscriptions in effects.
+Create `Chart` once inside an effect and dispose it from that effect's cleanup. Do not construct charts during render.
 
 ```tsx
-const options = useMemo(() => ({ plugins: [interactionsPlugin()] }), []);
-
-return <BlazeChart options={options} onChart={setupChart} />;
+useEffect(() => {
+  if (!hostRef.current) return;
+  const chart = new Chart(hostRef.current);
+  return () => chart.dispose();
+}, []);
 ```
 
 ## Screenshots miss external UI
