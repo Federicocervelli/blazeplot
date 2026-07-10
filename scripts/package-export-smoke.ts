@@ -7,11 +7,10 @@ type PackageJson = {
 };
 
 const expectedExports = {
-  "blazeplot": ["Chart", "createChart", "RingBuffer", "StaticDataset", "ServerSampledDataset", "WebGL2Backend", "ReglBackend"],
+  "blazeplot": ["Chart", "RingBuffer", "StaticDataset", "ServerSampledDataset", "WebGL2Backend", "ReglBackend"],
   "blazeplot/core": ["RingBuffer", "UniformRingBuffer", "StaticDataset", "ServerSampledDataset", "SeriesStore", "MinMaxPyramid"],
   "blazeplot/interaction": ["Camera2D", "AxisController"],
   "blazeplot/render": ["Renderer", "WebGL2Backend", "ReglBackend", "WebGL2Resources", "ShaderPrograms", "isWebGL2Available", "WebGL2UnavailableError"],
-  "blazeplot/react": ["BlazeChart"],
   "blazeplot/linked": ["createLinkedCharts", "linkedChartsPlugin"],
   "blazeplot/linked-core": ["createLinkedCharts", "linkedChartsPlugin"],
   "blazeplot/data": ["exportVisibleChartData", "exportSelectedChartData", "chartDataToCSV", "binSamples", "rollingMean"],

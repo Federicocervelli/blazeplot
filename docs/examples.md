@@ -1,6 +1,6 @@
 # Examples
 
-These are small patterns you can copy into an app. The public docs instantiate the same kind of chart next to the snippets so you can see the result before copying the code. For larger runnable cases, open the [interactive previews](https://blazeplot.cervelli.dev/previews). If you are new to BlazePlot, start with the [Overview](./overview.md) first.
+These are small patterns you can copy into an app. Standalone charts consistently use `new Chart(...)`; the linked helper only builds a synchronized multi-panel layout around chart instances. The public docs instantiate the same kind of chart next to the snippets so you can see the result before copying the code. For larger runnable cases, open the [interactive previews](https://blazeplot.cervelli.dev/previews). If you are new to BlazePlot, start with the [Overview](./overview.md) first.
 
 ## Choose a starting point
 
@@ -8,13 +8,13 @@ Use this table before reaching for a generic chart example. The dataset choice d
 
 | If you have | Use |
 |---|---|
-| Fixed X/Y arrays or object rows | `createChart(...)` for the shortest setup, or `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` when you need manual control |
-| One-dimensional values that need a frequency distribution | `histogram(...)`, `chart.addHistogram(...)`, or `createChart({ series: [{ type: "histogram", values }] })` |
+| Fixed X/Y arrays or object rows | `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` |
+| One-dimensional values that need a frequency distribution | `histogram(...)` or `chart.addHistogram(...)` |
 | Irregular live samples | `RingBuffer` with `overflow: "wrap"` for a rolling window |
 | Fixed-rate telemetry | `UniformRingBuffer` with `series.append({ y })` so repeated X values are derived, not stored |
 | Historical OHLC data | `StaticOhlcDataset` with `chart.addOhlc(...)` or `chart.addCandlestick(...)` |
 | Server-reduced min/max buckets | `ServerSampledDataset` with `downsample: "server"` |
-| React ownership of the DOM | `BlazeChart` from `blazeplot/react` |
+| React ownership of the DOM | Create and dispose `Chart` in an effect |
 | Multiple charts sharing an X range | `createLinkedCharts` from `blazeplot/linked` |
 
 All built-in datasets expect sorted X values. If source data arrives out of order, sort it before constructing the dataset or write a custom dataset that exposes sorted logical access.
@@ -29,27 +29,28 @@ All built-in datasets expect sorted X values. If source data arrives out of orde
 - [Linked charts](#linked-charts) — dashboards with shared X ranges.
 - [Built-in plugins](#built-in-plugins) — interactions, tooltip, legend, annotations, selection, crosshair, and navigator.
 - [Export image and data](#export-image-and-data) — screenshots, CSV, and JSON helpers.
-- [React](#react) — using `BlazeChart` with stable options.
+- [React](#react) — creating and disposing the same `Chart` API in an effect.
 
 ## Example structure
 
 Most examples follow the same lifecycle:
 
 1. create a sized host element;
-2. use `createChart(...)` for static data, or create a dataset that matches the data source;
-3. add one or more series;
-4. initialize the viewport with `fitToData()`, `autoFit`, or live-window options;
-5. call `chart.start()` once if you are using the lower-level constructor;
+2. create the chart with `new Chart(...)`;
+3. create a dataset that matches the data source and add one or more series;
+4. initialize the viewport with `fitToData()`, `setViewport()`, or live-window options;
+5. call `chart.start()` once;
 6. clean up timers, subscriptions, workers, plugin handles, and the chart when the owner unmounts.
 
 ## Basic line chart
 
 ```ts
-import { createChart } from "blazeplot";
+import { Chart, StaticDataset } from "blazeplot";
 
-const chart = createChart(element, {
-  series: [{ type: "line", x: [0, 1, 2], y: [3, 6, 4], name: "values" }],
-});
+const chart = new Chart(element);
+chart.addLine({ dataset: new StaticDataset([0, 1, 2], [3, 6, 4]), name: "values" });
+chart.fitToData();
+chart.start();
 ```
 
 :::chart basic-line Basic line chart
@@ -63,7 +64,7 @@ chart.dispose();
 Object rows are accepted without writing a dataset class:
 
 ```ts
-import { createChart } from "blazeplot";
+import { Chart, StaticDataset } from "blazeplot";
 
 const rows = [
   { time: 1700000000000, requests: 120 },
@@ -71,42 +72,36 @@ const rows = [
   { time: 1700000002000, requests: 118 },
 ];
 
-const chart = createChart(element, {
-  series: [{ type: "line", data: rows, x: "time", y: "requests", sort: true }],
-});
-```
-
-:::chart object-rows Object rows with timestamp X values
-
-Use the lower-level API when you want explicit lifecycle control:
-
-```ts
-import { Chart, StaticDataset } from "blazeplot";
-
 const chart = new Chart(element);
-chart.addLine({ dataset: new StaticDataset([0, 1, 2], [3, 6, 4]), name: "values" });
+chart.addLine({
+  dataset: StaticDataset.fromObjects(rows, { x: "time", y: "requests", sort: true }),
+  name: "requests",
+});
 chart.fitToData();
 chart.start();
 ```
+
+:::chart object-rows Object rows with timestamp X values
 
 ## Histogram
 
 Use histograms when you have one-dimensional measurements and want a frequency distribution. BlazePlot computes bucket centers/counts and renders them through the existing bar renderer.
 
 ```ts
-import { createChart } from "blazeplot";
+import { Chart } from "blazeplot";
 
 const values = new Float64Array([12, 18, 19, 20, 21, 28, 33, 35, 36, 42]);
-
-const chart = createChart(element, {
-  series: [{ type: "histogram", values, binSize: 10, name: "latency" }],
+const chart = new Chart(element, {
   axes: { x: { title: "Latency ms" }, y: { title: "Count" } },
 });
+chart.addHistogram({ values, binSize: 10, name: "latency" });
+chart.fitToData({ includeZero: true });
+chart.start();
 ```
 
 :::chart histogram Latency histogram
 
-For manual charts, precompute or inspect bins with the pure helper:
+Precompute or inspect bins with the pure helper:
 
 ```ts
 import { Chart, histogram } from "blazeplot";
@@ -312,33 +307,27 @@ downloadBlob(new Blob([csv], { type: "text/csv" }), "visible-data.csv");
 
 ## React
 
-Use `blazeplot/react` when you want React to own the container while BlazePlot owns the chart instance.
+Use the same `Chart` constructor in an effect when React owns the container.
 
 ```tsx
-import { useMemo, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Chart, StaticDataset } from "blazeplot";
-import { BlazeChart } from "blazeplot/react";
 import { interactionsPlugin } from "blazeplot/plugins/interactions";
 
 export function PriceChart() {
-  const x = [0, 1, 2];
-  const y = [10, 12, 11];
-  const chartRef = useRef<Chart | null>(null);
-  const options = useMemo(() => ({ plugins: [interactionsPlugin()] }), []);
+  const hostRef = useRef<HTMLDivElement | null>(null);
 
-  return (
-    <BlazeChart
-      chartRef={chartRef}
-      options={options}
-      style={{ width: "100%", height: 320 }}
-      onChart={(chart) => {
-        chart.addLine({ dataset: new StaticDataset(x, y), name: "price" });
-        chart.fitToData();
-        chart.start();
-      }}
-    />
-  );
+  useEffect(() => {
+    if (!hostRef.current) return;
+    const chart = new Chart(hostRef.current, { plugins: [interactionsPlugin()] });
+    chart.addLine({ dataset: new StaticDataset([0, 1, 2], [10, 12, 11]), name: "price" });
+    chart.fitToData();
+    chart.start();
+    return () => chart.dispose();
+  }, []);
+
+  return <div ref={hostRef} style={{ width: "100%", height: 320 }} />;
 }
 ```
 
-Keep `options` stable with `useMemo`; changing its identity recreates the chart. `BlazeChart` disposes the chart on unmount. Clean up your own timers, workers, and subscriptions in React effects.
+Clean up timers, workers, subscriptions, and the chart from the effect cleanup.

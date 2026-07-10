@@ -33,7 +33,6 @@ const budgets: Budget[] = [
   { label: "core subpath entry", path: "dist/core.js", maxBytes: 4_000 },
   { label: "interaction subpath entry", path: "dist/interaction.js", maxBytes: 2_000 },
   { label: "render subpath entry", path: "dist/render.js", maxBytes: 2_000 },
-  { label: "react entry", path: "dist/react.js", maxBytes: 8_000 },
   { label: "linked entry", path: "dist/linked.js", maxBytes: 16_000 },
   { label: "linked core entry", path: "dist/linked-core.js", maxBytes: 8_000 },
   { label: "data entry", path: "dist/data.js", maxBytes: 12_000 },

@@ -132,6 +132,12 @@ class TrackingRangeDataset implements RangeMinMaxDataset {
   }
 }
 
+class FiniteGapRangeDataset extends TrackingRangeDataset {
+  isGap(index: number): boolean {
+    return index === 1;
+  }
+}
+
 describe("SeriesStore", () => {
   it("appends numeric typed arrays", () => {
     const series = makeSeries();
@@ -350,6 +356,31 @@ describe("SeriesStore", () => {
     expect(Array.from(instances)).toEqual([1, 1, 7, 4, 2, 9]);
     expect(dataset.rangeCalls).toBe(2);
     expect(dataset.getYCalls).toBe(0);
+  });
+
+  it("uses one range query for accelerated data bounds", () => {
+    const dataset = new TrackingRangeDataset([0, 1, 2, 3, 4, 5], [3, 7, 1, 9, 5, 2]);
+    const series = new SeriesStore(
+      dataset,
+      { mode: "line", dataset, downsample: "minmax" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    expect(series.dataBounds({ xMin: 1, xMax: 4 })).toEqual({ xMin: 1, xMax: 4, yMin: 1, yMax: 9 });
+    expect(dataset.rangeCalls).toBe(1);
+    expect(dataset.getYCalls).toBe(2);
+  });
+
+  it("does not aggregate range bounds across finite explicit gaps without an opt-in", () => {
+    const dataset = new FiniteGapRangeDataset([0, 1, 2, 3], [3, 100, 1, 9]);
+    const series = new SeriesStore(
+      dataset,
+      { mode: "line", dataset, downsample: "minmax" },
+      { color: [1, 1, 1, 1], lineWidth: 1 },
+    );
+
+    expect(series.dataBounds()).toEqual({ xMin: 0, xMax: 3, yMin: 1, yMax: 9 });
+    expect(dataset.rangeCalls).toBe(3);
   });
 
   it("queries LOD buckets through dataset range min/max aggregation when available", () => {

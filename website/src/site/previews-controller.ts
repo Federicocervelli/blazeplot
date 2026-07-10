@@ -10,8 +10,8 @@ import { navigatorPlugin } from "../../../src/plugins/navigator.ts";
 import { tooltipPlugin } from "../../../src/plugins/tooltip.ts";
 import { ProceduralLineDataset } from "../ProceduralLineDataset.ts";
 import { DEFAULT_APPEND_RATE, LIVE_BATCH_SIZE, MAX_VIEW_SAMPLES, OHLC_INTERVAL, SPARSE_INTERVAL, VIEW_SAMPLES, Y_VIEW, type PreviewDataBatch } from "../preview-data-config.ts";
-import { showChartFallback } from "./charts/dom.ts";
-import { demoSignal } from "./charts/signals.ts";
+import { addDisposableListener, showChartFallback } from "./charts/dom.ts";
+import { lineData } from "./charts/signals.ts";
 import { PREVIEWS, type PreviewId } from "./shared.ts";
 
 interface PreviewHost extends ReactiveControllerHost {
@@ -42,11 +42,6 @@ export class PreviewChartsController implements ReactiveController {
     const control = root.querySelector<T>(selector);
     if (!control) throw new Error(`Missing preview control: ${selector}`);
     return control;
-  }
-
-  private addDisposableListener<K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void {
-    element.addEventListener(type, listener as EventListener);
-    this.previewDisposers.push(() => element.removeEventListener(type, listener as EventListener));
   }
 
   private get previewIndex(): number {
@@ -338,7 +333,7 @@ export class PreviewChartsController implements ReactiveController {
     dataWorker.addEventListener("message", onWorkerMessage);
     this.previewDisposers.push(() => dataWorker.removeEventListener("message", onWorkerMessage));
 
-    const addListener = <K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void => this.addDisposableListener(element, type, listener);
+    const addListener = <K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void => addDisposableListener(this.previewDisposers, element, type, listener);
 
     const historySamples = (): number => Math.max(1, viewSamples);
     const sparseHistoryCapacity = (): number => Math.ceil(historySamples() / SPARSE_INTERVAL) + 2;
@@ -888,7 +883,7 @@ export class PreviewChartsController implements ReactiveController {
     liveChart.plotElement.appendChild(candleHighlightOverlay);
     this.previewDisposers.push(() => candleHighlightOverlay.remove());
 
-    const addListener = <K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void => this.addDisposableListener(element, type, listener);
+    const addListener = <K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void => addDisposableListener(this.previewDisposers, element, type, listener);
 
     const loadKlines = async (): Promise<void> => {
       const symbol = symbolSelect.value;
@@ -1165,12 +1160,7 @@ export class PreviewChartsController implements ReactiveController {
     });
     this.previewCharts.push(chart);
     const count = 420;
-    const x = new Float32Array(count);
-    const y = new Float32Array(count);
-    for (let i = 0; i < count; i += 1) {
-      x[i] = i;
-      y[i] = demoSignal(i, 0);
-    }
+    const { x, y } = lineData(count);
     chart.addLine({ dataset: new StaticDataset(x, y), name: "mobile" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
     chart.setViewport({ xMin: 0, xMax: count - 1, yMin: -1.35, yMax: 1.35 });
     chart.start();

@@ -328,12 +328,18 @@ export class WebGL2Backend implements GpuBackend {
     switch (type) {
       case this.gl.FLOAT:
         return value => this.gl.uniform1f(location, this.toNumber(value));
-      case this.gl.FLOAT_VEC2:
-        return value => this.gl.uniform2fv(location, this.toFloatList(value, 2));
-      case this.gl.FLOAT_VEC3:
-        return value => this.gl.uniform3fv(location, this.toFloatList(value, 3));
-      case this.gl.FLOAT_VEC4:
-        return value => this.gl.uniform4fv(location, this.toFloatList(value, 4));
+      case this.gl.FLOAT_VEC2: {
+        const scratch = new Float32Array(2);
+        return value => this.gl.uniform2fv(location, this.toFloatList(value, scratch));
+      }
+      case this.gl.FLOAT_VEC3: {
+        const scratch = new Float32Array(3);
+        return value => this.gl.uniform3fv(location, this.toFloatList(value, scratch));
+      }
+      case this.gl.FLOAT_VEC4: {
+        const scratch = new Float32Array(4);
+        return value => this.gl.uniform4fv(location, this.toFloatList(value, scratch));
+      }
       case this.gl.INT:
       case this.gl.BOOL:
         return value => this.gl.uniform1i(location, this.toNumber(value));
@@ -375,14 +381,16 @@ export class WebGL2Backend implements GpuBackend {
     }
   }
 
-  private toFloatList(value: UniformValue, expectedLength: number): Float32List {
+  private toFloatList(value: UniformValue, scratch: Float32Array): Float32List {
     if (typeof value === "number" || typeof value === "boolean") {
-      throw new TypeError(`Expected a float vector uniform with ${expectedLength} components.`);
+      throw new TypeError(`Expected a float vector uniform with ${scratch.length} components.`);
     }
-    if (value.length !== expectedLength) {
-      throw new TypeError(`Expected a float vector uniform with ${expectedLength} components, received ${value.length}.`);
+    if (value.length !== scratch.length) {
+      throw new TypeError(`Expected a float vector uniform with ${scratch.length} components, received ${value.length}.`);
     }
-    return value instanceof Float32Array ? value : new Float32Array(value);
+    if (value instanceof Float32Array) return value;
+    scratch.set(value);
+    return scratch;
   }
 
   private toNumber(value: UniformValue): number {

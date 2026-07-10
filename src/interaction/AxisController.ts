@@ -136,6 +136,105 @@ export class AxisController {
     const min = axis === "x" ? this.camera.xMin : this.camera.yMin;
     const max = axis === "x" ? this.camera.xMax : this.camera.yMax;
     AxisController.validateAxisDomain(axis, min, max, options);
+    const scaledMin = this.scaleValue(min, axis);
+    const scaledMax = this.scaleValue(max, axis);
+    if (!Number.isFinite(scaledMin) || !Number.isFinite(scaledMax) || scaledMax <= scaledMin) {
+      throw new RangeError(`Axis ${axis} scale must map its domain to finite ascending values.`);
+    }
+  }
+
+  /** Return whether an axis needs a non-linear coordinate transform. */
+  isNonlinear(axis: AxisRenderTarget): boolean {
+    const scale = (axis === "x" ? this.options.x : this.options.y)?.scale;
+    return scale === "log" || scale === "symlog" || (typeof scale === "object" && typeof scale.toScreen === "function");
+  }
+
+  /** Map a data value into the configured scale's coordinate space. */
+  scaleValue(value: number, axis: AxisRenderTarget): number {
+    const options = axis === "x" ? this.options.x : this.options.y;
+    const scale = options?.scale;
+    if (scale === "log") return Math.log(value) / Math.log(options?.logBase ?? 10);
+    if (scale === "symlog") {
+      const constant = options?.symlogConstant ?? 1;
+      return Math.sign(value) * Math.log1p(Math.abs(value) / constant);
+    }
+    if (scale && typeof scale === "object") return scale.toScreen?.(value) ?? value;
+    return value;
+  }
+
+  /** Map a scale-space coordinate back to its data value. */
+  unscaleValue(value: number, axis: AxisRenderTarget): number {
+    const options = axis === "x" ? this.options.x : this.options.y;
+    const scale = options?.scale;
+    if (scale === "log") return (options?.logBase ?? 10) ** value;
+    if (scale === "symlog") {
+      const constant = options?.symlogConstant ?? 1;
+      return Math.sign(value) * constant * Math.expm1(Math.abs(value));
+    }
+    if (scale && typeof scale === "object") {
+      if (scale.toScreen && !scale.fromScreen) {
+        throw new TypeError(`Axis ${axis} custom scale requires fromScreen() for pointer interaction.`);
+      }
+      return scale.fromScreen?.(value) ?? value;
+    }
+    return value;
+  }
+
+  /** Convert one data value to clip space using the configured scale and direction. */
+  valueToClip(value: number, axis: AxisRenderTarget): number {
+    const min = axis === "x" ? this.camera.xMin : this.camera.yMin;
+    const max = axis === "x" ? this.camera.xMax : this.camera.yMax;
+    const scaledMin = this.scaleValue(min, axis);
+    const scaledMax = this.scaleValue(max, axis);
+    let normalized = (this.scaleValue(value, axis) - scaledMin) / (scaledMax - scaledMin);
+    if (axis === "x" ? this.camera.xReversed : this.camera.yReversed) normalized = 1 - normalized;
+    return normalized * 2 - 1;
+  }
+
+  /** Convert one clip-space coordinate back to a data value. */
+  clipToValue(clip: number, axis: AxisRenderTarget): number {
+    const min = axis === "x" ? this.camera.xMin : this.camera.yMin;
+    const max = axis === "x" ? this.camera.xMax : this.camera.yMax;
+    let normalized = (clip + 1) * 0.5;
+    if (axis === "x" ? this.camera.xReversed : this.camera.yReversed) normalized = 1 - normalized;
+    const scaledMin = this.scaleValue(min, axis);
+    const scaledMax = this.scaleValue(max, axis);
+    return this.unscaleValue(scaledMin + normalized * (scaledMax - scaledMin), axis);
+  }
+
+  /** Pan in scale space so logarithmic and custom axes move consistently. */
+  pan(intent: { readonly dx: number; readonly dy: number }): void {
+    const xMin = this.scaleValue(this.camera.xMin, "x");
+    const xMax = this.scaleValue(this.camera.xMax, "x");
+    const yMin = this.scaleValue(this.camera.yMin, "y");
+    const yMax = this.scaleValue(this.camera.yMax, "y");
+    const dx = intent.dx * (xMax - xMin);
+    const dy = intent.dy * (yMax - yMin);
+    this.camera.setViewport({
+      xMin: this.unscaleValue(xMin + dx, "x"),
+      xMax: this.unscaleValue(xMax + dx, "x"),
+      yMin: this.unscaleValue(yMin + dy, "y"),
+      yMax: this.unscaleValue(yMax + dy, "y"),
+    });
+  }
+
+  /** Zoom in scale space around normalized data-domain anchors. */
+  zoom(intent: { readonly factor: number; readonly cx: number; readonly cy: number; readonly axis: "x" | "y" | "xy" }): void {
+    if (!Number.isFinite(intent.factor) || intent.factor <= 0) throw new RangeError("Axis zoom factor must be > 0.");
+    const xMin = this.scaleValue(this.camera.xMin, "x");
+    const xMax = this.scaleValue(this.camera.xMax, "x");
+    const yMin = this.scaleValue(this.camera.yMin, "y");
+    const yMax = this.scaleValue(this.camera.yMax, "y");
+    const xCenter = xMin + (xMax - xMin) * intent.cx;
+    const yCenter = yMin + (yMax - yMin) * intent.cy;
+    const xSpan = intent.axis === "y" ? xMax - xMin : (xMax - xMin) / intent.factor;
+    const ySpan = intent.axis === "x" ? yMax - yMin : (yMax - yMin) / intent.factor;
+    this.camera.setViewport({
+      xMin: this.unscaleValue(xCenter - xSpan * intent.cx, "x"),
+      xMax: this.unscaleValue(xCenter + xSpan * (1 - intent.cx), "x"),
+      yMin: this.unscaleValue(yCenter - ySpan * intent.cy, "y"),
+      yMax: this.unscaleValue(yCenter + ySpan * (1 - intent.cy), "y"),
+    });
   }
 
   private static validateAxisDomain(axis: AxisRenderTarget, min: number, max: number, options: AxisControllerAxisOptions | undefined): void {

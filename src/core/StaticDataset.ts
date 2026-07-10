@@ -22,6 +22,8 @@ function readNumericField<Row>(row: Row, index: number, field: StaticDatasetFiel
 
 /** Immutable sorted XY dataset backed by typed arrays. */
 export class StaticDataset implements Dataset {
+  readonly rangeMinMaxExcludesGaps = true;
+
   /**
    * Copy object rows into a static X/Y dataset.
    *

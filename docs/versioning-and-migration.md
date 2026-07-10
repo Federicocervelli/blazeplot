@@ -24,7 +24,7 @@ BlazePlot follows npm semver. Use this page to decide whether a change is patch/
 2. Check the [API reference](./api-reference.md) for renamed, moved, or newly added exports.
 3. Run your chart interaction flows, not just unit tests. Pan, zoom, tooltips, selection, screenshots, and exports can depend on browser behavior.
 4. If you use custom datasets, re-check the assumptions in [Data semantics](./data-semantics.md).
-5. If you use React, verify chart mount/unmount behavior and that options passed to `BlazeChart` are stable enough to avoid unintended recreation.
+5. If you use React, verify that the effect creating `Chart` disposes it on cleanup.
 6. If you use subpath imports, run your bundler against the production build so export-map mistakes are caught early.
 
 ## Migration-risk checklist

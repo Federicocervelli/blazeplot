@@ -20,8 +20,6 @@ import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
-const MINMAX_SEGMENT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
-const MINMAX_BATCH_SEGMENT_CAPACITY = MINMAX_SEGMENT_CAPACITY * 4;
 const FLOATS_PER_MINMAX_SEGMENT_INSTANCE = 3;
 const BAR_TRIANGLE_CAPACITY = 4_096;
 const FLOATS_PER_BAR_TRIANGLE = 12;
@@ -362,8 +360,8 @@ export interface ChartPluginContext {
   dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
   clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
   getViewport(yAxis?: SeriesYAxis): Viewport;
-  pan(intent: PanIntent): void;
-  zoom(intent: ZoomIntent): void;
+  pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
+  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
   setSeriesVisible(series: SeriesStore, visible: boolean): boolean;
   getSeriesState(): ChartSeriesState[];
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void;
@@ -476,17 +474,8 @@ interface ChartPickRect {
 interface ChartGpuResources {
   readonly renderer: Renderer;
   readonly rawLineBuffer: GpuBuffer;
-  readonly minMaxInstanceBuffer: GpuBuffer;
   readonly barTriangleBuffer: GpuBuffer;
   readonly gridBuffer: GpuBuffer;
-}
-
-interface MinMaxLineBatch {
-  readonly camera: Camera2D;
-  readonly style: SeriesStyle;
-  readonly color: readonly [number, number, number, number];
-  segmentCount: number;
-  seriesCount: number;
 }
 
 /** Imperative WebGL chart instance for rendering, interaction, and plugins. */
@@ -504,7 +493,6 @@ export class Chart implements ChartPluginContext {
   private renderer!: Renderer;
   private rawLineBuffer!: GpuBuffer;
   private rawLineData: Float32Array;
-  private minMaxInstanceBuffer!: GpuBuffer;
   private minMaxInstanceData: Float32Array;
   private barTriangleBuffer!: GpuBuffer;
   private barTriangleData: Float32Array;
@@ -555,7 +543,6 @@ export class Chart implements ChartPluginContext {
   private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
   private currentXOrigin: number = 0;
-  private minMaxLineBatch: MinMaxLineBatch | null = null;
   private followXConfig: ChartFollowXOptions | null = null;
   private xFollowPaused: boolean = false;
   private xFollowResumeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -653,7 +640,7 @@ export class Chart implements ChartPluginContext {
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
-    this.minMaxInstanceData = new Float32Array(MINMAX_BATCH_SEGMENT_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
+    this.minMaxInstanceData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
     this.barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLE);
     this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
     this.installGpuResources(this.createGpuResources());
@@ -685,13 +672,18 @@ export class Chart implements ChartPluginContext {
       this.resizeObserver.observe(this.layout.plot);
     }
 
-    for (const plugin of options.plugins ?? []) {
-      const installed = plugin.install(this);
-      if (typeof installed === "function") {
-        this.pluginDisposers.push(installed);
-      } else if (installed) {
-        this.pluginDisposers.push(() => installed.dispose());
+    try {
+      for (const plugin of options.plugins ?? []) {
+        const installed = plugin.install(this);
+        if (typeof installed === "function") {
+          this.pluginDisposers.push(installed);
+        } else if (installed) {
+          this.pluginDisposers.push(() => installed.dispose());
+        }
       }
+    } catch (error) {
+      this.dispose();
+      throw error;
     }
   }
 
@@ -746,9 +738,14 @@ export class Chart implements ChartPluginContext {
 
   /** Convert data coordinates to plot-local CSS-pixel coordinates. */
   dataToPlot(x: number, y: number, yAxis: SeriesYAxis = "left"): [number, number] {
-    const camera = this.getCamera(yAxis);
-    const [clipX, clipY] = camera.toClip(x, y);
-    return camera.toScreen(clipX, clipY, this.canvas.clientWidth, this.canvas.clientHeight);
+    const controller = yAxis === "right" ? this.rightAxis : this.axis;
+    const rect = this.canvas.getBoundingClientRect();
+    return this.getCamera(yAxis).toScreen(
+      controller.valueToClip(x, "x"),
+      controller.valueToClip(y, "y"),
+      rect.width,
+      rect.height,
+    );
   }
 
   /** Convert viewport client coordinates to data coordinates, or `null` outside the plot. */
@@ -760,7 +757,11 @@ export class Chart implements ChartPluginContext {
     const plotY = clientY - rect.top;
     if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
 
-    return this.getCamera(yAxis).screenToData(plotX, plotY, rect.width, rect.height);
+    const controller = yAxis === "right" ? this.rightAxis : this.axis;
+    return [
+      controller.clipToValue((plotX / rect.width) * 2 - 1, "x"),
+      controller.clipToValue(1 - (plotY / rect.height) * 2, "y"),
+    ];
   }
 
   /** Return the visible data domain for the requested Y axis. */
@@ -768,19 +769,29 @@ export class Chart implements ChartPluginContext {
     return this.getCamera(yAxis).viewport;
   }
 
-  /** Pan the chart by data-domain or screen-pixel deltas. */
-  pan(intent: PanIntent): void {
+  /** Pan the chart in scale space, optionally targeting the right Y axis. */
+  pan(intent: PanIntent, yAxis: SeriesYAxis = "left"): void {
     this.pauseXFollowForInteraction();
-    this.camera.pan(intent);
+    if (yAxis === "right") {
+      if (intent.dx !== 0) this.axis.pan({ dx: intent.dx, dy: 0 });
+      if (intent.dy !== 0) this.rightAxis.pan({ dx: 0, dy: intent.dy });
+    } else {
+      this.axis.pan(intent);
+    }
     this.syncRightCameraX();
     this.emitViewportChange();
     this.scheduleHoverRefresh();
   }
 
-  /** Zoom around a data or screen anchor. */
-  zoom(intent: ZoomIntent): void {
+  /** Zoom in scale space, optionally targeting the right Y axis. */
+  zoom(intent: ZoomIntent, yAxis: SeriesYAxis = "left"): void {
     this.pauseXFollowForInteraction();
-    this.camera.zoom(intent);
+    if (yAxis === "right") {
+      if (intent.axis !== "y") this.axis.zoom({ ...intent, axis: "x" });
+      if (intent.axis !== "x") this.rightAxis.zoom({ ...intent, axis: "y" });
+    } else {
+      this.axis.zoom(intent);
+    }
     this.syncRightCameraX();
     this.emitViewportChange();
     this.scheduleHoverRefresh();
@@ -930,7 +941,7 @@ export class Chart implements ChartPluginContext {
   setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void {
     if (v.xMin !== undefined || v.xMax !== undefined) this.pauseXFollowForInteraction();
     this.camera.setViewport(v);
-    this.rightCamera.setViewport(v);
+    this.rightCamera.setViewport({ xMin: v.xMin, xMax: v.xMax });
     this.emitViewportChange();
     this.refreshHover();
   }
@@ -1306,9 +1317,8 @@ export class Chart implements ChartPluginContext {
     if (rect.width <= 0 || rect.height <= 0) return null;
     if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
 
-    const viewport = this.camera.viewport;
-    const dataX = viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin);
-    const dataY = viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin);
+    const dataX = this.axis.clipToValue((plotX / rect.width) * 2 - 1, "x");
+    const dataY = this.axis.clipToValue(1 - (plotY / rect.height) * 2, "y");
     const mode = options.mode ?? this.options.hover?.mode ?? "nearest-x";
     const group = options.group ?? this.options.hover?.group ?? "x";
     const maxDistancePx = options.maxDistancePx ?? this.options.hover?.maxDistancePx ?? Infinity;
@@ -1384,6 +1394,9 @@ export class Chart implements ChartPluginContext {
     this.syncRightCameraX();
     this.applyFollowXPolicy();
     this.applyAutoFitYPolicy();
+    this.axis.validateDomain("x");
+    this.axis.validateDomain("y");
+    this.rightAxis.validateDomain("y");
 
     try {
       this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -1392,7 +1405,7 @@ export class Chart implements ChartPluginContext {
       const viewport = this.camera.viewport;
       this.currentXOrigin = viewport.xMin;
       if (this._gridVisible) {
-        const gridVertexCount = this.writeGridVertices(viewport);
+        const gridVertexCount = this.writeGridVertices();
         if (gridVertexCount > 0) {
           this.uploadGridData(gridVertexCount);
           this.renderer.drawClipLines(this.gridBuffer, gridVertexCount, this.gridStyle);
@@ -1403,13 +1416,10 @@ export class Chart implements ChartPluginContext {
       for (const s of this.series) {
         if (!s.visible) continue;
         s.rebuildPyramid();
-        if (this.queueMinMaxLineBatch(s)) continue;
-        this.flushMinMaxLineBatch();
         this.drawSeries(s);
       }
-      this.flushMinMaxLineBatch();
 
-      this.axisOverlay?.update(this.camera, this.axis, this.rightCamera, this.rightAxis);
+      this.axisOverlay?.update(this.axis, this.rightAxis);
       this.emitRender();
     } catch (error) {
       if (this.renderer.getWebGLContext()?.isContextLost() === true) {
@@ -1452,7 +1462,13 @@ export class Chart implements ChartPluginContext {
     this.canvas.removeEventListener("webglcontextlost", this.handleWebGLContextLost);
     this.canvas.removeEventListener("webglcontextrestored", this.handleWebGLContextRestored);
     this.layout.root.removeEventListener("keydown", this.handleKeyDown);
-    for (const dispose of this.pluginDisposers.splice(0)) dispose();
+    for (const dispose of this.pluginDisposers.splice(0)) {
+      try {
+        dispose();
+      } catch {
+        // Plugin cleanup must not prevent chart-owned resources from being released.
+      }
+    }
     this.axisOverlay?.dispose();
     this.disposeRenderer(this.renderer);
     this.layout.dispose();
@@ -1464,7 +1480,6 @@ export class Chart implements ChartPluginContext {
       return {
         renderer,
         rawLineBuffer: renderer.createFloatBuffer(this.rawLineData.length),
-        minMaxInstanceBuffer: renderer.createFloatBuffer(this.minMaxInstanceData.length),
         barTriangleBuffer: renderer.createFloatBuffer(this.barTriangleData.length),
         gridBuffer: renderer.createFloatBuffer(this.gridData.length),
       };
@@ -1477,7 +1492,6 @@ export class Chart implements ChartPluginContext {
   private installGpuResources(resources: ChartGpuResources): void {
     this.renderer = resources.renderer;
     this.rawLineBuffer = resources.rawLineBuffer;
-    this.minMaxInstanceBuffer = resources.minMaxInstanceBuffer;
     this.barTriangleBuffer = resources.barTriangleBuffer;
     this.gridBuffer = resources.gridBuffer;
   }
@@ -1705,14 +1719,23 @@ export class Chart implements ChartPluginContext {
     return series.config.yAxis === "right" ? this.rightCamera : this.camera;
   }
 
+  private controllerForCamera(camera: Camera2D): AxisController {
+    return camera === this.rightCamera ? this.rightAxis : this.axis;
+  }
+
   private projectionForCamera(camera: Camera2D): RenderProjection {
-    const projection = camera === this.rightCamera ? this.rightProjection : this.leftProjection;
-    const shiftedXMin = camera.xMin - this.currentXOrigin;
-    const shiftedXMax = camera.xMax - this.currentXOrigin;
-    projection.scaleX = camera.xScale;
-    projection.scaleY = camera.yScale;
-    projection.offsetX = -(shiftedXMin + shiftedXMax) / (shiftedXMax - shiftedXMin);
-    projection.offsetY = camera.yOffset;
+    const right = camera === this.rightCamera;
+    const projection = right ? this.rightProjection : this.leftProjection;
+    const controller = this.controllerForCamera(camera);
+    const scaledOrigin = controller.scaleValue(this.currentXOrigin, "x");
+    const xMin = controller.scaleValue(camera.xMin, "x") - scaledOrigin;
+    const xMax = controller.scaleValue(camera.xMax, "x") - scaledOrigin;
+    const yMin = controller.scaleValue(camera.yMin, "y");
+    const yMax = controller.scaleValue(camera.yMax, "y");
+    projection.scaleX = (camera.xReversed ? -2 : 2) / (xMax - xMin);
+    projection.scaleY = (camera.yReversed ? -2 : 2) / (yMax - yMin);
+    projection.offsetX = (camera.xReversed ? 1 : -1) * (xMin + xMax) / (xMax - xMin);
+    projection.offsetY = (camera.yReversed ? 1 : -1) * (yMin + yMax) / (yMax - yMin);
     return projection;
   }
 
@@ -1725,36 +1748,6 @@ export class Chart implements ChartPluginContext {
     const xReversed = this.normalizedAxes.x.reversed === true;
     this.camera.setReversed({ x: xReversed, y: this.normalizedAxes.y.reversed === true });
     this.rightCamera.setReversed({ x: xReversed, y: this.normalizedAxes.y2.reversed === true });
-  }
-
-  private queueMinMaxLineBatch(series: SeriesStore): boolean {
-    void series;
-    // Dense min/max lines are rendered as data-space bucket rectangles in
-    // drawLineSeries so adjacent 1px buckets move with data while panning/live
-    // following. The old batched instanced path rendered pixel-width center
-    // columns; that made neighboring buckets appear to swap/stick on the pixel
-    // grid when the viewport moved.
-    return false;
-  }
-
-  private flushMinMaxLineBatch(): void {
-    const batch = this.minMaxLineBatch;
-    this.minMaxLineBatch = null;
-    if (!batch || batch.segmentCount <= 0) return;
-
-    this.uploadMinMaxInstanceData(batch.segmentCount);
-    this.renderer.drawMinMaxSegmentsInstanced(
-      this.minMaxInstanceBuffer,
-      batch.segmentCount,
-      batch.style,
-      this.projectionForCamera(batch.camera),
-      this.canvas.width,
-      this.canvas.height,
-    );
-    this.recordDraw("minmax", batch.segmentCount * 2);
-    if (batch.seriesCount > 1) {
-      this.stats.batchedDrawCalls = (this.stats.batchedDrawCalls ?? 0) + batch.seriesCount - 1;
-    }
   }
 
   private drawSeries(series: SeriesStore): void {
@@ -1785,27 +1778,18 @@ export class Chart implements ChartPluginContext {
   private drawLineSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const visibleSamples = series.visibleSampleCount(viewport);
     const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
-    if (dense && this.renderer.supportsInstancedSegments) {
-      const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxMinMaxSegments(), this.currentXOrigin);
+    if (dense) {
+      const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarTriangleBars(), this.currentXOrigin);
       if (segmentCount <= 0) return;
       const vertexCount = this.writeBarBucketTriangles(segmentCount, viewport);
       this.drawBarTriangles(vertexCount, series.style, projection, "minmax");
       return;
     }
 
-    if (dense) {
-      const count = series.copyMinMaxVisible(viewport, this.rawLineData, this.maxMinMaxSegments(), this.currentXOrigin);
-      if (count < 2) return;
-      this.uploadRawLineData(count);
-      this.renderer.drawMinMaxSegments(this.rawLineBuffer, count, series.style, projection);
-      this.recordDraw("minmax", count);
-      return;
-    }
-
-    const count = series.copyRawVisibleClipSpace(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY);
+    const count = series.copyRawVisibleClipped(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
     if (count < 2) return;
-    this.uploadRawLineData(count);
-    this.renderer.drawClipLineStrip(this.rawLineBuffer, count, series.style);
+    this.uploadRawLineData(count, projection);
+    this.renderer.drawLineStrip(this.rawLineBuffer, count, series.style, projection);
     this.recordDraw("raw", count);
   }
 
@@ -1817,14 +1801,14 @@ export class Chart implements ChartPluginContext {
     if (range.end - range.start > AREA_POINT_CAPACITY) {
       const areaVertexCount = series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, baseline, this.currentXOrigin);
       if (areaVertexCount >= 4) {
-        this.uploadRawLineData(areaVertexCount);
+        this.uploadRawLineData(areaVertexCount, projection);
         this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, projection);
         this.recordDraw("area", areaVertexCount);
       }
 
       const lineVertexCount = series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
       if (lineVertexCount >= 2) {
-        this.uploadRawLineData(lineVertexCount);
+        this.uploadRawLineData(lineVertexCount, projection);
         this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, projection);
         this.recordDraw("area", lineVertexCount);
       }
@@ -1835,7 +1819,7 @@ export class Chart implements ChartPluginContext {
       const areaVertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, baseline, this.currentXOrigin);
       if (areaVertexCount < 4) break;
 
-      this.uploadRawLineData(areaVertexCount);
+      this.uploadRawLineData(areaVertexCount, projection);
       this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, projection);
       this.recordDraw("area", areaVertexCount);
       start += Math.max(1, (areaVertexCount >> 1) - 1);
@@ -1845,7 +1829,7 @@ export class Chart implements ChartPluginContext {
       const lineVertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
       if (lineVertexCount < 2) break;
 
-      this.uploadRawLineData(lineVertexCount);
+      this.uploadRawLineData(lineVertexCount, projection);
       this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, projection);
       this.recordDraw("area", lineVertexCount);
       start += Math.max(1, lineVertexCount - 1);
@@ -1861,7 +1845,7 @@ export class Chart implements ChartPluginContext {
       if (candleCount <= 0) break;
 
       const vertexCount = candleCount * 6;
-      this.uploadRawLineData(vertexCount);
+      this.uploadRawLineData(vertexCount, projection);
       this.renderer.drawLines(this.rawLineBuffer, vertexCount, series.style, projection);
       this.recordDraw("raw", vertexCount);
       start += candleCount;
@@ -1884,7 +1868,7 @@ export class Chart implements ChartPluginContext {
 
       const wickVertexCount = this.writeCandlestickWicks(candleCount);
       if (wickVertexCount > 0) {
-        this.uploadBarTriangleData(wickVertexCount);
+        this.uploadBarTriangleData(wickVertexCount, projection);
         this.renderer.drawLines(this.barTriangleBuffer, wickVertexCount, wickStyle, projection);
         this.recordDraw("raw", wickVertexCount);
       }
@@ -1915,7 +1899,7 @@ export class Chart implements ChartPluginContext {
         );
         if (count <= 0) continue;
 
-        this.uploadRawLineData(count);
+        this.uploadRawLineData(count, projection);
         this.renderer.drawPoints(this.rawLineBuffer, count, series.style, projection, this.canvas.width, this.canvas.height);
         this.recordDraw("points", count);
       }
@@ -1933,7 +1917,7 @@ export class Chart implements ChartPluginContext {
     );
     if (count <= 0) return;
 
-    this.uploadRawLineData(count);
+    this.uploadRawLineData(count, projection);
     this.renderer.drawPoints(this.rawLineBuffer, count, series.style, projection, this.canvas.width, this.canvas.height);
     this.recordDraw("points", count);
   }
@@ -1955,8 +1939,9 @@ export class Chart implements ChartPluginContext {
     const count = series.copyRawRange(range.start, range.end, this.rawLineData, rawBarCapacity, this.currentXOrigin);
     if (count <= 0) return;
 
-    if (this.renderer.supportsInstancedBars) {
-      this.uploadRawLineData(count);
+    const controller = this.controllerForProjection(projection);
+    if (this.renderer.supportsInstancedBars && !controller.isNonlinear("x") && !controller.isNonlinear("y")) {
+      this.uploadRawLineData(count, projection);
       this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, projection);
       this.recordDraw("bars", count);
       return;
@@ -1966,15 +1951,31 @@ export class Chart implements ChartPluginContext {
     this.drawBarTriangles(vertexCount, series.style, projection);
   }
 
-  private uploadRawLineData(vertexCount: number): void {
+  private controllerForProjection(projection: RenderProjection): AxisController {
+    return projection === this.rightProjection ? this.rightAxis : this.axis;
+  }
+
+  private transformVertices(data: Float32Array, vertexCount: number, projection: RenderProjection): void {
+    const controller = this.controllerForProjection(projection);
+    const transformX = controller.isNonlinear("x");
+    const transformY = controller.isNonlinear("y");
+    if (!transformX && !transformY) return;
+
+    const scaledOrigin = transformX ? controller.scaleValue(this.currentXOrigin, "x") : 0;
+    for (let i = 0; i < vertexCount; i++) {
+      const offset = i * 2;
+      if (transformX) data[offset] = controller.scaleValue(data[offset]! + this.currentXOrigin, "x") - scaledOrigin;
+      if (transformY) data[offset + 1] = controller.scaleValue(data[offset + 1]!, "y");
+    }
+  }
+
+  private uploadRawLineData(vertexCount: number, projection: RenderProjection): void {
+    this.transformVertices(this.rawLineData, vertexCount, projection);
     this.uploadFloatData(this.rawLineBuffer, this.rawLineData, vertexCount * 2);
   }
 
-  private uploadMinMaxInstanceData(instanceCount: number): void {
-    this.uploadFloatData(this.minMaxInstanceBuffer, this.minMaxInstanceData, instanceCount * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
-  }
-
-  private uploadBarTriangleData(vertexCount: number): void {
+  private uploadBarTriangleData(vertexCount: number, projection: RenderProjection): void {
+    this.transformVertices(this.barTriangleData, vertexCount, projection);
     this.uploadFloatData(this.barTriangleBuffer, this.barTriangleData, vertexCount * 2);
   }
 
@@ -2120,7 +2121,7 @@ export class Chart implements ChartPluginContext {
     mode: "bars" | "area" | "minmax" = "bars",
   ): void {
     if (vertexCount <= 0) return;
-    this.uploadBarTriangleData(vertexCount);
+    this.uploadBarTriangleData(vertexCount, projection);
     this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, projection);
     this.recordDraw(mode, vertexCount);
   }
@@ -2142,11 +2143,15 @@ export class Chart implements ChartPluginContext {
     for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
       const series = this.series[seriesIndex]!;
       if (!series.visible) continue;
-      const viewport = this.cameraForSeries(series).viewport;
-      const xScale = plotWidth / (viewport.xMax - viewport.xMin);
+      const camera = this.cameraForSeries(series);
+      const viewport = camera.viewport;
+      const controller = this.controllerForCamera(camera);
+      const scaledMin = controller.scaleValue(viewport.xMin, "x");
+      const scaledMax = controller.scaleValue(viewport.xMax, "x");
+      const xScale = plotWidth / (scaledMax - scaledMin);
       const sample = series.nearestSampleByX(dataX, viewport);
       if (!sample) continue;
-      const distancePx = Math.abs(sample.x - dataX) * xScale;
+      const distancePx = Math.abs(controller.scaleValue(sample.x, "x") - controller.scaleValue(dataX, "x")) * xScale;
       if (distancePx < bestDistancePx) {
         best = { sample, series, seriesIndex };
         bestDistancePx = distancePx;
@@ -2167,9 +2172,20 @@ export class Chart implements ChartPluginContext {
     for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
       const series = this.series[seriesIndex]!;
       if (!series.visible) continue;
-      const viewport = this.cameraForSeries(series).viewport;
-      const dataY = viewport.yMax - (plotY / plotHeight) * (viewport.yMax - viewport.yMin);
-      const sample = series.nearestSampleByPoint(dataX, dataY, viewport, plotWidth, plotHeight, maxDistancePx);
+      const camera = this.cameraForSeries(series);
+      const viewport = camera.viewport;
+      const controller = this.controllerForCamera(camera);
+      const dataY = controller.clipToValue(1 - (plotY / plotHeight) * 2, "y");
+      const sample = series.nearestSampleByPoint(
+        dataX,
+        dataY,
+        viewport,
+        plotWidth,
+        plotHeight,
+        maxDistancePx,
+        controller.isNonlinear("x") ? (value) => controller.scaleValue(value, "x") : undefined,
+        controller.isNonlinear("y") ? (value) => controller.scaleValue(value, "y") : undefined,
+      );
       if (!sample) continue;
       if (!best || (sample.distancePx ?? Infinity) < (best.sample.distancePx ?? Infinity)) {
         best = { sample, series, seriesIndex };
@@ -2205,8 +2221,13 @@ export class Chart implements ChartPluginContext {
     rect: ChartPickRect,
   ): ChartPickItem {
     const camera = this.cameraForSeries(series);
-    const [clipX, clipY] = camera.toClip(sample.x, sample.y);
-    const [plotX, plotY] = camera.toScreen(clipX, clipY, rect.width, rect.height);
+    const controller = this.controllerForCamera(camera);
+    const [plotX, plotY] = camera.toScreen(
+      controller.valueToClip(sample.x, "x"),
+      controller.valueToClip(sample.y, "y"),
+      rect.width,
+      rect.height,
+    );
     const itemClientX = rect.left + plotX;
     const itemClientY = rect.top + plotY;
     const dx = itemClientX - clientX;
@@ -2303,9 +2324,8 @@ export class Chart implements ChartPluginContext {
     const plotY = source.clientY - rect.top;
     if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
 
-    const viewport = this.camera.viewport;
-    const dataX = viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin);
-    const dataY = viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin);
+    const dataX = this.axis.clipToValue((plotX / rect.width) * 2 - 1, "x");
+    const dataY = this.axis.clipToValue(1 - (plotY / rect.height) * 2, "y");
     const hover = this.pick(source.clientX, source.clientY, this.options.hover);
     const event: ChartPointerEventState = {
       type,
@@ -2355,10 +2375,6 @@ export class Chart implements ChartPluginContext {
     for (const callback of this.renderSubscribers) callback(this);
   }
 
-  private maxMinMaxSegments(): number {
-    return Math.min(this.canvas.width, MINMAX_SEGMENT_CAPACITY);
-  }
-
   private maxBarTriangleBars(): number {
     return Math.min(BAR_TRIANGLE_CAPACITY, RAW_LINE_VERTEX_CAPACITY);
   }
@@ -2367,7 +2383,7 @@ export class Chart implements ChartPluginContext {
     return this.renderer.supportsInstancedBars ? RAW_LINE_VERTEX_CAPACITY : this.maxBarTriangleBars();
   }
 
-  private writeGridVertices(viewport: Viewport): number {
+  private writeGridVertices(): number {
     const plotW = Math.max(1, this.canvas.clientWidth);
     const plotH = Math.max(1, this.canvas.clientHeight);
     this.axis.getXTickValues(plotW, 12, this.xTicks);
@@ -2376,10 +2392,10 @@ export class Chart implements ChartPluginContext {
     let vertexCount = 0;
     for (const x of this.xTicks) {
       if (vertexCount + 2 > GRID_LINE_VERTEX_CAPACITY) return vertexCount;
-      this.gridData[vertexCount * 2] = this.xToClip(x, viewport);
+      this.gridData[vertexCount * 2] = this.axis.valueToClip(x, "x");
       this.gridData[vertexCount * 2 + 1] = -1;
       vertexCount++;
-      this.gridData[vertexCount * 2] = this.xToClip(x, viewport);
+      this.gridData[vertexCount * 2] = this.axis.valueToClip(x, "x");
       this.gridData[vertexCount * 2 + 1] = 1;
       vertexCount++;
     }
@@ -2387,22 +2403,14 @@ export class Chart implements ChartPluginContext {
     for (const y of this.yTicks) {
       if (vertexCount + 2 > GRID_LINE_VERTEX_CAPACITY) return vertexCount;
       this.gridData[vertexCount * 2] = -1;
-      this.gridData[vertexCount * 2 + 1] = this.yToClip(y, viewport);
+      this.gridData[vertexCount * 2 + 1] = this.axis.valueToClip(y, "y");
       vertexCount++;
       this.gridData[vertexCount * 2] = 1;
-      this.gridData[vertexCount * 2 + 1] = this.yToClip(y, viewport);
+      this.gridData[vertexCount * 2 + 1] = this.axis.valueToClip(y, "y");
       vertexCount++;
     }
 
     return vertexCount;
-  }
-
-  private xToClip(x: number, viewport: Viewport): number {
-    return ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * 2 - 1;
-  }
-
-  private yToClip(y: number, viewport: Viewport): number {
-    return ((y - viewport.yMin) / (viewport.yMax - viewport.yMin)) * 2 - 1;
   }
 
   private recordRenderMode(mode: "raw" | "minmax" | "points" | "bars" | "area"): void {

@@ -134,6 +134,7 @@ function optionsForCase(name: VisualCase): ConstructorParameters<typeof Chart>[1
       axes: {
         x: { position: "outside", scale: "log", logBase: 2, reversed: true, title: "log2 reversed" },
         y: { position: "outside", scale: "symlog", symlogConstant: 2, reversed: true, title: "symlog reversed" },
+        y2: { visible: true, position: "outside", scale: "log", title: "log right" },
       },
       grid: true,
     };
@@ -314,7 +315,9 @@ function addScaleOptions(chart: Chart): void {
   const x = Float64Array.from({ length: 256 }, (_, i) => 2 ** (i / 32));
   const y = Float32Array.from({ length: 256 }, (_, i) => Math.sin(i * 0.12) * 8);
   chart.addLine({ dataset: new StaticDataset(x, y), name: "scale options" }, { lineWidth: 2 });
+  chart.addLine({ dataset: new StaticDataset(x, Float32Array.from(y, (value) => Math.abs(value) + 1)), yAxis: "right", name: "right log" }, { lineWidth: 1 });
   chart.setViewport({ xMin: 1, xMax: 256, yMin: -10, yMax: 10 });
+  chart.setYViewport("right", { yMin: 1, yMax: 100 });
 }
 
 function wave(count: number, phase = 0): { x: Float64Array; y: Float32Array } {
@@ -354,5 +357,17 @@ function assertCaseDom(name: VisualCase, chart: Chart): void {
   if (name === "scale-options") {
     assert(chart.getCamera().xReversed, "x axis reversed");
     assert(chart.getCamera().yReversed, "y axis reversed");
+    const [plotX, plotY] = chart.dataToPlot(8, 3);
+    const rect = chart.canvas.getBoundingClientRect();
+    const roundTrip = chart.clientToData(rect.left + plotX, rect.top + plotY);
+    assert(!!roundTrip && Math.abs(roundTrip[0] - 8) < 1e-5 && Math.abs(roundTrip[1] - 3) < 1e-5, "scaled coordinates round-trip");
+    const x1 = chart.dataToPlot(1, 0)[0];
+    const x2 = chart.dataToPlot(2, 0)[0];
+    const x4 = chart.dataToPlot(4, 0)[0];
+    assert(Math.abs((x1 - x2) - (x2 - x4)) < 0.01, "log geometry is evenly spaced");
+    const leftBefore = chart.getViewport();
+    chart.pan({ dx: 0, dy: 0.5 }, "right");
+    assert(Math.abs(chart.getViewport("right").yMin - 10) < 1e-5, "right log axis pans in scale space");
+    assert(chart.getViewport().yMin === leftBefore.yMin && chart.getViewport().yMax === leftBefore.yMax, "right pan preserves left axis");
   }
 }
