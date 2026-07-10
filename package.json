@@ -147,7 +147,7 @@
     "lit": "^3.3.3",
     "react": "^19.2.6",
     "tailwindcss": "^4.3.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "uplot": "^1.6.32",
     "vite": "^8.0.13",
     "vite-plugin-dts": "^5.0.0"
