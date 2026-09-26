@@ -111,6 +111,15 @@ try {
       await wait("!page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
     }
   });
+  await run("copy-contents", async () => {
+    await goto("/docs/overview", "blazeplot-docs");
+    await js("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copied = text; } } }); page.querySelector('[data-copy-code]').click()");
+    await wait("page.querySelector('.code-toolbar [role=status]').textContent === 'Copied'");
+    await check("window.copied === page.querySelector('.code-block code').textContent", "copy preserves exact code without toolbar text");
+    await js("navigator.clipboard.writeText = async () => { throw new Error('denied'); }; page.querySelector('[data-copy-code]').click()");
+    await wait("page.querySelector('.code-toolbar [role=status]').textContent.includes('Could not copy')");
+    await check("[...page.querySelectorAll('.doc-toc a')].every(a => page.getElementById(a.hash.slice(1)))", "all generated contents links resolve");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");

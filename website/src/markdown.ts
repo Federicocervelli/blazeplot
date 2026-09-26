@@ -37,11 +37,14 @@ const DOC_ROUTE_BY_SOURCE_PATH: Readonly<Record<string, string>> = Object.fromEn
 
 export interface RenderMarkdownOptions {
   readonly sourcePath?: string;
+  readonly tableOfContents?: boolean;
 }
 
 export function renderMarkdown(markdown: string, options: RenderMarkdownOptions = {}): string {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const html: string[] = [];
+  const headings: Array<{ id: string; text: string }> = [];
+  const headingIds = new Map<string, number>();
   let inCode = false;
   let codeLanguage = "";
   let codeLines: string[] = [];
@@ -149,7 +152,11 @@ export function renderMarkdown(markdown: string, options: RenderMarkdownOptions 
       const marker = heading[1] ?? "#";
       const text = heading[2] ?? "";
       const level = marker.length;
-      const id = slugify(text);
+      const baseId = slugify(text);
+      const occurrence = headingIds.get(baseId) ?? 0;
+      headingIds.set(baseId, occurrence + 1);
+      const id = occurrence ? `${baseId}-${occurrence}` : baseId;
+      if (level === 2) headings.push({ id, text });
       html.push(`<h${level} id="${id}">${parseInline(text, options)}</h${level}>`);
       continue;
     }
@@ -200,6 +207,11 @@ export function renderMarkdown(markdown: string, options: RenderMarkdownOptions 
 
   if (inCode) html.push(renderCodeBlock(codeLanguage, codeLines.join("\n")));
   closeFlow();
+  if (options.tableOfContents && headings.length > 1) {
+    const toc = `<nav aria-label="On this page" class="doc-toc"><details><summary>On this page</summary><ul>${headings.map(({ id, text }) => `<li><a href="#${id}">${parseInline(text, options)}</a></li>`).join("")}</ul></details></nav>`;
+    const firstSection = html.findIndex((part) => part.startsWith("<h2"));
+    html.splice(Math.max(0, firstSection), 0, toc);
+  }
   return html.join("\n");
 }
 
@@ -249,7 +261,7 @@ function renderCodeBlock(language: string, code: string): string {
   const normalizedLanguage = LANGUAGE_ALIASES[requestedLanguage] ?? requestedLanguage;
   const languageClass = normalizedLanguage ? ` class="language-${escapeAttribute(normalizedLanguage)}"` : "";
   const languageLabel = requestedLanguage ? `<span class="code-language">${escapeHtml(requestedLanguage)}</span>` : "";
-  return `<pre>${languageLabel}<code${languageClass}>${highlightCode(code, normalizedLanguage)}</code></pre>`;
+  return `<div class="code-block"><div class="code-toolbar">${languageLabel}<button type="button" data-copy-code aria-label="Copy code">Copy</button><span role="status"></span></div><pre><code${languageClass}>${highlightCode(code, normalizedLanguage)}</code></pre></div>`;
 }
 
 function highlightCode(code: string, language: string): string {

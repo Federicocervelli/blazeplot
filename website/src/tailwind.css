@@ -47,9 +47,7 @@
 .article li > code {
   @apply rounded border border-[#3a1608] bg-[#140703] px-1.5 py-0.5 text-[#ff7a18];
 }
-.article .code-language {
-  @apply pointer-events-none absolute right-2 top-2 rounded border border-[#222] bg-black px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-[#555];
-}
+
 .article .hljs-comment,
 .article .hljs-quote { color: #6b7280; }
 .article .hljs-keyword,
@@ -119,3 +117,12 @@
 .article .doc-chart {
   @apply h-[260px] w-full min-w-0 bg-black sm:h-[300px];
 }
+
+.code-toolbar { @apply flex flex-wrap items-center gap-3 rounded-t border border-[#333] bg-[#0a0a0a] px-3 py-2 text-[12px] text-[#bbb]; }
+.code-toolbar button { @apply ml-auto rounded border border-[#555] px-3 py-1; }
+.code-toolbar [role=status] { @apply text-[12px]; }
+.article .code-block { @apply my-5; }
+.article .code-block pre { @apply my-0 rounded-t-none border-t-0; }
+.doc-toc { @apply my-5 rounded border border-[#333] p-3; }
+.doc-toc summary { @apply cursor-pointer text-[#bbb]; }
+.doc-toc ul { @apply mb-0 mt-3; }

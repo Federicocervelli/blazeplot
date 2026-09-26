@@ -1,3 +1,4 @@
+import { copyCode } from "../copy-code.ts";
 import { LitElement, html, type PropertyValues, type TemplateResult } from "lit";
 import { Chart, OhlcRingBuffer, StaticDataset, UniformRingBuffer, type ViewportPolicy } from "../../../../src/index.ts";
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
@@ -94,7 +95,10 @@ export class BlazeplotHomePage extends LitElement {
       </section>
       <section class="border-t border-[#222] py-6" aria-label="Install BlazePlot">
         <h2 class="text-lg font-semibold">Add BlazePlot to your app</h2>
-        <pre class="my-3 overflow-auto rounded border border-[#222] bg-[#0a0a0a] p-4"><code>npm install blazeplot</code></pre>
+        <div class="code-block my-3" @click=${copyCode}>
+          <div class="code-toolbar"><button type="button" data-copy-code aria-label="Copy installation command">Copy</button><span role="status"></span></div>
+          <pre class="overflow-auto rounded border border-[#222] bg-[#0a0a0a] p-4"><code>npm install blazeplot</code></pre>
+        </div>
         <p class="text-[#aaa]">Prefer Bun? Use <code>bun add blazeplot</code>. Follow the <a class="text-[#fc4a05]" href=${appHref("docs/overview#quick-start")}>quick start</a> for your first chart and cleanup instructions.</p>
       </section>
     `;

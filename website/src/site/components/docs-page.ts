@@ -1,4 +1,5 @@
 import "./site-drawer.ts";
+import { copyCode } from "../copy-code.ts";
 import { LitElement, html, type PropertyValues, type TemplateResult } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { Chart, ServerSampledDataset, StaticDataset, StaticOhlcDataset, type ChartOptions } from "../../../../src/index.ts";
@@ -70,8 +71,8 @@ export class BlazeplotDocsPage extends LitElement {
           <nav class="hidden shrink-0 pt-0 text-sm md:sticky md:top-[72px] md:block md:h-fit md:w-[200px] md:self-start md:space-y-4 md:overflow-visible md:px-0 md:pt-0">
             ${this.renderDocsNav(doc, false)}
           </nav>
-          <article class="article flex-1 min-w-0 pt-0 md:pt-0">
-            ${unsafeHTML(renderMarkdown(doc.markdown, { sourcePath: doc.sourcePath }))}
+          <article class="article flex-1 min-w-0 pt-0 md:pt-0" @click=${copyCode}>
+            ${unsafeHTML(renderMarkdown(doc.markdown, { sourcePath: doc.sourcePath, tableOfContents: true }))}
           </article>
         </div>
       </section>
