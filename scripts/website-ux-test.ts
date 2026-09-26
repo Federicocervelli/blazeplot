@@ -92,11 +92,13 @@ try {
     await check("page.querySelector('.home-install-code [role=status]').classList.contains('sr-only')", "copy feedback stays visually hidden but accessible");
     await js("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedInstall = text; } } }); page.querySelector('.home-copy-button').click()");
     await wait("page.querySelector('.home-install-code [role=status]').textContent === 'Install command copied'");
-    await check("window.copiedInstall === 'npm install blazeplot' && page.querySelector('.home-copy-button').textContent.trim() === ''", "home copy button copies the command while remaining icon-only");
+    await check("window.copiedInstall === 'npm install blazeplot' && page.querySelector('.home-copy-button').textContent.trim() === '' && page.querySelector('.home-copy-button').dataset.copyState === 'copied'", "home copy button copies the command while remaining icon-only");
     await js("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }); document.execCommand = command => { window.copyFallbackUsed = command; return command === 'copy'; }; page.querySelector('.home-copy-button').click()");
     await wait("page.querySelector('.home-install-code [role=status]').textContent === 'Install command copied'");
-    await check("copyFallbackUsed === 'copy' && !page.querySelector('.home-install-code textarea')", "icon copies on non-secure Tailnet HTTP through the fallback");
-    await check("getComputedStyle(page.querySelector('.home-install-code [role=status]')).position === 'absolute'", "copy feedback is accessible without an inline error message");
+    await check("copyFallbackUsed === 'copy' && page.querySelector('.home-copy-button').dataset.copyState === 'copied' && !page.querySelector('.home-install-code textarea')", "icon copies on non-secure Tailnet HTTP through the fallback");
+    await js("document.execCommand = () => false; page.querySelector('.home-copy-button').click()");
+    await wait("page.querySelector('.home-copy-button').dataset.copyState === 'failed'");
+    await check("getComputedStyle(page.querySelector('.home-install-code [role=status]')).position === 'absolute'", "copy error announcement is accessible without inline error text");
     await check("page.querySelector('[data-home-chart]').parentElement.getBoundingClientRect().width > 0 && getComputedStyle(page.querySelector('[data-home-chart]').parentElement).borderWidth === '0px'", "homepage chart does not have a decorative frame");
     await check("page.querySelector('a[href=\"/docs/overview\"]').textContent === 'Get started'", "clear onboarding action");
   });

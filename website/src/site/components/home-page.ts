@@ -103,11 +103,13 @@ export class BlazeplotHomePage extends LitElement {
       <section class="py-6" aria-label="Install BlazePlot">
         <h2 class="text-lg font-semibold">Add BlazePlot to your app</h2>
         <div class="code-block home-install-code relative my-3" @click=${copyCode}>
-          <button type="button" class="home-copy-button" data-copy-code aria-label="Copy install command" title="Copy command">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <button type="button" class="home-copy-button" data-copy-code data-copy-state="ready" aria-label="Copy install command" title="Copy command">
+            <svg data-copy-icon width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect x="8" y="8" width="12" height="12" rx="2" />
               <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
             </svg>
+            <svg data-copied-icon width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="m5 12 4 4L19 6" /></svg>
+            <svg data-copy-failed-icon width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="M12 9v4m0 4h.01M10.3 3.9 1.9 18.5a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
           </button>
           <span class="sr-only" role="status" aria-live="polite"></span>
           <pre class="overflow-auto rounded border border-[#222] bg-[#0a0a0a] p-4"><code>npm install blazeplot</code></pre>

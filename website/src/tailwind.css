@@ -162,3 +162,5 @@ button:disabled { cursor: default; opacity: 0.6; }
   @apply absolute right-2 top-2 inline-flex h-9 w-9 items-center justify-center text-[var(--muted)] hover:text-[#e5e5e5];
 }
 .home-install-code pre { @apply pr-12; }
+.home-copy-button[data-copy-state="copied"] { color: #4ade80; }
+.home-copy-button[data-copy-state="failed"] { color: #f87171; }

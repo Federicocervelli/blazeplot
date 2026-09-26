@@ -32,14 +32,28 @@ export async function copyCode(event: Event): Promise<void> {
   const code = block?.querySelector("code");
   const status = block?.querySelector<HTMLElement>("[role=status]");
   if (!code || !status) return;
-  button.disabled = true;
+  const showState = (state: "ready" | "copied" | "failed"): void => {
+    button.dataset.copyState = state;
+    const copyIcon = button.querySelector<SVGElement>("[data-copy-icon]");
+    const copiedIcon = button.querySelector<SVGElement>("[data-copied-icon]");
+    const failedIcon = button.querySelector<SVGElement>("[data-copy-failed-icon]");
+    const hide = (icon: Element | null, hidden: boolean): void => {
+      if (!icon) return;
+      if (hidden) icon.setAttribute("hidden", "");
+      else icon.removeAttribute("hidden");
+    };
+    hide(copyIcon, state !== "ready");
+    hide(copiedIcon, state !== "copied");
+    hide(failedIcon, state !== "failed");
+  };
+  showState("ready");
   try {
     await writeClipboardText(code.textContent ?? "");
+    showState("copied");
     const item = button.getAttribute("aria-label")?.toLowerCase().includes("install") ? "Install command" : "Code";
     status.textContent = `${item} copied`;
   } catch {
+    showState("failed");
     status.textContent = "Could not copy. Check clipboard permissions.";
-  } finally {
-    button.disabled = false;
   }
 }
