@@ -21,6 +21,7 @@ try {
   cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
   await cdp.send("Runtime.enable");
   await cdp.send("Page.enable");
+  await cdp.send("Page.bringToFront");
   cdp.on("Runtime.exceptionThrown", (error) => errors.push(JSON.stringify(error)));
   await run("responsive", async () => {
     for (const width of [390, 1280]) {
@@ -195,6 +196,30 @@ try {
     await check("getComputedStyle(pageHost).getPropertyValue('--muted').trim() === '#aaa'", "muted text uses the shared readable token");
     await screenshot("home-polished-mobile");
   });
+  await run("legend", async () => {
+    await goto("/", "blazeplot-home");
+    await js(`(async () => {
+      const { Chart, StaticDataset } = await import('/@fs${process.cwd()}/src/index.ts');
+      const { legendPlugin } = await import('/@fs${process.cwd()}/src/plugins/legend.ts');
+      window.legendHost = document.createElement('div'); legendHost.style.cssText = 'width:500px;height:300px'; document.body.append(legendHost);
+      window.legendChart = new Chart(legendHost, { plugins: [legendPlugin()] });
+      window.legendSeries = legendChart.addLine({ dataset:new StaticDataset([0,1],[0,1]), name:'Signal' });
+      legendChart.fitToData(); legendChart.start();
+      window.legendButton = legendHost.querySelector('.blazeplot-legend button'); legendButton.focus();
+      window.legendFactory = legendPlugin;
+    })()`);
+    await cdp.send("Input.dispatchKeyEvent", { type:"keyDown", key:"Enter", code:"Enter", windowsVirtualKeyCode:13, text:"\r", unmodifiedText:"\r" });
+    await cdp.send("Input.dispatchKeyEvent", { type:"keyUp", key:"Enter", code:"Enter", windowsVirtualKeyCode:13 });
+    await check("!legendSeries.visible && document.activeElement === legendButton && legendButton.getAttribute('aria-pressed') === 'false'", "keyboard toggle preserves focus and updates pressed state");
+    await js("legendButton.click(); legendChart.setTheme({legendTextColor:'#123456'})");
+    await check("legendSeries.visible && document.activeElement === legendButton && legendHost.querySelector('button') === legendButton", "repeated toggle and theme update retain the same button");
+    await check("!legendButton.hasAttribute('role') && legendHost.querySelector('.blazeplot-legend').getAttribute('role') === 'group'", "native button semantics remain intact");
+    await js("window.secondSeries = legendChart.addLine({capacity:10,name:'Second'}); legendChart.removeSeries(secondSeries)");
+    await check("legendHost.querySelectorAll('.blazeplot-legend button').length === 1 && document.activeElement === legendButton", "adding and removing other series preserves focus");
+    await js("legendChart.removeSeries(legendSeries)");
+    await check("legendHost.querySelectorAll('.blazeplot-legend button').length === 0", "removed series disappear from legend");
+    await js("legendChart.dispose(); legendHost.remove()");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");
@@ -232,7 +257,7 @@ async function goto(path: string, component: string): Promise<void> {
   await js("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
 }
 async function check(expression: string, message: string): Promise<void> {
-  if (!await js(expression)) throw new Error(message + " " + JSON.stringify(await js("({active:document.activeElement?.tagName, pageActive:window.page?.activeElement?.outerHTML, dialog:window.page?.querySelector(\"site-drawer\")?.shadowRoot?.activeElement?.outerHTML})")));
+  if (!await js(expression)) throw new Error(message + " " + JSON.stringify(await js("({active:document.activeElement?.tagName, legendVisible:window.legendSeries?.visible, same:window.legendButton === document.activeElement, pressed:window.legendButton?.getAttribute('aria-pressed'), pageActive:window.page?.activeElement?.outerHTML, dialog:window.page?.querySelector(\"site-drawer\")?.shadowRoot?.activeElement?.outerHTML})")));
 }
 async function screenshot(name: string): Promise<void> {
   await mkdir("build/website-ux", { recursive: true });
