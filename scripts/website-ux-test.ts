@@ -12,7 +12,7 @@ const base = `http://127.0.0.1:${port}${(process.env.BLAZEPLOT_PAGES_BASE ?? "/"
 const profile = await mkdtemp(join(tmpdir(), "blazeplot-website-"));
 const server = Bun.spawn(["node", "node_modules/vite/bin/vite.js", ...(only === "production" ? ["preview"] : []), "--config", "vite.pages.config.ts", "--host", "127.0.0.1", "--port", String(port), "--strictPort", "--open", "false"], { stdout: "ignore", stderr: "ignore", env: { ...process.env, BLAZEPLOT_WEBSITE_TEST: "1", BLAZEPLOT_PAGES_BASE: process.env.BLAZEPLOT_PAGES_BASE ?? "/" } });
 let chrome: Bun.Subprocess | undefined;
-let cdp: CdpClient;
+let cdp!: CdpClient;
 const errors: string[] = [];
 const pendingRequests = new Map<string, string>();
 let navigation = 0;
