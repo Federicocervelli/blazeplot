@@ -171,6 +171,20 @@ try {
     await sleep(300);
     await check(`draws.get(liveCanvas) === ${disposed}`, "leaving docs disposes chart activity");
   });
+  await run("follow-helper", async () => {
+    await resize(1280);
+    await goto("/", "blazeplot-home");
+    for (const mode of ["line", "multi", "ohlc"]) {
+      await js(`page.querySelector('#homeChartMode').value = '${mode}'; page.querySelector('#homeChartMode').dispatchEvent(new Event('change'))`);
+      await wait("pageHost.homeChart?.isFollowingLatestX()");
+      await check("Math.abs((pageHost.homeChart.getViewport().xMax - pageHost.homeChart.getViewport().xMin) - 419) < 0.01", "live window retains its original span");
+      await js("pageHost.homeChart.pan({dx:0.1,dy:0})");
+      await wait("page.querySelector('[data-home-live-state]').textContent === 'Exploring history'");
+      await js("page.querySelector('[data-home-resume]').click()");
+      await wait("pageHost.homeChart.isFollowingLatestX() && page.querySelector('[data-home-live-state]').textContent === 'Live'");
+      await check("Number.isFinite(pageHost.homeChart.getViewport().yMin)", "each chart mode retains a valid Y range");
+    }
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");

@@ -33,6 +33,7 @@ export class BlazeplotHomePage extends LitElement {
     this.homeChartMode = "multi";
   }
   private homeStreamRaf = 0;
+  private unsubscribeHomeState: (() => void) | null = null;
 
   override disconnectedCallback(): void {
     this.disposeHomeChart();
@@ -111,34 +112,22 @@ export class BlazeplotHomePage extends LitElement {
 
     const initialCount = 420;
     let nextX = initialCount;
-    let followLive = this.homeDataMode === "streaming";
-    this.followingLive = followLive;
+    this.followingLive = this.homeDataMode === "streaming";
     const homeViewport = (xMin: number, xMax: number): { xMin: number; xMax: number; yMin: number; yMax: number } => {
       const yRange = this.homeChartMode === "ohlc" ? this.homeOhlcYRange(xMin, xMax) : { yMin: -1.35, yMax: 1.35 };
       return { xMin, xMax, ...yRange };
     };
     const resetViewport = (): { xMin: number; xMax: number; yMin: number; yMax: number } => {
       if (this.homeDataMode === "streaming") {
-        followLive = true;
-        this.followingLive = true;
         return homeViewport(nextX - initialCount, nextX - 1);
       }
       return homeViewport(0, initialCount - 1);
     };
     const viewportPolicy: ViewportPolicy = {
-      beforePan: (_camera, intent) => {
-        followLive = false;
-        this.followingLive = false;
-        return intent;
-      },
-      beforeZoom: (_camera, intent) => {
-        followLive = false;
-        this.followingLive = false;
-        return intent;
-      },
       beforeRender: (camera) => {
-        if (this.homeDataMode !== "streaming" || !followLive) return;
-        camera.setViewport(homeViewport(nextX - initialCount, nextX - 1));
+        if (!this.homeChart?.isFollowingLatestX()) return;
+        const { yMin, yMax } = homeViewport(nextX - initialCount, nextX - 1);
+        camera.setViewport({ yMin, yMax });
       },
     };
 
@@ -171,9 +160,13 @@ export class BlazeplotHomePage extends LitElement {
       this.homeChart = chart;
       const stream = this.addHomeSeries(chart, initialCount);
       chart.setViewport(resetViewport());
+      if (stream) chart.followLatestX({ window: initialCount - 1, pauseOnInteraction: true });
+      this.unsubscribeHomeState = chart.subscribe("render", () => { this.followingLive = chart.isFollowingLatestX(); });
       chart.start();
-      this.homeChart = chart;
-      this.resumeLive = () => chart.setViewport(resetViewport());
+      this.resumeLive = () => {
+        chart.setViewport(resetViewport());
+        chart.resumeLatestXFollow();
+      };
 
       if (stream) {
         const pointsPerSecond = 180;
@@ -276,6 +269,8 @@ export class BlazeplotHomePage extends LitElement {
   private disposeHomeChart(): void {
     if (this.homeStreamRaf !== 0) cancelAnimationFrame(this.homeStreamRaf);
     this.homeStreamRaf = 0;
+    this.unsubscribeHomeState?.();
+    this.unsubscribeHomeState = null;
     this.homeChart?.dispose();
     this.homeChart = null;
     this.resumeLive = null;
