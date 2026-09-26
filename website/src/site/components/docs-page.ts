@@ -22,16 +22,24 @@ export class BlazeplotDocsPage extends LitElement {
   static override properties = {
     doc: { attribute: false },
     docsNavOpen: { state: true },
+    markdown: { state: true },
+    loadError: { state: true },
   };
 
   declare doc: DocPage;
   declare private docsNavOpen: boolean;
+  declare private markdown: string;
+  declare private loadError: boolean;
+  ready: Promise<void> = Promise.resolve();
+  private loadGeneration = 0;
   private docCharts: Chart[] = [];
 
   constructor() {
     super();
     this.doc = DOC_PAGES[0]!;
     this.docsNavOpen = false;
+    this.markdown = "";
+    this.loadError = false;
   }
   private docDisposers: Array<() => void> = [];
   private mountedDocSlug: string | null = null;
@@ -43,6 +51,7 @@ export class BlazeplotDocsPage extends LitElement {
 
   override disconnectedCallback(): void {
     window.removeEventListener("blazeplot-docs-nav-toggle", this.toggleDocsNav);
+    this.loadGeneration++;
     this.disposeDocCharts();
     super.disconnectedCallback();
   }
@@ -51,8 +60,23 @@ export class BlazeplotDocsPage extends LitElement {
     if (changedProperties.has("doc")) {
       this.docsNavOpen = false;
       this.disposeDocCharts();
+      this.ready = this.loadDoc();
     }
-    this.mountDocCharts(this.doc);
+    if (this.markdown) this.mountDocCharts(this.doc);
+  }
+
+  private async loadDoc(): Promise<void> {
+    const generation = ++this.loadGeneration;
+    this.markdown = "";
+    this.loadError = false;
+    try {
+      const markdown = await this.doc.loadMarkdown();
+      if (generation !== this.loadGeneration) return;
+      this.markdown = markdown;
+      await this.updateComplete;
+    } catch {
+      if (generation === this.loadGeneration) this.loadError = true;
+    }
   }
 
   override render(): TemplateResult {
@@ -72,7 +96,7 @@ export class BlazeplotDocsPage extends LitElement {
             ${this.renderDocsNav(doc, false)}
           </nav>
           <article class="article flex-1 min-w-0 pt-0 md:pt-0" @click=${copyCode}>
-            ${unsafeHTML(renderMarkdown(doc.markdown, { sourcePath: doc.sourcePath, tableOfContents: true }))}
+            ${this.loadError ? html`<p role="alert">Could not load this guide. <button @click=${() => { this.ready = this.loadDoc(); }}>Try again</button></p>` : this.markdown ? unsafeHTML(renderMarkdown(this.markdown, { sourcePath: doc.sourcePath, tableOfContents: true })) : html`<p role="status">Loading guide…</p>`}
           </article>
         </div>
       </section>

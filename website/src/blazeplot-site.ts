@@ -1,8 +1,5 @@
 import { LitElement, html, nothing, type TemplateResult } from "lit";
 import { DOC_PAGES, getDocPage } from "./docs.ts";
-import { defineBlazeplotDocsPage } from "./site/components/docs-page.ts";
-import { defineBlazeplotHomePage } from "./site/components/home-page.ts";
-import { defineBlazeplotPreviewsPage } from "./site/components/previews-page.ts";
 import { defineBlazeplotTopbar } from "./site/components/site-topbar.ts";
 import { appHref, appRouteFromHash, appRouteFromPath, PREVIEWS, type PreviewId, type Section } from "./site/shared.ts";
 import { siteStyles } from "./site/styles.ts";
@@ -13,17 +10,22 @@ export class BlazeplotSite extends LitElement {
     section: { state: true },
     docSlug: { state: true },
     previewId: { state: true },
+    loadError: { state: true },
   };
 
   declare private section: Section;
   declare private docSlug: string;
   declare private previewId: PreviewId;
+  declare private loadError: boolean;
+  private readonly loadedSections = new Set<Section>();
+  private readonly sectionLoads = new Map<Section, Promise<void>>();
 
   constructor() {
     super();
     this.section = "home";
     this.docSlug = DOC_PAGES[0]?.slug ?? "examples";
     this.previewId = "live";
+    this.loadError = false;
   }
 
   override connectedCallback(): void {
@@ -46,9 +48,10 @@ export class BlazeplotSite extends LitElement {
       <div class="min-h-screen bg-black text-[#e5e5e5] font-mono text-[13px] leading-relaxed" @click=${this.handleRouteClick} @preview-select=${this.handlePreviewSelect}>
         <blazeplot-topbar class="sticky top-0 z-50 block" .section=${this.section}></blazeplot-topbar>
         <main class="w-full ${this.section === "previews" ? "overflow-auto px-0 pb-0 pt-1.5" : "mx-auto max-w-[1180px] px-3 pb-5 pt-3 sm:px-4 sm:pb-8 sm:pt-4"}">
-          ${this.section === "home" ? html`<blazeplot-home class="block"></blazeplot-home>` : nothing}
-          ${this.section === "docs" ? html`<blazeplot-docs class="block" .doc=${doc}></blazeplot-docs>` : nothing}
-          ${this.section === "previews" ? html`<blazeplot-previews class="block" .previewId=${this.previewId}></blazeplot-previews>` : nothing}
+          ${this.loadedSections.has("home") && this.section === "home" ? html`<blazeplot-home class="block"></blazeplot-home>` : nothing}
+          ${this.loadedSections.has("docs") && this.section === "docs" ? html`<blazeplot-docs class="block" .doc=${doc}></blazeplot-docs>` : nothing}
+          ${this.loadedSections.has("previews") && this.section === "previews" ? html`<blazeplot-previews class="block" .previewId=${this.previewId}></blazeplot-previews>` : nothing}
+          ${!this.loadedSections.has(this.section) ? this.loadError ? html`<p role="alert">Could not load this page. <button @click=${() => { this.loadError = false; void this.restoreAnchor(); }}>Try again</button></p>` : html`<p role="status">Loading page…</p>` : nothing}
         </main>
         <footer class="flex flex-wrap justify-center gap-5 border-t border-[#222] px-3 py-5 text-[12px] text-[#aaa]" aria-label="Project links">
           <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer">npm</a>
@@ -119,9 +122,13 @@ export class BlazeplotSite extends LitElement {
   }
 
   private async restoreAnchor(): Promise<void> {
+    const href = window.location.href;
+    try { await this.loadSection(this.section); } catch { this.loadError = true; return; }
     await this.updateComplete;
-    const page = this.renderRoot.querySelector<LitElement>("blazeplot-docs, blazeplot-home, blazeplot-previews");
+    const page = this.renderRoot.querySelector<LitElement & { ready?: Promise<void> }>("blazeplot-docs, blazeplot-home, blazeplot-previews");
     await page?.updateComplete;
+    await page?.ready;
+    if (href !== window.location.href || !this.isConnected) return;
     const hash = window.location.hash.slice(1);
     if (!hash || !page) return;
     let id: string;
@@ -132,6 +139,20 @@ export class BlazeplotSite extends LitElement {
     heading.setAttribute("tabindex", "-1");
     heading.scrollIntoView({ block: "start", behavior: "instant" });
     heading.focus({ preventScroll: true });
+  }
+
+  private loadSection(section: Section): Promise<void> {
+    if (this.loadedSections.has(section)) return Promise.resolve();
+    const pending = this.sectionLoads.get(section);
+    if (pending) return pending;
+    const loaders = {
+      home: async () => (await import("./site/components/home-page.ts")).defineBlazeplotHomePage(),
+      docs: async () => (await import("./site/components/docs-page.ts")).defineBlazeplotDocsPage(),
+      previews: async () => (await import("./site/components/previews-page.ts")).defineBlazeplotPreviewsPage(),
+    };
+    const load = loaders[section]().then(() => { this.loadedSections.add(section); this.requestUpdate(); }).finally(() => this.sectionLoads.delete(section));
+    this.sectionLoads.set(section, load);
+    return load;
   }
 
   private syncRoute(): void {
@@ -160,9 +181,6 @@ export class BlazeplotSite extends LitElement {
 
 export function defineBlazeplotSite(): void {
   defineBlazeplotTopbar();
-  defineBlazeplotHomePage();
-  defineBlazeplotDocsPage();
-  defineBlazeplotPreviewsPage();
 
   if (!customElements.get("blazeplot-site")) {
     customElements.define("blazeplot-site", BlazeplotSite);

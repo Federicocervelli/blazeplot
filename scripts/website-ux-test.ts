@@ -137,6 +137,17 @@ try {
       await cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: script.identifier });
     }
   });
+  await run("lazy-loading", async () => {
+    await goto("/", "blazeplot-home");
+    await check("!performance.getEntriesByType('resource').some(r => ['/previews/', 'docs-page', 'examples.md', 'FlameGraph'].some(part => r.name.includes(part)))", "home does not load preview or docs implementations");
+    await goto("/previews/mobile", "blazeplot-previews");
+    await check("!performance.getEntriesByType('resource').some(r => ['flamechart', 'histogram', 'server-sampled', 'live'].some(id => r.name.includes('/previews/' + id + '.ts')))", "mobile loads only its own demo");
+    await goto("/docs/overview", "blazeplot-docs");
+    await check("!performance.getEntriesByType('resource').some(r => r.name.includes('examples.md'))", "docs load only the selected markdown");
+    await js("page.querySelector('a[href=\"/docs/examples\"]').click(); site.shadowRoot.querySelector('blazeplot-topbar').shadowRoot.querySelector('a[href=\"/previews\"]').click()");
+    await wait("site.shadowRoot.querySelector('blazeplot-previews')?.shadowRoot?.querySelector('canvas')");
+    await check("!site.shadowRoot.querySelector('blazeplot-docs')", "rapid navigation does not resurrect a stale page");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");
@@ -170,7 +181,7 @@ async function goto(path: string, component: string): Promise<void> {
   await cdp.send("Page.navigate", { url: base + path });
   await wait(`document.querySelector('blazeplot-site')?.shadowRoot?.querySelector('${component}')?.shadowRoot`);
   await js(`window.site = document.querySelector('blazeplot-site'); window.pageHost = site.shadowRoot.querySelector('${component}'); window.page = pageHost.shadowRoot; void 0`);
-  await wait(`page.querySelector('canvas, article, [role="alert"]')`);
+  await wait(`page.querySelector('canvas, article h1, article h2, [role="alert"]')`);
   await js("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
 }
 async function check(expression: string, message: string): Promise<void> {
