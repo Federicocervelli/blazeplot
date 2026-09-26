@@ -17,7 +17,7 @@ const errors: string[] = [];
 let navigation = 0;
 try {
   await waitForHttp(base, 30_000);
-  chrome = Bun.spawn([resolveChrome(undefined), "--headless=new", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "about:blank"], { stdout: "ignore", stderr: "ignore" });
+  chrome = Bun.spawn([resolveChrome(undefined), "--headless=new", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, "--no-sandbox", "--disable-dev-shm-usage", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--no-first-run", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "about:blank"], { stdout: "ignore", stderr: "ignore" });
   await waitForHttp(`http://127.0.0.1:${debugPort}/json/version`, 30_000);
   const target = await createTarget(debugPort, "about:blank");
   cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
@@ -26,7 +26,7 @@ try {
     let timer: ReturnType<typeof setTimeout>;
     return Promise.race([
       send(method, params),
-      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`CDP timeout: ${method}`)), 20_000); }),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`CDP timeout: ${method} ${String(params?.expression ?? "")}`)), 20_000); }),
     ]).finally(() => clearTimeout(timer));
   };
   await cdp.send("Runtime.enable");
@@ -307,7 +307,8 @@ async function goto(path: string, component: string): Promise<void> {
   await wait(`document.querySelector('blazeplot-site')?.shadowRoot?.querySelector('${component}')?.shadowRoot`);
   await js(`window.site = document.querySelector('blazeplot-site'); window.pageHost = site.shadowRoot.querySelector('${component}'); window.page = pageHost.shadowRoot; void 0`);
   await wait(`page.querySelector('canvas, article h1, article h2, [role="alert"]')`);
-  await js("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  await cdp.send("Page.bringToFront");
+  await wait("[...page.querySelectorAll('canvas')].every(canvas => canvas.width > 0 && canvas.height > 0)");
   if (path === "/previews/live") await wait("!page.querySelector('[data-live-overlay-text]').textContent.includes('booting')");
 }
 async function check(expression: string, message: string): Promise<void> {
