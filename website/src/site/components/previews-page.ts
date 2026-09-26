@@ -1,6 +1,6 @@
 import { LitElement, html, type TemplateResult } from "lit";
 import { PreviewChartsController } from "../previews-controller.ts";
-import { PREVIEWS, type PreviewId } from "../shared.ts";
+import { appHref, PREVIEWS, type PreviewId } from "../shared.ts";
 import { siteStyles } from "../styles.ts";
 
 export class BlazeplotPreviewsPage extends LitElement {
@@ -82,7 +82,13 @@ export class BlazeplotPreviewsPage extends LitElement {
             `,
           )}
         </nav>
-        <div class="min-h-0 min-w-0">${this.renderSelectedPreview(selected.id)}</div>
+        <div class="flex min-h-0 min-w-0 flex-col">
+          <header class="px-3 pb-3">
+            <h1 class="m-0 text-base font-semibold">${selected.title}</h1>
+            <p class="mt-1 text-[12px] text-[#aaa]">${selected.description} <a class="text-[#fc4a05]" href=${appHref(`docs/${selected.docs}`)}>Read the guide</a></p>
+          </header>
+          <div class="min-h-0 flex-1">${this.renderSelectedPreview(selected.id)}</div>
+        </div>
       </section>
     `;
   }
@@ -99,7 +105,7 @@ export class BlazeplotPreviewsPage extends LitElement {
     return this.renderLivePreview();
   }
 
-  private renderPreviewPanel(_title: string, _description: string, body: TemplateResult): TemplateResult {
+  private renderPreviewPanel(body: TemplateResult): TemplateResult {
     return html`
       <div class="grid h-full min-h-[520px] min-w-0 overflow-hidden border border-[#222] bg-black">
         <div class="min-h-0 min-w-0">${body}</div>
@@ -151,10 +157,7 @@ export class BlazeplotPreviewsPage extends LitElement {
   }
 
   private renderSensorStreamPreview(): TemplateResult {
-    return this.renderPreviewPanel(
-      "Sensor stream",
-      "irregular WebSocket-style timestamps · follow-latest helper",
-      html`
+    return this.renderPreviewPanel(html`
         <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[#aaa]">
           <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
             <span>Dense IoT gateway stream: irregular batched timestamps, jitter, dropouts, and vibration spikes via <code>series.append({ x, y })</code>.</span>
@@ -172,10 +175,7 @@ export class BlazeplotPreviewsPage extends LitElement {
   private renderFeaturePreview(): TemplateResult {
     return html`
       <div class="grid h-full min-h-[560px] min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        ${this.renderPreviewPanel(
-          "Feature gallery",
-          "legend · tooltip · annotations · navigator · ruler",
-          html`<div data-preview-chart="feature-hero" class="h-full min-h-[520px] w-full"></div>`,
+        ${this.renderPreviewPanel(html`<div data-preview-chart="feature-hero" class="h-full min-h-[520px] w-full"></div>`,
         )}
         <div class="min-h-0">
           <pre data-feature-log class="m-0 h-full min-h-[220px] overflow-auto border border-[#222] bg-[#050505] p-3 text-[11px] leading-relaxed text-[#777]"></pre>
@@ -185,10 +185,7 @@ export class BlazeplotPreviewsPage extends LitElement {
   }
 
   private renderHistogramPreview(): TemplateResult {
-    return this.renderPreviewPanel(
-      "Histogram",
-      "one-dimensional samples · fixed bins · density normalization",
-      html`
+    return this.renderPreviewPanel(html`
         <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[#aaa]">
           <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
             <span>Latency distribution rendered through <code>chart.addHistogram(...)</code>; hover bars to inspect bucket ranges.</span>
@@ -204,7 +201,7 @@ export class BlazeplotPreviewsPage extends LitElement {
   private renderLinkedChartsPreview(): TemplateResult {
     return html`
       <div class="grid h-full min-h-[560px] min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
-        ${this.renderPreviewPanel("Linked charts", "shared X range · synced crosshair · log axis", html`<div data-preview-chart="feature-linked" class="h-full min-h-[520px] w-full"></div>`)}
+        ${this.renderPreviewPanel(html`<div data-preview-chart="feature-linked" class="h-full min-h-[520px] w-full"></div>`)}
         <div class="content-start">
           <button data-feature-reset type="button" class="w-full border border-[#222] bg-[#0a0a0a] px-3 py-2 text-left font-mono text-[12px] text-[#888] hover:border-[#fc4a05] hover:text-[#fc4a05]">reset linked views</button>
         </div>
@@ -235,18 +232,12 @@ export class BlazeplotPreviewsPage extends LitElement {
   }
 
   private renderFlameChartPreview(): TemplateResult {
-    return this.renderPreviewPanel(
-      "Flame chart",
-      "WebGL stack rectangles · gigantic synthetic render trace",
-      html`<div data-preview-chart="flamechart" class="h-full min-h-[520px] w-full"></div>`,
+    return this.renderPreviewPanel(html`<div data-preview-chart="flamechart" class="h-full min-h-[520px] w-full"></div>`,
     );
   }
 
   private renderRenderLoopPreview(): TemplateResult {
-    return this.renderPreviewPanel(
-      "Render loop",
-      "default on-demand rendering vs explicit continuous rendering",
-      html`
+    return this.renderPreviewPanel(html`
         <section data-preview-chart="render-loop" class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[#aaa]">
           <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
             <span>Default <code>chart.start()</code> renders on demand; series appends should wake it without continuous RAF.</span>
@@ -270,10 +261,7 @@ export class BlazeplotPreviewsPage extends LitElement {
   }
 
   private renderMobilePreview(): TemplateResult {
-    return this.renderPreviewPanel(
-      "Mobile interaction",
-      "touch pan · pinch zoom · full available viewport",
-      html`<div data-preview-chart="mobile" class="h-full min-h-[560px] w-full"></div>`,
+    return this.renderPreviewPanel(html`<div data-preview-chart="mobile" class="h-full min-h-[560px] w-full"></div>`,
     );
   }
 

@@ -70,6 +70,14 @@ try {
     await check("page.querySelector('[data-live-preview-root]').dataset.previewTheme === 'light'", "theme still works inside advanced settings");
     await check("document.documentElement.scrollWidth <= innerWidth", "expanded controls fit a phone");
   });
+  await run("preview-context", async () => {
+    await resize(390);
+    await goto("/previews/mobile", "blazeplot-previews");
+    await check("page.querySelector('h1').textContent === 'Mobile' && page.querySelector('header p').textContent.includes('pinch')", "mobile demo explains gestures");
+    await check("page.querySelector('header a').getAttribute('href') === '/docs/theming-and-layout'", "preview links to its guide");
+    await goto("/previews/linked", "blazeplot-previews");
+    await check("page.querySelector('header a').getAttribute('href') === '/docs/examples#linked-charts'", "guide includes relevant section");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");
