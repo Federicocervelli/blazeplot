@@ -93,6 +93,7 @@ try {
     await goto("/", "blazeplot-home");
     await check("!page.querySelector('article') && page.textContent.includes('npm install blazeplot')", "homepage has focused installation content");
     await check("!page.textContent.includes('Prefer Bun') && !page.textContent.includes('quick start') && !page.textContent.includes('optional plugins')", "homepage has one concise product description");
+    await check("(() => { const badges = [...page.querySelectorAll('[aria-label=\"Project badges\"] img')]; return badges.length === 3 && badges.some(img => img.alt === 'Total npm downloads') && badges.some(img => img.alt === 'MIT license') && badges.some(img => img.alt === 'GitHub Sponsors'); })()", "homepage shows total downloads, license, and sponsor badges");
     await check("page.querySelector('.home-copy-button svg') && page.querySelector('.home-copy-button').textContent.trim() === ''", "homepage copy control is an icon-only button in the code box");
     await check("page.querySelector('.home-install-code [role=status]').classList.contains('sr-only')", "copy feedback stays visually hidden but accessible");
     await js("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedInstall = text; } } }); page.querySelector('.home-copy-button').click()");
