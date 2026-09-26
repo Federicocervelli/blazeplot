@@ -10,7 +10,7 @@ import { navigatorPlugin } from "../../../src/plugins/navigator.ts";
 import { tooltipPlugin } from "../../../src/plugins/tooltip.ts";
 import { ProceduralLineDataset } from "../ProceduralLineDataset.ts";
 import { DEFAULT_APPEND_RATE, LIVE_BATCH_SIZE, MAX_VIEW_SAMPLES, OHLC_INTERVAL, SPARSE_INTERVAL, VIEW_SAMPLES, Y_VIEW, type PreviewDataBatch } from "../preview-data-config.ts";
-import { addDisposableListener, showChartFallback } from "./charts/dom.ts";
+import { addDisposableListener, runFeedbackAction, showChartFallback } from "./charts/dom.ts";
 import { lineData } from "./charts/signals.ts";
 import { PREVIEWS, type PreviewId } from "./shared.ts";
 
@@ -51,7 +51,7 @@ export class PreviewChartsController implements ReactiveController {
 
   private mountPreviewCharts(): void {
     const selected = PREVIEWS[this.previewIndex] ?? PREVIEWS[0]!;
-    if (this.mountedPreviewId === selected.id && this.previewCharts.length > 0) return;
+    if (this.mountedPreviewId === selected.id) return;
     this.disposePreviewCharts();
     this.mountedPreviewId = selected.id;
 
@@ -68,8 +68,10 @@ export class PreviewChartsController implements ReactiveController {
         else if (kind === "flamechart") this.mountFlameChartPreview(target);
         else if (kind === "render-loop") this.mountRenderLoopPreview(target);
         else if (kind === "mobile") this.mountMobileChart(target);
-      } catch {
-        showChartFallback(target);
+      } catch (error) {
+        this.disposePreviewCharts();
+        this.mountedPreviewId = selected.id;
+        showChartFallback(target.closest<HTMLElement>("[data-server-sampled-root]") ?? target, error);
       }
     }
   }
@@ -204,6 +206,7 @@ export class PreviewChartsController implements ReactiveController {
     const requireControl = <T extends HTMLElement>(selector: string): T => this.requireControl<T>(liveRoot, selector);
     const overlay = requireControl<HTMLElement>("[data-live-overlay]");
     const overlayText = requireControl<HTMLSpanElement>("[data-live-overlay-text]");
+    const actionStatus = requireControl<HTMLElement>("[data-live-action-status]");
     const copyIcon = requireControl<HTMLButtonElement>("[data-live-copy]");
     const themeSelect = requireControl<HTMLSelectElement>("[data-live-theme]");
     const hoverModeSelect = requireControl<HTMLSelectElement>("[data-live-hover-mode]");
@@ -485,14 +488,14 @@ export class PreviewChartsController implements ReactiveController {
       const link = document.createElement("a");
       link.href = url;
       link.download = `blazeplot-${currentTheme}.png`;
-      link.click();
-      URL.revokeObjectURL(url);
+      try { link.click(); }
+      finally { window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
     };
     const asPreviewTheme = (value: string): PreviewTheme => value === "light" ? "light" : "default";
     const asHoverMode = (value: string): ChartPickMode => value === "nearest-point" ? "nearest-point" : "nearest-x";
     const asHoverGroup = (value: string): ChartPickGroup => value === "none" ? "none" : "x";
 
-    addListener(copyIcon, "click", () => navigator.clipboard.writeText(overlayText.textContent?.trim() ?? "").catch(() => {}));
+    addListener(copyIcon, "click", () => { void runFeedbackAction(copyIcon, actionStatus, () => navigator.clipboard.writeText(overlayText.textContent?.trim() ?? ""), "Stats copied", "Could not copy stats. Check clipboard permissions and try again."); });
     addListener(themeSelect, "change", () => applyTheme(asPreviewTheme(themeSelect.value)));
     addListener(hoverModeSelect, "change", () => { const mode = asHoverMode(hoverModeSelect.value); hoverOptions.mode = mode; tooltipOptions.mode = mode; chart.setViewport({}); });
     addListener(hoverGroupSelect, "change", () => { const group = asHoverGroup(hoverGroupSelect.value); hoverOptions.group = group; tooltipOptions.group = group; chart.setViewport({}); });
@@ -510,7 +513,7 @@ export class PreviewChartsController implements ReactiveController {
       }
     });
     addListener(resetViewButton, "click", resetView);
-    addListener(screenshotButton, "click", () => { void downloadScreenshot(); });
+    addListener(screenshotButton, "click", () => { void runFeedbackAction(screenshotButton, actionStatus, downloadScreenshot, "Screenshot download started", "Could not export the screenshot. Try again or check browser support."); });
 
     installSeries();
     configureWorker();

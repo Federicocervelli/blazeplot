@@ -107,11 +107,12 @@ export class BlazeplotPreviewsPage extends LitElement {
           <label class="inline-flex items-center gap-1 whitespace-nowrap"><input data-live-follow type="checkbox" checked class="accent-[#777]" /> follow live</label>
           <label class="inline-flex items-center gap-1 whitespace-nowrap"><input data-live-stream type="checkbox" checked class="accent-[#777]" /> stream data</label>
           <button data-live-reset type="button" class="border border-[#333] bg-[#111] px-2 py-1">reset view</button>
+          <span class="w-full text-[#bbb]" role="status" data-live-action-status></span>
           <details class="w-full" data-live-advanced>
             <summary class="cursor-pointer py-1 text-[#aaa]">Advanced settings & exports</summary>
             <div class="flex flex-wrap items-center gap-3 pt-3">
           <button data-live-perf-toggle type="button" class="border border-[#333] bg-[#111] px-2 py-1">hide stats</button>
-          <button data-live-copy type="button" title="Copy stats" class="border border-[#333] bg-[#111] px-2 py-1">📋</button>
+          <button data-live-copy type="button" aria-label="Copy stats" title="Copy stats" class="border border-[#333] bg-[#111] px-2 py-1">📋</button>
           <label class="inline-flex items-center gap-1 whitespace-nowrap">theme
             <select data-live-theme class="border border-[#333] bg-[#111] px-1.5 py-1 text-inherit"><option value="default">default</option><option value="light">light</option></select>
           </label>

@@ -168,6 +168,7 @@ export class BlazeplotHomePage extends LitElement {
         },
       });
 
+      this.homeChart = chart;
       const stream = this.addHomeSeries(chart, initialCount);
       chart.setViewport(resetViewport());
       chart.start();
@@ -189,9 +190,10 @@ export class BlazeplotHomePage extends LitElement {
         };
         this.homeStreamRaf = requestAnimationFrame(frame);
       }
-    } catch {
+    } catch (error) {
+      this.disposeHomeChart();
       target.dataset.chartError = "1";
-      showChartFallback(target);
+      showChartFallback(target, error);
     }
   }
 

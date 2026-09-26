@@ -129,8 +129,8 @@ export class BlazeplotDocsPage extends LitElement {
         else if (kind === "linked") this.mountLinkedDocChart(target);
         else if (kind === "plugins") this.mountPluginsDocChart(target);
         else if (kind === "annotations") this.mountAnnotationsDocChart(target);
-      } catch {
-        showChartFallback(target);
+      } catch (error) {
+        showChartFallback(target, error);
       }
     }
   }

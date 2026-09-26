@@ -120,6 +120,23 @@ try {
     await wait("page.querySelector('.code-toolbar [role=status]').textContent.includes('Could not copy')");
     await check("[...page.querySelectorAll('.doc-toc a')].every(a => page.getElementById(a.hash.slice(1)))", "all generated contents links resolve");
   });
+  await run("feedback", async () => {
+    await goto("/previews/live", "blazeplot-previews");
+    await js("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } }); page.querySelector('[data-live-copy]').click()");
+    await wait("page.querySelector('[data-live-action-status]').textContent.includes('Could not copy')");
+    await js("navigator.clipboard.writeText = async () => {}; page.querySelector('[data-live-copy]').click()");
+    await wait("page.querySelector('[data-live-action-status]').textContent === 'Stats copied'");
+    await js("window.originalBlob = HTMLCanvasElement.prototype.toBlob; HTMLCanvasElement.prototype.toBlob = function() { throw new Error('export failed'); }; page.querySelector('[data-live-screenshot]').click()");
+    await wait("page.querySelector('[data-live-action-status]').textContent.includes('Could not export')");
+    await js("HTMLCanvasElement.prototype.toBlob = window.originalBlob; page.querySelector('[data-live-screenshot]').click()");
+    await wait("page.querySelector('[data-live-action-status]').textContent === 'Screenshot download started'");
+    for (const unavailable of [true, false]) {
+      const script = await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `HTMLCanvasElement.prototype.getContext = function() { ${unavailable ? "return null" : "throw new Error('Unexpected initialization failure')"}; };` }) as { identifier: string };
+      await goto("/", "blazeplot-home");
+      await check(`page.querySelector('[role=alert]').textContent.includes('${unavailable ? "WebGL2" : "could not start"}')`, "fallback explains the actual failure category");
+      await cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: script.identifier });
+    }
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");
