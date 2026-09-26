@@ -46,7 +46,7 @@ export class BlazeplotPreviewsPage extends LitElement {
   private renderPreviews(): TemplateResult {
     const selected = PREVIEWS[this.previewIndex] ?? PREVIEWS[0]!;
     return html`
-      <section class="grid h-[calc(100dvh-82px)] min-h-[640px] min-w-[760px] grid-rows-[auto_minmax(0,1fr)] sm:h-[calc(100dvh-58px)]">
+      <section class="grid h-[calc(100dvh-82px)] min-h-[640px] min-w-0 grid-rows-[auto_minmax(0,1fr)] sm:h-[calc(100dvh-58px)]">
         ${this.previewNavOpen ? html`
           <div class="fixed inset-0 z-[60] bg-black/70 md:hidden" @click=${this.closePreviewNav}>
             <aside class="h-full w-[min(86vw,340px)] border-r border-[#222] bg-black shadow-2xl" role="dialog" aria-modal="true" aria-label="Preview navigation" @click=${this.stopPropagation}>
@@ -101,7 +101,7 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderPreviewPanel(_title: string, _description: string, body: TemplateResult): TemplateResult {
     return html`
-      <div class="grid h-full min-h-[520px] min-w-[760px] overflow-hidden border border-[#222] bg-black">
+      <div class="grid h-full min-h-[520px] min-w-0 overflow-hidden border border-[#222] bg-black">
         <div class="min-h-0 min-w-0">${body}</div>
       </div>
     `;
@@ -109,10 +109,10 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderLivePreview(): TemplateResult {
     return html`
-      <section data-live-preview-root class="grid h-full min-h-[620px] min-w-[760px] grid-rows-[minmax(0,1fr)_auto] overflow-hidden border border-[#222] bg-black text-[12px]">
+      <section data-live-preview-root class="grid h-full min-h-[620px] min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden border border-[#222] bg-black text-[12px]">
         <div class="relative min-h-0">
           <div data-preview-chart="live" class="h-full w-full"></div>
-          <div data-live-overlay class="absolute left-0 top-0 z-40 whitespace-pre border border-[#222]/70 bg-[#0a0a0a]/90 px-2.5 py-2 text-[#e5e5e5]"><span data-live-overlay-text>BlazePlot booting...</span></div>
+          <div data-live-overlay class="absolute left-0 top-0 z-40 max-w-full overflow-x-auto whitespace-pre border border-[#222]/70 bg-[#0a0a0a]/90 px-2.5 py-2 text-[#e5e5e5]"><span data-live-overlay-text>BlazePlot booting...</span></div>
         </div>
         <section class="flex flex-wrap items-center gap-x-3.5 gap-y-1 border-t border-[#222] px-2 pb-0 pt-1 text-[#e5e5e5]" aria-label="Preview controls">
           <button data-live-perf-toggle type="button" class="border border-[#333] bg-[#111] px-2 py-1">hide stats</button>
@@ -166,7 +166,7 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderFeaturePreview(): TemplateResult {
     return html`
-      <div class="grid h-full min-h-[560px] min-w-[760px] gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div class="grid h-full min-h-[560px] min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         ${this.renderPreviewPanel(
           "Feature gallery",
           "legend · tooltip · annotations · navigator · ruler",
@@ -198,7 +198,7 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderLinkedChartsPreview(): TemplateResult {
     return html`
-      <div class="grid h-full min-h-[560px] min-w-[760px] gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
+      <div class="grid h-full min-h-[560px] min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
         ${this.renderPreviewPanel("Linked charts", "shared X range · synced crosshair · log axis", html`<div data-preview-chart="feature-linked" class="h-full min-h-[520px] w-full"></div>`)}
         <div class="content-start">
           <button data-feature-reset type="button" class="w-full border border-[#222] bg-[#0a0a0a] px-3 py-2 text-left font-mono text-[12px] text-[#888] hover:border-[#fc4a05] hover:text-[#fc4a05]">reset linked views</button>
@@ -209,7 +209,7 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderServerSampledPreview(): TemplateResult {
     return html`
-      <section data-server-sampled-root class="grid h-full min-h-[680px] min-w-[760px] grid-rows-[auto_minmax(0,0.9fr)_minmax(0,1.25fr)] overflow-hidden border border-[#1f2937] bg-[#05070d] text-[13px] text-[#e5e7eb]">
+      <section data-server-sampled-root class="grid h-full min-h-[680px] min-w-0 grid-rows-[auto_minmax(0,0.9fr)_minmax(0,1.25fr)] overflow-hidden border border-[#1f2937] bg-[#05070d] text-[13px] text-[#e5e7eb]">
         <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[#1f2937] bg-[#0b1020] px-3 py-2">
           <strong>Binance preview</strong>
           <label class="inline-flex items-center gap-1.5">symbol
@@ -249,7 +249,7 @@ export class BlazeplotPreviewsPage extends LitElement {
             <button data-render-loop-request type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">request on-demand render</button>
             <button data-render-loop-pan type="button" class="border border-[#333] bg-[#111] px-2 py-1 text-[#e5e5e5]">change viewport</button>
           </div>
-          <div class="grid min-h-0 grid-cols-2 gap-3">
+          <div class="grid min-h-0 grid-cols-1 gap-3 sm:grid-cols-2">
             <div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border border-[#222]">
               <div class="border-b border-[#222] px-2 py-1">on-demand renders: <span data-render-loop-demand-count>0</span></div>
               <div data-render-loop-demand class="min-h-0"></div>
