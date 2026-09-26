@@ -16,34 +16,13 @@ let cdp: CdpClient;
 const errors: string[] = [];
 const pendingRequests = new Map<string, string>();
 let navigation = 0;
+let tabId: string | null = null;
+let viewportWidth = 1280;
 try {
   await waitForHttp(base, 30_000);
   chrome = Bun.spawn([resolveChrome(undefined), "--headless=new", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, "--no-sandbox", "--disable-dev-shm-usage", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--no-first-run", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "about:blank"], { stdout: "ignore", stderr: "ignore" });
   await waitForHttp(`http://127.0.0.1:${debugPort}/json/version`, 30_000);
-  const target = await createTarget(debugPort, "about:blank");
-  cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
-  const send = cdp.send.bind(cdp);
-  cdp.send = (method, params) => {
-    let timer: ReturnType<typeof setTimeout>;
-    return Promise.race([
-      send(method, params),
-      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`CDP timeout: ${method} ${String(params?.expression ?? "")}`)), 20_000); }),
-    ]).finally(() => clearTimeout(timer));
-  };
-  await cdp.send("Network.enable");
-  cdp.on("Network.requestWillBeSent", (params) => {
-    const event = params as { requestId: string; request: { url: string } };
-    pendingRequests.set(event.requestId, event.request.url);
-  });
-  for (const event of ["Network.loadingFinished", "Network.loadingFailed"]) {
-    cdp.on(event, (params) => pendingRequests.delete((params as { requestId: string }).requestId));
-  }
-  await cdp.send("Runtime.enable");
-  await cdp.send("Page.enable");
-  await cdp.send("Page.bringToFront");
-  await mkdir("build/website-ux/downloads", { recursive: true });
-  await cdp.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: join(process.cwd(), "build/website-ux/downloads") });
-  cdp.on("Runtime.exceptionThrown", (error) => errors.push(JSON.stringify(error)));
+  await openTab();
   await run("responsive", async () => {
     for (const width of [390, 1280]) {
       await resize(width);
@@ -162,11 +141,9 @@ try {
     await js("HTMLCanvasElement.prototype.toBlob = window.originalBlob; page.querySelector('[data-live-screenshot]').click()");
     await wait("page.querySelector('[data-live-action-status]').textContent === 'Screenshot download started'");
     for (const unavailable of [true, false]) {
-      const script = await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `HTMLCanvasElement.prototype.getContext = function() { ${unavailable ? "return null" : "throw new Error('Unexpected initialization failure')"}; };` }) as { identifier: string };
-      await goto("/", "blazeplot-home");
+      await goto("/", "blazeplot-home", `HTMLCanvasElement.prototype.getContext = function() { ${unavailable ? "return null" : "throw new Error('Unexpected initialization failure')"}; };`);
       await check(`page.querySelector('[role=alert]').textContent.includes('${unavailable ? "WebGL2" : "could not start"}')`, "fallback explains the actual failure category");
       await check("!page.querySelector('[data-home-live-state]')", "failed chart does not claim it is live");
-      await cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: script.identifier });
     }
   });
   await run("lazy-loading", async () => {
@@ -300,6 +277,7 @@ async function run(name: string, fn: () => Promise<void>): Promise<void> {
   console.log(`✓ ${name}`);
 }
 async function resize(width: number): Promise<void> {
+  viewportWidth = width;
   await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
 }
 async function js(expression: string): Promise<unknown> { return evaluate(cdp, expression, true); }
@@ -311,11 +289,12 @@ async function wait(expression: string): Promise<void> {
   }
   throw new Error(`Timed out: ${expression}`);
 }
-async function goto(path: string, component: string): Promise<void> {
+async function goto(path: string, component: string, initScript = ""): Promise<void> {
+  await openTab();
   const url = new URL(base + path);
   url.searchParams.set("uxRun", String(++navigation));
   const marker = await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
-    source: `window.__uxDocument = ${navigation}`,
+    source: `window.__uxDocument = ${navigation}; ${initScript}`,
   }) as { identifier: string };
   try {
     await cdp.send("Page.navigate", { url: url.href });
@@ -345,4 +324,38 @@ async function freePort(): Promise<number> {
   if (!address || typeof address === "string") throw new Error("Could not allocate test port");
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   return address.port;
+}
+
+async function openTab(): Promise<void> {
+  if (tabId) {
+    await fetch(`http://127.0.0.1:${debugPort}/json/close/${tabId}`);
+    cdp.close();
+  }
+  pendingRequests.clear();
+  const target = await createTarget(debugPort, "about:blank");
+  tabId = target.webSocketDebuggerUrl.split("/").at(-1)!;
+  cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+  const send = cdp.send.bind(cdp);
+  cdp.send = (method, params) => {
+    let timer: ReturnType<typeof setTimeout>;
+    return Promise.race([
+      send(method, params),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`CDP timeout: ${method} ${String(params?.expression ?? "")}`)), 20_000); }),
+    ]).finally(() => clearTimeout(timer));
+  };
+  await cdp.send("Network.enable");
+  cdp.on("Network.requestWillBeSent", (params) => {
+    const event = params as { requestId: string; request: { url: string } };
+    pendingRequests.set(event.requestId, event.request.url);
+  });
+  for (const event of ["Network.loadingFinished", "Network.loadingFailed"]) {
+    cdp.on(event, (params) => pendingRequests.delete((params as { requestId: string }).requestId));
+  }
+  await cdp.send("Runtime.enable");
+  await cdp.send("Page.enable");
+  await cdp.send("Page.bringToFront");
+  await mkdir("build/website-ux/downloads", { recursive: true });
+  await cdp.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: join(process.cwd(), "build/website-ux/downloads") });
+  cdp.on("Runtime.exceptionThrown", (error) => errors.push(JSON.stringify(error)));
+  await resize(viewportWidth);
 }
