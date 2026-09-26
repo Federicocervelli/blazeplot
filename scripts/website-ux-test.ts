@@ -82,12 +82,17 @@ try {
     await check("page.querySelector('header a').getAttribute('href') === '/docs/theming-and-layout'", "preview links to its guide");
     await goto("/previews/linked", "blazeplot-previews");
     await check("page.querySelector('header a').getAttribute('href') === '/docs/examples#linked-charts'", "guide includes relevant section");
+    await goto("/previews/histogram", "blazeplot-previews");
+    await check("!page.textContent.includes('chart.addHistogram')", "preview instructions appear once");
+    await resize(1280);
+    await goto("/previews/linked", "blazeplot-previews");
+    await check("getComputedStyle(page.querySelector('h1')).position === 'absolute'", "desktop selected tab is not repeated as a visible heading");
   });
   await run("home", async () => {
     await resize(390);
     await goto("/", "blazeplot-home");
     await check("!page.querySelector('article') && page.textContent.includes('npm install blazeplot')", "homepage has focused installation content");
-    await check("!page.textContent.includes('Prefer Bun') && !page.textContent.includes('quick start')", "homepage install block has no extra setup pitch");
+    await check("!page.textContent.includes('Prefer Bun') && !page.textContent.includes('quick start') && !page.textContent.includes('optional plugins')", "homepage has one concise product description");
     await check("page.querySelector('.home-copy-button svg') && page.querySelector('.home-copy-button').textContent.trim() === ''", "homepage copy control is an icon-only button in the code box");
     await check("page.querySelector('.home-install-code [role=status]').classList.contains('sr-only')", "copy feedback stays visually hidden but accessible");
     await js("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedInstall = text; } } }); page.querySelector('.home-copy-button').click()");

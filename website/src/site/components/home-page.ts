@@ -60,8 +60,7 @@ export class BlazeplotHomePage extends LitElement {
               <img src=${logoUrl} alt="BlazePlot" class="block h-8 w-auto" />
               <span class="mt-[7px] inline-flex items-center text-[12px] font-normal text-[var(--muted)]">v${__BLAZEPLOT_VERSION__}</span>
             </h1>
-            <p class="text-base text-[#bbb]">Fast, interactive charts for dense history and live data.</p>
-            <p class="mt-2 text-[12px] text-[var(--muted)]">WebGL2 rendering, streaming datasets, and optional plugins. Requires a browser with WebGL2.</p>
+            <p class="text-base text-[#bbb]">Fast WebGL2 charts for dense history and live data.</p>
             <div class="mt-5 flex flex-wrap gap-3">
               <a class="flex min-h-[44px] items-center text-[#fc4a05] underline underline-offset-4" href=${appHref("docs/overview")}>Get started</a>
               <a class="flex min-h-[44px] items-center text-[var(--muted)] underline underline-offset-4" href=${appHref("previews")}>Explore examples</a>

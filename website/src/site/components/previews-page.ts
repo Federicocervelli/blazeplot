@@ -64,7 +64,7 @@ export class BlazeplotPreviewsPage extends LitElement {
         </nav>
         <div class="flex min-h-0 min-w-0 flex-col">
           <header class="px-3 pb-3">
-            <h1 class="m-0 text-base font-semibold">${selected.title}</h1>
+            <h1 class="m-0 text-base font-semibold md:sr-only">${selected.title}</h1>
             <p class="mt-1 text-[12px] text-[var(--muted)]">${selected.description} <a class="text-[#fc4a05]" href=${appHref(`docs/${selected.docs}`)}>Read the guide</a></p>
           </header>
           <div class="min-h-0 flex-1">${this.renderSelectedPreview(selected.id)}</div>
@@ -141,7 +141,6 @@ export class BlazeplotPreviewsPage extends LitElement {
     return this.renderPreviewPanel(html`
         <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[var(--muted)]">
           <div class="flex flex-wrap items-center gap-3 pb-2">
-            <span>Dense IoT gateway stream: irregular batched timestamps, jitter, dropouts, and vibration spikes via <code>series.append({ x, y })</code>.</span>
             <button data-sensor-live type="button" class="site-button text-[#e5e5e5]">resume live</button>
             <span data-sensor-status class="text-[var(--muted)]">booting…</span>
           </div>
@@ -167,14 +166,7 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderHistogramPreview(): TemplateResult {
     return this.renderPreviewPanel(html`
-        <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[var(--muted)]">
-          <div class="flex flex-wrap items-center gap-3 pb-2">
-            <span>Latency distribution rendered through <code>chart.addHistogram(...)</code>; hover bars to inspect bucket ranges.</span>
-          </div>
-          <div class="relative min-h-0">
-            <div data-preview-chart="histogram" class="h-full min-h-0 w-full"></div>
-          </div>
-        </section>
+        <div data-preview-chart="histogram" class="h-full min-h-[560px] w-full"></div>
       `,
     );
   }
@@ -221,7 +213,6 @@ export class BlazeplotPreviewsPage extends LitElement {
     return this.renderPreviewPanel(html`
         <section data-preview-chart="render-loop" class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[var(--muted)]">
           <div class="flex flex-wrap items-center gap-3 pb-2">
-            <span>Default <code>chart.start()</code> renders on demand; series appends should wake it without continuous RAF.</span>
             <button data-render-loop-append type="button" class="site-button text-[#e5e5e5]">append sample</button>
             <button data-render-loop-request type="button" class="site-button text-[#e5e5e5]">request on-demand render</button>
             <button data-render-loop-pan type="button" class="site-button text-[#e5e5e5]">change viewport</button>
