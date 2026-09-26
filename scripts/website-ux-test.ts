@@ -93,6 +93,24 @@ try {
     await check("document.documentElement.scrollWidth <= innerWidth", "navigation fits 320px viewport");
     await check("site.shadowRoot.querySelector('footer').textContent.includes('Portfolio')", "secondary links remain available in footer");
   });
+  await run("drawers", async () => {
+    for (const [route, component] of [["/docs/overview", "blazeplot-docs"], ["/previews/mobile", "blazeplot-previews"]]) {
+      await resize(390);
+      await goto(route!, component!);
+      await js("window.trigger = site.shadowRoot.querySelector('blazeplot-topbar').shadowRoot.querySelector('button'); trigger.focus(); trigger.click()");
+      await wait("page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
+      await check("document.body.style.overflow === 'hidden'", "modal prevents background scrolling");
+      for (let i = 0; i < 20; i++) await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+      await check("page.activeElement === page.querySelector('site-drawer') || page.querySelector('site-drawer').contains(page.activeElement)", "tab focus remains in drawer");
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+      await wait("!page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
+      await check("document.body.style.overflow === '' && trigger.getRootNode().activeElement === trigger", "escape restores scrolling and focus");
+      await js("trigger.click()");
+      await wait("page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
+      await resize(1280);
+      await wait("!page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
+    }
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");
@@ -130,7 +148,7 @@ async function goto(path: string, component: string): Promise<void> {
   await js("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
 }
 async function check(expression: string, message: string): Promise<void> {
-  if (!await js(expression)) throw new Error(message);
+  if (!await js(expression)) throw new Error(message + " " + JSON.stringify(await js("({active:document.activeElement?.tagName, pageActive:window.page?.activeElement?.outerHTML, dialog:window.page?.querySelector(\"site-drawer\")?.shadowRoot?.activeElement?.outerHTML})")));
 }
 async function screenshot(name: string): Promise<void> {
   await mkdir("build/website-ux", { recursive: true });

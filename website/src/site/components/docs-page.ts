@@ -1,3 +1,4 @@
+import "./site-drawer.ts";
 import { LitElement, html, type PropertyValues, type TemplateResult } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { Chart, ServerSampledDataset, StaticDataset, StaticOhlcDataset, type ChartOptions } from "../../../../src/index.ts";
@@ -37,12 +38,10 @@ export class BlazeplotDocsPage extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("blazeplot-docs-nav-toggle", this.toggleDocsNav);
-    window.addEventListener("keydown", this.onKeyDown);
   }
 
   override disconnectedCallback(): void {
     window.removeEventListener("blazeplot-docs-nav-toggle", this.toggleDocsNav);
-    window.removeEventListener("keydown", this.onKeyDown);
     this.disposeDocCharts();
     super.disconnectedCallback();
   }
@@ -64,24 +63,9 @@ export class BlazeplotDocsPage extends LitElement {
           <a href=${`https://github.com/Federicocervelli/blazeplot/blob/development/${doc.sourcePath}`} target="_blank" rel="noreferrer" class="text-[12px] text-[#555] no-underline hover:text-[#fc4a05]">source</a>
         </div>
         <p class="mb-5 mt-0 text-sm text-[#888]">${doc.description}</p>
-        ${this.docsNavOpen ? html`
-          <div class="fixed inset-0 z-[60] bg-black/70 md:hidden" @click=${this.closeDocsNav}>
-            <aside class="h-full w-[min(86vw,340px)] border-r border-[#222] bg-black shadow-2xl" role="dialog" aria-modal="true" aria-label="Docs navigation" @click=${this.stopPropagation}>
-              <div class="sticky top-0 flex items-center justify-between border-b border-[#222] bg-[#0a0a0a] px-4 py-3">
-                <div class="flex items-center gap-2 text-sm font-semibold text-[#e5e5e5]">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                  Docs
-                </div>
-                <button type="button" class="inline-flex h-8 w-8 items-center justify-center rounded border border-[#222] text-[#888] hover:border-[#fc4a05] hover:text-[#fc4a05]" aria-label="Close docs navigation" @click=${this.closeDocsNav}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                </button>
-              </div>
-              <nav class="space-y-4 overflow-y-auto p-4 text-sm">
-                ${this.renderDocsNav(doc, true)}
-              </nav>
-            </aside>
-          </div>
-        ` : ""}
+        <site-drawer .open=${this.docsNavOpen} label="Docs navigation" @drawer-close=${this.closeDocsNav}>
+          <div class="space-y-4">${this.renderDocsNav(doc, true)}</div>
+        </site-drawer>
         <div class="flex flex-col gap-5 md:flex-row md:gap-6">
           <nav class="hidden shrink-0 pt-0 text-sm md:sticky md:top-[72px] md:block md:h-fit md:w-[200px] md:self-start md:space-y-4 md:overflow-visible md:px-0 md:pt-0">
             ${this.renderDocsNav(doc, false)}
@@ -105,6 +89,7 @@ export class BlazeplotDocsPage extends LitElement {
             return html`
               <a
                 href=${appHref(`docs/${page.slug}`)}
+                aria-current=${page.slug === doc.slug ? "page" : "false"}
                 class="block rounded px-3 py-1.5 no-underline ${page.slug === doc.slug ? "bg-[#111] text-[#e5e5e5]" : "text-[#888] hover:bg-[#0a0a0a] hover:text-[#fc4a05]"}"
                 @click=${closeOnSelect ? this.closeDocsNav : undefined}
               >${page.title}</a>
@@ -121,14 +106,6 @@ export class BlazeplotDocsPage extends LitElement {
 
   private readonly closeDocsNav = (): void => {
     this.docsNavOpen = false;
-  };
-
-  private readonly onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") this.closeDocsNav();
-  };
-
-  private readonly stopPropagation = (event: Event): void => {
-    event.stopPropagation();
   };
 
   private mountDocCharts(doc: DocPage): void {
