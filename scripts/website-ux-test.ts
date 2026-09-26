@@ -78,6 +78,14 @@ try {
     await goto("/previews/linked", "blazeplot-previews");
     await check("page.querySelector('header a').getAttribute('href') === '/docs/examples#linked-charts'", "guide includes relevant section");
   });
+  await run("home", async () => {
+    await resize(390);
+    await goto("/", "blazeplot-home");
+    await check("!page.querySelector('article') && page.textContent.includes('npm install blazeplot')", "homepage has focused installation content");
+    await check("page.querySelector('a[href=\"/docs/overview\"]').textContent === 'Get started'", "clear onboarding action");
+    await js("page.querySelector('a[href=\"/docs/overview#quick-start\"]').click()");
+    await wait("site.shadowRoot.querySelector('blazeplot-docs')?.shadowRoot?.activeElement?.id === 'quick-start'");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");

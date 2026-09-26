@@ -1,16 +1,13 @@
 import { LitElement, html, type PropertyValues, type TemplateResult } from "lit";
-import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { Chart, OhlcRingBuffer, StaticDataset, UniformRingBuffer, type ViewportPolicy } from "../../../../src/index.ts";
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
 import { tooltipPlugin } from "../../../../src/plugins/tooltip.ts";
-import { renderMarkdown } from "../../markdown.ts";
-import overviewMarkdown from "../../../../docs/overview.md?raw";
 import logoUrl from "../../blazeplot-dark-cropped.png";
 import { demoOhlcValues, demoSignal, lineData } from "../charts/signals.ts";
 import { showChartFallback } from "../charts/dom.ts";
 import { siteStyles } from "../styles.ts";
-import type { HomeChartMode, HomeDataMode } from "../shared.ts";
+import { appHref, type HomeChartMode, type HomeDataMode } from "../shared.ts";
 
 declare const __BLAZEPLOT_VERSION__: string;
 
@@ -55,16 +52,11 @@ export class BlazeplotHomePage extends LitElement {
               <img src=${logoUrl} alt="BlazePlot" class="block h-8 w-auto" />
               <span class="mt-[7px] inline-flex h-8 items-center rounded border border-[#333] bg-[#0a0a0a] px-2.5 text-sm font-normal leading-none text-[#aaa]">v${__BLAZEPLOT_VERSION__}</span>
             </h1>
-            <div class="mt-4 flex max-w-[34ch] flex-wrap gap-2">
-              <a href="https://github.com/Federicocervelli/blazeplot/blob/development/LICENSE" target="_blank" rel="noreferrer" aria-label="BlazePlot license">
-                <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="license MIT" class="block h-5" />
-              </a>
-              <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot npm downloads">
-                <img src="https://img.shields.io/npm/dt/blazeplot.svg" alt="npm downloads" class="block h-5" />
-              </a>
-              <a href="https://github.com/sponsors/Federicocervelli" target="_blank" rel="noreferrer" aria-label="Sponsor BlazePlot on GitHub">
-                <img src="https://img.shields.io/badge/sponsor-GitHub%20Sponsors-EA4AAA?logo=githubsponsors" alt="GitHub Sponsors" class="block h-5" />
-              </a>
+            <p class="text-base text-[#bbb]">Fast, interactive charts for dense history and live data.</p>
+            <p class="mt-2 text-[12px] text-[#aaa]">WebGL2 rendering, streaming datasets, and optional plugins. Requires a browser with WebGL2.</p>
+            <div class="mt-5 flex flex-wrap gap-3">
+              <a class="rounded border border-[#fc4a05] px-3 py-2 text-[#fc4a05]" href=${appHref("docs/overview")}>Get started</a>
+              <a class="rounded border border-[#333] px-3 py-2" href=${appHref("previews")}>Explore examples</a>
             </div>
           </div>
           <div class="mt-6 grid grid-cols-[80px_140px] items-center gap-x-4 gap-y-3 text-[12px] sm:mt-8">
@@ -100,7 +92,11 @@ export class BlazeplotHomePage extends LitElement {
           </div>
         </div>
       </section>
-      <article class="article border-t border-[#222] pt-8">${unsafeHTML(renderMarkdown(overviewMarkdown, { sourcePath: "docs/overview.md" }))}</article>
+      <section class="border-t border-[#222] py-6" aria-label="Install BlazePlot">
+        <h2 class="text-lg font-semibold">Add BlazePlot to your app</h2>
+        <pre class="my-3 overflow-auto rounded border border-[#222] bg-[#0a0a0a] p-4"><code>npm install blazeplot</code></pre>
+        <p class="text-[#aaa]">Prefer Bun? Use <code>bun add blazeplot</code>. Follow the <a class="text-[#fc4a05]" href=${appHref("docs/overview#quick-start")}>quick start</a> for your first chart and cleanup instructions.</p>
+      </section>
     `;
   }
 
