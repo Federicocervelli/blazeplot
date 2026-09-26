@@ -148,6 +148,29 @@ try {
     await wait("site.shadowRoot.querySelector('blazeplot-previews')?.shadowRoot?.querySelector('canvas')");
     await check("!site.shadowRoot.querySelector('blazeplot-docs')", "rapid navigation does not resurrect a stale page");
   });
+  await run("visible-doc-charts", async () => {
+    await resize(1280);
+    await goto("/docs/examples", "blazeplot-docs");
+    await check("page.querySelectorAll('canvas').length < page.querySelectorAll('[data-doc-chart]').length", "offscreen examples are not eagerly mounted");
+    await js("window.draws = new WeakMap(); for (const name of ['drawArrays', 'drawArraysInstanced']) { const original = WebGL2RenderingContext.prototype[name]; WebGL2RenderingContext.prototype[name] = function(...args) { draws.set(this.canvas, (draws.get(this.canvas) || 0) + 1); return original.apply(this, args); }; } page.querySelector('[data-doc-chart=live-line]').scrollIntoView({behavior:'instant', block:'center'})");
+    await wait("page.querySelector('[data-doc-chart=live-line] canvas')");
+    await js("window.liveCanvas = page.querySelector('[data-doc-chart=live-line] canvas'); void 0");
+    await wait("draws.get(liveCanvas) > 5");
+    await js("window.scrollTo({top:0, behavior:'instant'})");
+    await sleep(300);
+    const stopped = await js("draws.get(liveCanvas)");
+    await sleep(350);
+    await check(`draws.get(liveCanvas) === ${stopped}`, "offscreen live chart stops GPU draws");
+    await js("page.querySelector('[data-doc-chart=live-line]').scrollIntoView({behavior:'instant', block:'center'})");
+    await wait(`draws.get(liveCanvas) > ${stopped}`);
+    await check("page.querySelector('[data-doc-chart=live-line] canvas') === liveCanvas", "returning preserves the existing chart");
+    await js("site.shadowRoot.querySelector('blazeplot-topbar').shadowRoot.querySelector('a[href=\"/docs/overview\"]').click()");
+    await wait("!liveCanvas.isConnected");
+    await sleep(150);
+    const disposed = await js("draws.get(liveCanvas)");
+    await sleep(300);
+    await check(`draws.get(liveCanvas) === ${disposed}`, "leaving docs disposes chart activity");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");
