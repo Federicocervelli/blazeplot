@@ -4,7 +4,7 @@
 :host {
   --bg: #000;
   --text: #e5e5e5;
-  --muted: #888;
+  --muted: #aaa;
   --border: #222;
   --accent: #fc4a05;
   --panel: #0a0a0a;
@@ -49,7 +49,7 @@
 }
 
 .article .hljs-comment,
-.article .hljs-quote { color: #6b7280; }
+.article .hljs-quote { color: #9ca3af; }
 .article .hljs-keyword,
 .article .hljs-selector-tag,
 .article .hljs-meta .hljs-keyword { color: #fc4a05; }
@@ -126,3 +126,28 @@
 .doc-toc { @apply my-5 rounded border border-[#333] p-3; }
 .doc-toc summary { @apply cursor-pointer text-[#bbb]; }
 .doc-toc ul { @apply mb-0 mt-3; }
+
+/* Website controls are opt-in so chart plugin layout stays independent. */
+.site-button,
+.site-input {
+  min-height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 10px;
+  font: inherit;
+}
+.site-button { cursor: pointer; }
+.site-button:hover:not(:disabled), .site-input:hover { border-color: var(--accent); }
+button:disabled { cursor: default; opacity: 0.6; }
+:where(a, button, select, input, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (pointer: coarse) {
+  .site-button, .site-input { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :host { scroll-behavior: auto; }
+}

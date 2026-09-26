@@ -76,10 +76,10 @@ export class BlazeplotDocsPage extends LitElement {
     return html`
       <section>
         <div class="mb-4 flex justify-between gap-4 border-b border-[#222] pb-2">
-          <a href=${appHref("docs/docs-map")} class="text-[12px] text-[#555] no-underline hover:text-[#fc4a05]">all docs</a>
-          <a href=${`https://github.com/Federicocervelli/blazeplot/blob/development/${doc.sourcePath}`} target="_blank" rel="noreferrer" class="text-[12px] text-[#555] no-underline hover:text-[#fc4a05]">source</a>
+          <a href=${appHref("docs/docs-map")} class="text-[12px] text-[var(--muted)] no-underline hover:text-[#fc4a05]">all docs</a>
+          <a href=${`https://github.com/Federicocervelli/blazeplot/blob/development/${doc.sourcePath}`} target="_blank" rel="noreferrer" class="text-[12px] text-[var(--muted)] no-underline hover:text-[#fc4a05]">source</a>
         </div>
-        <p class="mb-5 mt-0 text-sm text-[#888]">${doc.description}</p>
+        <p class="mb-5 mt-0 text-sm text-[var(--muted)]">${doc.description}</p>
         <site-drawer .open=${this.docsNavOpen} label="Docs navigation" @drawer-close=${this.closeDocsNav}>
           <div class="space-y-4">${this.renderDocsNav(doc, true)}</div>
         </site-drawer>
@@ -98,7 +98,7 @@ export class BlazeplotDocsPage extends LitElement {
   private renderDocsNav(doc: DocPage, closeOnSelect: boolean): TemplateResult[] {
     return DOC_NAV_SECTIONS.map((section) => html`
       <div class="block">
-        <div class="px-3 pb-1 text-[11px] uppercase tracking-[0.16em] text-[#555]">${section.title}</div>
+        <div class="px-3 pb-1 text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">${section.title}</div>
         <div class="space-y-0.5">
           ${section.slugs.map((slug) => {
             const page = DOC_PAGES.find((candidate) => candidate.slug === slug);
@@ -107,7 +107,7 @@ export class BlazeplotDocsPage extends LitElement {
               <a
                 href=${appHref(`docs/${page.slug}`)}
                 aria-current=${page.slug === doc.slug ? "page" : "false"}
-                class="block rounded px-3 py-1.5 no-underline ${page.slug === doc.slug ? "bg-[#111] text-[#e5e5e5]" : "text-[#888] hover:bg-[#0a0a0a] hover:text-[#fc4a05]"}"
+                class="block rounded px-3 py-1.5 no-underline ${page.slug === doc.slug ? "bg-[#111] text-[#e5e5e5]" : "text-[var(--muted)] hover:bg-[#0a0a0a] hover:text-[#fc4a05]"}"
                 @click=${closeOnSelect ? this.closeDocsNav : undefined}
               >${page.title}</a>
             `;

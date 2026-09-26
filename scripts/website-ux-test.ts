@@ -185,6 +185,16 @@ try {
       await check("Number.isFinite(pageHost.homeChart.getViewport().yMin)", "each chart mode retains a valid Y range");
     }
   });
+  await run("control-styles", async () => {
+    await resize(390);
+    await goto("/", "blazeplot-home");
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+    await js("page.querySelector('#homeDataMode').focus()");
+    await check("getComputedStyle(page.querySelector('#homeDataMode')).outlineStyle !== 'none'", "keyboard focus is visibly outlined");
+    await check("page.querySelector('#homeDataMode').getBoundingClientRect().height >= 36", "controls have usable height");
+    await check("getComputedStyle(pageHost).getPropertyValue('--muted').trim() === '#aaa'", "muted text uses the shared readable token");
+    await screenshot("home-polished-mobile");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");

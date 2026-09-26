@@ -52,29 +52,29 @@ export class BlazeplotHomePage extends LitElement {
           <div>
             <h1 class="mb-4 flex items-center gap-3">
               <img src=${logoUrl} alt="BlazePlot" class="block h-8 w-auto" />
-              <span class="mt-[7px] inline-flex h-8 items-center rounded border border-[#333] bg-[#0a0a0a] px-2.5 text-sm font-normal leading-none text-[#aaa]">v${__BLAZEPLOT_VERSION__}</span>
+              <span class="mt-[7px] inline-flex h-8 items-center rounded border border-[#333] bg-[#0a0a0a] px-2.5 text-sm font-normal leading-none text-[var(--muted)]">v${__BLAZEPLOT_VERSION__}</span>
             </h1>
             <p class="text-base text-[#bbb]">Fast, interactive charts for dense history and live data.</p>
-            <p class="mt-2 text-[12px] text-[#aaa]">WebGL2 rendering, streaming datasets, and optional plugins. Requires a browser with WebGL2.</p>
+            <p class="mt-2 text-[12px] text-[var(--muted)]">WebGL2 rendering, streaming datasets, and optional plugins. Requires a browser with WebGL2.</p>
             <div class="mt-5 flex flex-wrap gap-3">
               <a class="rounded border border-[#fc4a05] px-3 py-2 text-[#fc4a05]" href=${appHref("docs/overview")}>Get started</a>
               <a class="rounded border border-[#333] px-3 py-2" href=${appHref("previews")}>Explore examples</a>
             </div>
           </div>
           <div class="mt-6 grid grid-cols-[80px_140px] items-center gap-x-4 gap-y-3 text-[12px] sm:mt-8">
-            <label for="homeDataMode" class="text-[#555]">data</label>
+            <label for="homeDataMode" class="text-[var(--muted)]">data</label>
             <select
               id="homeDataMode"
-              class="h-7 w-[140px] rounded border border-[#333] bg-[#0a0a0a] px-2 font-mono text-[12px] text-[#e5e5e5] outline-none hover:border-[#fc4a05]"
+              class="site-input w-[140px]"
               @change=${this.handleHomeDataModeChange}
             >
               <option value="static" ?selected=${this.homeDataMode === "static"}>static</option>
               <option value="streaming" ?selected=${this.homeDataMode === "streaming"}>streaming</option>
             </select>
-            <label for="homeChartMode" class="text-[#555]">mode</label>
+            <label for="homeChartMode" class="text-[var(--muted)]">mode</label>
             <select
               id="homeChartMode"
-              class="h-7 w-[140px] rounded border border-[#333] bg-[#0a0a0a] px-2 font-mono text-[12px] text-[#e5e5e5] outline-none hover:border-[#fc4a05]"
+              class="site-input w-[140px]"
               @change=${this.handleHomeChartModeChange}
             >
               <option value="line" ?selected=${this.homeChartMode === "line"}>line</option>
@@ -88,9 +88,9 @@ export class BlazeplotHomePage extends LitElement {
           <div class="flex flex-wrap items-center gap-3 border-t border-[#222] px-3 py-2 text-[12px]">
             ${this.homeDataMode === "streaming" ? html`
               <span role="status" data-home-live-state>${this.followingLive ? "Live" : "Exploring history"}</span>
-              <button type="button" data-home-resume ?disabled=${this.followingLive} @click=${() => this.resumeLive?.()}>Resume live</button>
+              <button type="button" class="site-button" data-home-resume ?disabled=${this.followingLive} @click=${() => this.resumeLive?.()}>Resume live</button>
             ` : ""}
-            <span class="text-[#aaa]">Scroll to zoom · Shift-drag to pan · Double-click to reset. Keyboard: arrows to pan, +/− to zoom.</span>
+            <span class="text-[var(--muted)]">Scroll to zoom · Shift-drag to pan · Double-click to reset. Keyboard: arrows to pan, +/− to zoom.</span>
           </div>
         </div>
       </section>
@@ -100,7 +100,7 @@ export class BlazeplotHomePage extends LitElement {
           <div class="code-toolbar"><button type="button" data-copy-code aria-label="Copy installation command">Copy</button><span role="status"></span></div>
           <pre class="overflow-auto rounded border border-[#222] bg-[#0a0a0a] p-4"><code>npm install blazeplot</code></pre>
         </div>
-        <p class="text-[#aaa]">Prefer Bun? Use <code>bun add blazeplot</code>. Follow the <a class="text-[#fc4a05]" href=${appHref("docs/overview#quick-start")}>quick start</a> for your first chart and cleanup instructions.</p>
+        <p class="text-[var(--muted)]">Prefer Bun? Use <code>bun add blazeplot</code>. Follow the <a class="text-[#fc4a05]" href=${appHref("docs/overview#quick-start")}>quick start</a> for your first chart and cleanup instructions.</p>
       </section>
     `;
   }
