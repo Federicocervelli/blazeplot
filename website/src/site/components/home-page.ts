@@ -90,13 +90,11 @@ export class BlazeplotHomePage extends LitElement {
         </div>
         <div class="min-w-0 overflow-hidden">
           <div data-home-chart class="h-[260px] w-full sm:h-[320px] md:h-[360px]"></div>
-          <div class="flex flex-wrap items-center gap-3 px-1 py-2 text-[12px]">
-            ${this.homeDataMode === "streaming" && !this.chartFailed ? html`
-              <span role="status" data-home-live-state>${this.followingLive ? "Live" : "Exploring history"}</span>
-              <button type="button" class="site-button" data-home-resume ?disabled=${this.followingLive} @click=${() => this.resumeLive?.()}>Resume live</button>
-            ` : ""}
-            <span class="text-[var(--muted)]">Scroll to zoom · Shift-drag to pan · Double-click to reset. Keyboard: arrows to pan, +/− to zoom.</span>
-          </div>
+          ${this.homeDataMode === "streaming" && !this.chartFailed && !this.followingLive ? html`
+            <div class="px-1 py-2">
+              <button type="button" class="site-button" data-home-resume @click=${() => this.resumeLive?.()}>Resume live</button>
+            </div>
+          ` : ""}
         </div>
       </section>
       <section class="py-6" aria-label="Install BlazePlot">

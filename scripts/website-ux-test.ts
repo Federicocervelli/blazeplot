@@ -54,14 +54,14 @@ try {
   await run("live-state", async () => {
     await resize(1280);
     await goto("/", "blazeplot-home");
-    await check("page.querySelector('[data-home-live-state]').textContent === 'Live'", "home starts live");
+    await check("!page.querySelector('[data-home-resume]') && !page.textContent.includes('Scroll to zoom')", "home hides redundant live state and interaction instructions");
     const rect = await js("(() => { const r = page.querySelector('canvas').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()") as {x: number; y: number};
     await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", ...rect, deltaX: 0, deltaY: -180 });
-    await wait("page.querySelector('[data-home-live-state]').textContent === 'Exploring history'");
+    await wait("page.querySelector('[data-home-resume]')");
     await js("page.querySelector('[data-home-resume]').click()");
-    await wait("page.querySelector('[data-home-live-state]').textContent === 'Live'");
+    await wait("!page.querySelector('[data-home-resume]')");
     await js("page.querySelector('#homeDataMode').value = 'static'; page.querySelector('#homeDataMode').dispatchEvent(new Event('change'))");
-    await wait("!page.querySelector('[data-home-live-state]')");
+    await wait("!page.querySelector('[data-home-resume]')");
     await check("page.querySelectorAll('canvas').length === 1", "switching data mode replaces the chart cleanly");
   });
   await run("toolbar", async () => {
@@ -160,7 +160,7 @@ try {
     for (const unavailable of [true, false]) {
       await goto("/", "blazeplot-home", `HTMLCanvasElement.prototype.getContext = function() { ${unavailable ? "return null" : "throw new Error('Unexpected initialization failure')"}; };`);
       await check(`page.querySelector('[role=alert]').textContent.includes('${unavailable ? "WebGL2" : "could not start"}')`, "fallback explains the actual failure category");
-      await check("!page.querySelector('[data-home-live-state]')", "failed chart does not claim it is live");
+      await check("!page.querySelector('[data-home-resume]')", "failed chart does not offer resume");
     }
   });
   await run("lazy-loading", async () => {
@@ -205,9 +205,9 @@ try {
       await wait("pageHost.homeChart?.isFollowingLatestX()");
       await check("Math.abs((pageHost.homeChart.getViewport().xMax - pageHost.homeChart.getViewport().xMin) - 419) < 0.01", "live window retains its original span");
       await js("pageHost.homeChart.pan({dx:0.1,dy:0})");
-      await wait("page.querySelector('[data-home-live-state]').textContent === 'Exploring history'");
+      await wait("page.querySelector('[data-home-resume]')");
       await js("page.querySelector('[data-home-resume]').click()");
-      await wait("pageHost.homeChart.isFollowingLatestX() && page.querySelector('[data-home-live-state]').textContent === 'Live'");
+      await wait("pageHost.homeChart.isFollowingLatestX() && !page.querySelector('[data-home-resume]')");
       await check("Number.isFinite(pageHost.homeChart.getViewport().yMin)", "each chart mode retains a valid Y range");
     }
   });
