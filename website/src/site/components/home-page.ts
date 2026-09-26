@@ -18,16 +18,19 @@ export class BlazeplotHomePage extends LitElement {
     homeDataMode: { state: true },
     homeChartMode: { state: true },
     followingLive: { state: true },
+    chartFailed: { state: true },
   };
 
   declare private homeDataMode: HomeDataMode;
   declare private homeChartMode: HomeChartMode;
   private homeChart: Chart | null = null;
   declare private followingLive: boolean;
+  declare private chartFailed: boolean;
   private resumeLive: (() => void) | null = null;
 
   constructor() {
     super();
+    this.chartFailed = false;
     this.followingLive = true;
     this.homeDataMode = "streaming";
     this.homeChartMode = "multi";
@@ -41,7 +44,10 @@ export class BlazeplotHomePage extends LitElement {
   }
 
   override updated(changedProperties: PropertyValues): void {
-    if (changedProperties.has("homeDataMode") || changedProperties.has("homeChartMode")) this.disposeHomeChart();
+    if (changedProperties.has("homeDataMode") || changedProperties.has("homeChartMode")) {
+      this.disposeHomeChart();
+      this.chartFailed = false;
+    }
     this.mountHomeChart();
   }
 
@@ -86,7 +92,7 @@ export class BlazeplotHomePage extends LitElement {
         <div class="min-w-0 overflow-hidden rounded border border-[#222] bg-black">
           <div data-home-chart class="h-[260px] w-full sm:h-[320px] md:h-[360px]"></div>
           <div class="flex flex-wrap items-center gap-3 border-t border-[#222] px-3 py-2 text-[12px]">
-            ${this.homeDataMode === "streaming" ? html`
+            ${this.homeDataMode === "streaming" && !this.chartFailed ? html`
               <span role="status" data-home-live-state>${this.followingLive ? "Live" : "Exploring history"}</span>
               <button type="button" class="site-button" data-home-resume ?disabled=${this.followingLive} @click=${() => this.resumeLive?.()}>Resume live</button>
             ` : ""}
@@ -106,9 +112,9 @@ export class BlazeplotHomePage extends LitElement {
   }
 
   private mountHomeChart(): void {
-    if (this.homeChart) return;
+    if (this.homeChart || this.chartFailed) return;
     const target = this.renderRoot.querySelector<HTMLElement>("[data-home-chart]");
-    if (!target || target.dataset.chartError === "1") return;
+    if (!target) return;
 
     const initialCount = 420;
     let nextX = initialCount;
@@ -185,7 +191,7 @@ export class BlazeplotHomePage extends LitElement {
       }
     } catch (error) {
       this.disposeHomeChart();
-      target.dataset.chartError = "1";
+      this.chartFailed = true;
       showChartFallback(target, error);
     }
   }

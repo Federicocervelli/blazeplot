@@ -1,4 +1,4 @@
-import "./site-drawer.ts";
+import { defineSiteDrawer } from "./site-drawer.ts";
 import { copyCode } from "../copy-code.ts";
 import { LitElement, html, type PropertyValues, type TemplateResult } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
@@ -149,6 +149,7 @@ export class BlazeplotDocsPage extends LitElement {
 }
 
 export function defineBlazeplotDocsPage(): void {
+  defineSiteDrawer();
   if (!customElements.get("blazeplot-docs")) {
     customElements.define("blazeplot-docs", BlazeplotDocsPage);
   }

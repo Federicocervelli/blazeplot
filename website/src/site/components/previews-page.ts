@@ -1,4 +1,4 @@
-import "./site-drawer.ts";
+import { defineSiteDrawer } from "./site-drawer.ts";
 import { LitElement, html, type TemplateResult } from "lit";
 import { PreviewChartsController } from "../previews-controller.ts";
 import { appHref, PREVIEWS, type PreviewId } from "../shared.ts";
@@ -45,7 +45,7 @@ export class BlazeplotPreviewsPage extends LitElement {
   private renderPreviews(): TemplateResult {
     const selected = PREVIEWS[this.previewIndex] ?? PREVIEWS[0]!;
     return html`
-      <section class="grid h-[calc(100dvh-82px)] min-h-[640px] min-w-0 grid-rows-[auto_minmax(0,1fr)] sm:h-[calc(100dvh-58px)]">
+      <section class="grid h-auto min-h-[640px] min-w-0 grid-rows-[auto_minmax(0,1fr)] xl:h-[calc(100dvh-58px)]">
         <site-drawer .open=${this.previewNavOpen} label="Preview navigation" @drawer-close=${this.closePreviewNav}>
           <div class="space-y-1">${PREVIEWS.map((p, i) => html`
             <a href=${appHref(`previews/${p.id}`)} aria-current=${i === this.previewIndex ? "page" : "false"} @click=${this.closePreviewNav} class="block rounded px-3 py-2 ${i === this.previewIndex ? "bg-[#111] text-[#e5e5e5]" : "text-[var(--muted)]"}">${p.title}</a>
@@ -155,7 +155,7 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderFeaturePreview(): TemplateResult {
     return html`
-      <div class="grid h-full min-h-[560px] min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div class="grid h-auto min-h-[560px] min-w-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_360px]">
         ${this.renderPreviewPanel(html`<div data-preview-chart="feature-hero" class="h-full min-h-[520px] w-full"></div>`,
         )}
         <div class="min-h-0">
@@ -181,7 +181,7 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderLinkedChartsPreview(): TemplateResult {
     return html`
-      <div class="grid h-full min-h-[560px] min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_220px]">
+      <div class="grid h-auto min-h-[560px] min-w-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_220px]">
         ${this.renderPreviewPanel(html`<div data-preview-chart="feature-linked" class="h-full min-h-[520px] w-full"></div>`)}
         <div class="content-start">
           <button data-feature-reset type="button" class="w-full border border-[#222] bg-[#0a0a0a] px-3 py-2 text-left font-mono text-[12px] text-[var(--muted)] hover:border-[#fc4a05] hover:text-[#fc4a05]">reset linked views</button>
@@ -270,6 +270,7 @@ export class BlazeplotPreviewsPage extends LitElement {
 }
 
 export function defineBlazeplotPreviewsPage(): void {
+  defineSiteDrawer();
   if (!customElements.get("blazeplot-previews")) {
     customElements.define("blazeplot-previews", BlazeplotPreviewsPage);
   }

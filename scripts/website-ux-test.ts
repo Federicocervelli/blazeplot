@@ -1,35 +1,50 @@
 #!/usr/bin/env bun
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CdpClient, createTarget, evaluate, resolveChrome, sleep, waitForHttp } from "./browser-harness.js";
 
 const only = process.argv[2];
-const port = 5197;
-const debugPort = 9397;
-const base = `http://127.0.0.1:${port}`;
+const port = await freePort();
+const debugPort = await freePort();
+const base = `http://127.0.0.1:${port}${(process.env.BLAZEPLOT_PAGES_BASE ?? "/").replace(/\/$/, "")}`;
 const profile = await mkdtemp(join(tmpdir(), "blazeplot-website-"));
-const server = Bun.spawn(["bunx", "vite", "--config", "vite.pages.config.ts", "--host", "127.0.0.1", "--port", String(port), "--strictPort", "--open", "false"], { stdout: "ignore", stderr: "ignore", env: { ...process.env, BLAZEPLOT_PAGES_BASE: "/" } });
+const server = Bun.spawn(["node", "node_modules/vite/bin/vite.js", ...(only === "production" ? ["preview"] : []), "--config", "vite.pages.config.ts", "--host", "127.0.0.1", "--port", String(port), "--strictPort", "--open", "false"], { stdout: "ignore", stderr: "ignore", env: { ...process.env, BLAZEPLOT_WEBSITE_TEST: "1", BLAZEPLOT_PAGES_BASE: process.env.BLAZEPLOT_PAGES_BASE ?? "/" } });
 let chrome: Bun.Subprocess | undefined;
 let cdp: CdpClient;
 const errors: string[] = [];
+let navigation = 0;
 try {
   await waitForHttp(base, 30_000);
   chrome = Bun.spawn([resolveChrome(undefined), "--headless=new", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "about:blank"], { stdout: "ignore", stderr: "ignore" });
   await waitForHttp(`http://127.0.0.1:${debugPort}/json/version`, 30_000);
   const target = await createTarget(debugPort, "about:blank");
   cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
+  const send = cdp.send.bind(cdp);
+  cdp.send = (method, params) => {
+    let timer: ReturnType<typeof setTimeout>;
+    return Promise.race([
+      send(method, params),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`CDP timeout: ${method}`)), 20_000); }),
+    ]).finally(() => clearTimeout(timer));
+  };
   await cdp.send("Runtime.enable");
   await cdp.send("Page.enable");
   await cdp.send("Page.bringToFront");
+  await mkdir("build/website-ux/downloads", { recursive: true });
+  await cdp.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: join(process.cwd(), "build/website-ux/downloads") });
   cdp.on("Runtime.exceptionThrown", (error) => errors.push(JSON.stringify(error)));
   await run("responsive", async () => {
     for (const width of [390, 1280]) {
       await resize(width);
       for (const route of ["live", "sensor", "features", "histogram", "linked", "server-sampled", "flamechart", "render-loop", "mobile"]) {
+        console.log(`  checking ${route} at ${width}px`);
         await goto(`/previews/${route}`, "blazeplot-previews");
         await check(`document.documentElement.scrollWidth <= innerWidth && [...page.querySelectorAll('[data-preview-chart]')].every(el => { const r = el.getBoundingClientRect(); return r.width === 0 || (r.left >= 0 && r.right <= innerWidth + 1); })`, `${route} fits ${width}px viewport`);
-        if (route === "mobile" || route === "live") await screenshot(`${route}-${width}`);
+        await check("getComputedStyle(site.shadowRoot.querySelector('main')).overflowY !== 'auto'", "page avoids nested scrolling");
+        await check("page.querySelector('h1').getBoundingClientRect().top < 180", "preview heading stays near navigation");
+        if (["mobile", "live", "features"].includes(route)) await screenshot(`${route}-${width}`);
       }
     }
   });
@@ -100,10 +115,15 @@ try {
       await goto(route!, component!);
       await js("window.trigger = site.shadowRoot.querySelector('blazeplot-topbar').shadowRoot.querySelector('button'); trigger.focus(); trigger.click()");
       await wait("page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
+      await screenshot(component! + "-drawer");
       await check("document.body.style.overflow === 'hidden'", "modal prevents background scrolling");
-      for (let i = 0; i < 20; i++) await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+      for (let i = 0; i < 20; i++) {
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+      }
       await check("page.activeElement === page.querySelector('site-drawer') || page.querySelector('site-drawer').contains(page.activeElement)", "tab focus remains in drawer");
       await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
       await wait("!page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
       await check("document.body.style.overflow === '' && trigger.getRootNode().activeElement === trigger", "escape restores scrolling and focus");
       await js("trigger.click()");
@@ -119,6 +139,7 @@ try {
     await check("window.copied === page.querySelector('.code-block code').textContent", "copy preserves exact code without toolbar text");
     await js("navigator.clipboard.writeText = async () => { throw new Error('denied'); }; page.querySelector('[data-copy-code]').click()");
     await wait("page.querySelector('.code-toolbar [role=status]').textContent.includes('Could not copy')");
+    await screenshot("docs-overview");
     await check("[...page.querySelectorAll('.doc-toc a')].every(a => page.getElementById(a.hash.slice(1)))", "all generated contents links resolve");
   });
   await run("feedback", async () => {
@@ -135,6 +156,7 @@ try {
       const script = await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: `HTMLCanvasElement.prototype.getContext = function() { ${unavailable ? "return null" : "throw new Error('Unexpected initialization failure')"}; };` }) as { identifier: string };
       await goto("/", "blazeplot-home");
       await check(`page.querySelector('[role=alert]').textContent.includes('${unavailable ? "WebGL2" : "could not start"}')`, "fallback explains the actual failure category");
+      await check("!page.querySelector('[data-home-live-state]')", "failed chart does not claim it is live");
       await cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: script.identifier });
     }
   });
@@ -192,6 +214,7 @@ try {
     await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
     await js("page.querySelector('#homeDataMode').focus()");
     await check("getComputedStyle(page.querySelector('#homeDataMode')).outlineStyle !== 'none'", "keyboard focus is visibly outlined");
+    await check("getComputedStyle(page.querySelector('a[href=\"/docs/overview\"]')).borderTopStyle === 'solid'", "utility borders render inside shadow roots");
     await check("page.querySelector('#homeDataMode').getBoundingClientRect().height >= 36", "controls have usable height");
     await check("getComputedStyle(pageHost).getPropertyValue('--muted').trim() === '#aaa'", "muted text uses the shared readable token");
     await screenshot("home-polished-mobile");
@@ -219,6 +242,33 @@ try {
     await js("legendChart.removeSeries(legendSeries)");
     await check("legendHost.querySelectorAll('.blazeplot-legend button').length === 0", "removed series disappear from legend");
     await js("legendChart.dispose(); legendHost.remove()");
+    await js(`(async () => {
+      const { Chart } = await import('/@fs${process.cwd()}/src/index.ts');
+      window.legendHost = document.createElement('div'); legendHost.style.cssText = 'width:500px;height:300px'; document.body.append(legendHost);
+      window.legendChart = new Chart(legendHost, { plugins: [legendFactory({toggleOnClick:false})] });
+      legendChart.addLine({capacity:10,name:'Read only'});
+    })()`);
+    await check("legendHost.querySelector('.blazeplot-legend').textContent.includes('Read only') && !legendHost.querySelector('.blazeplot-legend button')", "noninteractive legend has no inert buttons");
+    await js("legendChart.dispose(); legendHost.remove()");
+  });
+  if (only === "production") await run("production", async () => {
+    await resize(1280);
+    for (const [path, component] of [["/", "blazeplot-home"], ["/docs/overview#quick-start", "blazeplot-docs"], ["/previews/mobile", "blazeplot-previews"], ["/previews/features", "blazeplot-previews"]]) {
+      await goto(path!, component!);
+      await check("!page.querySelector('[role=alert]')", "production route loads without errors");
+      if (component !== "blazeplot-home") await check("page.querySelector('site-drawer')?.shadowRoot?.querySelector('dialog') && !page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open", "production registers and hides the closed drawer");
+      if (component === "blazeplot-previews") await check("page.querySelector('h1').getBoundingClientRect().top < 180", "production preview navigation stays compact");
+      if (path!.includes('#')) await wait("page.activeElement?.id === 'quick-start'");
+    }
+    await screenshot("production-desktop");
+    await resize(390);
+    await goto("/docs/overview", "blazeplot-docs");
+    await js("site.shadowRoot.querySelector('blazeplot-topbar').shadowRoot.querySelector('button').click()");
+    await wait("page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
+    await screenshot("production-mobile-drawer");
+    await cdp.send("Input.dispatchKeyEvent", {type:"keyDown", key:"Escape", code:"Escape", windowsVirtualKeyCode:27});
+    await cdp.send("Input.dispatchKeyEvent", {type:"keyUp", key:"Escape", code:"Escape", windowsVirtualKeyCode:27});
+    await wait("!page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
   });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
@@ -250,11 +300,15 @@ async function wait(expression: string): Promise<void> {
   throw new Error(`Timed out: ${expression}`);
 }
 async function goto(path: string, component: string): Promise<void> {
-  await cdp.send("Page.navigate", { url: base + path });
+  const url = new URL(base + path);
+  url.searchParams.set("uxRun", String(++navigation));
+  await cdp.send("Page.navigate", { url: url.href });
+  await wait(`location.href === ${JSON.stringify(url.href)} && document.readyState === 'complete'`);
   await wait(`document.querySelector('blazeplot-site')?.shadowRoot?.querySelector('${component}')?.shadowRoot`);
   await js(`window.site = document.querySelector('blazeplot-site'); window.pageHost = site.shadowRoot.querySelector('${component}'); window.page = pageHost.shadowRoot; void 0`);
   await wait(`page.querySelector('canvas, article h1, article h2, [role="alert"]')`);
   await js("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+  if (path === "/previews/live") await wait("!page.querySelector('[data-live-overlay-text]').textContent.includes('booting')");
 }
 async function check(expression: string, message: string): Promise<void> {
   if (!await js(expression)) throw new Error(message + " " + JSON.stringify(await js("({active:document.activeElement?.tagName, legendVisible:window.legendSeries?.visible, same:window.legendButton === document.activeElement, pressed:window.legendButton?.getAttribute('aria-pressed'), pageActive:window.page?.activeElement?.outerHTML, dialog:window.page?.querySelector(\"site-drawer\")?.shadowRoot?.activeElement?.outerHTML})")));
@@ -263,4 +317,13 @@ async function screenshot(name: string): Promise<void> {
   await mkdir("build/website-ux", { recursive: true });
   const result = await cdp.send("Page.captureScreenshot", { format: "png" }) as { data: string };
   await Bun.write(`build/website-ux/${name}.png`, Buffer.from(result.data, "base64"));
+}
+
+async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", resolve); });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Could not allocate test port");
+  await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  return address.port;
 }

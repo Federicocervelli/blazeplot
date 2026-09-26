@@ -3,7 +3,7 @@ import { siteStyles } from "../styles.ts";
 
 /** Native modal semantics provide focus containment and inert background content. */
 export class SiteDrawer extends LitElement {
-  static override styles = [siteStyles, css`dialog::backdrop { background: rgb(0 0 0 / 70%); }`];
+  static override styles = [siteStyles, css`:host { display: contents; } dialog::backdrop { background: rgb(0 0 0 / 70%); }`];
   static override properties = { open: { type: Boolean }, label: { type: String } };
   declare open: boolean;
   declare label: string;
@@ -62,4 +62,6 @@ export class SiteDrawer extends LitElement {
     this.returnFocus = null;
   }
 }
-if (!customElements.get("site-drawer")) customElements.define("site-drawer", SiteDrawer);
+export function defineSiteDrawer(): void {
+  if (!customElements.get("site-drawer")) customElements.define("site-drawer", SiteDrawer);
+}

@@ -2,6 +2,7 @@
 
 /* ── Dark theme base, matching preview aesthetic ── */
 :host {
+  --tw-border-style: solid;
   --bg: #000;
   --text: #e5e5e5;
   --muted: #aaa;
