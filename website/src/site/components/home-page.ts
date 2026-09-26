@@ -54,17 +54,17 @@ export class BlazeplotHomePage extends LitElement {
   override render(): TemplateResult {
     return html`
       <section class="grid gap-5 py-6 sm:gap-6 sm:py-10 md:grid-cols-[300px_minmax(0,1fr)] md:items-stretch">
-        <div class="flex flex-col justify-between border-y border-[#222] py-4 sm:py-5 md:min-h-[360px]">
+        <div class="flex flex-col justify-between py-4 sm:py-5 md:min-h-[360px]">
           <div>
             <h1 class="mb-4 flex items-center gap-3">
               <img src=${logoUrl} alt="BlazePlot" class="block h-8 w-auto" />
-              <span class="mt-[7px] inline-flex h-8 items-center rounded border border-[#333] bg-[#0a0a0a] px-2.5 text-sm font-normal leading-none text-[var(--muted)]">v${__BLAZEPLOT_VERSION__}</span>
+              <span class="mt-[7px] inline-flex items-center text-[12px] font-normal text-[var(--muted)]">v${__BLAZEPLOT_VERSION__}</span>
             </h1>
             <p class="text-base text-[#bbb]">Fast, interactive charts for dense history and live data.</p>
             <p class="mt-2 text-[12px] text-[var(--muted)]">WebGL2 rendering, streaming datasets, and optional plugins. Requires a browser with WebGL2.</p>
             <div class="mt-5 flex flex-wrap gap-3">
-              <a class="rounded border border-[#fc4a05] px-3 py-2 text-[#fc4a05]" href=${appHref("docs/overview")}>Get started</a>
-              <a class="rounded border border-[#333] px-3 py-2" href=${appHref("previews")}>Explore examples</a>
+              <a class="flex min-h-[44px] items-center text-[#fc4a05] underline underline-offset-4" href=${appHref("docs/overview")}>Get started</a>
+              <a class="flex min-h-[44px] items-center text-[var(--muted)] underline underline-offset-4" href=${appHref("previews")}>Explore examples</a>
             </div>
           </div>
           <div class="mt-6 grid grid-cols-[80px_140px] items-center gap-x-4 gap-y-3 text-[12px] sm:mt-8">
@@ -89,9 +89,9 @@ export class BlazeplotHomePage extends LitElement {
             </select>
           </div>
         </div>
-        <div class="min-w-0 overflow-hidden rounded border border-[#222] bg-black">
+        <div class="min-w-0 overflow-hidden">
           <div data-home-chart class="h-[260px] w-full sm:h-[320px] md:h-[360px]"></div>
-          <div class="flex flex-wrap items-center gap-3 border-t border-[#222] px-3 py-2 text-[12px]">
+          <div class="flex flex-wrap items-center gap-3 px-1 py-2 text-[12px]">
             ${this.homeDataMode === "streaming" && !this.chartFailed ? html`
               <span role="status" data-home-live-state>${this.followingLive ? "Live" : "Exploring history"}</span>
               <button type="button" class="site-button" data-home-resume ?disabled=${this.followingLive} @click=${() => this.resumeLive?.()}>Resume live</button>
@@ -100,7 +100,7 @@ export class BlazeplotHomePage extends LitElement {
           </div>
         </div>
       </section>
-      <section class="border-t border-[#222] py-6" aria-label="Install BlazePlot">
+      <section class="py-6" aria-label="Install BlazePlot">
         <h2 class="text-lg font-semibold">Add BlazePlot to your app</h2>
         <div class="code-block my-3" @click=${copyCode}>
           <div class="code-toolbar"><button type="button" data-copy-code aria-label="Copy installation command">Copy</button><span role="status"></span></div>

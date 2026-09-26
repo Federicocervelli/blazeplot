@@ -53,7 +53,7 @@ export class BlazeplotSite extends LitElement {
           ${this.loadedSections.has("previews") && this.section === "previews" ? html`<blazeplot-previews class="block" .previewId=${this.previewId}></blazeplot-previews>` : nothing}
           ${!this.loadedSections.has(this.section) ? this.loadError ? html`<p role="alert">Could not load this page. <button @click=${() => { this.loadError = false; void this.restoreAnchor(); }}>Try again</button></p>` : html`<p role="status">Loading page…</p>` : nothing}
         </main>
-        <footer class="flex flex-wrap justify-center gap-5 border-t border-[#222] px-3 py-5 text-[12px] text-[#aaa]" aria-label="Project links">
+        <footer class="flex flex-wrap justify-center gap-5 px-3 py-5 text-[12px] text-[#aaa]" aria-label="Project links">
           <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer">npm</a>
           <a href="https://github.com/Federicocervelli/blazeplot/blob/development/LICENSE" target="_blank" rel="noreferrer">MIT license</a>
           <a href="https://github.com/sponsors/Federicocervelli" target="_blank" rel="noreferrer">Sponsor</a>

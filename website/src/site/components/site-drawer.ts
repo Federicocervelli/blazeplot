@@ -38,11 +38,11 @@ export class SiteDrawer extends LitElement {
     }
   }
   override render(): TemplateResult {
-    return html`<dialog aria-label=${this.label} class="fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(86vw,340px)] max-w-none border-0 border-r border-[#333] bg-black p-0 text-[#e5e5e5]" @cancel=${this.onCancel} @click=${this.onBackdrop}>
+    return html`<dialog aria-label=${this.label} class="fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(86vw,340px)] max-w-none border-0 bg-black p-0 text-[#e5e5e5]" @cancel=${this.onCancel} @click=${this.onBackdrop}>
       <div class="flex h-full flex-col">
-        <header class="flex shrink-0 items-center justify-between border-b border-[#333] p-4">
+        <header class="flex shrink-0 items-center justify-between p-4">
           <h2 class="m-0 text-base font-semibold">${this.label}</h2>
-          <button type="button" class="rounded border border-[#333] px-3 py-2" aria-label=${`Close ${this.label.toLowerCase()}`} @click=${this.requestClose}>Close</button>
+          <button type="button" class="px-2 py-2 text-[var(--muted)] hover:text-[#e5e5e5]" aria-label=${`Close ${this.label.toLowerCase()}`} @click=${this.requestClose}>Close</button>
         </header>
         <nav class="min-h-0 flex-1 overflow-y-auto p-4" aria-label=${this.label}><slot></slot></nav>
       </div>

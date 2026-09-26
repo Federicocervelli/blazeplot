@@ -75,7 +75,7 @@ export class BlazeplotDocsPage extends LitElement {
     const doc = this.doc;
     return html`
       <section>
-        <div class="mb-4 flex justify-between gap-4 border-b border-[#222] pb-2">
+        <div class="mb-4 flex justify-between gap-4">
           <a href=${appHref("docs/docs-map")} class="text-[12px] text-[var(--muted)] no-underline hover:text-[#fc4a05]">all docs</a>
           <a href=${`https://github.com/Federicocervelli/blazeplot/blob/development/${doc.sourcePath}`} target="_blank" rel="noreferrer" class="text-[12px] text-[var(--muted)] no-underline hover:text-[#fc4a05]">source</a>
         </div>
@@ -107,7 +107,7 @@ export class BlazeplotDocsPage extends LitElement {
               <a
                 href=${appHref(`docs/${page.slug}`)}
                 aria-current=${page.slug === doc.slug ? "page" : "false"}
-                class="block rounded px-3 py-1.5 no-underline ${page.slug === doc.slug ? "bg-[#111] text-[#e5e5e5]" : "text-[var(--muted)] hover:bg-[#0a0a0a] hover:text-[#fc4a05]"}"
+                class="block px-3 py-1.5 no-underline ${page.slug === doc.slug ? "font-semibold text-[#fc4a05]" : "text-[var(--muted)] hover:text-[#e5e5e5]"}"
                 @click=${closeOnSelect ? this.closeDocsNav : undefined}
               >${page.title}</a>
             `;

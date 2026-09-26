@@ -48,16 +48,16 @@ export class BlazeplotPreviewsPage extends LitElement {
       <section class="grid h-auto min-h-[640px] min-w-0 grid-rows-[auto_minmax(0,1fr)] xl:h-[calc(100dvh-58px)]">
         <site-drawer .open=${this.previewNavOpen} label="Preview navigation" @drawer-close=${this.closePreviewNav}>
           <div class="space-y-1">${PREVIEWS.map((p, i) => html`
-            <a href=${appHref(`previews/${p.id}`)} aria-current=${i === this.previewIndex ? "page" : "false"} @click=${this.closePreviewNav} class="block rounded px-3 py-2 ${i === this.previewIndex ? "bg-[#111] text-[#e5e5e5]" : "text-[var(--muted)]"}">${p.title}</a>
+            <a href=${appHref(`previews/${p.id}`)} aria-current=${i === this.previewIndex ? "page" : "false"} @click=${this.closePreviewNav} class="block px-3 py-2 ${i === this.previewIndex ? "font-semibold text-[#fc4a05]" : "text-[var(--muted)]"}">${p.title}</a>
           `)}</div>
         </site-drawer>
-        <nav class="mb-2 hidden gap-5 overflow-x-auto border-b border-[#1a1a1a] text-[12px] leading-none md:flex">
+        <nav class="mb-2 hidden gap-5 overflow-x-auto text-[12px] leading-none md:flex">
           ${PREVIEWS.map(
             (p, i) => html`
               <button
                 type="button"
                 @click=${() => { this.selectPreview(i); }}
-                class="shrink-0 whitespace-nowrap border-0 border-b px-0 pb-2 pt-0 font-mono ${i === this.previewIndex ? "border-[#fc4a05] bg-transparent text-[#e5e5e5]" : "border-transparent bg-transparent text-[var(--muted)] hover:text-[#fc4a05]"}"
+                class="shrink-0 whitespace-nowrap bg-transparent px-0 py-1 font-mono ${i === this.previewIndex ? "font-semibold text-[#fc4a05]" : "text-[var(--muted)] hover:text-[#e5e5e5]"}"
               >${p.title}</button>
             `,
           )}
@@ -87,7 +87,7 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderPreviewPanel(body: TemplateResult): TemplateResult {
     return html`
-      <div class="grid h-full min-h-[520px] min-w-0 overflow-hidden border border-[#222] bg-black">
+      <div class="grid h-full min-h-[520px] min-w-0 overflow-hidden">
         <div class="min-h-0 min-w-0">${body}</div>
       </div>
     `;
@@ -95,12 +95,12 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderLivePreview(): TemplateResult {
     return html`
-      <section data-live-preview-root class="grid h-full min-h-[620px] min-w-0 grid-rows-[minmax(280px,1fr)_auto] overflow-hidden border border-[#222] bg-black text-[12px]">
+      <section data-live-preview-root class="grid h-full min-h-[620px] min-w-0 grid-rows-[minmax(280px,1fr)_auto] overflow-hidden text-[12px]">
         <div class="relative min-h-0">
           <div data-preview-chart="live" class="h-full w-full"></div>
-          <div data-live-overlay class="absolute left-0 top-0 z-40 max-w-full overflow-x-auto whitespace-pre border border-[#222]/70 bg-[#0a0a0a]/90 px-2.5 py-2 text-[#e5e5e5]"><span data-live-overlay-text>BlazePlot booting...</span></div>
+          <div data-live-overlay hidden class="absolute left-0 top-0 z-40 max-w-full overflow-x-auto whitespace-pre bg-[#0a0a0a]/70 px-2.5 py-2 text-[#e5e5e5]"><span data-live-overlay-text>BlazePlot booting...</span></div>
         </div>
-        <section class="flex flex-wrap items-center gap-3 border-t border-[#222] p-3 text-[#e5e5e5]" aria-label="Preview controls">
+        <section class="flex flex-wrap items-center gap-3 px-1 py-3 text-[#e5e5e5]" aria-label="Preview controls">
           <label class="inline-flex items-center gap-1 whitespace-nowrap">view samples
             <input data-live-view-samples type="number" min="1000" max="1000000000" step="1000000" value="86400" class="w-[12ch] site-input" />
           </label>
@@ -111,7 +111,7 @@ export class BlazeplotPreviewsPage extends LitElement {
           <details class="w-full" data-live-advanced>
             <summary class="cursor-pointer py-1 text-[var(--muted)]">Advanced settings & exports</summary>
             <div class="flex flex-wrap items-center gap-3 pt-3">
-          <button data-live-perf-toggle type="button" class="site-button">hide stats</button>
+          <button data-live-perf-toggle type="button" class="site-button">show stats</button>
           <button data-live-copy type="button" aria-label="Copy stats" title="Copy stats" class="site-button">📋</button>
           <label class="inline-flex items-center gap-1 whitespace-nowrap">theme
             <select data-live-theme class="site-input"><option value="default">default</option><option value="light">light</option></select>
@@ -140,12 +140,12 @@ export class BlazeplotPreviewsPage extends LitElement {
   private renderSensorStreamPreview(): TemplateResult {
     return this.renderPreviewPanel(html`
         <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[var(--muted)]">
-          <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
+          <div class="flex flex-wrap items-center gap-3 pb-2">
             <span>Dense IoT gateway stream: irregular batched timestamps, jitter, dropouts, and vibration spikes via <code>series.append({ x, y })</code>.</span>
             <button data-sensor-live type="button" class="site-button text-[#e5e5e5]">resume live</button>
             <span data-sensor-status class="text-[var(--muted)]">booting…</span>
           </div>
-          <div class="relative min-h-0 border border-[#222]">
+          <div class="relative min-h-0">
             <div data-preview-chart="sensor" class="h-full min-h-0 w-full"></div>
           </div>
         </section>
@@ -155,12 +155,12 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderFeaturePreview(): TemplateResult {
     return html`
-      <div class="grid h-auto min-h-[560px] min-w-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_360px]">
-        ${this.renderPreviewPanel(html`<div data-preview-chart="feature-hero" class="h-full min-h-[520px] w-full"></div>`,
-        )}
-        <div class="min-h-0">
-          <pre data-feature-log class="m-0 h-full min-h-[220px] overflow-auto border border-[#222] bg-[#050505] p-3 text-[11px] leading-relaxed text-[var(--muted)]"></pre>
-        </div>
+      <div class="flex h-full min-h-[560px] min-w-0 flex-col gap-3">
+        <div class="min-h-0 flex-1">${this.renderPreviewPanel(html`<div data-preview-chart="feature-hero" class="h-full min-h-[520px] w-full"></div>`)}</div>
+        <details class="text-[12px] text-[var(--muted)]">
+          <summary class="cursor-pointer">Interaction log</summary>
+          <pre data-feature-log class="m-0 max-h-40 overflow-auto py-2 text-[11px]"></pre>
+        </details>
       </div>
     `;
   }
@@ -168,10 +168,10 @@ export class BlazeplotPreviewsPage extends LitElement {
   private renderHistogramPreview(): TemplateResult {
     return this.renderPreviewPanel(html`
         <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[var(--muted)]">
-          <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
+          <div class="flex flex-wrap items-center gap-3 pb-2">
             <span>Latency distribution rendered through <code>chart.addHistogram(...)</code>; hover bars to inspect bucket ranges.</span>
           </div>
-          <div class="relative min-h-0 border border-[#222]">
+          <div class="relative min-h-0">
             <div data-preview-chart="histogram" class="h-full min-h-0 w-full"></div>
           </div>
         </section>
@@ -184,7 +184,7 @@ export class BlazeplotPreviewsPage extends LitElement {
       <div class="grid h-auto min-h-[560px] min-w-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_220px]">
         ${this.renderPreviewPanel(html`<div data-preview-chart="feature-linked" class="h-full min-h-[520px] w-full"></div>`)}
         <div class="content-start">
-          <button data-feature-reset type="button" class="w-full border border-[#222] bg-[#0a0a0a] px-3 py-2 text-left font-mono text-[12px] text-[var(--muted)] hover:border-[#fc4a05] hover:text-[#fc4a05]">reset linked views</button>
+          <button data-feature-reset type="button" class="bg-transparent p-0 text-left font-mono text-[12px] text-[#fc4a05] underline underline-offset-4">reset linked views</button>
         </div>
       </div>
     `;
@@ -192,8 +192,8 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderServerSampledPreview(): TemplateResult {
     return html`
-      <section data-server-sampled-root class="grid h-full min-h-[680px] min-w-0 grid-rows-[auto_minmax(0,0.9fr)_minmax(0,1.25fr)] overflow-hidden border border-[#1f2937] bg-[#05070d] text-[13px] text-[#e5e7eb]">
-        <header class="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[#1f2937] bg-[#0b1020] px-3 py-2">
+      <section data-server-sampled-root class="grid h-full min-h-[680px] min-w-0 grid-rows-[auto_minmax(0,0.9fr)_minmax(0,1.25fr)] overflow-hidden text-[13px] text-[#e5e7eb]">
+        <header class="flex flex-wrap items-center gap-x-3 gap-y-2 px-1 py-2">
           <strong>Binance preview</strong>
           <label class="inline-flex items-center gap-1.5">symbol
             <select data-server-symbol class="site-input"><option>BTCUSDT</option><option>ETHUSDT</option><option>BNBUSDT</option></select>
@@ -205,8 +205,8 @@ export class BlazeplotPreviewsPage extends LitElement {
           <span data-server-sampled-status class="text-[#9ca3af]">loading…</span>
           <span data-server-live-status class="text-[#9ca3af]">connecting 5s live…</span>
         </header>
-        <section class="relative min-h-0 border-t border-[#111827]"><div data-server-sampled-chart class="h-full w-full"></div></section>
-        <section class="relative min-h-0 border-t border-[#111827]"><div data-server-live-chart class="h-full w-full"></div></section>
+        <section class="relative min-h-0"><div data-server-sampled-chart class="h-full w-full"></div></section>
+        <section class="relative min-h-0"><div data-server-live-chart class="h-full w-full"></div></section>
         <div data-preview-chart="server-sampled" class="hidden"></div>
       </section>
     `;
@@ -220,19 +220,19 @@ export class BlazeplotPreviewsPage extends LitElement {
   private renderRenderLoopPreview(): TemplateResult {
     return this.renderPreviewPanel(html`
         <section data-preview-chart="render-loop" class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[var(--muted)]">
-          <div class="flex flex-wrap items-center gap-3 border-b border-[#222] pb-2">
+          <div class="flex flex-wrap items-center gap-3 pb-2">
             <span>Default <code>chart.start()</code> renders on demand; series appends should wake it without continuous RAF.</span>
             <button data-render-loop-append type="button" class="site-button text-[#e5e5e5]">append sample</button>
             <button data-render-loop-request type="button" class="site-button text-[#e5e5e5]">request on-demand render</button>
             <button data-render-loop-pan type="button" class="site-button text-[#e5e5e5]">change viewport</button>
           </div>
           <div class="grid min-h-0 grid-cols-1 gap-3 sm:grid-cols-2">
-            <div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border border-[#222]">
-              <div class="border-b border-[#222] px-2 py-1">on-demand renders: <span data-render-loop-demand-count>0</span></div>
+            <div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+              <div class="px-1 py-1 text-[var(--muted)]">on-demand renders: <span data-render-loop-demand-count>0</span></div>
               <div data-render-loop-demand class="min-h-0"></div>
             </div>
-            <div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border border-[#222]">
-              <div class="border-b border-[#222] px-2 py-1">continuous renders: <span data-render-loop-continuous-count>0</span></div>
+            <div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+              <div class="px-1 py-1 text-[var(--muted)]">continuous renders: <span data-render-loop-continuous-count>0</span></div>
               <div data-render-loop-continuous class="min-h-0"></div>
             </div>
           </div>

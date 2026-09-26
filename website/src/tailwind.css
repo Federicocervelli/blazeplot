@@ -19,7 +19,7 @@
   @apply text-[#e5e5e5] font-semibold tracking-tight;
 }
 .article h1 { @apply text-2xl mb-4 mt-0; }
-.article h2 { @apply text-xl mb-3 mt-8 pb-1 border-b border-[#222]; }
+.article h2 { @apply text-xl mb-3 mt-8; }
 .article h3 { @apply text-lg mb-2 mt-6; }
 .article h4 { @apply text-base mb-2 mt-4; }
 
@@ -109,27 +109,22 @@
   @apply text-[#ff9a3c];
 }
 
-.article .doc-chart-card {
-  @apply my-5 overflow-hidden rounded border border-[#222] bg-black;
-}
-.article .doc-chart-card figcaption {
-  @apply border-b border-[#222] bg-[#080808] px-3 py-2 text-[12px] text-[#888];
-}
+.article .doc-chart-card { @apply my-5 overflow-hidden; }
+.article .doc-chart-card figcaption { @apply px-1 py-2 text-[12px] text-[#888]; }
 .article .doc-chart {
   @apply h-[260px] w-full min-w-0 bg-black sm:h-[300px];
 }
 
-.code-toolbar { @apply flex flex-wrap items-center gap-3 rounded-t border border-[#333] bg-[#0a0a0a] px-3 py-2 text-[12px] text-[#bbb]; }
-.code-toolbar button { @apply ml-auto rounded border border-[#555] px-3 py-1; }
+.code-toolbar { @apply flex flex-wrap items-center gap-3 py-2 text-[12px] text-[#bbb]; }
+.code-toolbar button { @apply ml-auto px-1 py-1 text-[#fc4a05] underline underline-offset-4; }
 .code-toolbar [role=status] { @apply text-[12px]; }
 .article .code-block { @apply my-5; }
-.article .code-block pre { @apply my-0 rounded-t-none border-t-0; }
-.doc-toc { @apply my-5 rounded border border-[#333] p-3; }
+.article .code-block pre { @apply my-0 rounded-none border-x-0 border-b-0 bg-transparent px-1; }
+.doc-toc { @apply my-5 py-2; }
 .doc-toc summary { @apply cursor-pointer text-[#bbb]; }
 .doc-toc ul { @apply mb-0 mt-3; }
 
 /* Website controls are opt-in so chart plugin layout stays independent. */
-.site-button,
 .site-input {
   min-height: 36px;
   border: 1px solid var(--border);
@@ -139,8 +134,18 @@
   padding: 6px 10px;
   font: inherit;
 }
-.site-button { cursor: pointer; }
-.site-button:hover:not(:disabled), .site-input:hover { border-color: var(--accent); }
+.site-button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 4px;
+  font: inherit;
+  cursor: pointer;
+}
+.site-button:hover:not(:disabled) { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; }
+.site-input:hover { border-color: var(--accent); }
 button:disabled { cursor: default; opacity: 0.6; }
 :where(a, button, select, input, summary, [tabindex]):focus-visible {
   outline: 2px solid var(--accent);

@@ -32,6 +32,7 @@ try {
         await check(`document.documentElement.scrollWidth <= innerWidth && [...page.querySelectorAll('[data-preview-chart]')].every(el => { const r = el.getBoundingClientRect(); return r.width === 0 || (r.left >= 0 && r.right <= innerWidth + 1); })`, `${route} fits ${width}px viewport`);
         await check("getComputedStyle(site.shadowRoot.querySelector('main')).overflowY !== 'auto'", "page avoids nested scrolling");
         await check("page.querySelector('h1').getBoundingClientRect().top < 180", "preview heading stays near navigation");
+        await check("getComputedStyle(page.querySelector('[data-preview-chart]')?.closest('.grid.h-full') || page.querySelector('[data-live-preview-root]')).borderWidth === '0px'", "preview content is not wrapped in an extra border card");
         if (["mobile", "live", "features"].includes(route)) await screenshot(`${route}-${width}`);
       }
     }
@@ -86,6 +87,7 @@ try {
     await resize(390);
     await goto("/", "blazeplot-home");
     await check("!page.querySelector('article') && page.textContent.includes('npm install blazeplot')", "homepage has focused installation content");
+    await check("page.querySelector('[data-home-chart]').parentElement.getBoundingClientRect().width > 0 && getComputedStyle(page.querySelector('[data-home-chart]').parentElement).borderWidth === '0px'", "homepage chart does not have a decorative frame");
     await check("page.querySelector('a[href=\"/docs/overview\"]').textContent === 'Get started'", "clear onboarding action");
     await js("page.querySelector('a[href=\"/docs/overview#quick-start\"]').click()");
     await wait("site.shadowRoot.querySelector('blazeplot-docs')?.shadowRoot?.activeElement?.id === 'quick-start'");
