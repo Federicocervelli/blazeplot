@@ -19,18 +19,6 @@ Use this table before reaching for a generic chart example. The dataset choice d
 
 All built-in datasets expect sorted X values. If source data arrives out of order, sort it before constructing the dataset or write a custom dataset that exposes sorted logical access.
 
-## On this page
-
-- [Basic line chart](#basic-line-chart) — static X/Y data and first render loop.
-- [Histogram](#histogram) — raw one-dimensional values rendered with bar buckets.
-- [Live line chart](#live-line-chart) — rolling windows, fixed-rate samples, and cleanup.
-- [Server-sampled min/max buckets](#server-sampled-minmax-buckets) — backend-reduced dense history.
-- [Financial OHLC and candlesticks](#financial-ohlc-and-candlesticks) — market-style series.
-- [Linked charts](#linked-charts) — dashboards with shared X ranges.
-- [Built-in plugins](#built-in-plugins) — interactions, tooltip, legend, annotations, selection, crosshair, and navigator.
-- [Export image and data](#export-image-and-data) — screenshots, CSV, and JSON helpers.
-- [React](#react) — creating and disposing the same `Chart` API in an effect.
-
 ## Example structure
 
 Most examples follow the same lifecycle:

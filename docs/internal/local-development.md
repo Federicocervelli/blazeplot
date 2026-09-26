@@ -33,8 +33,11 @@ Visual, interaction, and benchmark checks need Chrome/Chromium/Brave. The script
 export BLAZEPLOT_BENCH_CHROME=/path/to/chrome
 bun run test:visual
 bun run test:interaction
+bun run test:website
 bun run bench:ci
 ```
+
+`bun run test:website` checks the development and production website builds for routing, responsive previews, modal keyboard behavior, copy/export feedback, lazy loading, offscreen chart lifecycle, and legend focus in headless Chromium. Screenshots and test downloads are written to `build/website-ux/`. Run a focused case with `bun scripts/website-ux-test.ts <case>` (for example, `anchors` or `legend`). After `bun run pages:build`, run `bun scripts/website-ux-test.ts production` to smoke-test the built site.
 
 `bun run ci` runs the full validation suite used by pull requests:
 
@@ -48,6 +51,7 @@ bun run test:bundle-size
 bun run bench:ci
 bun run test:visual
 bun run test:interaction
+bun run test:website
 ```
 
 ## Documentation changes

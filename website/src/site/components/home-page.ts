@@ -1,16 +1,14 @@
+import { copyCode } from "../copy-code.ts";
 import { LitElement, html, type PropertyValues, type TemplateResult } from "lit";
-import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { Chart, OhlcRingBuffer, StaticDataset, UniformRingBuffer, type ViewportPolicy } from "../../../../src/index.ts";
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
 import { tooltipPlugin } from "../../../../src/plugins/tooltip.ts";
-import { renderMarkdown } from "../../markdown.ts";
-import overviewMarkdown from "../../../../docs/overview.md?raw";
 import logoUrl from "../../blazeplot-dark-cropped.png";
 import { demoOhlcValues, demoSignal, lineData } from "../charts/signals.ts";
 import { showChartFallback } from "../charts/dom.ts";
 import { siteStyles } from "../styles.ts";
-import type { HomeChartMode, HomeDataMode } from "../shared.ts";
+import { appHref, type HomeChartMode, type HomeDataMode } from "../shared.ts";
 
 declare const __BLAZEPLOT_VERSION__: string;
 
@@ -19,18 +17,26 @@ export class BlazeplotHomePage extends LitElement {
   static override properties = {
     homeDataMode: { state: true },
     homeChartMode: { state: true },
+    followingLive: { state: true },
+    chartFailed: { state: true },
   };
 
   declare private homeDataMode: HomeDataMode;
   declare private homeChartMode: HomeChartMode;
   private homeChart: Chart | null = null;
+  declare private followingLive: boolean;
+  declare private chartFailed: boolean;
+  private resumeLive: (() => void) | null = null;
 
   constructor() {
     super();
+    this.chartFailed = false;
+    this.followingLive = true;
     this.homeDataMode = "streaming";
     this.homeChartMode = "multi";
   }
   private homeStreamRaf = 0;
+  private unsubscribeHomeState: (() => void) | null = null;
 
   override disconnectedCallback(): void {
     this.disposeHomeChart();
@@ -38,45 +44,42 @@ export class BlazeplotHomePage extends LitElement {
   }
 
   override updated(changedProperties: PropertyValues): void {
-    if (changedProperties.has("homeDataMode") || changedProperties.has("homeChartMode")) this.disposeHomeChart();
+    if (changedProperties.has("homeDataMode") || changedProperties.has("homeChartMode")) {
+      this.disposeHomeChart();
+      this.chartFailed = false;
+    }
     this.mountHomeChart();
   }
 
   override render(): TemplateResult {
     return html`
       <section class="grid gap-5 py-6 sm:gap-6 sm:py-10 md:grid-cols-[300px_minmax(0,1fr)] md:items-stretch">
-        <div class="flex flex-col justify-between border-y border-[#222] py-4 sm:py-5 md:min-h-[360px]">
+        <div class="flex flex-col justify-between py-4 sm:py-5 md:min-h-[360px]">
           <div>
             <h1 class="mb-4 flex items-center gap-3">
               <img src=${logoUrl} alt="BlazePlot" class="block h-8 w-auto" />
-              <span class="mt-[7px] inline-flex h-8 items-center rounded border border-[#333] bg-[#0a0a0a] px-2.5 text-sm font-normal leading-none text-[#aaa]">v${__BLAZEPLOT_VERSION__}</span>
+              <span class="mt-[7px] inline-flex items-center text-[12px] font-normal text-[var(--muted)]">v${__BLAZEPLOT_VERSION__}</span>
             </h1>
-            <div class="mt-4 flex max-w-[34ch] flex-wrap gap-2">
-              <a href="https://github.com/Federicocervelli/blazeplot/blob/development/LICENSE" target="_blank" rel="noreferrer" aria-label="BlazePlot license">
-                <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="license MIT" class="block h-5" />
-              </a>
-              <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot npm downloads">
-                <img src="https://img.shields.io/npm/dt/blazeplot.svg" alt="npm downloads" class="block h-5" />
-              </a>
-              <a href="https://github.com/sponsors/Federicocervelli" target="_blank" rel="noreferrer" aria-label="Sponsor BlazePlot on GitHub">
-                <img src="https://img.shields.io/badge/sponsor-GitHub%20Sponsors-EA4AAA?logo=githubsponsors" alt="GitHub Sponsors" class="block h-5" />
-              </a>
+            <p class="text-base text-[#bbb]">Fast WebGL2 charts for dense history and live data.</p>
+            <div class="mt-5 flex flex-wrap gap-3">
+              <a class="flex min-h-[44px] items-center text-[#fc4a05] underline underline-offset-4" href=${appHref("docs/overview")}>Get started</a>
+              <a class="flex min-h-[44px] items-center text-[var(--muted)] underline underline-offset-4" href=${appHref("previews")}>Explore examples</a>
             </div>
           </div>
           <div class="mt-6 grid grid-cols-[80px_140px] items-center gap-x-4 gap-y-3 text-[12px] sm:mt-8">
-            <label for="homeDataMode" class="text-[#555]">data</label>
+            <label for="homeDataMode" class="text-[var(--muted)]">data</label>
             <select
               id="homeDataMode"
-              class="h-7 w-[140px] rounded border border-[#333] bg-[#0a0a0a] px-2 font-mono text-[12px] text-[#e5e5e5] outline-none hover:border-[#fc4a05]"
+              class="site-input w-[140px]"
               @change=${this.handleHomeDataModeChange}
             >
               <option value="static" ?selected=${this.homeDataMode === "static"}>static</option>
               <option value="streaming" ?selected=${this.homeDataMode === "streaming"}>streaming</option>
             </select>
-            <label for="homeChartMode" class="text-[#555]">mode</label>
+            <label for="homeChartMode" class="text-[var(--muted)]">mode</label>
             <select
               id="homeChartMode"
-              class="h-7 w-[140px] rounded border border-[#333] bg-[#0a0a0a] px-2 font-mono text-[12px] text-[#e5e5e5] outline-none hover:border-[#fc4a05]"
+              class="site-input w-[140px]"
               @change=${this.handleHomeChartModeChange}
             >
               <option value="line" ?selected=${this.homeChartMode === "line"}>line</option>
@@ -85,45 +88,56 @@ export class BlazeplotHomePage extends LitElement {
             </select>
           </div>
         </div>
-        <div class="min-w-0 overflow-hidden rounded border border-[#222] bg-black">
+        <div class="min-w-0 overflow-hidden">
           <div data-home-chart class="h-[260px] w-full sm:h-[320px] md:h-[360px]"></div>
+          ${this.homeDataMode === "streaming" && !this.chartFailed && !this.followingLive ? html`
+            <div class="px-1 py-2">
+              <button type="button" class="site-button" data-home-resume @click=${() => this.resumeLive?.()}>Resume live</button>
+            </div>
+          ` : ""}
         </div>
       </section>
-      <article class="article border-t border-[#222] pt-8">${unsafeHTML(renderMarkdown(overviewMarkdown, { sourcePath: "docs/overview.md" }))}</article>
+      <section class="py-6" aria-label="Install BlazePlot">
+        <h2 class="text-lg font-semibold">Add BlazePlot to your app</h2>
+        <div class="code-block home-install-code relative my-3" @click=${copyCode}>
+          <button type="button" class="home-copy-button" data-copy-code data-copy-state="ready" aria-label="Copy install command" title="Copy command">
+            <svg data-copy-icon width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="8" y="8" width="12" height="12" rx="2" />
+              <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+            </svg>
+            <svg data-copied-icon width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="m5 12 4 4L19 6" /></svg>
+            <svg data-copy-failed-icon width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="M12 9v4m0 4h.01M10.3 3.9 1.9 18.5a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
+          </button>
+          <span class="sr-only" role="status" aria-live="polite"></span>
+          <pre class="overflow-auto rounded border border-[#222] bg-[#0a0a0a] p-4"><code>npm install blazeplot</code></pre>
+        </div>
+      </section>
     `;
   }
 
   private mountHomeChart(): void {
-    if (this.homeChart) return;
+    if (this.homeChart || this.chartFailed) return;
     const target = this.renderRoot.querySelector<HTMLElement>("[data-home-chart]");
-    if (!target || target.dataset.chartError === "1") return;
+    if (!target) return;
 
     const initialCount = 420;
     let nextX = initialCount;
-    let followLive = this.homeDataMode === "streaming";
+    this.followingLive = this.homeDataMode === "streaming";
     const homeViewport = (xMin: number, xMax: number): { xMin: number; xMax: number; yMin: number; yMax: number } => {
       const yRange = this.homeChartMode === "ohlc" ? this.homeOhlcYRange(xMin, xMax) : { yMin: -1.35, yMax: 1.35 };
       return { xMin, xMax, ...yRange };
     };
     const resetViewport = (): { xMin: number; xMax: number; yMin: number; yMax: number } => {
       if (this.homeDataMode === "streaming") {
-        followLive = true;
         return homeViewport(nextX - initialCount, nextX - 1);
       }
       return homeViewport(0, initialCount - 1);
     };
     const viewportPolicy: ViewportPolicy = {
-      beforePan(_camera, intent) {
-        followLive = false;
-        return intent;
-      },
-      beforeZoom(_camera, intent) {
-        followLive = false;
-        return intent;
-      },
       beforeRender: (camera) => {
-        if (this.homeDataMode !== "streaming" || !followLive) return;
-        camera.setViewport(homeViewport(nextX - initialCount, nextX - 1));
+        if (!this.homeChart?.isFollowingLatestX()) return;
+        const { yMin, yMax } = homeViewport(nextX - initialCount, nextX - 1);
+        camera.setViewport({ yMin, yMax });
       },
     };
 
@@ -153,10 +167,16 @@ export class BlazeplotHomePage extends LitElement {
         },
       });
 
+      this.homeChart = chart;
       const stream = this.addHomeSeries(chart, initialCount);
       chart.setViewport(resetViewport());
+      if (stream) chart.followLatestX({ window: initialCount - 1, pauseOnInteraction: true });
+      this.unsubscribeHomeState = chart.subscribe("render", () => { this.followingLive = chart.isFollowingLatestX(); });
       chart.start();
-      this.homeChart = chart;
+      this.resumeLive = () => {
+        chart.setViewport(resetViewport());
+        chart.resumeLatestXFollow();
+      };
 
       if (stream) {
         const pointsPerSecond = 180;
@@ -173,9 +193,10 @@ export class BlazeplotHomePage extends LitElement {
         };
         this.homeStreamRaf = requestAnimationFrame(frame);
       }
-    } catch {
-      target.dataset.chartError = "1";
-      showChartFallback(target);
+    } catch (error) {
+      this.disposeHomeChart();
+      this.chartFailed = true;
+      showChartFallback(target, error);
     }
   }
 
@@ -258,8 +279,11 @@ export class BlazeplotHomePage extends LitElement {
   private disposeHomeChart(): void {
     if (this.homeStreamRaf !== 0) cancelAnimationFrame(this.homeStreamRaf);
     this.homeStreamRaf = 0;
+    this.unsubscribeHomeState?.();
+    this.unsubscribeHomeState = null;
     this.homeChart?.dispose();
     this.homeChart = null;
+    this.resumeLive = null;
   }
 }
 

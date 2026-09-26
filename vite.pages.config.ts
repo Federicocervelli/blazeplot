@@ -20,6 +20,7 @@ export default defineConfig({
   },
   server: {
     open: true,
+    hmr: process.env.BLAZEPLOT_WEBSITE_TEST === "1" ? false : undefined,
     fs: {
       allow: [__dirname],
     },

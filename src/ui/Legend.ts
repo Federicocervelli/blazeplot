@@ -30,53 +30,63 @@ function legendBorder(options: LegendPluginOptions, chart: ChartPluginContext): 
   return color === "transparent" ? "0" : `1px solid ${color}`;
 }
 
+interface LegendRow {
+  element: HTMLElement;
+  swatch: HTMLElement;
+  label: HTMLElement;
+}
+
 function renderDefaultLegend(
   state: readonly ChartSeriesState[],
   container: HTMLElement,
   chart: ChartPluginContext,
   toggleOnClick: boolean,
   options: LegendPluginOptions,
+  rows: Map<ChartSeriesState["series"], LegendRow>,
 ): void {
-  container.replaceChildren();
+  const current = new Set(state.map((item) => item.series));
+  for (const [series, row] of rows) {
+    if (!current.has(series)) { row.element.remove(); rows.delete(series); }
+  }
 
-  for (const item of state) {
-    const row = document.createElement("button");
-    row.type = "button";
-    row.setAttribute("role", "listitem");
-    row.setAttribute("aria-pressed", String(item.visible));
-    row.setAttribute("aria-label", `${item.visible ? "Hide" : "Show"} ${item.name ?? item.id ?? `${item.mode} ${item.index + 1}`}`);
-    row.style.display = "flex";
-    row.style.alignItems = "center";
-    row.style.gap = "6px";
-    row.style.border = "0";
-    row.style.margin = "0";
-    row.style.padding = "0";
-    row.style.appearance = "none";
-    row.style.background = "transparent";
-    row.style.color = item.visible
+  for (const [index, item] of state.entries()) {
+    let entry = rows.get(item.series);
+    if (!entry) {
+      const row = document.createElement(toggleOnClick ? "button" : "span");
+      if (row instanceof HTMLButtonElement) {
+        row.type = "button";
+        row.addEventListener("click", () => chart.setSeriesVisible(item.series, !item.series.visible));
+      }
+      Object.assign(row.style, {
+        display: "flex", alignItems: "center", gap: "6px", border: "0", margin: "0", padding: "0",
+        appearance: "none", background: "transparent", font: "inherit", textAlign: "left",
+        cursor: toggleOnClick ? "pointer" : "default", outlineOffset: "2px",
+      });
+      const swatch = document.createElement("span");
+      swatch.textContent = "\u2588";
+      swatch.setAttribute("aria-hidden", "true");
+      swatch.style.flex = "0 0 auto";
+      const label = document.createElement("span");
+      row.append(swatch, label);
+      entry = { element: row, swatch, label };
+      rows.set(item.series, entry);
+    }
+    const { element, swatch, label } = entry;
+    const name = item.name ?? item.id ?? `${item.mode} ${item.index + 1}`;
+    if (toggleOnClick) {
+      element.setAttribute("aria-pressed", String(item.visible));
+      element.setAttribute("aria-label", name);
+      element.title = `${item.visible ? "Hide" : "Show"} ${name}`;
+    }
+    element.style.color = item.visible
       ? options.textColor ?? chart.theme.legendTextColor
       : options.mutedTextColor ?? chart.theme.legendMutedTextColor;
-    row.style.font = "inherit";
-    row.style.textAlign = "left";
-    row.style.cursor = toggleOnClick ? "pointer" : "default";
-    row.style.opacity = item.visible ? "1" : "0.45";
-    row.style.outlineOffset = "2px";
-
-    const swatch = document.createElement("span");
-    swatch.textContent = "\u2588";
+    element.style.opacity = item.visible ? "1" : "0.45";
     swatch.style.color = rgba(item.color);
-    swatch.style.flex = "0 0 auto";
-
-    const label = document.createElement("span");
-    label.textContent = item.name ?? item.id ?? `${item.mode} ${item.index + 1}`;
-
-    row.append(swatch, label);
-    if (toggleOnClick) {
-      row.addEventListener("click", () => {
-        chart.setSeriesVisible(item.series, !item.visible);
-      });
-    }
-    container.appendChild(row);
+    label.textContent = name;
+    // Leave existing nodes in place so theme and series updates retain keyboard focus.
+    const atIndex = container.children.item(index);
+    if (atIndex !== element) container.insertBefore(element, atIndex);
   }
 }
 
@@ -96,7 +106,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.style.font = options.font ?? chart.theme.legendFont;
       container.style.whiteSpace = "pre";
       container.style.userSelect = "none";
-      container.setAttribute("role", "list");
+      container.setAttribute("role", "group");
       container.setAttribute("aria-label", "Chart series legend");
       applyPosition(container, options.position ?? "top-right");
       chart.rootElement.appendChild(container);
@@ -108,13 +118,14 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
         container.style.font = options.font ?? chart.theme.legendFont;
       };
 
+      const rows = new Map<ChartSeriesState["series"], LegendRow>();
       const render = (): void => {
         applyTheme();
         const state = chart.getSeriesState();
         if (options.render) {
           options.render(state, container, chart as Chart);
         } else {
-          renderDefaultLegend(state, container, chart, options.toggleOnClick !== false, options);
+          renderDefaultLegend(state, container, chart, options.toggleOnClick !== false, options, rows);
         }
       };
 
@@ -125,6 +136,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       return () => {
         unsubscribeSeries();
         unsubscribeTheme();
+        rows.clear();
         container.remove();
       };
     },

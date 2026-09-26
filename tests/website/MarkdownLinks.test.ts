@@ -22,3 +22,11 @@ describe("website markdown links", () => {
     );
   });
 });
+
+test("contents follow real headings, skip code and disambiguate repeated headings", () => {
+  const html = renderMarkdown("# Guide\n## Setup\n## Setup\n```ts\n## Ignored\n```", { tableOfContents: true });
+  expect(html).toContain('href="#setup"');
+  expect(html).toContain('href="#setup-1"');
+  expect(html).not.toContain('href="#ignored"');
+  expect(html).toContain('data-copy-code');
+});
