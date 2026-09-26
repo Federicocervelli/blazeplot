@@ -86,6 +86,13 @@ try {
     await js("page.querySelector('a[href=\"/docs/overview#quick-start\"]').click()");
     await wait("site.shadowRoot.querySelector('blazeplot-docs')?.shadowRoot?.activeElement?.id === 'quick-start'");
   });
+  await run("navigation", async () => {
+    await resize(320);
+    await goto("/docs/overview", "blazeplot-docs");
+    await check("(() => { const nav = site.shadowRoot.querySelector('blazeplot-topbar').shadowRoot; return [...nav.querySelectorAll('nav a')].every(a => a.getAttribute('aria-label') || a.textContent.trim()) && nav.querySelector('a[aria-current=page]').textContent.trim() === 'Docs'; })()", "primary links retain accessible labels and active state");
+    await check("document.documentElement.scrollWidth <= innerWidth", "navigation fits 320px viewport");
+    await check("site.shadowRoot.querySelector('footer').textContent.includes('Portfolio')", "secondary links remain available in footer");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");
