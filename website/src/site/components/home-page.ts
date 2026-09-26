@@ -102,11 +102,16 @@ export class BlazeplotHomePage extends LitElement {
       </section>
       <section class="py-6" aria-label="Install BlazePlot">
         <h2 class="text-lg font-semibold">Add BlazePlot to your app</h2>
-        <div class="code-block my-3" @click=${copyCode}>
-          <div class="code-toolbar"><button type="button" data-copy-code aria-label="Copy installation command">Copy</button><span role="status"></span></div>
+        <div class="code-block home-install-code relative my-3" @click=${copyCode}>
+          <button type="button" class="home-copy-button" data-copy-code aria-label="Copy install command" title="Copy command">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="8" y="8" width="12" height="12" rx="2" />
+              <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+            </svg>
+          </button>
+          <span class="sr-only" role="status" aria-live="polite"></span>
           <pre class="overflow-auto rounded border border-[#222] bg-[#0a0a0a] p-4"><code>npm install blazeplot</code></pre>
         </div>
-        <p class="text-[var(--muted)]">Prefer Bun? Use <code>bun add blazeplot</code>. Follow the <a class="text-[#fc4a05]" href=${appHref("docs/overview#quick-start")}>quick start</a> for your first chart and cleanup instructions.</p>
       </section>
     `;
   }

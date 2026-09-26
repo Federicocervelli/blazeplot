@@ -87,10 +87,18 @@ try {
     await resize(390);
     await goto("/", "blazeplot-home");
     await check("!page.querySelector('article') && page.textContent.includes('npm install blazeplot')", "homepage has focused installation content");
+    await check("!page.textContent.includes('Prefer Bun') && !page.textContent.includes('quick start')", "homepage install block has no extra setup pitch");
+    await check("page.querySelector('.home-copy-button svg') && page.querySelector('.home-copy-button').textContent.trim() === ''", "homepage copy control is an icon-only button in the code box");
+    await check("page.querySelector('.home-install-code [role=status]').classList.contains('sr-only')", "copy feedback stays visually hidden but accessible");
+    await js("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedInstall = text; } } }); page.querySelector('.home-copy-button').click()");
+    await wait("page.querySelector('.home-install-code [role=status]').textContent === 'Install command copied'");
+    await check("window.copiedInstall === 'npm install blazeplot' && page.querySelector('.home-copy-button').textContent.trim() === ''", "home copy button copies the command while remaining icon-only");
+    await js("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }); document.execCommand = command => { window.copyFallbackUsed = command; return command === 'copy'; }; page.querySelector('.home-copy-button').click()");
+    await wait("page.querySelector('.home-install-code [role=status]').textContent === 'Install command copied'");
+    await check("copyFallbackUsed === 'copy' && !page.querySelector('.home-install-code textarea')", "icon copies on non-secure Tailnet HTTP through the fallback");
+    await check("getComputedStyle(page.querySelector('.home-install-code [role=status]')).position === 'absolute'", "copy feedback is accessible without an inline error message");
     await check("page.querySelector('[data-home-chart]').parentElement.getBoundingClientRect().width > 0 && getComputedStyle(page.querySelector('[data-home-chart]').parentElement).borderWidth === '0px'", "homepage chart does not have a decorative frame");
     await check("page.querySelector('a[href=\"/docs/overview\"]').textContent === 'Get started'", "clear onboarding action");
-    await js("page.querySelector('a[href=\"/docs/overview#quick-start\"]').click()");
-    await wait("site.shadowRoot.querySelector('blazeplot-docs')?.shadowRoot?.activeElement?.id === 'quick-start'");
   });
   await run("navigation", async () => {
     await resize(320);
@@ -125,9 +133,9 @@ try {
   await run("copy-contents", async () => {
     await goto("/docs/overview", "blazeplot-docs");
     await js("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copied = text; } } }); page.querySelector('[data-copy-code]').click()");
-    await wait("page.querySelector('.code-toolbar [role=status]').textContent === 'Copied'");
+    await wait("page.querySelector('.code-toolbar [role=status]').textContent === 'Code copied'");
     await check("window.copied === page.querySelector('.code-block code').textContent", "copy preserves exact code without toolbar text");
-    await js("navigator.clipboard.writeText = async () => { throw new Error('denied'); }; page.querySelector('[data-copy-code]').click()");
+    await js("navigator.clipboard.writeText = async () => { throw new Error('denied'); }; document.execCommand = () => false; page.querySelector('[data-copy-code]').click()");
     await wait("page.querySelector('.code-toolbar [role=status]').textContent.includes('Could not copy')");
     await screenshot("docs-overview");
     await check("[...page.querySelectorAll('.doc-toc a')].every(a => page.getElementById(a.hash.slice(1)))", "all generated contents links resolve");
