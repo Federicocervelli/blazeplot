@@ -61,6 +61,17 @@ export class BlazeplotHomePage extends LitElement {
               <span class="mt-[7px] inline-flex items-center text-[12px] font-normal text-[var(--muted)]">v${__BLAZEPLOT_VERSION__}</span>
             </h1>
             <p class="text-base text-[#bbb]">Fast WebGL2 charts for dense history and live data.</p>
+            <nav class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1" aria-label="Project badges">
+              <a href="https://github.com/Federicocervelli/blazeplot/blob/development/LICENSE" target="_blank" rel="noreferrer" aria-label="BlazePlot license">
+                <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT license" class="block h-5" />
+              </a>
+              <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot npm downloads">
+                <img src="https://img.shields.io/npm/dt/blazeplot.svg" alt="Total npm downloads" class="block h-5" />
+              </a>
+              <a href="https://github.com/sponsors/Federicocervelli" target="_blank" rel="noreferrer" aria-label="Sponsor BlazePlot on GitHub">
+                <img src="https://img.shields.io/badge/sponsor-GitHub%20Sponsors-EA4AAA?logo=githubsponsors" alt="GitHub Sponsors" class="block h-5" />
+              </a>
+            </nav>
             <div class="mt-5 flex flex-wrap gap-3">
               <a class="flex min-h-[44px] items-center text-[#fc4a05] underline underline-offset-4" href=${appHref("docs/overview")}>Get started</a>
               <a class="flex min-h-[44px] items-center text-[var(--muted)] underline underline-offset-4" href=${appHref("previews")}>Explore examples</a>
