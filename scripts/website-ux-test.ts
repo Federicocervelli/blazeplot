@@ -32,6 +32,20 @@ try {
       }
     }
   });
+  await run("anchors", async () => {
+    await resize(1280);
+    await goto("/docs/examples#linked-charts", "blazeplot-docs");
+    await wait("page.activeElement?.id === 'linked-charts'");
+    await check("page.querySelector('#linked-charts').getBoundingClientRect().top >= 60", "deep link clears sticky header");
+    await js("page.querySelector('a[href=\"#basic-line-chart\"]').click()");
+    await wait("location.hash === '#basic-line-chart' && page.activeElement?.id === 'basic-line-chart'");
+    await js("history.back()");
+    await wait("location.hash === '#linked-charts' && page.activeElement?.id === 'linked-charts'");
+    await goto("/docs/docs-map", "blazeplot-docs");
+    await js("page.querySelector('a[href=\"/docs/examples#linked-charts\"]').click()");
+    await wait("location.pathname === '/docs/examples' && location.hash === '#linked-charts'");
+    await wait("page.activeElement?.id === 'linked-charts'");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");

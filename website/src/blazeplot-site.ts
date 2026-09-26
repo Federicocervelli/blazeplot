@@ -29,6 +29,7 @@ export class BlazeplotSite extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.syncRoute();
+    void this.restoreAnchor();
     window.addEventListener("hashchange", this.onHash);
     window.addEventListener("popstate", this.onPopState);
   }
@@ -60,10 +61,12 @@ export class BlazeplotSite extends LitElement {
       return;
     }
     this.syncRoute();
+    void this.restoreAnchor();
   };
 
   private readonly onPopState = (): void => {
     this.syncRoute();
+    void this.restoreAnchor();
   };
 
   private readonly handlePreviewSelect = (event: CustomEvent<PreviewId>): void => {
@@ -92,7 +95,7 @@ export class BlazeplotSite extends LitElement {
     if (!route) return;
 
     event.preventDefault();
-    this.navigateToAppRoute(route);
+    this.navigateToAppRoute(`${route}${url.search}${url.hash}`);
   };
 
   private navigateToAppRoute(route: string, options: { replace?: boolean; scroll?: boolean } = {}): void {
@@ -106,6 +109,23 @@ export class BlazeplotSite extends LitElement {
       window.history[options.replace ? "replaceState" : "pushState"](null, "", targetPath);
     }
     this.syncRoute();
+    void this.restoreAnchor();
+  }
+
+  private async restoreAnchor(): Promise<void> {
+    await this.updateComplete;
+    const page = this.renderRoot.querySelector<LitElement>("blazeplot-docs, blazeplot-home, blazeplot-previews");
+    await page?.updateComplete;
+    const hash = window.location.hash.slice(1);
+    if (!hash || !page) return;
+    let id: string;
+    try { id = decodeURIComponent(hash); } catch { return; }
+    const heading = page.renderRoot.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`);
+    if (!heading) return;
+    heading.style.scrollMarginTop = "72px";
+    heading.setAttribute("tabindex", "-1");
+    heading.scrollIntoView({ block: "start", behavior: "instant" });
+    heading.focus({ preventScroll: true });
   }
 
   private syncRoute(): void {
