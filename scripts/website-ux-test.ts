@@ -46,6 +46,19 @@ try {
     await wait("location.pathname === '/docs/examples' && location.hash === '#linked-charts'");
     await wait("page.activeElement?.id === 'linked-charts'");
   });
+  await run("live-state", async () => {
+    await resize(1280);
+    await goto("/", "blazeplot-home");
+    await check("page.querySelector('[data-home-live-state]').textContent === 'Live'", "home starts live");
+    const rect = await js("(() => { const r = page.querySelector('canvas').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()") as {x: number; y: number};
+    await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", ...rect, deltaX: 0, deltaY: -180 });
+    await wait("page.querySelector('[data-home-live-state]').textContent === 'Exploring history'");
+    await js("page.querySelector('[data-home-resume]').click()");
+    await wait("page.querySelector('[data-home-live-state]').textContent === 'Live'");
+    await js("page.querySelector('#homeDataMode').value = 'static'; page.querySelector('#homeDataMode').dispatchEvent(new Event('change'))");
+    await wait("!page.querySelector('[data-home-live-state]')");
+    await check("page.querySelectorAll('canvas').length === 1", "switching data mode replaces the chart cleanly");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");

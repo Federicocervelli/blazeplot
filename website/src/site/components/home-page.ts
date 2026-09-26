@@ -19,14 +19,18 @@ export class BlazeplotHomePage extends LitElement {
   static override properties = {
     homeDataMode: { state: true },
     homeChartMode: { state: true },
+    followingLive: { state: true },
   };
 
   declare private homeDataMode: HomeDataMode;
   declare private homeChartMode: HomeChartMode;
   private homeChart: Chart | null = null;
+  declare private followingLive: boolean;
+  private resumeLive: (() => void) | null = null;
 
   constructor() {
     super();
+    this.followingLive = true;
     this.homeDataMode = "streaming";
     this.homeChartMode = "multi";
   }
@@ -87,6 +91,13 @@ export class BlazeplotHomePage extends LitElement {
         </div>
         <div class="min-w-0 overflow-hidden rounded border border-[#222] bg-black">
           <div data-home-chart class="h-[260px] w-full sm:h-[320px] md:h-[360px]"></div>
+          <div class="flex flex-wrap items-center gap-3 border-t border-[#222] px-3 py-2 text-[12px]">
+            ${this.homeDataMode === "streaming" ? html`
+              <span role="status" data-home-live-state>${this.followingLive ? "Live" : "Exploring history"}</span>
+              <button type="button" data-home-resume ?disabled=${this.followingLive} @click=${() => this.resumeLive?.()}>Resume live</button>
+            ` : ""}
+            <span class="text-[#aaa]">Scroll to zoom · Shift-drag to pan · Double-click to reset. Keyboard: arrows to pan, +/− to zoom.</span>
+          </div>
         </div>
       </section>
       <article class="article border-t border-[#222] pt-8">${unsafeHTML(renderMarkdown(overviewMarkdown, { sourcePath: "docs/overview.md" }))}</article>
@@ -101,6 +112,7 @@ export class BlazeplotHomePage extends LitElement {
     const initialCount = 420;
     let nextX = initialCount;
     let followLive = this.homeDataMode === "streaming";
+    this.followingLive = followLive;
     const homeViewport = (xMin: number, xMax: number): { xMin: number; xMax: number; yMin: number; yMax: number } => {
       const yRange = this.homeChartMode === "ohlc" ? this.homeOhlcYRange(xMin, xMax) : { yMin: -1.35, yMax: 1.35 };
       return { xMin, xMax, ...yRange };
@@ -108,17 +120,20 @@ export class BlazeplotHomePage extends LitElement {
     const resetViewport = (): { xMin: number; xMax: number; yMin: number; yMax: number } => {
       if (this.homeDataMode === "streaming") {
         followLive = true;
+        this.followingLive = true;
         return homeViewport(nextX - initialCount, nextX - 1);
       }
       return homeViewport(0, initialCount - 1);
     };
     const viewportPolicy: ViewportPolicy = {
-      beforePan(_camera, intent) {
+      beforePan: (_camera, intent) => {
         followLive = false;
+        this.followingLive = false;
         return intent;
       },
-      beforeZoom(_camera, intent) {
+      beforeZoom: (_camera, intent) => {
         followLive = false;
+        this.followingLive = false;
         return intent;
       },
       beforeRender: (camera) => {
@@ -157,6 +172,7 @@ export class BlazeplotHomePage extends LitElement {
       chart.setViewport(resetViewport());
       chart.start();
       this.homeChart = chart;
+      this.resumeLive = () => chart.setViewport(resetViewport());
 
       if (stream) {
         const pointsPerSecond = 180;
@@ -260,6 +276,7 @@ export class BlazeplotHomePage extends LitElement {
     this.homeStreamRaf = 0;
     this.homeChart?.dispose();
     this.homeChart = null;
+    this.resumeLive = null;
   }
 }
 
