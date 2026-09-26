@@ -59,6 +59,17 @@ try {
     await wait("!page.querySelector('[data-home-live-state]')");
     await check("page.querySelectorAll('canvas').length === 1", "switching data mode replaces the chart cleanly");
   });
+  await run("toolbar", async () => {
+    await resize(390);
+    await goto("/previews/live", "blazeplot-previews");
+    await check("!page.querySelector('[data-live-advanced]').open", "advanced controls initially collapsed");
+    await check("!page.querySelector('[data-live-stream]').closest('details')", "stream control remains immediately available");
+    await js("page.querySelector('[data-live-advanced] summary').click()");
+    await check("page.querySelector('[data-live-theme]').checkVisibility()", "advanced settings are available on expansion");
+    await js("page.querySelector('[data-live-theme]').value = 'light'; page.querySelector('[data-live-theme]').dispatchEvent(new Event('change'))");
+    await check("page.querySelector('[data-live-preview-root]').dataset.previewTheme === 'light'", "theme still works inside advanced settings");
+    await check("document.documentElement.scrollWidth <= innerWidth", "expanded controls fit a phone");
+  });
   // CASES
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");

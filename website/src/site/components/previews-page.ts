@@ -109,12 +109,21 @@ export class BlazeplotPreviewsPage extends LitElement {
 
   private renderLivePreview(): TemplateResult {
     return html`
-      <section data-live-preview-root class="grid h-full min-h-[620px] min-w-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden border border-[#222] bg-black text-[12px]">
+      <section data-live-preview-root class="grid h-full min-h-[620px] min-w-0 grid-rows-[minmax(280px,1fr)_auto] overflow-hidden border border-[#222] bg-black text-[12px]">
         <div class="relative min-h-0">
           <div data-preview-chart="live" class="h-full w-full"></div>
           <div data-live-overlay class="absolute left-0 top-0 z-40 max-w-full overflow-x-auto whitespace-pre border border-[#222]/70 bg-[#0a0a0a]/90 px-2.5 py-2 text-[#e5e5e5]"><span data-live-overlay-text>BlazePlot booting...</span></div>
         </div>
-        <section class="flex flex-wrap items-center gap-x-3.5 gap-y-1 border-t border-[#222] px-2 pb-0 pt-1 text-[#e5e5e5]" aria-label="Preview controls">
+        <section class="flex flex-wrap items-center gap-3 border-t border-[#222] p-3 text-[#e5e5e5]" aria-label="Preview controls">
+          <label class="inline-flex items-center gap-1 whitespace-nowrap">view samples
+            <input data-live-view-samples type="number" min="1000" max="1000000000" step="1000000" value="86400" class="w-[12ch] border border-[#333] bg-[#111] px-1.5 py-1 text-inherit" />
+          </label>
+          <label class="inline-flex items-center gap-1 whitespace-nowrap"><input data-live-follow type="checkbox" checked class="accent-[#777]" /> follow live</label>
+          <label class="inline-flex items-center gap-1 whitespace-nowrap"><input data-live-stream type="checkbox" checked class="accent-[#777]" /> stream data</label>
+          <button data-live-reset type="button" class="border border-[#333] bg-[#111] px-2 py-1">reset view</button>
+          <details class="w-full" data-live-advanced>
+            <summary class="cursor-pointer py-1 text-[#aaa]">Advanced settings & exports</summary>
+            <div class="flex flex-wrap items-center gap-3 pt-3">
           <button data-live-perf-toggle type="button" class="border border-[#333] bg-[#111] px-2 py-1">hide stats</button>
           <button data-live-copy type="button" title="Copy stats" class="border border-[#333] bg-[#111] px-2 py-1">📋</button>
           <label class="inline-flex items-center gap-1 whitespace-nowrap">theme
@@ -126,20 +135,16 @@ export class BlazeplotPreviewsPage extends LitElement {
           <label class="inline-flex items-center gap-1 whitespace-nowrap">group
             <select data-live-hover-group class="border border-[#333] bg-[#111] px-1.5 py-1 text-inherit"><option value="x">x</option><option value="none">none</option></select>
           </label>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap">view samples
-            <input data-live-view-samples type="number" min="1000" max="1000000000" step="1000000" value="86400" class="w-[12ch] border border-[#333] bg-[#111] px-1.5 py-1 text-inherit" />
-          </label>
           <label class="inline-flex items-center gap-1 whitespace-nowrap">samples/sec
             <input data-live-append-rate type="number" min="1" max="1000000" step="1000" value="1000" class="w-[9ch] border border-[#333] bg-[#111] px-1.5 py-1 text-inherit" />
           </label>
           <label class="inline-flex items-center gap-1 whitespace-nowrap">axes
             <select data-live-axes class="border border-[#333] bg-[#111] px-1.5 py-1 text-inherit"><option value="outside">outside</option><option value="inside">inside</option><option value="off">off</option></select>
           </label>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap"><input data-live-follow type="checkbox" checked class="accent-[#777]" /> follow live</label>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap"><input data-live-stream type="checkbox" checked class="accent-[#777]" /> stream data</label>
           <label class="inline-flex items-center gap-1 whitespace-nowrap"><input data-live-sync-x type="checkbox" checked class="accent-[#777]" /> sync X / Y-only zoom</label>
-          <button data-live-reset type="button" class="border border-[#333] bg-[#111] px-2 py-1">reset view</button>
           <button data-live-screenshot type="button" class="border border-[#333] bg-[#111] px-2 py-1">screenshot</button>
+            </div>
+          </details>
         </section>
       </section>
     `;
