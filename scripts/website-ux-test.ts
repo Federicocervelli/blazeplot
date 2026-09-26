@@ -14,6 +14,7 @@ const server = Bun.spawn(["node", "node_modules/vite/bin/vite.js", ...(only === 
 let chrome: Bun.Subprocess | undefined;
 let cdp: CdpClient;
 const errors: string[] = [];
+const pendingRequests = new Map<string, string>();
 let navigation = 0;
 try {
   await waitForHttp(base, 30_000);
@@ -29,6 +30,14 @@ try {
       new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`CDP timeout: ${method} ${String(params?.expression ?? "")}`)), 20_000); }),
     ]).finally(() => clearTimeout(timer));
   };
+  await cdp.send("Network.enable");
+  cdp.on("Network.requestWillBeSent", (params) => {
+    const event = params as { requestId: string; request: { url: string } };
+    pendingRequests.set(event.requestId, event.request.url);
+  });
+  for (const event of ["Network.loadingFinished", "Network.loadingFailed"]) {
+    cdp.on(event, (params) => pendingRequests.delete((params as { requestId: string }).requestId));
+  }
   await cdp.send("Runtime.enable");
   await cdp.send("Page.enable");
   await cdp.send("Page.bringToFront");
@@ -274,6 +283,9 @@ try {
   if (errors.length) throw new Error(errors.join("\n"));
   console.log("Website UX checks passed.");
   cdp.close();
+} catch (error) {
+  console.error("Pending requests:", [...pendingRequests.values()]);
+  throw error;
 } finally {
   chrome?.kill();
   server.kill();
@@ -302,9 +314,15 @@ async function wait(expression: string): Promise<void> {
 async function goto(path: string, component: string): Promise<void> {
   const url = new URL(base + path);
   url.searchParams.set("uxRun", String(++navigation));
-  await cdp.send("Page.navigate", { url: url.href });
-  await wait(`location.href === ${JSON.stringify(url.href)} && document.readyState === 'complete'`);
-  await wait(`document.querySelector('blazeplot-site')?.shadowRoot?.querySelector('${component}')?.shadowRoot`);
+  const marker = await cdp.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `window.__uxDocument = ${navigation}`,
+  }) as { identifier: string };
+  try {
+    await cdp.send("Page.navigate", { url: url.href });
+    await wait(`window.__uxDocument === ${navigation} && location.href === ${JSON.stringify(url.href)} && document.querySelector('blazeplot-site')?.shadowRoot?.querySelector('${component}')?.shadowRoot`);
+  } finally {
+    await cdp.send("Page.removeScriptToEvaluateOnNewDocument", { identifier: marker.identifier });
+  }
   await js(`window.site = document.querySelector('blazeplot-site'); window.pageHost = site.shadowRoot.querySelector('${component}'); window.page = pageHost.shadowRoot; void 0`);
   await wait(`page.querySelector('canvas, article h1, article h2, [role="alert"]')`);
   await cdp.send("Page.bringToFront");
