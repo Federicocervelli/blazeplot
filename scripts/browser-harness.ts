@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 
 interface CdpResponse {
   id?: number;
@@ -89,7 +90,7 @@ export function readNonNegativeInteger(flag: string, raw: string): number {
 
 export function startVite(port: number): Bun.Subprocess {
   const proc = Bun.spawn({
-    cmd: ["bunx", "vite", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
+    cmd: ["node", "node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", String(port), "--strictPort"],
     stdout: "pipe",
     stderr: "pipe",
     env: { ...process.env, BLAZEPLOT_BENCH: "1" },
@@ -156,6 +157,8 @@ export function resolveChrome(explicit: string | undefined): string {
     return envPath;
   }
 
+  for (const candidate of windowsBrowserPaths()) if (existsSync(candidate)) return candidate;
+
   for (const candidate of [
     "google-chrome-stable",
     "google-chrome",
@@ -176,6 +179,16 @@ export function resolveChrome(explicit: string | undefined): string {
   }
 
   throw new Error("Could not find Chrome/Chromium/Brave. Pass --chrome <path> or set BLAZEPLOT_BENCH_CHROME.");
+}
+
+function windowsBrowserPaths(): string[] {
+  if (process.platform !== "win32") return [];
+  const roots = [process.env.PROGRAMFILES, process.env["PROGRAMFILES(X86)"], process.env.LOCALAPPDATA].filter((root): root is string => !!root);
+  return roots.flatMap((root) => [
+    join(root, "Google", "Chrome", "Application", "chrome.exe"),
+    join(root, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
+    join(root, "Microsoft", "Edge", "Application", "msedge.exe"),
+  ]);
 }
 
 export function spawnChrome(cmd: string[]): Bun.Subprocess {

@@ -368,11 +368,11 @@ export class SeriesStore<D extends Dataset = Dataset> {
     return this.dataset.updateAt(index, data.open, data.high, data.low, data.close);
   }
 
-  /** Replace all data in datasets that support wholesale replacement, such as `ServerSampledDataset`. */
+  /** Replace all data in datasets that support wholesale replacement, such as `StaticDataset` or `ServerSampledDataset`. */
   replace(data: SeriesReplaceData<D>): void {
     const dataset = this.dataset as Dataset & { replace?: (data: unknown) => void };
     if (typeof dataset.replace !== "function") {
-      throw new TypeError("series.replace(...) requires a dataset with replace(...) support, such as ServerSampledDataset.");
+      throw new TypeError("series.replace(...) requires a dataset with replace(...) support, such as StaticDataset or ServerSampledDataset.");
     }
     dataset.replace(data);
     this._useRawMinMaxScan = false;
@@ -381,6 +381,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /** Tell the chart the backing dataset was mutated directly, so derived LOD data is rebuilt and the chart re-renders. */
   markDirty(): void {
+    this.dataset.invalidate?.();
     this.markDataMutated(true);
   }
 

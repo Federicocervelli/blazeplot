@@ -199,7 +199,7 @@ Generated from `dist/` after the package build.
 | tooltip plugin | `dist/plugins/tooltip.js` | 5 KiB |
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 130 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 131 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 3 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 4 KiB |
 
@@ -314,7 +314,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ServerSampledData` | type | `./core/ServerSampledDataset` | Data accepted by `ServerSampledDataset` and `series.replace(...)`. |
 | `ServerSampledDataset` | class | `./core/ServerSampledDataset` | Mutable dataset for viewport samples that were already reduced by a server. Use point data with `downsample: "none"`, or min/max buckets with `downsample: "server"` so BlazePlot renders the supplied buckets directly instead of applying another client-side sampler. Swap in fresh data after each fetch with `series.replace(data)`. |
 | `ServerSampledPoints` | interface | `./core/ServerSampledDataset` | Server-provided point samples. |
-| `StaticDataset` | class | `./core/StaticDataset` | Immutable sorted XY dataset backed by typed arrays. |
+| `StaticDataset` | class | `./core/StaticDataset` | Sorted XY dataset backed by typed arrays, which are read in place rather than copied. Change the data with `series.replace({ y })`, or overwrite the arrays and call `series.markDirty()`. |
 | `StaticDatasetField` | type | `./core/StaticDataset` | Object-row field selector used by `StaticDataset.fromObjects`. |
 | `StaticDatasetFromObjectsOptions` | interface | `./core/StaticDataset` | Options for building a static dataset from object rows. |
 | `StaticOhlcDataset` | class | `./core/OhlcDataset` | Immutable OHLC dataset backed by parallel arrays. |
@@ -351,8 +351,7 @@ bun test                # Tests
 bun run typecheck       # TypeScript strict check
 bun run bench:ci        # Headless browser benchmark smoke test
 bun run bench:compare   # Manual headed BlazePlot/uPlot/Chart.js comparison benchmark
-bun run version:patch   # Prepare package.json + changelog for a patch release PR
-bun run release:benchmarks  # Append benchmark results to the current release changelog
+bun run release patch  # Bump version, draft changelog, regenerate docs for a release PR
 ```
 
 Branch flow: `development` is the integration branch for regular work; open feature/fix PRs into `development`. Open release PRs from `development` into `main` with version and changelog already updated. Release PRs publish npm and create the GitHub Release on merge.

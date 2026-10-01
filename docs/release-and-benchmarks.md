@@ -36,14 +36,10 @@ For a copy-paste release PR checklist, see [Internal release checklist](./intern
 ```bash
 git checkout development
 git pull --ff-only
-bun run version:patch      # or version:minor / version:major
-# edit changelogs/vX.Y.Z.md
-bun run release:benchmarks
-bun run docs:readme        # rebuild dist, regenerate docs/api-reference.md, and refresh README
-bun run ci
+bun run release patch      # or minor / major
 ```
 
-Open a PR from `development` to `main` after the candidate is ready. The PR's `validate` check must pass, then merge it with a merge commit.
+The command bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates `dist/`, `docs/api-reference.md`, and the README docs block. Edit the changelog, commit, and open a PR from `development` to `main`. The PR's `validate` check must pass, then merge it with a merge commit.
 
 ## What the release workflow does
 
@@ -52,7 +48,7 @@ On pushes to `main` and manual dispatches, `.github/workflows/release.yml`:
 1. Runs the full CI workflow.
 2. Reads `package.json` and computes `vX.Y.Z`; if that tag already exists, stops.
 3. Verifies the npm version is unpublished.
-4. Runs `bun run release:benchmarks -- --if-missing` so the release notes include benchmark tables.
+4. Appends benchmark tables to the changelog (`bun run release:benchmarks -- --if-missing`) so the release notes include them.
 5. Packs and publishes to npm with provenance via trusted publishing.
 6. Creates the `vX.Y.Z` tag and GitHub Release.
 7. Fast-forwards `development` to `main`.
@@ -69,7 +65,7 @@ On pushes to `main` and manual dispatches, `.github/workflows/release.yml`:
 - `bun run test:interaction`: browser input automation used by CI for hover, crosshair, zoom, pan, reset, and selection.
 - `bun run bench -- --scenario <name>`: run one benchmark scenario and print JSON.
 - `bun run bench:report`: append benchmark tables to `docs/internal/benchmark-results.md` or a path passed with `--out-md`.
-- `bun run release:benchmarks`: append benchmark tables to `changelogs/v<package.version>.md`.
+- `bun run release:benchmarks`: append benchmark tables to `changelogs/v<package.version>.md` (the release workflow runs this; rarely needed locally).
 
 Browser detection checks `BLAZEPLOT_BENCH_CHROME`, `CHROME_PATH`, then common Chrome/Chromium/Brave binaries.
 
