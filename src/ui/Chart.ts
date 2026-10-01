@@ -669,11 +669,13 @@ export class Chart implements ChartPluginContext {
   /** Convert data coordinates to plot-local CSS-pixel coordinates. */
   dataToPlot(x: number, y: number, yAxis: SeriesYAxis = "left"): [number, number] {
     const controller = this.controllerFor(yAxis);
+    // Use the same fractional plot size as clientToData so conversions round-trip exactly.
+    const rect = this.canvas.getBoundingClientRect();
     return this.getCamera(yAxis).toScreen(
       controller.valueToClip(x, "x"),
       controller.valueToClip(y, "y"),
-      this.canvas.clientWidth,
-      this.canvas.clientHeight,
+      rect.width,
+      rect.height,
     );
   }
 

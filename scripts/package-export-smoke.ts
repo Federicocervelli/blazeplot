@@ -49,7 +49,8 @@ for (const specifier of packageExportSpecifiers) {
   }
 }
 
-const rootExports = await import("blazeplot") as Record<string, unknown>;
+const rootSpecifier: string = "blazeplot";
+const rootExports = await import(rootSpecifier) as Record<string, unknown>;
 for (const removed of ["ReglBackend", "MinMaxPyramid", "SeriesStore", "DataCursor", "histogramDataset"]) {
   if (removed in rootExports) throw new Error(`blazeplot should not export ${removed}.`);
 }
