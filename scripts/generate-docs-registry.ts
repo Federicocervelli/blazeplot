@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface DocPageMeta {
   slug: string;
@@ -12,7 +13,7 @@ interface DocPageMeta {
   nav?: boolean;
 }
 
-const root = resolve(new URL("..", import.meta.url).pathname);
+const root = fileURLToPath(new URL("..", import.meta.url));
 const pagesPath = resolve(root, "docs/pages.json");
 const outputPath = resolve(root, "website/src/docs.ts");
 
