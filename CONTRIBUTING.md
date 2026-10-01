@@ -2,11 +2,13 @@
 
 Thanks for helping improve BlazePlot. The project is still moving quickly, so the most useful contributions are focused, source-checked, and easy to review.
 
-## Branches
+## Workflow
 
-- Branch from `development` for feature, fix, docs, and workflow changes.
-- Keep pull requests focused on one topic.
-- Open release-candidate pull requests from `development` to `main` only when preparing a publish.
+1. Fork the repository (or create a branch if you have write access).
+2. Branch from `development`, the default branch.
+3. Open a pull request against `development`. Keep it focused on one topic.
+
+CI runs on every pull request, including from forks, and needs no secrets. The required `validate` check passes when both CI jobs pass: `bun run check` and `bun run test:browser`. Maintainers merge green pull requests into `development`; releases are promoted from `development` to `main` separately.
 
 ## Local setup
 
@@ -31,17 +33,13 @@ bun run test:interaction
 
 ## Before opening a pull request
 
-Run the smallest checks that cover your change:
-
-| Change type | Recommended checks |
+| Change type | Run |
 |---|---|
-| TypeScript/runtime code | `bun run typecheck`, `bun test`, `bun run build` |
-| Package exports or packaging | `bun run test:exports`, `bun run test:package`, `bun run test:bundle-size` |
-| Performance-sensitive rendering | `bun run bench:ci`, `bun run test:visual`, `bun run test:interaction` |
-| Docs or website routing | `bun run docs:readme` when generated docs are affected, plus `bun run pages:build` |
-| Release candidate | `bun run ci`, `bun run pages:build`, `bun pm pack --dry-run` |
+| Any change | `bun run check` (typecheck, unit tests, build, docs freshness, package checks) |
+| Rendering, plugins, or website | also `bun run test:browser` (needs Chrome) |
+| Public API changes | `bun run docs:readme` to regenerate the API reference, and a migration note in `docs/versioning-and-migration.md` for breaking changes |
 
-`bun run ci` runs the full validation suite used by pull requests.
+`bun run ci` runs everything CI runs.
 
 ## Documentation standards
 
@@ -67,6 +65,6 @@ A good PR description includes:
 
 ## Maintainer notes
 
-- `main` is the release branch.
-- The release workflow publishes when `package.json` contains an unpublished version and the matching tag does not already exist.
+- `main` is the release branch. Merge release PRs from `development` with a merge commit; the release workflow publishes the unpublished `package.json` version, tags it, and fast-forwards `development` to `main`.
 - Tags are release outputs, not manual inputs.
+- See [`docs/internal/github-workflows.md`](docs/internal/github-workflows.md) for what each workflow does.

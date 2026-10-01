@@ -7,9 +7,6 @@ on:
       - development
   workflow_dispatch:
 
-env:
-  BUN_VERSION: 1.3.14
-
 permissions:
   contents: read
   pages: write
@@ -26,6 +23,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout workflow actions
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github
+
       - name: Checkout main preview
         uses: actions/checkout@v6
         with:
@@ -38,35 +40,25 @@ jobs:
           ref: development
           path: branches/development
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup
         with:
-          bun-version: ${{ env.BUN_VERSION }}
+          working-directory: branches/main
 
-      - name: Cache Bun package downloads
-        uses: actions/cache@v5
-        with:
-          path: ~/.bun/install/cache
-          key: bun-${{ runner.os }}-${{ env.BUN_VERSION }}-${{ hashFiles('branches/main/bun.lock', 'branches/development/bun.lock') }}
-          restore-keys: |
-            bun-${{ runner.os }}-${{ env.BUN_VERSION }}-
-            bun-${{ runner.os }}-
-
-      - name: Build main preview
+      - name: Build main site
         working-directory: branches/main
-        run: |
-          bun install --frozen-lockfile
-          bun run pages:build
+        run: bun run pages:build
 
-      - name: Build development preview
+      - uses: ./.github/actions/setup
+        with:
+          working-directory: branches/development
+
+      - name: Build development site
         working-directory: branches/development
         env:
           BLAZEPLOT_PAGES_BASE: /development/
-        run: |
-          bun install --frozen-lockfile
-          bun run pages:build
+        run: bun run pages:build
 
-      - name: Assemble branch previews
+      - name: Assemble site
         run: |
           rm -rf build/pages
           mkdir -p build/pages/development

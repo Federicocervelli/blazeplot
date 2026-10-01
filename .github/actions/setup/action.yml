@@ -1,0 +1,33 @@
+name: Setup
+description: Install the pinned Bun version and project dependencies with a warm download cache.
+
+inputs:
+  working-directory:
+    description: Directory containing package.json and bun.lock.
+    default: .
+
+runs:
+  using: composite
+  steps:
+    - name: Read pinned Bun version
+      id: bun
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: echo "version=$(node -p "require('./package.json').packageManager.split('@')[1]")" >> "$GITHUB_OUTPUT"
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ steps.bun.outputs.version }}
+
+    - name: Cache Bun downloads
+      uses: actions/cache@v5
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ hashFiles(format('{0}/bun.lock', inputs.working-directory)) }}
+        restore-keys: bun-${{ runner.os }}-
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: bun install --frozen-lockfile
