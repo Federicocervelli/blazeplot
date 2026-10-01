@@ -29,7 +29,7 @@ if (!existsSync(changelogPath)) {
   writeFileSync(changelogPath, `# BlazePlot v${next}\n\n## Changes\n\n${draftChanges()}\n`);
 }
 
-execFileSync("bun", ["run", "docs:readme"], { stdio: "inherit", shell: process.platform === "win32" });
+execFileSync(process.platform === "win32" ? "bun.exe" : "bun", ["run", "docs:readme"], { stdio: "inherit" });
 
 console.log(`\nPrepared v${next}. Edit changelogs/v${next}.md, commit, and open a PR from development to main.`);
 
