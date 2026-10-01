@@ -203,12 +203,12 @@ try {
     await goto("/", "blazeplot-home");
     for (const mode of ["line", "multi", "ohlc"]) {
       await js(`page.querySelector('#homeChartMode').value = '${mode}'; page.querySelector('#homeChartMode').dispatchEvent(new Event('change'))`);
-      await wait("pageHost.homeChart?.isFollowingLatestX()");
+      await wait("pageHost.homeChart?.getXFollowState() === 'following'");
       await check("Math.abs((pageHost.homeChart.getViewport().xMax - pageHost.homeChart.getViewport().xMin) - 419) < 0.01", "live window retains its original span");
       await js("pageHost.homeChart.pan({dx:0.1,dy:0})");
       await wait("page.querySelector('[data-home-resume]')");
       await js("page.querySelector('[data-home-resume]').click()");
-      await wait("pageHost.homeChart.isFollowingLatestX() && !page.querySelector('[data-home-resume]')");
+      await wait("pageHost.homeChart.getXFollowState() === 'following' && !page.querySelector('[data-home-resume]')");
       await check("Number.isFinite(pageHost.homeChart.getViewport().yMin)", "each chart mode retains a valid Y range");
     }
   });

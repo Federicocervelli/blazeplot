@@ -82,8 +82,7 @@ if (caseName === "linked") {
   const linked = createLinkedCharts(chartTarget, {
     rows: 2,
     panels: [{}, {}],
-    syncCrosshair: true,
-    syncTooltips: true,
+    panelPlugins: (syncGroup) => [crosshairPlugin({ syncGroup }), tooltipPlugin({ syncGroup })],
     spacing: 6,
   });
   charts.push(...linked.charts);
@@ -92,7 +91,8 @@ if (caseName === "linked") {
     ? [selectionPlugin({
         mode: "xy",
         minDragDistancePx: 4,
-        onCommit: (event) => {
+        onChange: (event) => {
+          if (event.type !== "commit") return;
           selectionCommits++;
           selectionBounds = event.selection?.bounds ?? null;
         },
@@ -110,7 +110,12 @@ if (caseName === "linked") {
             tooltipPlugin(),
             crosshairPlugin({ snap: "none", label: true, onMove: () => { crosshairMoves++; } }),
           ];
-  charts.push(new Chart(chartTarget, { axes: { x: { position: "outside" }, y: { position: "outside" } }, grid: true, plugins }));
+  charts.push(new Chart(chartTarget, {
+    axes: { x: { position: "outside" }, y: { position: "outside" } },
+    grid: true,
+    plugins,
+    renderLoop: caseName === "continuous-render-loop" ? "continuous" : "auto",
+  }));
 }
 
 const chart = charts[0];
@@ -144,8 +149,8 @@ window.__blazeplotInteractionTest = {
     crosshairX: crosshairX(),
     tooltipLeft: tooltipLeft(),
     renderEvents,
-    followingLatestX: chart.isFollowingLatestX(),
-    latestXFollowPaused: chart.isLatestXFollowPaused(),
+    followingLatestX: chart.getXFollowState() === "following",
+    latestXFollowPaused: chart.getXFollowState() === "paused",
     error,
   }),
   resetViewport: () => {
@@ -173,8 +178,6 @@ try {
       item.start();
       item.start();
       item.stop();
-    } else if (caseName === "continuous-render-loop") {
-      item.start({ renderLoop: "continuous" });
     } else {
       item.start();
     }

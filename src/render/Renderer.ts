@@ -1,14 +1,9 @@
 import { ShaderPrograms } from "./ShaderPrograms.js";
 import type { AttributeSpec, GpuBackend, GpuBuffer, GpuProgram } from "./types.js";
-import type { SeriesStyle } from "../core/types.js";
+import type { RgbaColor, SeriesStyle } from "../core/types.js";
 
-const FLOATS_PER_SEGMENT_INSTANCE = 3;
-const FLOATS_PER_POINT_INSTANCE = 2;
 const BYTES_PER_FLOAT = 4;
-const DEFAULT_POINT_SIZE_PX = 4;
-const DEFAULT_BAR_WIDTH_DATA = 0.8;
-const DEFAULT_BASELINE = 0;
-const DEFAULT_LINE_WIDTH_PX = 1;
+const BYTES_PER_POINT = 2 * BYTES_PER_FLOAT;
 
 /** Linear projection uniforms used by renderer draw calls. */
 export interface RenderProjection {
@@ -18,42 +13,31 @@ export interface RenderProjection {
   readonly offsetY: number;
 }
 
-/** Low-level renderer for built-in series primitives. */
+type ProgramName = keyof typeof ShaderPrograms;
+
+/** @internal Draws built-in series primitives through a `GpuBackend`. */
 export class Renderer {
-  private lineProgram: GpuProgram | null = null;
-  private segmentProgram: GpuProgram | null = null;
-  private pointProgram: GpuProgram | null = null;
-  private pointSpriteProgram: GpuProgram | null = null;
-  private barProgram: GpuProgram | null = null;
-  private barRangeProgram: GpuProgram | null = null;
-  private segmentCornerBuffer: GpuBuffer | null = null;
-  private pointCornerBuffer: GpuBuffer | null = null;
-  private barCornerBuffer: GpuBuffer | null = null;
-  private readonly scaleUniform: Float32Array = new Float32Array(2);
-  private readonly offsetUniform: Float32Array = new Float32Array(2);
-  private readonly canvasSizeUniform: Float32Array = new Float32Array(2);
+  private readonly programs = new Map<ProgramName, GpuProgram>();
+  private readonly cornerBuffers = new Map<string, AttributeSpec>();
+  private readonly scaleUniform = new Float32Array(2);
+  private readonly offsetUniform = new Float32Array(2);
+  private readonly canvasSizeUniform = new Float32Array([1, 1]);
+  private pixelRatio = 1;
 
-  /** Create a renderer backed by a GPU abstraction. */
-  constructor(private backend: GpuBackend) {}
+  constructor(private readonly backend: GpuBackend) {}
 
-  /** Whether the backend supports instanced min/max segments. */
-  get supportsInstancedSegments(): boolean {
+  /** Whether the backend can draw instanced quads (bars, thick lines, points). */
+  get supportsInstancing(): boolean {
     return this.backend.capabilities.instancing;
   }
 
-  /** Whether the backend supports instanced point sprites. */
-  get supportsInstancedPoints(): boolean {
-    return this.backend.capabilities.instancing;
-  }
-
-  /** Whether the backend supports instanced bar rendering. */
-  get supportsInstancedBars(): boolean {
-    return this.backend.capabilities.instancing;
-  }
-
-  /** Clear the active framebuffer. */
-  clear(r: number, g: number, b: number, a: number): void {
-    this.backend.clear(r, g, b, a);
+  /** Set the drawing-buffer size and device pixel ratio for this frame and clear it. */
+  beginFrame(width: number, height: number, pixelRatio: number): void {
+    this.canvasSizeUniform[0] = Math.max(1, width);
+    this.canvasSizeUniform[1] = Math.max(1, height);
+    this.pixelRatio = Math.max(1, pixelRatio);
+    this.backend.viewport(0, 0, width, height);
+    this.backend.clear(0, 0, 0, 0);
   }
 
   /** Allocate a streaming float buffer. */
@@ -61,15 +45,10 @@ export class Renderer {
     return this.backend.createBuffer({ usage: "stream", type: "float", length: floatCount });
   }
 
-  /** Upload float data into an existing buffer. */
+  /** Upload the first `floatCount` floats of `data` into an existing buffer. */
   updateFloatBuffer(buffer: GpuBuffer, data: Float32Array, floatCount: number = data.length): void {
     const count = Math.max(0, Math.min(floatCount, data.length));
     this.backend.updateBuffer(buffer, count === data.length ? data : data.subarray(0, count));
-  }
-
-  /** Set the rendering viewport in pixels. */
-  viewport(x: number, y: number, width: number, height: number): void {
-    this.backend.viewport(x, y, width, height);
   }
 
   /** Return the underlying WebGL2 context when available. */
@@ -77,322 +56,163 @@ export class Renderer {
     return this.backend.getContext?.() ?? null;
   }
 
-  /** Draw independent line segments from data-space positions. */
-  drawLines(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.drawLinePrimitive("lines", positions, count, style, projection);
-  }
-
-  /** Draw a continuous line strip from data-space positions. */
-  drawLineStrip(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.drawLinePrimitive("line_strip", positions, count, style, projection);
-  }
-
-  /** Draw a continuous line strip from clip-space positions. */
-  drawClipLineStrip(positions: GpuBuffer, count: number, style: SeriesStyle): void {
-    this.drawClipPrimitive("line_strip", positions, count, style);
-  }
-
-  /** Draw independent line segments from clip-space positions. */
-  drawClipLines(positions: GpuBuffer, count: number, style: SeriesStyle): void {
-    this.drawClipPrimitive("lines", positions, count, style);
-  }
-
-  /** Draw min/max vertical segments from data-space positions. */
-  drawMinMaxSegments(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.drawLines(positions, count, style, projection);
-  }
-
-  drawMinMaxSegmentsInstanced(
-    instanceBuffer: GpuBuffer,
-    instanceCount: number,
-    style: SeriesStyle,
+  /**
+   * Draw a polyline (`"line_strip"`) or independent segments (`"lines"`) from
+   * data-space `[x, y]` vertices, `lineWidth` CSS pixels wide. NaN vertices
+   * break the line. Lines at most one device pixel wide use native GL lines.
+   */
+  drawLines(
+    positions: GpuBuffer,
+    vertexCount: number,
+    color: RgbaColor,
+    lineWidth: number,
     projection: RenderProjection,
-    canvasWidth: number,
-    canvasHeight: number,
+    primitive: "line_strip" | "lines" = "line_strip",
   ): void {
-    this.writeProjectionUniforms(projection);
-    this.canvasSizeUniform[0] = Math.max(1, canvasWidth);
-    this.canvasSizeUniform[1] = Math.max(1, canvasHeight);
+    this.writeProjection(projection);
+    const widthPx = lineWidth * this.pixelRatio;
+    if (!this.supportsInstancing || widthPx <= 1) {
+      this.drawSolid(primitive, positions, vertexCount, color);
+      return;
+    }
 
-    const stride = FLOATS_PER_SEGMENT_INSTANCE * BYTES_PER_FLOAT;
-    const aX: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride, offset: 0 };
-    const aMinY: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride, offset: BYTES_PER_FLOAT };
-    const aMaxY: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride, offset: BYTES_PER_FLOAT * 2 };
-    const aCorner: AttributeSpec = { buffer: this.getSegmentCornerBuffer(), divisor: 0, stride: FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT, offset: 0, size: 2 };
-
+    const strip = primitive === "line_strip";
+    const segments = strip ? vertexCount - 1 : vertexCount >> 1;
+    if (segments <= 0) return;
+    const stride = strip ? BYTES_PER_POINT : BYTES_PER_POINT * 2;
     this.backend.draw({
-      program: this.getSegmentProgram(),
+      program: this.program("thickLine"),
       primitive: "triangle_strip",
       count: 4,
-      instances: instanceCount,
-      attributes: { aCorner, aMaxY, aMinY, aX },
+      instances: segments,
+      attributes: {
+        aStart: { buffer: positions, divisor: 1, stride, offset: 0, size: 2 },
+        aEnd: { buffer: positions, divisor: 1, stride, offset: BYTES_PER_POINT, size: 2 },
+        aCorner: this.corners("segment", [0, -1, 0, 1, 1, -1, 1, 1]),
+      },
       uniforms: {
         uScale: this.scaleUniform,
         uOffset: this.offsetUniform,
         uCanvasSize: this.canvasSizeUniform,
-        uLineWidth: style.lineWidth ?? DEFAULT_LINE_WIDTH_PX,
-        uColor: style.color,
+        uLineWidth: widthPx,
+        uColor: color,
       },
     });
   }
 
-  drawPoints(
-    positions: GpuBuffer,
-    pointCount: number,
-    style: SeriesStyle,
-    projection: RenderProjection,
-    canvasWidth: number,
-    canvasHeight: number,
-  ): void {
-    if (this.supportsInstancedPoints) {
-      this.drawPointsInstanced(positions, pointCount, style, projection, canvasWidth, canvasHeight);
-    } else {
-      this.drawPointSprites(positions, pointCount, style, projection);
-    }
+  /** Draw 1px line segments from clip-space vertices, e.g. grid lines. */
+  drawClipLines(positions: GpuBuffer, vertexCount: number, color: RgbaColor): void {
+    this.scaleUniform.fill(1);
+    this.offsetUniform.fill(0);
+    this.drawSolid("lines", positions, vertexCount, color);
   }
 
-  private drawPointsInstanced(
-    instanceBuffer: GpuBuffer,
-    pointCount: number,
-    style: SeriesStyle,
-    projection: RenderProjection,
-    canvasWidth: number,
-    canvasHeight: number,
-  ): void {
-    this.writeProjectionUniforms(projection);
-    this.canvasSizeUniform[0] = Math.max(1, canvasWidth);
-    this.canvasSizeUniform[1] = Math.max(1, canvasHeight);
-
-    const instanceStride = FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT;
-    const aPosition: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0, size: 2 };
-    const aCorner: AttributeSpec = { buffer: this.getPointCornerBuffer(), divisor: 0, stride: FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT, offset: 0, size: 2 };
+  /** Draw scatter points `pointSize` device pixels across. */
+  drawPoints(positions: GpuBuffer, pointCount: number, color: RgbaColor, pointSize: number, projection: RenderProjection): void {
+    this.writeProjection(projection);
+    if (!this.supportsInstancing) {
+      this.backend.draw({
+        program: this.program("pointSprite"),
+        primitive: "points",
+        count: pointCount,
+        attributes: { aPosition: positions },
+        uniforms: { uScale: this.scaleUniform, uOffset: this.offsetUniform, uPointSize: pointSize, uColor: color },
+      });
+      return;
+    }
 
     this.backend.draw({
-      program: this.getPointProgram(),
+      program: this.program("point"),
       primitive: "triangle_strip",
       count: 4,
       instances: pointCount,
-      attributes: { aCorner, aPosition },
+      attributes: {
+        aPosition: { buffer: positions, divisor: 1, stride: BYTES_PER_POINT, offset: 0, size: 2 },
+        aCorner: this.corners("point", [-1, -1, 1, -1, -1, 1, 1, 1]),
+      },
       uniforms: {
         uScale: this.scaleUniform,
         uOffset: this.offsetUniform,
         uCanvasSize: this.canvasSizeUniform,
-        uPointSize: style.pointSize ?? DEFAULT_POINT_SIZE_PX,
-        uColor: style.color,
+        uPointSize: pointSize,
+        uColor: color,
       },
     });
   }
 
-  private drawPointSprites(positions: GpuBuffer, pointCount: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.writeProjectionUniforms(projection);
-
+  /** Draw one instanced bar per `[x, y]` vertex, `style.barWidth` wide, from `style.baseline`. */
+  drawBarsInstanced(positions: GpuBuffer, barCount: number, style: SeriesStyle, projection: RenderProjection): void {
+    this.writeProjection(projection);
     this.backend.draw({
-      program: this.getPointSpriteProgram(),
-      primitive: "points",
-      count: pointCount,
-      attributes: { aPosition: positions },
-      uniforms: {
-        uScale: this.scaleUniform,
-        uOffset: this.offsetUniform,
-        uPointSize: style.pointSize ?? DEFAULT_POINT_SIZE_PX,
-        uColor: style.color,
-      },
-    });
-  }
-
-  /** Draw filled area geometry from data-space positions. */
-  drawAreaStrip(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.writeProjectionUniforms(projection);
-
-    this.backend.draw({
-      program: this.getLineProgram(),
-      primitive: "triangle_strip",
-      count,
-      attributes: { position: positions },
-      uniforms: {
-        uScale: this.scaleUniform,
-        uOffset: this.offsetUniform,
-        uColor: style.fillColor ?? style.color,
-      },
-    });
-  }
-
-  drawBarsInstanced(
-    instanceBuffer: GpuBuffer,
-    barCount: number,
-    style: SeriesStyle,
-    projection: RenderProjection,
-  ): void {
-    this.writeProjectionUniforms(projection);
-
-    const instanceStride = FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT;
-    const aPosition: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0, size: 2 };
-    const aCorner: AttributeSpec = { buffer: this.getBarCornerBuffer(), divisor: 0, stride: FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT, offset: 0, size: 2 };
-
-    this.backend.draw({
-      program: this.getBarProgram(),
+      program: this.program("bar"),
       primitive: "triangle_strip",
       count: 4,
       instances: barCount,
-      attributes: { aCorner, aPosition },
+      attributes: {
+        aPosition: { buffer: positions, divisor: 1, stride: BYTES_PER_POINT, offset: 0, size: 2 },
+        aCorner: this.corners("bar", [-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]),
+      },
       uniforms: {
         uScale: this.scaleUniform,
         uOffset: this.offsetUniform,
-        uBarWidth: style.barWidth ?? DEFAULT_BAR_WIDTH_DATA,
-        uBaseline: style.baseline ?? DEFAULT_BASELINE,
+        uBarWidth: style.barWidth,
+        uBaseline: style.baseline,
         uColor: style.color,
       },
     });
   }
 
-  drawBarRangesInstanced(
-    instanceBuffer: GpuBuffer,
-    barCount: number,
-    style: SeriesStyle,
-    projection: RenderProjection,
+  /** Draw data-space triangles (bars, candle bodies, buckets) or a triangle strip (area fills) in a solid color. */
+  drawTriangles(positions: GpuBuffer, vertexCount: number, color: RgbaColor, projection: RenderProjection, primitive: "triangles" | "triangle_strip" = "triangles"): void {
+    this.writeProjection(projection);
+    this.drawSolid(primitive, positions, vertexCount, color);
+  }
+
+  /** Release all GPU resources owned by the backend. */
+  dispose(): void {
+    this.backend.destroy();
+  }
+
+  private drawSolid(
+    primitive: "lines" | "line_strip" | "triangles" | "triangle_strip",
+    positions: GpuBuffer,
+    count: number,
+    color: RgbaColor,
   ): void {
-    this.writeProjectionUniforms(projection);
-
-    const instanceStride = FLOATS_PER_SEGMENT_INSTANCE * BYTES_PER_FLOAT;
-    const aX: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: 0 };
-    const aMinY: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: BYTES_PER_FLOAT };
-    const aMaxY: AttributeSpec = { buffer: instanceBuffer, divisor: 1, stride: instanceStride, offset: BYTES_PER_FLOAT * 2 };
-    const aCorner: AttributeSpec = { buffer: this.getBarCornerBuffer(), divisor: 0, stride: FLOATS_PER_POINT_INSTANCE * BYTES_PER_FLOAT, offset: 0, size: 2 };
-
     this.backend.draw({
-      program: this.getBarRangeProgram(),
-      primitive: "triangle_strip",
-      count: 4,
-      instances: barCount,
-      attributes: { aCorner, aMaxY, aMinY, aX },
-      uniforms: {
-        uScale: this.scaleUniform,
-        uOffset: this.offsetUniform,
-        uBarWidth: style.barWidth ?? DEFAULT_BAR_WIDTH_DATA,
-        uColor: style.color,
-      },
-    });
-  }
-
-  /** Draw pre-expanded bar triangles from data-space positions. */
-  drawBarTriangles(positions: GpuBuffer, vertexCount: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.drawTrianglePrimitive(positions, vertexCount, style, projection);
-  }
-
-  private drawLinePrimitive(primitive: "lines" | "line_strip", positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.writeProjectionUniforms(projection);
-
-    this.backend.draw({
-      program: this.getLineProgram(),
+      program: this.program("line"),
       primitive,
       count,
       attributes: { position: positions },
-      uniforms: {
-        uScale: this.scaleUniform,
-        uOffset: this.offsetUniform,
-        uColor: style.color,
-      },
+      uniforms: { uScale: this.scaleUniform, uOffset: this.offsetUniform, uColor: color },
     });
   }
 
-  private drawTrianglePrimitive(positions: GpuBuffer, count: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.writeProjectionUniforms(projection);
-
-    this.backend.draw({
-      program: this.getLineProgram(),
-      primitive: "triangles",
-      count,
-      attributes: { position: positions },
-      uniforms: {
-        uScale: this.scaleUniform,
-        uOffset: this.offsetUniform,
-        uColor: style.color,
-      },
-    });
-  }
-
-  private drawClipPrimitive(primitive: "lines" | "line_strip" | "triangles" | "triangle_strip", positions: GpuBuffer, count: number, style: SeriesStyle): void {
-    this.scaleUniform[0] = 1;
-    this.scaleUniform[1] = 1;
-    this.offsetUniform[0] = 0;
-    this.offsetUniform[1] = 0;
-
-    this.backend.draw({
-      program: this.getLineProgram(),
-      primitive,
-      count,
-      attributes: { position: positions },
-      uniforms: {
-        uScale: this.scaleUniform,
-        uOffset: this.offsetUniform,
-        uColor: style.color,
-      },
-    });
-  }
-
-  private writeProjectionUniforms(projection: RenderProjection): void {
+  private writeProjection(projection: RenderProjection): void {
     this.scaleUniform[0] = projection.scaleX;
     this.scaleUniform[1] = projection.scaleY;
     this.offsetUniform[0] = projection.offsetX;
     this.offsetUniform[1] = projection.offsetY;
   }
 
-  private getLineProgram(): GpuProgram {
-    this.lineProgram ??= this.backend.createProgram(ShaderPrograms.line.vert, ShaderPrograms.line.frag);
-    return this.lineProgram;
-  }
-
-  private getSegmentProgram(): GpuProgram {
-    this.segmentProgram ??= this.backend.createProgram(ShaderPrograms.segment.vert, ShaderPrograms.segment.frag);
-    return this.segmentProgram;
-  }
-
-  private getPointProgram(): GpuProgram {
-    this.pointProgram ??= this.backend.createProgram(ShaderPrograms.point.vert, ShaderPrograms.point.frag);
-    return this.pointProgram;
-  }
-
-  private getPointSpriteProgram(): GpuProgram {
-    this.pointSpriteProgram ??= this.backend.createProgram(ShaderPrograms.pointSprite.vert, ShaderPrograms.pointSprite.frag);
-    return this.pointSpriteProgram;
-  }
-
-  private getBarProgram(): GpuProgram {
-    this.barProgram ??= this.backend.createProgram(ShaderPrograms.bar.vert, ShaderPrograms.bar.frag);
-    return this.barProgram;
-  }
-
-  private getBarRangeProgram(): GpuProgram {
-    this.barRangeProgram ??= this.backend.createProgram(ShaderPrograms.barRange.vert, ShaderPrograms.barRange.frag);
-    return this.barRangeProgram;
-  }
-
-  private getSegmentCornerBuffer(): GpuBuffer {
-    if (!this.segmentCornerBuffer) {
-      this.segmentCornerBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 8 });
-      this.backend.updateBuffer(this.segmentCornerBuffer, new Float32Array([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]));
+  private program(name: ProgramName): GpuProgram {
+    let program = this.programs.get(name);
+    if (!program) {
+      program = this.backend.createProgram(ShaderPrograms[name].vert, ShaderPrograms[name].frag);
+      this.programs.set(name, program);
     }
-    return this.segmentCornerBuffer;
+    return program;
   }
 
-  private getPointCornerBuffer(): GpuBuffer {
-    if (!this.pointCornerBuffer) {
-      this.pointCornerBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 8 });
-      this.backend.updateBuffer(this.pointCornerBuffer, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]));
+  /** Static per-vertex corner offsets for an instanced quad, created on first use. */
+  private corners(name: string, values: readonly number[]): AttributeSpec {
+    let spec = this.cornerBuffers.get(name);
+    if (!spec) {
+      const buffer = this.backend.createBuffer({ usage: "static", type: "float", length: values.length });
+      this.backend.updateBuffer(buffer, new Float32Array(values));
+      spec = { buffer, divisor: 0, stride: BYTES_PER_POINT, offset: 0, size: 2 };
+      this.cornerBuffers.set(name, spec);
     }
-    return this.pointCornerBuffer;
-  }
-
-  private getBarCornerBuffer(): GpuBuffer {
-    if (!this.barCornerBuffer) {
-      this.barCornerBuffer = this.backend.createBuffer({ usage: "static", type: "float", length: 8 });
-      this.backend.updateBuffer(this.barCornerBuffer, new Float32Array([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]));
-    }
-    return this.barCornerBuffer;
-  }
-
-  /** Release renderer-owned GPU resources. */
-  dispose(): void {
-    this.backend.destroy();
+    return spec;
   }
 }

@@ -1,6 +1,8 @@
 import type { SeriesYAxis } from "../core/types.js";
 import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
-import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, formatCompactNumber, pickAtDataX, placeAbsoluteWithinBox, renderPickItems, rgba } from "./OverlayUtils.js";
+import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
+import type { SyncMembership } from "./OverlayUtils.js";
+import { rgbaCss } from "./theme.js";
 
 /** Axis drawn by the crosshair overlay. */
 export type CrosshairAxis = "x" | "y" | "xy";
@@ -33,16 +35,15 @@ export interface RulerMeasurement {
   readonly sampleCount: number;
 }
 
-/** Events emitted by the crosshair plugin. */
-export type CrosshairEventType = "move" | "measurestart" | "measurechange" | "measureend";
-
 /** Options for crosshair and ruler overlays. */
 export interface CrosshairPluginOptions {
   readonly mode?: CrosshairMode;
   readonly axis?: CrosshairAxis;
   readonly yAxis?: SeriesYAxis;
   readonly snap?: CrosshairSnapMode;
-  readonly group?: string;
+  /** Charts whose crosshairs share a `syncGroup` move together along X. */
+  readonly syncGroup?: string;
+  /** Line color. Defaults to `theme.crosshairColor`. */
   readonly color?: string;
   readonly width?: number;
   readonly dash?: string;
@@ -68,30 +69,15 @@ export interface CrosshairPluginOptions {
   readonly onMeasureStart?: (position: CrosshairPosition) => void;
   readonly onMeasureChange?: (measurement: RulerMeasurement) => void;
   readonly onMeasureEnd?: (measurement: RulerMeasurement) => void;
-  readonly onMeasure?: (measurement: RulerMeasurement) => void;
 }
 
-interface Peer {
-  showShared(dataX: number, source: Peer): void;
-  hideShared(source: Peer): void;
-}
+const joinCrosshairSyncGroup = createSyncRegistry();
 
-const groups = new Map<string, Set<Peer>>();
-
-/** Crosshair plugin with imperative show, hide, and measurement hooks. */
+/** Crosshair plugin with imperative position and measurement access. */
 export interface CrosshairPlugin extends ChartPlugin {
   getPosition(): CrosshairPosition | null;
   getMeasurement(): RulerMeasurement | null;
   clearMeasurement(): void;
-  subscribe(event: "move", callback: (position: CrosshairPosition | null) => void): () => void;
-  subscribe(event: "measurestart", callback: (position: CrosshairPosition) => void): () => void;
-  subscribe(event: "measurechange" | "measureend", callback: (measurement: RulerMeasurement) => void): () => void;
-}
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function createSvgElement<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
-  return document.createElementNS(SVG_NS, tag);
 }
 
 function countSamplesInRange(chart: ChartPluginContext, xMin: number, xMax: number): number {
@@ -147,9 +133,9 @@ function resolveSharedPosition(chart: ChartPluginContext, dataX: number, yAxis: 
   return { dataX, dataY, plotX, plotY, items: [] };
 }
 
-function createXRangeHighlight(item: ChartPickItem, chart: Chart, strokeColor: string | undefined, strokeWidth: number): HTMLDivElement {
+function createXRangeHighlight(item: ChartPickItem, chart: Chart, strokeColor: string, strokeWidth: number): HTMLDivElement {
   const yAxis = item.series.config.yAxis ?? "left";
-  const baseline = item.series.style.baseline ?? 0;
+  const baseline = item.series.style.baseline;
   const [leftX, valueY] = chart.dataToPlot(item.xRange!.xStart, item.y, yAxis);
   const [rightX, baselineY] = chart.dataToPlot(item.xRange!.xEnd, baseline, yAxis);
   const marker = document.createElement("div");
@@ -158,8 +144,10 @@ function createXRangeHighlight(item: ChartPickItem, chart: Chart, strokeColor: s
   marker.style.top = `${Math.min(valueY, baselineY)}px`;
   marker.style.width = `${Math.max(2, Math.abs(rightX - leftX))}px`;
   marker.style.height = `${Math.max(2, Math.abs(baselineY - valueY))}px`;
-  marker.style.border = `${strokeWidth}px solid ${strokeColor ?? "#f8fafc"}`;
-  marker.style.background = `linear-gradient(${rgba(item.series.style.color).replace(/, [^)]+\)$/u, ", 0.38)")}, ${rgba(item.series.style.color).replace(/, [^)]+\)$/u, ", 0.38)")}), ${chart.theme.backgroundCssColor}`;
+  const [r, g, b] = item.series.style.color;
+  const tint = rgbaCss([r, g, b, 0.38]);
+  marker.style.border = `${strokeWidth}px solid ${strokeColor}`;
+  marker.style.background = `linear-gradient(${tint}, ${tint}), ${chart.theme.backgroundCssColor}`;
   marker.style.boxShadow = "0 0 0 1px rgba(4, 8, 16, 0.85)";
   marker.style.boxSizing = "border-box";
   return marker;
@@ -210,10 +198,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   let currentPosition: CrosshairPosition | null = null;
   let currentMeasurement: RulerMeasurement | null = null;
   let activeClientPoint: { clientX: number; clientY: number } | null = null;
-  const moveSubscribers = new Set<(position: CrosshairPosition | null) => void>();
-  const measureStartSubscribers = new Set<(position: CrosshairPosition) => void>();
-  const measureChangeSubscribers = new Set<(measurement: RulerMeasurement) => void>();
-  const measureEndSubscribers = new Set<(measurement: RulerMeasurement) => void>();
+  let sync: SyncMembership | null = null;
 
   const setVisible = (visible: boolean): void => {
     if (root) root.style.display = visible ? "block" : "none";
@@ -224,25 +209,20 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   const emitMove = (position: CrosshairPosition | null): void => {
     currentPosition = position;
     options.onMove?.(position);
-    for (const callback of moveSubscribers) callback(position);
   };
 
   const emitMeasureStart = (position: CrosshairPosition): void => {
     options.onMeasureStart?.(position);
-    for (const callback of measureStartSubscribers) callback(position);
   };
 
   const emitMeasureChange = (measurement: RulerMeasurement): void => {
     currentMeasurement = measurement;
     options.onMeasureChange?.(measurement);
-    for (const callback of measureChangeSubscribers) callback(measurement);
   };
 
   const emitMeasureEnd = (measurement: RulerMeasurement): void => {
     currentMeasurement = measurement;
     options.onMeasureEnd?.(measurement);
-    options.onMeasure?.(measurement);
-    for (const callback of measureEndSubscribers) callback(measurement);
   };
 
   const placeLabel = (position: CrosshairPosition): void => {
@@ -268,11 +248,11 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     const strokeWidth = Math.max(0, options.markerStrokeWidth ?? 2);
     for (const item of position.items) {
       if (item.xRange && chartRef) {
-        markerLayer.appendChild(createXRangeHighlight(item, chartRef as Chart, options.markerStrokeColor, strokeWidth));
+        markerLayer.appendChild(createXRangeHighlight(item, chartRef as Chart, options.markerStrokeColor ?? chartRef.theme.markerStrokeColor, strokeWidth));
       } else {
         markerLayer.appendChild(createPickMarker(item, {
           sizePx: size,
-          strokeColor: options.markerStrokeColor,
+          strokeColor: options.markerStrokeColor ?? chartRef?.theme.markerStrokeColor ?? "",
           strokeWidthPx: strokeWidth,
         }));
       }
@@ -327,38 +307,10 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     emitMeasureChange(measurementFrom(rulerStart, end, chart));
   };
 
-  const emitShared = (position: CrosshairPosition): void => {
-    if (!options.group || !peer) return;
-    for (const target of groups.get(options.group) ?? []) {
-      if (target !== peer) target.showShared(position.dataX, peer);
-    }
-  };
-
-  const emitHideShared = (): void => {
-    if (!options.group || !peer) return;
-    for (const target of groups.get(options.group) ?? []) {
-      if (target !== peer) target.hideShared(peer);
-    }
-  };
-
-  const peer: Peer = {
-    showShared(dataX: number, source: Peer): void {
-      if (source === peer || !chartRef) return;
-      const position = resolveSharedPosition(chartRef, dataX, yAxis);
-      renderPosition(position);
-      emitMove(position);
-    },
-    hideShared(source: Peer): void {
-      if (source === peer) return;
-      renderPosition(null);
-      emitMove(null);
-    },
-  };
-
   return {
     install(chart: ChartPluginContext) {
       chartRef = chart;
-      const color = options.color ?? "rgba(148, 163, 184, 0.55)";
+      const color = options.color ?? chart.theme.crosshairColor;
       const width = `${options.width ?? 1}px`;
       const dash = options.dash;
 
@@ -422,17 +374,23 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       root.append(lineLayer, overlayLayer);
       chart.plotElement.appendChild(root);
 
-      if (options.group) {
-        const set = groups.get(options.group) ?? new Set<Peer>();
-        set.add(peer);
-        groups.set(options.group, set);
-      }
+      sync = joinCrosshairSyncGroup(options.syncGroup, {
+        showAt(dataX) {
+          const position = resolveSharedPosition(chart, dataX, yAxis);
+          renderPosition(position);
+          emitMove(position);
+        },
+        hide() {
+          renderPosition(null);
+          emitMove(null);
+        },
+      });
 
       const updateAtClientPoint = (clientX: number, clientY: number): void => {
         const position = resolvePosition(chart, clientX, clientY, yAxis, snap);
         renderPosition(position);
         emitMove(position);
-        if (position) emitShared(position);
+        if (position) sync?.broadcast(position.dataX);
         if (mode === "ruler") renderRuler(position);
       };
 
@@ -456,7 +414,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         activeClientPoint = null;
         if (!rulerStart) renderPosition(null);
         emitMove(null);
-        emitHideShared();
+        sync?.broadcast(null);
       };
 
       const onPointerDown = (event: PointerEvent): void => {
@@ -508,11 +466,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         chart.canvas.removeEventListener("pointerdown", onPointerDown, { capture: true });
         chart.canvas.removeEventListener("pointerup", onPointerUp, { capture: true });
         unsubscribeRender();
-        if (options.group) {
-          const set = groups.get(options.group);
-          set?.delete(peer);
-          if (set?.size === 0) groups.delete(options.group);
-        }
+        sync?.leave();
+        sync = null;
         root?.remove();
         root = null;
         lineLayer = null;
@@ -538,26 +493,6 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       currentMeasurement = null;
       rulerStart = null;
       if (rulerSvg) rulerSvg.style.display = "none";
-    },
-    subscribe(event: CrosshairEventType, callback: ((position: CrosshairPosition | null) => void) | ((position: CrosshairPosition) => void) | ((measurement: RulerMeasurement) => void)): () => void {
-      if (event === "move") {
-        const cb = callback as (position: CrosshairPosition | null) => void;
-        moveSubscribers.add(cb);
-        return () => moveSubscribers.delete(cb);
-      }
-      if (event === "measurestart") {
-        const cb = callback as (position: CrosshairPosition) => void;
-        measureStartSubscribers.add(cb);
-        return () => measureStartSubscribers.delete(cb);
-      }
-      if (event === "measurechange") {
-        const cb = callback as (measurement: RulerMeasurement) => void;
-        measureChangeSubscribers.add(cb);
-        return () => measureChangeSubscribers.delete(cb);
-      }
-      const cb = callback as (measurement: RulerMeasurement) => void;
-      measureEndSubscribers.add(cb);
-      return () => measureEndSubscribers.delete(cb);
     },
   };
 }

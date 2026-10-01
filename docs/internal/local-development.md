@@ -23,6 +23,7 @@ Use Bun for repo work. `packageManager` pins the expected Bun version; CI also u
 | Build the library package | `bun run build` | Emits `dist/` and declarations. |
 | Build only JS output | `bun run build:js` | Useful before bundle analysis when declarations are irrelevant. |
 | Run the docs/site dev server | `bun run dev` | Serves the Lit documentation site. |
+| Serve browser test fixtures | `bun run fixtures:dev` | Serves `tests/browser/` for debugging visual, interaction, and benchmark pages. |
 | Preview the built docs/site | `bun run pages:build && bun run pages:preview` | Mirrors the GitHub Pages build. |
 
 ## Browser-backed checks
@@ -39,19 +40,12 @@ bun run bench:ci
 
 `bun run test:website` checks the development and production website builds for routing, responsive previews, modal keyboard behavior, copy/export feedback, lazy loading, offscreen chart lifecycle, and legend focus in headless Chromium. Screenshots and test downloads are written to `build/website-ux/`. Run a focused case with `bun scripts/website-ux-test.ts <case>` (for example, `anchors` or `legend`). After `bun run pages:build`, run `bun scripts/website-ux-test.ts production` to smoke-test the built site.
 
-`bun run ci` runs the full validation suite used by pull requests:
+CI runs the same two groups as separate jobs. Locally:
 
 ```bash
-bun run typecheck
-bun test
-bun run build
-bun run test:exports
-bun run test:package
-bun run test:bundle-size
-bun run bench:ci
-bun run test:visual
-bun run test:interaction
-bun run test:website
+bun run check          # typecheck, unit tests, build, docs freshness, package checks
+bun run test:browser   # benchmark smoke, visual, interaction, website (needs Chrome)
+bun run ci             # both
 ```
 
 ## Documentation changes
@@ -88,5 +82,5 @@ Release commands and branch policy live in [Release and benchmark notes](../rele
 3. Update `changelogs/vX.Y.Z.md`.
 4. Run `bun run release:benchmarks`.
 5. Run `bun run docs:readme`.
-6. Run `bun run ci`, `bun run pages:build`, and `bun pm pack --dry-run`.
-7. Open the release PR from `development` to `main`.
+6. Run `bun run ci`.
+7. Open the release PR from `development` to `main` and merge it with a merge commit.

@@ -107,7 +107,7 @@ chart.followLatestX({
 - `pauseOnInteraction` lets pan/zoom and box zoom stop live-follow while the user inspects history.
 - `resumeAfterMs` optionally resumes after interaction inactivity.
 - `currentX` is useful for timestamped real-time streams; it lets the viewport move continuously with the clock instead of stepping only when batches arrive.
-- `chart.resumeLatestXFollow()` jumps back to live immediately.
+- `chart.setXFollowPaused(false)` jumps back to live immediately; `chart.getXFollowState()` returns `"off"`, `"following"`, or `"paused"` for your UI.
 - `chart.stopFollowingLatestX()` disables live-follow.
 - With the built-in interactions plugin, double-click/tap reset resumes follow by default. Pass `interactionsPlugin({ resumeFollowOnReset: false })` to keep reset on a historical viewport.
 

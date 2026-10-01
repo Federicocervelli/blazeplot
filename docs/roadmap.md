@@ -7,14 +7,13 @@ BlazePlot is a fast WebGL2 plotting engine for dense browser time-series charts.
 - Core chart API, typed datasets, ring buffers, OHLC datasets, server-sampled datasets, min/max LOD, gaps, picking, and data export helpers are implemented.
 - WebGL2 rendering covers line, area, scatter, bar, OHLC, candlestick, dense min/max paths, screenshots, context restore, and built-in DOM/SVG overlays.
 - Interaction/plugin layer covers pan, zoom, box zoom, touch gestures, crosshair, tooltip, legend, annotations, selection, navigator, linked charts, React wrapper, and theming.
-- Package output is split into tree-shakable public subpaths: `blazeplot`, `core`, `interaction`, `render`, `react`, `linked`, `linked-core`, `data`, `export`, and `plugins/*`.
+- Package output is split into tree-shakable entry points: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and `blazeplot/plugins/*`.
 - CI validates typecheck, unit tests, build, package exports, package contents, bundle-size budgets, benchmark smoke, visual tests, and browser interaction tests.
 
 ## Near-term priorities
 
 1. **Native WebGL2 backend / regl removal**
    - [x] Add a native `WebGL2Backend` implementing the existing `GpuBackend` interface.
-   - [x] Keep `ReglBackend` available as a deprecated compatibility alias during migration.
    - [ ] Validate lines, min/max, scatter, bars, area, OHLC, candlesticks, context restore, and screenshots with pixel-visible browser tests.
    - [x] Switch the default backend after native parity work.
    - [x] Remove the `regl` dependency to reduce real consumer bundle size.

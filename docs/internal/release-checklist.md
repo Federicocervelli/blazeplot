@@ -21,8 +21,6 @@ Then update `changelogs/vX.Y.Z.md` with user-facing changes. Keep benchmark tabl
 bun run release:benchmarks
 bun run docs:readme
 bun run ci
-bun run pages:build
-bun pm pack --dry-run
 ```
 
 `bun run release:benchmarks` appends benchmark tables to the current changelog. `bun run docs:readme` rebuilds `dist/`, regenerates `docs/api-reference.md`, and refreshes the generated README docs block.
@@ -49,21 +47,19 @@ Include:
 
 - Version number and changelog link.
 - The benchmark command that updated the changelog.
-- Confirmation that `bun run ci`, `bun run pages:build`, and `bun pm pack --dry-run` passed.
+- Confirmation that `bun run ci` passed (it includes the website build and `bun pm pack --dry-run`).
 - Any known risk areas, especially rendering, package exports, or release workflow changes.
 
 ## 5. Merge and monitor
 
-After merge to `main`, `.github/workflows/release.yml`:
+Merge with **Create a merge commit** (not squash or rebase) so `development` stays an ancestor of `main`. Then `.github/workflows/release.yml`:
 
-1. Installs dependencies with the pinned Bun version.
-2. Runs `bun run ci`.
-3. Reads `package.json` and computes `vX.Y.Z`.
-4. Skips publishing if that tag already exists.
-5. Verifies the npm version is unpublished.
-6. Appends release benchmarks if missing.
-7. Packs and publishes to npm with provenance.
-8. Tags the release and creates the GitHub Release.
+1. Runs the full CI workflow.
+2. Reads `package.json` and computes `vX.Y.Z`; skips if that tag exists.
+3. Appends release benchmarks if missing.
+4. Publishes to npm with provenance (trusted publishing).
+5. Creates the tag and GitHub Release.
+6. Fast-forwards `development` to `main`.
 
 Monitor:
 

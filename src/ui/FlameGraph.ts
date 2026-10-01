@@ -1,6 +1,7 @@
 import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
 import { placeFixedWithinViewport } from "./OverlayUtils.js";
-import { rgbaCss, type RgbaColor } from "./theme.js";
+import type { RgbaColor } from "../core/types.js";
+import { rgbaCss } from "./theme.js";
 
 const DEFAULT_FRAME_HEIGHT = 1;
 const DEFAULT_MIN_FRAME_WIDTH_PX = 0.5;

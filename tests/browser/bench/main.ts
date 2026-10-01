@@ -54,7 +54,6 @@ interface BenchmarkResult {
     readonly frameMs: NumericSummary;
     readonly pointsRendered: NumericSummary;
     readonly drawCalls: NumericSummary;
-    readonly batchedDrawCalls: NumericSummary;
     readonly uploadBytes: NumericSummary;
   };
   readonly finalStats: ChartFrameStats;
@@ -239,6 +238,7 @@ const chartPlugins = flameChartModel
     : [];
 
 const chart = new Chart(chartTarget, {
+  renderLoop: "continuous",
   axes: { x: { position: "outside" }, y: { position: "outside" } },
   hover: config.interaction === "hover" ? { mode: "nearest-x", group: "x" } : undefined,
   plugins: chartPlugins,
@@ -271,7 +271,6 @@ const frameStats: ChartFrameStats = {
   drawCalls: 0,
   uploadBytes: 0,
   renderMode: "none",
-  batchedDrawCalls: 0,
 };
 
 let state: BenchmarkState = "loading";
@@ -302,7 +301,7 @@ window.__blazeplotBench = {
 };
 
 updateViewport();
-chart.start({ renderLoop: "continuous" });
+chart.start();
 void prepare();
 
 async function prepare(): Promise<void> {
@@ -352,7 +351,6 @@ async function measure(): Promise<BenchmarkResult> {
   const chartFrameMs: number[] = [];
   const pointsRendered: number[] = [];
   const drawCalls: number[] = [];
-  const batchedDrawCalls: number[] = [];
   const uploadBytes: number[] = [];
   const startMs = performance.now();
   let lastFrameMs: number | null = null;
@@ -381,7 +379,6 @@ async function measure(): Promise<BenchmarkResult> {
     chartFrameMs.push(frameStats.frameMs);
     pointsRendered.push(frameStats.pointsRendered);
     drawCalls.push(frameStats.drawCalls);
-    batchedDrawCalls.push(frameStats.batchedDrawCalls ?? 0);
     uploadBytes.push(frameStats.uploadBytes);
     renderStatus();
   }
@@ -408,7 +405,6 @@ async function measure(): Promise<BenchmarkResult> {
       frameMs: summarize(chartFrameMs),
       pointsRendered: summarize(pointsRendered),
       drawCalls: summarize(drawCalls),
-      batchedDrawCalls: summarize(batchedDrawCalls),
       uploadBytes: summarize(uploadBytes),
     },
     finalStats: { ...frameStats },
@@ -421,7 +417,7 @@ async function measure(): Promise<BenchmarkResult> {
 
 function appendRange(startX: number, count: number): void {
   if (config.proceduralLine) {
-    lineSeries.append({ length: count }, { length: count });
+    lineSeries.append({ x: { length: count }, y: { length: count } });
     return;
   }
 
@@ -435,7 +431,7 @@ function appendRange(startX: number, count: number): void {
     xValues[i] = x;
     yValues[i] = Math.sin((x / period) * tau) * 0.25 + 0.8 + noise01(x) * 0.01;
   }
-  lineSeries.append(xValues, yValues);
+  lineSeries.append({ x: xValues, y: yValues });
 
   if (!scatterSeries && !barSeries) return;
   appendSparseSeries(startX, count, period, tau, scatterSeries, barSeries);
@@ -465,8 +461,8 @@ function appendSparseSeries(
     if (barY) barY[i] = -0.9 + Math.abs(Math.sin((x / period) * tau)) * 0.5 + 0.1;
   }
 
-  if (scatter && scatterY) scatter.append(sparseX, scatterY);
-  if (bars && barY) bars.append(sparseX, barY);
+  if (scatter && scatterY) scatter.append({ x: sparseX, y: scatterY });
+  if (bars && barY) bars.append({ x: sparseX, y: barY });
 }
 
 function updateViewport(elapsedMs = 0): void {
@@ -555,7 +551,6 @@ function renderStatus(): void {
     `render ms: ${frameStats.frameMs.toFixed(2)}`,
     `points rendered: ${frameStats.pointsRendered.toLocaleString()}`,
     `draw calls: ${frameStats.drawCalls}`,
-    `batched draws saved: ${frameStats.batchedDrawCalls ?? 0}`,
   ].join("\n");
 }
 

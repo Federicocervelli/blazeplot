@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, posix, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import ts from "typescript";
 
-const root = resolve(new URL("..", import.meta.url).pathname);
+const root = fileURLToPath(new URL("..", import.meta.url));
 const apiReferencePath = resolve(root, "docs/api-reference.md");
 const benchmarkDocsPath = resolve(root, "docs/benchmarks.md");
 const readmePath = resolve(root, "README.md");
@@ -31,12 +32,8 @@ const checkExportDescriptions = args.has("--check-export-descriptions");
 const pkg = JSON.parse(readFileSync(packagePath, "utf-8"));
 
 const exportDescriptions = new Map([
-  [".", "Core chart, data, interaction, rendering types, and low-level primitives."],
-  ["./core", "Data structures, datasets, LOD helpers, and series storage without chart UI."],
-  ["./interaction", "Camera, axis, pan/zoom intent, and viewport policy helpers without chart UI."],
-  ["./render", "Renderer and WebGL backend primitives without chart UI."],
-  ["./linked", "Linked chart layout helpers with tooltip/crosshair sync factories."],
-  ["./linked-core", "Lean linked chart layout helpers without tooltip/crosshair sync imports."],
+  [".", "Chart, datasets, data contracts, theming, and the WebGL2 backend."],
+  ["./linked", "Multi-panel layouts with shared X and per-panel plugins."],
   ["./data", "Pure chart data export and transform helpers."],
   ["./export", "Screenshot download and clipboard helpers."],
   ["./plugins/interactions", "Built-in pan, zoom, axis interaction, and reset plugin."],
@@ -262,10 +259,10 @@ function renderGeneratedDocs(options = {}) {
     "| Live fixed-rate data | `chart.addLine({ capacity, xStep })`, `UniformRingBuffer`, [Live data](" + guideLink(guideBasePath, "live-data.md") + ") |",
     "| OHLC/candlesticks | `StaticOhlcDataset`, `OhlcRingBuffer`, `chart.addOhlc(...)`, `chart.addCandlestick(...)` |",
     "| Custom high-performance data | `Dataset`, `AcceleratedDataset`, range/copy dataset interfaces |",
-    "| Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `Camera2D`, viewport APIs |",
+    "| Pan/zoom and user interaction | `blazeplot/plugins/interactions`, `chart.setViewport(...)`, `ViewportPolicy` |",
     "| Tooltips, legends, annotations, selection, flame graphs | `blazeplot/plugins/*` subpaths |",
     "| React | Create and dispose `Chart` in an effect |",
-    "| Linked dashboards | `blazeplot/linked` or `blazeplot/linked-core` |",
+    "| Linked dashboards | `blazeplot/linked` with `panelPlugins` |",
     "| Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |",
     "",
     `Guides: ${renderGuideLinks(guideBasePath)}.`,
@@ -635,30 +632,30 @@ function formatNullableBytes(value) {
   return typeof value === "number" ? formatBytes(value) : "—";
 }
 
+/** Size of everything `import { Chart } from "blazeplot"` loads eagerly: dist/index.js plus its static import graph. */
 function collectCoreRuntimeSize() {
-  const files = [
-    "dist/index.js",
-    ...findDistFiles(/^Chart-.*\.js$/),
-    ...findDistFiles(/^(RingBuffer|UniformRingBuffer)-.*\.js$/),
-    ...findDistFiles(/^OhlcDataset-.*\.js$/),
-    ...findDistFiles(/^AxisController-.*\.js$/),
-    ...findDistFiles(/^WebGL2Backend-.*\.js$/),
-  ];
+  const files = staticImportClosure("dist/index.js");
   const buffers = files.map((file) => readFileSync(resolve(root, file)));
   return {
-    rawBytes: files.reduce((sum, file) => sum + statSync(resolve(root, file)).size, 0),
+    rawBytes: buffers.reduce((sum, buffer) => sum + buffer.length, 0),
     gzipBytes: gzipSync(Buffer.concat(buffers)).length,
   };
 }
 
-function findDistFiles(pattern) {
-  const files = execFileSync("node", ["-e", "const {readdirSync}=require('fs'); console.log(readdirSync('dist').join('\\n'))"], { cwd: root, encoding: "utf8" })
-    .split("\n")
-    .filter(Boolean)
-    .filter((file) => pattern.test(file))
-    .map((file) => `dist/${file}`);
-  if (files.length !== 1) throw new Error(`Expected exactly one dist file matching ${pattern}, found ${files.length}.`);
-  return files;
+function staticImportClosure(entry) {
+  const seen = new Set();
+  const pending = [entry];
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    const source = readFileSync(resolve(root, file), "utf8");
+    // Static `import ... from "./x.js"` only; dynamic `import("./x.js")` chunks load lazily.
+    for (const match of source.matchAll(/\bimport\s*(?:[\w$*{}\s,]*?\s*from\s*)?["'](\.\.?\/[^"']+)["']/g)) {
+      pending.push(posix.join(posix.dirname(file), match[1]));
+    }
+  }
+  return [...seen];
 }
 
 function formatKiB(bytes) {

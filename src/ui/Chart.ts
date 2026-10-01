@@ -1,81 +1,48 @@
-import type { SeriesConfig, SeriesStyle, Dataset, SeriesMode, SeriesSample, SeriesYAxis, Viewport, XRange } from "../core/types.js";
+import type { SeriesConfig, SeriesStyle, SeriesStyleOptions, Dataset, SeriesMode, SeriesSample, SeriesYAxis, Viewport, XRange, RgbaColor } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
+import type { SeriesChange } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import { HistogramDataset, histogram } from "../core/Histogram.js";
-import type { HistogramBinThresholds, HistogramNormalization, HistogramResult } from "../core/Histogram.js";
+import type { HistogramOptions, HistogramResult } from "../core/Histogram.js";
 import { Renderer } from "../render/Renderer.js";
 import type { RenderProjection } from "../render/Renderer.js";
-import { isWebGL2Available, WebGL2Backend } from "../render/WebGL2Backend.js";
+import { WebGL2Backend } from "../render/WebGL2Backend.js";
 import type { GpuBackend, GpuBuffer } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
-import type { AxisControllerAxisOptions, AxisScale, AxisTickFormat, AxisTimeZone } from "../interaction/AxisController.js";
+import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { PanIntent, ViewportPolicy, ZoomIntent } from "../interaction/types.js";
-import { AxisOverlay } from "./AxisOverlay.js";
+import { AxisOverlay, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
-import { resolveChartTheme } from "./theme.js";
+import { resolveChartTheme, resolveThemeColor } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 
+/** Vertices in the shared raw line/point/area upload buffer. */
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
-const FLOATS_PER_MINMAX_SEGMENT_INSTANCE = 3;
+/** Bars, min/max buckets, or candles expanded into triangles per draw. */
 const BAR_TRIANGLE_CAPACITY = 4_096;
-const FLOATS_PER_BAR_TRIANGLE = 12;
-const FLOATS_PER_OHLC_CANDLE = 12;
+const FLOATS_PER_MINMAX_BUCKET = 3;
+const FLOATS_PER_BAR_TRIANGLES = 12;
 const FLOATS_PER_OHLC_TUPLE = 5;
-const GRID_LINE_VERTEX_CAPACITY = 64;
-const DEFAULT_POINT_SIZE_PX = 4;
+/** Two vertices per grid line; tick generators may add one extra tick at each edge. */
+const GRID_LINE_VERTEX_CAPACITY = (X_TICK_LIMIT + 2 + Y_TICK_LIMIT + 2) * 2;
 const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
+const TITLE_TOP_PX = 6;
+const SUBTITLE_TOP_PX = 26;
+const TITLE_SIDE_INSET_PX = 8;
+const AXIS_TITLE_INSET_PX = 4;
 
-function normalizeFitPadding(padding: number | ChartFitToDataPadding | undefined): Required<ChartFitToDataPadding> {
-  if (typeof padding === "number") {
-    const value = Number.isFinite(padding) ? Math.max(0, padding) : 0;
-    return { x: value, y: value };
-  }
-  const x = padding?.x;
-  const y = padding?.y;
-  return {
-    x: typeof x === "number" && Number.isFinite(x) ? Math.max(0, x) : 0,
-    y: typeof y === "number" && Number.isFinite(y) ? Math.max(0, y) : 0,
-  };
-}
-
-function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: number): boolean {
-  const aSpan = Math.abs(aMax - aMin);
-  const bSpan = Math.abs(bMax - bMin);
-  const scale = Math.max(1, aSpan, bSpan);
-  const epsilon = scale * 1e-9;
-  return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
-}
-
-function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
-  let nextMin = includeZero ? Math.min(0, min) : min;
-  let nextMax = includeZero ? Math.max(0, max) : max;
-  let span = nextMax - nextMin;
-  if (span <= 0) {
-    const halfSpan = Math.max(1, Math.abs(nextMin)) * 0.5;
-    nextMin -= halfSpan;
-    nextMax += halfSpan;
-    span = nextMax - nextMin;
-  }
-  const amount = span * padding;
-  return { min: nextMin - amount, max: nextMax + amount };
-}
-
-/** Shared text styling for chart titles and axis titles. */
+/** Text and styling for an axis title. */
 export interface TextOverlayConfig {
   readonly text: string;
-  readonly visible?: boolean;
   readonly color?: string;
   readonly font?: string;
   readonly offsetX?: number;
   readonly offsetY?: number;
 }
-
-/** Axis title text and styling. */
-export interface AxisTitleConfig extends TextOverlayConfig {}
 
 /** Chart title or subtitle text and alignment. */
 export interface ChartTitleConfig extends TextOverlayConfig {
@@ -84,12 +51,10 @@ export interface ChartTitleConfig extends TextOverlayConfig {
 
 /** Axis visibility, placement, scale, tick formatting, and title options. */
 export interface AxisConfig extends AxisControllerAxisOptions {
+  /** Hide tick labels while keeping the scale. Pass `false` instead of a config to hide an axis with default scale. */
   readonly visible?: boolean;
   readonly position?: AxisPosition;
-  readonly scale?: AxisScale;
-  readonly tickFormat?: AxisTickFormat;
-  readonly timezone?: AxisTimeZone;
-  readonly title?: string | AxisTitleConfig;
+  readonly title?: string | TextOverlayConfig;
 }
 
 /** Strategy used to find data points near a pointer location. */
@@ -106,17 +71,20 @@ export interface ChartPickOptions {
 
 /** ARIA and keyboard-navigation options for the chart root. */
 export interface ChartAccessibilityOptions {
-  readonly enabled?: boolean;
+  /** Accessible name. Defaults to the chart title and subtitle. */
   readonly label?: string;
   readonly description?: string;
+  /** ARIA role for the chart root. Defaults to `"img"`. */
   readonly role?: string;
+  /** Arrow-key pan, +/- zoom, and Home to fit. Pass `false` to disable. */
   readonly keyboard?: boolean | ChartKeyboardOptions;
 }
 
 /** Keyboard pan and zoom behavior for accessible charts. */
 export interface ChartKeyboardOptions {
-  readonly enabled?: boolean;
+  /** Fraction of the viewport moved per arrow key. Defaults to 0.1. */
   readonly panFraction?: number;
+  /** Zoom factor per +/- key. Defaults to 1.25. */
   readonly zoomFactor?: number;
 }
 
@@ -131,58 +99,50 @@ export type ChartBackendFactory = (context: ChartBackendFactoryContext) => GpuBa
 /** Render loop scheduling mode. */
 export type ChartRenderLoop = "auto" | "continuous";
 
-/** Options accepted by `Chart.start()`. */
-export interface ChartStartOptions {
-  /**
-   * `auto` renders on demand after chart state changes. `continuous` renders on
-   * every animation frame for custom animations or external data mutation.
-   */
-  readonly renderLoop?: ChartRenderLoop;
-}
-
-/** Constructor options for `Chart`. */
+/** Constructor options for `Chart`. Boolean-or-object options accept `false` to disable and an object to configure. */
 export interface ChartOptions {
+  /** Hooks that constrain pan/zoom and adjust the camera before each render. */
   readonly viewportPolicy?: ViewportPolicy;
+  /** Draw grid lines at axis ticks. Defaults to true; color comes from `theme.gridColor`. */
   readonly grid?: boolean;
-  readonly gridStyle?: Partial<SeriesStyle>;
+  /** Axis configuration. `y2` is hidden unless configured. */
   readonly axes?: boolean | { x?: boolean | AxisConfig; y?: boolean | AxisConfig; y2?: boolean | AxisConfig };
   readonly title?: string | ChartTitleConfig;
   readonly subtitle?: string | ChartTitleConfig;
+  /** Default pick behavior for hover state and pointer events. */
   readonly hover?: ChartPickOptions;
+  /** ARIA attributes and keyboard navigation. Enabled by default. */
   readonly accessibility?: boolean | ChartAccessibilityOptions;
+  /** Refit Y to the visible X range on every render. */
   readonly autoFitY?: boolean | ChartAutoFitYOptions;
+  /** Keep the X viewport on the latest data. */
   readonly followX?: boolean | ChartFollowXOptions;
   /**
-   * Render scheduling mode used by `start()`. Defaults to `auto`, which renders
-   * once for static charts and then only when chart-owned state changes.
+   * `"auto"` (default) renders once after `start()` and then only when chart
+   * state changes. `"continuous"` renders every animation frame, for datasets
+   * mutated outside BlazePlot.
    */
   readonly renderLoop?: ChartRenderLoop;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
-  /** Advanced hook for supplying a custom GPU backend. Defaults to WebGL2Backend. */
+  /** Advanced hook for supplying a custom GPU backend. Defaults to `WebGL2Backend`. */
   readonly backendFactory?: ChartBackendFactory;
 }
 
 /** Series configuration used by typed helpers such as `addLine`. */
 export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
 
-/** Series configuration for `Chart.addHistogram(...)` from raw one-dimensional values. */
-export interface HistogramSeriesConfig extends Omit<TypedSeriesConfig, "dataset"> {
+/** Identity and axis options shared by series that build their own dataset. */
+export type SeriesIdentityConfig = Pick<SeriesConfig, "id" | "name" | "yAxis" | "downsample">;
+
+/** `Chart.addHistogram(...)` config that bins raw one-dimensional values. */
+export interface HistogramSeriesConfig extends SeriesIdentityConfig, HistogramOptions {
   readonly values: ArrayLike<number>;
   readonly histogram?: never;
-  readonly binSize?: number;
-  readonly binCount?: number;
-  readonly thresholds?: HistogramBinThresholds;
-  readonly min?: number;
-  readonly max?: number;
-  readonly align?: number;
-  readonly normalize?: HistogramNormalization;
-  readonly includeEmpty?: boolean;
-  readonly includeMax?: boolean;
 }
 
-/** Series configuration for `Chart.addHistogram(...)` from precomputed bins. */
-export interface PrecomputedHistogramSeriesConfig extends Omit<TypedSeriesConfig, "dataset"> {
+/** `Chart.addHistogram(...)` config for bins computed with `histogram(...)`. */
+export interface PrecomputedHistogramSeriesConfig extends SeriesIdentityConfig {
   readonly histogram: HistogramResult;
 }
 
@@ -194,13 +154,13 @@ export interface ChartSeriesState {
   readonly name?: string;
   readonly mode: SeriesMode;
   readonly visible: boolean;
-  readonly color: readonly [number, number, number, number];
+  readonly color: RgbaColor;
   readonly yAxis: SeriesYAxis;
 }
 
 /** A picked data point with series metadata and screen coordinates. */
 export interface ChartPickItem extends SeriesSample {
-  /** Optional represented X interval for interval-backed samples. */
+  /** Represented X interval for interval-backed samples such as histogram bins. */
   readonly xRange?: XRange;
   readonly series: SeriesStore;
   readonly seriesIndex: number;
@@ -265,19 +225,39 @@ export interface ChartHoverState {
   readonly items: readonly ChartPickItem[];
 }
 
-/** Built-in screenshot background presets. */
-export type ChartScreenshotPreset = "theme" | "transparent" | "dark" | "light";
+/** Payload delivered to `chart.subscribe(event, callback)` for each chart event. */
+export interface ChartEventMap {
+  /** Hovered items changed, or `null` when the pointer left the plot. */
+  hover: ChartHoverState | null;
+  /** A series was added, removed, or shown/hidden. */
+  serieschange: void;
+  themechange: void;
+  /** A frame finished drawing. */
+  render: void;
+  viewportchange: ChartViewportChangeEvent;
+  select: ChartSelectEvent;
+  seriesclick: ChartSeriesClickEvent;
+  click: ChartPointerEventState;
+  dblclick: ChartPointerEventState;
+  pointerdown: ChartPointerEventState;
+  pointerup: ChartPointerEventState;
+  pointermove: ChartPointerEventState;
+}
+
+/** Name of an event accepted by `Chart.subscribe`. */
+export type ChartEventName = keyof ChartEventMap;
 
 /** Options for exporting the chart as an image blob. */
 export interface ChartScreenshotOptions {
+  /** Image MIME type. Defaults to `"image/png"`. */
   readonly type?: string;
   readonly quality?: number;
+  /** CSS background color, or `null` for transparent. Defaults to the theme background. */
   readonly background?: string | null;
+  /** Output pixel ratio. Defaults to `devicePixelRatio`. */
   readonly dpr?: number;
   readonly width?: number;
   readonly height?: number;
-  readonly transparent?: boolean;
-  readonly preset?: ChartScreenshotPreset;
 }
 
 /** Fractional padding applied when fitting domains to data. */
@@ -289,42 +269,44 @@ export interface ChartFitToDataPadding {
 /** Options for fitting the viewport to series data bounds. */
 export interface ChartFitToDataOptions {
   readonly series?: readonly SeriesStore[];
-  readonly visibleOnly?: boolean;
+  /** Include hidden series. Defaults to false. */
+  readonly includeHidden?: boolean;
+  /** Fit X. Defaults to true. */
   readonly x?: boolean;
+  /** Fit Y. Defaults to true. */
   readonly y?: boolean;
   readonly yAxis?: SeriesYAxis | "both";
   readonly padding?: number | ChartFitToDataPadding;
   readonly includeZero?: boolean;
+  /** Only consider samples at or after this X. */
   readonly xMin?: number;
+  /** Only consider samples at or before this X. */
   readonly xMax?: number;
 }
 
 /** Options for automatically refitting Y as the X viewport changes. */
-export interface ChartAutoFitYOptions {
-  readonly enabled?: boolean;
-  readonly yAxis?: SeriesYAxis | "both";
-  readonly padding?: number | ChartFitToDataPadding;
-  readonly includeZero?: boolean;
-  readonly visibleOnly?: boolean;
-  readonly series?: readonly SeriesStore[];
-}
+export type ChartAutoFitYOptions = Pick<ChartFitToDataOptions, "series" | "includeHidden" | "yAxis" | "padding" | "includeZero">;
 
 /** Options for keeping the X viewport anchored to the latest data. */
 export interface ChartFollowXOptions {
-  readonly enabled?: boolean;
+  /** Visible X span. Defaults to the current span. */
   readonly window?: number;
+  /** Pause following while the user pans or zooms. Defaults to true. */
   readonly pauseOnInteraction?: boolean;
   /** Resume automatically this many milliseconds after a pan/zoom interaction. */
   readonly resumeAfterMs?: number;
   /**
-   * Optional live X clock for smooth scrolling streams. When provided, the
-   * follow window uses the larger of latest data X and `currentX()` so time
-   * axes can advance continuously between batched sensor/network updates.
+   * Optional live X clock for smooth scrolling streams. The follow window uses
+   * the larger of the latest data X and `currentX()`, so time axes advance
+   * continuously between batched updates.
    */
   readonly currentX?: () => number;
-  readonly visibleOnly?: boolean;
+  readonly includeHidden?: boolean;
   readonly series?: readonly SeriesStore[];
 }
+
+/** Latest-X follow state: disabled, actively following, or paused by interaction. */
+export type ChartXFollowState = "off" | "following" | "paused";
 
 /** Extra CSS-pixel space reserved around the plot by plugins or overlays. */
 export interface ChartLayoutReservation {
@@ -334,7 +316,7 @@ export interface ChartLayoutReservation {
   readonly left?: number;
 }
 
-/** Mutable render metrics from the last frame. */
+/** Render metrics from the last frame. */
 export interface ChartFrameStats {
   fps: number;
   frameMs: number;
@@ -342,11 +324,11 @@ export interface ChartFrameStats {
   drawCalls: number;
   uploadBytes: number;
   renderMode: "none" | "raw" | "minmax" | "points" | "bars" | "area" | "mixed";
-  /** Number of otherwise separate draw calls avoided by compatible internal batching. */
-  batchedDrawCalls?: number;
 }
 
-/** Limited chart API exposed to plugins. */
+type DrawMode = Exclude<ChartFrameStats["renderMode"], "none" | "mixed">;
+
+/** Chart API available to plugins. */
 export interface ChartPluginContext {
   readonly canvas: HTMLCanvasElement;
   readonly rootElement: HTMLElement;
@@ -360,32 +342,20 @@ export interface ChartPluginContext {
   dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
   clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
   getViewport(yAxis?: SeriesYAxis): Viewport;
+  setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
   pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
   zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
-  setSeriesVisible(series: SeriesStore, visible: boolean): boolean;
+  fitToData(options?: ChartFitToDataOptions): boolean;
   getSeriesState(): ChartSeriesState[];
-  setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void;
-  setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number }): void;
   followLatestX(options?: ChartFollowXOptions): void;
   stopFollowingLatestX(): void;
-  isFollowingLatestX(): boolean;
-  isLatestXFollowPaused(): boolean;
   setXFollowPaused(paused: boolean): void;
-  resumeXFollow(): void;
-  resumeLatestXFollow(): void;
+  getXFollowState(): ChartXFollowState;
   getFrameStats(target?: ChartFrameStats): ChartFrameStats;
   getHoverState(): ChartHoverState | null;
   setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
   requestRender(): void;
-  /** Subscribe to chart events and receive an unsubscribe callback. */
-  subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
-  subscribe(event: "serieschange", callback: () => void): () => void;
-  subscribe(event: "themechange", callback: () => void): () => void;
-  subscribe(event: "render", callback: () => void): () => void;
-  subscribe(event: "viewportchange", callback: (event: ChartViewportChangeEvent) => void): () => void;
-  subscribe(event: "select", callback: (event: ChartSelectEvent) => void): () => void;
-  subscribe(event: "seriesclick", callback: (event: ChartSeriesClickEvent) => void): () => void;
-  subscribe(event: ChartPointerEventType, callback: (event: ChartPointerEventState) => void): () => void;
+  subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
   pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
   emitSelect(selection: unknown): void;
 }
@@ -400,7 +370,7 @@ export interface ChartPlugin {
   install(chart: ChartPluginContext): void | (() => void) | ChartPluginHandle;
 }
 
-type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | AxisTitleConfig };
+type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | TextOverlayConfig };
 
 type ResolvedAxesConfig = { x: ResolvedAxisConfig; y: ResolvedAxisConfig; y2: ResolvedAxisConfig };
 
@@ -411,52 +381,7 @@ type MutableRenderProjection = {
   offsetY: number;
 };
 
-function normalizeAxisConfig(config: boolean | AxisConfig | undefined): ResolvedAxisConfig {
-  if (config === false) return { visible: false, position: "outside" };
-  if (config === true || config === undefined) return { visible: true, position: "outside" };
-  return {
-    visible: config.visible !== false,
-    position: config.position ?? "outside",
-    scale: config.scale,
-    tickFormat: config.tickFormat,
-    timezone: config.timezone,
-    logBase: config.logBase,
-    symlogConstant: config.symlogConstant,
-    categories: config.categories,
-    reversed: config.reversed,
-    title: config.title,
-  };
-}
-
-function normalizeAxesConfig(axes: ChartOptions["axes"]): ResolvedAxesConfig {
-  if (axes === false) {
-    return {
-      x: { visible: false, position: "outside" },
-      y: { visible: false, position: "outside" },
-      y2: { visible: false, position: "outside" },
-    };
-  }
-  if (axes === true || axes === undefined) {
-    return {
-      x: { visible: true, position: "outside" },
-      y: { visible: true, position: "outside" },
-      y2: { visible: false, position: "outside" },
-    };
-  }
-  return {
-    x: normalizeAxisConfig(axes.x),
-    y: normalizeAxisConfig(axes.y),
-    y2: normalizeAxisConfig(axes.y2 ?? false),
-  };
-}
-
-function textOverlayText(config: string | TextOverlayConfig | undefined): string {
-  return typeof config === "string" ? config : config?.text ?? "";
-}
-
-function textOverlayVisible(config: string | TextOverlayConfig | undefined): boolean {
-  return typeof config === "string" ? config.length > 0 : !!config && config.visible !== false && config.text.length > 0;
-}
+type Listener<K extends ChartEventName> = (payload: ChartEventMap[K]) => void;
 
 interface PickCandidate {
   readonly sample: SeriesSample;
@@ -464,7 +389,7 @@ interface PickCandidate {
   readonly seriesIndex: number;
 }
 
-interface ChartPickRect {
+interface PlotRect {
   readonly left: number;
   readonly top: number;
   readonly width: number;
@@ -478,13 +403,58 @@ interface ChartGpuResources {
   readonly gridBuffer: GpuBuffer;
 }
 
+function normalizeAxisConfig(config: boolean | AxisConfig | undefined, defaultVisible: boolean): ResolvedAxisConfig {
+  if (config === undefined) return { visible: defaultVisible, position: "outside" };
+  if (typeof config === "boolean") return { visible: config, position: "outside" };
+  return { ...config, visible: config.visible !== false, position: config.position ?? "outside" };
+}
+
+function normalizeAxesConfig(axes: ChartOptions["axes"]): ResolvedAxesConfig {
+  if (typeof axes === "boolean") {
+    return { x: normalizeAxisConfig(axes, axes), y: normalizeAxisConfig(axes, axes), y2: normalizeAxisConfig(false, false) };
+  }
+  return {
+    x: normalizeAxisConfig(axes?.x, true),
+    y: normalizeAxisConfig(axes?.y, true),
+    y2: normalizeAxisConfig(axes?.y2, false),
+  };
+}
+
+function normalizeFitPadding(padding: number | ChartFitToDataPadding | undefined): Required<ChartFitToDataPadding> {
+  const clean = (value: number | undefined): number => typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+  return typeof padding === "number" ? { x: clean(padding), y: clean(padding) } : { x: clean(padding?.x), y: clean(padding?.y) };
+}
+
+function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: number): boolean {
+  const scale = Math.max(1, Math.abs(aMax - aMin), Math.abs(bMax - bMin));
+  const epsilon = scale * 1e-9;
+  return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
+}
+
+function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
+  let nextMin = includeZero ? Math.min(0, min) : min;
+  let nextMax = includeZero ? Math.max(0, max) : max;
+  let span = nextMax - nextMin;
+  if (span <= 0) {
+    const halfSpan = Math.max(1, Math.abs(nextMin)) * 0.5;
+    nextMin -= halfSpan;
+    nextMax += halfSpan;
+    span = nextMax - nextMin;
+  }
+  const amount = span * padding;
+  return { min: nextMin - amount, max: nextMax + amount };
+}
+
+function titleText(config: string | TextOverlayConfig | undefined): string {
+  return typeof config === "string" ? config : config?.text ?? "";
+}
+
+function withAlpha(color: RgbaColor, factor: number): RgbaColor {
+  return [color[0], color[1], color[2], color[3] * factor];
+}
+
 /** Imperative WebGL chart instance for rendering, interaction, and plugins. */
 export class Chart implements ChartPluginContext {
-  /** Return whether the current environment can create a WebGL2 context. */
-  static isWebGL2Available(): boolean {
-    return isWebGL2Available();
-  }
-
   private series: SeriesStore[] = [];
   private camera: Camera2D;
   private rightCamera: Camera2D;
@@ -492,46 +462,26 @@ export class Chart implements ChartPluginContext {
   private rightAxis: AxisController;
   private renderer!: Renderer;
   private rawLineBuffer!: GpuBuffer;
-  private rawLineData: Float32Array;
-  private minMaxInstanceData: Float32Array;
+  private readonly rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
+  private readonly minMaxBucketData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_MINMAX_BUCKET);
   private barTriangleBuffer!: GpuBuffer;
-  private barTriangleData: Float32Array;
+  private readonly barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLES);
   private gridBuffer!: GpuBuffer;
-  private gridData: Float32Array;
-  private gridStyle: SeriesStyle;
+  private readonly gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
   private readonly xTicks: number[] = [];
   private readonly yTicks: number[] = [];
+  private readonly y2Ticks: number[] = [];
   private axisOverlay: AxisOverlay | null = null;
   private normalizedAxes: ResolvedAxesConfig;
   private resolvedTheme: ResolvedChartTheme;
-  private _gridVisible: boolean;
+  private gridVisible: boolean;
   private layout: ChartLayout;
-  private stats: ChartFrameStats = {
-    fps: 0,
-    frameMs: 0,
-    pointsRendered: 0,
-    drawCalls: 0,
-    uploadBytes: 0,
-    renderMode: "none",
-    batchedDrawCalls: 0,
-  };
+  private readonly stats: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" };
   private resizeObserver: ResizeObserver | null = null;
   private readonly pluginDisposers: Array<() => void> = [];
-  private readonly hoverSubscribers = new Set<(state: ChartHoverState | null) => void>();
-  private readonly seriesSubscribers = new Set<() => void>();
-  private readonly themeSubscribers = new Set<() => void>();
-  private readonly renderSubscribers = new Set<(chart: Chart) => void>();
+  /** Listener sets keyed by event; `never` payloads let every typed listener share one map. */
+  private readonly listeners = new Map<ChartEventName, Set<(payload: never) => void>>();
   private readonly layoutReservations = new Map<string, ChartLayoutReservation>();
-  private readonly viewportSubscribers = new Set<(event: ChartViewportChangeEvent) => void>();
-  private readonly selectSubscribers = new Set<(event: ChartSelectEvent) => void>();
-  private readonly seriesClickSubscribers = new Set<(event: ChartSeriesClickEvent) => void>();
-  private readonly pointerSubscribers: Record<ChartPointerEventType, Set<(event: ChartPointerEventState) => void>> = {
-    click: new Set(),
-    dblclick: new Set(),
-    pointerdown: new Set(),
-    pointerup: new Set(),
-    pointermove: new Set(),
-  };
   private currentHover: ChartHoverState | null = null;
   private readonly leftProjection: MutableRenderProjection = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
   private readonly rightProjection: MutableRenderProjection = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
@@ -546,11 +496,10 @@ export class Chart implements ChartPluginContext {
   private followXConfig: ChartFollowXOptions | null = null;
   private xFollowPaused: boolean = false;
   private xFollowResumeTimer: ReturnType<typeof setTimeout> | null = null;
-  private _rafId: number = 0;
-  private _hoverRafId: number = 0;
-  private _restoreRenderRafId: number = 0;
+  private rafId: number = 0;
+  private hoverRafId: number = 0;
+  private restoreRenderRafId: number = 0;
   private running: boolean = false;
-  private renderLoop: ChartRenderLoop = "auto";
   private webglContextLost: boolean = false;
   private readonly options: ChartOptions;
   private readonly handlePointerMove = (event: PointerEvent): void => {
@@ -563,13 +512,13 @@ export class Chart implements ChartPluginContext {
       this.lastPointerButtons = event.buttons;
       this.scheduleHoverRefresh();
     }
-    if (this.pointerSubscribers.pointermove.size > 0) this.emitPointerEvent("pointermove", event);
+    if (this.hasListeners("pointermove")) this.emitPointerEvent("pointermove", event);
   };
   private readonly handlePointerDown = (event: PointerEvent): void => {
     this.lastPointerButtons = event.buttons;
     if (event.pointerType === "touch") {
       this.pointerInPlot = false;
-      this.emitHover(null);
+      this.setHover(null);
     }
     this.emitPointerEvent("pointerdown", event);
   };
@@ -581,7 +530,7 @@ export class Chart implements ChartPluginContext {
   private readonly handleClick = (event: MouseEvent): void => {
     const pointerEvent = this.emitPointerEvent("click", event);
     const item = pointerEvent?.items[0];
-    if (pointerEvent && item) this.emitSeriesClick({ ...pointerEvent, item });
+    if (pointerEvent && item) this.emit("seriesclick", { ...pointerEvent, item });
   };
   private readonly handleDoubleClick = (event: MouseEvent): void => {
     this.emitPointerEvent("dblclick", event);
@@ -589,7 +538,7 @@ export class Chart implements ChartPluginContext {
   private readonly handlePointerLeave = (): void => {
     this.pointerInPlot = false;
     this.lastPointerButtons = 0;
-    this.emitHover(null);
+    this.setHover(null);
   };
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     this.handleKeyboardNavigation(event);
@@ -597,9 +546,9 @@ export class Chart implements ChartPluginContext {
   private readonly handleWebGLContextLost = (event: Event): void => {
     event.preventDefault();
     this.webglContextLost = true;
-    if (this._restoreRenderRafId !== 0) {
-      cancelAnimationFrame(this._restoreRenderRafId);
-      this._restoreRenderRafId = 0;
+    if (this.restoreRenderRafId !== 0) {
+      cancelAnimationFrame(this.restoreRenderRafId);
+      this.restoreRenderRafId = 0;
     }
     this.resetFrameStats();
   };
@@ -624,11 +573,10 @@ export class Chart implements ChartPluginContext {
   /** Create a chart inside `target`. Call `start()` to begin rendering. */
   constructor(target: HTMLElement, options: ChartOptions = {}) {
     this.options = options;
-    this.renderLoop = options.renderLoop ?? "auto";
-    this.followXConfig = this.resolveInitialFollowX(options.followX);
+    this.followXConfig = options.followX ? (options.followX === true ? {} : options.followX) : null;
     this.resolvedTheme = resolveChartTheme(options.theme, target);
     this.normalizedAxes = normalizeAxesConfig(options.axes);
-    this._gridVisible = options.grid !== false;
+    this.gridVisible = options.grid !== false;
 
     this.layout = new ChartLayout(target, this.normalizedAxes);
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
@@ -639,22 +587,8 @@ export class Chart implements ChartPluginContext {
     this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
-    this.rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
-    this.minMaxInstanceData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_MINMAX_SEGMENT_INSTANCE);
-    this.barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLE);
-    this.gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
     this.installGpuResources(this.createGpuResources());
-    this.gridStyle = {
-      color: options.gridStyle?.color ?? this.resolvedTheme.gridColor,
-      lineWidth: options.gridStyle?.lineWidth ?? 1,
-    };
-
-    if (this.normalizedAxes.x.visible || this.normalizedAxes.y.visible || this.normalizedAxes.y2.visible) {
-      this.axisOverlay = new AxisOverlay(this.layout, this.normalizedAxes, {
-        color: this.resolvedTheme.axisColor,
-        font: this.resolvedTheme.axisFont,
-      });
-    }
+    this.rebuildAxisOverlay();
     this.updateTextOverlays();
 
     this.canvas.addEventListener("pointermove", this.handlePointerMove);
@@ -685,10 +619,6 @@ export class Chart implements ChartPluginContext {
       this.dispose();
       throw error;
     }
-  }
-
-  private createBackend(): GpuBackend {
-    return this.options.backendFactory?.({ canvas: this.layout.canvas }) ?? new WebGL2Backend(this.layout.canvas);
   }
 
   /** Canvas element used for chart rendering. */
@@ -738,7 +668,8 @@ export class Chart implements ChartPluginContext {
 
   /** Convert data coordinates to plot-local CSS-pixel coordinates. */
   dataToPlot(x: number, y: number, yAxis: SeriesYAxis = "left"): [number, number] {
-    const controller = yAxis === "right" ? this.rightAxis : this.axis;
+    const controller = this.controllerFor(yAxis);
+    // Use the same fractional plot size as clientToData so conversions round-trip exactly.
     const rect = this.canvas.getBoundingClientRect();
     return this.getCamera(yAxis).toScreen(
       controller.valueToClip(x, "x"),
@@ -751,17 +682,10 @@ export class Chart implements ChartPluginContext {
   /** Convert viewport client coordinates to data coordinates, or `null` outside the plot. */
   clientToData(clientX: number, clientY: number, yAxis: SeriesYAxis = "left"): [number, number] | null {
     const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-
     const plotX = clientX - rect.left;
     const plotY = clientY - rect.top;
-    if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
-
-    const controller = yAxis === "right" ? this.rightAxis : this.axis;
-    return [
-      controller.clipToValue((plotX / rect.width) * 2 - 1, "x"),
-      controller.clipToValue(1 - (plotY / rect.height) * 2, "y"),
-    ];
+    if (!this.insidePlot(plotX, plotY, rect)) return null;
+    return this.plotToData(plotX, plotY, rect, this.controllerFor(yAxis));
   }
 
   /** Return the visible data domain for the requested Y axis. */
@@ -769,156 +693,122 @@ export class Chart implements ChartPluginContext {
     return this.getCamera(yAxis).viewport;
   }
 
-  /** Pan the chart in scale space, optionally targeting the right Y axis. */
+  /**
+   * Set any viewport edges. X is shared by both Y axes; Y edges apply to `yAxis`.
+   * Changing X pauses latest-X following like a user pan would.
+   */
+  setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left"): void {
+    if (viewport.xMin !== undefined || viewport.xMax !== undefined) {
+      this.pauseXFollowForInteraction();
+      this.camera.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax });
+      this.syncRightCameraX();
+    }
+    if (viewport.yMin !== undefined || viewport.yMax !== undefined) {
+      this.getCamera(yAxis).setViewport({ yMin: viewport.yMin, yMax: viewport.yMax });
+    }
+    this.emitViewportChange();
+    this.refreshHover();
+  }
+
+  /** Pan in scale space, after `viewportPolicy.beforePan`. X always pans both axes; Y pans `yAxis`. */
   pan(intent: PanIntent, yAxis: SeriesYAxis = "left"): void {
+    const policy = this.options.viewportPolicy;
+    const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
+    if (!next) return;
     this.pauseXFollowForInteraction();
     if (yAxis === "right") {
-      if (intent.dx !== 0) this.axis.pan({ dx: intent.dx, dy: 0 });
-      if (intent.dy !== 0) this.rightAxis.pan({ dx: 0, dy: intent.dy });
+      if (next.dx !== 0) this.axis.pan({ dx: next.dx, dy: 0 });
+      if (next.dy !== 0) this.rightAxis.pan({ dx: 0, dy: next.dy });
     } else {
-      this.axis.pan(intent);
+      this.axis.pan(next);
     }
     this.syncRightCameraX();
     this.emitViewportChange();
     this.scheduleHoverRefresh();
   }
 
-  /** Zoom in scale space, optionally targeting the right Y axis. */
+  /** Zoom in scale space around a normalized anchor, after `viewportPolicy.beforeZoom`. */
   zoom(intent: ZoomIntent, yAxis: SeriesYAxis = "left"): void {
+    const policy = this.options.viewportPolicy;
+    const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
+    if (!next) return;
     this.pauseXFollowForInteraction();
     if (yAxis === "right") {
-      if (intent.axis !== "y") this.axis.zoom({ ...intent, axis: "x" });
-      if (intent.axis !== "x") this.rightAxis.zoom({ ...intent, axis: "y" });
+      if (next.axis !== "y") this.axis.zoom({ ...next, axis: "x" });
+      if (next.axis !== "x") this.rightAxis.zoom({ ...next, axis: "y" });
     } else {
-      this.axis.zoom(intent);
+      this.axis.zoom(next);
     }
     this.syncRightCameraX();
     this.emitViewportChange();
     this.scheduleHoverRefresh();
   }
 
-  /** Add a series with an explicit mode and optional style overrides. */
-  addSeries(config: SeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+  /** Add a series with an explicit mode. Prefer the typed helpers such as `addLine`. */
+  addSeries<D extends Dataset = Dataset>(config: SeriesConfig & { readonly dataset?: D }, style: SeriesStyleOptions = {}): SeriesStore<D> {
     if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
-    const dataset: Dataset = config.dataset ?? this.createDefaultDataset(config);
-    const palette = this.resolvedTheme.seriesColors;
-    const paletteColor = palette[this.series.length % palette.length] ?? this.resolvedTheme.seriesColors[0]!;
-    const color = style?.color ?? paletteColor;
-    const s = new SeriesStore(dataset, config, {
-      color,
-      lineWidth: style?.lineWidth ?? 1,
-      pointSize: style?.pointSize ?? 4,
-      barWidth: style?.barWidth ?? 0.8,
-      baseline: style?.baseline ?? 0,
-      fillColor: style?.fillColor ?? [color[0], color[1], color[2], color[3] * 0.25],
-      tickWidth: style?.tickWidth ?? style?.barWidth ?? 0.8,
-      upColor: style?.upColor ?? color,
-      downColor: style?.downColor ?? style?.fillColor ?? [color[0], color[1], color[2], color[3] * 0.45],
-      wickColor: style?.wickColor ?? color,
-    }, () => this.requestRender());
-    this.series.push(s);
+    const dataset = (config.dataset ?? this.createDefaultDataset(config)) as D;
+    const series = new SeriesStore(dataset, config, this.resolveSeriesStyle(style), (change) => this.handleSeriesChange(change));
+    this.series.push(series);
     this.emitSeriesChange();
-    return s;
+    return series;
   }
 
   /** Add a line series. */
-  addLine(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+  addLine<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
     return this.addSeries({ ...config, mode: "line" }, style);
   }
 
-  /** Add an area series. */
-  addArea(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+  /** Add an area series filled from `style.baseline`. */
+  addArea<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
     return this.addSeries({ ...config, mode: "area" }, style);
   }
 
   /** Add a scatter series. */
-  addScatter(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+  addScatter<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
     return this.addSeries({ ...config, mode: "scatter" }, style);
   }
 
-  /** Add a bar series. */
-  addBar(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
+  /** Add a bar series growing from `style.baseline`. */
+  addBar<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
     return this.addSeries({ ...config, mode: "bar" }, style);
   }
 
-  /** Add a histogram series using the existing bar renderer. */
-  addHistogram(
-    config: HistogramSeriesConfig | PrecomputedHistogramSeriesConfig,
-    style?: Partial<SeriesStyle>,
-  ): SeriesStore {
-    const result: HistogramResult = config.histogram !== undefined
-      ? config.histogram
-      : histogram(config.values, {
-        binSize: config.binSize,
-        binCount: config.binCount,
-        thresholds: config.thresholds,
-        min: config.min,
-        max: config.max,
-        align: config.align,
-        normalize: config.normalize,
-        includeEmpty: config.includeEmpty,
-        includeMax: config.includeMax,
-      });
+  /** Add an OHLC bar series backed by an `OhlcDataset`. */
+  addOhlc<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
+    return this.addSeries({ ...config, mode: "ohlc" }, style);
+  }
 
-    if (result.binWidth === null && style?.barWidth === undefined && result.bins.length > 0) {
+  /** Add a candlestick series backed by an `OhlcDataset`. */
+  addCandlestick<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
+    return this.addSeries({ ...config, mode: "candlestick" }, style);
+  }
+
+  /**
+   * Add a histogram rendered as bars. Pass raw `values` plus `HistogramOptions`,
+   * or a precomputed `histogram` result. Bars default to the bin width.
+   */
+  addHistogram(config: HistogramSeriesConfig | PrecomputedHistogramSeriesConfig, style: SeriesStyleOptions = {}): SeriesStore<HistogramDataset> {
+    const result = "values" in config ? histogram(config.values, config) : config.histogram;
+    if (result.binWidth === null && style.barWidth === undefined && result.bins.length > 0) {
       throw new TypeError("Chart.addHistogram requires style.barWidth for variable-width histogram bins.");
     }
 
     const { id, name, yAxis, downsample } = config;
-    return this.addBar({
-      id,
-      name,
-      yAxis,
-      downsample,
-      dataset: new HistogramDataset(result),
-    }, {
-      ...style,
-      baseline: style?.baseline ?? 0,
-      barWidth: style?.barWidth ?? result.binWidth ?? 0.8,
-    });
+    return this.addBar(
+      { id, name, yAxis, downsample, dataset: new HistogramDataset(result) },
+      { ...style, barWidth: style.barWidth ?? result.binWidth ?? undefined },
+    );
   }
 
-  /** Add an OHLC series. */
-  addOhlc(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
-    return this.addSeries({ ...config, mode: "ohlc" }, style);
-  }
-
-  /** Add a candlestick series. */
-  addCandlestick(config: TypedSeriesConfig, style?: Partial<SeriesStyle>): SeriesStore {
-    return this.addSeries({ ...config, mode: "candlestick" }, style);
-  }
-
-  private createDefaultDataset(config: SeriesConfig): Dataset {
-    const { capacity } = config;
-    if (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity <= 0) {
-      throw new TypeError("Series capacity must be a positive integer when no dataset is provided.");
-    }
-    if (config.xStep !== undefined || config.xStart !== undefined) {
-      if (config.overflow !== undefined && config.overflow !== "wrap") {
-        throw new TypeError("Series shorthand { capacity, xStep } uses UniformRingBuffer and currently supports only wrap overflow.");
-      }
-      return new UniformRingBuffer(capacity, { xStart: config.xStart, xStep: config.xStep });
-    }
-    return new RingBuffer(capacity, { overflow: config.overflow });
-  }
-
-  /** Remove a series from the chart. */
+  /** Remove a series from the chart; returns `false` when it is not attached. */
   removeSeries(series: SeriesStore): boolean {
     const index = this.series.indexOf(series);
     if (index === -1) return false;
 
     this.series.splice(index, 1);
-    this.emitSeriesChange();
-    return true;
-  }
-
-  /** Show or hide a series; returns `false` if the series is not attached. */
-  setSeriesVisible(series: SeriesStore, visible: boolean): boolean {
-    if (!this.series.includes(series)) return false;
-    if (series.visible === visible) return true;
-    series.setVisible(visible);
     this.emitSeriesChange();
     return true;
   }
@@ -937,25 +827,9 @@ export class Chart implements ChartPluginContext {
     }));
   }
 
-  /** Update the shared X domain and left-axis Y domain. */
-  setViewport(v: { xMin?: number; xMax?: number; yMin?: number; yMax?: number }): void {
-    if (v.xMin !== undefined || v.xMax !== undefined) this.pauseXFollowForInteraction();
-    this.camera.setViewport(v);
-    this.rightCamera.setViewport({ xMin: v.xMin, xMax: v.xMax });
-    this.emitViewportChange();
-    this.refreshHover();
-  }
-
-  /** Update only the Y domain for the selected axis. */
-  setYViewport(yAxis: SeriesYAxis, v: { yMin?: number; yMax?: number }): void {
-    this.getCamera(yAxis).setViewport(v);
-    this.emitViewportChange();
-    this.refreshHover();
-  }
-
-  /** Keep the X viewport following the latest visible data. */
+  /** Keep the X viewport on the latest data, replacing any previous follow options. */
   followLatestX(options: ChartFollowXOptions = {}): void {
-    this.followXConfig = { ...options, enabled: options.enabled ?? true };
+    this.followXConfig = options;
     this.clearXFollowResumeTimer();
     this.xFollowPaused = false;
     this.applyFollowXPolicy();
@@ -971,47 +845,27 @@ export class Chart implements ChartPluginContext {
     this.requestRender();
   }
 
-  /** Return whether latest-X following is enabled. */
-  isFollowingLatestX(): boolean {
-    return !!this.followXConfig && this.followXConfig.enabled !== false && !this.xFollowPaused;
-  }
-
-  /** Return whether latest-X following is temporarily paused. */
-  isLatestXFollowPaused(): boolean {
-    return !!this.followXConfig && this.xFollowPaused;
-  }
-
   /** Pause or resume latest-X following without changing its options. */
   setXFollowPaused(paused: boolean): void {
     this.clearXFollowResumeTimer();
     if (this.xFollowPaused === paused) return;
     this.xFollowPaused = paused;
+    if (!paused) this.applyFollowXPolicy();
     this.requestRender();
   }
 
-  /**
-   * Resume latest-X following after an interaction pause.
-   * @deprecated Use `resumeLatestXFollow()` for clearer latest-data semantics.
-   */
-  resumeXFollow(): void {
-    this.resumeLatestXFollow();
+  /** Return whether latest-X following is off, active, or paused by interaction. */
+  getXFollowState(): ChartXFollowState {
+    if (!this.followXConfig) return "off";
+    return this.xFollowPaused ? "paused" : "following";
   }
 
-  /** Resume latest-X following after an interaction pause. */
-  resumeLatestXFollow(): void {
-    this.clearXFollowResumeTimer();
-    this.xFollowPaused = false;
-    this.applyFollowXPolicy();
-    this.requestRender();
-  }
-
-  /** Fit the viewport to data bounds; returns `false` when no bounds are available. */
+  /** Fit the viewport to data bounds; returns `false` when nothing changed. */
   fitToData(options: ChartFitToDataOptions = {}): boolean {
     const fitX = options.x !== false;
     const fitY = options.y !== false;
     if (!fitX && !fitY) return false;
 
-    const visibleOnly = options.visibleOnly !== false;
     const yAxis = options.yAxis ?? "both";
     const padding = normalizeFitPadding(options.padding);
     let xMin = Infinity;
@@ -1021,17 +875,13 @@ export class Chart implements ChartPluginContext {
     let rightYMin = Infinity;
     let rightYMax = -Infinity;
 
-    const candidates = options.series ?? this.series;
-    for (const series of candidates) {
-      if (!this.series.includes(series)) continue;
-      if (visibleOnly && !series.visible) continue;
+    for (const series of this.candidateSeries(options)) {
       const bounds = series.dataBounds({ xMin: options.xMin, xMax: options.xMax });
       if (!bounds) continue;
 
       xMin = Math.min(xMin, bounds.xMin);
       xMax = Math.max(xMax, bounds.xMax);
-      const targetYAxis = series.config.yAxis ?? "left";
-      if (targetYAxis === "right") {
+      if (series.config.yAxis === "right") {
         rightYMin = Math.min(rightYMin, bounds.yMin);
         rightYMax = Math.max(rightYMax, bounds.yMax);
       } else {
@@ -1045,26 +895,18 @@ export class Chart implements ChartPluginContext {
       const xDomain = paddedDomain(xMin, xMax, padding.x, false);
       if (!domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xDomain.min, xDomain.max)) {
         this.camera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
-        this.rightCamera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
         changed = true;
       }
     }
-
-    if (fitY && (yAxis === "left" || yAxis === "both") && Number.isFinite(leftYMin) && Number.isFinite(leftYMax)) {
-      const yDomain = paddedDomain(leftYMin, leftYMax, padding.y, options.includeZero === true);
-      if (!domainsAlmostEqual(this.camera.yMin, this.camera.yMax, yDomain.min, yDomain.max)) {
-        this.camera.setViewport({ yMin: yDomain.min, yMax: yDomain.max });
-        changed = true;
-      }
-    }
-
-    if (fitY && (yAxis === "right" || yAxis === "both") && Number.isFinite(rightYMin) && Number.isFinite(rightYMax)) {
-      const yDomain = paddedDomain(rightYMin, rightYMax, padding.y, options.includeZero === true);
-      if (!domainsAlmostEqual(this.rightCamera.yMin, this.rightCamera.yMax, yDomain.min, yDomain.max)) {
-        this.rightCamera.setViewport({ yMin: yDomain.min, yMax: yDomain.max });
-        changed = true;
-      }
-    }
+    const fitYAxis = (camera: Camera2D, min: number, max: number): void => {
+      if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+      const domain = paddedDomain(min, max, padding.y, options.includeZero === true);
+      if (domainsAlmostEqual(camera.yMin, camera.yMax, domain.min, domain.max)) return;
+      camera.setViewport({ yMin: domain.min, yMax: domain.max });
+      changed = true;
+    };
+    if (fitY && yAxis !== "right") fitYAxis(this.camera, leftYMin, leftYMax);
+    if (fitY && yAxis !== "left") fitYAxis(this.rightCamera, rightYMin, rightYMax);
 
     if (changed) {
       this.syncRightCameraX();
@@ -1072,81 +914,6 @@ export class Chart implements ChartPluginContext {
       this.refreshHover();
     }
     return changed;
-  }
-
-  private resolveInitialFollowX(option: ChartOptions["followX"]): ChartFollowXOptions | null {
-    if (!option) return null;
-    if (option === true) return { enabled: true };
-    if (option.enabled === false) return null;
-    return { ...option, enabled: true };
-  }
-
-  private pauseXFollowForInteraction(): void {
-    const config = this.followXConfig;
-    if (!config || config.pauseOnInteraction === false) return;
-    this.xFollowPaused = true;
-    this.scheduleXFollowResume(config.resumeAfterMs);
-  }
-
-  private scheduleXFollowResume(resumeAfterMs: number | undefined): void {
-    this.clearXFollowResumeTimer();
-    if (typeof resumeAfterMs !== "number" || !Number.isFinite(resumeAfterMs) || resumeAfterMs <= 0) return;
-    this.xFollowResumeTimer = setTimeout(() => {
-      this.xFollowResumeTimer = null;
-      this.resumeLatestXFollow();
-    }, resumeAfterMs);
-  }
-
-  private clearXFollowResumeTimer(): void {
-    if (this.xFollowResumeTimer === null) return;
-    clearTimeout(this.xFollowResumeTimer);
-    this.xFollowResumeTimer = null;
-  }
-
-  private applyFollowXPolicy(): void {
-    const config = this.followXConfig;
-    if (!config || this.xFollowPaused || config.enabled === false) return;
-
-    const visibleOnly = config.visibleOnly !== false;
-    const candidates = config.series ?? this.series;
-    let xMax = -Infinity;
-    for (const series of candidates) {
-      if (!this.series.includes(series)) continue;
-      if (visibleOnly && !series.visible) continue;
-      const range = series.xRange;
-      if (range) xMax = Math.max(xMax, range.end);
-    }
-    const clockX = config.currentX?.();
-    if (Number.isFinite(clockX)) xMax = Math.max(xMax, clockX!);
-    if (!Number.isFinite(xMax)) return;
-
-    const currentSpan = this.camera.xMax - this.camera.xMin;
-    const span = typeof config.window === "number" && Number.isFinite(config.window) && config.window > 0
-      ? config.window
-      : currentSpan;
-    const xMin = xMax - span;
-    if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax)) return;
-    this.camera.setViewport({ xMin, xMax });
-    this.rightCamera.setViewport({ xMin, xMax });
-    this.emitViewportChange();
-  }
-
-  private applyAutoFitYPolicy(): void {
-    const option = this.options.autoFitY;
-    if (!option) return;
-    const config = typeof option === "object" ? option : undefined;
-    if (config?.enabled === false) return;
-    this.fitToData({
-      x: false,
-      y: true,
-      xMin: this.camera.xMin,
-      xMax: this.camera.xMax,
-      yAxis: config?.yAxis ?? "both",
-      padding: config?.padding,
-      includeZero: config?.includeZero,
-      visibleOnly: config?.visibleOnly,
-      series: config?.series,
-    });
   }
 
   /** Resize the canvas to match its layout size and device pixel ratio. */
@@ -1159,16 +926,9 @@ export class Chart implements ChartPluginContext {
     return resized;
   }
 
-  /** Copy the latest render metrics into `target` and return it. */
-  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none", batchedDrawCalls: 0 }): ChartFrameStats {
-    target.fps = this.stats.fps;
-    target.frameMs = this.stats.frameMs;
-    target.pointsRendered = this.stats.pointsRendered;
-    target.drawCalls = this.stats.drawCalls;
-    target.uploadBytes = this.stats.uploadBytes;
-    target.renderMode = this.stats.renderMode;
-    target.batchedDrawCalls = this.stats.batchedDrawCalls ?? 0;
-    return target;
+  /** Copy the latest render metrics into `target` (allocation-free polling) and return it. */
+  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): ChartFrameStats {
+    return Object.assign(target, this.stats);
   }
 
   /** Return the latest hover state, or `null` when nothing is hovered. */
@@ -1183,101 +943,54 @@ export class Chart implements ChartPluginContext {
     } else {
       this.layoutReservations.delete(id);
     }
-    this.applyLayoutReservations();
+    let top = 0;
+    let right = 0;
+    let bottom = 0;
+    let left = 0;
+    for (const value of this.layoutReservations.values()) {
+      top += Math.max(0, value.top ?? 0);
+      right += Math.max(0, value.right ?? 0);
+      bottom += Math.max(0, value.bottom ?? 0);
+      left += Math.max(0, value.left ?? 0);
+    }
+    this.layout.root.style.padding = `${top}px ${right}px ${bottom}px ${left}px`;
     this.resize();
   }
 
-  /** Subscribe to chart events and receive an unsubscribe callback. */
-  subscribe(event: "hover", callback: (state: ChartHoverState | null) => void): () => void;
-  subscribe(event: "serieschange", callback: () => void): () => void;
-  subscribe(event: "themechange", callback: () => void): () => void;
-  subscribe(event: "render", callback: (chart: Chart) => void): () => void;
-  subscribe(event: "viewportchange", callback: (event: ChartViewportChangeEvent) => void): () => void;
-  subscribe(event: "select", callback: (event: ChartSelectEvent) => void): () => void;
-  subscribe(event: "seriesclick", callback: (event: ChartSeriesClickEvent) => void): () => void;
-  subscribe(event: ChartPointerEventType, callback: (event: ChartPointerEventState) => void): () => void;
-  subscribe(
-    event: "hover" | "serieschange" | "themechange" | "render" | "viewportchange" | "select" | "seriesclick" | ChartPointerEventType,
-    callback:
-      | ((state: ChartHoverState | null) => void)
-      | (() => void)
-      | ((chart: Chart) => void)
-      | ((event: ChartViewportChangeEvent) => void)
-      | ((event: ChartSelectEvent) => void)
-      | ((event: ChartSeriesClickEvent) => void)
-      | ((event: ChartPointerEventState) => void),
-  ): () => void {
-    if (event === "hover") {
-      const cb = callback as (state: ChartHoverState | null) => void;
-      this.hoverSubscribers.add(cb);
-      return () => this.hoverSubscribers.delete(cb);
+  /** Subscribe to a chart event; returns an unsubscribe function. */
+  subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void {
+    let listeners = this.listeners.get(event);
+    if (!listeners) {
+      listeners = new Set();
+      this.listeners.set(event, listeners);
     }
-
-    if (event === "themechange") {
-      const cb = callback as () => void;
-      this.themeSubscribers.add(cb);
-      return () => this.themeSubscribers.delete(cb);
-    }
-
-    if (event === "render") {
-      const cb = callback as (chart: Chart) => void;
-      this.renderSubscribers.add(cb);
-      return () => this.renderSubscribers.delete(cb);
-    }
-
-    if (event === "viewportchange") {
-      const cb = callback as (event: ChartViewportChangeEvent) => void;
-      this.viewportSubscribers.add(cb);
-      return () => this.viewportSubscribers.delete(cb);
-    }
-
-    if (event === "select") {
-      const cb = callback as (event: ChartSelectEvent) => void;
-      this.selectSubscribers.add(cb);
-      return () => this.selectSubscribers.delete(cb);
-    }
-
-    if (event === "seriesclick") {
-      const cb = callback as (event: ChartSeriesClickEvent) => void;
-      this.seriesClickSubscribers.add(cb);
-      return () => this.seriesClickSubscribers.delete(cb);
-    }
-
-    if (event in this.pointerSubscribers) {
-      const cb = callback as (event: ChartPointerEventState) => void;
-      this.pointerSubscribers[event as ChartPointerEventType].add(cb);
-      return () => this.pointerSubscribers[event as ChartPointerEventType].delete(cb);
-    }
-
-    const cb = callback as () => void;
-    this.seriesSubscribers.add(cb);
-    return () => this.seriesSubscribers.delete(cb);
+    listeners.add(callback);
+    return () => {
+      listeners.delete(callback);
+    };
   }
 
-  /** Emit a selection event to `select` subscribers. */
+  /** Emit a `select` event, e.g. from a custom selection UI. */
   emitSelect(selection: unknown): void {
-    const event: ChartSelectEvent = { selection };
-    for (const callback of this.selectSubscribers) callback(event);
+    this.emit("select", { selection });
   }
 
-  /** Replace the chart theme and request a render. */
+  /** Replace the chart theme and re-render. */
   setTheme(theme?: ChartTheme): void {
     this.resolvedTheme = resolveChartTheme(theme, this.layout.root);
-    this.applyTheme();
-    this.emitThemeChange();
+    this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
+    this.axisOverlay?.setOptions({ color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont });
+    this.updateTextOverlays();
+    this.emit("themechange", undefined);
+    this.requestRender();
     this.refreshHover();
   }
 
   /** Show or hide grid lines. */
   setGridVisible(visible: boolean): void {
-    if (this._gridVisible === visible) return;
-    this._gridVisible = visible;
+    if (this.gridVisible === visible) return;
+    this.gridVisible = visible;
     this.requestRender();
-  }
-
-  /** Return whether grid lines are visible. */
-  getGridVisible(): boolean {
-    return this._gridVisible;
   }
 
   /** Replace axis configuration and rebuild axis overlays. */
@@ -1287,14 +1000,7 @@ export class Chart implements ChartPluginContext {
     this.axis.setOptions({ x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis.setOptions({ x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     this.layout.update(this.normalizedAxes);
-    this.axisOverlay?.dispose();
-    this.axisOverlay = null;
-    if (this.normalizedAxes.x.visible || this.normalizedAxes.y.visible || this.normalizedAxes.y2.visible) {
-      this.axisOverlay = new AxisOverlay(this.layout, this.normalizedAxes, {
-        color: this.resolvedTheme.axisColor,
-        font: this.resolvedTheme.axisFont,
-      });
-    }
+    this.rebuildAxisOverlay();
     this.updateTextOverlays();
     this.resize();
     this.refreshHover();
@@ -1306,75 +1012,70 @@ export class Chart implements ChartPluginContext {
     return this.pickAtPlot(clientX - rect.left, clientY - rect.top, clientX, clientY, rect, options);
   }
 
-  private pickAtPlot(
-    plotX: number,
-    plotY: number,
-    clientX: number,
-    clientY: number,
-    rect: ChartPickRect,
-    options: ChartPickOptions = {},
-  ): ChartHoverState | null {
-    if (rect.width <= 0 || rect.height <= 0) return null;
-    if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
-
-    const dataX = this.axis.clipToValue((plotX / rect.width) * 2 - 1, "x");
-    const dataY = this.axis.clipToValue(1 - (plotY / rect.height) * 2, "y");
-    const mode = options.mode ?? this.options.hover?.mode ?? "nearest-x";
-    const group = options.group ?? this.options.hover?.group ?? "x";
-    const maxDistancePx = options.maxDistancePx ?? this.options.hover?.maxDistancePx ?? Infinity;
-    const selected = mode === "nearest-point"
-      ? this.findNearestPointCandidate(dataX, plotY, rect.width, rect.height, maxDistancePx)
-      : this.findNearestXCandidate(dataX, rect.width, maxDistancePx);
-
-    if (!selected) return null;
-
-    const anchorX = selected.sample.x;
-    const items = group === "none"
-      ? [this.createPickItem(selected.sample, selected.series, selected.seriesIndex, clientX, clientY, rect)]
-      : this.collectPickItems(anchorX, clientX, clientY, rect);
-    return { clientX, clientY, plotX, plotY, dataX, dataY, anchorX, mode, group, maxDistancePx, items };
-  }
-
-  /** Render the chart to an image blob. */
+  /** Render the chart, including DOM overlays under the chart root, to an image blob. */
   async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
     this.render();
-
     const { composeChartScreenshot } = await import("./screenshot.js");
     return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
-  /** Start the render loop. */
-  start(options: ChartStartOptions = {}): void {
-    this.renderLoop = options.renderLoop ?? this.options.renderLoop ?? this.renderLoop;
-    if (this.running) {
-      this.requestRender();
-      return;
+  /** Start rendering according to `options.renderLoop`. */
+  start(): void {
+    if (!this.running) {
+      this.running = true;
+      this.lastFrameAt = 0;
     }
-    this.running = true;
-    this.lastFrameAt = 0;
     this.requestRender();
   }
 
-  /** Stop the render loop. */
+  /** Stop rendering. Data appends keep working and render after the next `start()`. */
   stop(): void {
     this.running = false;
-    if (this._rafId !== 0) {
-      cancelAnimationFrame(this._rafId);
-      this._rafId = 0;
+    if (this.rafId !== 0) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = 0;
     }
   }
 
-  /** Schedule a render when using the on-demand render loop. */
+  /** Schedule a frame. Chart-owned changes call this automatically. */
   requestRender(): void {
-    if (!this.running || this._rafId !== 0) return;
-    this._rafId = requestAnimationFrame(() => {
-      this._rafId = 0;
+    if (!this.running || this.rafId !== 0) return;
+    this.rafId = requestAnimationFrame(() => {
+      this.rafId = 0;
       if (!this.running) return;
       this.render();
-      if (this.running && this.renderLoop === "continuous") {
-        this.requestRender();
-      }
+      if (this.running && this.options.renderLoop === "continuous") this.requestRender();
     });
+  }
+
+  /** Stop rendering and release DOM, plugin, and GPU resources. */
+  dispose(): void {
+    this.stop();
+    this.clearXFollowResumeTimer();
+    this.resizeObserver?.disconnect();
+    if (this.hoverRafId !== 0) cancelAnimationFrame(this.hoverRafId);
+    this.hoverRafId = 0;
+    if (this.restoreRenderRafId !== 0) cancelAnimationFrame(this.restoreRenderRafId);
+    this.restoreRenderRafId = 0;
+    this.canvas.removeEventListener("pointermove", this.handlePointerMove);
+    this.canvas.removeEventListener("pointerdown", this.handlePointerDown);
+    this.canvas.removeEventListener("pointerup", this.handlePointerUp);
+    this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
+    this.canvas.removeEventListener("click", this.handleClick);
+    this.canvas.removeEventListener("dblclick", this.handleDoubleClick);
+    this.canvas.removeEventListener("webglcontextlost", this.handleWebGLContextLost);
+    this.canvas.removeEventListener("webglcontextrestored", this.handleWebGLContextRestored);
+    this.layout.root.removeEventListener("keydown", this.handleKeyDown);
+    for (const dispose of this.pluginDisposers.splice(0)) {
+      try {
+        dispose();
+      } catch {
+        // Plugin cleanup must not prevent chart-owned resources from being released.
+      }
+    }
+    this.axisOverlay?.dispose();
+    this.disposeRenderer(this.renderer);
+    this.layout.dispose();
   }
 
   private render(): void {
@@ -1399,28 +1100,20 @@ export class Chart implements ChartPluginContext {
     this.rightAxis.validateDomain("y");
 
     try {
-      this.renderer.viewport(0, 0, this.canvas.width, this.canvas.height);
-      this.renderer.clear(0, 0, 0, 0);
+      const pixelRatio = this.canvas.width / Math.max(1, this.canvas.clientWidth);
+      this.renderer.beginFrame(this.canvas.width, this.canvas.height, pixelRatio);
+      this.currentXOrigin = this.camera.xMin;
+      this.updateTicks();
+      if (this.gridVisible) this.drawGrid();
 
-      const viewport = this.camera.viewport;
-      this.currentXOrigin = viewport.xMin;
-      if (this._gridVisible) {
-        const gridVertexCount = this.writeGridVertices();
-        if (gridVertexCount > 0) {
-          this.uploadGridData(gridVertexCount);
-          this.renderer.drawClipLines(this.gridBuffer, gridVertexCount, this.gridStyle);
-          this.stats.drawCalls++;
-        }
+      for (const series of this.series) {
+        if (!series.visible) continue;
+        series.rebuildPyramid();
+        this.drawSeries(series);
       }
 
-      for (const s of this.series) {
-        if (!s.visible) continue;
-        s.rebuildPyramid();
-        this.drawSeries(s);
-      }
-
-      this.axisOverlay?.update(this.axis, this.rightAxis);
-      this.emitRender();
+      this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
+      this.emit("render", undefined);
     } catch (error) {
       if (this.renderer.getWebGLContext()?.isContextLost() === true) {
         this.webglContextLost = true;
@@ -1431,51 +1124,112 @@ export class Chart implements ChartPluginContext {
     }
 
     this.stats.frameMs = performance.now() - frameStartedAt;
-    if (this._hoverRafId !== 0) {
-      cancelAnimationFrame(this._hoverRafId);
-      this._hoverRafId = 0;
+    if (this.hoverRafId !== 0) {
+      cancelAnimationFrame(this.hoverRafId);
+      this.hoverRafId = 0;
     }
     this.refreshHover();
-    if (this.running && this.renderLoop === "auto" && this.shouldAnimateFollowX()) this.requestRender();
-  }
-
-  private shouldAnimateFollowX(): boolean {
-    const config = this.followXConfig;
-    return !!config && config.enabled !== false && !this.xFollowPaused && typeof config.currentX === "function";
-  }
-
-  /** Stop rendering and release DOM, plugin, and GPU resources. */
-  dispose(): void {
-    this.stop();
-    this.clearXFollowResumeTimer();
-    this.resizeObserver?.disconnect();
-    if (this._hoverRafId !== 0) cancelAnimationFrame(this._hoverRafId);
-    this._hoverRafId = 0;
-    if (this._restoreRenderRafId !== 0) cancelAnimationFrame(this._restoreRenderRafId);
-    this._restoreRenderRafId = 0;
-    this.canvas.removeEventListener("pointermove", this.handlePointerMove);
-    this.canvas.removeEventListener("pointerdown", this.handlePointerDown);
-    this.canvas.removeEventListener("pointerup", this.handlePointerUp);
-    this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
-    this.canvas.removeEventListener("click", this.handleClick);
-    this.canvas.removeEventListener("dblclick", this.handleDoubleClick);
-    this.canvas.removeEventListener("webglcontextlost", this.handleWebGLContextLost);
-    this.canvas.removeEventListener("webglcontextrestored", this.handleWebGLContextRestored);
-    this.layout.root.removeEventListener("keydown", this.handleKeyDown);
-    for (const dispose of this.pluginDisposers.splice(0)) {
-      try {
-        dispose();
-      } catch {
-        // Plugin cleanup must not prevent chart-owned resources from being released.
-      }
+    if (this.running && this.options.renderLoop !== "continuous" && this.followXConfig?.currentX && !this.xFollowPaused) {
+      this.requestRender();
     }
-    this.axisOverlay?.dispose();
-    this.disposeRenderer(this.renderer);
-    this.layout.dispose();
+  }
+
+  private createDefaultDataset(config: SeriesConfig): Dataset {
+    const { capacity } = config;
+    if (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity <= 0) {
+      throw new TypeError("Series capacity must be a positive integer when no dataset is provided.");
+    }
+    if (config.xStep !== undefined || config.xStart !== undefined) {
+      if (config.overflow !== undefined && config.overflow !== "wrap") {
+        throw new TypeError("Series shorthand { capacity, xStep } uses UniformRingBuffer, which supports only wrap overflow.");
+      }
+      return new UniformRingBuffer(capacity, { xStart: config.xStart, xStep: config.xStep });
+    }
+    return new RingBuffer(capacity, { overflow: config.overflow });
+  }
+
+  private resolveSeriesStyle(style: SeriesStyleOptions): SeriesStyle {
+    const palette = this.resolvedTheme.seriesColors;
+    const root = this.layout.root;
+    const color = resolveThemeColor(style.color, palette[this.series.length % palette.length]!, root);
+    const fillColor = resolveThemeColor(style.fillColor, withAlpha(color, 0.25), root);
+    const barWidth = style.barWidth ?? 0.8;
+    return {
+      color,
+      lineWidth: style.lineWidth ?? 1,
+      pointSize: style.pointSize ?? 4,
+      barWidth,
+      baseline: style.baseline ?? 0,
+      fillColor,
+      tickWidth: style.tickWidth ?? barWidth,
+      upColor: resolveThemeColor(style.upColor, color, root),
+      downColor: resolveThemeColor(style.downColor, style.fillColor === undefined ? withAlpha(color, 0.45) : fillColor, root),
+      wickColor: resolveThemeColor(style.wickColor, color, root),
+    };
+  }
+
+  private handleSeriesChange(change: SeriesChange): void {
+    if (change === "visibility") this.emitSeriesChange();
+    else this.requestRender();
+  }
+
+  /** Attached series that pass the visibility and explicit-series filters. */
+  private candidateSeries(options: { readonly series?: readonly SeriesStore[]; readonly includeHidden?: boolean }): SeriesStore[] {
+    const candidates = options.series ? options.series.filter((series) => this.series.includes(series)) : this.series;
+    return options.includeHidden ? candidates : candidates.filter((series) => series.visible);
+  }
+
+  private pauseXFollowForInteraction(): void {
+    const config = this.followXConfig;
+    if (!config || config.pauseOnInteraction === false) return;
+    this.xFollowPaused = true;
+    this.clearXFollowResumeTimer();
+    const resumeAfterMs = config.resumeAfterMs;
+    if (typeof resumeAfterMs !== "number" || !Number.isFinite(resumeAfterMs) || resumeAfterMs <= 0) return;
+    this.xFollowResumeTimer = setTimeout(() => {
+      this.xFollowResumeTimer = null;
+      this.setXFollowPaused(false);
+    }, resumeAfterMs);
+  }
+
+  private clearXFollowResumeTimer(): void {
+    if (this.xFollowResumeTimer === null) return;
+    clearTimeout(this.xFollowResumeTimer);
+    this.xFollowResumeTimer = null;
+  }
+
+  private applyFollowXPolicy(): void {
+    const config = this.followXConfig;
+    if (!config || this.xFollowPaused) return;
+
+    let xMax = -Infinity;
+    for (const series of this.candidateSeries(config)) {
+      const range = series.xRange;
+      if (range) xMax = Math.max(xMax, range.end);
+    }
+    const clockX = config.currentX?.();
+    if (clockX !== undefined && Number.isFinite(clockX)) xMax = Math.max(xMax, clockX);
+    if (!Number.isFinite(xMax)) return;
+
+    const span = typeof config.window === "number" && Number.isFinite(config.window) && config.window > 0
+      ? config.window
+      : this.camera.xMax - this.camera.xMin;
+    const xMin = xMax - span;
+    if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax)) return;
+    this.camera.setViewport({ xMin, xMax });
+    this.syncRightCameraX();
+    this.emitViewportChange();
+  }
+
+  private applyAutoFitYPolicy(): void {
+    const option = this.options.autoFitY;
+    if (!option) return;
+    this.fitToData({ ...(option === true ? {} : option), x: false, xMin: this.camera.xMin, xMax: this.camera.xMax });
   }
 
   private createGpuResources(): ChartGpuResources {
-    const renderer = new Renderer(this.createBackend());
+    const backend = this.options.backendFactory?.({ canvas: this.canvas }) ?? new WebGL2Backend(this.canvas);
+    const renderer = new Renderer(backend);
     try {
       return {
         renderer,
@@ -1511,39 +1265,31 @@ export class Chart implements ChartPluginContext {
     this.stats.drawCalls = 0;
     this.stats.uploadBytes = 0;
     this.stats.renderMode = "none";
-    this.stats.batchedDrawCalls = 0;
   }
 
   private scheduleRenderAfterRestore(): void {
-    if (this._restoreRenderRafId !== 0) return;
-    this._restoreRenderRafId = requestAnimationFrame(() => {
-      this._restoreRenderRafId = 0;
+    if (this.restoreRenderRafId !== 0) return;
+    this.restoreRenderRafId = requestAnimationFrame(() => {
+      this.restoreRenderRafId = 0;
       this.render();
     });
   }
 
   private applyAccessibility(): void {
     const option = this.options.accessibility;
-    const enabled = option !== false;
-    if (!enabled) return;
+    if (option === false) return;
 
     const config = typeof option === "object" ? option : undefined;
-    const label = config?.label ?? this.accessibleTitleText() ?? "BlazePlot chart";
-    this.layout.root.tabIndex = this.layout.root.tabIndex >= 0 ? this.layout.root.tabIndex : 0;
-    this.layout.root.setAttribute("role", config?.role ?? "img");
-    this.layout.root.setAttribute("aria-label", label);
-    if (config?.description) this.layout.root.setAttribute("aria-description", config.description);
+    const title = [titleText(this.options.title), titleText(this.options.subtitle)].filter(Boolean).join(" — ");
+    const root = this.layout.root;
+    if (root.tabIndex < 0) root.tabIndex = 0;
+    root.setAttribute("role", config?.role ?? "img");
+    root.setAttribute("aria-label", config?.label ?? (title || "BlazePlot chart"));
+    if (config?.description) root.setAttribute("aria-description", config.description);
     this.layout.plot.setAttribute("role", "presentation");
-    this.canvas.setAttribute("aria-hidden", "true");
-    this.xAxisElement.setAttribute("aria-hidden", "true");
-    this.yAxisElement.setAttribute("aria-hidden", "true");
-    this.y2AxisElement.setAttribute("aria-hidden", "true");
-  }
-
-  private accessibleTitleText(): string | null {
-    const title = typeof this.options.title === "string" ? this.options.title : this.options.title?.text;
-    const subtitle = typeof this.options.subtitle === "string" ? this.options.subtitle : this.options.subtitle?.text;
-    return [title, subtitle].filter((part): part is string => Boolean(part)).join(" — ") || null;
+    for (const element of [this.canvas, this.xAxisElement, this.yAxisElement, this.y2AxisElement]) {
+      element.setAttribute("aria-hidden", "true");
+    }
   }
 
   private keyboardOptions(): Required<ChartKeyboardOptions> | null {
@@ -1552,14 +1298,12 @@ export class Chart implements ChartPluginContext {
     const keyboard = typeof accessibility === "object" ? accessibility.keyboard : undefined;
     if (keyboard === false) return null;
     const config = typeof keyboard === "object" ? keyboard : undefined;
-    if (config?.enabled === false) return null;
-    const panFraction = typeof config?.panFraction === "number" && Number.isFinite(config.panFraction)
-      ? Math.max(0, config.panFraction)
-      : 0.1;
-    const zoomFactor = typeof config?.zoomFactor === "number" && Number.isFinite(config.zoomFactor) && config.zoomFactor > 1
-      ? config.zoomFactor
-      : 1.25;
-    return { enabled: true, panFraction, zoomFactor };
+    const panFraction = config?.panFraction;
+    const zoomFactor = config?.zoomFactor;
+    return {
+      panFraction: typeof panFraction === "number" && Number.isFinite(panFraction) ? Math.max(0, panFraction) : 0.1,
+      zoomFactor: typeof zoomFactor === "number" && Number.isFinite(zoomFactor) && zoomFactor > 1 ? zoomFactor : 1.25,
+    };
   }
 
   private handleKeyboardNavigation(event: KeyboardEvent): void {
@@ -1569,8 +1313,7 @@ export class Chart implements ChartPluginContext {
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
 
     const panStep = keyboard.panFraction * (event.shiftKey ? 2.5 : 1);
-    const zoomIn = keyboard.zoomFactor;
-    const zoomOut = 1 / keyboard.zoomFactor;
+    const zoomAtCenter = (factor: number, axis: ZoomIntent["axis"]): void => this.zoom({ factor, cx: 0.5, cy: 0.5, axis });
     let handled = true;
 
     switch (event.key) {
@@ -1588,17 +1331,17 @@ export class Chart implements ChartPluginContext {
         break;
       case "+":
       case "=":
-        this.zoom({ factor: zoomIn, cx: 0.5, cy: 0.5, axis: "xy" });
+        zoomAtCenter(keyboard.zoomFactor, "xy");
         break;
       case "-":
       case "_":
-        this.zoom({ factor: zoomOut, cx: 0.5, cy: 0.5, axis: "xy" });
+        zoomAtCenter(1 / keyboard.zoomFactor, "xy");
         break;
       case "PageUp":
-        this.zoom({ factor: zoomIn, cx: 0.5, cy: 0.5, axis: "y" });
+        zoomAtCenter(keyboard.zoomFactor, "y");
         break;
       case "PageDown":
-        this.zoom({ factor: zoomOut, cx: 0.5, cy: 0.5, axis: "y" });
+        zoomAtCenter(1 / keyboard.zoomFactor, "y");
         break;
       case "Home":
       case "0":
@@ -1612,96 +1355,69 @@ export class Chart implements ChartPluginContext {
     if (handled) event.preventDefault();
   }
 
-  private applyTheme(): void {
-    this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
-    if (this.options.gridStyle?.color === undefined) {
-      this.gridStyle = { ...this.gridStyle, color: this.resolvedTheme.gridColor };
-    }
-    this.axisOverlay?.setOptions({
-      color: this.resolvedTheme.axisColor,
-      font: this.resolvedTheme.axisFont,
-    });
-    this.updateTextOverlays();
+  private rebuildAxisOverlay(): void {
+    this.axisOverlay?.dispose();
+    const axes = this.normalizedAxes;
+    this.axisOverlay = axes.x.visible || axes.y.visible || axes.y2.visible
+      ? new AxisOverlay(this.layout, axes, { color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont })
+      : null;
   }
 
   private updateTextOverlays(): void {
-    this.applyChartTextOverlay(this.layout.title, this.options.title, {
-      color: this.resolvedTheme.titleColor,
-      font: this.resolvedTheme.titleFont,
-      top: 6,
-    });
-    this.applyChartTextOverlay(this.layout.subtitle, this.options.subtitle, {
-      color: this.resolvedTheme.subtitleColor,
-      font: this.resolvedTheme.subtitleFont,
-      top: 26,
-    });
-    this.applyAxisTitleOverlay(this.layout.xAxisTitle, this.normalizedAxes.x.title, "x");
-    this.applyAxisTitleOverlay(this.layout.yAxisTitle, this.normalizedAxes.y.title, "y");
-    this.applyAxisTitleOverlay(this.layout.y2AxisTitle, this.normalizedAxes.y2.title, "y2");
+    const theme = this.resolvedTheme;
+    this.applyChartTitle(this.layout.title, this.options.title, theme.titleColor, theme.titleFont, TITLE_TOP_PX);
+    this.applyChartTitle(this.layout.subtitle, this.options.subtitle, theme.subtitleColor, theme.subtitleFont, SUBTITLE_TOP_PX);
+    this.applyAxisTitle(this.layout.xAxisTitle, this.normalizedAxes.x.title, "x");
+    this.applyAxisTitle(this.layout.yAxisTitle, this.normalizedAxes.y.title, "y");
+    this.applyAxisTitle(this.layout.y2AxisTitle, this.normalizedAxes.y2.title, "y2");
   }
 
-  private applyChartTextOverlay(
-    el: HTMLElement,
-    config: string | ChartTitleConfig | undefined,
-    defaults: { readonly color: string; readonly font: string; readonly top: number },
-  ): void {
-    const visible = textOverlayVisible(config);
-    el.textContent = textOverlayText(config);
-    el.style.display = visible ? "block" : "none";
-    if (!visible) return;
+  /** Set text and theme styling on a title element; returns the custom config when visible. */
+  private applyTitleText(el: HTMLElement, config: string | TextOverlayConfig | undefined, color: string, font: string): TextOverlayConfig | null {
+    const text = titleText(config);
+    el.textContent = text;
+    el.style.display = text ? "block" : "none";
+    if (!text) return null;
+    const custom = typeof config === "string" ? { text } : config!;
+    el.style.color = custom.color ?? color;
+    el.style.font = custom.font ?? font;
+    return custom;
+  }
 
-    const custom = typeof config === "string" ? undefined : config;
-    const align = custom?.align ?? "center";
-    const offsetX = custom?.offsetX ?? 0;
+  private applyChartTitle(el: HTMLElement, config: string | ChartTitleConfig | undefined, color: string, font: string, top: number): void {
+    const custom = this.applyTitleText(el, config, color, font) as ChartTitleConfig | null;
+    if (!custom) return;
+
+    const align = custom.align ?? "center";
+    const offsetX = custom.offsetX ?? 0;
     const style = el.style;
-    style.color = custom?.color ?? defaults.color;
-    style.font = custom?.font ?? defaults.font;
-    style.top = `${defaults.top + (custom?.offsetY ?? 0)}px`;
-    style.left = align === "left" ? `${8 + offsetX}px` : align === "right" ? "auto" : `calc(50% + ${offsetX}px)`;
-    style.right = align === "right" ? `${8 - offsetX}px` : "auto";
+    style.top = `${top + (custom.offsetY ?? 0)}px`;
+    style.left = align === "left" ? `${TITLE_SIDE_INSET_PX + offsetX}px` : align === "right" ? "auto" : `calc(50% + ${offsetX}px)`;
+    style.right = align === "right" ? `${TITLE_SIDE_INSET_PX - offsetX}px` : "auto";
     style.transform = align === "center" ? "translateX(-50%)" : "none";
     style.textAlign = align;
   }
 
-  private applyAxisTitleOverlay(el: HTMLElement, config: string | AxisTitleConfig | undefined, axis: "x" | "y" | "y2"): void {
-    const visible = textOverlayVisible(config);
-    el.textContent = textOverlayText(config);
-    el.style.display = visible ? "block" : "none";
-    if (!visible) return;
+  private applyAxisTitle(el: HTMLElement, config: string | TextOverlayConfig | undefined, axis: "x" | "y" | "y2"): void {
+    const custom = this.applyTitleText(el, config, this.resolvedTheme.axisTitleColor, this.resolvedTheme.axisTitleFont);
+    if (!custom) return;
 
-    const custom = typeof config === "string" ? undefined : config;
-    const offsetX = custom?.offsetX ?? 0;
-    const offsetY = custom?.offsetY ?? 0;
+    const offsetX = custom.offsetX ?? 0;
+    const offsetY = custom.offsetY ?? 0;
     const style = el.style;
-    style.color = custom?.color ?? this.resolvedTheme.axisTitleColor;
-    style.font = custom?.font ?? this.resolvedTheme.axisTitleFont;
     if (axis === "x") {
       style.left = `calc(50% + ${offsetX}px)`;
-      style.bottom = `${4 - offsetY}px`;
+      style.bottom = `${AXIS_TITLE_INSET_PX - offsetY}px`;
       style.transform = "translateX(-50%)";
     } else if (axis === "y") {
-      style.left = `${4 + offsetX}px`;
+      style.left = `${AXIS_TITLE_INSET_PX + offsetX}px`;
       style.top = `calc(50% + ${offsetY}px)`;
       style.transform = "translateY(-50%) rotate(-90deg)";
     } else {
-      style.right = `${4 - offsetX}px`;
+      style.right = `${AXIS_TITLE_INSET_PX - offsetX}px`;
       style.top = `calc(50% + ${offsetY}px)`;
       style.transform = "translateY(-50%) rotate(90deg)";
     }
-  }
-
-  private applyLayoutReservations(): void {
-    let top = 0;
-    let right = 0;
-    let bottom = 0;
-    let left = 0;
-    for (const reservation of this.layoutReservations.values()) {
-      top += Math.max(0, reservation.top ?? 0);
-      right += Math.max(0, reservation.right ?? 0);
-      bottom += Math.max(0, reservation.bottom ?? 0);
-      left += Math.max(0, reservation.left ?? 0);
-    }
-    this.layout.root.style.padding = `${top}px ${right}px ${bottom}px ${left}px`;
   }
 
   private applyCanvasSize(dpr: number = globalThis.devicePixelRatio): boolean {
@@ -1715,18 +1431,26 @@ export class Chart implements ChartPluginContext {
     return true;
   }
 
-  private cameraForSeries(series: SeriesStore): Camera2D {
-    return series.config.yAxis === "right" ? this.rightCamera : this.camera;
+  private controllerFor(yAxis: SeriesYAxis | undefined): AxisController {
+    return yAxis === "right" ? this.rightAxis : this.axis;
   }
 
-  private controllerForCamera(camera: Camera2D): AxisController {
-    return camera === this.rightCamera ? this.rightAxis : this.axis;
+  private insidePlot(plotX: number, plotY: number, rect: PlotRect): boolean {
+    return rect.width > 0 && rect.height > 0 && plotX >= 0 && plotY >= 0 && plotX <= rect.width && plotY <= rect.height;
   }
 
-  private projectionForCamera(camera: Camera2D): RenderProjection {
-    const right = camera === this.rightCamera;
+  private plotToData(plotX: number, plotY: number, rect: PlotRect, controller: AxisController): [number, number] {
+    return [
+      controller.clipToValue((plotX / rect.width) * 2 - 1, "x"),
+      controller.clipToValue(1 - (plotY / rect.height) * 2, "y"),
+    ];
+  }
+
+  private projectionFor(yAxis: SeriesYAxis | undefined): RenderProjection {
+    const right = yAxis === "right";
+    const camera = right ? this.rightCamera : this.camera;
+    const controller = right ? this.rightAxis : this.axis;
     const projection = right ? this.rightProjection : this.leftProjection;
-    const controller = this.controllerForCamera(camera);
     const scaledOrigin = controller.scaleValue(this.currentXOrigin, "x");
     const xMin = controller.scaleValue(camera.xMin, "x") - scaledOrigin;
     const xMax = controller.scaleValue(camera.xMax, "x") - scaledOrigin;
@@ -1750,10 +1474,49 @@ export class Chart implements ChartPluginContext {
     this.rightCamera.setReversed({ x: xReversed, y: this.normalizedAxes.y2.reversed === true });
   }
 
+  /** Compute tick values once per frame for both grid lines and axis labels. */
+  private updateTicks(): void {
+    const width = Math.max(1, this.canvas.clientWidth);
+    const height = Math.max(1, this.canvas.clientHeight);
+    const axes = this.normalizedAxes;
+    if (this.gridVisible || axes.x.visible) this.axis.getXTickValues(width, X_TICK_LIMIT, this.xTicks);
+    else this.xTicks.length = 0;
+    if (this.gridVisible || axes.y.visible) this.axis.getYTickValues(height, Y_TICK_LIMIT, this.yTicks);
+    else this.yTicks.length = 0;
+    if (axes.y2.visible) this.rightAxis.getYTickValues(height, Y_TICK_LIMIT, this.y2Ticks);
+    else this.y2Ticks.length = 0;
+  }
+
+  private drawGrid(): void {
+    let vertexCount = 0;
+    const pushLine = (x0: number, y0: number, x1: number, y1: number): boolean => {
+      if (vertexCount + 2 > GRID_LINE_VERTEX_CAPACITY) return false;
+      const offset = vertexCount * 2;
+      this.gridData[offset] = x0;
+      this.gridData[offset + 1] = y0;
+      this.gridData[offset + 2] = x1;
+      this.gridData[offset + 3] = y1;
+      vertexCount += 2;
+      return true;
+    };
+    for (const x of this.xTicks) {
+      const clipX = this.axis.valueToClip(x, "x");
+      if (!pushLine(clipX, -1, clipX, 1)) break;
+    }
+    for (const y of this.yTicks) {
+      const clipY = this.axis.valueToClip(y, "y");
+      if (!pushLine(-1, clipY, 1, clipY)) break;
+    }
+    if (vertexCount === 0) return;
+
+    this.uploadFloatData(this.gridBuffer, this.gridData, vertexCount * 2);
+    this.renderer.drawClipLines(this.gridBuffer, vertexCount, this.resolvedTheme.gridColor);
+    this.stats.drawCalls++;
+  }
+
   private drawSeries(series: SeriesStore): void {
-    const camera = this.cameraForSeries(series);
-    const viewport = camera.viewport;
-    const projection = this.projectionForCamera(camera);
+    const viewport = this.getCamera(series.config.yAxis).viewport;
+    const projection = this.projectionFor(series.config.yAxis);
     switch (series.config.mode) {
       case "area":
         this.drawAreaSeries(series, viewport, projection);
@@ -1776,167 +1539,114 @@ export class Chart implements ChartPluginContext {
   }
 
   private drawLineSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
-    const visibleSamples = series.visibleSampleCount(viewport);
-    const dense = series.hasServerMinMax || (series.hasLOD && visibleSamples > RAW_LINE_VERTEX_CAPACITY - 2);
+    const dense = series.hasServerMinMax || (series.downsampled && series.visibleSampleCount(viewport) > RAW_LINE_VERTEX_CAPACITY - 2);
     if (dense) {
-      const segmentCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarTriangleBars(), this.currentXOrigin);
-      if (segmentCount <= 0) return;
-      const vertexCount = this.writeBarBucketTriangles(segmentCount, viewport);
-      this.drawBarTriangles(vertexCount, series.style, projection, "minmax");
+      const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin);
+      this.padBucketsToLineWidth(bucketCount, viewport, series);
+      this.drawBucketColumns(bucketCount, viewport, series.style.color, projection, "minmax");
       return;
     }
 
     const count = series.copyRawVisibleClipped(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
-    if (count < 2) return;
-    this.uploadRawLineData(count, projection);
-    this.renderer.drawLineStrip(this.rawLineBuffer, count, series.style, projection);
-    this.recordDraw("raw", count);
+    this.drawRawLine(count, series.style, projection, "raw");
   }
 
   private drawAreaSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport, 1);
     if (range.end - range.start < 2) return;
 
-    const baseline = series.style.baseline ?? 0;
+    const { style } = series;
     if (range.end - range.start > AREA_POINT_CAPACITY) {
-      const areaVertexCount = series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, baseline, this.currentXOrigin);
-      if (areaVertexCount >= 4) {
-        this.uploadRawLineData(areaVertexCount, projection);
-        this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, projection);
-        this.recordDraw("area", areaVertexCount);
-      }
-
-      const lineVertexCount = series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
-      if (lineVertexCount >= 2) {
-        this.uploadRawLineData(lineVertexCount, projection);
-        this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, projection);
-        this.recordDraw("area", lineVertexCount);
-      }
+      this.drawAreaFill(series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, style.baseline, this.currentXOrigin), style, projection);
+      this.drawRawLine(series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin), style, projection, "area");
       return;
     }
 
     for (let start = range.start; start < range.end;) {
-      const areaVertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, baseline, this.currentXOrigin);
-      if (areaVertexCount < 4) break;
-
-      this.uploadRawLineData(areaVertexCount, projection);
-      this.renderer.drawAreaStrip(this.rawLineBuffer, areaVertexCount, series.style, projection);
-      this.recordDraw("area", areaVertexCount);
-      start += Math.max(1, (areaVertexCount >> 1) - 1);
+      const vertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, style.baseline, this.currentXOrigin);
+      if (vertexCount < 4) break;
+      this.drawAreaFill(vertexCount, style, projection);
+      start += Math.max(1, (vertexCount >> 1) - 1);
     }
 
     for (let start = range.start; start < range.end;) {
-      const lineVertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
-      if (lineVertexCount < 2) break;
-
-      this.uploadRawLineData(lineVertexCount, projection);
-      this.renderer.drawLineStrip(this.rawLineBuffer, lineVertexCount, series.style, projection);
-      this.recordDraw("area", lineVertexCount);
-      start += Math.max(1, lineVertexCount - 1);
+      const vertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
+      if (vertexCount < 2) break;
+      this.drawRawLine(vertexCount, style, projection, "area");
+      start += Math.max(1, vertexCount - 1);
     }
-
   }
 
   private drawOhlcSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport);
-    const maxCandles = Math.min(
-      Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE),
-      Math.floor(this.barTriangleData.length / FLOATS_PER_OHLC_CANDLE),
-    );
-    const tickWidth = series.style.tickWidth ?? series.style.barWidth ?? 0.8;
-    const upStyle: SeriesStyle = { ...series.style, color: series.style.upColor ?? series.style.color };
-    const downStyle: SeriesStyle = { ...series.style, color: series.style.downColor ?? series.style.fillColor ?? series.style.color };
+    const maxCandles = Math.min(Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE), BAR_TRIANGLE_CAPACITY);
+    const { style } = series;
 
     for (let start = range.start; start < range.end;) {
       const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin);
       if (candleCount <= 0) break;
 
-      this.drawOhlcLines(candleCount, tickWidth, "up", upStyle, projection);
-      this.drawOhlcLines(candleCount, tickWidth, "down", downStyle, projection);
+      this.drawOhlcTicks(candleCount, style.tickWidth, true, style.upColor, style.lineWidth, projection);
+      this.drawOhlcTicks(candleCount, style.tickWidth, false, style.downColor, style.lineWidth, projection);
       start += candleCount;
     }
   }
 
   private drawCandlestickSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport, 1);
-    const maxCandles = Math.min(
-      Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE),
-      this.maxBarTriangleBars(),
-    );
-    const wickStyle: SeriesStyle = { ...series.style, color: series.style.wickColor ?? series.style.color };
-    const upStyle: SeriesStyle = { ...series.style, color: series.style.upColor ?? series.style.color };
-    const downStyle: SeriesStyle = { ...series.style, color: series.style.downColor ?? series.style.fillColor ?? series.style.color };
+    const maxCandles = Math.min(Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE), BAR_TRIANGLE_CAPACITY);
+    const { style } = series;
 
     for (let start = range.start; start < range.end;) {
       const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin);
       if (candleCount <= 0) break;
 
-      const wickVertexCount = this.writeCandlestickWicks(candleCount);
-      if (wickVertexCount > 0) {
-        this.uploadBarTriangleData(wickVertexCount, projection);
-        this.renderer.drawLines(this.barTriangleBuffer, wickVertexCount, wickStyle, projection);
-        this.recordDraw("raw", wickVertexCount);
+      for (let i = 0; i < candleCount; i++) {
+        const src = i * FLOATS_PER_OHLC_TUPLE;
+        const x = this.rawLineData[src]!;
+        const dst = i * 4;
+        this.barTriangleData[dst] = x;
+        this.barTriangleData[dst + 1] = this.rawLineData[src + 3]!;
+        this.barTriangleData[dst + 2] = x;
+        this.barTriangleData[dst + 3] = this.rawLineData[src + 2]!;
       }
+      this.uploadBarTriangleData(candleCount * 2, projection);
+      this.renderer.drawLines(this.barTriangleBuffer, candleCount * 2, style.wickColor, style.lineWidth, projection, "lines");
+      this.recordDraw("raw", candleCount * 2);
 
-      const bodyWidth = series.style.barWidth ?? series.style.tickWidth ?? 0.8;
-      this.drawCandlestickBodies(candleCount, bodyWidth, "up", upStyle, projection);
-      this.drawCandlestickBodies(candleCount, bodyWidth, "down", downStyle, projection);
+      this.drawCandlestickBodies(candleCount, style.barWidth, true, style.upColor, projection);
+      this.drawCandlestickBodies(candleCount, style.barWidth, false, style.downColor, projection);
       start += candleCount;
     }
   }
 
   private drawScatterSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
-    const pointSize = series.style.pointSize ?? DEFAULT_POINT_SIZE_PX;
-
-    const visibleSamples = series.visibleSampleCount(viewport);
-    if (series.config.downsample === "none" && visibleSamples <= MAX_EXACT_SCATTER_POINTS) {
+    const { style } = series;
+    if (series.config.downsample === "none" && series.visibleSampleCount(viewport) <= MAX_EXACT_SCATTER_POINTS) {
       const range = series.visibleIndexRange(viewport);
       for (let start = range.start; start < range.end; start += RAW_LINE_VERTEX_CAPACITY) {
-        const count = series.copyScatterRange(
-          start,
-          Math.min(range.end, start + RAW_LINE_VERTEX_CAPACITY),
-          viewport,
-          this.rawLineData,
-          RAW_LINE_VERTEX_CAPACITY,
-          this.currentXOrigin,
-          this.canvas.height,
-          pointSize,
-        );
-        if (count <= 0) continue;
-
-        this.uploadRawLineData(count, projection);
-        this.renderer.drawPoints(this.rawLineBuffer, count, series.style, projection, this.canvas.width, this.canvas.height);
-        this.recordDraw("points", count);
+        const end = Math.min(range.end, start + RAW_LINE_VERTEX_CAPACITY);
+        const count = series.copyScatterRange(start, end, viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin, this.canvas.height, style.pointSize);
+        this.drawPointBatch(count, style, projection);
       }
       return;
     }
 
-    const count = series.copyScatterVisible(
-      viewport,
-      this.rawLineData,
-      RAW_LINE_VERTEX_CAPACITY,
-      this.canvas.width,
-      this.canvas.height,
-      pointSize,
-      this.currentXOrigin,
-    );
-    if (count <= 0) return;
-
-    this.uploadRawLineData(count, projection);
-    this.renderer.drawPoints(this.rawLineBuffer, count, series.style, projection, this.canvas.width, this.canvas.height);
-    this.recordDraw("points", count);
+    const count = series.copyScatterVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.canvas.width, this.canvas.height, style.pointSize, this.currentXOrigin);
+    this.drawPointBatch(count, style, projection);
   }
 
   private drawBarSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
-    const visibleSamples = series.visibleSampleCount(viewport);
-    const rawBarCapacity = this.maxRawBarInstances();
-    if (series.hasLOD && visibleSamples > rawBarCapacity) {
-      const sampledCount = series.copyMinMaxInstanced(viewport, this.minMaxInstanceData, this.maxBarTriangleBars(), this.currentXOrigin);
-      if (sampledCount <= 0) return;
-
-      this.includeBaselineInBarRanges(sampledCount, series.style.baseline ?? 0);
-      const vertexCount = this.writeBarBucketTriangles(sampledCount, viewport);
-      this.drawBarTriangles(vertexCount, series.style, projection);
+    const { style } = series;
+    const rawBarCapacity = this.renderer.supportsInstancing ? RAW_LINE_VERTEX_CAPACITY : BAR_TRIANGLE_CAPACITY;
+    if (series.downsampled && series.visibleSampleCount(viewport) > rawBarCapacity) {
+      const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin);
+      for (let i = 0; i < bucketCount; i++) {
+        const offset = i * FLOATS_PER_MINMAX_BUCKET;
+        this.minMaxBucketData[offset + 1] = Math.min(style.baseline, this.minMaxBucketData[offset + 1]!);
+        this.minMaxBucketData[offset + 2] = Math.max(style.baseline, this.minMaxBucketData[offset + 2]!);
+      }
+      this.drawBucketColumns(bucketCount, viewport, style.color, projection, "bars");
       return;
     }
 
@@ -1944,24 +1654,172 @@ export class Chart implements ChartPluginContext {
     const count = series.copyRawRange(range.start, range.end, this.rawLineData, rawBarCapacity, this.currentXOrigin);
     if (count <= 0) return;
 
-    const controller = this.controllerForProjection(projection);
-    if (this.renderer.supportsInstancedBars && !controller.isNonlinear("x") && !controller.isNonlinear("y")) {
+    const controller = this.controllerFor(series.config.yAxis);
+    if (this.renderer.supportsInstancing && !controller.isNonlinear("x") && !controller.isNonlinear("y")) {
       this.uploadRawLineData(count, projection);
-      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, series.style, projection);
+      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, style, projection);
       this.recordDraw("bars", count);
       return;
     }
 
-    const vertexCount = this.writeBarTriangles(count, series.style.baseline ?? 0, series.style.barWidth ?? 0.8);
-    this.drawBarTriangles(vertexCount, series.style, projection);
+    const barCount = Math.min(count, BAR_TRIANGLE_CAPACITY);
+    const halfWidth = style.barWidth * 0.5;
+    for (let i = 0; i < barCount; i++) {
+      const x = this.rawLineData[i * 2]!;
+      this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[i * 2 + 1]!);
+    }
+    this.drawTriangleBatch(barCount * 6, style.color, projection, "bars");
   }
 
-  private controllerForProjection(projection: RenderProjection): AxisController {
-    return projection === this.rightProjection ? this.rightAxis : this.axis;
+  private drawRawLine(vertexCount: number, style: SeriesStyle, projection: RenderProjection, mode: DrawMode): void {
+    if (vertexCount < 2) return;
+    this.uploadRawLineData(vertexCount, projection);
+    this.renderer.drawLines(this.rawLineBuffer, vertexCount, style.color, style.lineWidth, projection);
+    this.recordDraw(mode, vertexCount);
   }
 
+  private drawAreaFill(vertexCount: number, style: SeriesStyle, projection: RenderProjection): void {
+    if (vertexCount < 4) return;
+    this.uploadRawLineData(vertexCount, projection);
+    this.renderer.drawTriangles(this.rawLineBuffer, vertexCount, style.fillColor, projection, "triangle_strip");
+    this.recordDraw("area", vertexCount);
+  }
+
+  private drawPointBatch(count: number, style: SeriesStyle, projection: RenderProjection): void {
+    if (count <= 0) return;
+    this.uploadRawLineData(count, projection);
+    this.renderer.drawPoints(this.rawLineBuffer, count, style.color, style.pointSize, projection);
+    this.recordDraw("points", count);
+  }
+
+  /** Grow min/max buckets to at least `lineWidth` CSS pixels tall so flat stretches of dense lines stay visible. */
+  private padBucketsToLineWidth(bucketCount: number, viewport: Viewport, series: SeriesStore): void {
+    const controller = this.controllerFor(series.config.yAxis);
+    const scaledMin = controller.scaleValue(viewport.yMin, "y");
+    const scaledMax = controller.scaleValue(viewport.yMax, "y");
+    const halfHeight = (series.style.lineWidth * 0.5 * Math.abs(scaledMax - scaledMin)) / Math.max(1, this.canvas.clientHeight);
+    const data = this.minMaxBucketData;
+    for (let i = 0; i < bucketCount; i++) {
+      const offset = i * FLOATS_PER_MINMAX_BUCKET;
+      const low = controller.scaleValue(data[offset + 1]!, "y");
+      const high = controller.scaleValue(data[offset + 2]!, "y");
+      if (high - low >= halfHeight * 2) continue;
+      const center = (low + high) * 0.5;
+      data[offset + 1] = controller.unscaleValue(center - halfHeight, "y");
+      data[offset + 2] = controller.unscaleValue(center + halfHeight, "y");
+    }
+  }
+
+  /** Expand `[x, minY, maxY]` buckets into columns spanning the full bucket width so dense data has no gaps. */
+  private drawBucketColumns(bucketCount: number, viewport: Viewport, color: RgbaColor, projection: RenderProjection, mode: DrawMode): void {
+    const count = Math.min(bucketCount, BAR_TRIANGLE_CAPACITY);
+    if (count <= 0) return;
+
+    const data = this.minMaxBucketData;
+    const viewportXMin = viewport.xMin - this.currentXOrigin;
+    const viewportXMax = viewport.xMax - this.currentXOrigin;
+    for (let i = 0; i < count; i++) {
+      const x = data[i * 3]!;
+      let x0: number;
+      let x1: number;
+      if (count === 1) {
+        const halfWidth = Math.max(0, (viewportXMax - viewportXMin) * 0.5);
+        x0 = x - halfWidth;
+        x1 = x + halfWidth;
+      } else {
+        const prevX = i > 0 ? data[(i - 1) * 3]! : NaN;
+        const nextX = i + 1 < count ? data[(i + 1) * 3]! : NaN;
+        x0 = i === 0 ? x - (nextX - x) * 0.5 : (prevX + x) * 0.5;
+        x1 = i + 1 === count ? x + (x - prevX) * 0.5 : (x + nextX) * 0.5;
+        if (!Number.isFinite(x0) || !Number.isFinite(x1) || x1 <= x0) {
+          const bucketWidth = (viewportXMax - viewportXMin) / count;
+          x0 = viewportXMin + i * bucketWidth;
+          x1 = i + 1 === count ? viewportXMax : x0 + bucketWidth;
+        }
+      }
+      this.writeBarTriangles(i, Math.max(viewportXMin, x0), Math.min(viewportXMax, x1), data[i * 3 + 1]!, data[i * 3 + 2]!);
+    }
+    this.drawTriangleBatch(count * 6, color, projection, mode);
+  }
+
+  private drawOhlcTicks(candleCount: number, tickWidth: number, rising: boolean, color: RgbaColor, lineWidth: number, projection: RenderProjection): void {
+    const halfTick = tickWidth * 0.5;
+    const out = this.barTriangleData;
+    let vertexCount = 0;
+    for (let i = 0; i < candleCount; i++) {
+      const src = i * FLOATS_PER_OHLC_TUPLE;
+      const x = this.rawLineData[src]!;
+      const open = this.rawLineData[src + 1]!;
+      const close = this.rawLineData[src + 4]!;
+      if ((close >= open) !== rising) continue;
+
+      const dst = vertexCount * 2;
+      out[dst] = x;
+      out[dst + 1] = this.rawLineData[src + 3]!;
+      out[dst + 2] = x;
+      out[dst + 3] = this.rawLineData[src + 2]!;
+      out[dst + 4] = x - halfTick;
+      out[dst + 5] = open;
+      out[dst + 6] = x;
+      out[dst + 7] = open;
+      out[dst + 8] = x;
+      out[dst + 9] = close;
+      out[dst + 10] = x + halfTick;
+      out[dst + 11] = close;
+      vertexCount += 6;
+    }
+
+    if (vertexCount <= 0) return;
+    this.uploadBarTriangleData(vertexCount, projection);
+    this.renderer.drawLines(this.barTriangleBuffer, vertexCount, color, lineWidth, projection, "lines");
+    this.recordDraw("raw", vertexCount);
+  }
+
+  private drawCandlestickBodies(candleCount: number, bodyWidth: number, rising: boolean, color: RgbaColor, projection: RenderProjection): void {
+    const halfWidth = bodyWidth * 0.5;
+    let bodyCount = 0;
+    for (let i = 0; i < candleCount && bodyCount < BAR_TRIANGLE_CAPACITY; i++) {
+      const src = i * FLOATS_PER_OHLC_TUPLE;
+      const x = this.rawLineData[src]!;
+      const open = this.rawLineData[src + 1]!;
+      const close = this.rawLineData[src + 4]!;
+      if ((close >= open) !== rising) continue;
+
+      this.writeBarTriangles(bodyCount, x - halfWidth, x + halfWidth, Math.min(open, close), Math.max(open, close));
+      bodyCount++;
+    }
+
+    this.drawTriangleBatch(bodyCount * 6, color, projection, "bars");
+  }
+
+  /** Write the two triangles of the axis-aligned rectangle `[x0, x1] x [y0, y1]` into bar slot `index`. */
+  private writeBarTriangles(index: number, x0: number, x1: number, y0: number, y1: number): void {
+    const out = this.barTriangleData;
+    const o = index * FLOATS_PER_BAR_TRIANGLES;
+    out[o] = x0;
+    out[o + 1] = y0;
+    out[o + 2] = x1;
+    out[o + 3] = y0;
+    out[o + 4] = x0;
+    out[o + 5] = y1;
+    out[o + 6] = x0;
+    out[o + 7] = y1;
+    out[o + 8] = x1;
+    out[o + 9] = y0;
+    out[o + 10] = x1;
+    out[o + 11] = y1;
+  }
+
+  private drawTriangleBatch(vertexCount: number, color: RgbaColor, projection: RenderProjection, mode: DrawMode): void {
+    if (vertexCount <= 0) return;
+    this.uploadBarTriangleData(vertexCount, projection);
+    this.renderer.drawTriangles(this.barTriangleBuffer, vertexCount, color, projection, "triangles");
+    this.recordDraw(mode, vertexCount);
+  }
+
+  /** Apply nonlinear (log/symlog/...) axis scales on the CPU; linear scales are handled by the projection. */
   private transformVertices(data: Float32Array, vertexCount: number, projection: RenderProjection): void {
-    const controller = this.controllerForProjection(projection);
+    const controller = projection === this.rightProjection ? this.rightAxis : this.axis;
     const transformX = controller.isNonlinear("x");
     const transformY = controller.isNonlinear("y");
     if (!transformX && !transformY) return;
@@ -1984,219 +1842,56 @@ export class Chart implements ChartPluginContext {
     this.uploadFloatData(this.barTriangleBuffer, this.barTriangleData, vertexCount * 2);
   }
 
-  private uploadGridData(vertexCount: number): void {
-    this.uploadFloatData(this.gridBuffer, this.gridData, vertexCount * 2);
-  }
-
   private uploadFloatData(buffer: GpuBuffer, data: Float32Array, floatCount: number): void {
     const count = Math.max(0, Math.min(floatCount, data.length));
     this.renderer.updateFloatBuffer(buffer, data, count);
     this.stats.uploadBytes += count * Float32Array.BYTES_PER_ELEMENT;
   }
 
-
-  private includeBaselineInBarRanges(barCount: number, baseline: number): void {
-    for (let i = 0; i < barCount; i++) {
-      const offset = i * FLOATS_PER_MINMAX_SEGMENT_INSTANCE;
-      const minY = this.minMaxInstanceData[offset + 1]!;
-      const maxY = this.minMaxInstanceData[offset + 2]!;
-      this.minMaxInstanceData[offset + 1] = Math.min(baseline, minY);
-      this.minMaxInstanceData[offset + 2] = Math.max(baseline, maxY);
-    }
-  }
-
-  private writeBarTriangles(barCount: number, baseline: number, barWidth: number): number {
-    const count = Math.min(barCount, this.maxBarTriangleBars());
-    for (let i = 0; i < count; i++) {
-      const x = this.rawLineData[i * 2]!;
-      const y = this.rawLineData[i * 2 + 1]!;
-      this.writeBarTriangle(i, x - barWidth * 0.5, x + barWidth * 0.5, baseline, y);
-    }
-    return count * 6;
-  }
-
-  private writeBarBucketTriangles(
-    barCount: number,
-    viewport: Viewport,
-  ): number {
-    const count = Math.min(barCount, this.maxBarTriangleBars());
-    for (let i = 0; i < count; i++) {
-      const minY = this.minMaxInstanceData[i * 3 + 1]!;
-      const maxY = this.minMaxInstanceData[i * 3 + 2]!;
-      const [x0, x1] = this.barBucketBounds(i, count, viewport);
-      this.writeBarTriangle(i, x0, x1, minY, maxY);
-    }
-    return count * 6;
-  }
-
-  private barBucketBounds(
-    index: number,
-    count: number,
-    viewport: { xMin: number; xMax: number },
-  ): [number, number] {
-    const x = this.minMaxInstanceData[index * 3]!;
-    const viewportXMin = viewport.xMin - this.currentXOrigin;
-    const viewportXMax = viewport.xMax - this.currentXOrigin;
-    const viewportWidth = viewportXMax - viewportXMin;
-
-    if (count <= 1) {
-      const halfWidth = Math.max(0, viewportWidth * 0.5);
-      return [
-        Math.max(viewportXMin, x - halfWidth),
-        Math.min(viewportXMax, x + halfWidth),
-      ];
-    }
-
-    const prevX = index > 0 ? this.minMaxInstanceData[(index - 1) * 3]! : NaN;
-    const nextX = index + 1 < count ? this.minMaxInstanceData[(index + 1) * 3]! : NaN;
-    let x0 = index === 0 ? x - (nextX - x) * 0.5 : (prevX + x) * 0.5;
-    let x1 = index + 1 === count ? x + (x - prevX) * 0.5 : (x + nextX) * 0.5;
-
-    if (!Number.isFinite(x0) || !Number.isFinite(x1) || x1 <= x0) {
-      const bucketWidth = viewportWidth / Math.max(1, count);
-      x0 = viewportXMin + index * bucketWidth;
-      x1 = index + 1 === count ? viewportXMax : x0 + bucketWidth;
-    }
-
-    return [
-      Math.max(viewportXMin, x0),
-      Math.min(viewportXMax, x1),
-    ];
-  }
-
-  private writeCandlestickWicks(candleCount: number): number {
-    for (let i = 0; i < candleCount; i++) {
-      const src = i * FLOATS_PER_OHLC_TUPLE;
-      const dst = i * 4;
-      const x = this.rawLineData[src]!;
-      const high = this.rawLineData[src + 2]!;
-      const low = this.rawLineData[src + 3]!;
-      this.barTriangleData[dst] = x;
-      this.barTriangleData[dst + 1] = low;
-      this.barTriangleData[dst + 2] = x;
-      this.barTriangleData[dst + 3] = high;
-    }
-    return candleCount * 2;
-  }
-
-  private drawOhlcLines(
-    candleCount: number,
-    tickWidth: number,
-    direction: "up" | "down",
-    style: SeriesStyle,
-    projection: RenderProjection,
-  ): void {
-    const halfTick = tickWidth * 0.5;
-    let vertexCount = 0;
-    for (let i = 0; i < candleCount; i++) {
-      const src = i * FLOATS_PER_OHLC_TUPLE;
-      const x = this.rawLineData[src]!;
-      const open = this.rawLineData[src + 1]!;
-      const high = this.rawLineData[src + 2]!;
-      const low = this.rawLineData[src + 3]!;
-      const close = this.rawLineData[src + 4]!;
-      const isUp = close >= open;
-      if ((direction === "up") !== isUp) continue;
-
-      const dst = vertexCount * 2;
-      this.barTriangleData[dst] = x;
-      this.barTriangleData[dst + 1] = low;
-      this.barTriangleData[dst + 2] = x;
-      this.barTriangleData[dst + 3] = high;
-      this.barTriangleData[dst + 4] = x - halfTick;
-      this.barTriangleData[dst + 5] = open;
-      this.barTriangleData[dst + 6] = x;
-      this.barTriangleData[dst + 7] = open;
-      this.barTriangleData[dst + 8] = x;
-      this.barTriangleData[dst + 9] = close;
-      this.barTriangleData[dst + 10] = x + halfTick;
-      this.barTriangleData[dst + 11] = close;
-      vertexCount += 6;
-    }
-
-    if (vertexCount <= 0) return;
-    this.uploadBarTriangleData(vertexCount, projection);
-    this.renderer.drawLines(this.barTriangleBuffer, vertexCount, style, projection);
-    this.recordDraw("raw", vertexCount);
-  }
-
-  private drawCandlestickBodies(
-    candleCount: number,
-    bodyWidth: number,
-    direction: "up" | "down",
-    style: SeriesStyle,
-    projection: RenderProjection,
-  ): void {
-    const halfWidth = bodyWidth * 0.5;
-    let bodyCount = 0;
-    for (let i = 0; i < candleCount && bodyCount < this.maxBarTriangleBars(); i++) {
-      const src = i * FLOATS_PER_OHLC_TUPLE;
-      const x = this.rawLineData[src]!;
-      const open = this.rawLineData[src + 1]!;
-      const close = this.rawLineData[src + 4]!;
-      const isUp = close >= open;
-      if ((direction === "up") !== isUp) continue;
-
-      this.writeBarTriangle(bodyCount, x - halfWidth, x + halfWidth, Math.min(open, close), Math.max(open, close));
-      bodyCount++;
-    }
-
-    this.drawBarTriangles(bodyCount * 6, style, projection);
-  }
-
-  private writeBarTriangle(index: number, x0: number, x1: number, y0: number, y1: number): void {
-    const o = index * FLOATS_PER_BAR_TRIANGLE;
-    this.barTriangleData[o] = x0;
-    this.barTriangleData[o + 1] = y0;
-    this.barTriangleData[o + 2] = x1;
-    this.barTriangleData[o + 3] = y0;
-    this.barTriangleData[o + 4] = x0;
-    this.barTriangleData[o + 5] = y1;
-    this.barTriangleData[o + 6] = x0;
-    this.barTriangleData[o + 7] = y1;
-    this.barTriangleData[o + 8] = x1;
-    this.barTriangleData[o + 9] = y0;
-    this.barTriangleData[o + 10] = x1;
-    this.barTriangleData[o + 11] = y1;
-  }
-
-  private drawBarTriangles(
-    vertexCount: number,
-    style: SeriesStyle,
-    projection: RenderProjection,
-    mode: "bars" | "area" | "minmax" = "bars",
-  ): void {
-    if (vertexCount <= 0) return;
-    this.uploadBarTriangleData(vertexCount, projection);
-    this.renderer.drawBarTriangles(this.barTriangleBuffer, vertexCount, style, projection);
-    this.recordDraw(mode, vertexCount);
-  }
-
-  private recordDraw(mode: "raw" | "minmax" | "points" | "bars" | "area", points: number, drawCalls: number = 1): void {
-    this.recordRenderMode(mode);
+  private recordDraw(mode: DrawMode, points: number): void {
+    this.stats.renderMode = this.stats.renderMode === "none" || this.stats.renderMode === mode ? mode : "mixed";
     this.stats.pointsRendered += points;
-    this.stats.drawCalls += drawCalls;
+    this.stats.drawCalls++;
   }
 
-  private findNearestXCandidate(
-    dataX: number,
-    plotWidth: number,
-    maxDistancePx: number,
-  ): PickCandidate | null {
+  private pickAtPlot(
+    plotX: number,
+    plotY: number,
+    clientX: number,
+    clientY: number,
+    rect: PlotRect,
+    options: ChartPickOptions = {},
+  ): ChartHoverState | null {
+    if (!this.insidePlot(plotX, plotY, rect)) return null;
+
+    const [dataX, dataY] = this.plotToData(plotX, plotY, rect, this.axis);
+    const mode = options.mode ?? this.options.hover?.mode ?? "nearest-x";
+    const group = options.group ?? this.options.hover?.group ?? "x";
+    const maxDistancePx = options.maxDistancePx ?? this.options.hover?.maxDistancePx ?? Infinity;
+    const selected = mode === "nearest-point"
+      ? this.findNearestPointCandidate(dataX, plotY, rect, maxDistancePx)
+      : this.findNearestXCandidate(dataX, rect.width, maxDistancePx);
+    if (!selected) return null;
+
+    const anchorX = selected.sample.x;
+    const items = group === "none"
+      ? [this.createPickItem(selected.sample, selected.series, selected.seriesIndex, clientX, clientY, rect)]
+      : this.collectPickItems(anchorX, clientX, clientY, rect);
+    return { clientX, clientY, plotX, plotY, dataX, dataY, anchorX, mode, group, maxDistancePx, items };
+  }
+
+  private findNearestXCandidate(dataX: number, plotWidth: number, maxDistancePx: number): PickCandidate | null {
     let best: PickCandidate | null = null;
     let bestDistancePx = Infinity;
 
     for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
       const series = this.series[seriesIndex]!;
       if (!series.visible) continue;
-      const camera = this.cameraForSeries(series);
-      const viewport = camera.viewport;
-      const controller = this.controllerForCamera(camera);
-      const scaledMin = controller.scaleValue(viewport.xMin, "x");
-      const scaledMax = controller.scaleValue(viewport.xMax, "x");
-      const xScale = plotWidth / (scaledMax - scaledMin);
+      const viewport = this.getCamera(series.config.yAxis).viewport;
+      const controller = this.controllerFor(series.config.yAxis);
       const sample = series.nearestSampleByX(dataX, viewport);
       if (!sample) continue;
+      const xScale = plotWidth / (controller.scaleValue(viewport.xMax, "x") - controller.scaleValue(viewport.xMin, "x"));
       const distancePx = Math.abs(controller.scaleValue(sample.x, "x") - controller.scaleValue(dataX, "x")) * xScale;
       if (distancePx < bestDistancePx) {
         best = { sample, series, seriesIndex };
@@ -2207,27 +1902,20 @@ export class Chart implements ChartPluginContext {
     return best && bestDistancePx <= maxDistancePx ? best : null;
   }
 
-  private findNearestPointCandidate(
-    dataX: number,
-    plotY: number,
-    plotWidth: number,
-    plotHeight: number,
-    maxDistancePx: number,
-  ): PickCandidate | null {
+  private findNearestPointCandidate(dataX: number, plotY: number, rect: PlotRect, maxDistancePx: number): PickCandidate | null {
     let best: PickCandidate | null = null;
     for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
       const series = this.series[seriesIndex]!;
       if (!series.visible) continue;
-      const camera = this.cameraForSeries(series);
-      const viewport = camera.viewport;
-      const controller = this.controllerForCamera(camera);
-      const dataY = controller.clipToValue(1 - (plotY / plotHeight) * 2, "y");
+      const viewport = this.getCamera(series.config.yAxis).viewport;
+      const controller = this.controllerFor(series.config.yAxis);
+      const dataY = controller.clipToValue(1 - (plotY / rect.height) * 2, "y");
       const sample = series.nearestSampleByPoint(
         dataX,
         dataY,
         viewport,
-        plotWidth,
-        plotHeight,
+        rect.width,
+        rect.height,
         maxDistancePx,
         controller.isNonlinear("x") ? (value) => controller.scaleValue(value, "x") : undefined,
         controller.isNonlinear("y") ? (value) => controller.scaleValue(value, "y") : undefined,
@@ -2241,19 +1929,13 @@ export class Chart implements ChartPluginContext {
     return best && (best.sample.distancePx ?? Infinity) <= maxDistancePx ? best : null;
   }
 
-  private collectPickItems(
-    anchorX: number,
-    clientX: number,
-    clientY: number,
-    rect: ChartPickRect,
-  ): ChartPickItem[] {
+  private collectPickItems(anchorX: number, clientX: number, clientY: number, rect: PlotRect): ChartPickItem[] {
     const items: ChartPickItem[] = [];
     for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
       const series = this.series[seriesIndex]!;
       if (!series.visible) continue;
-      const sample = series.nearestSampleByX(anchorX, this.cameraForSeries(series).viewport);
-      if (!sample) continue;
-      items.push(this.createPickItem(sample, series, seriesIndex, clientX, clientY, rect));
+      const sample = series.nearestSampleByX(anchorX, this.getCamera(series.config.yAxis).viewport);
+      if (sample) items.push(this.createPickItem(sample, series, seriesIndex, clientX, clientY, rect));
     }
     return items;
   }
@@ -2264,11 +1946,11 @@ export class Chart implements ChartPluginContext {
     seriesIndex: number,
     clientX: number,
     clientY: number,
-    rect: ChartPickRect,
+    rect: PlotRect,
   ): ChartPickItem {
-    const camera = this.cameraForSeries(series);
-    const controller = this.controllerForCamera(camera);
-    const [plotX, plotY] = camera.toScreen(
+    const yAxis = series.config.yAxis;
+    const controller = this.controllerFor(yAxis);
+    const [plotX, plotY] = this.getCamera(yAxis).toScreen(
       controller.valueToClip(sample.x, "x"),
       controller.valueToClip(sample.y, "y"),
       rect.width,
@@ -2276,13 +1958,13 @@ export class Chart implements ChartPluginContext {
     );
     const itemClientX = rect.left + plotX;
     const itemClientY = rect.top + plotY;
-    const dx = itemClientX - clientX;
-    const dy = itemClientY - clientY;
     const xRange = series.xRangeAt(sample.index);
     return {
-      ...sample,
+      index: sample.index,
+      x: sample.x,
+      y: sample.y,
       ...(xRange ? { xRange } : {}),
-      distancePx: Math.hypot(dx, dy),
+      distancePx: Math.hypot(itemClientX - clientX, itemClientY - clientY),
       series,
       seriesIndex,
       id: series.config.id,
@@ -2296,83 +1978,61 @@ export class Chart implements ChartPluginContext {
   }
 
   private scheduleHoverRefresh(): void {
-    if (this._hoverRafId !== 0) return;
-    this._hoverRafId = requestAnimationFrame(() => {
-      this._hoverRafId = 0;
+    if (this.hoverRafId !== 0) return;
+    this.hoverRafId = requestAnimationFrame(() => {
+      this.hoverRafId = 0;
       this.refreshHover();
     });
   }
 
+  /** Re-pick under the last pointer position; while a button is held, keep the same items and only reproject them. */
   private refreshHover(): void {
     if (!this.pointerInPlot) return;
-    const rect = this.cachedPointerRect();
-    if (this.lastPointerButtons !== 0) {
-      this.emitHover(this.reprojectHoverState(this.currentHover, rect));
-      return;
-    }
-    this.emitHover(this.pickAtPlot(
-      this.lastPointerPlotX,
-      this.lastPointerPlotY,
-      this.lastPointerClientX,
-      this.lastPointerClientY,
-      rect,
-    ));
-  }
-
-  private cachedPointerRect(): ChartPickRect {
-    return {
+    const rect: PlotRect = {
       left: this.lastPointerClientX - this.lastPointerPlotX,
       top: this.lastPointerClientY - this.lastPointerPlotY,
       width: this.canvas.clientWidth,
       height: this.canvas.clientHeight,
     };
+    if (this.lastPointerButtons !== 0) {
+      this.setHover(this.reprojectHoverState(this.currentHover, rect));
+      return;
+    }
+    this.setHover(this.pickAtPlot(this.lastPointerPlotX, this.lastPointerPlotY, this.lastPointerClientX, this.lastPointerClientY, rect));
   }
 
-  private reprojectHoverState(state: ChartHoverState | null, rect: ChartPickRect): ChartHoverState | null {
+  private reprojectHoverState(state: ChartHoverState | null, rect: PlotRect): ChartHoverState | null {
     if (!state || state.items.length === 0 || rect.width <= 0 || rect.height <= 0) return null;
     const items: ChartPickItem[] = [];
     for (const item of state.items) {
-      if (!item.series.visible) continue;
-      items.push(this.createPickItem(item, item.series, item.seriesIndex, this.lastPointerClientX, this.lastPointerClientY, rect));
+      if (item.series.visible) items.push(this.createPickItem(item, item.series, item.seriesIndex, this.lastPointerClientX, this.lastPointerClientY, rect));
     }
-    if (items.length === 0) return null;
-
-    const anchorItem = items[0]!;
-    if (anchorItem.plotX < 0 || anchorItem.plotY < 0 || anchorItem.plotX > rect.width || anchorItem.plotY > rect.height) {
-      return null;
-    }
+    const anchor = items[0];
+    if (!anchor || !this.insidePlot(anchor.plotX, anchor.plotY, rect)) return null;
 
     return {
+      ...state,
       clientX: this.lastPointerClientX,
       clientY: this.lastPointerClientY,
       plotX: this.lastPointerPlotX,
       plotY: this.lastPointerPlotY,
-      dataX: state.dataX,
-      dataY: state.dataY,
-      anchorX: state.anchorX,
-      mode: state.mode,
-      group: state.group,
-      maxDistancePx: state.maxDistancePx,
       items,
     };
   }
 
-  private emitHover(state: ChartHoverState | null): void {
+  private setHover(state: ChartHoverState | null): void {
     this.currentHover = state;
-    for (const callback of this.hoverSubscribers) callback(state);
+    this.emit("hover", state);
   }
 
   private emitPointerEvent(type: ChartPointerEventType, source: MouseEvent | PointerEvent): ChartPointerEventState | null {
     const rect = this.canvas.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-
     const plotX = source.clientX - rect.left;
     const plotY = source.clientY - rect.top;
-    if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
+    if (!this.insidePlot(plotX, plotY, rect)) return null;
 
-    const dataX = this.axis.clipToValue((plotX / rect.width) * 2 - 1, "x");
-    const dataY = this.axis.clipToValue(1 - (plotY / rect.height) * 2, "y");
-    const hover = this.pick(source.clientX, source.clientY, this.options.hover);
+    const [dataX, dataY] = this.plotToData(plotX, plotY, rect, this.axis);
+    const hover = this.pickAtPlot(plotX, plotY, source.clientX, source.clientY, rect, this.options.hover);
     const event: ChartPointerEventState = {
       type,
       clientX: source.clientX,
@@ -2389,81 +2049,28 @@ export class Chart implements ChartPluginContext {
       shiftKey: source.shiftKey,
       items: hover?.items ?? [],
     };
-    for (const callback of this.pointerSubscribers[type]) callback(event);
+    this.emit(type, event);
     return event;
   }
 
-  private emitSeriesClick(event: ChartSeriesClickEvent): void {
-    for (const callback of this.seriesClickSubscribers) callback(event);
-  }
-
   private emitViewportChange(): void {
-    const event: ChartViewportChangeEvent = {
-      viewport: this.camera.viewport,
-      rightViewport: this.rightCamera.viewport,
-    };
-    for (const callback of this.viewportSubscribers) callback(event);
+    this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport });
     this.requestRender();
   }
 
   private emitSeriesChange(): void {
-    for (const callback of this.seriesSubscribers) callback();
+    this.emit("serieschange", undefined);
     this.refreshHover();
     this.requestRender();
   }
 
-  private emitThemeChange(): void {
-    for (const callback of this.themeSubscribers) callback();
-    this.requestRender();
+  private hasListeners(event: ChartEventName): boolean {
+    return (this.listeners.get(event)?.size ?? 0) > 0;
   }
 
-  private emitRender(): void {
-    for (const callback of this.renderSubscribers) callback(this);
-  }
-
-  private maxBarTriangleBars(): number {
-    return Math.min(BAR_TRIANGLE_CAPACITY, RAW_LINE_VERTEX_CAPACITY);
-  }
-
-  private maxRawBarInstances(): number {
-    return this.renderer.supportsInstancedBars ? RAW_LINE_VERTEX_CAPACITY : this.maxBarTriangleBars();
-  }
-
-  private writeGridVertices(): number {
-    const plotW = Math.max(1, this.canvas.clientWidth);
-    const plotH = Math.max(1, this.canvas.clientHeight);
-    this.axis.getXTickValues(plotW, 12, this.xTicks);
-    this.axis.getYTickValues(plotH, 8, this.yTicks);
-
-    let vertexCount = 0;
-    for (const x of this.xTicks) {
-      if (vertexCount + 2 > GRID_LINE_VERTEX_CAPACITY) return vertexCount;
-      this.gridData[vertexCount * 2] = this.axis.valueToClip(x, "x");
-      this.gridData[vertexCount * 2 + 1] = -1;
-      vertexCount++;
-      this.gridData[vertexCount * 2] = this.axis.valueToClip(x, "x");
-      this.gridData[vertexCount * 2 + 1] = 1;
-      vertexCount++;
-    }
-
-    for (const y of this.yTicks) {
-      if (vertexCount + 2 > GRID_LINE_VERTEX_CAPACITY) return vertexCount;
-      this.gridData[vertexCount * 2] = -1;
-      this.gridData[vertexCount * 2 + 1] = this.axis.valueToClip(y, "y");
-      vertexCount++;
-      this.gridData[vertexCount * 2] = 1;
-      this.gridData[vertexCount * 2 + 1] = this.axis.valueToClip(y, "y");
-      vertexCount++;
-    }
-
-    return vertexCount;
-  }
-
-  private recordRenderMode(mode: "raw" | "minmax" | "points" | "bars" | "area"): void {
-    if (this.stats.renderMode === "none") {
-      this.stats.renderMode = mode;
-    } else if (this.stats.renderMode !== mode) {
-      this.stats.renderMode = "mixed";
-    }
+  private emit<K extends ChartEventName>(event: K, payload: ChartEventMap[K]): void {
+    const listeners = this.listeners.get(event);
+    if (!listeners) return;
+    for (const listener of listeners) (listener as Listener<K>)(payload);
   }
 }

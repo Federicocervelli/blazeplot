@@ -35,7 +35,7 @@ export default class Preview extends PreviewResources {
           ],
         }),
         crosshairPlugin({
-          group: "feature-preview",
+          syncGroup: "feature-preview",
           snap: "nearest-x",
           mode: "ruler",
           rulerModifier: "ctrl",
@@ -57,14 +57,14 @@ export default class Preview extends PreviewResources {
     chart.addLine({ capacity: xs.length, dataset: new StaticDataset(xs, latency), downsample: "minmax", name: "Latency", yAxis: "right" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
     chart.addScatter({ capacity: xs.length, dataset: new StaticDataset(xs, incidents), downsample: "none", name: "Incidents" }, { color: [1, 0.85, 0.25, 1], pointSize: 8 });
     chart.setViewport({ xMin: initialXMin, xMax: initialXMax, yMin: 0, yMax: 120 });
-    chart.setYViewport("right", { yMin: 0, yMax: 130 });
+    chart.setViewport({ yMin: 0, yMax: 130 }, "right");
     chart.subscribe("viewportchange", (event) => this.featureLog(`viewport: ${formatDate(event.viewport.xMin)} → ${formatDate(event.viewport.xMax)}`));
     chart.subscribe("seriesclick", (event) => this.featureLog(`seriesclick: ${event.item.name ?? event.item.seriesIndex} @ ${formatDate(event.item.x)}`));
     const reset = this.host.renderRoot.querySelector<HTMLButtonElement>("[data-feature-reset]");
     if (reset) {
       const onReset = (): void => {
         chart.setViewport({ xMin: initialXMin, xMax: initialXMax, yMin: 0, yMax: 120 });
-        chart.setYViewport("right", { yMin: 0, yMax: 130 });
+        chart.setViewport({ yMin: 0, yMax: 130 }, "right");
         this.featureLog("views reset");
       };
       reset.addEventListener("click", onReset);
@@ -84,13 +84,13 @@ export default class Preview extends PreviewResources {
         {
           options: {
             axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
-            plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
+            plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
           },
         },
         {
           options: {
             axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside", scale: "log", logBase: 10 } },
-            plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ group: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
+            plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
           },
         },
       ],

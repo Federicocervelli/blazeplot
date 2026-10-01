@@ -1,5 +1,7 @@
+import { MinMaxTree } from "./MinMaxTree.js";
+import type { MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
-import type { Dataset, MinMaxSegmentLayout, TimeRange, Viewport } from "./types.js";
+import type { Dataset, TimeRange } from "./types.js";
 
 /** Object-row field selector used by `StaticDataset.fromObjects`. */
 export type StaticDatasetField<Row> = keyof Row | ((row: Row, index: number) => number);
@@ -23,6 +25,7 @@ function readNumericField<Row>(row: Row, index: number, field: StaticDatasetFiel
 /** Immutable sorted XY dataset backed by typed arrays. */
 export class StaticDataset implements Dataset {
   readonly rangeMinMaxExcludesGaps = true;
+  private tree: MinMaxTree | null = null;
 
   /**
    * Copy object rows into a static X/Y dataset.
@@ -53,15 +56,15 @@ export class StaticDataset implements Dataset {
     );
   }
 
+  /** Number of samples. */
+  readonly length: number;
+
   /** Create an immutable XY dataset from parallel arrays. */
   constructor(
     private readonly xData: ArrayLike<number>,
     private readonly yData: ArrayLike<number>,
-  ) {}
-
-  /** Number of samples. */
-  get length(): number {
-    return Math.min(this.xData.length, this.yData.length);
+  ) {
+    this.length = Math.min(xData.length, yData.length);
   }
 
   /** X range covered by samples, or `null` when empty. */
@@ -97,76 +100,16 @@ export class StaticDataset implements Dataset {
     return upperBound(this.length, (index) => this.xData[index]!, x);
   }
 
-  /** Return min/max Y values for a logical index range. */
-  rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
+  /** Return min/max Y values for a logical index range. The summary index is built on first use. */
+  rangeMinMaxY(start: number, end: number): MinMaxY | null {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
     if (to <= from) return null;
-
-    let minY = Infinity;
-    let maxY = -Infinity;
-    for (let index = from; index < to; index++) {
-      const y = this.yData[index]!;
-      if (!Number.isFinite(y)) continue;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
+    if (!this.tree) {
+      this.tree = new MinMaxTree(this.yData, this.length);
+      this.tree.update(0, this.length);
     }
-    return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
-  }
-
-  /** Copy min/max segments for the viewport into a render buffer without building an upfront LOD pyramid. */
-  copyMinMaxSegments(
-    viewport: Viewport,
-    target: Float32Array,
-    maxSegments: number,
-    layout: MinMaxSegmentLayout,
-    xOrigin: number,
-  ): number {
-    const floatsPerSegment = layout === "line-list" ? 4 : 3;
-    if (maxSegments <= 0 || target.length < maxSegments * floatsPerSegment) return 0;
-
-    const start = this.lowerBoundX(viewport.xMin);
-    const end = this.upperBoundX(viewport.xMax);
-    const visible = end - start;
-    if (visible <= 0) return 0;
-
-    const stride = Math.max(1, Math.ceil(visible / maxSegments));
-    const alignedStart = start - (start % stride);
-    let written = 0;
-
-    for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += stride) {
-      const segmentStart = Math.max(0, bucketStart);
-      const segmentEnd = Math.min(this.length, bucketStart + stride);
-      if (segmentEnd <= start || segmentStart >= end) continue;
-
-      let minY = Infinity;
-      let maxY = -Infinity;
-      for (let index = segmentStart; index < segmentEnd; index++) {
-        const y = this.yData[index]!;
-        if (!Number.isFinite(y)) continue;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-      if (!Number.isFinite(minY) || !Number.isFinite(maxY)) continue;
-
-      const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
-      const x = this.xData[representative]! - xOrigin;
-      if (layout === "line-list") {
-        const offset = written * 4;
-        target[offset] = x;
-        target[offset + 1] = minY;
-        target[offset + 2] = x;
-        target[offset + 3] = maxY;
-      } else {
-        const offset = written * 3;
-        target[offset] = x;
-        target[offset + 1] = minY;
-        target[offset + 2] = maxY;
-      }
-      written++;
-    }
-
-    return written;
+    return this.tree.query(from, to);
   }
 
   private assertValidIndex(index: number): void {

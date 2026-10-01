@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { WebGL2Backend, ReglBackend, WebGL2UnavailableError, isWebGL2Available } from "../../src/render/index.ts";
 
 function listSourceFiles(dir: string): string[] {
   const files: string[] = [];
@@ -42,9 +41,4 @@ describe("regl removal", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("exports WebGL2Backend while preserving ReglBackend as a deprecated compatibility alias", () => {
-    expect(WebGL2Backend).toBe(ReglBackend);
-    expect(typeof isWebGL2Available).toBe("function");
-    expect(WebGL2UnavailableError.name).toBe("WebGL2UnavailableError");
-  });
 });

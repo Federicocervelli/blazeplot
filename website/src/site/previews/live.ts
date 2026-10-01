@@ -130,7 +130,7 @@ export default class Preview extends PreviewResources {
       axes: { x: { position: "outside", scale: "time", timezone: "local" }, y: { position: "outside" } },
       hover: hoverOptions,
       plugins: [
-        interactionsPlugin({ axis: () => syncX ? "y" : "xy", viewportPolicy: previewPolicy }),
+        interactionsPlugin({ axis: () => syncX ? "y" : "xy" }),
         annotations,
         legendPlugin({ toggleOnClick: true }),
         tooltipPlugin(tooltipOptions),
@@ -171,7 +171,7 @@ export default class Preview extends PreviewResources {
       );
       const areaDataset = new UniformRingBuffer(sparseHistoryCapacity(), { xStart: previewStartTime, xStep: SPARSE_INTERVAL * xStep });
       const spikeDataset = new UniformRingBuffer(sparseHistoryCapacity(), { xStart: previewStartTime, xStep: SPARSE_INTERVAL * xStep });
-      const barDataset = new UniformRingBuffer(sparseHistoryCapacity(), { xStart: previewStartTime, xStep: SPARSE_INTERVAL * xStep, blockSize: 16 });
+      const barDataset = new UniformRingBuffer(sparseHistoryCapacity(), { xStart: previewStartTime, xStep: SPARSE_INTERVAL * xStep });
       areaSeries = chart.addArea({ dataset: areaDataset, downsample: "none", name: "Area" }, { baseline: -0.05, lineWidth: 1 });
       scatterSeries = chart.addScatter({ dataset: spikeDataset, downsample: "none", name: "Spikes" }, { pointSize: 5 });
       barSeries = chart.addBar({ dataset: barDataset, downsample: "minmax", name: "Power" }, { barWidth: SPARSE_INTERVAL * xStep, baseline: -1.1 });
@@ -218,11 +218,11 @@ export default class Preview extends PreviewResources {
         if (release.length > 0) dataWorker.postMessage({ type: "release", buffers: release }, release);
         return;
       }
-      lineSeries?.appendY({ length: batch.batchSize });
+      lineSeries?.append({ y: { length: batch.batchSize } });
       if (batch.sparseCount > 0 && batch.areaY && batch.spikeY && batch.barY) {
-        areaSeries?.appendY(new Float32Array(batch.areaY));
-        scatterSeries?.appendY(new Float32Array(batch.spikeY));
-        barSeries?.appendY(new Float32Array(batch.barY));
+        areaSeries?.append({ y: new Float32Array(batch.areaY) });
+        scatterSeries?.append({ y: new Float32Array(batch.spikeY) });
+        barSeries?.append({ y: new Float32Array(batch.barY) });
       }
       if (batch.ohlcCount > 0 && ohlcSeries && batch.ohlcX && batch.ohlcOpen && batch.ohlcHigh && batch.ohlcLow && batch.ohlcClose) {
         ohlcSeries.append({

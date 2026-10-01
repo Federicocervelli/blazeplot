@@ -46,7 +46,7 @@ describe("UniformRingBuffer", () => {
   });
 
   it("returns min/max y over wrapped logical ranges", () => {
-    const buf = new UniformRingBuffer(4, { blockSize: 2 });
+    const buf = new UniformRingBuffer(4);
     buf.appendY([10, 20, -5, 7, 4, 12]);
 
     expect(Array.from({ length: buf.length }, (_, i) => buf.getY(i))).toEqual([-5, 7, 4, 12]);
@@ -55,7 +55,7 @@ describe("UniformRingBuffer", () => {
   });
 
   it("skips non-finite gaps in block min/max queries", () => {
-    const buf = new UniformRingBuffer(5, { blockSize: 2 });
+    const buf = new UniformRingBuffer(5);
     buf.appendY([5, Infinity, 7]);
 
     expect(buf.isGap(1)).toBe(true);
@@ -64,7 +64,7 @@ describe("UniformRingBuffer", () => {
   });
 
   it("copies stable visible samples and min/max segments", () => {
-    const buf = new UniformRingBuffer(8, { xStart: 0, xStep: 1, blockSize: 2 });
+    const buf = new UniformRingBuffer(8, { xStart: 0, xStep: 1 });
     buf.appendY([5, -1, 8, 3, 2, 7, 4, 6]);
 
     const samples = new Float32Array(8);
@@ -73,19 +73,19 @@ describe("UniformRingBuffer", () => {
     expect(Array.from(samples.slice(0, sampleCount * 2))).toEqual([2, 8, 4, 2, 6, 4]);
 
     const segments = new Float32Array(6);
-    const segmentCount = buf.copyMinMaxSegments({ xMin: 0, xMax: 7, yMin: 0, yMax: 10 }, segments, 2, "instanced", 0);
+    const segmentCount = buf.copyMinMaxSegments({ xMin: 0, xMax: 7, yMin: 0, yMax: 10 }, segments, 2, 0);
     expect(segmentCount).toBe(2);
     expect(Array.from(segments)).toEqual([2, -1, 8, 6, 2, 7]);
   });
 
   it("anchors min/max buckets to zoom and data so panning does not resample every segment", () => {
-    const buf = new UniformRingBuffer(64, { xStart: 0, xStep: 1, blockSize: 4 });
+    const buf = new UniformRingBuffer(64, { xStart: 0, xStep: 1 });
     buf.appendY(Array.from({ length: 64 }, (_, i) => i % 7));
 
     const first = new Float32Array(12);
     const second = new Float32Array(12);
-    const firstCount = buf.copyMinMaxSegments({ xMin: 0, xMax: 32, yMin: -1, yMax: 8 }, first, 4, "instanced", 0);
-    const secondCount = buf.copyMinMaxSegments({ xMin: 0.1, xMax: 32.1, yMin: -1, yMax: 8 }, second, 4, "instanced", 0);
+    const firstCount = buf.copyMinMaxSegments({ xMin: 0, xMax: 32, yMin: -1, yMax: 8 }, first, 4, 0);
+    const secondCount = buf.copyMinMaxSegments({ xMin: 0.1, xMax: 32.1, yMin: -1, yMax: 8 }, second, 4, 0);
 
     expect(firstCount).toBe(4);
     expect(secondCount).toBe(4);
@@ -94,7 +94,7 @@ describe("UniformRingBuffer", () => {
   });
 
   it("preserves skipped gaps when visible sampling strides", () => {
-    const buf = new UniformRingBuffer(5, { xStart: 0, xStep: 1, blockSize: 2 });
+    const buf = new UniformRingBuffer(5, { xStart: 0, xStep: 1 });
     buf.appendY([4, NaN, 7, 9, 10]);
 
     const samples = new Float32Array(4);

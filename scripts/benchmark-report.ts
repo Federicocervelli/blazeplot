@@ -40,7 +40,6 @@ interface BenchmarkReport {
       frameMs: NumericSummary;
       pointsRendered: NumericSummary;
       drawCalls: NumericSummary;
-      batchedDrawCalls?: NumericSummary;
       uploadBytes: NumericSummary;
     };
   };
@@ -175,7 +174,7 @@ function renderMarkdownEntry(reports: readonly BenchmarkReport[], cliArgs: reado
     "",
     `Command: \`${command}\``,
     "",
-    "| Scenario | Browser | Canvas | Renderer | RAF FPS | RAF p95 ms | Chart p50 ms | Chart p95 ms | Points | Draws | Batched | Upload KB |",
+    "| Scenario | Browser | Canvas | Renderer | RAF FPS | RAF p95 ms | Chart p50 ms | Chart p95 ms | Points | Draws | Upload KB |",
     "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
   ];
 
@@ -192,7 +191,6 @@ function renderMarkdownEntry(reports: readonly BenchmarkReport[], cliArgs: reado
       fixed(b.chart.frameMs.p95, 2),
       integer(b.chart.pointsRendered.p50),
       fixed(b.chart.drawCalls.p50, 0),
-      fixed((b.chart.batchedDrawCalls?.p50 ?? 0), 0),
       fixed(b.chart.uploadBytes.p50 / 1024, 1),
     ].join(" | ").replace(/^/, "| ").replace(/$/, " |"));
   }

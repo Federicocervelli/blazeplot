@@ -46,6 +46,7 @@ export class WebGL2Backend implements GpuBackend {
   private activeProgram: NativeGpuProgram | null = null;
   private readonly allocatedPrograms: Set<WebGLProgram> = new Set();
   private enabledAttributes: Set<number> = new Set();
+  private scratchAttributes: Set<number> = new Set();
   readonly capabilities: GpuBackend["capabilities"];
 
   /** Create a WebGL2 backend for a canvas. */
@@ -274,54 +275,35 @@ export class WebGL2Backend implements GpuBackend {
   }
 
   private applyAttributes(program: NativeGpuProgram, attributes: Readonly<Record<string, GpuBuffer | AttributeSpec>>): void {
-    const usedLocations = new Set<number>();
-    for (const [name, attribute] of Object.entries(attributes)) {
+    const used = this.scratchAttributes;
+    used.clear();
+    for (const name in attributes) {
       const info = program.attributes.get(name);
       if (!info) continue;
-      const resolved = this.resolveAttribute(attribute, info);
-      const buffer = this.asNativeBuffer(resolved.buffer);
+      const attribute = attributes[name]!;
+      const spec = "divisor" in attribute ? attribute : null;
+      const buffer = this.asNativeBuffer(spec ? spec.buffer : attribute as GpuBuffer);
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer.buffer);
       this.gl.enableVertexAttribArray(info.location);
-      this.gl.vertexAttribPointer(info.location, resolved.size, this.gl.FLOAT, false, resolved.stride, resolved.offset);
-      this.gl.vertexAttribDivisor(info.location, resolved.divisor);
-      usedLocations.add(info.location);
-      this.enabledAttributes.add(info.location);
+      this.gl.vertexAttribPointer(info.location, spec?.size ?? info.size, this.gl.FLOAT, false, spec?.stride ?? 0, spec?.offset ?? 0);
+      this.gl.vertexAttribDivisor(info.location, spec?.divisor ?? 0);
+      used.add(info.location);
     }
 
     for (const location of this.enabledAttributes) {
-      if (!usedLocations.has(location)) {
+      if (!used.has(location)) {
         this.gl.disableVertexAttribArray(location);
         this.gl.vertexAttribDivisor(location, 0);
       }
     }
-    this.enabledAttributes = usedLocations;
+    this.scratchAttributes = this.enabledAttributes;
+    this.enabledAttributes = used;
   }
 
   private applyUniforms(program: NativeGpuProgram, uniforms: Readonly<Record<string, UniformValue>>): void {
-    for (const [name, value] of Object.entries(uniforms)) {
-      const setter = program.uniforms.get(name);
-      if (setter) setter(value);
+    for (const name in uniforms) {
+      program.uniforms.get(name)?.(uniforms[name]!);
     }
-  }
-
-  private resolveAttribute(attribute: GpuBuffer | AttributeSpec, info: AttributeInfo): Required<AttributeSpec> {
-    if ("divisor" in attribute) {
-      return {
-        buffer: attribute.buffer,
-        divisor: attribute.divisor,
-        stride: attribute.stride ?? 0,
-        offset: attribute.offset ?? 0,
-        size: attribute.size ?? info.size,
-      };
-    }
-
-    return {
-      buffer: attribute,
-      divisor: 0,
-      stride: 0,
-      offset: 0,
-      size: info.size,
-    };
   }
 
   private createUniformSetter(location: WebGLUniformLocation, type: number): UniformSetter {
@@ -450,9 +432,3 @@ export class WebGL2Backend implements GpuBackend {
     }
   }
 }
-
-/**
- * Deprecated alias for WebGL2Backend. This preserves the pre-native-backend public API.
- * @deprecated Use WebGL2Backend; removal target: 0.4.0.
- */
-export const ReglBackend: typeof WebGL2Backend = WebGL2Backend;

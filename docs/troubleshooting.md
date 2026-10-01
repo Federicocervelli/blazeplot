@@ -21,7 +21,7 @@ Check these first:
 1. **The host element has size.** BlazePlot fills its container; a `0px`-tall parent produces a `0px` plot.
 2. **The browser supports WebGL2.** BlazePlot does not include a Canvas2D or SVG fallback. Use `isWebGL2Available()` if you need to show a fallback UI.
 3. **The chart has a viewport.** Call `chart.fitToData()` after adding initial series, or set a viewport explicitly with `chart.setViewport(...)`.
-4. **Render scheduling is active.** Call `chart.start()` after setup. The default mode renders when chart-owned state changes and then idles; append through series APIs or call `series.markDirty()` after direct dataset mutation. Use `chart.start({ renderLoop: "continuous" })` only for custom animations.
+4. **Render scheduling is active.** Call `chart.start()` after setup. The default mode renders when chart-owned state changes and then idles; append through series APIs or call `series.markDirty()` after direct dataset mutation. Use the `renderLoop: "continuous"` chart option only for custom animations.
 5. **The data is finite and sorted.** Built-in datasets expect ascending X values. Non-finite Y values create gaps.
 
 ```ts
@@ -48,7 +48,7 @@ const chart = new Chart(element, {
 });
 ```
 
-You can also enable it after construction with `chart.followLatestX(...)`. For timestamped streams that arrive in batches, add `currentX: () => Date.now()` so the viewport scrolls smoothly between batch arrivals. If the user pans or zooms and `pauseOnInteraction` is enabled, call `chart.resumeLatestXFollow()` when they click your "live" button, or set `resumeAfterMs` to resume automatically.
+You can also enable it after construction with `chart.followLatestX(...)`. For timestamped streams that arrive in batches, add `currentX: () => Date.now()` so the viewport scrolls smoothly between batch arrivals. If the user pans or zooms and `pauseOnInteraction` is enabled, call `chart.setXFollowPaused(false)` when they click your "live" button, or set `resumeAfterMs` to resume automatically.
 
 ## Live data does not repaint until interaction
 
