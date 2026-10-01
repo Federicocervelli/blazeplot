@@ -18,6 +18,62 @@ BlazePlot follows npm semver. Use this page to decide whether a change is patch/
 - Deprecated names may stay as aliases for at least one minor version when that does not create maintenance risk.
 - Generated docs and package export smoke tests should reflect the shipped package, not only source files.
 
+## Migrating to 0.5
+
+0.5 removes duplicate and dead APIs so each task has one way to do it. Most upgrades are mechanical renames.
+
+| Before (0.4) | After (0.5) |
+|---|---|
+| `import … from "blazeplot/core"`, `"blazeplot/interaction"`, `"blazeplot/render"` | `import … from "blazeplot"` (the root entry is tree-shakable) |
+| `import { createLinkedCharts } from "blazeplot/linked-core"` | `import { createLinkedCharts } from "blazeplot/linked"` |
+| `createLinkedCharts(el, { syncCrosshair: true, syncTooltips: true, … })` | `createLinkedCharts(el, { panelPlugins: (syncGroup) => [crosshairPlugin({ syncGroup }), tooltipPlugin({ syncGroup })], … })` |
+| `linkedChartsPlugin()` | Removed (it did nothing) |
+| `crosshairPlugin({ group })` | `crosshairPlugin({ syncGroup })` (same name as `tooltipPlugin`) |
+| `crosshair.subscribe("move" \| "measure…", cb)`, `onMeasure` | `onMove`, `onMeasureStart`, `onMeasureChange`, `onMeasureEnd` options |
+| `selectionPlugin({ onStart, onUpdate, onCommit, onClear })` | `selectionPlugin({ onChange: (event) => { if (event.type === "commit") … } })` |
+| `SelectionState.samples`, `samplePhase`, `maxSamplesPerSeries`, `onSeriesSelectionChange` | `exportChartData(chart, { range: selection })` from `blazeplot/data` |
+| `interactionsPlugin({ viewportPolicy })` | `new Chart(el, { viewportPolicy })`; `beforePan`/`beforeZoom` now apply to every pan/zoom, including keyboard and API calls |
+| `interactionsPlugin({ selectionFill, selectionStroke })` | `theme.selectionFillColor`, `theme.selectionStrokeColor` |
+| `chart.setYViewport(axis, v)` | `chart.setViewport(v, axis)` |
+| `chart.setSeriesVisible(series, visible)` | `series.setVisible(visible)` (legends update automatically) |
+| `chart.resumeLatestXFollow()`, `chart.resumeXFollow()` | `chart.setXFollowPaused(false)` |
+| `chart.isFollowingLatestX()`, `chart.isLatestXFollowPaused()` | `chart.getXFollowState()` → `"off" \| "following" \| "paused"` |
+| `chart.start({ renderLoop })` | `new Chart(el, { renderLoop })` |
+| `chart.subscribe("render", (chart) => …)` | `chart.subscribe("render", () => …)` |
+| `Chart.isWebGL2Available()` | `isWebGL2Available()` |
+| `ChartOptions.gridStyle` | `theme.gridColor` |
+| `{ enabled: false }` in `followX`, `autoFitY`, `accessibility`, `keyboard` | Pass `false` |
+| `visibleOnly: false` in `fitToData`, `autoFitY`, `followX` | `includeHidden: true` |
+| `TextOverlayConfig.visible`, `AxisTitleConfig` | Omit the title; use `TextOverlayConfig` |
+| `chart.screenshot({ preset, transparent })`, `CHART_SCREENSHOT_PRESETS` | `chart.screenshot({ background: "#fff" })`; `background: null` for transparent |
+| `copyBlobToClipboard(blob)` | `copyChartScreenshotToClipboard(chart)` |
+| `ChartFrameStats.batchedDrawCalls` | Removed (it was always 0) |
+| `series.append(x, y)`, `series.appendY(y)`, `series.appendOhlc(…)`, `series.updateLastOhlc(…)` | `series.append({ x, y })`, `series.append({ y })`, `series.append({ x, open, high, low, close })`, `series.updateLast({ open, high, low, close })` |
+| `exportVisibleChartData`, `exportSelectedChartData`, `exportAllChartData` | `exportChartData(chart, { range: "visible" \| selection \| "all" })` |
+| `visibleOnly: false` in data export options | `includeHidden: true` |
+| `chartDataToJSON(data)`, `chartDataToBlob(data, type)` | `JSON.stringify(data)`, `new Blob([chartDataToCSV(data)])` |
+| `resampleSamples` | `binSamples` |
+| `histogramDataset(values, options)` | `chart.addHistogram({ values, ...options })` or `new HistogramDataset(histogram(values, options))` |
+| `HistogramOptions.thresholds: number` | `binCount` (`thresholds` now takes explicit edges only) |
+| `ServerSampledDataset.replacePoints/replaceBuckets`, `sampleKind` | `series.replace({ kind: "points" \| "minmax", … })`, `dataset.kind` |
+| `RingBuffer.get(i)` | `getX(i)`/`getY(i)`, or `series.sampleAt(i)` |
+| `OhlcRingBuffer.updateLast(…)` | `series.updateLast({ open, high, low, close })` or `dataset.updateAt(i, …)` |
+| `UniformRingBufferOptions.blockSize` | Removed (internal tuning) |
+| `ReglBackend` | `WebGL2Backend` |
+| `MinMaxPyramid`, `DataCursor`, `Renderer`, `ShaderPrograms`, `WebGL2Resources`, `AxisController` value exports | Internal; no replacement needed |
+| `MinMaxSegmentCopyDataset.copyMinMaxSegments(viewport, target, max, layout, xOrigin)` | `copyMinMaxSegments(viewport, target, max, xOrigin)`, always writing `[x, minY, maxY]` triples |
+| `SeriesDataBounds`, `SelectionBounds` | `Viewport` |
+| `RingBufferOverflow` | `BufferOverflowStrategy` |
+
+Behavior changes worth checking:
+
+- Series colors accept any CSS color (`"#3b82f6"`, `"var(--accent)"`) as well as RGBA tuples.
+- `lineWidth` now renders: lines, area outlines, OHLC ticks, and wicks are drawn `lineWidth` CSS pixels wide (previously always one device pixel).
+- Dense (min/max) lines keep at least `lineWidth` of height, so flat stretches no longer disappear.
+- Tooltip and crosshair formatter output is rendered as text, not HTML.
+- `ServerSampledDataset` min/max buckets report their `[xStart, xEnd]` interval to picks, tooltips, and `fitToData`.
+- Selection bounds respect log, symlog, and reversed axes.
+
 ## Upgrade checklist for users
 
 1. Read the changelog for every version between your current version and target version.

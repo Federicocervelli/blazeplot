@@ -1,5 +1,5 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
-import type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "../interaction/types.js";
+import type { PanIntent, ZoomAxis, ZoomIntent } from "../interaction/types.js";
 import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
 
 /** Static or dynamic axis choice for wheel and drag interactions. */
@@ -8,7 +8,6 @@ export type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
 /** Options for mouse, wheel, touch, and keyboard chart interactions. */
 export interface InteractionsPluginOptions {
   readonly axis?: InteractionAxisOption;
-  readonly viewportPolicy?: ViewportPolicy;
   readonly boxZoom?: boolean;
   readonly wheelZoom?: boolean;
   readonly wheelZoomSensitivity?: number;
@@ -31,8 +30,6 @@ export interface InteractionsPluginOptions {
   readonly pinchZoom?: boolean;
   readonly doubleTapReset?: boolean;
   readonly minDragDistancePx?: number;
-  readonly selectionFill?: string;
-  readonly selectionStroke?: string;
 }
 
 let nextInteractionsPluginId = 1;
@@ -192,11 +189,11 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       selection.style.display = "none";
       selection.style.pointerEvents = "none";
       selection.style.zIndex = "24";
-      selection.style.border = `1px solid ${options.selectionStroke ?? "rgba(147, 197, 253, 0.95)"}`;
-      selection.style.background = options.selectionFill ?? "rgba(59, 130, 246, 0.18)";
+      selection.style.border = `1px solid ${chart.theme.selectionStrokeColor}`;
+      selection.style.background = chart.theme.selectionFillColor;
       chart.plotElement.appendChild(selection);
 
-      axisHoverStyle.textContent = `.${axisHoverClass} > div { color: ${options.axisHoverColor ?? "#f8fafc"} !important; }`;
+      axisHoverStyle.textContent = `.${axisHoverClass} > div { color: ${options.axisHoverColor ?? chart.theme.titleColor} !important; }`;
       if (options.axisInteractions !== false && options.axisHover !== false) {
         chart.rootElement.appendChild(axisHoverStyle);
       }
@@ -224,24 +221,23 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         resetRightViewport ??= normalizeViewport(chart.getViewport("right"));
       };
 
-      const applyPanPolicy = (intent: PanIntent, panAxis: ZoomAxis, targetYAxis: SeriesYAxis = "left"): PanIntent | null => {
+      /** Map screen-direction gestures onto reversed axes; the chart applies its viewport policy. */
+      const directPan = (intent: PanIntent, panAxis: ZoomAxis, targetYAxis: SeriesYAxis = "left"): PanIntent => {
         const camera = chart.getCamera(targetYAxis);
         const constrained = constrainPan(intent, panAxis);
-        const directed = {
+        return {
           dx: camera.xReversed ? -constrained.dx : constrained.dx,
           dy: camera.yReversed ? -constrained.dy : constrained.dy,
         };
-        return options.viewportPolicy?.beforePan?.(camera, directed) ?? directed;
       };
 
-      const applyZoomPolicy = (intent: ZoomIntent, targetYAxis: SeriesYAxis = "left"): ZoomIntent | null => {
+      const directZoom = (intent: ZoomIntent, targetYAxis: SeriesYAxis = "left"): ZoomIntent => {
         const camera = chart.getCamera(targetYAxis);
-        const directed = {
+        return {
           ...intent,
           cx: camera.xReversed ? 1 - intent.cx : intent.cx,
           cy: camera.yReversed ? 1 - intent.cy : intent.cy,
         };
-        return options.viewportPolicy?.beforeZoom?.(camera, directed) ?? directed;
       };
 
       const hideSelection = (): void => {
@@ -354,7 +350,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           const rect = canvas.getBoundingClientRect();
           const dx = rect.width > 0 ? (drag.lastX - event.clientX) / rect.width : 0;
           const dy = rect.height > 0 ? (event.clientY - drag.lastY) / rect.height : 0;
-          const intent = applyPanPolicy({ dx, dy }, drag.axis, drag.yAxis ?? "left");
+          const intent = directPan({ dx, dy }, drag.axis, drag.yAxis ?? "left");
           if (intent) chart.pan(intent, drag.yAxis);
           drag.lastX = event.clientX;
           drag.lastY = event.clientY;
@@ -407,11 +403,11 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
 
         if (options.trackpadPan !== false && isLikelyTrackpadPan(event)) {
           const sensitivity = options.trackpadPanSensitivity ?? 1.6;
-          const panIntent = applyPanPolicy({
+          const panIntent = directPan({
             dx: rect.width > 0 && zoomAxis !== "y" ? (event.deltaX * sensitivity) / rect.width : 0,
             dy: rect.height > 0 && zoomAxis !== "x" ? (-event.deltaY * sensitivity) / rect.height : 0,
           }, zoomAxis, targetYAxis ?? "left");
-          if (!panIntent || (Math.abs(panIntent.dx) < 1e-6 && Math.abs(panIntent.dy) < 1e-6)) return;
+          if ((Math.abs(panIntent.dx) < 1e-6 && Math.abs(panIntent.dy) < 1e-6)) return;
           chart.pan(panIntent, targetYAxis);
           return;
         }
@@ -425,8 +421,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         const cx = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
         const cy = rect.height > 0 ? 1 - (event.clientY - rect.top) / rect.height : 0.5;
         if (Math.abs(1 - factor) < 1e-4) return;
-        const intent = applyZoomPolicy({ factor, cx, cy, axis: zoomAxis }, targetYAxis ?? "left");
-        if (!intent) return;
+        const intent = directZoom({ factor, cx, cy, axis: zoomAxis }, targetYAxis ?? "left");
         chart.zoom(intent, targetYAxis);
       };
 
@@ -452,8 +447,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const resetToCapturedViewport = (): void => {
         const target = options.resetViewport?.() ?? resetViewport ?? normalizeViewport(chart.getViewport());
         chart.setViewport(target);
-        if (resetRightViewport) chart.setYViewport("right", resetRightViewport);
-        if (options.resumeFollowOnReset !== false) chart.resumeLatestXFollow();
+        if (resetRightViewport) chart.setViewport({ yMin: resetRightViewport.yMin, yMax: resetRightViewport.yMax }, "right");
+        if (options.resumeFollowOnReset !== false) chart.setXFollowPaused(false);
       };
 
       const onDoubleClick = (event: MouseEvent): void => {
@@ -471,14 +466,12 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       const applyTouchPan = (axis: ZoomAxis, yAxis: SeriesYAxis | undefined, dx: number, dy: number): void => {
-        const intent = applyPanPolicy({ dx, dy }, axis, yAxis ?? "left");
-        if (!intent) return;
+        const intent = directPan({ dx, dy }, axis, yAxis ?? "left");
         chart.pan(intent, yAxis);
       };
 
       const applyTouchZoom = (axis: ZoomAxis, yAxis: SeriesYAxis | undefined, factor: number, cx: number, cy: number): void => {
-        const intent = applyZoomPolicy({ factor, cx, cy, axis }, yAxis ?? "left");
-        if (!intent) return;
+        const intent = directZoom({ factor, cx, cy, axis }, yAxis ?? "left");
         chart.zoom(intent, yAxis);
       };
 

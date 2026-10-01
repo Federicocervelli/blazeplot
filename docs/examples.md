@@ -130,7 +130,7 @@ const cleanup = () => {
 
 :::chart live-line Rolling live line chart
 
-Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. For timestamped streams, `chart.followLatestX({ currentX: () => Date.now(), ... })` scrolls smoothly between batched updates. You can also enable or change follow behavior at runtime with `chart.followLatestX(...)`, stop it with `chart.stopFollowingLatestX()`, and call `chart.resumeLatestXFollow()` from a "live" button if the user pans away and wants to jump back. Double-click/tap reset in the interactions plugin resumes follow by default. See [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
+Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. For timestamped streams, `chart.followLatestX({ currentX: () => Date.now(), ... })` scrolls smoothly between batched updates. You can also enable or change follow behavior at runtime with `chart.followLatestX(...)`, stop it with `chart.stopFollowingLatestX()`, and call `chart.setXFollowPaused(false)` from a "live" button if the user pans away and wants to jump back. Double-click/tap reset in the interactions plugin resumes follow by default. See [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
 
 If samples arrive at a fixed interval, use the `{ capacity, xStep }` shorthand so BlazePlot creates an implicit-X buffer:
 
@@ -153,7 +153,7 @@ const cleanup = () => {
 
 :::chart fixed-rate Fixed-rate implicit-X stream
 
-`chart.start()` activates render scheduling. Static charts render when chart-owned state changes, while appends through the returned series (`series.append({ x, y })`, `series.append({ y })`, `series.append({ x, open, high, low, close })`) request another frame automatically. You can also append convenient object rows like `series.append([{ x: 1, y: 4 }, { x: 2, y: 5 }])` or `series.append([{ y: 4 }, { y: 5 }])`; use typed-array batches for high-throughput streams. To refine existing samples, use `series.updateLast({ y })`, `series.updateLast({ x, y })`, or `series.updateAt(index, { y })`. If you mutate a dataset directly, call `series.markDirty()` afterward so LOD state and on-demand rendering wake up. Use `chart.start({ renderLoop: "continuous" })` only for custom animations that redraw even without chart-owned state changes. Stop scheduling with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
+`chart.start()` activates render scheduling. Static charts render when chart-owned state changes, while appends through the returned series (`series.append({ x, y })`, `series.append({ y })`, `series.append({ x, open, high, low, close })`) request another frame automatically. You can also append convenient object rows like `series.append([{ x: 1, y: 4 }, { x: 2, y: 5 }])` or `series.append([{ y: 4 }, { y: 5 }])`; use typed-array batches for high-throughput streams. To refine existing samples, use `series.updateLast({ y })`, `series.updateLast({ x, y })`, or `series.updateAt(index, { y })`. If you mutate a dataset directly, call `series.markDirty()` afterward so LOD state and on-demand rendering wake up. Pass `renderLoop: "continuous"` to the `Chart` constructor only for custom animations that redraw even without chart-owned state changes. Stop scheduling with `chart.stop()` if the chart is temporarily hidden, and clear your own timers, workers, or subscriptions when the chart is removed.
 
 ## Server-sampled min/max buckets
 
@@ -250,12 +250,12 @@ Use `blazeplot/linked` for dashboards that share an X range but keep independent
 
 ```ts
 import { createLinkedCharts } from "blazeplot/linked";
+import { crosshairPlugin } from "blazeplot/plugins/crosshair";
 
 const linked = createLinkedCharts(dashboardElement, {
   rows: 2,
-  sharedX: true,
-  syncCrosshair: true,
   panels: [{}, {}],
+  panelPlugins: (syncGroup) => [crosshairPlugin({ syncGroup })],
 });
 
 linked.charts[0]?.addLine({ dataset: priceDataset, name: "price" });
@@ -268,7 +268,7 @@ linked.dispose();
 
 :::chart linked Linked charts with a shared X range
 
-Use `blazeplot/linked-core` if you want the linked chart layout without importing tooltip or crosshair sync helpers.
+`panelPlugins` runs once per panel and receives a sync group unique to the layout, so only the plugins you import are bundled.
 
 ## Built-in plugins
 
@@ -318,11 +318,11 @@ const chart = new Chart(element, {
 Use `chart.screenshot()` for an image of the plot plus built-in DOM text overlays. Use `blazeplot/data` and `blazeplot/export` for downloadable visible data.
 
 ```ts
-import { chartDataToCSV, exportVisibleChartData } from "blazeplot/data";
+import { chartDataToCSV, exportChartData } from "blazeplot/data";
 import { downloadBlob } from "blazeplot/export";
 
 const image = await chart.screenshot();
-const visible = exportVisibleChartData(chart, { includeYRange: true });
+const visible = exportChartData(chart, { range: "visible", includeYRange: true });
 const csv = chartDataToCSV(visible);
 
 downloadBlob(image, "chart.png");

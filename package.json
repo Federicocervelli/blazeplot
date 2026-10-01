@@ -38,25 +38,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./core": {
-      "types": "./dist/core.d.ts",
-      "import": "./dist/core.js"
-    },
-    "./interaction": {
-      "types": "./dist/interaction.d.ts",
-      "import": "./dist/interaction.js"
-    },
-    "./render": {
-      "types": "./dist/render.d.ts",
-      "import": "./dist/render.js"
-    },
     "./linked": {
       "types": "./dist/linked.d.ts",
       "import": "./dist/linked.js"
-    },
-    "./linked-core": {
-      "types": "./dist/linked-core.d.ts",
-      "import": "./dist/linked-core.js"
     },
     "./data": {
       "types": "./dist/data.d.ts",
@@ -108,14 +92,17 @@
   ],
   "scripts": {
     "dev": "BLAZEPLOT_PAGES_BASE=/ vite --config vite.pages.config.ts",
-    "legacy-preview:dev": "vite",
+    "fixtures:dev": "vite",
     "build": "vite build",
-    "bench:ci": "bun run bench --scenario ci-smoke --measure-ms 500 --warmup-ms 100 --width 800 --height 450 --top 12 --setup-timeout-ms 60000",
-    "ci": "bun run typecheck && bun test && bun run build && bun run test:generated-docs && bun run test:docs-snippets && bun run test:exports && bun run test:package && bun run test:bundle-size && bun run bench:ci && bun run test:visual && bun run test:interaction && bun run test:website",
     "build:js": "vite build --mode js-only",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "check": "bun run typecheck && bun test && bun run build && bun run test:generated-docs && bun run test:docs-snippets && bun run test:exports && bun run test:package && bun run test:bundle-size",
+    "test:browser": "bun run bench:ci && bun run test:visual && bun run test:interaction && bun run test:website",
+    "ci": "bun run check && bun run test:browser",
+    "bench:ci": "bun run bench --scenario ci-smoke --measure-ms 500 --warmup-ms 100 --width 800 --height 450 --top 12 --setup-timeout-ms 60000",
     "pages:build": "vite build --config vite.pages.config.ts",
     "pages:preview": "vite preview --config vite.pages.config.ts",
-    "preview": "vite preview",
     "bench": "bun scripts/benchmark.ts",
     "bench:compare": "bun scripts/benchmark-compare.ts",
     "bench:scatter": "bun scripts/scatter-profile.ts",
@@ -124,12 +111,10 @@
     "docs:bundle-size": "bun scripts/bundle-size-check.ts --markdown",
     "bundle:analyze": "bun scripts/bundle-analyze.ts",
     "docs:readme": "bun run build && bun run docs:generate",
-    "test": "bun test",
     "test:visual": "bun scripts/visual-test.ts",
     "test:exports": "bun scripts/package-export-smoke.ts",
     "test:package": "bun pm pack --dry-run",
     "test:bundle-size": "bun scripts/bundle-size-check.ts",
-    "typecheck": "tsc --noEmit",
     "version:patch": "node scripts/bump-version.js patch",
     "version:minor": "node scripts/bump-version.js minor",
     "version:major": "node scripts/bump-version.js major",

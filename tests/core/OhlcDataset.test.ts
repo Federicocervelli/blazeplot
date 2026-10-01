@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { testStyle } from "../helpers.ts";
 import { OhlcRingBuffer, StaticOhlcDataset } from "../../src/core/OhlcDataset.ts";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
 
@@ -33,32 +34,10 @@ describe("StaticOhlcDataset", () => {
     const series = new SeriesStore(
       dataset,
       { mode: "candlestick", capacity: 2, dataset },
-      { color: [1, 1, 1, 1], lineWidth: 1 },
+      testStyle({ color: [1, 1, 1, 1], lineWidth: 1 }),
     );
 
     expect(series.dataBounds()).toEqual({ xMin: 1, xMax: 2, yMin: 8, yMax: 15 });
-  });
-
-  it("copies OHLC glyph line vertices", () => {
-    const dataset = new StaticOhlcDataset([10], [2], [5], [1], [4]);
-    const series = new SeriesStore(
-      dataset,
-      { mode: "ohlc", capacity: 1, dataset },
-      { color: [1, 1, 1, 1], lineWidth: 1, tickWidth: 2 },
-    );
-    const target = new Float32Array(12);
-
-    const count = series.copyOhlcRange(0, 1, target, 1, 2);
-
-    expect(count).toBe(1);
-    expect(Array.from(target)).toEqual([
-      10, 1,
-      10, 5,
-      9, 2,
-      10, 2,
-      10, 4,
-      11, 4,
-    ]);
   });
 
   it("copies OHLC tuples for candlestick rendering", () => {
@@ -66,7 +45,7 @@ describe("StaticOhlcDataset", () => {
     const series = new SeriesStore(
       dataset,
       { mode: "candlestick", capacity: 1, dataset },
-      { color: [1, 1, 1, 1], lineWidth: 1 },
+      testStyle({ color: [1, 1, 1, 1], lineWidth: 1 }),
     );
     const target = new Float32Array(5);
 
@@ -82,7 +61,7 @@ describe("StaticOhlcDataset", () => {
     const series = new SeriesStore(
       dataset,
       { mode: "candlestick", capacity: 1, dataset },
-      { color: [1, 1, 1, 1], lineWidth: 1 },
+      testStyle({ color: [1, 1, 1, 1], lineWidth: 1 }),
     );
 
     expect(series.ohlcAt(0)).toEqual({ index: 0, x, y: 4, open: 2, high: 5, low: 1, close: 4 });
@@ -106,7 +85,7 @@ describe("OhlcRingBuffer", () => {
     const dataset = new OhlcRingBuffer(2);
     dataset.append([1, 2], [10, 20], [11, 21], [9, 19], [10.5, 20.5]);
 
-    expect(dataset.updateLast(20, 25, 18, 24)).toBe(true);
+    expect(dataset.updateAt(1, 20, 25, 18, 24)).toBe(true);
     expect(dataset.getX(1)).toBe(2);
     expect(dataset.getOpen(1)).toBe(20);
     expect(dataset.getHigh(1)).toBe(25);

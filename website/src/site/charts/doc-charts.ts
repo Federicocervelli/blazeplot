@@ -246,7 +246,7 @@ class DocChartGroup {
     const linked = createLinkedCharts(target, {
       rows: 2,
       sharedX: true,
-      syncCrosshair: true,
+      panelPlugins: (syncGroup) => [crosshairPlugin({ syncGroup })],
       panels: [
         { options: this.docChartOptions({ axes: { x: { position: "outside" }, y: { position: "outside" } }, grid: true }) },
         { options: this.docChartOptions({ axes: { x: { position: "outside" }, y: { position: "outside" } }, grid: true }) },

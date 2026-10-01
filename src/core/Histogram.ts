@@ -5,17 +5,14 @@ import type { XRange, XRangeDataset } from "./types.js";
 /** Histogram value normalization modes. */
 export type HistogramNormalization = "count" | "probability" | "density" | "percent";
 
-/** Explicit bin edges, or a requested number of equal-width bins. */
-export type HistogramBinThresholds = number | readonly number[];
-
 /** Options for converting one-dimensional values into histogram bins. */
 export interface HistogramOptions {
-  /** Fixed bucket width. Mutually exclusive with thresholds/binCount. */
+  /** Fixed bucket width. Mutually exclusive with `binCount` and `thresholds`. */
   readonly binSize?: number;
-  /** Desired number of equal-width bins. Mutually exclusive with thresholds/binSize. */
+  /** Desired number of equal-width bins (capped at 512). Mutually exclusive with `binSize` and `thresholds`. */
   readonly binCount?: number;
-  /** Explicit sorted bin edges, or a desired bin count. */
-  readonly thresholds?: HistogramBinThresholds;
+  /** Explicit, strictly increasing bin edges. Mutually exclusive with `binSize` and `binCount`. */
+  readonly thresholds?: readonly number[];
   /** Inclusive lower bound. Defaults to finite min(values). */
   readonly min?: number;
   /** Inclusive upper bound for data range. Defaults to finite max(values). */
@@ -93,7 +90,7 @@ export function histogram(values: ArrayLike<number>, options: HistogramOptions =
   const normalize = options.normalize ?? "count";
   validateNormalization(normalize);
 
-  if (finite.values.length === 0 && options.min === undefined && options.max === undefined && !hasExplicitEdgeThresholds(options)) {
+  if (finite.values.length === 0 && options.min === undefined && options.max === undefined && options.thresholds === undefined) {
     return emptyHistogram(finite.invalid, Number.NaN, Number.NaN);
   }
 
@@ -169,11 +166,6 @@ export class HistogramDataset extends StaticDataset implements XRangeDataset {
   }
 }
 
-/** Build a StaticDataset from histogram bucket centers and normalized counts. */
-export function histogramDataset(values: ArrayLike<number>, options: HistogramOptions = {}): HistogramDataset {
-  return new HistogramDataset(histogram(values, options));
-}
-
 function collectFiniteValues(values: ArrayLike<number>): FiniteValues {
   const finite: number[] = [];
   let invalid = 0;
@@ -200,18 +192,9 @@ function buildEdges(finite: FiniteValues, options: HistogramOptions): HistogramE
     throw new TypeError("Histogram binSize, binCount, and thresholds are mutually exclusive.");
   }
 
-  if (Array.isArray(options.thresholds)) {
-    return explicitEdges(options.thresholds);
-  }
-  if (isReadonlyNumberArray(options.thresholds)) {
-    return explicitEdges(options.thresholds);
-  }
-  if (options.binSize !== undefined) {
-    return fixedSizeEdges(finite, options);
-  }
-
-  const desiredCount = options.binCount ?? (typeof options.thresholds === "number" ? options.thresholds : defaultBinCount(finite.values));
-  return fixedCountEdges(finite, options, desiredCount);
+  if (options.thresholds !== undefined) return explicitEdges(options.thresholds);
+  if (options.binSize !== undefined) return fixedSizeEdges(finite, options);
+  return fixedCountEdges(finite, options, options.binCount ?? defaultBinCount(finite.values));
 }
 
 function explicitEdges(thresholds: readonly number[]): HistogramEdges {
@@ -247,7 +230,7 @@ function fixedSizeEdges(finite: FiniteValues, options: HistogramOptions): Histog
 
 function fixedCountEdges(finite: FiniteValues, options: HistogramOptions, countInput: number): HistogramEdges {
   if (!Number.isInteger(countInput) || countInput <= 0) {
-    throw new RangeError("Histogram binCount/thresholds count must be a positive integer.");
+    throw new RangeError("Histogram binCount must be a positive integer.");
   }
   const count = Math.min(DEFAULT_MAX_BINS, countInput);
   const domain = expandDegenerateDomain(resolveDomain(finite, options));
@@ -361,14 +344,6 @@ function inferUniformWidth(edges: readonly number[]): number | null {
     if (Math.abs(width - firstWidth) > scale * EDGE_EQUALITY_EPSILON) return null;
   }
   return firstWidth;
-}
-
-function hasExplicitEdgeThresholds(options: HistogramOptions): boolean {
-  return Array.isArray(options.thresholds) || isReadonlyNumberArray(options.thresholds);
-}
-
-function isReadonlyNumberArray(value: unknown): value is readonly number[] {
-  return typeof value === "object" && value !== null && "length" in value && typeof (value as { length: unknown }).length === "number";
 }
 
 function validateNormalization(normalize: HistogramNormalization): void {

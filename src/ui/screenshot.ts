@@ -30,7 +30,7 @@ export async function composeChartScreenshot(
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Unable to create a 2D canvas context for screenshot export.");
 
-  const background = screenshotBackground(options, rgbaCss(theme.backgroundColor));
+  const background = options.background === undefined ? rgbaCss(theme.backgroundColor) : options.background;
   if (background) {
     ctx.fillStyle = background;
     ctx.fillRect(0, 0, width, height);
@@ -56,14 +56,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     image.onerror = () => reject(new Error("Unable to load SVG overlay for screenshot export."));
     image.src = src;
   });
-}
-
-function screenshotBackground(options: ChartScreenshotOptions, themeBackground: string): string | null | undefined {
-  if (options.background !== undefined) return options.background;
-  if (options.transparent === true || options.preset === "transparent") return null;
-  if (options.preset === "dark") return "#0b1020";
-  if (options.preset === "light") return "#ffffff";
-  return themeBackground;
 }
 
 function drawCanvasesForScreenshot(

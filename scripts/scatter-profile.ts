@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { SeriesStore } from "../src/core/SeriesStore.ts";
+import { testStyle } from "../tests/helpers.ts";
 import { UniformRingBuffer } from "../src/core/UniformRingBuffer.ts";
 import type { Viewport } from "../src/core/types.ts";
 
@@ -54,8 +55,8 @@ function measure(name: string, fn: () => number, iterations = 40): void {
 }
 
 const dataset = fillDataset();
-const seriesNoLod = new SeriesStore(dataset, { mode: "scatter", capacity: POINTS + 2, downsample: "none" }, { color: [1, 0, 0, 1], lineWidth: 1, pointSize: POINT_SIZE });
-const seriesLod = new SeriesStore(dataset, { mode: "scatter", capacity: POINTS + 2, downsample: "minmax" }, { color: [1, 0, 0, 1], lineWidth: 1, pointSize: POINT_SIZE });
+const seriesNoLod = new SeriesStore(dataset, { mode: "scatter", capacity: POINTS + 2, downsample: "none" }, testStyle({ pointSize: POINT_SIZE }));
+const seriesLod = new SeriesStore(dataset, { mode: "scatter", capacity: POINTS + 2, downsample: "minmax" }, testStyle({ pointSize: POINT_SIZE }));
 const target = new Float32Array(MAX_POINTS * 2);
 const viewportBase = { xMin: 0, xMax: (POINTS - 1) * SPARSE_INTERVAL };
 const viewports: Record<string, Viewport> = {

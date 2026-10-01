@@ -11,7 +11,7 @@ BlazePlot targets modern browsers with WebGL2. The plot renderer does not have a
 | `ResizeObserver` | Automatic layout updates | Optional. Without it, call `chart.resize()` after container size changes. |
 | Async Clipboard API + `ClipboardItem` | Clipboard export helpers | Optional. Browsers usually require HTTPS and a user gesture. Download helpers still work without clipboard support. |
 
-Use `Chart.isWebGL2Available()` or `isWebGL2Available()` before creating a chart if your app needs to show fallback UI.
+Use `isWebGL2Available()` before creating a chart if your app needs to show fallback UI.
 
 ```ts
 import { Chart, isWebGL2Available } from "blazeplot";
@@ -57,13 +57,13 @@ Charts are browser-only. In SSR apps, create charts after client mount or dynami
 
 ```tsx
 import { useEffect, useRef } from "react";
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
 
 export function ClientOnlyChart({ x, y }: { x: number[]; y: number[] }) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!ref.current || !Chart.isWebGL2Available()) return;
+    if (!ref.current || !isWebGL2Available()) return;
 
     const chart = new Chart(ref.current);
     chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
@@ -86,7 +86,7 @@ export function ClientOnlyChart({ x, y }: { x: number[]; y: number[] }) {
 ## Clipboard and downloads
 
 - `downloadChartScreenshot` and `downloadBlob` use object URLs and a temporary anchor element.
-- `copyChartScreenshotToClipboard` and `copyBlobToClipboard` require `navigator.clipboard.write`, `ClipboardItem`, HTTPS, and usually a user gesture.
+- `copyChartScreenshotToClipboard` requires `navigator.clipboard.write`, `ClipboardItem`, HTTPS, and usually a user gesture.
 - If clipboard export fails, show a download button that calls `downloadChartScreenshot`.
 
 ## Dependencies

@@ -1,5 +1,11 @@
 import type { AxisController } from "../interaction/AxisController.js";
 import type { ChartLayoutElements, ChartLayoutConfig } from "./ChartLayout.js";
+import { DEFAULT_CHART_THEME } from "./theme.js";
+
+/** Maximum X-axis ticks per frame; tick spacing also respects a minimum pixel gap. */
+export const X_TICK_LIMIT = 12;
+/** Maximum Y-axis ticks per frame. */
+export const Y_TICK_LIMIT = 8;
 
 /** Visual options for SVG axis overlays. */
 export interface AxisOverlayOptions {
@@ -13,6 +19,7 @@ export type AxisOverlayConfig = ChartLayoutConfig;
 type RenderAxis = "x" | "y" | "y2";
 
 const AXIS_LABEL_COLLISION_GAP_PX = 2;
+const NO_TICKS: readonly number[] = [];
 
 interface AxisLabelInterval {
   readonly el: HTMLDivElement;
@@ -33,14 +40,11 @@ function hideOverlappingLabels(labels: readonly AxisLabelInterval[]): void {
   }
 }
 
-/** SVG overlay that renders chart axes and ticks. */
+/** @internal DOM overlay that renders axis tick labels. */
 export class AxisOverlay {
   private xPool: HTMLDivElement[] = [];
   private yPool: HTMLDivElement[] = [];
   private y2Pool: HTMLDivElement[] = [];
-  private readonly xTicks: number[] = [];
-  private readonly yTicks: number[] = [];
-  private readonly y2Ticks: number[] = [];
   private readonly measureContext = document.createElement("canvas").getContext("2d");
 
   /** Create an axis overlay attached to a chart layout. */
@@ -54,37 +58,24 @@ export class AxisOverlay {
   setOptions(options: AxisOverlayOptions): void {
     this.options = options;
     for (const el of [...this.xPool, ...this.yPool, ...this.y2Pool]) {
-      el.style.font = this.options.font ?? "11px ui-monospace, monospace, sans-serif";
-      el.style.color = this.options.color ?? "#bfd6ff";
+      el.style.font = this.options.font ?? DEFAULT_CHART_THEME.axisFont;
+      el.style.color = this.options.color ?? DEFAULT_CHART_THEME.axisColor;
     }
   }
 
-  /** Render axis ticks from the latest camera and axis controller state. */
-  update(axis: AxisController, rightAxis: AxisController = axis): void {
+  /** Position labels for tick values the chart computed this frame. */
+  update(
+    axis: AxisController,
+    rightAxis: AxisController,
+    xTicks: readonly number[],
+    yTicks: readonly number[],
+    y2Ticks: readonly number[],
+  ): void {
     const plotW = Math.max(1, this.layout.plot.clientWidth);
     const plotH = Math.max(1, this.layout.plot.clientHeight);
-
-    if (this.config.x.visible) {
-      axis.getXTickValues(plotW, 12, this.xTicks);
-    } else {
-      this.xTicks.length = 0;
-    }
-
-    if (this.config.y.visible) {
-      axis.getYTickValues(plotH, 8, this.yTicks);
-    } else {
-      this.yTicks.length = 0;
-    }
-
-    if (this.config.y2.visible) {
-      rightAxis.getYTickValues(plotH, 8, this.y2Ticks);
-    } else {
-      this.y2Ticks.length = 0;
-    }
-
-    this.updateAxis(this.xPool, this.xTicks, "x", plotW, plotH, axis);
-    this.updateAxis(this.yPool, this.yTicks, "y", plotW, plotH, axis);
-    this.updateAxis(this.y2Pool, this.y2Ticks, "y2", plotW, plotH, rightAxis);
+    this.updateAxis(this.xPool, this.config.x.visible ? xTicks : NO_TICKS, "x", plotW, plotH, axis);
+    this.updateAxis(this.yPool, this.config.y.visible ? yTicks : NO_TICKS, "y", plotW, plotH, axis);
+    this.updateAxis(this.y2Pool, this.config.y2.visible ? y2Ticks : NO_TICKS, "y2", plotW, plotH, rightAxis);
   }
 
   /** Remove all axis overlay DOM nodes. */
@@ -109,7 +100,7 @@ export class AxisOverlay {
 
   private updateAxis(
     pool: HTMLDivElement[],
-    values: number[],
+    values: readonly number[],
     axis: RenderAxis,
     plotW: number,
     plotH: number,
@@ -122,8 +113,8 @@ export class AxisOverlay {
       el.style.position = "absolute";
       el.style.pointerEvents = "none";
       el.style.whiteSpace = "nowrap";
-      el.style.font = this.options.font ?? "11px ui-monospace, monospace, sans-serif";
-      el.style.color = this.options.color ?? "#bfd6ff";
+      el.style.font = this.options.font ?? DEFAULT_CHART_THEME.axisFont;
+      el.style.color = this.options.color ?? DEFAULT_CHART_THEME.axisColor;
       el.style.userSelect = "none";
       parent.appendChild(el);
       pool.push(el);
@@ -210,7 +201,7 @@ export class AxisOverlay {
   private measureLabel(text: string, dimension: "width" | "height"): number {
     const context = this.measureContext;
     if (!context) return 12;
-    context.font = this.options.font ?? "11px ui-monospace, monospace, sans-serif";
+    context.font = this.options.font ?? DEFAULT_CHART_THEME.axisFont;
     const metrics = context.measureText(text);
     return Math.max(1, dimension === "width"
       ? Math.ceil(metrics.width)

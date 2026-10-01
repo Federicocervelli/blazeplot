@@ -15,7 +15,7 @@ export default class Preview extends PreviewResources {
 
     const count = 720;
     const signal = (x: number): number => Math.sin(x * 0.035) + Math.sin(x * 0.11) * 0.22;
-    const makeChart = (element: HTMLElement, label: string): { chart: Chart; series: SeriesStore } => {
+    const makeChart = (element: HTMLElement, label: string, renderLoop: "auto" | "continuous"): { chart: Chart; series: SeriesStore } => {
       const dataset = new UniformRingBuffer(count * 2);
       for (let i = 0; i < count; i += 1) dataset.push(i, signal(i));
       const chart = new Chart(element, {
@@ -23,6 +23,7 @@ export default class Preview extends PreviewResources {
         grid: true,
         plugins: [interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true })],
         accessibility: { label },
+        renderLoop,
       });
       const series = chart.addLine({ dataset, name: label }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
       chart.setViewport({ xMin: 0, xMax: count - 1, yMin: -1.4, yMax: 1.4 });
@@ -30,8 +31,8 @@ export default class Preview extends PreviewResources {
       return { chart, series };
     };
 
-    const demand = makeChart(demandTarget, "on-demand");
-    const continuous = makeChart(continuousTarget, "continuous");
+    const demand = makeChart(demandTarget, "on-demand", "auto");
+    const continuous = makeChart(continuousTarget, "continuous", "continuous");
     let demandRenders = 0;
     let continuousRenders = 0;
     let panOffset = 0;
@@ -40,7 +41,7 @@ export default class Preview extends PreviewResources {
     this.previewDisposers.push(continuous.chart.subscribe("render", () => { continuousRenders += 1; }));
 
     demand.chart.start();
-    continuous.chart.start({ renderLoop: "continuous" });
+    continuous.chart.start();
 
     const refresh = (): void => {
       demandCount.textContent = String(demandRenders);

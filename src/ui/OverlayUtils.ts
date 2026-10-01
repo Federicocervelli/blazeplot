@@ -1,5 +1,60 @@
 import type { SeriesYAxis } from "../core/types.js";
 import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPluginContext } from "./Chart.js";
+import { rgbaCss } from "./theme.js";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** Create an SVG element in the SVG namespace. */
+export function createSvgElement<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
+  return document.createElementNS(SVG_NS, tag);
+}
+
+/** A plugin instance that mirrors the pointer X of other charts in its sync group. */
+export interface SyncPeer {
+  showAt(dataX: number): void;
+  hide(): void;
+}
+
+/** Membership returned by a sync registry. */
+export interface SyncMembership {
+  /** Show every other peer at `dataX`, or hide them all for `null`. */
+  broadcast(dataX: number | null): void;
+  leave(): void;
+}
+
+/**
+ * Create a registry of named sync groups. Peers that render in response to a
+ * broadcast cannot re-broadcast, so mirrored updates never loop.
+ */
+export function createSyncRegistry(): (group: string | undefined, peer: SyncPeer) => SyncMembership {
+  const groups = new Map<string, Set<SyncPeer>>();
+  let broadcasting = false;
+  return (group, peer) => {
+    if (!group) return { broadcast() {}, leave() {} };
+    const peers = groups.get(group) ?? new Set<SyncPeer>();
+    peers.add(peer);
+    groups.set(group, peers);
+    return {
+      broadcast(dataX) {
+        if (broadcasting) return;
+        broadcasting = true;
+        try {
+          for (const other of peers) {
+            if (other === peer) continue;
+            if (dataX === null) other.hide();
+            else other.showAt(dataX);
+          }
+        } finally {
+          broadcasting = false;
+        }
+      },
+      leave() {
+        peers.delete(peer);
+        if (peers.size === 0) groups.delete(group);
+      },
+    };
+  };
+}
 
 /** Return the display label for a picked series item. */
 export function labelOfPickItem(item: ChartPickItem): string {
@@ -12,11 +67,6 @@ export function formatCompactNumber(value: number): string {
   const abs = Math.abs(value);
   if (abs > 0 && (abs < 1e-3 || abs >= 1e6)) return value.toExponential(3);
   return Number(value.toPrecision(6)).toString();
-}
-
-/** Convert a normalized RGBA tuple to a CSS color string. */
-export function rgba(color: readonly [number, number, number, number]): string {
-  return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
 }
 
 /** Clamp a number to an inclusive range. */
@@ -78,7 +128,7 @@ export function placeAbsoluteWithinBox(
   element.style.top = `${top}px`;
 }
 
-/** Render picked series values into an overlay container. */
+/** Render picked series values as text rows; formatter output is plain text, never HTML. */
 export function renderPickItems<TContext>(
   container: HTMLElement,
   items: readonly ChartPickItem[],
@@ -87,19 +137,22 @@ export function renderPickItems<TContext>(
   defaultFormatter: (item: ChartPickItem, context: TContext) => string,
 ): void {
   const pad = Math.max(1, ...items.map((item) => labelOfPickItem(item).length));
-  let html = "";
-  for (const item of items) {
+  container.replaceChildren();
+  items.forEach((item, index) => {
+    if (index > 0) container.append(document.createElement("br"));
+    const swatch = document.createElement("span");
+    swatch.style.color = rgbaCss(item.series.style.color);
+    swatch.textContent = "\u2588";
     const value = formatter ? formatter(item, context) : defaultFormatter(item, context);
-    if (html) html += "<br>";
-    html += `<span style="color:${rgba(item.series.style.color)}">\u2588</span> ${labelOfPickItem(item).padEnd(pad)}  ${value}`;
-  }
-  container.innerHTML = html;
+    container.append(swatch, ` ${labelOfPickItem(item).padEnd(pad)}  ${value}`);
+  });
 }
 
 /** Visual options for the hover/selection pick marker. */
 export interface PickMarkerOptions {
+  /** Outline color; plugins pass `chart.theme.markerStrokeColor`. */
+  readonly strokeColor: string;
   readonly sizePx?: number;
-  readonly strokeColor?: string;
   readonly strokeWidthPx?: number;
 }
 
@@ -127,16 +180,16 @@ export function pickAtDataX(chart: ChartPluginContext, dataX: number, options: P
 }
 
 /** Create a marker element for a picked series point. */
-export function createPickMarker(item: ChartPickItem, options: PickMarkerOptions = {}): HTMLDivElement {
+export function createPickMarker(item: ChartPickItem, options: PickMarkerOptions): HTMLDivElement {
   const marker = document.createElement("div");
   marker.style.position = "absolute";
   marker.style.left = `${item.plotX}px`;
   marker.style.top = `${item.plotY}px`;
   marker.style.width = `${options.sizePx ?? 10}px`;
   marker.style.height = `${options.sizePx ?? 10}px`;
-  marker.style.border = `${options.strokeWidthPx ?? 2}px solid ${options.strokeColor ?? "#f8fafc"}`;
+  marker.style.border = `${options.strokeWidthPx ?? 2}px solid ${options.strokeColor}`;
   marker.style.borderRadius = "999px";
-  marker.style.background = rgba(item.series.style.color);
+  marker.style.background = rgbaCss(item.series.style.color);
   marker.style.boxShadow = "0 0 0 1px rgba(4, 8, 16, 0.85)";
   marker.style.transform = "translate(-50%, -50%)";
   return marker;

@@ -6,40 +6,53 @@ export interface Viewport {
   readonly yMax: number;
 }
 
-/** Min/max aggregate for a contiguous X range. */
-export interface LODBucket {
-  readonly xStart: number;
-  readonly xEnd: number;
-  readonly minY: number;
-  readonly maxY: number;
-}
-
-/** Renderer-ready level-of-detail bucket buffer. */
-export interface LODView {
-  readonly buckets: Float32Array;
-  readonly bucketCount: number;
-  readonly level: number;
-  readonly samplesPerPixel: number;
-}
-
 /** Inclusive data X range. */
 export interface TimeRange {
   readonly start: number;
   readonly end: number;
 }
 
-/** Visual styling shared by built-in series renderers. */
-export interface SeriesStyle {
-  readonly color: readonly [number, number, number, number];
-  readonly lineWidth: number;
+/** RGBA color tuple with 0-1 channel values. */
+export type RgbaColor = readonly [number, number, number, number];
+/** Any CSS color string (`"#3b82f6"`, `"rgb(59 130 246)"`, `"var(--accent)"`) or an RGBA tuple. */
+export type ThemeColor = RgbaColor | string;
+
+/** Series styling accepted by `chart.addLine(config, style)` and the other `add*` helpers. */
+export interface SeriesStyleOptions {
+  /** Stroke/marker color. Defaults to the next theme series color. */
+  readonly color?: ThemeColor;
+  /** Line width in CSS pixels for line, area outline, and OHLC series. Defaults to 1. */
+  readonly lineWidth?: number;
+  /** Scatter point diameter in device pixels. Defaults to 4. */
   readonly pointSize?: number;
+  /** Bar and candlestick body width in data X units. Defaults to 0.8. */
   readonly barWidth?: number;
+  /** Y value bars and areas grow from. Defaults to 0. */
   readonly baseline?: number;
-  readonly fillColor?: readonly [number, number, number, number];
+  /** Area fill color. Defaults to `color` at 25% opacity. */
+  readonly fillColor?: ThemeColor;
+  /** OHLC open/close tick width in data X units. Defaults to `barWidth`. */
   readonly tickWidth?: number;
-  readonly upColor?: readonly [number, number, number, number];
-  readonly downColor?: readonly [number, number, number, number];
-  readonly wickColor?: readonly [number, number, number, number];
+  /** Color for rising OHLC/candlestick samples. Defaults to `color`. */
+  readonly upColor?: ThemeColor;
+  /** Color for falling OHLC/candlestick samples. Defaults to `color` at 45% opacity. */
+  readonly downColor?: ThemeColor;
+  /** Candlestick wick color. Defaults to `color`. */
+  readonly wickColor?: ThemeColor;
+}
+
+/** Fully resolved series style used by the renderer. */
+export interface SeriesStyle {
+  readonly color: RgbaColor;
+  readonly lineWidth: number;
+  readonly pointSize: number;
+  readonly barWidth: number;
+  readonly baseline: number;
+  readonly fillColor: RgbaColor;
+  readonly tickWidth: number;
+  readonly upColor: RgbaColor;
+  readonly downColor: RgbaColor;
+  readonly wickColor: RgbaColor;
 }
 
 /** Built-in renderer mode for a series. */
@@ -81,10 +94,11 @@ export interface RangeMinMaxDataset extends Dataset {
   rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null;
 }
 
-/** Vertex layout requested when copying raw samples into a render buffer. */
+/**
+ * Vertex layout requested when copying raw samples into a render buffer:
+ * `"points"` writes `[x, y]` pairs, `"area"` writes `[x, baseline, x, y]` strip pairs.
+ */
 export type SampleCopyLayout = "points" | "area";
-/** Vertex layout requested when copying min/max segments into a render buffer. */
-export type MinMaxSegmentLayout = "line-list" | "instanced";
 
 /**
  * Optional high-performance extraction capability for datasets that can copy raw
@@ -140,14 +154,14 @@ export interface VisiblePointCopyDataset extends Dataset {
 /**
  * Optional high-performance min/max extraction capability for dense rendering.
  * Implementations can use pyramids, segment trees, database aggregates, or
- * analytic/procedural envelopes to emit renderer-ready min/max buckets.
+ * analytic/procedural envelopes. Write up to `maxSegments` `[x - xOrigin, minY, maxY]`
+ * triples into `target` and return how many were written.
  */
 export interface MinMaxSegmentCopyDataset extends Dataset {
   copyMinMaxSegments(
     viewport: Viewport,
     target: Float32Array,
     maxSegments: number,
-    layout: MinMaxSegmentLayout,
     xOrigin: number,
   ): number;
 }

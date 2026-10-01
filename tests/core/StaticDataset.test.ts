@@ -1,4 +1,5 @@
 import { describe, it, expect } from "bun:test";
+import { testStyle } from "../helpers.ts";
 import { StaticDataset } from "../../src/core/StaticDataset.ts";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
 
@@ -119,7 +120,7 @@ describe("StaticDataset", () => {
     expect(() => ds.getY(0.5)).toThrow(RangeError);
   });
 
-  it("provides min/max ranges and render segments without upfront LOD builds", () => {
+  it("answers min/max ranges from a lazily built summary", () => {
     const ds = new StaticDataset(
       new Float64Array([0, 1, 2, 3, 4, 5]),
       new Float32Array([3, 7, NaN, 9, 5, 2]),
@@ -128,10 +129,7 @@ describe("StaticDataset", () => {
     expect(ds.rangeMinMaxY(0, 6)).toEqual({ minY: 2, maxY: 9 });
     expect(ds.rangeMinMaxY(2, 3)).toBeNull();
 
-    const target = new Float32Array(12);
-    const count = ds.copyMinMaxSegments({ xMin: 0, xMax: 5, yMin: 0, yMax: 10 }, target, 4, "instanced", 0);
-    expect(count).toBeGreaterThan(0);
-    expect(Array.from(target.slice(0, count * 3)).some(Number.isNaN)).toBe(false);
+    expect(ds.rangeMinMaxY(3, 6)).toEqual({ minY: 2, maxY: 9 });
   });
 
   it("works with SeriesStore as a non-appendable dataset", () => {
@@ -143,14 +141,13 @@ describe("StaticDataset", () => {
     const store = new SeriesStore(
       ds,
       { mode: "line", capacity: 6, downsample: "minmax" },
-      { color: [1, 1, 1, 1], lineWidth: 1 },
+      testStyle({ color: [1, 1, 1, 1], lineWidth: 1 }),
     );
 
     expect(store.length).toBe(6);
     expect(store.visible).toBe(true);
-    expect(store.dirty).toBe(false);
 
-    expect(() => store.append(new Float64Array([0]), new Float32Array([0])))
+    expect(() => store.append({ x: new Float64Array([0]), y: new Float32Array([0]) }))
       .toThrow(TypeError);
 
     expect(store.visibleSampleCount({ xMin: 0, xMax: 5, yMin: 0, yMax: 10 })).toBe(6);

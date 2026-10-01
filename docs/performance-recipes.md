@@ -48,7 +48,7 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 - Create charts once. Update datasets and keep the chart lifecycle active instead of recreating the chart.
 - Call `chart.start()` once for an active chart lifecycle, or after a matching `chart.stop()`. Do not call it repeatedly from reactive render paths.
 - Use `chart.stop()` when a chart is hidden or inactive, then `chart.start()` again when it should resume rendering.
-- The default render loop is on demand: static charts render after chart-owned state changes and then idle. Appends through series APIs wake the chart automatically. Use `chart.start({ renderLoop: "continuous" })` only for custom animation loops; direct dataset mutation still needs `series.markDirty()` so LOD state is rebuilt.
+- The default render loop is on demand: static charts render after chart-owned state changes and then idle. Appends through series APIs wake the chart automatically. Use `new Chart(element, { renderLoop: "continuous" })` only for custom animation loops; direct dataset mutation still needs `series.markDirty()` so LOD state is rebuilt.
 - Remove unused series with `chart.removeSeries(series)`.
 - Dispose charts on unmount with `chart.dispose()`.
 - Keep optional features in subpath imports, for example `blazeplot/plugins/tooltip`, so chart-only bundles stay smaller.

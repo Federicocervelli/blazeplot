@@ -30,11 +30,7 @@ interface BundleSizeReport {
 
 const budgets: Budget[] = [
   { label: "root entry", path: "dist/index.js", maxBytes: 32_000 },
-  { label: "core subpath entry", path: "dist/core.js", maxBytes: 4_000 },
-  { label: "interaction subpath entry", path: "dist/interaction.js", maxBytes: 2_000 },
-  { label: "render subpath entry", path: "dist/render.js", maxBytes: 2_000 },
   { label: "linked entry", path: "dist/linked.js", maxBytes: 16_000 },
-  { label: "linked core entry", path: "dist/linked-core.js", maxBytes: 8_000 },
   { label: "data entry", path: "dist/data.js", maxBytes: 12_000 },
   { label: "export entry", path: "dist/export.js", maxBytes: 8_000 },
   { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 24_000 },
@@ -42,22 +38,15 @@ const budgets: Budget[] = [
   { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 16_000 },
   { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 12_000 },
   { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 8_000 },
-  { label: "tooltip plugin entry", path: "dist/plugins/tooltip.js", maxBytes: 4_000 },
-  { label: "crosshair plugin entry", path: "dist/plugins/crosshair.js", maxBytes: 4_000 },
+  { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 8_000 },
+  { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 16_000 },
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 48_000 },
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
   { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 140_000 },
-  { label: "shared streaming data chunk", pattern: /^(RingBuffer|UniformRingBuffer)-.*\.js$/, maxBytes: 64_000 },
-  { label: "shared OhlcDataset chunk", pattern: /^OhlcDataset-.*\.js$/, maxBytes: 24_000 },
-  { label: "shared AxisController chunk", pattern: /^AxisController-.*\.js$/, maxBytes: 20_000 },
-  { label: "shared WebGL2Backend chunk", pattern: /^WebGL2Backend-.*\.js$/, maxBytes: 24_000 },
-  { label: "shared LinkedChartsCore chunk", pattern: /^LinkedChartsCore-.*\.js$/, maxBytes: 8_000 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 8_000 },
   { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 8_000 },
-  { label: "shared Tooltip chunk", pattern: /^Tooltip-.*\.js$/, maxBytes: 12_000 },
-  { label: "shared Crosshair chunk", pattern: /^Crosshair-.*\.js$/, maxBytes: 16_000 },
 ];
 
 export async function collectBundleSizeReport(): Promise<BundleSizeReport> {

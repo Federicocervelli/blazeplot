@@ -7,14 +7,10 @@ type PackageJson = {
 };
 
 const expectedExports = {
-  "blazeplot": ["Chart", "RingBuffer", "StaticDataset", "ServerSampledDataset", "WebGL2Backend", "ReglBackend"],
-  "blazeplot/core": ["RingBuffer", "UniformRingBuffer", "StaticDataset", "ServerSampledDataset", "SeriesStore", "MinMaxPyramid"],
-  "blazeplot/interaction": ["Camera2D", "AxisController"],
-  "blazeplot/render": ["Renderer", "WebGL2Backend", "ReglBackend", "WebGL2Resources", "ShaderPrograms", "isWebGL2Available", "WebGL2UnavailableError"],
-  "blazeplot/linked": ["createLinkedCharts", "linkedChartsPlugin"],
-  "blazeplot/linked-core": ["createLinkedCharts", "linkedChartsPlugin"],
-  "blazeplot/data": ["exportVisibleChartData", "exportSelectedChartData", "chartDataToCSV", "binSamples", "rollingMean"],
-  "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "CHART_SCREENSHOT_PRESETS"],
+  "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "histogram", "WebGL2Backend", "isWebGL2Available"],
+  "blazeplot/linked": ["createLinkedCharts"],
+  "blazeplot/data": ["exportChartData", "chartDataToCSV", "binSamples", "rollingMean"],
+  "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob"],
   "blazeplot/plugins/legend": ["legendPlugin"],
   "blazeplot/plugins/tooltip": ["tooltipPlugin"],
   "blazeplot/plugins/interactions": ["interactionsPlugin"],
@@ -53,14 +49,14 @@ for (const specifier of packageExportSpecifiers) {
   }
 }
 
-const importPackage = async (specifier: string): Promise<Record<string, unknown>> => await import(specifier) as Record<string, unknown>;
-const rootExports = await importPackage("blazeplot");
-const renderExports = await importPackage("blazeplot/render");
-if (rootExports.ReglBackend !== rootExports.WebGL2Backend) {
-  throw new Error("blazeplot ReglBackend compatibility alias does not match WebGL2Backend.");
+const rootExports = await import("blazeplot") as Record<string, unknown>;
+for (const removed of ["ReglBackend", "MinMaxPyramid", "SeriesStore", "DataCursor", "histogramDataset"]) {
+  if (removed in rootExports) throw new Error(`blazeplot should not export ${removed}.`);
 }
-if (renderExports.ReglBackend !== renderExports.WebGL2Backend) {
-  throw new Error("blazeplot/render ReglBackend compatibility alias does not match WebGL2Backend.");
+
+const seriesTypes = await readFile(resolve(dirname(packageJsonPath), "dist/core/SeriesStore.d.ts"), "utf8");
+for (const internal of ["copyRawRange", "rebuildPyramid", "nearestSampleByPoint"]) {
+  if (seriesTypes.includes(internal)) throw new Error(`Published SeriesStore typings leak internal member ${internal}.`);
 }
 
 console.log(`Validated ${packageExportSpecifiers.length} package export subpaths.`);

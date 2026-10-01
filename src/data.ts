@@ -1,6 +1,3 @@
-export { HistogramDataset, histogram, histogramDataset } from "./core/Histogram.js";
-export type { HistogramBin, HistogramBinThresholds, HistogramNormalization, HistogramOptions, HistogramResult } from "./core/Histogram.js";
-
 import type { SeriesMode, SeriesYAxis, Viewport } from "./core/types.js";
 import type { SeriesStore } from "./core/SeriesStore.js";
 import type { Chart, ChartSeriesState } from "./ui/Chart.js";
@@ -25,29 +22,35 @@ export interface ChartDataSeries {
   readonly mode: SeriesMode;
   readonly yAxis: SeriesYAxis;
   readonly samples: readonly ChartDataSample[];
+  /** Matching samples before `maxRowsPerSeries` truncation. */
   readonly total: number;
   readonly truncated: boolean;
 }
 
-/** Source range used for a chart data export. */
+/** Which samples an export covered. */
 export type ChartDataSource = "all" | "visible" | "selection";
 
-/** Chart data collected for serialization or custom processing. */
+/** Chart data collected for serialization or custom processing. Plain data: safe to `JSON.stringify`. */
 export interface ChartDataExport {
   readonly source: ChartDataSource;
   readonly bounds: Viewport | null;
   readonly series: readonly ChartDataSeries[];
 }
 
-/** Options for collecting data from chart series. */
+/** Options for `exportChartData`. */
 export interface ChartDataExportOptions {
-  /** Limit export to visible chart series. Defaults to true. */
-  readonly visibleOnly?: boolean;
-  /** Limit export to specific series stores. */
+  /**
+   * Samples to collect: `"all"` (default), `"visible"` for the current viewport,
+   * or a selection plugin state (`selection.getSelection()`); a `null` selection exports nothing.
+   */
+  readonly range?: "all" | "visible" | SelectionState | null;
+  /** Include hidden series. Defaults to false. */
+  readonly includeHidden?: boolean;
+  /** Limit export to specific series. */
   readonly series?: readonly SeriesStore[];
-  /** Maximum rows to keep per series. Omit for no per-series cap. */
+  /** Maximum rows to keep per series. Omit for no cap. */
   readonly maxRowsPerSeries?: number;
-  /** For visible exports, also require samples to overlap each series' y viewport. */
+  /** For `"visible"` exports, also require samples to overlap each series' Y viewport. */
   readonly includeYRange?: boolean;
 }
 
@@ -56,18 +59,6 @@ export interface ChartDataCsvOptions {
   readonly header?: boolean;
   readonly delimiter?: string;
   readonly newline?: string;
-}
-
-/** JSON serialization options for chart data exports. */
-export interface ChartDataJsonOptions {
-  readonly space?: number | string;
-}
-
-interface DataRange {
-  readonly source: ChartDataSource;
-  readonly bounds: Viewport | null;
-  readonly mode?: SelectionState["mode"];
-  readonly yAxis?: SeriesYAxis;
 }
 
 /** Simple X/Y sample used by data resampling helpers. */
@@ -81,10 +72,13 @@ export type SampleReducer = "mean" | "sum" | "min" | "max" | "first" | "last";
 /** X position assigned to a resampled bucket. */
 export type ResampleX = "start" | "center" | "end";
 
-/** Options shared by resampling helpers. */
+/** Options for `binSamples`. */
 export interface ResampleOptions {
+  /** How to combine Y values in a bucket. Defaults to `"mean"`. */
   readonly reducer?: SampleReducer;
+  /** Bucket origin; buckets are `[align + k * binSize, align + (k + 1) * binSize)`. Defaults to 0. */
   readonly align?: number;
+  /** X reported for each bucket. Defaults to `"center"`. */
   readonly x?: ResampleX;
 }
 
@@ -102,6 +96,12 @@ export interface RollingMeanSample extends XYSample {
   readonly count: number;
 }
 
+interface DataRange {
+  readonly source: ChartDataSource;
+  readonly bounds: Viewport | null;
+  readonly selection?: SelectionState;
+}
+
 interface MutableBin {
   key: number;
   xStart: number;
@@ -113,6 +113,8 @@ interface MutableBin {
   firstY: number;
   lastY: number;
 }
+
+type ExportableChart = Pick<Chart, "getSeriesState" | "getViewport">;
 
 const CSV_COLUMNS = [
   "seriesIndex",
@@ -129,32 +131,13 @@ const CSV_COLUMNS = [
   "close",
 ] as const;
 
-/** Collect raw samples from each chart series in its current x viewport. */
-export function exportVisibleChartData(chart: Chart, options: ChartDataExportOptions = {}): ChartDataExport {
-  return collectChartData(chart, {
-    source: "visible",
-    bounds: mergeChartViewports(chart),
-  }, options);
-}
-
-/** Collect raw samples inside a committed selection plugin state. */
-export function exportSelectedChartData(
-  chart: Chart,
-  selection: SelectionState | null,
-  options: ChartDataExportOptions = {},
-): ChartDataExport {
-  if (!selection) return { source: "selection", bounds: null, series: [] };
-  return collectChartData(chart, {
-    source: "selection",
-    bounds: selection.bounds,
-    mode: selection.mode,
-    yAxis: selection.yAxis,
-  }, options);
-}
-
-/** Collect raw samples from visible chart series by default; pass visibleOnly: false to include hidden series. */
-export function exportAllChartData(chart: Chart, options: ChartDataExportOptions = {}): ChartDataExport {
-  return collectChartData(chart, { source: "all", bounds: null }, options);
+/** Collect raw samples from chart series: all of them, the visible viewport, or a selection. */
+export function exportChartData(chart: ExportableChart, options: ChartDataExportOptions = {}): ChartDataExport {
+  const range = options.range === undefined ? "all" : options.range;
+  if (range === "all") return collectChartData(chart, { source: "all", bounds: null }, options);
+  if (range === "visible") return collectChartData(chart, { source: "visible", bounds: mergeChartViewports(chart) }, options);
+  if (range === null) return { source: "selection", bounds: null, series: [] };
+  return collectChartData(chart, { source: "selection", bounds: range.bounds, selection: range }, options);
 }
 
 /** Serialize collected chart data as row-oriented CSV. */
@@ -184,19 +167,6 @@ export function chartDataToCSV(data: ChartDataExport, options: ChartDataCsvOptio
   }
 
   return rows.join(newline);
-}
-
-/** Serialize collected chart data as JSON without retaining chart or SeriesStore objects. */
-export function chartDataToJSON(data: ChartDataExport, options: ChartDataJsonOptions = {}): string {
-  return JSON.stringify(data, null, options.space);
-}
-
-/** Convert collected chart data to a text Blob for downloads or clipboard workflows. */
-export function chartDataToBlob(data: ChartDataExport, type: "csv" | "json", options: ChartDataCsvOptions | ChartDataJsonOptions = {}): Blob {
-  if (type === "json") {
-    return new Blob([chartDataToJSON(data, options as ChartDataJsonOptions)], { type: "application/json" });
-  }
-  return new Blob([chartDataToCSV(data, options as ChartDataCsvOptions)], { type: "text/csv" });
 }
 
 /** Bin irregular x/y samples into fixed-width x buckets. Non-finite samples are skipped. */
@@ -247,79 +217,61 @@ export function binSamples(samples: readonly XYSample[], binSize: number, option
     }));
 }
 
-/** Alias for binSamples when you want one representative sample per fixed x interval. */
-export function resampleSamples(samples: readonly XYSample[], interval: number, options: ResampleOptions = {}): BinnedSample[] {
-  return binSamples(samples, interval, options);
-}
-
-/** Rolling mean over the previous windowSize samples, preserving each input x coordinate. */
+/** Rolling mean over the previous `windowSize` finite samples, preserving each input x coordinate. */
 export function rollingMean(samples: readonly XYSample[], windowSize: number): RollingMeanSample[] {
   if (!Number.isInteger(windowSize) || windowSize <= 0) {
     throw new RangeError("windowSize must be a positive integer.");
   }
 
   const output: RollingMeanSample[] = [];
-  const window: number[] = [];
+  const window = new Float64Array(windowSize);
+  let head = 0;
+  let count = 0;
   let sum = 0;
   for (const sample of samples) {
     if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) continue;
-    window.push(sample.y);
+    if (count === windowSize) sum -= window[head]!;
+    else count++;
+    window[head] = sample.y;
     sum += sample.y;
-    if (window.length > windowSize) sum -= window.shift()!;
-    output.push({ x: sample.x, y: sum / window.length, count: window.length });
+    head = (head + 1) % windowSize;
+    output.push({ x: sample.x, y: sum / count, count });
   }
   return output;
 }
 
-function collectChartData(chart: Chart, range: DataRange, options: ChartDataExportOptions): ChartDataExport {
-  const visibleOnly = options.visibleOnly !== false;
+function collectChartData(chart: ExportableChart, range: DataRange, options: ChartDataExportOptions): ChartDataExport {
   const maxRows = normalizeMaxRows(options.maxRowsPerSeries);
   const allowedSeries = options.series ? new Set(options.series) : null;
+  const selection = range.selection;
+  const filterY = selection ? selection.mode !== "x-range" : range.source === "visible" && options.includeYRange === true;
   const series: ChartDataSeries[] = [];
 
   for (const state of chart.getSeriesState()) {
-    if (visibleOnly && !state.visible) continue;
+    if (!options.includeHidden && !state.visible) continue;
     if (allowedSeries && !allowedSeries.has(state.series)) continue;
-    if (range.source === "selection" && range.mode !== "x-range" && state.yAxis !== range.yAxis) continue;
+    if (selection && selection.mode !== "x-range" && state.yAxis !== selection.yAxis) continue;
 
-    const viewport = viewportForState(chart, state, range);
-    const includeY = shouldFilterY(range, options);
-    const entry = collectSeriesData(state, viewport, includeY, maxRows);
-    if (entry.total > 0 || entry.samples.length > 0) series.push(entry);
+    const viewport = range.source === "all" ? null : selection ? selection.bounds : chart.getViewport(state.yAxis);
+    const entry = collectSeriesData(state, viewport, filterY, maxRows);
+    if (entry.total > 0) series.push(entry);
   }
 
   return { source: range.source, bounds: range.bounds, series };
 }
 
-function collectSeriesData(state: ChartSeriesState, viewport: Viewport | null, includeY: boolean, maxRows: number): ChartDataSeries {
+function collectSeriesData(state: ChartSeriesState, viewport: Viewport | null, filterY: boolean, maxRows: number): ChartDataSeries {
   const range = state.series.visibleIndexRange(viewport ?? undefined);
+  const ohlc = state.mode === "ohlc" || state.mode === "candlestick";
   const samples: ChartDataSample[] = [];
   let total = 0;
 
-  if (state.mode === "ohlc" || state.mode === "candlestick") {
-    for (let index = range.start; index < range.end; index++) {
-      const sample = state.series.ohlcAt(index);
-      if (!sample) continue;
-      if (includeY && viewport && !sampleOverlapsY(sample, viewport)) continue;
-      total++;
-      if (samples.length < maxRows) samples.push({
-        index: sample.index,
-        x: sample.x,
-        y: sample.y,
-        open: sample.open,
-        high: sample.high,
-        low: sample.low,
-        close: sample.close,
-      });
-    }
-  } else {
-    for (let index = range.start; index < range.end; index++) {
-      const sample = state.series.sampleAt(index);
-      if (!sample) continue;
-      if (includeY && viewport && !sampleOverlapsY(sample, viewport)) continue;
-      total++;
-      if (samples.length < maxRows) samples.push({ index: sample.index, x: sample.x, y: sample.y });
-    }
+  for (let index = range.start; index < range.end; index++) {
+    const sample = ohlc ? state.series.ohlcAt(index) : state.series.sampleAt(index);
+    if (!sample) continue;
+    if (filterY && viewport && !sampleOverlapsY(sample, viewport)) continue;
+    total++;
+    if (samples.length < maxRows) samples.push({ ...sample });
   }
 
   return {
@@ -334,24 +286,13 @@ function collectSeriesData(state: ChartSeriesState, viewport: Viewport | null, i
   };
 }
 
-function viewportForState(chart: Chart, state: ChartSeriesState, range: DataRange): Viewport | null {
-  if (range.source === "all") return null;
-  if (range.source === "selection") return range.bounds;
-  return chart.getViewport(state.yAxis);
-}
-
-function shouldFilterY(range: DataRange, options: ChartDataExportOptions): boolean {
-  if (range.source === "selection") return range.mode !== "x-range";
-  return options.includeYRange === true;
-}
-
-function sampleOverlapsY(sample: Pick<ChartDataSample, "y" | "low" | "high">, viewport: Viewport): boolean {
+function sampleOverlapsY(sample: ChartDataSample, viewport: Viewport): boolean {
   const low = sample.low ?? sample.y;
   const high = sample.high ?? sample.y;
   return high >= viewport.yMin && low <= viewport.yMax;
 }
 
-function mergeChartViewports(chart: Chart): Viewport {
+function mergeChartViewports(chart: ExportableChart): Viewport {
   const left = chart.getViewport("left");
   const right = chart.getViewport("right");
   return {

@@ -1,4 +1,5 @@
 import type { Chart, ChartPlugin, ChartPluginContext, ChartSeriesState } from "./Chart.js";
+import { rgbaCss } from "./theme.js";
 
 /** Options for the built-in series legend plugin. */
 export interface LegendPluginOptions {
@@ -12,10 +13,6 @@ export interface LegendPluginOptions {
   readonly font?: string;
   readonly zIndex?: number;
   readonly render?: (state: readonly ChartSeriesState[], container: HTMLElement, chart: Chart) => void;
-}
-
-function rgba(color: readonly [number, number, number, number]): string {
-  return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
 }
 
 function applyPosition(el: HTMLElement, position: NonNullable<LegendPluginOptions["position"]>): void {
@@ -55,7 +52,7 @@ function renderDefaultLegend(
       const row = document.createElement(toggleOnClick ? "button" : "span");
       if (row instanceof HTMLButtonElement) {
         row.type = "button";
-        row.addEventListener("click", () => chart.setSeriesVisible(item.series, !item.series.visible));
+        row.addEventListener("click", () => item.series.setVisible(!item.series.visible));
       }
       Object.assign(row.style, {
         display: "flex", alignItems: "center", gap: "6px", border: "0", margin: "0", padding: "0",
@@ -82,7 +79,7 @@ function renderDefaultLegend(
       ? options.textColor ?? chart.theme.legendTextColor
       : options.mutedTextColor ?? chart.theme.legendMutedTextColor;
     element.style.opacity = item.visible ? "1" : "0.45";
-    swatch.style.color = rgba(item.color);
+    swatch.style.color = rgbaCss(item.color);
     label.textContent = name;
     // Leave existing nodes in place so theme and series updates retain keyboard focus.
     const atIndex = container.children.item(index);

@@ -13,7 +13,7 @@ import {
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { Chart, StaticDataset } from "@/index.ts";
-import type { AcceleratedDataset, Dataset, MinMaxSegmentLayout, SampleCopyLayout, SeriesStore, TimeRange, Viewport } from "@/index.ts";
+import type { AcceleratedDataset, Dataset, SampleCopyLayout, SeriesStore, TimeRange, Viewport } from "@/index.ts";
 import officialConfig from "../../../scripts/benchmark-config.json";
 
 ChartJs.register(LineController, LineElement, PointElement, LinearScale, Decimation, Legend, Tooltip);
@@ -814,11 +814,9 @@ class ProceduralBenchmarkDataset implements AcceleratedDataset {
     viewport: Viewport,
     target: Float32Array,
     maxSegments: number,
-    layout: MinMaxSegmentLayout,
     xOrigin: number,
   ): number {
-    const floatsPerSegment = layout === "line-list" ? 4 : 3;
-    if (maxSegments <= 0 || target.length < maxSegments * floatsPerSegment) return 0;
+    if (maxSegments <= 0 || target.length < maxSegments * 3) return 0;
 
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);
@@ -836,18 +834,10 @@ class ProceduralBenchmarkDataset implements AcceleratedDataset {
 
       const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
       const x = representative - xOrigin;
-      if (layout === "line-list") {
-        const offset = written * 4;
-        target[offset] = x;
-        target[offset + 1] = ProceduralBenchmarkDataset.minY;
-        target[offset + 2] = x;
-        target[offset + 3] = ProceduralBenchmarkDataset.maxY;
-      } else {
-        const offset = written * 3;
-        target[offset] = x;
-        target[offset + 1] = ProceduralBenchmarkDataset.minY;
-        target[offset + 2] = ProceduralBenchmarkDataset.maxY;
-      }
+      const offset = written * 3;
+      target[offset] = x;
+      target[offset + 1] = ProceduralBenchmarkDataset.minY;
+      target[offset + 2] = ProceduralBenchmarkDataset.maxY;
       written++;
     }
 
@@ -977,7 +967,7 @@ function appendBlazePlotSamples(series: SeriesStore, startX: number, count: numb
     xValues[i] = x;
     yValues[i] = sampleY(x);
   }
-  series.append(xValues, yValues);
+  series.append({ x: xValues, y: yValues });
 }
 
 function appendBlazePlotYOnlySamples(series: SeriesStore, startX: number, count: number): void {
