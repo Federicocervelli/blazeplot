@@ -10,47 +10,16 @@ Related workflow reference: [GitHub workflow runbook](./github-workflows.md).
 git checkout development
 git pull --ff-only
 bun install
-bun run version:patch      # or version:minor / version:major
+bun run release patch      # or minor / major
 ```
 
-Then update `changelogs/vX.Y.Z.md` with user-facing changes. Keep benchmark tables under the `## Benchmarks` heading.
+This bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates `dist/`, `docs/api-reference.md`, and the README docs block. Edit the changelog into user-facing notes and commit. Benchmark tables are appended by the release workflow.
 
-## 2. Refresh generated release artifacts
+## 2. Open the release PR
 
-```bash
-bun run release:benchmarks
-bun run docs:readme
-bun run ci
-```
+Open a PR from `development` to `main`. CI runs the typecheck, unit tests, build, generated-docs check, package contents and exports checks, bundle budgets, and the browser suites, so there is no need to repeat them locally. Mention any known risk areas, especially rendering, package exports, or release workflow changes.
 
-`bun run release:benchmarks` appends benchmark tables to the current changelog. `bun run docs:readme` rebuilds `dist/`, regenerates `docs/api-reference.md`, and refreshes the generated README docs block.
-
-## 3. Review package contents
-
-Before opening the release PR, check that the package tarball only contains intended runtime files:
-
-```bash
-bun pm pack --dry-run
-```
-
-Look for:
-
-- `dist/` JavaScript and declaration files.
-- `README.md`, `LICENSE`, and `package.json`.
-- No source maps, local benchmark output, screenshots, editor config, or workspace files.
-
-## 4. Open the release PR
-
-Open a PR from `development` to `main`.
-
-Include:
-
-- Version number and changelog link.
-- The benchmark command that updated the changelog.
-- Confirmation that `bun run ci` passed (it includes the website build and `bun pm pack --dry-run`).
-- Any known risk areas, especially rendering, package exports, or release workflow changes.
-
-## 5. Merge and monitor
+## 3. Merge and monitor
 
 Merge with **Create a merge commit** (not squash or rebase) so `development` stays an ancestor of `main`. Then `.github/workflows/release.yml`:
 

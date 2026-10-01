@@ -351,8 +351,7 @@ bun test                # Tests
 bun run typecheck       # TypeScript strict check
 bun run bench:ci        # Headless browser benchmark smoke test
 bun run bench:compare   # Manual headed BlazePlot/uPlot/Chart.js comparison benchmark
-bun run version:patch   # Prepare package.json + changelog for a patch release PR
-bun run release:benchmarks  # Append benchmark results to the current release changelog
+bun run release patch  # Bump version, draft changelog, regenerate docs for a release PR
 ```
 
 Branch flow: `development` is the integration branch for regular work; open feature/fix PRs into `development`. Open release PRs from `development` into `main` with version and changelog already updated. Release PRs publish npm and create the GitHub Release on merge.

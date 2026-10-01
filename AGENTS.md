@@ -32,7 +32,6 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Benchmark smoke test only: `bun run bench:ci` (`ci-smoke` scenario in a headless Chrome/Chromium/Brave browser). Set `BLAZEPLOT_BENCH_CHROME=/path/to/browser` or `CHROME_PATH=/path/to/browser` if auto-detection fails.
 - Public manual comparison benchmark: `bun run bench:compare` (headed by default, fully automated after launch, compares BlazePlot/uPlot/Chart.js, overwrites `benchmarks/latest.json` and `benchmarks/latest.md`; not part of CI).
 - Run one benchmark scenario: `bun run bench -- --scenario <name>`.
-- Append benchmark results to the current release changelog: `bun run release:benchmarks`.
 - Append benchmark report markdown to docs or another path: `bun run bench:report`.
 - Chart visual tests only: `bun run test:visual` (renders focused browser cases per chart/plugin feature and writes screenshots to `build/visual-tests/`).
 - Browser interaction tests only: `bun run test:interaction` (automates hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection through Chrome DevTools Protocol input events).
@@ -54,12 +53,9 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Maintainers can request feature-branch browser previews with the manual `Cloudflare Pages Preview` workflow. See `docs/release-and-benchmarks.md` and `docs/internal/github-workflows.md` for alias rules and safety notes.
 - To prepare a release PR:
   1. Start on updated `development`.
-  2. Run `bun run version:patch` (or `version:minor` / `version:major`) to bump `package.json` and create `changelogs/vX.Y.Z.md`.
-  3. Edit the changelog notes.
-  4. Run `bun run release:benchmarks` so benchmark tables are included in the version markdown. The release workflow also runs this with `--if-missing` before publishing.
-  5. Run `bun run docs:readme` so generated API docs and README sections are current.
-  6. Run `bun run ci`.
-  7. Push `development`, open a PR to `main`, wait for the `validate` check, then merge when approved/authorized.
+  2. Run `bun run release patch` (or `minor` / `major`). It bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates the docs.
+  3. Edit the changelog notes and commit.
+  4. Push `development`, open a PR to `main`, wait for the `validate` check, then merge when approved/authorized. Benchmark tables are appended by the release workflow.
 - Merging an unpublished `package.json` version to `main` runs the release workflow: reusable CI, benchmark-result insertion if missing, npm publish with provenance (trusted publishing), `vX.Y.Z` tag and GitHub Release creation from `changelogs/vX.Y.Z.md` plus commits, then a fast-forward of `development` to `main`.
 - If the `vX.Y.Z` tag already exists, the release workflow skips publishing for that version.
 
