@@ -22,10 +22,24 @@ function readNumericField<Row>(row: Row, index: number, field: StaticDatasetFiel
   return Number(row[field]);
 }
 
-/** Immutable sorted XY dataset backed by typed arrays. */
+/** Data accepted by `StaticDataset.replace` and `series.replace(...)`. */
+export interface StaticDatasetData {
+  /** New sorted X values. Omit to keep the current X array, e.g. a fixed frequency axis. */
+  readonly x?: ArrayLike<number>;
+  readonly y: ArrayLike<number>;
+}
+
+/**
+ * Sorted XY dataset backed by typed arrays, which are read in place rather than copied.
+ *
+ * Change the data with `series.replace({ y })`, or overwrite the arrays and call
+ * `series.markDirty()`.
+ */
 export class StaticDataset implements Dataset {
   readonly rangeMinMaxExcludesGaps = true;
   private tree: MinMaxTree | null = null;
+  private treeStale = false;
+  private count: number;
 
   /**
    * Copy object rows into a static X/Y dataset.
@@ -56,15 +70,32 @@ export class StaticDataset implements Dataset {
     );
   }
 
-  /** Number of samples. */
-  readonly length: number;
-
-  /** Create an immutable XY dataset from parallel arrays. */
+  /** Create an XY dataset from parallel arrays. */
   constructor(
-    private readonly xData: ArrayLike<number>,
-    private readonly yData: ArrayLike<number>,
+    private xData: ArrayLike<number>,
+    private yData: ArrayLike<number>,
   ) {
-    this.length = Math.min(xData.length, yData.length);
+    this.count = Math.min(xData.length, yData.length);
+  }
+
+  /** Number of samples. */
+  get length(): number {
+    return this.count;
+  }
+
+  /** Swap in new arrays without copying them. Prefer `series.replace(...)`, which also redraws. */
+  replace(data: StaticDatasetData): void {
+    const sameY = data.y === this.yData;
+    this.xData = data.x ?? this.xData;
+    this.yData = data.y;
+    this.count = Math.min(this.xData.length, this.yData.length);
+    if (sameY && this.tree?.capacity === this.count) this.invalidate();
+    else this.tree = null;
+  }
+
+  /** Drop cached min/max summaries after the arrays were mutated in place. Called by `series.markDirty()`. */
+  invalidate(): void {
+    this.treeStale = true;
   }
 
   /** X range covered by samples, or `null` when empty. */
@@ -107,7 +138,11 @@ export class StaticDataset implements Dataset {
     if (to <= from) return null;
     if (!this.tree) {
       this.tree = new MinMaxTree(this.yData, this.length);
+      this.treeStale = true;
+    }
+    if (this.treeStale) {
       this.tree.update(0, this.length);
+      this.treeStale = false;
     }
     return this.tree.query(from, to);
   }

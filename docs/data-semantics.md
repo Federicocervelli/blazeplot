@@ -6,7 +6,7 @@ BlazePlot expects finite, sorted X values. Y values are normally finite; non-fin
 
 | Source shape | Dataset | Notes |
 |---|---|---|
-| Fixed X/Y arrays | `StaticDataset` | Best for already-loaded history or immutable snapshots. |
+| Fixed X/Y arrays | `StaticDataset` | Already-loaded history or snapshots. Swap data with `series.replace({ y })`. |
 | Object rows | `StaticDataset.fromObjects(...)` | Copies row fields or accessor results into sorted X/Y arrays. |
 | Irregular live samples | `RingBuffer` | Stores explicit X/Y pairs and keeps a bounded history. |
 | Fixed-rate live samples | `UniformRingBuffer` | Stores Y values only and derives X from `xStart + index * xStep`. |

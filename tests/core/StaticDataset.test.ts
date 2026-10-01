@@ -157,4 +157,60 @@ describe("StaticDataset", () => {
     expect(count).toBe(6);
     expect(Array.from(raw)).toEqual([0, 3, 1, 7, 2, 1, 3, 9, 4, 5, 5, 2]);
   });
+
+  describe("changing data after construction", () => {
+    const makeSeries = (x: Float64Array, y: Float32Array) => {
+      const dataset = new StaticDataset(x, y);
+      return { dataset, series: new SeriesStore(dataset, { mode: "line", downsample: "minmax" }, testStyle()) };
+    };
+    const x = Float64Array.from({ length: 1000 }, (_, i) => i);
+    const ramp = () => Float32Array.from({ length: 1000 }, (_, i) => i % 50);
+
+    it("recomputes min/max after in-place mutation plus markDirty", () => {
+      const y = ramp();
+      const { dataset, series } = makeSeries(x, y);
+      expect(dataset.rangeMinMaxY(0, 1000)).toEqual({ minY: 0, maxY: 49 });
+
+      y.fill(50);
+      series.markDirty();
+
+      expect(dataset.rangeMinMaxY(0, 1000)).toEqual({ minY: 50, maxY: 50 });
+      expect(series.dataBounds()?.yMin).toBe(50);
+    });
+
+    it("replace({ y }) keeps X, adopts the new array, and reports its extent", () => {
+      const { dataset, series } = makeSeries(x, ramp());
+      dataset.rangeMinMaxY(0, 1000);
+
+      const next = Float32Array.from({ length: 1000 }, (_, i) => -i - 1);
+      series.replace({ y: next });
+
+      expect(dataset.getX(999)).toBe(999);
+      expect(dataset.getY(10)).toBe(-11);
+      expect(dataset.rangeMinMaxY(0, 1000)).toEqual({ minY: -1000, maxY: -1 });
+    });
+
+    it("replace({ x, y }) handles a different length", () => {
+      const { dataset, series } = makeSeries(x, ramp());
+      dataset.rangeMinMaxY(0, 1000);
+
+      series.replace({ x: new Float64Array([10, 20, 30]), y: new Float32Array([5, 1, 9]) });
+
+      expect(dataset.length).toBe(3);
+      expect(dataset.range).toEqual({ start: 10, end: 30 });
+      expect(dataset.rangeMinMaxY(0, 3)).toEqual({ minY: 1, maxY: 9 });
+      expect(dataset.rangeMinMaxY(0, 1000)).toEqual({ minY: 1, maxY: 9 });
+    });
+
+    it("replacing with the same array and length behaves like markDirty", () => {
+      const y = ramp();
+      const { dataset, series } = makeSeries(x, y);
+      dataset.rangeMinMaxY(0, 1000);
+
+      y[500] = 1000;
+      series.replace({ y });
+
+      expect(dataset.rangeMinMaxY(0, 1000)).toEqual({ minY: 0, maxY: 1000 });
+    });
+  });
 });

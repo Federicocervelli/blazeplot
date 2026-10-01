@@ -71,6 +71,25 @@ Use `updateAt(index, ...)` for corrections to existing samples:
 series.updateAt(42, { y: correctedValue });
 ```
 
+## Replacing a whole signal
+
+For spectra, waveforms, or any chart that redraws all of its points each frame, keep one series and swap its data instead of removing and re-adding the line. The series keeps its color, legend entry, and hover state.
+
+```ts
+import { Chart, StaticDataset } from "blazeplot";
+
+const chart = new Chart(element);
+const spectrum = chart.addLine({ dataset: new StaticDataset(frequencies, magnitudes), name: "spectrum" }, { lineWidth: 2 });
+chart.setViewport({ xMin: frequencies[0]!, xMax: frequencies[frequencies.length - 1]!, yMin: -120, yMax: 0 });
+chart.start();
+
+function onFrame(next: Float32Array) {
+  spectrum.replace({ y: next }); // keeps the current X array; pass { x, y } to change both
+}
+```
+
+`replace` adopts the arrays you pass without copying them, so give it a fresh array per frame or stop writing to the old one. If you prefer to reuse one buffer, overwrite it and call `series.markDirty()` instead. Both rebuild the dense min/max index lazily (about 1 ms per frame at one million points) and request a redraw. `ServerSampledDataset` supports the same `series.replace(...)` call for pre-reduced data.
+
 ## OHLC and candlesticks
 
 Live candle feeds often append a new candle, then update it until the interval closes.
