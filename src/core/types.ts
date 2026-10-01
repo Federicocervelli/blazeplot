@@ -74,6 +74,8 @@ export interface Dataset {
   isGap?(index: number): boolean;
   lowerBoundX(x: number): number;
   upperBoundX(x: number): number;
+  /** Drop cached summaries; called by `series.markDirty()` after the data was mutated in place. */
+  invalidate?(): void;
 }
 
 /** Data-domain X interval represented by one dataset sample. */

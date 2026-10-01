@@ -17,7 +17,7 @@ const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url),
 const changelogPath = `changelogs/v${pkg.version}.md`;
 
 if (!existsSync(changelogPath)) {
-  throw new Error(`Release changelog not found: ${changelogPath}. Run bun run version:patch/minor/major first.`);
+  throw new Error(`Release changelog not found: ${changelogPath}. Run bun run release <patch|minor|major> first.`);
 }
 
 let changelog = readFileSync(changelogPath, "utf8");

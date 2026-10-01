@@ -242,7 +242,7 @@ for (const chart of linked.charts) chart.start();
 
 :::chart financial Candlesticks, volume, crosshair, price line, and markers
 
-OHLC bounds use high/low values, while generic `getY()` returns close. For live OHLC streams, append through the returned series with `series.append({ x, open, high, low, close })`, append row batches like `series.append([{ x, open, high, low, close }])`, update a candle with `series.updateAt(index, { open, high, low, close })`, or update the active candle with `series.updateLast({ open, high, low, close })`; direct `dataset.push(...)` / `dataset.updateLast(...)` calls need a follow-up `series.markDirty()`. See [Data semantics](./data-semantics.md#ohlc-datasets).
+OHLC bounds use high/low values, while generic `getY()` returns close. For live OHLC streams, append through the returned series with `series.append({ x, open, high, low, close })`, append row batches like `series.append([{ x, open, high, low, close }])`, update a candle with `series.updateAt(index, { open, high, low, close })`, or update the active candle with `series.updateLast({ open, high, low, close })`; direct `dataset.push(...)` / `dataset.updateAt(...)` calls need a follow-up `series.markDirty()`. See [Data semantics](./data-semantics.md#ohlc-datasets).
 
 ## Linked charts
 
