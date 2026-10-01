@@ -1,6 +1,10 @@
 import { describe, it, expect } from "bun:test";
 import { RingBuffer } from "../../src/core/RingBuffer.ts";
 
+function at(buf: RingBuffer, index: number): { x: number; y: number } | null {
+  return index >= 0 && index < buf.length ? { x: buf.getX(index), y: buf.getY(index) } : null;
+}
+
 describe("RingBuffer", () => {
   it("starts empty", () => {
     const buf = new RingBuffer(10);
@@ -13,16 +17,16 @@ describe("RingBuffer", () => {
     buf.push(1, 10);
     buf.push(2, 20);
     expect(buf.length).toBe(2);
-    expect(buf.get(0)).toEqual({ x: 1, y: 10 });
-    expect(buf.get(1)).toEqual({ x: 2, y: 20 });
+    expect(at(buf, 0)).toEqual({ x: 1, y: 10 });
+    expect(at(buf, 1)).toEqual({ x: 2, y: 20 });
   });
 
   it("returns null for out-of-range index", () => {
     const buf = new RingBuffer(5);
     buf.push(1, 10);
-    expect(buf.get(-1)).toBeNull();
-    expect(buf.get(1)).toBeNull();
-    expect(buf.get(100)).toBeNull();
+    expect(at(buf, -1)).toBeNull();
+    expect(at(buf, 1)).toBeNull();
+    expect(at(buf, 100)).toBeNull();
   });
 
   it("wraps around at capacity by default", () => {
@@ -32,9 +36,9 @@ describe("RingBuffer", () => {
     buf.push(3, 30);
     buf.push(4, 40);
     expect(buf.length).toBe(3);
-    expect(buf.get(0)).toEqual({ x: 2, y: 20 });
-    expect(buf.get(1)).toEqual({ x: 3, y: 30 });
-    expect(buf.get(2)).toEqual({ x: 4, y: 40 });
+    expect(at(buf, 0)).toEqual({ x: 2, y: 20 });
+    expect(at(buf, 1)).toEqual({ x: 3, y: 30 });
+    expect(at(buf, 2)).toEqual({ x: 4, y: 40 });
   });
 
   it("drops new samples when overflow is drop-new", () => {
@@ -43,9 +47,9 @@ describe("RingBuffer", () => {
     buf.push(5, 50);
 
     expect(buf.length).toBe(3);
-    expect(buf.get(0)).toEqual({ x: 1, y: 10 });
-    expect(buf.get(1)).toEqual({ x: 2, y: 20 });
-    expect(buf.get(2)).toEqual({ x: 3, y: 30 });
+    expect(at(buf, 0)).toEqual({ x: 1, y: 10 });
+    expect(at(buf, 1)).toEqual({ x: 2, y: 20 });
+    expect(at(buf, 2)).toEqual({ x: 3, y: 30 });
   });
 
   it("throws atomically when overflow is error", () => {
@@ -54,16 +58,16 @@ describe("RingBuffer", () => {
 
     expect(() => buf.append([3, 4], [30, 40])).toThrow(RangeError);
     expect(buf.length).toBe(2);
-    expect(buf.get(0)).toEqual({ x: 1, y: 10 });
-    expect(buf.get(1)).toEqual({ x: 2, y: 20 });
+    expect(at(buf, 0)).toEqual({ x: 1, y: 10 });
+    expect(at(buf, 1)).toEqual({ x: 2, y: 20 });
   });
 
   it("handles multiple wraps", () => {
     const buf = new RingBuffer(2);
     for (let i = 0; i < 10; i++) buf.push(i, i * 10);
     expect(buf.length).toBe(2);
-    expect(buf.get(0)).toEqual({ x: 8, y: 80 });
-    expect(buf.get(1)).toEqual({ x: 9, y: 90 });
+    expect(at(buf, 0)).toEqual({ x: 8, y: 80 });
+    expect(at(buf, 1)).toEqual({ x: 9, y: 90 });
   });
 
   it("reports correct range", () => {
@@ -89,10 +93,10 @@ describe("RingBuffer", () => {
     const buf = new RingBuffer(1);
     buf.push(42, 100);
     expect(buf.length).toBe(1);
-    expect(buf.get(0)).toEqual({ x: 42, y: 100 });
+    expect(at(buf, 0)).toEqual({ x: 42, y: 100 });
     buf.push(99, 200);
     expect(buf.length).toBe(1);
-    expect(buf.get(0)).toEqual({ x: 99, y: 200 });
+    expect(at(buf, 0)).toEqual({ x: 99, y: 200 });
   });
 
   it("rejects invalid capacity", () => {
@@ -104,8 +108,8 @@ describe("RingBuffer", () => {
   it("searches logical x values after wrapping", () => {
     const buf = new RingBuffer(4);
     for (let i = 0; i < 6; i++) buf.push(i, i * 10);
-    expect(buf.get(0)).toEqual({ x: 2, y: 20 });
-    expect(buf.get(3)).toEqual({ x: 5, y: 50 });
+    expect(at(buf, 0)).toEqual({ x: 2, y: 20 });
+    expect(at(buf, 3)).toEqual({ x: 5, y: 50 });
     expect(buf.lowerBoundX(3.5)).toBe(2);
     expect(buf.upperBoundX(4)).toBe(3);
   });
@@ -135,5 +139,40 @@ describe("RingBuffer", () => {
     expect(Array.from({ length: buf.length }, (_, i) => buf.getY(i))).toEqual([-5, 7, 4, 12]);
     expect(buf.rangeMinMaxY(0, 4)).toEqual({ minY: -5, maxY: 12 });
     expect(buf.rangeMinMaxY(1, 3)).toEqual({ minY: 4, maxY: 7 });
+  });
+
+  it("answers range min/max like a brute-force scan across wraps, updates, and batch appends", () => {
+    const buf = new RingBuffer(150);
+    let x = 0;
+    let state = 3;
+    const next = (): number => {
+      state = (state * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return Math.round((state / 2_147_483_648 - 0.5) * 2000) / 4;
+    };
+    const check = (): void => {
+      for (let start = 0; start < buf.length; start += 7) {
+        for (let end = start + 1; end <= buf.length; end += 11) {
+          let minY = Infinity;
+          let maxY = -Infinity;
+          for (let i = start; i < end; i++) {
+            const y = buf.getY(i);
+            if (!Number.isFinite(y)) continue;
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+          }
+          expect(buf.rangeMinMaxY(start, end)).toEqual(minY <= maxY ? { minY, maxY } : null);
+        }
+      }
+    };
+
+    for (let i = 0; i < 90; i++) buf.push(x++, next());
+    check();
+    buf.append(Array.from({ length: 140 }, () => x++), Array.from({ length: 140 }, (_, i) => i % 13 === 0 ? NaN : next()));
+    check();
+    buf.updateY(10, 10_000);
+    buf.update(140, buf.getX(140), -10_000);
+    check();
+    for (let i = 0; i < 400; i++) buf.push(x++, next());
+    check();
   });
 });

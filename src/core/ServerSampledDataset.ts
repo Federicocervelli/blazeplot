@@ -1,175 +1,165 @@
-import type { Dataset, MinMaxSegmentCopyDataset, MinMaxSegmentLayout, RangeMinMaxDataset, SampleCopyLayout, TimeRange, Viewport } from "./types.js";
-
-function stableBucketWidth(length: number, range: TimeRange | null, viewport: Viewport, maxBuckets: number): number {
-  const budget = Math.max(1, maxBuckets);
-  const xSpan = viewport.xMax - viewport.xMin;
-  if (!range || length <= 1 || !(xSpan > 0)) return 1;
-  const dataSpan = range.end - range.start;
-  if (!(dataSpan > 0)) return Math.max(1, Math.ceil(length / budget));
-  const estimatedVisibleSamples = Math.max(1, (xSpan / dataSpan) * (length - 1) + 1);
-  return Math.max(1, Math.ceil(estimatedVisibleSamples / budget));
-}
+import type { MinMaxY } from "./MinMaxTree.js";
+import { lowerBound, upperBound } from "./search.js";
+import type { Dataset, MinMaxSegmentCopyDataset, RangeMinMaxDataset, SampleCopyLayout, TimeRange, Viewport, XRange, XRangeDataset } from "./types.js";
 
 /** Server-provided point samples. */
 export interface ServerSampledPoints {
+  readonly kind: "points";
   readonly x: ArrayLike<number>;
   readonly y: ArrayLike<number>;
 }
 
-/** Server-provided min/max buckets. */
+/** Server-provided min/max buckets, each covering `[xStart, xEnd]`. */
 export interface ServerSampledBuckets {
+  readonly kind: "minmax";
   readonly xStart: ArrayLike<number>;
   readonly xEnd: ArrayLike<number>;
   readonly minY: ArrayLike<number>;
   readonly maxY: ArrayLike<number>;
 }
 
-/** Data accepted by `ServerSampledDataset.replace`. */
-export type ServerSampledData =
-  | ({ readonly kind: "points" } & ServerSampledPoints)
-  | ({ readonly kind: "minmax" } & ServerSampledBuckets);
+/** Data accepted by `ServerSampledDataset` and `series.replace(...)`. */
+export type ServerSampledData = ServerSampledPoints | ServerSampledBuckets;
 
-/** Current server-sampled payload shape. */
-export type ServerSampledDatasetKind = "points" | "minmax";
+function copyFloat64(values: ArrayLike<number>, length: number): Float64Array {
+  const out = new Float64Array(length);
+  for (let i = 0; i < length; i++) out[i] = values[i] ?? NaN;
+  return out;
+}
+
+function copyFloat32(values: ArrayLike<number>, length: number): Float32Array {
+  const out = new Float32Array(length);
+  for (let i = 0; i < length; i++) out[i] = values[i] ?? NaN;
+  return out;
+}
 
 /**
  * Mutable dataset for viewport samples that were already reduced by a server.
  * Use point data with `downsample: "none"`, or min/max buckets with
  * `downsample: "server"` so BlazePlot renders the supplied buckets directly
- * instead of applying another client-side sampler.
+ * instead of applying another client-side sampler. Swap in fresh data after
+ * each fetch with `series.replace(data)`.
  */
-export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMaxSegmentCopyDataset {
+export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMaxSegmentCopyDataset, XRangeDataset {
   readonly rangeMinMaxExcludesGaps = true;
-  private kind: ServerSampledDatasetKind = "points";
-  private x = new Float64Array(0);
-  private y = new Float32Array(0);
-  private xStart = new Float64Array(0);
-  private xEnd = new Float64Array(0);
-  private minY = new Float32Array(0);
-  private maxY = new Float32Array(0);
+  private _kind: ServerSampledData["kind"] = "points";
+  /** Point X values, or bucket centers. */
+  private x: Float64Array = new Float64Array(0);
+  /** Point Y values (empty for buckets). */
+  private y: Float32Array = new Float32Array(0);
+  private xStart: Float64Array = new Float64Array(0);
+  private xEnd: Float64Array = new Float64Array(0);
+  private minY: Float32Array = new Float32Array(0);
+  private maxY: Float32Array = new Float32Array(0);
 
-  /** Create a dataset from server-sampled points or buckets. */
+  /** Create a dataset, optionally seeded with server-sampled points or buckets. */
   constructor(data?: ServerSampledData) {
     if (data) this.replace(data);
   }
 
-  /** Current sample representation stored by the dataset. */
-  get sampleKind(): ServerSampledDatasetKind {
-    return this.kind;
+  /** Whether the dataset currently holds `"points"` or `"minmax"` buckets. */
+  get kind(): ServerSampledData["kind"] {
+    return this._kind;
   }
 
   /** Number of server-sampled points or buckets. */
   get length(): number {
-    return this.kind === "points" ? this.x.length : this.xStart.length;
+    return this.x.length;
   }
 
   /** X range covered by samples, or `null` when empty. */
   get range(): TimeRange | null {
-    if (this.length === 0) return null;
-    return this.kind === "points"
-      ? { start: this.x[0]!, end: this.x[this.x.length - 1]! }
-      : { start: this.xStart[0]!, end: this.xEnd[this.xEnd.length - 1]! };
+    const length = this.length;
+    if (length === 0) return null;
+    return this._kind === "points"
+      ? { start: this.x[0]!, end: this.x[length - 1]! }
+      : { start: this.xStart[0]!, end: this.xEnd[length - 1]! };
   }
 
-  /** Replace the dataset with point or bucket data. */
+  /** Replace all samples with point or bucket data. */
   replace(data: ServerSampledData): void {
-    if (data.kind === "points") this.replacePoints(data);
-    else this.replaceBuckets(data);
-  }
+    this._kind = data.kind;
+    if (data.kind === "points") {
+      const length = Math.min(data.x.length, data.y.length);
+      this.x = copyFloat64(data.x, length);
+      this.y = copyFloat32(data.y, length);
+      this.xStart = this.xEnd = new Float64Array(0);
+      this.minY = this.maxY = new Float32Array(0);
+      return;
+    }
 
-  /** Replace the dataset with sampled point data. */
-  replacePoints(data: ServerSampledPoints): void {
-    const length = Math.min(data.x.length, data.y.length);
-    this.kind = "points";
-    this.x = Float64Array.from(sliceArrayLike(data.x, length));
-    this.y = Float32Array.from(sliceArrayLike(data.y, length));
-    this.xStart = new Float64Array(0);
-    this.xEnd = new Float64Array(0);
-    this.minY = new Float32Array(0);
-    this.maxY = new Float32Array(0);
-  }
-
-  /** Replace the dataset with sampled min/max buckets. */
-  replaceBuckets(data: ServerSampledBuckets): void {
     const length = Math.min(data.xStart.length, data.xEnd.length, data.minY.length, data.maxY.length);
-    this.kind = "minmax";
-    this.xStart = Float64Array.from(sliceArrayLike(data.xStart, length));
-    this.xEnd = Float64Array.from(sliceArrayLike(data.xEnd, length));
-    this.minY = Float32Array.from(sliceArrayLike(data.minY, length));
-    this.maxY = Float32Array.from(sliceArrayLike(data.maxY, length));
-    this.x = new Float64Array(0);
+    this.xStart = copyFloat64(data.xStart, length);
+    this.xEnd = copyFloat64(data.xEnd, length);
+    this.minY = copyFloat32(data.minY, length);
+    this.maxY = copyFloat32(data.maxY, length);
+    this.x = new Float64Array(length);
+    for (let i = 0; i < length; i++) this.x[i] = (this.xStart[i]! + this.xEnd[i]!) * 0.5;
     this.y = new Float32Array(0);
   }
 
-  /** Remove all server-sampled data. */
+  /** Remove all samples. */
   clear(): void {
-    this.replacePoints({ x: [], y: [] });
+    this.replace({ kind: "points", x: [], y: [] });
   }
 
-  /** Return the X value at a logical index. */
+  /** Return the X value (bucket center for min/max data) at a logical index. */
   getX(index: number): number {
     this.assertIndex(index);
-    return this.kind === "points" ? this.x[index]! : (this.xStart[index]! + this.xEnd[index]!) * 0.5;
+    return this.x[index]!;
   }
 
-  /** Return the Y value, or bucket midpoint for min/max data. */
+  /** Return the Y value, or the bucket midpoint for min/max data. */
   getY(index: number): number {
     this.assertIndex(index);
-    return this.kind === "points" ? this.y[index]! : (this.minY[index]! + this.maxY[index]!) * 0.5;
+    return this._kind === "points" ? this.y[index]! : (this.minY[index]! + this.maxY[index]!) * 0.5;
+  }
+
+  /** Return the X interval a min/max bucket covers; `null` for point data. */
+  getXRange(index: number): XRange | null {
+    if (this._kind === "points" || index < 0 || index >= this.length) return null;
+    return { xStart: this.xStart[index]!, xEnd: this.xEnd[index]! };
   }
 
   /** Return whether the sample should be rendered as a gap. */
   isGap(index: number): boolean {
-    if (this.kind === "points") return !Number.isFinite(this.getY(index));
     this.assertIndex(index);
-    return !Number.isFinite(this.minY[index]!) || !Number.isFinite(this.maxY[index]!);
+    return this._kind === "points"
+      ? !Number.isFinite(this.y[index]!)
+      : !Number.isFinite(this.minY[index]!) || !Number.isFinite(this.maxY[index]!);
   }
 
-  /** Return the first logical index whose X value is at least `value`. */
+  /** Return the first index whose sample (or bucket end) reaches `value`. */
   lowerBoundX(value: number): number {
-    const values = this.kind === "points" ? this.x : this.xEnd;
-    let lo = 0;
-    let hi = values.length;
-    while (lo < hi) {
-      const mid = lo + ((hi - lo) >> 1);
-      if (values[mid]! < value) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
+    const edges = this._kind === "points" ? this.x : this.xEnd;
+    return lowerBound(edges.length, (index) => edges[index]!, value);
   }
 
-  /** Return the first logical index whose X value is greater than `value`. */
+  /** Return the first index whose sample (or bucket start) is past `value`. */
   upperBoundX(value: number): number {
-    const values = this.kind === "points" ? this.x : this.xStart;
-    let lo = 0;
-    let hi = values.length;
-    while (lo < hi) {
-      const mid = lo + ((hi - lo) >> 1);
-      if (values[mid]! <= value) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
+    const edges = this._kind === "points" ? this.x : this.xStart;
+    return upperBound(edges.length, (index) => edges[index]!, value);
   }
 
   /** Return min/max Y values for a logical index range. */
-  rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
+  rangeMinMaxY(start: number, end: number): MinMaxY | null {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
-    if (to <= from) return null;
-
+    const low = this._kind === "points" ? this.y : this.minY;
+    const high = this._kind === "points" ? this.y : this.maxY;
     let minY = Infinity;
     let maxY = -Infinity;
     for (let i = from; i < to; i++) {
-      const lo = this.kind === "points" ? this.y[i]! : this.minY[i]!;
-      const hi = this.kind === "points" ? lo : this.maxY[i]!;
+      const lo = low[i]!;
+      const hi = high[i]!;
       if (!Number.isFinite(lo) || !Number.isFinite(hi)) continue;
-      minY = Math.min(minY, lo, hi);
-      maxY = Math.max(maxY, lo, hi);
+      if (lo < minY) minY = lo;
+      if (hi > maxY) maxY = hi;
     }
-    return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
+    return minY <= maxY ? { minY, maxY } : null;
   }
 
-  /** Copy sampled points for a logical range into a render buffer. */
+  /** Copy sampled points for a logical range into a render buffer, striding when the range exceeds `maxPoints`. */
   copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number): number {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
@@ -180,34 +170,32 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
 
     let written = 0;
     for (let index = from; index < to && written < count; index += stride) {
-      const x = this.getX(index) - xOrigin;
-      const y = this.getY(index);
       const gap = this.isGap(index);
+      const x = gap ? NaN : this.x[index]! - xOrigin;
+      const y = gap ? NaN : this.getY(index);
       const offset = written * floats;
       if (layout === "points") {
-        target[offset] = gap ? NaN : x;
-        target[offset + 1] = gap ? NaN : y;
+        target[offset] = x;
+        target[offset + 1] = y;
       } else {
-        target[offset] = gap ? NaN : x;
+        target[offset] = x;
         target[offset + 1] = gap ? NaN : baseline;
-        target[offset + 2] = gap ? NaN : x;
-        target[offset + 3] = gap ? NaN : y;
+        target[offset + 2] = x;
+        target[offset + 3] = y;
       }
       written++;
     }
     return written;
   }
 
-  /** Copy sampled min/max buckets for a viewport into a render buffer. */
-  copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, layout: MinMaxSegmentLayout, xOrigin: number): number {
+  /** Copy `[x, minY, maxY]` buckets for a viewport, merging neighbors when more than `maxSegments` are visible. */
+  copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number): number {
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);
-    const visible = Math.max(0, end - start);
-    const count = Math.min(maxSegments, visible);
-    const floats = layout === "line-list" ? 4 : 3;
-    if (count <= 0 || target.length < count * floats) return 0;
+    const count = Math.min(maxSegments, Math.max(0, end - start));
+    if (count <= 0 || target.length < count * 3) return 0;
 
-    const bucketWidth = stableBucketWidth(this.length, this.range, viewport, maxSegments);
+    const bucketWidth = this.stableBucketWidth(viewport, maxSegments);
     const alignedStart = Math.floor(start / bucketWidth) * bucketWidth;
 
     let written = 0;
@@ -218,37 +206,34 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
 
       const range = this.rangeMinMaxY(segmentStart, segmentEnd);
       if (!range) continue;
-      const x = this.bucketX(segmentStart, segmentEnd) - xOrigin;
-      if (layout === "line-list") {
-        const offset = written * 4;
-        target[offset] = x;
-        target[offset + 1] = range.minY;
-        target[offset + 2] = x;
-        target[offset + 3] = range.maxY;
-      } else {
-        const offset = written * 3;
-        target[offset] = x;
-        target[offset + 1] = range.minY;
-        target[offset + 2] = range.maxY;
-      }
+      const offset = written * 3;
+      target[offset] = this.bucketX(segmentStart, segmentEnd) - xOrigin;
+      target[offset + 1] = range.minY;
+      target[offset + 2] = range.maxY;
       written++;
     }
 
     return written;
   }
 
+  /** Samples per output bucket, anchored to data indexes so panning does not reshuffle buckets. */
+  private stableBucketWidth(viewport: Viewport, maxBuckets: number): number {
+    const budget = Math.max(1, maxBuckets);
+    const xSpan = viewport.xMax - viewport.xMin;
+    const range = this.range;
+    if (!range || this.length <= 1 || !(xSpan > 0)) return 1;
+    const dataSpan = range.end - range.start;
+    if (!(dataSpan > 0)) return Math.max(1, Math.ceil(this.length / budget));
+    const estimatedVisibleSamples = Math.max(1, (xSpan / dataSpan) * (this.length - 1) + 1);
+    return Math.max(1, Math.ceil(estimatedVisibleSamples / budget));
+  }
+
   private bucketX(start: number, end: number): number {
-    if (this.kind === "points") return this.getX(start + ((end - start) >> 1));
+    if (this._kind === "points") return this.x[start + ((end - start) >> 1)]!;
     return (this.xStart[start]! + this.xEnd[Math.max(start, end - 1)]!) * 0.5;
   }
 
   private assertIndex(index: number): void {
     if (index < 0 || index >= this.length) throw new RangeError(`ServerSampledDataset index out of range: ${index}`);
   }
-}
-
-function sliceArrayLike(values: ArrayLike<number>, length: number): number[] {
-  const out = new Array<number>(length);
-  for (let i = 0; i < length; i++) out[i] = values[i] ?? NaN;
-  return out;
 }

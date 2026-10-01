@@ -120,7 +120,7 @@ export default class Preview extends PreviewResources {
       }, delay);
     };
 
-    const onLive = (): void => chart.resumeLatestXFollow();
+    const onLive = (): void => chart.setXFollowPaused(false);
     liveButton?.addEventListener("click", onLive);
     if (liveButton) this.previewDisposers.push(() => liveButton.removeEventListener("click", onLive));
     this.previewDisposers.push(() => window.clearTimeout(timeoutId));

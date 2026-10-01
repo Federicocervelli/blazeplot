@@ -1,4 +1,4 @@
-import type { Dataset, LODView, Viewport } from "./types.js";
+import type { Dataset } from "./types.js";
 
 const MAX_LEVELS = 16;
 
@@ -225,47 +225,5 @@ export class MinMaxPyramid {
     }
 
     return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
-  }
-
-  /** Select a pyramid level appropriate for the requested pixel width. */
-  query(_viewport: Viewport, pixelWidth: number, xRange: { start: number; length: number; levelLength?: number }): LODView {
-    if (pixelWidth <= 0 || xRange.length <= 0) {
-      return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel: 0 };
-    }
-
-    const visibleSamples = xRange.levelLength ?? xRange.length;
-    const samplesPerPixel = Math.max(1, visibleSamples / pixelWidth);
-    const level = Math.min(
-      Math.max(0, Math.ceil(Math.log2(samplesPerPixel)) - 1),
-      this.levels.length - 1,
-    );
-
-    const levelData = this.levels[level];
-    const levelLen = this.levelLengths[level];
-    const sampleWidth = this.levelSampleWidths[level];
-    if (!levelData || levelLen === undefined || sampleWidth === undefined || levelLen === 0 || sampleWidth === 0) {
-      return { buckets: new Float32Array(0), bucketCount: 0, level: 0, samplesPerPixel };
-    }
-
-    const queryStart = Math.max(0, xRange.start);
-    const queryEnd = queryStart + xRange.length;
-    const bucketStart = Math.max(0, Math.floor(queryStart / sampleWidth));
-    const bucketEnd = Math.min(levelLen, Math.ceil(queryEnd / sampleWidth));
-    const count = bucketEnd - bucketStart;
-
-    if (count <= 0) {
-      return { buckets: new Float32Array(0), bucketCount: 0, level, samplesPerPixel };
-    }
-
-    const result = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) {
-      const j = (bucketStart + i) * 2;
-      const minY = levelData[j]!;
-      const maxY = levelData[j + 1]!;
-      result[i * 2] = Number.isFinite(minY) ? minY : NaN;
-      result[i * 2 + 1] = Number.isFinite(maxY) ? maxY : NaN;
-    }
-
-    return { buckets: result, bucketCount: count, level, samplesPerPixel };
   }
 }

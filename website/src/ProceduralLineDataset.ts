@@ -1,5 +1,5 @@
 import { PREVIEW_START_TIME, PREVIEW_X_STEP_MS, TRACE_PERIOD } from "./preview-data-config.ts";
-import type { AcceleratedDataset, AppendableDataset, MinMaxSegmentLayout, SampleCopyLayout, TimeRange, Viewport, YAppendableDataset } from "@/index.ts";
+import type { AcceleratedDataset, AppendableDataset, SampleCopyLayout, TimeRange, Viewport, YAppendableDataset } from "@/index.ts";
 
 const BASELINE = 0.78;
 const AMPLITUDE = 0.25;
@@ -10,7 +10,6 @@ function positiveModulo(value: number, modulo: number): number {
 }
 
 type SampleLayout = SampleCopyLayout;
-type MinMaxLayout = MinMaxSegmentLayout;
 
 export interface ProceduralLineDatasetOptions {
   readonly xStart?: number;
@@ -177,11 +176,9 @@ export class ProceduralLineDataset implements AppendableDataset, YAppendableData
     viewport: Viewport,
     target: Float32Array,
     maxSegments: number,
-    layout: MinMaxLayout,
     xOrigin: number,
   ): number {
-    const floatsPerSegment = layout === "line-list" ? 4 : 3;
-    if (maxSegments <= 0 || target.length < maxSegments * floatsPerSegment) return 0;
+    if (maxSegments <= 0 || target.length < maxSegments * 3) return 0;
 
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);
@@ -203,18 +200,10 @@ export class ProceduralLineDataset implements AppendableDataset, YAppendableData
       const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
       const x = this.toTime(firstOrdinal + representative) - xOrigin;
 
-      if (layout === "line-list") {
-        const offset = written * 4;
-        target[offset] = x;
-        target[offset + 1] = range.minY;
-        target[offset + 2] = x;
-        target[offset + 3] = range.maxY;
-      } else {
-        const offset = written * 3;
-        target[offset] = x;
-        target[offset + 1] = range.minY;
-        target[offset + 2] = range.maxY;
-      }
+      const offset = written * 3;
+      target[offset] = x;
+      target[offset + 1] = range.minY;
+      target[offset + 2] = range.maxY;
       written++;
     }
 

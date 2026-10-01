@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { StaticDataset } from "../../src/core/StaticDataset.ts";
-import { histogram, histogramDataset } from "../../src/core/Histogram.ts";
+import { HistogramDataset, histogram } from "../../src/core/Histogram.ts";
 
 function counts(result: ReturnType<typeof histogram>): number[] {
   return result.bins.map((bin) => bin.count);
@@ -126,7 +126,7 @@ describe("histogram", () => {
   it("accepts typed arrays and can produce a StaticDataset", () => {
     const values = new Float64Array([0, 0.2, 1.5]);
     const result = histogram(values, { binSize: 1, min: 0, max: 2 });
-    const dataset = histogramDataset(values, { binSize: 1, min: 0, max: 2 });
+    const dataset = new HistogramDataset(histogram(values, { binSize: 1, min: 0, max: 2 }));
 
     expect(result.x).toBeInstanceOf(Float64Array);
     expect(result.y).toBeInstanceOf(Float32Array);

@@ -145,11 +145,6 @@ export class OhlcRingBuffer implements OhlcDataset {
     if (this._length < this.capacity) this._length++;
   }
 
-  /** Replace the latest candle values. */
-  updateLast(open: number, high: number, low: number, close: number): boolean {
-    return this.updateAt(this._length - 1, open, high, low, close);
-  }
-
   /** Replace candle values at a logical index. */
   updateAt(index: number, open: number, high: number, low: number, close: number): boolean {
     if (!this.isValidIndex(index)) return false;

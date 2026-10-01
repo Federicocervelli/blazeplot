@@ -4,9 +4,8 @@ BlazePlot releases are driven by pull requests into `main`. Tags are outputs of 
 
 ## Branches
 
-- `development`: integration branch for feature and fix work.
-- Feature branches: branch from `development`, commit one focused change, then merge back to `development`.
-- `main`: protected release branch. A merge to `main` with an unpublished `package.json` version publishes the package.
+- `development`: default and integration branch. Feature and fix pull requests (including from forks) target it.
+- `main`: protected release branch. Merging a release PR from `development` with a merge commit publishes the unpublished `package.json` version, then the workflow fast-forwards `development` to `main`.
 
 ## Branch previews
 
@@ -42,24 +41,21 @@ bun run version:patch      # or version:minor / version:major
 bun run release:benchmarks
 bun run docs:readme        # rebuild dist, regenerate docs/api-reference.md, and refresh README
 bun run ci
-bun run pages:build
-bun pm pack --dry-run
 ```
 
-Open a PR from `development` to `main` after the candidate is ready. The PR's `validate` check must pass before merge.
+Open a PR from `development` to `main` after the candidate is ready. The PR's `validate` check must pass, then merge it with a merge commit.
 
 ## What the release workflow does
 
 On pushes to `main` and manual dispatches, `.github/workflows/release.yml`:
 
-1. Installs with `bun install --frozen-lockfile`.
-2. Runs `bun run ci`.
-3. Reads `package.json` and computes `vX.Y.Z`.
-4. If that tag already exists, skips publish/tag/release creation.
-5. If the tag is new, verifies the npm version is unpublished.
-6. Runs `bun run release:benchmarks -- --if-missing` so the release notes include benchmark tables.
-7. Packs and publishes to npm with provenance.
-8. Creates the `vX.Y.Z` tag and GitHub Release.
+1. Runs the full CI workflow.
+2. Reads `package.json` and computes `vX.Y.Z`; if that tag already exists, stops.
+3. Verifies the npm version is unpublished.
+4. Runs `bun run release:benchmarks -- --if-missing` so the release notes include benchmark tables.
+5. Packs and publishes to npm with provenance via trusted publishing.
+6. Creates the `vX.Y.Z` tag and GitHub Release.
+7. Fast-forwards `development` to `main`.
 
 ## Benchmark and bundle-size commands
 

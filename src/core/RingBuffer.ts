@@ -1,12 +1,12 @@
+import { MinMaxTree } from "./MinMaxTree.js";
+import type { MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
-import type { TimeRange } from "./types.js";
-
-/** Fixed-capacity buffer behavior when new samples exceed capacity. */
-export type RingBufferOverflow = "wrap" | "drop-new" | "error";
+import type { BufferOverflowStrategy, TimeRange } from "./types.js";
 
 /** Options for `RingBuffer`. */
 export interface RingBufferOptions {
-  readonly overflow?: RingBufferOverflow;
+  /** Behavior once the buffer is full. Defaults to `"wrap"` (drop the oldest sample). */
+  readonly overflow?: BufferOverflowStrategy;
 }
 
 /** Fixed-capacity sorted XY buffer for explicit X values. */
@@ -19,10 +19,8 @@ export class RingBuffer {
 
   private readonly xData: Float64Array;
   private readonly yData: Float32Array;
-  private readonly treeBase: number;
-  private readonly minTree: Float32Array;
-  private readonly maxTree: Float32Array;
-  private readonly overflow: RingBufferOverflow;
+  private readonly tree: MinMaxTree;
+  private readonly overflow: BufferOverflowStrategy;
 
   /** Create an explicit-X ring buffer with a fixed sample capacity. */
   constructor(capacity: number, options: RingBufferOptions = {}) {
@@ -34,11 +32,7 @@ export class RingBuffer {
     this.overflow = options.overflow ?? "wrap";
     this.xData = new Float64Array(capacity);
     this.yData = new Float32Array(capacity);
-    this.treeBase = RingBuffer.nextPowerOfTwo(capacity);
-    this.minTree = new Float32Array(this.treeBase * 2);
-    this.maxTree = new Float32Array(this.treeBase * 2);
-    this.minTree.fill(Infinity);
-    this.maxTree.fill(-Infinity);
+    this.tree = new MinMaxTree(this.yData, capacity);
   }
 
   /** Number of retained samples. */
@@ -59,11 +53,16 @@ export class RingBuffer {
       if (this.overflow === "error") throw new RangeError("RingBuffer capacity exceeded.");
     }
 
-    this.xData[this._head] = x;
-    this.yData[this._head] = y;
-    this.setTreeLeaf(this._head, y);
-    this._head = (this._head + 1) % this.capacity;
-    if (this._length < this.capacity) this._length++;
+    const physical = this._head;
+    this.xData[physical] = x;
+    this.yData[physical] = y;
+    this._head = (physical + 1) % this.capacity;
+    if (this._length < this.capacity) {
+      this._length++;
+      this.tree.include(physical, this.yData[physical]!);
+    } else {
+      this.tree.update(physical, physical + 1);
+    }
   }
 
   /** Append matching X and Y arrays. */
@@ -76,28 +75,18 @@ export class RingBuffer {
       if (requested > available && this.overflow === "error") {
         throw new RangeError("RingBuffer capacity exceeded.");
       }
-
-      const n = Math.min(requested, available);
-      if (n <= 0) return;
-      this.appendNoWrap(x, y, 0, n);
+      this.appendChunks(x, y, 0, Math.min(requested, available));
       return;
     }
 
     if (requested >= this.capacity) {
-      const sourceOffset = requested - this.capacity;
       this._head = 0;
-      this._length = this.capacity;
-      this.copyIntoPhysical(0, x, y, sourceOffset, this.capacity);
+      this._length = 0;
+      this.appendChunks(x, y, requested - this.capacity, this.capacity);
       return;
     }
 
-    this.appendNoWrap(x, y, 0, requested);
-  }
-
-  /** Return a sample by logical index, or `null` when out of range. */
-  get(index: number): { x: number; y: number } | null {
-    if (index < 0 || index >= this._length) return null;
-    return { x: this.getX(index), y: this.getY(index) };
+    this.appendChunks(x, y, 0, requested);
   }
 
   /** Replace a sample by logical index. */
@@ -106,7 +95,7 @@ export class RingBuffer {
     const physical = this.logicalToPhysical(index);
     this.xData[physical] = x;
     this.yData[physical] = y;
-    this.setTreeLeaf(physical, y);
+    this.tree.update(physical, physical + 1, this.validEnd());
     return true;
   }
 
@@ -115,7 +104,7 @@ export class RingBuffer {
     if (!this.isValidIndex(index)) return false;
     const physical = this.logicalToPhysical(index);
     this.yData[physical] = y;
-    this.setTreeLeaf(physical, y);
+    this.tree.update(physical, physical + 1, this.validEnd());
     return true;
   }
 
@@ -138,138 +127,50 @@ export class RingBuffer {
 
   /** Return the first logical index whose X value is at least `x`. */
   lowerBoundX(x: number): number {
-    return lowerBound(this._length, (index) => this.getX(index), x);
+    return lowerBound(this._length, (index) => this.xData[this.logicalToPhysical(index)]!, x);
   }
 
   /** Return the first logical index whose X value is greater than `x`. */
   upperBoundX(x: number): number {
-    return upperBound(this._length, (index) => this.getX(index), x);
+    return upperBound(this._length, (index) => this.xData[this.logicalToPhysical(index)]!, x);
   }
 
   /** Return min/max Y values for a logical index range. */
-  rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
+  rangeMinMaxY(start: number, end: number): MinMaxY | null {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this._length, Math.ceil(end));
     if (to <= from) return null;
-
-    const physical = this.logicalToPhysical(from);
-    const count = to - from;
-    if (physical + count <= this.capacity) {
-      return this.queryPhysicalMinMax(physical, physical + count);
-    }
-
-    const first = this.queryPhysicalMinMax(physical, this.capacity);
-    const second = this.queryPhysicalMinMax(0, (physical + count) % this.capacity);
-    if (!first) return second;
-    if (!second) return first;
-    return {
-      minY: Math.min(first.minY, second.minY),
-      maxY: Math.max(first.maxY, second.maxY),
-    };
+    return this.tree.queryRing(this.logicalToPhysical(from), to - from);
   }
 
   /** Remove all retained samples. */
   clear(): void {
     this._length = 0;
     this._head = 0;
-    this.minTree.fill(Infinity);
-    this.maxTree.fill(-Infinity);
+    this.tree.reset();
   }
 
-  private appendNoWrap(x: ArrayLike<number>, y: ArrayLike<number>, sourceOffset: number, count: number): void {
-    let nextSourceOffset = sourceOffset;
+  private appendChunks(x: ArrayLike<number>, y: ArrayLike<number>, sourceOffset: number, count: number): void {
+    let source = sourceOffset;
     let remaining = count;
     while (remaining > 0) {
-      const chunkCount = Math.min(remaining, this.capacity - this._head);
-      this.copyIntoPhysical(this._head, x, y, nextSourceOffset, chunkCount);
-      this._head = (this._head + chunkCount) % this.capacity;
-      this._length = Math.min(this.capacity, this._length + chunkCount);
-      nextSourceOffset += chunkCount;
-      remaining -= chunkCount;
-    }
-  }
-
-  private copyIntoPhysical(
-    physicalStart: number,
-    x: ArrayLike<number>,
-    y: ArrayLike<number>,
-    sourceOffset: number,
-    count: number,
-  ): void {
-    for (let i = 0; i < count; i++) {
-      const physical = physicalStart + i;
-      const value = y[sourceOffset + i]!;
-      this.xData[physical] = x[sourceOffset + i]!;
-      this.yData[physical] = value;
-      const leaf = this.treeBase + physical;
-      this.minTree[leaf] = Number.isFinite(value) ? value : Infinity;
-      this.maxTree[leaf] = Number.isFinite(value) ? value : -Infinity;
-    }
-    this.recomputeTreeRange(physicalStart, physicalStart + count);
-  }
-
-  private setTreeLeaf(physical: number, value: number): void {
-    let index = this.treeBase + physical;
-    this.minTree[index] = Number.isFinite(value) ? value : Infinity;
-    this.maxTree[index] = Number.isFinite(value) ? value : -Infinity;
-    index >>= 1;
-    while (index >= 1) {
-      this.recomputeTreeNode(index);
-      index >>= 1;
-    }
-  }
-
-  private recomputeTreeRange(start: number, end: number): void {
-    let left = (this.treeBase + start) >> 1;
-    let right = (this.treeBase + end - 1) >> 1;
-    while (left >= 1) {
-      for (let index = left; index <= right; index++) {
-        this.recomputeTreeNode(index);
+      const start = this._head;
+      const chunk = Math.min(remaining, this.capacity - start);
+      for (let i = 0; i < chunk; i++) {
+        this.xData[start + i] = x[source + i]!;
+        this.yData[start + i] = y[source + i]!;
       }
-      if (left === 1) break;
-      left >>= 1;
-      right >>= 1;
+      this._head = (start + chunk) % this.capacity;
+      this._length = Math.min(this.capacity, this._length + chunk);
+      this.tree.update(start, start + chunk, this.validEnd());
+      source += chunk;
+      remaining -= chunk;
     }
   }
 
-  private recomputeTreeNode(index: number): void {
-    const left = index << 1;
-    const right = left + 1;
-    const leftMin = this.minTree[left]!;
-    const rightMin = this.minTree[right]!;
-    const leftMax = this.maxTree[left]!;
-    const rightMax = this.maxTree[right]!;
-    this.minTree[index] = leftMin < rightMin ? leftMin : rightMin;
-    this.maxTree[index] = leftMax > rightMax ? leftMax : rightMax;
-  }
-
-  private queryPhysicalMinMax(start: number, end: number): { minY: number; maxY: number } | null {
-    if (end <= start) return null;
-
-    let left = this.treeBase + start;
-    let right = this.treeBase + end;
-    let minY = Infinity;
-    let maxY = -Infinity;
-    while (left < right) {
-      if (left & 1) {
-        const yMin = this.minTree[left]!;
-        const yMax = this.maxTree[left]!;
-        if (yMin < minY) minY = yMin;
-        if (yMax > maxY) maxY = yMax;
-        left++;
-      }
-      if (right & 1) {
-        right--;
-        const yMin = this.minTree[right]!;
-        const yMax = this.maxTree[right]!;
-        if (yMin < minY) minY = yMin;
-        if (yMax > maxY) maxY = yMax;
-      }
-      left >>= 1;
-      right >>= 1;
-    }
-
-    return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;
+  /** Physical samples below this index hold live data; the ring fills from index 0. */
+  private validEnd(): number {
+    return this._length === this.capacity ? this.capacity : this._length;
   }
 
   private logicalToPhysical(index: number): number {
@@ -284,9 +185,5 @@ export class RingBuffer {
     if (!this.isValidIndex(index)) {
       throw new RangeError(`RingBuffer index out of range: ${index}`);
     }
-  }
-
-  private static nextPowerOfTwo(value: number): number {
-    return 2 ** Math.ceil(Math.log2(value));
   }
 }

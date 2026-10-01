@@ -1,11 +1,13 @@
 import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
-import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, formatCompactNumber, pickAtDataX, placeFixedWithinViewport, renderPickItems, rgba } from "./OverlayUtils.js";
+import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSyncRegistry, formatCompactNumber, pickAtDataX, placeFixedWithinViewport, renderPickItems } from "./OverlayUtils.js";
+import { rgbaCss } from "./theme.js";
 
 /** Options for the built-in hover tooltip plugin. */
 export interface TooltipPluginOptions {
   readonly className?: string;
   readonly mode?: ChartPickMode;
   readonly group?: ChartPickGroup;
+  /** Charts whose tooltips share a `syncGroup` show values at the same X together. */
   readonly syncGroup?: string;
   readonly maxDistancePx?: number;
   readonly offsetX?: number;
@@ -42,12 +44,7 @@ function formatXRange(range: NonNullable<ChartPickItem["xRange"]>): string {
   return `${formatCompactNumber(range.xStart)}–${formatCompactNumber(range.xEnd)}`;
 }
 
-interface TooltipPeer {
-  showShared(dataX: number): void;
-  hideShared(): void;
-}
-
-const tooltipGroups = new Map<string, Set<TooltipPeer>>();
+const joinTooltipSyncGroup = createSyncRegistry();
 
 function placeTooltip(container: HTMLElement, state: ChartHoverState, options: TooltipPluginOptions, size: { readonly width: number; readonly height: number }): void {
   placeFixedWithinViewport(container, state.clientX, state.clientY, {
@@ -120,14 +117,14 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
           const item = items[i]!;
           let marker = markers[i];
           if (!marker) {
-            marker = createPickMarker(item);
+            marker = createPickMarker(item, { strokeColor: chart.theme.markerStrokeColor });
             markers[i] = marker;
             markerLayer.appendChild(marker);
           }
           marker.style.display = "block";
           marker.style.left = `${item.plotX}px`;
           marker.style.top = `${item.plotY}px`;
-          marker.style.background = rgba(item.series.style.color);
+          marker.style.background = rgbaCss(item.series.style.color);
         }
         for (let i = items.length; i < markers.length; i++) {
           markers[i]!.style.display = "none";
@@ -173,42 +170,11 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         }));
       };
 
-      let renderingShared = false;
-      const peer: TooltipPeer | null = options.syncGroup ? {
-        showShared(dataX: number): void {
-          renderingShared = true;
-          try {
-            renderSharedAtX(dataX);
-          } finally {
-            renderingShared = false;
-          }
-        },
-        hideShared(): void {
-          renderingShared = true;
-          try {
-            render(null);
-          } finally {
-            renderingShared = false;
-          }
-        },
-      } : null;
-
-      if (peer && options.syncGroup) {
-        const peers = tooltipGroups.get(options.syncGroup) ?? new Set<TooltipPeer>();
-        peers.add(peer);
-        tooltipGroups.set(options.syncGroup, peers);
-      }
-
-      const notifyPeers = (state: ChartHoverState | null): void => {
-        if (!peer || !options.syncGroup || renderingShared) return;
-        const peers = tooltipGroups.get(options.syncGroup);
-        if (!peers) return;
-        for (const other of peers) {
-          if (other === peer) continue;
-          if (state) other.showShared(state.anchorX);
-          else other.hideShared();
-        }
-      };
+      const sync = joinTooltipSyncGroup(options.syncGroup, {
+        showAt: renderSharedAtX,
+        hide: () => render(null),
+      });
+      const notifyPeers = (state: ChartHoverState | null): void => sync.broadcast(state ? state.anchorX : null);
 
       const showAtClientPoint = (clientX: number, clientY: number): void => {
         const state = chart.pick(clientX, clientY, {
@@ -265,11 +231,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         if (hoverRaf !== 0) cancelAnimationFrame(hoverRaf);
         unsubscribeHover();
         unsubscribeTheme();
-        if (peer && options.syncGroup) {
-          const peers = tooltipGroups.get(options.syncGroup);
-          peers?.delete(peer);
-          if (peers?.size === 0) tooltipGroups.delete(options.syncGroup);
-        }
+        sync.leave();
         tooltipResizeObserver?.disconnect();
         markerLayer.remove();
         container.remove();

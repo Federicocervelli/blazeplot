@@ -1,9 +1,4 @@
-/** RGBA color tuple with 0-1 channel values. */
-export type RgbaColor = readonly [number, number, number, number];
-/** CSS color string accepted by theme options. */
-export type CssColor = string;
-/** Color value accepted by chart theme options. */
-export type ThemeColor = RgbaColor | CssColor;
+import type { RgbaColor, ThemeColor } from "../core/types.js";
 
 /** Partial chart theme supplied by callers. */
 export interface ChartTheme {
@@ -26,6 +21,14 @@ export interface ChartTheme {
   readonly subtitleFont?: string;
   readonly axisTitleColor?: string;
   readonly axisTitleFont?: string;
+  /** Box-zoom and selection rectangle fill. */
+  readonly selectionFillColor?: string;
+  /** Box-zoom and selection rectangle border. */
+  readonly selectionStrokeColor?: string;
+  /** Crosshair and ruler line color. */
+  readonly crosshairColor?: string;
+  /** Outline of hover/crosshair point markers. */
+  readonly markerStrokeColor?: string;
 }
 
 /** Fully resolved chart theme with concrete RGBA values. */
@@ -50,6 +53,10 @@ export interface ResolvedChartTheme {
   readonly subtitleFont: string;
   readonly axisTitleColor: string;
   readonly axisTitleFont: string;
+  readonly selectionFillColor: string;
+  readonly selectionStrokeColor: string;
+  readonly crosshairColor: string;
+  readonly markerStrokeColor: string;
 }
 
 const DEFAULT_SERIES_COLORS: readonly RgbaColor[] = [
@@ -83,6 +90,10 @@ export const DEFAULT_CHART_THEME: ResolvedChartTheme = {
   subtitleFont: "12px system-ui, sans-serif",
   axisTitleColor: "#d4d4d4",
   axisTitleFont: "12px system-ui, sans-serif",
+  selectionFillColor: "rgba(59, 130, 246, 0.18)",
+  selectionStrokeColor: "rgba(147, 197, 253, 0.95)",
+  crosshairColor: "rgba(148, 163, 184, 0.55)",
+  markerStrokeColor: "#f8fafc",
 };
 
 /** Merge a partial theme with defaults and resolve CSS colors. */
@@ -98,27 +109,14 @@ export function resolveChartTheme(theme: ChartTheme | undefined, context?: Eleme
     ))
     : DEFAULT_CHART_THEME.seriesColors;
 
+  const overrides = Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined));
   return {
+    ...DEFAULT_CHART_THEME,
+    ...overrides,
     backgroundColor,
     backgroundCssColor: themeColorToCss(theme.backgroundColor, DEFAULT_CHART_THEME.backgroundCssColor),
     gridColor: resolveThemeColor(theme.gridColor, DEFAULT_CHART_THEME.gridColor, context),
-    axisColor: theme.axisColor ?? DEFAULT_CHART_THEME.axisColor,
-    axisFont: theme.axisFont ?? DEFAULT_CHART_THEME.axisFont,
     seriesColors,
-    tooltipBackgroundColor: theme.tooltipBackgroundColor ?? DEFAULT_CHART_THEME.tooltipBackgroundColor,
-    tooltipTextColor: theme.tooltipTextColor ?? DEFAULT_CHART_THEME.tooltipTextColor,
-    tooltipFont: theme.tooltipFont ?? DEFAULT_CHART_THEME.tooltipFont,
-    legendBackgroundColor: theme.legendBackgroundColor ?? DEFAULT_CHART_THEME.legendBackgroundColor,
-    legendBorderColor: theme.legendBorderColor ?? DEFAULT_CHART_THEME.legendBorderColor,
-    legendTextColor: theme.legendTextColor ?? DEFAULT_CHART_THEME.legendTextColor,
-    legendMutedTextColor: theme.legendMutedTextColor ?? DEFAULT_CHART_THEME.legendMutedTextColor,
-    legendFont: theme.legendFont ?? DEFAULT_CHART_THEME.legendFont,
-    titleColor: theme.titleColor ?? DEFAULT_CHART_THEME.titleColor,
-    titleFont: theme.titleFont ?? DEFAULT_CHART_THEME.titleFont,
-    subtitleColor: theme.subtitleColor ?? DEFAULT_CHART_THEME.subtitleColor,
-    subtitleFont: theme.subtitleFont ?? DEFAULT_CHART_THEME.subtitleFont,
-    axisTitleColor: theme.axisTitleColor ?? DEFAULT_CHART_THEME.axisTitleColor,
-    axisTitleFont: theme.axisTitleFont ?? DEFAULT_CHART_THEME.axisTitleFont,
   };
 }
 

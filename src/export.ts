@@ -1,19 +1,14 @@
-import type { Chart, ChartScreenshotOptions, ChartScreenshotPreset } from "./ui/Chart.js";
-
-/** Reusable screenshot option presets for common export backgrounds. */
-export const CHART_SCREENSHOT_PRESETS: Record<Exclude<ChartScreenshotPreset, "theme">, ChartScreenshotOptions> = {
-  transparent: { preset: "transparent" },
-  dark: { preset: "dark" },
-  light: { preset: "light" },
-};
+import type { Chart, ChartScreenshotOptions } from "./ui/Chart.js";
 
 /** Options for downloading a chart screenshot. */
 export interface ChartDownloadOptions extends ChartScreenshotOptions {
+  /** Defaults to `blazeplot.png` (or `.jpg`/`.webp` to match `type`). */
   readonly filename?: string;
 }
 
 /** Options for copying a chart screenshot to the clipboard. */
 export interface ChartClipboardOptions extends ChartScreenshotOptions {
+  /** Defaults to `navigator.clipboard`. */
   readonly clipboard?: Clipboard;
 }
 
@@ -38,28 +33,17 @@ export async function downloadChartScreenshot(chart: Chart, options: ChartDownlo
   return blob;
 }
 
-/** Copy an image blob to the Clipboard API. */
-export async function copyBlobToClipboard(blob: Blob, clipboard?: Clipboard): Promise<void> {
-  if (typeof ClipboardItem === "undefined") {
-    throw new Error("ClipboardItem is not available in this browser.");
-  }
-  const targetClipboard = clipboard ?? defaultClipboard();
-  await targetClipboard.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
-}
-
 /** Capture a chart screenshot, copy it to the clipboard, and return the blob. */
 export async function copyChartScreenshotToClipboard(chart: Chart, options: ChartClipboardOptions = {}): Promise<Blob> {
   const { clipboard, ...screenshotOptions } = options;
   const blob = await chart.screenshot(screenshotOptions);
-  await copyBlobToClipboard(blob, clipboard);
-  return blob;
-}
-
-function defaultClipboard(): Clipboard {
-  if (typeof navigator === "undefined" || !navigator.clipboard) {
-    throw new Error("Clipboard API is not available in this environment.");
+  if (typeof ClipboardItem === "undefined") {
+    throw new Error("ClipboardItem is not available in this browser.");
   }
-  return navigator.clipboard;
+  const target = clipboard ?? (typeof navigator === "undefined" ? undefined : navigator.clipboard);
+  if (!target) throw new Error("Clipboard API is not available in this environment.");
+  await target.write([new ClipboardItem({ [blob.type || "image/png"]: blob })]);
+  return blob;
 }
 
 function defaultScreenshotFilename(type: string | undefined): string {

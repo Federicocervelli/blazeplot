@@ -38,7 +38,7 @@ import { tooltipPlugin } from "blazeplot/plugins/tooltip";
 const chart = new Chart(element, {
   plugins: [
     tooltipPlugin({ syncGroup: "dashboard", mode: "nearest-x" }),
-    crosshairPlugin({ group: "dashboard", mode: "ruler", rulerModifier: "shift" }),
+    crosshairPlugin({ syncGroup: "dashboard", mode: "ruler", rulerModifier: "shift" }),
     legendPlugin({ position: "top-right", toggleOnClick: true }),
   ],
 });
@@ -72,14 +72,14 @@ The plugin handle supports `add`, `remove`, `clear`, `setAnnotations`, `getAnnot
 
 ```ts
 import { Chart } from "blazeplot";
-import { exportSelectedChartData } from "blazeplot/data";
+import { exportChartData } from "blazeplot/data";
 import { selectionPlugin } from "blazeplot/plugins/selection";
 
 const selection = selectionPlugin({
   mode: "x-range",
-  onCommit: (event) => {
-    if (!event.selection) return;
-    const selected = exportSelectedChartData(chart, event.selection);
+  onChange: (event) => {
+    if (event.type !== "commit") return;
+    const selected = exportChartData(chart, { range: event.selection });
     console.log(selected.series);
   },
 });
@@ -146,6 +146,6 @@ Use `parseFoldedStacks(text)` for Brendan Gregg folded-stack text, `buildFlameGr
 
 ## Linked charts
 
-For dashboards with shared X ranges, use `blazeplot/linked`. It can add synced crosshair and tooltip plugins for you. See [Examples](./examples.md#linked-charts).
+For dashboards with shared X ranges, use `blazeplot/linked`. Its `panelPlugins` option adds synced crosshair and tooltip plugins to every panel. See [Examples](./examples.md#linked-charts).
 
 All plugin entry points are listed in the [API reference](./api-reference.md#package-entry-points).

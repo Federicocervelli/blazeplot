@@ -1,22 +1,11 @@
-import type { SeriesSample, SeriesYAxis, Viewport } from "../core/types.js";
-import type { SeriesStore } from "../core/SeriesStore.js";
-import type { ChartPlugin, ChartPluginContext, ChartSeriesState } from "./Chart.js";
+import type { SeriesYAxis, Viewport } from "../core/types.js";
+import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
 import { clamp, createOverlayLayer } from "./OverlayUtils.js";
 
 /** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
 /** Lifecycle event emitted by a selection plugin. */
 export type SelectionEventType = "start" | "update" | "commit" | "clear";
-/** Selection phase used for collecting selected samples. */
-export type SelectionSamplePhase = "commit" | "update" | "none";
-
-/** Selected data-domain bounds. */
-export interface SelectionBounds {
-  readonly xMin: number;
-  readonly xMax: number;
-  readonly yMin: number;
-  readonly yMax: number;
-}
 
 /** Selected plot-coordinate bounds in CSS pixels. */
 export interface SelectionPlotBounds {
@@ -26,25 +15,16 @@ export interface SelectionPlotBounds {
   readonly height: number;
 }
 
-/** Samples from one series captured by a selection. */
-export interface SelectionSeriesSamples {
-  readonly series: SeriesStore;
-  readonly seriesIndex: number;
-  readonly id?: string;
-  readonly name?: string;
-  readonly yAxis: SeriesYAxis;
-  readonly samples: readonly SeriesSample[];
-  readonly total: number;
-  readonly truncated: boolean;
-}
-
-/** Current or committed selection state. */
+/**
+ * Current or committed selection. Pass it to `exportChartData(chart, { range: selection })`
+ * from `blazeplot/data` to collect the selected samples.
+ */
 export interface SelectionState {
   readonly mode: SelectionMode;
   readonly yAxis: SeriesYAxis;
-  readonly bounds: SelectionBounds;
+  /** Selected data-domain bounds; unselected dimensions span the current viewport. */
+  readonly bounds: Viewport;
   readonly plotBounds: SelectionPlotBounds;
-  readonly samples: readonly SelectionSeriesSamples[];
 }
 
 /** Event payload emitted during selection changes. */
@@ -56,22 +36,22 @@ export interface SelectionEvent {
 
 /** Options for drag-to-select chart interaction. */
 export interface SelectionPluginOptions {
+  /** Defaults to `"xy"`. */
   readonly mode?: SelectionMode;
+  /** Y axis whose domain the selection measures. Defaults to `"left"`. */
   readonly yAxis?: SeriesYAxis;
+  /** Drags shorter than this are ignored. Defaults to 4. */
   readonly minDragDistancePx?: number;
-  readonly maxSamplesPerSeries?: number;
-  readonly samplePhase?: SelectionSamplePhase;
   readonly className?: string;
+  /** Rectangle fill. Defaults to `theme.selectionFillColor`. */
   readonly fill?: string;
+  /** Rectangle border. Defaults to `theme.selectionStrokeColor`. */
   readonly stroke?: string;
   readonly zIndex?: number;
+  /** Clear the selection with Escape. Defaults to true. */
   readonly clearOnEscape?: boolean;
-  readonly onStart?: (event: SelectionEvent) => void;
-  readonly onUpdate?: (event: SelectionEvent) => void;
-  readonly onCommit?: (event: SelectionEvent) => void;
-  readonly onClear?: (event: SelectionEvent) => void;
+  /** Called on `start`, `update`, `commit`, and `clear`; switch on `event.type`. */
   readonly onChange?: (event: SelectionEvent) => void;
-  readonly onSeriesSelectionChange?: (series: ChartSeriesState, selected: boolean, samples: SelectionSeriesSamples | null, selection: SelectionState | null) => void;
 }
 
 /** Selection plugin with imperative state access. */
@@ -88,30 +68,23 @@ interface DragState {
   currentY: number;
 }
 
-const DEFAULT_FILL = "rgba(59, 130, 246, 0.16)";
-const DEFAULT_STROKE = "rgba(147, 197, 253, 0.95)";
-
-function normalizeBounds(a: [number, number], b: [number, number], current: Viewport, mode: SelectionMode): SelectionBounds {
-  const xMin = Math.min(a[0], b[0]);
-  const xMax = Math.max(a[0], b[0]);
-  const yMin = Math.min(a[1], b[1]);
-  const yMax = Math.max(a[1], b[1]);
-  return {
-    xMin: mode === "y-range" ? current.xMin : xMin,
-    xMax: mode === "y-range" ? current.xMax : xMax,
-    yMin: mode === "x-range" ? current.yMin : yMin,
-    yMax: mode === "x-range" ? current.yMax : yMax,
-  };
+/** Convert a client point, clamped into the plot, to data coordinates using the axis scales. */
+function clampedClientToData(chart: ChartPluginContext, clientX: number, clientY: number, rect: DOMRect, yAxis: SeriesYAxis): [number, number] | null {
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return chart.clientToData(
+    rect.left + clamp(clientX - rect.left, 0, rect.width),
+    rect.top + clamp(clientY - rect.top, 0, rect.height),
+    yAxis,
+  );
 }
 
-function pointerToData(clientX: number, clientY: number, rect: DOMRect, viewport: Viewport): [number, number] | null {
-  if (rect.width <= 0 || rect.height <= 0) return null;
-  const plotX = clamp(clientX - rect.left, 0, rect.width);
-  const plotY = clamp(clientY - rect.top, 0, rect.height);
-  return [
-    viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin),
-    viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin),
-  ];
+function normalizeBounds(a: [number, number], b: [number, number], current: Viewport, mode: SelectionMode): Viewport {
+  return {
+    xMin: mode === "y-range" ? current.xMin : Math.min(a[0], b[0]),
+    xMax: mode === "y-range" ? current.xMax : Math.max(a[0], b[0]),
+    yMin: mode === "x-range" ? current.yMin : Math.min(a[1], b[1]),
+    yMax: mode === "x-range" ? current.yMax : Math.max(a[1], b[1]),
+  };
 }
 
 function plotBoundsForDrag(drag: DragState, rect: DOMRect, mode: SelectionMode): SelectionPlotBounds {
@@ -119,53 +92,12 @@ function plotBoundsForDrag(drag: DragState, rect: DOMRect, mode: SelectionMode):
   const y0 = clamp(drag.startY - rect.top, 0, rect.height);
   const x1 = clamp(drag.currentX - rect.left, 0, rect.width);
   const y1 = clamp(drag.currentY - rect.top, 0, rect.height);
-  const left = mode === "y-range" ? 0 : Math.min(x0, x1);
-  const top = mode === "x-range" ? 0 : Math.min(y0, y1);
-  const width = mode === "y-range" ? rect.width : Math.abs(x1 - x0);
-  const height = mode === "x-range" ? rect.height : Math.abs(y1 - y0);
-  return { left, top, width, height };
-}
-
-function collectSeriesSamples(
-  seriesState: readonly ChartSeriesState[],
-  bounds: SelectionBounds,
-  mode: SelectionMode,
-  yAxis: SeriesYAxis,
-  maxSamplesPerSeries: number,
-): SelectionSeriesSamples[] {
-  const results: SelectionSeriesSamples[] = [];
-  const xOnly = mode === "x-range";
-  const xViewport = { xMin: bounds.xMin, xMax: bounds.xMax, yMin: -Infinity, yMax: Infinity };
-
-  for (const state of seriesState) {
-    if (!state.visible) continue;
-    if (!xOnly && state.yAxis !== yAxis) continue;
-
-    const range = state.series.visibleIndexRange(xViewport);
-    const samples: SeriesSample[] = [];
-    let total = 0;
-    for (let index = range.start; index < range.end; index++) {
-      const sample = state.series.sampleAt(index);
-      if (!sample) continue;
-      if (!xOnly && (sample.y < bounds.yMin || sample.y > bounds.yMax)) continue;
-      total++;
-      if (samples.length < maxSamplesPerSeries) samples.push(sample);
-    }
-
-    if (total === 0) continue;
-    results.push({
-      series: state.series,
-      seriesIndex: state.index,
-      id: state.id,
-      name: state.name,
-      yAxis: state.yAxis,
-      samples,
-      total,
-      truncated: total > samples.length,
-    });
-  }
-
-  return results;
+  return {
+    left: mode === "y-range" ? 0 : Math.min(x0, x1),
+    top: mode === "x-range" ? 0 : Math.min(y0, y1),
+    width: mode === "y-range" ? rect.width : Math.abs(x1 - x0),
+    height: mode === "x-range" ? rect.height : Math.abs(y1 - y0),
+  };
 }
 
 /** Create a plugin that lets users select chart ranges by dragging. */
@@ -173,28 +105,13 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
   const mode = options.mode ?? "xy";
   const yAxis = options.yAxis ?? "left";
   const minDragDistancePx = options.minDragDistancePx ?? 4;
-  const maxSamplesPerSeries = Math.max(0, Math.floor(options.maxSamplesPerSeries ?? 5_000));
-  const samplePhase = options.samplePhase ?? "commit";
   let chartRef: ChartPluginContext | null = null;
   let overlay: HTMLDivElement | null = null;
   let drag: DragState | null = null;
   let committedSelection: SelectionState | null = null;
 
-  const notifySeriesSelection = (chart: ChartPluginContext | null, selection: SelectionState | null): void => {
-    if (!chart || !options.onSeriesSelectionChange) return;
-    for (const series of chart.getSeriesState()) {
-      const samples = selection?.samples.find((entry) => entry.series === series.series) ?? null;
-      options.onSeriesSelectionChange(series, samples !== null, samples, selection);
-    }
-  };
-
   const emit = (type: SelectionEventType, selection: SelectionState | null, sourceEvent?: PointerEvent | KeyboardEvent): void => {
-    const event: SelectionEvent = { type, selection, sourceEvent };
-    options.onChange?.(event);
-    if (type === "start") options.onStart?.(event);
-    if (type === "update") options.onUpdate?.(event);
-    if (type === "commit") options.onCommit?.(event);
-    if (type === "clear") options.onClear?.(event);
+    options.onChange?.({ type, selection, sourceEvent });
   };
 
   const setOverlay = (plotBounds: SelectionPlotBounds | null): void => {
@@ -210,20 +127,24 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     overlay.style.display = "block";
   };
 
-  const buildSelection = (chart: ChartPluginContext, state: DragState, includeSamples: boolean): SelectionState | null => {
-    const canvas = chart.canvas;
-    const rect = canvas.getBoundingClientRect();
-    const current = chart.getViewport(yAxis);
-    const start = pointerToData(state.startX, state.startY, rect, current);
-    const end = pointerToData(state.currentX, state.currentY, rect, current);
+  const buildSelection = (chart: ChartPluginContext, state: DragState): SelectionState | null => {
+    const rect = chart.canvas.getBoundingClientRect();
+    const start = clampedClientToData(chart, state.startX, state.startY, rect, yAxis);
+    const end = clampedClientToData(chart, state.currentX, state.currentY, rect, yAxis);
     if (!start || !end) return null;
+    return {
+      mode,
+      yAxis,
+      bounds: normalizeBounds(start, end, chart.getViewport(yAxis), mode),
+      plotBounds: plotBoundsForDrag(state, rect, mode),
+    };
+  };
 
-    const bounds = normalizeBounds(start, end, current, mode);
-    const plotBounds = plotBoundsForDrag(state, rect, mode);
-    const samples = includeSamples
-      ? collectSeriesSamples(chart.getSeriesState(), bounds, mode, yAxis, maxSamplesPerSeries)
-      : [];
-    return { mode, yAxis, bounds, plotBounds, samples };
+  const clearSelection = (sourceEvent?: KeyboardEvent): void => {
+    committedSelection = null;
+    setOverlay(null);
+    chartRef?.emitSelect(null);
+    emit("clear", null, sourceEvent);
   };
 
   return {
@@ -231,8 +152,12 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       chartRef = chart;
       const canvas = chart.canvas;
       overlay = createOverlayLayer(options.className ?? "blazeplot-selection-brush", { zIndex: options.zIndex ?? 26 });
-      overlay.style.border = `1px solid ${options.stroke ?? DEFAULT_STROKE}`;
-      overlay.style.background = options.fill ?? DEFAULT_FILL;
+      const applyTheme = (): void => {
+        if (!overlay) return;
+        overlay.style.border = `1px solid ${options.stroke ?? chart.theme.selectionStrokeColor}`;
+        overlay.style.background = options.fill ?? chart.theme.selectionFillColor;
+      };
+      applyTheme();
       chart.plotElement.appendChild(overlay);
 
       const onPointerDown = (event: PointerEvent): void => {
@@ -246,7 +171,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
           currentX: event.clientX,
           currentY: event.clientY,
         };
-        const selection = buildSelection(chart, drag, samplePhase === "update");
+        const selection = buildSelection(chart, drag);
         setOverlay(selection?.plotBounds ?? null);
         emit("start", selection, event);
       };
@@ -256,9 +181,8 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         event.preventDefault();
         drag.currentX = event.clientX;
         drag.currentY = event.clientY;
-        const selection = buildSelection(chart, drag, samplePhase === "update");
+        const selection = buildSelection(chart, drag);
         setOverlay(selection?.plotBounds ?? null);
-        if (samplePhase === "update") notifySeriesSelection(chart, selection);
         emit("update", selection, event);
       };
 
@@ -271,20 +195,14 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
 
         const dx = completed.currentX - completed.startX;
         const dy = completed.currentY - completed.startY;
-        if (!commit || Math.hypot(dx, dy) < minDragDistancePx) {
-          setOverlay(null);
-          return;
-        }
-
-        const selection = buildSelection(chart, completed, samplePhase !== "none");
+        const selection = commit && Math.hypot(dx, dy) >= minDragDistancePx ? buildSelection(chart, completed) : null;
         if (!selection || selection.bounds.xMax <= selection.bounds.xMin || selection.bounds.yMax <= selection.bounds.yMin) {
-          setOverlay(null);
+          setOverlay(committedSelection?.plotBounds ?? null);
           return;
         }
 
         committedSelection = selection;
         setOverlay(selection.plotBounds);
-        notifySeriesSelection(chart, selection);
         chart.emitSelect(selection);
         emit("commit", selection, event);
       };
@@ -293,11 +211,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       const onPointerCancel = (event: PointerEvent): void => finishDrag(event, false);
       const onKeyDown = (event: KeyboardEvent): void => {
         if (options.clearOnEscape === false || event.key !== "Escape") return;
-        committedSelection = null;
-        setOverlay(null);
-        notifySeriesSelection(chart, null);
-        chart.emitSelect(null);
-        emit("clear", null, event);
+        clearSelection(event);
       };
 
       canvas.addEventListener("pointerdown", onPointerDown);
@@ -305,6 +219,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       canvas.addEventListener("pointerup", onPointerUp);
       canvas.addEventListener("pointercancel", onPointerCancel);
       globalThis.addEventListener("keydown", onKeyDown);
+      const unsubscribeTheme = chart.subscribe("themechange", applyTheme);
 
       return () => {
         canvas.removeEventListener("pointerdown", onPointerDown);
@@ -312,6 +227,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         canvas.removeEventListener("pointerup", onPointerUp);
         canvas.removeEventListener("pointercancel", onPointerCancel);
         globalThis.removeEventListener("keydown", onKeyDown);
+        unsubscribeTheme();
         overlay?.remove();
         overlay = null;
         chartRef = null;
@@ -320,11 +236,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       };
     },
     clear(): void {
-      committedSelection = null;
-      setOverlay(null);
-      chartRef?.emitSelect(null);
-      notifySeriesSelection(chartRef, null);
-      emit("clear", null);
+      clearSelection();
     },
     getSelection(): SelectionState | null {
       return committedSelection;

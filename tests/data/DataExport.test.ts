@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { testStyle } from "../helpers.ts";
 import { StaticDataset } from "../../src/core/StaticDataset.ts";
 import { StaticOhlcDataset } from "../../src/core/OhlcDataset.ts";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
@@ -8,13 +9,11 @@ import type { SelectionState } from "../../src/ui/Selection.ts";
 import {
   binSamples,
   chartDataToCSV,
-  chartDataToJSON,
-  exportSelectedChartData,
-  exportVisibleChartData,
+  exportChartData,
   rollingMean,
 } from "../../src/data.ts";
 
-const STYLE = { color: [1, 1, 1, 1] as const, lineWidth: 1 };
+const STYLE = testStyle({ color: [1, 1, 1, 1] as const, lineWidth: 1 });
 const LEFT_VIEWPORT: Viewport = { xMin: 1, xMax: 3, yMin: 15, yMax: 35 };
 const RIGHT_VIEWPORT: Viewport = { xMin: 1, xMax: 3, yMin: -100, yMax: 100 };
 
@@ -69,7 +68,7 @@ describe("chart data export helpers", () => {
     const state = makeSeries("line", [0, 1, 2, 3, 4], [10, 20, 30, 40, 50], { id: "s,1", name: "quoted \"name\"" });
     const chart = makeChart([state]);
 
-    const data = exportVisibleChartData(chart, { maxRowsPerSeries: 2 });
+    const data = exportChartData(chart, { range: "visible", maxRowsPerSeries: 2 });
 
     expect(data.source).toBe("visible");
     expect(data.series[0]?.total).toBe(3);
@@ -83,12 +82,12 @@ describe("chart data export helpers", () => {
     expect(csv).toContain('"s,1","quoted ""name"""');
     expect(csv.split("\n")).toHaveLength(3);
 
-    expect(JSON.parse(chartDataToJSON(data)).series[0].samples[1]).toEqual({ index: 2, x: 2, y: 30 });
+    expect(JSON.parse(JSON.stringify(data)).series[0].samples[1]).toEqual({ index: 2, x: 2, y: 30 });
   });
 
   it("can filter visible exports by y viewport", () => {
     const state = makeSeries("scatter", [1, 2, 3], [10, 20, 90]);
-    const data = exportVisibleChartData(makeChart([state]), { includeYRange: true });
+    const data = exportChartData(makeChart([state]), { range: "visible", includeYRange: true });
 
     expect(data.series[0]?.samples).toEqual([{ index: 1, x: 2, y: 20 }]);
   });
@@ -101,10 +100,9 @@ describe("chart data export helpers", () => {
       yAxis: "left",
       bounds: { xMin: 1, xMax: 3, yMin: 15, yMax: 35 },
       plotBounds: { left: 0, top: 0, width: 10, height: 10 },
-      samples: [],
     };
 
-    const data = exportSelectedChartData(makeChart([left, right]), selection);
+    const data = exportChartData(makeChart([left, right]), { range: selection });
 
     expect(data.series).toHaveLength(1);
     expect(data.series[0]?.id).toBe("left");
@@ -122,18 +120,28 @@ describe("chart data export helpers", () => {
       yAxis: "left",
       bounds: { xMin: 1, xMax: 1, yMin: -Infinity, yMax: Infinity },
       plotBounds: { left: 0, top: 0, width: 10, height: 10 },
-      samples: [],
     };
 
-    const data = exportSelectedChartData(makeChart([left, right]), selection);
+    const data = exportChartData(makeChart([left, right]), { range: selection });
 
     expect(data.series.map((series) => series.id)).toEqual(["left", "right"]);
     expect(data.series[1]?.samples).toEqual([{ index: 0, x: 1, y: 30 }]);
   });
 
+  it("exports all samples by default, skips hidden series unless asked, and treats a null selection as empty", () => {
+    const visible = makeSeries("line", [0, 5], [1, 2], { id: "visible" });
+    const hidden = makeSeries("line", [0, 5], [3, 4], { id: "hidden", visible: false });
+    const chart = makeChart([visible, hidden]);
+
+    expect(exportChartData(chart).series.map((series) => series.id)).toEqual(["visible"]);
+    expect(exportChartData(chart).series[0]?.samples).toHaveLength(2);
+    expect(exportChartData(chart, { includeHidden: true }).series).toHaveLength(2);
+    expect(exportChartData(chart, { range: null })).toEqual({ source: "selection", bounds: null, series: [] });
+  });
+
   it("exports OHLC fields and filters by candle high/low overlap", () => {
     const state = makeOhlcSeries();
-    const data = exportVisibleChartData(makeChart([state]), { includeYRange: true });
+    const data = exportChartData(makeChart([state]), { range: "visible", includeYRange: true });
 
     expect(data.series[0]?.samples).toEqual([
       { index: 1, x: 2, y: 24, open: 20, high: 26, low: 18, close: 24 },

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface Snippet {
   sourcePath: string;
@@ -10,7 +11,7 @@ interface Snippet {
   code: string;
 }
 
-const root = resolve(new URL("..", import.meta.url).pathname);
+const root = fileURLToPath(new URL("..", import.meta.url));
 const docsDir = resolve(root, "docs");
 const snippetFence = /```(?:ts|typescript)\s*\n([\s\S]*?)```/g;
 

@@ -121,7 +121,7 @@ export default class Preview extends PreviewResources {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const klines = await response.json() as BinanceKline[];
-        sampledDataset.replaceBuckets({
+        sampledDataset.replace({ kind: "minmax",
           xStart: klines.map((row) => row[0]),
           xEnd: klines.map((row) => row[6]),
           minY: klines.map((row) => Number(row[3])),
@@ -157,7 +157,7 @@ export default class Preview extends PreviewResources {
         minY[i] = price + wave - 180 - Math.random() * 80;
         maxY[i] = price + wave + 180 + Math.random() * 80;
       }
-      sampledDataset.replaceBuckets({ xStart, xEnd, minY, maxY });
+      sampledDataset.replace({ kind: "minmax", xStart, xEnd, minY, maxY });
       sampledSeries.markDirty();
       sampledChart.fitToData({ padding: { x: 0.01, y: 0.08 } });
     };
@@ -171,7 +171,7 @@ export default class Preview extends PreviewResources {
       currentLow = NaN;
       currentClose = NaN;
       tradeCount = 0;
-      liveChart.resumeXFollow();
+      liveChart.setXFollowPaused(false);
       const symbol = symbolSelect.value.toLowerCase();
       const url = `wss://stream.binance.com:9443/ws/${symbol}@aggTrade`;
       liveStatusEl.textContent = `connecting ${symbolSelect.value}…`;

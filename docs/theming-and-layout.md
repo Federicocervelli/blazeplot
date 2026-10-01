@@ -31,6 +31,9 @@ Theme values are merged with the default theme, so you can override only the tok
 | Tooltip | `tooltipBackgroundColor`, `tooltipTextColor`, `tooltipFont` |
 | Legend | `legendBackgroundColor`, `legendBorderColor`, `legendTextColor`, `legendMutedTextColor`, `legendFont` |
 | Titles | `titleColor`, `titleFont`, `subtitleColor`, `subtitleFont`, `axisTitleColor`, `axisTitleFont` |
+| Overlays | `selectionFillColor`, `selectionStrokeColor` (box zoom and selection), `crosshairColor`, `markerStrokeColor` (hover markers) |
+
+Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(config, { color: "#f97316", lineWidth: 2 })`.
 
 ## Sizing
 

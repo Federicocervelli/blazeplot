@@ -1,27 +1,115 @@
+// Chart
 export { Chart } from "./ui/Chart.js";
-export type { AxisConfig, AxisTitleConfig, ChartAccessibilityOptions, ChartAutoFitYOptions, ChartBackendFactory, ChartBackendFactoryContext, ChartFollowXOptions, ChartFitToDataOptions, ChartFitToDataPadding, ChartFrameStats, ChartKeyboardOptions, ChartLayoutReservation, ChartOptions, ChartPointerEventState, ChartPointerEventType, ChartScreenshotOptions, ChartScreenshotPreset, ChartSelectEvent, ChartSeriesClickEvent, ChartTitleConfig, ChartViewportChangeEvent, TextOverlayConfig, TypedSeriesConfig, HistogramSeriesConfig, PrecomputedHistogramSeriesConfig, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPickOptions, ChartPlugin, ChartPluginContext, ChartPluginHandle, ChartSeriesState } from "./ui/Chart.js";
-export { DEFAULT_CHART_THEME } from "./ui/theme.js";
-export type { ChartTheme, ResolvedChartTheme, RgbaColor, CssColor, ThemeColor } from "./ui/theme.js";
+export type {
+  AxisConfig,
+  ChartAccessibilityOptions,
+  ChartAutoFitYOptions,
+  ChartBackendFactory,
+  ChartBackendFactoryContext,
+  ChartEventMap,
+  ChartEventName,
+  ChartFitToDataOptions,
+  ChartFitToDataPadding,
+  ChartFollowXOptions,
+  ChartFrameStats,
+  ChartHoverState,
+  ChartKeyboardOptions,
+  ChartLayoutReservation,
+  ChartOptions,
+  ChartPickGroup,
+  ChartPickItem,
+  ChartPickMode,
+  ChartPickOptions,
+  ChartPlugin,
+  ChartPluginContext,
+  ChartPluginHandle,
+  ChartPointerEventState,
+  ChartPointerEventType,
+  ChartRenderLoop,
+  ChartScreenshotOptions,
+  ChartSelectEvent,
+  ChartSeriesClickEvent,
+  ChartSeriesState,
+  ChartTitleConfig,
+  ChartViewportChangeEvent,
+  ChartXFollowState,
+  HistogramSeriesConfig,
+  PrecomputedHistogramSeriesConfig,
+  SeriesIdentityConfig,
+  TextOverlayConfig,
+  TypedSeriesConfig,
+} from "./ui/Chart.js";
 export type { AxisPosition } from "./ui/ChartLayout.js";
-export { SeriesStore } from "./core/SeriesStore.js";
+export { DEFAULT_CHART_THEME } from "./ui/theme.js";
+export type { ChartTheme, ResolvedChartTheme } from "./ui/theme.js";
+
+// Series handle and data contracts
+export type { SeriesStore } from "./core/SeriesStore.js";
+export type {
+  SeriesAppendData,
+  SeriesAppendRow,
+  SeriesDataBoundsOptions,
+  SeriesObjectAppendData,
+  SeriesOhlcAppendData,
+  SeriesOhlcAppendRow,
+  SeriesOhlcSample,
+  SeriesOhlcUpdateData,
+  SeriesReplaceData,
+  SeriesScalarOrArray,
+  SeriesUpdateData,
+  SeriesXYAppendData,
+  SeriesXYAppendRow,
+  SeriesXYUpdateData,
+} from "./core/SeriesStore.js";
+export type {
+  AcceleratedDataset,
+  AppendableDataset,
+  BufferOverflowStrategy,
+  Dataset,
+  LODStrategy,
+  MinMaxSegmentCopyDataset,
+  OhlcDataset,
+  RangeMinMaxDataset,
+  RangeSampleCopyDataset,
+  RgbaColor,
+  SampleCopyLayout,
+  SeriesConfig,
+  SeriesMode,
+  SeriesSample,
+  SeriesStyle,
+  SeriesStyleOptions,
+  SeriesYAxis,
+  ThemeColor,
+  TimeRange,
+  UpdatableDataset,
+  Viewport,
+  VisiblePointCopyDataset,
+  VisibleSampleCopyDataset,
+  XRange,
+  XRangeDataset,
+  YAppendableDataset,
+  YUpdatableDataset,
+} from "./core/types.js";
+
+// Datasets
 export { RingBuffer } from "./core/RingBuffer.js";
-export type { SeriesAppendData, SeriesAppendRow, SeriesDataBounds, SeriesDataBoundsOptions, SeriesObjectAppendData, SeriesOhlcAppendData, SeriesOhlcAppendRow, SeriesOhlcSample, SeriesOhlcUpdateData, SeriesScalarOrArray, SeriesUpdateData, SeriesXYAppendData, SeriesXYAppendRow, SeriesXYUpdateData } from "./core/SeriesStore.js";
-export type { RingBufferOptions, RingBufferOverflow } from "./core/RingBuffer.js";
+export type { RingBufferOptions } from "./core/RingBuffer.js";
 export { UniformRingBuffer } from "./core/UniformRingBuffer.js";
 export type { UniformRingBufferOptions } from "./core/UniformRingBuffer.js";
 export { StaticDataset } from "./core/StaticDataset.js";
 export type { StaticDatasetField, StaticDatasetFromObjectsOptions } from "./core/StaticDataset.js";
-export { HistogramDataset, histogram, histogramDataset } from "./core/Histogram.js";
-export type { HistogramBin, HistogramBinThresholds, HistogramNormalization, HistogramOptions, HistogramResult } from "./core/Histogram.js";
-export { ServerSampledDataset } from "./core/ServerSampledDataset.js";
-export type { ServerSampledBuckets, ServerSampledData, ServerSampledDatasetKind, ServerSampledPoints } from "./core/ServerSampledDataset.js";
 export { OhlcRingBuffer, StaticOhlcDataset } from "./core/OhlcDataset.js";
 export type { OhlcRingBufferOptions } from "./core/OhlcDataset.js";
-export { MinMaxPyramid } from "./core/MinMaxPyramid.js";
-export { isWebGL2Available, ReglBackend, WebGL2Backend, WebGL2UnavailableError } from "./render/WebGL2Backend.js";
-export type { AttributeSpec, BufferSpec, DrawSpec, GpuBackend, GpuBuffer, GpuCapabilities, GpuProgram, GpuResource } from "./render/types.js";
-export { Camera2D } from "./interaction/Camera2D.js";
-export { AxisController } from "./interaction/AxisController.js";
-export type { AxisControllerAxisOptions, AxisControllerOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
-export type { Viewport, LODBucket, LODView, TimeRange, SeriesStyle, SeriesMode, SeriesYAxis, SeriesConfig, SeriesSample, LODStrategy, BufferOverflowStrategy, Dataset, AcceleratedDataset, OhlcDataset, XRange, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, MinMaxSegmentLayout, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset } from "./core/types.js";
-export type { PanIntent, ZoomAxis, ZoomIntent, ViewportPolicy } from "./interaction/types.js";
+export { ServerSampledDataset } from "./core/ServerSampledDataset.js";
+export type { ServerSampledBuckets, ServerSampledData, ServerSampledPoints } from "./core/ServerSampledDataset.js";
+export { HistogramDataset, histogram } from "./core/Histogram.js";
+export type { HistogramBin, HistogramNormalization, HistogramOptions, HistogramResult } from "./core/Histogram.js";
+
+// Viewport and axes
+export type { Camera2D } from "./interaction/Camera2D.js";
+export type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "./interaction/types.js";
+export type { AxisControllerAxisOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
+
+// GPU backend
+export { isWebGL2Available, WebGL2Backend, WebGL2UnavailableError } from "./render/WebGL2Backend.js";
+export type { AttributeSpec, BufferSpec, DrawSpec, GpuBackend, GpuBuffer, GpuCapabilities, GpuProgram, GpuResource, UniformValue } from "./render/types.js";

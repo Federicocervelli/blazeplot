@@ -146,7 +146,7 @@ export class BlazeplotHomePage extends LitElement {
     };
     const viewportPolicy: ViewportPolicy = {
       beforeRender: (camera) => {
-        if (!this.homeChart?.isFollowingLatestX()) return;
+        if (this.homeChart?.getXFollowState() !== "following") return;
         const { yMin, yMax } = homeViewport(nextX - initialCount, nextX - 1);
         camera.setViewport({ yMin, yMax });
       },
@@ -164,7 +164,6 @@ export class BlazeplotHomePage extends LitElement {
             boxZoom: true,
             doubleClickReset: true,
             resetViewport,
-            viewportPolicy,
           }),
           ...(this.homeChartMode === "multi"
             ? [tooltipPlugin({ mode: "nearest-x", group: "x" })]
@@ -182,11 +181,11 @@ export class BlazeplotHomePage extends LitElement {
       const stream = this.addHomeSeries(chart, initialCount);
       chart.setViewport(resetViewport());
       if (stream) chart.followLatestX({ window: initialCount - 1, pauseOnInteraction: true });
-      this.unsubscribeHomeState = chart.subscribe("render", () => { this.followingLive = chart.isFollowingLatestX(); });
+      this.unsubscribeHomeState = chart.subscribe("render", () => { this.followingLive = chart.getXFollowState() === "following"; });
       chart.start();
       this.resumeLive = () => {
         chart.setViewport(resetViewport());
-        chart.resumeLatestXFollow();
+        chart.setXFollowPaused(false);
       };
 
       if (stream) {

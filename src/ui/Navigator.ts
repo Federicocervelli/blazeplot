@@ -1,5 +1,7 @@
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
+import { createSvgElement } from "./OverlayUtils.js";
+import { rgbaCss } from "./theme.js";
 
 /** Options for the overview navigator plugin. */
 export interface NavigatorPluginOptions {
@@ -44,16 +46,6 @@ interface DragState {
   readonly startClientX: number;
   readonly startXMin: number;
   readonly startXMax: number;
-}
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function createSvgElement<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
-  return document.createElementNS(SVG_NS, tag);
-}
-
-function rgba(color: readonly [number, number, number, number]): string {
-  return `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(color[2] * 255)}, ${color[3]})`;
 }
 
 function seriesList(chart: ChartPluginContext, option: NavigatorPluginOptions["series"]): SeriesStore[] {
@@ -184,7 +176,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       }
       path.style.display = "block";
       path.setAttribute("d", pathForSeries(series, domain, width, height, maxSamplesPerSeries));
-      path.setAttribute("stroke", options.stroke ?? rgba(series.style.color));
+      path.setAttribute("stroke", options.stroke ?? rgbaCss(series.style.color));
       path.setAttribute("stroke-width", String(options.strokeWidth ?? Math.max(1, series.style.lineWidth)));
       path.setAttribute("fill", options.fill ?? "none");
     }
@@ -297,7 +289,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         const windowStroke = options.windowStroke ?? chart.theme.axisColor;
         root.style.background = options.background ?? chart.theme.legendBackgroundColor;
         root.style.outline = `1px solid ${options.borderColor ?? chart.theme.legendBorderColor}`;
-        windowRect.setAttribute("fill", options.windowFill ?? rgba(chart.theme.gridColor));
+        windowRect.setAttribute("fill", options.windowFill ?? rgbaCss(chart.theme.gridColor));
         windowRect.setAttribute("stroke", windowStroke);
         leftHandle.setAttribute("fill", windowStroke);
         rightHandle.setAttribute("fill", windowStroke);

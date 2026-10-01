@@ -317,7 +317,7 @@ function addScaleOptions(chart: Chart): void {
   chart.addLine({ dataset: new StaticDataset(x, y), name: "scale options" }, { lineWidth: 2 });
   chart.addLine({ dataset: new StaticDataset(x, Float32Array.from(y, (value) => Math.abs(value) + 1)), yAxis: "right", name: "right log" }, { lineWidth: 1 });
   chart.setViewport({ xMin: 1, xMax: 256, yMin: -10, yMax: 10 });
-  chart.setYViewport("right", { yMin: 1, yMax: 100 });
+  chart.setViewport({ yMin: 1, yMax: 100 }, "right");
 }
 
 function wave(count: number, phase = 0): { x: Float64Array; y: Float32Array } {

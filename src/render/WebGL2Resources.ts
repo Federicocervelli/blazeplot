@@ -14,24 +14,14 @@ export interface WebGL2ResourceBuffer {
   readonly byteCapacity: number;
 }
 
-/** Small WebGL2 buffer pool used by the native backend. */
+/** @internal Small WebGL2 buffer pool used by the native backend. */
 export class WebGL2Resources {
   private readonly pool: PoolEntry[] = [];
-  private preAllocated: boolean = false;
 
   /** Create a resource pool for a WebGL2 context. */
   constructor(private readonly gl: WebGL2RenderingContext) {}
 
-  /** Preallocate common streaming buffer sizes. */
-  preAllocate(): void {
-    if (this.preAllocated) return;
-    this.preAllocated = true;
-
-    for (const size of POOL_SIZES) {
-      this.pool.push(this.createEntry(size * Float32Array.BYTES_PER_ELEMENT, this.gl.ARRAY_BUFFER, this.gl.STREAM_DRAW));
-    }
-  }
-
+  /** Acquire a free pooled buffer with at least `elementCount` elements, allocating one if needed. */
   acquire(
     elementCount: number,
     usage: "static" | "dynamic" | "stream" = "stream",
@@ -66,7 +56,6 @@ export class WebGL2Resources {
       this.gl.deleteBuffer(entry.buffer);
     }
     this.pool.length = 0;
-    this.preAllocated = false;
   }
 
   private createEntry(byteCapacity: number, target: number, usage: number): PoolEntry {

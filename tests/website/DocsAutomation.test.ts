@@ -1,9 +1,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "bun:test";
 
 function run(args: string[]): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync("bun", args, { cwd: new URL("../..", import.meta.url).pathname, encoding: "utf8" });
+  const result = spawnSync(process.execPath, args, { cwd: fileURLToPath(new URL("../..", import.meta.url)), encoding: "utf8" });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 

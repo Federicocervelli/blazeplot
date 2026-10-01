@@ -29,7 +29,6 @@
   },
   "include": [
     "src",
-    "preview",
     "website",
     "tests",
     "scripts",
