@@ -70,12 +70,18 @@ jobs:
             fi
           } > release-notes.md
 
+      # CI ran in separate jobs, so build the package here before packing it.
+      - name: Build and pack
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          bun run build
+          bun pm pack
+          tar -tzf blazeplot-*.tgz | grep -qx 'package/dist/index.js' || { echo "::error::Packed tarball is missing dist/index.js"; exit 1; }
+
       # Authenticates with npm trusted publishing (OIDC); no npm token secret is needed.
       - name: Publish to npm
         if: steps.version.outputs.publish == 'true'
-        run: |
-          bun pm pack
-          npm publish ./blazeplot-*.tgz --provenance --access public
+        run: npm publish ./blazeplot-*.tgz --provenance --access public
 
       - name: Tag and create GitHub release
         if: steps.version.outputs.publish == 'true'
