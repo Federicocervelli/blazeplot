@@ -1,6 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { statSync } from "node:fs";
-import { join } from "node:path";
+import { posix } from "node:path";
 
 interface Budget {
   readonly label: string;
@@ -61,7 +61,7 @@ export async function collectBundleSizeReport(): Promise<BundleSizeReport> {
     entries: distFiles
       .filter((file) => budget.pattern.test(file))
       .map((file) => {
-        const path = join("dist", file);
+        const path = posix.join("dist", file);
         return { label: budget.label, path, maxBytes: budget.maxBytes, sizeBytes: statSync(path).size };
       }),
   }));
