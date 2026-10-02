@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
-import ts from "typescript";
+import ts from "@typescript/typescript6";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const apiReferencePath = resolve(root, "docs/api-reference.md");
