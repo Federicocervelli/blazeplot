@@ -2,7 +2,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CdpClient, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
+import { CdpClient, closeTarget, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
 
 interface Options {
   width: number;
@@ -53,6 +53,10 @@ interface InteractionSnapshot {
   latestXFollowPaused: boolean;
   error?: string | null;
 }
+
+// Each case gets a fresh page. Earlier pages are closed so their render loops
+// (continuous mode, live follow) do not compete for CPU with timing-sensitive cases.
+let openTargetId: string | null = null;
 
 await main();
 
@@ -381,9 +385,14 @@ async function runSelectionCase(options: Options, serverUrl: string): Promise<vo
 }
 
 async function openCase(options: Options, serverUrl: string, caseName: string): Promise<CdpClient> {
+  if (openTargetId) {
+    await closeTarget(options.debugPort, openTargetId);
+    openTargetId = null;
+  }
   const url = new URL("/interaction/", serverUrl);
   url.searchParams.set("case", caseName);
   const target = await createTarget(options.debugPort, url.toString());
+  openTargetId = target.id;
   const cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");
