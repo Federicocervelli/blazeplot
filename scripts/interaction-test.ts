@@ -192,6 +192,9 @@ async function runInteractionsCase(options: Options, serverUrl: string): Promise
     await sleep(200);
     snapshot = await getRequiredSnapshot(cdp);
     assert(spanX(snapshot.viewport) < initialSpan, "wheel zoom shrinks x span");
+    const spanY = (v: { yMin: number; yMax: number }): number => v.yMax - v.yMin;
+    assert(spanY(snapshot.viewport) < spanY(snapshot.initialViewport), "wheel zoom shrinks left y span");
+    assert(spanY(snapshot.rightViewport) < spanY(snapshot.initialViewport), "wheel zoom shrinks right y span");
 
     const afterZoomXMin = snapshot.viewport.xMin;
     await drag(cdp, center.x, center.y, center.x + 120, center.y, 8);

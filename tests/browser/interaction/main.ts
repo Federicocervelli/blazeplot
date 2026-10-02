@@ -17,6 +17,7 @@ interface InteractionSnapshot {
   readonly state: "booting" | "ready" | "error";
   readonly caseName: string;
   readonly viewport: Viewport;
+  readonly rightViewport: Viewport;
   readonly initialViewport: Viewport;
   readonly canvasRect: RectSnapshot;
   readonly xAxisRect: RectSnapshot;
@@ -111,7 +112,7 @@ if (caseName === "linked") {
             crosshairPlugin({ snap: "none", label: true, onMove: () => { crosshairMoves++; } }),
           ];
   charts.push(new Chart(chartTarget, {
-    axes: { x: { position: "outside" }, y: { position: "outside" } },
+    axes: { x: { position: "outside" }, y: { position: "outside" }, y2: { position: "outside" } },
     grid: true,
     plugins,
     renderLoop: caseName === "continuous-render-loop" ? "continuous" : "auto",
@@ -135,6 +136,7 @@ window.__blazeplotInteractionTest = {
     state,
     caseName,
     viewport: chart.getViewport(),
+    rightViewport: chart.getViewport("right"),
     initialViewport,
     canvasRect: rectOf(chart.canvas),
     xAxisRect: rectOf(chart.xAxisElement),
@@ -167,6 +169,10 @@ try {
       series.append({ y });
     } else {
       item.addLine({ dataset: new StaticDataset(x, y), name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
+    }
+    if (caseName === "interactions") {
+      item.addLine({ dataset: new StaticDataset(x, y), yAxis: "right", name: "right line" }, { lineWidth: 2 });
+      item.setViewport(initialViewport, "right");
     }
     item.setViewport(initialViewport);
     if (caseName === "live-follow") {
