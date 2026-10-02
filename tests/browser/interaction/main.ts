@@ -17,6 +17,8 @@ interface InteractionSnapshot {
   readonly state: "booting" | "ready" | "error";
   readonly caseName: string;
   readonly viewport: Viewport;
+  readonly rightViewport: Viewport;
+  readonly initialRightViewport: Viewport;
   readonly initialViewport: Viewport;
   readonly canvasRect: RectSnapshot;
   readonly xAxisRect: RectSnapshot;
@@ -67,6 +69,8 @@ const caseTarget = requireElement<HTMLElement>("caseName");
 caseTarget.textContent = caseName;
 
 const initialViewport = { xMin: 0, xMax: 999, yMin: -1.6, yMax: 1.6 };
+// Right axis uses a different scale and direction to catch shared-anchor mistakes.
+const initialRightViewport = { xMin: 0, xMax: 999, yMin: 3_400, yMax: 6_600 };
 let state: InteractionSnapshot["state"] = "booting";
 let error: string | null = null;
 let hoverItems = 0;
@@ -111,7 +115,7 @@ if (caseName === "linked") {
             crosshairPlugin({ snap: "none", label: true, onMove: () => { crosshairMoves++; } }),
           ];
   charts.push(new Chart(chartTarget, {
-    axes: { x: { position: "outside" }, y: { position: "outside" } },
+    axes: { x: { position: "outside" }, y: { position: "outside" }, y2: { position: "outside", reversed: true } },
     grid: true,
     plugins,
     renderLoop: caseName === "continuous-render-loop" ? "continuous" : "auto",
@@ -135,7 +139,9 @@ window.__blazeplotInteractionTest = {
     state,
     caseName,
     viewport: chart.getViewport(),
+    rightViewport: chart.getViewport("right"),
     initialViewport,
+    initialRightViewport,
     canvasRect: rectOf(chart.canvas),
     xAxisRect: rectOf(chart.xAxisElement),
     yAxisRect: rectOf(chart.yAxisElement),
@@ -154,7 +160,10 @@ window.__blazeplotInteractionTest = {
     error,
   }),
   resetViewport: () => {
-    for (const item of charts) item.setViewport(initialViewport);
+    for (const item of charts) {
+      item.setViewport(initialViewport);
+      if (caseName === "interactions") item.setViewport(initialRightViewport, "right");
+    }
   },
 };
 
@@ -167,6 +176,11 @@ try {
       series.append({ y });
     } else {
       item.addLine({ dataset: new StaticDataset(x, y), name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
+    }
+    if (caseName === "interactions") {
+      const rightY = Float32Array.from(y, (value) => value * 1_000 + 5_000);
+      item.addLine({ dataset: new StaticDataset(x, rightY), yAxis: "right", name: "right line" }, { lineWidth: 2 });
+      item.setViewport(initialRightViewport, "right");
     }
     item.setViewport(initialViewport);
     if (caseName === "live-follow") {
