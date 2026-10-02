@@ -93,8 +93,8 @@
   "scripts": {
     "dev": "BLAZEPLOT_PAGES_BASE=/ vite --config vite.pages.config.ts",
     "fixtures:dev": "vite",
-    "build": "vite build",
-    "build:js": "vite build --mode js-only",
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "build:js": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "check": "bun run typecheck && bun test && bun run build && bun run test:generated-docs && bun run test:docs-snippets && bun run test:exports && bun run test:package && bun run test:bundle-size",
@@ -134,7 +134,6 @@
     "tailwindcss": "^4.3.0",
     "typescript": "^7.0.2",
     "uplot": "^1.6.32",
-    "vite": "^8.0.13",
-    "vite-plugin-dts": "^5.0.0"
+    "vite": "^8.0.13"
   }
 }
