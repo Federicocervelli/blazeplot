@@ -710,8 +710,12 @@ export class Chart implements ChartPluginContext {
     this.refreshHover();
   }
 
-  /** Pan in scale space, after `viewportPolicy.beforePan`. X always pans both axes; Y pans `yAxis`. */
-  pan(intent: PanIntent, yAxis: SeriesYAxis = "left"): void {
+  /**
+   * Pan in scale space, after `viewportPolicy.beforePan`. X always pans both axes.
+   * Y pans only `yAxis` when given; omitted, Y pans both axes like a plot-area gesture.
+   * The intent is normalized to the left axis domain (or `yAxis` when given).
+   */
+  pan(intent: PanIntent, yAxis?: SeriesYAxis): void {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
@@ -721,14 +725,21 @@ export class Chart implements ChartPluginContext {
       if (next.dy !== 0) this.rightAxis.pan({ dx: 0, dy: next.dy });
     } else {
       this.axis.pan(next);
+      if (yAxis === undefined && next.dy !== 0) {
+        this.rightAxis.pan({ dx: 0, dy: this.rightYDirectionMatchesLeft() ? next.dy : -next.dy });
+      }
     }
     this.syncRightCameraX();
     this.emitViewportChange();
     this.scheduleHoverRefresh();
   }
 
-  /** Zoom in scale space around a normalized anchor, after `viewportPolicy.beforeZoom`. */
-  zoom(intent: ZoomIntent, yAxis: SeriesYAxis = "left"): void {
+  /**
+   * Zoom in scale space around a normalized anchor, after `viewportPolicy.beforeZoom`. X always zooms both axes.
+   * Y zooms only `yAxis` when given; omitted, Y zooms both axes like a plot-area gesture.
+   * The anchor is normalized to the left axis domain (or `yAxis` when given).
+   */
+  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
@@ -738,6 +749,9 @@ export class Chart implements ChartPluginContext {
       if (next.axis !== "x") this.rightAxis.zoom({ ...next, axis: "y" });
     } else {
       this.axis.zoom(next);
+      if (yAxis === undefined && next.axis !== "x") {
+        this.rightAxis.zoom({ ...next, cy: this.rightYDirectionMatchesLeft() ? next.cy : 1 - next.cy, axis: "y" });
+      }
     }
     this.syncRightCameraX();
     this.emitViewportChange();
@@ -1461,6 +1475,11 @@ export class Chart implements ChartPluginContext {
     projection.offsetX = (camera.xReversed ? 1 : -1) * (xMin + xMax) / (xMax - xMin);
     projection.offsetY = (camera.yReversed ? 1 : -1) * (yMin + yMax) / (yMax - yMin);
     return projection;
+  }
+
+  /** Whether both Y axes share a screen direction, so left-domain Y anchors map 1:1 onto the right axis. */
+  private rightYDirectionMatchesLeft(): boolean {
+    return this.camera.yReversed === this.rightCamera.yReversed;
   }
 
   private syncRightCameraX(): void {
