@@ -104,11 +104,13 @@ function clientToDataClamped(
   clientY: number,
   rect: DOMRect,
   chart: ChartPluginContext,
+  yAxis: SeriesYAxis = "left",
 ): [number, number] | null {
   if (rect.width <= 0 || rect.height <= 0) return null;
   return chart.clientToData(
     rect.left + Math.max(0, Math.min(clientX - rect.left, rect.width)),
     rect.top + Math.max(0, Math.min(clientY - rect.top, rect.height)),
+    yAxis,
   );
 }
 
@@ -383,8 +385,17 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         const end = clientToDataClamped(event.clientX, event.clientY, rect, chart);
         if (!start || !end) return;
 
-        const next = applySelectionAxis(current, start, end, resolveAxis(options.axis));
-        if (next.xMax > next.xMin && next.yMax > next.yMin) chart.setViewport(next);
+        const selectionAxis = resolveAxis(options.axis);
+        const next = applySelectionAxis(current, start, end, selectionAxis);
+        if (!(next.xMax > next.xMin && next.yMax > next.yMin)) return;
+        // The right axis has its own scale, so map the same pixel rectangle through its camera.
+        const rightStart = selectionAxis === "x" ? null : clientToDataClamped(completed.startX, completed.startY, rect, chart, "right");
+        const rightEnd = selectionAxis === "x" ? null : clientToDataClamped(event.clientX, event.clientY, rect, chart, "right");
+        chart.setViewport(next);
+        if (!rightStart || !rightEnd) return;
+        const rightYMin = Math.min(rightStart[1], rightEnd[1]);
+        const rightYMax = Math.max(rightStart[1], rightEnd[1]);
+        if (rightYMax > rightYMin) chart.setViewport({ yMin: rightYMin, yMax: rightYMax }, "right");
       };
 
       const onPointerCancel = (event: PointerEvent): void => {

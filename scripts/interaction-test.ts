@@ -33,7 +33,9 @@ interface InteractionSnapshot {
   state?: string;
   caseName?: string;
   viewport: ViewportSnapshot;
+  rightViewport: ViewportSnapshot;
   initialViewport: ViewportSnapshot;
+  initialRightViewport: ViewportSnapshot;
   canvasRect: RectSnapshot;
   xAxisRect: RectSnapshot;
   yAxisRect: RectSnapshot;
@@ -188,19 +190,41 @@ async function runInteractionsCase(options: Options, serverUrl: string): Promise
     assert(snapshot.crosshairMoves > 0, "crosshair move fired");
 
     const initialSpan = spanX(snapshot.viewport);
-    await wheel(cdp, center.x, center.y, -400);
+    // Wheel off-center so a wrong anchor or reversed-axis mapping shows up as drift.
+    const wheelY = snapshot.canvasRect.top + snapshot.canvasRect.height * 0.25;
+    const leftAnchor = valueAtFromTop(snapshot.viewport, 0.25, false);
+    const rightAnchor = valueAtFromTop(snapshot.rightViewport, 0.25, true);
+    await wheel(cdp, center.x, wheelY, -400);
     await sleep(200);
     snapshot = await getRequiredSnapshot(cdp);
     assert(spanX(snapshot.viewport) < initialSpan, "wheel zoom shrinks x span");
-    const spanY = (v: { yMin: number; yMax: number }): number => v.yMax - v.yMin;
-    assert(spanY(snapshot.viewport) < spanY(snapshot.initialViewport), "wheel zoom shrinks left y span");
-    assert(spanY(snapshot.rightViewport) < spanY(snapshot.initialViewport), "wheel zoom shrinks right y span");
+    const leftRatio = spanY(snapshot.viewport) / spanY(snapshot.initialViewport);
+    const rightRatio = spanY(snapshot.rightViewport) / spanY(snapshot.initialRightViewport);
+    assert(leftRatio < 0.95, "wheel zoom shrinks left y span");
+    assert(close(rightRatio, leftRatio, 1e-6), "wheel zoom scales right y span by the same factor");
+    // CDP input coordinates are pixel-rounded, so allow ~1.5px of anchor drift.
+    const anchorTolerance = (v: ViewportSnapshot): number => (spanY(v) / snapshot.canvasRect.height) * 1.5;
+    assert(close(valueAtFromTop(snapshot.viewport, 0.25, false), leftAnchor, anchorTolerance(snapshot.viewport)), "wheel zoom keeps the left y anchor under the cursor");
+    assert(close(valueAtFromTop(snapshot.rightViewport, 0.25, true), rightAnchor, anchorTolerance(snapshot.rightViewport)), "wheel zoom keeps the reversed right y anchor under the cursor");
 
     const afterZoomXMin = snapshot.viewport.xMin;
-    await drag(cdp, center.x, center.y, center.x + 120, center.y, 8);
+    const afterZoomRight = snapshot.rightViewport;
+    await drag(cdp, center.x, center.y, center.x + 120, center.y + 40, 8);
     await sleep(200);
     snapshot = await getRequiredSnapshot(cdp);
     assert(Math.abs(snapshot.viewport.xMin - afterZoomXMin) > 1, "shift-drag pan changes viewport");
+    // Dragging down moves content down: left values grow, reversed right values shrink.
+    assert(snapshot.rightViewport.yMin < afterZoomRight.yMin, "shift-drag pan moves the reversed right y axis with the content");
+    assert(close(spanY(snapshot.rightViewport), spanY(afterZoomRight), spanY(afterZoomRight) * 1e-6), "shift-drag pan keeps right y span");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(100);
+    snapshot = await getRequiredSnapshot(cdp);
+    await wheel(cdp, snapshot.yAxisRect.left + snapshot.yAxisRect.width / 2, center.y, -400);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(spanY(snapshot.viewport) < spanY(snapshot.initialViewport), "left y-axis gutter wheel zooms left y");
+    assert(close(spanY(snapshot.rightViewport), spanY(snapshot.initialRightViewport), 1e-6), "left y-axis gutter wheel leaves right y untouched");
 
     await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
     await sleep(100);
@@ -210,13 +234,18 @@ async function runInteractionsCase(options: Options, serverUrl: string): Promise
     await sleep(200);
     snapshot = await getRequiredSnapshot(cdp);
     assert(spanX(snapshot.viewport) < spanX(snapshot.initialViewport) * 0.7, "box zoom shrinks x span");
+    const initialRight = snapshot.initialRightViewport;
+    const pixelTolerance = spanY(initialRight) * 0.02;
+    assert(close(snapshot.rightViewport.yMin, valueAtFromTop(initialRight, 0.25, true), pixelTolerance), "box zoom maps top edge through the reversed right axis");
+    assert(close(snapshot.rightViewport.yMax, valueAtFromTop(initialRight, 0.75, true), pixelTolerance), "box zoom maps bottom edge through the reversed right axis");
 
     await doubleClick(cdp, center.x, center.y);
     await sleep(200);
     snapshot = await getRequiredSnapshot(cdp);
     assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1), "double-click reset restores x span");
+    assert(close(spanY(snapshot.rightViewport), spanY(snapshot.initialRightViewport), 1e-6), "double-click reset restores right y span");
 
-    console.log("✓ interactions: hover, crosshair, wheel zoom, shift pan, box zoom, reset");
+    console.log("✓ interactions: hover, crosshair, wheel zoom, shift pan, box zoom, reset (both y axes)");
   } finally {
     cdp.close();
   }
@@ -513,6 +542,10 @@ function spanX(v: ViewportSnapshot): number {
 
 function spanY(v: ViewportSnapshot): number {
   return v.yMax - v.yMin;
+}
+
+function valueAtFromTop(viewport: ViewportSnapshot, fraction: number, reversed: boolean): number {
+  return reversed ? viewport.yMin + spanY(viewport) * fraction : viewport.yMax - spanY(viewport) * fraction;
 }
 
 function close(a: number, b: number, tolerance: number): boolean {
