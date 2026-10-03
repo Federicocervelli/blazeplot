@@ -1,7 +1,8 @@
 import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
-import type { Dataset, TimeRange } from "./types.js";
+import { createValueArray } from "./valueArray.js";
+import type { Dataset, TimeRange, ValuePrecision } from "./types.js";
 
 /** Object-row field selector used by `StaticDataset.fromObjects`. */
 export type StaticDatasetField<Row> = keyof Row | ((row: Row, index: number) => number);
@@ -15,6 +16,8 @@ export interface StaticDatasetFromObjectsOptions<Row> {
    * source rows come from APIs that do not guarantee chronological order.
    */
   readonly sort?: boolean;
+  /** Y storage for the copied values. Defaults to `"float32"`; use `"float64"` to keep large values exact. */
+  readonly valuePrecision?: ValuePrecision;
 }
 
 function readNumericField<Row>(row: Row, index: number, field: StaticDatasetField<Row>): number {
@@ -64,10 +67,11 @@ export class StaticDataset implements Dataset {
       pairs.sort((a, b) => a.x - b.x);
     }
 
-    return new StaticDataset(
-      Float64Array.from(pairs, (pair) => pair.x),
-      Float32Array.from(pairs, (pair) => pair.y),
-    );
+    const y = createValueArray(pairs.length, options.valuePrecision);
+    pairs.forEach((pair, index) => {
+      y[index] = pair.y;
+    });
+    return new StaticDataset(Float64Array.from(pairs, (pair) => pair.x), y);
   }
 
   /** Create an XY dataset from parallel arrays. */
@@ -136,6 +140,25 @@ export class StaticDataset implements Dataset {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
     if (to <= from) return null;
+    return this.summary().query(from, to);
+  }
+
+  /** Return whether logical `[start, end)` contains a gap (non-finite Y). */
+  hasGapInRange(start: number, end: number): boolean {
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this.length, Math.ceil(end));
+    if (to <= from) return false;
+    if (this.tree && !this.treeStale) return this.tree.hasGap(from, to);
+    // No current summary: scan rather than rebuild the whole tree, since data replaced
+    // every frame would otherwise pay a full rebuild just for gap checks.
+    for (let i = from; i < to; i++) {
+      if (!Number.isFinite(this.yData[i]!)) return true;
+    }
+    return false;
+  }
+
+  /** The min/max/gap summary tree, built on first use and refreshed after invalidation. */
+  private summary(): MinMaxTree {
     if (!this.tree) {
       this.tree = new MinMaxTree(this.yData, this.length);
       this.treeStale = true;
@@ -144,7 +167,7 @@ export class StaticDataset implements Dataset {
       this.tree.update(0, this.length);
       this.treeStale = false;
     }
-    return this.tree.query(from, to);
+    return this.tree;
   }
 
   private assertValidIndex(index: number): void {

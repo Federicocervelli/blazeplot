@@ -82,6 +82,7 @@ export type {
   ThemeColor,
   TimeRange,
   UpdatableDataset,
+  ValuePrecision,
   Viewport,
   VisiblePointCopyDataset,
   VisibleSampleCopyDataset,

@@ -82,4 +82,36 @@ describe("MinMaxTree", () => {
     expect(tree.queryRing(6, 4)).toEqual({ minY: 3, maxY: 6 });
     expect(tree.queryRing(3, 0)).toBeNull();
   });
+
+  it("answers hasGap like a linear scan across blocks, updates, and ring wraps", () => {
+    const capacity = 1_000;
+    const values = new Float32Array(capacity);
+    const tree = new MinMaxTree(values, capacity, 16);
+    for (let i = 0; i < capacity; i++) {
+      values[i] = i % 97 === 13 ? Number.NaN : Math.sin(i);
+      tree.include(i, values[i]!);
+    }
+    const scan = (start: number, end: number): boolean => {
+      for (let i = start; i < end; i++) if (!Number.isFinite(values[i]!)) return true;
+      return false;
+    };
+    const check = (): void => {
+      for (let start = 0; start < capacity; start += 37) {
+        for (const length of [0, 1, 15, 16, 17, 64, 200, 999]) {
+          const end = Math.min(capacity, start + length);
+          expect(tree.hasGap(start, end)).toBe(scan(start, end));
+        }
+      }
+    };
+    check();
+
+    values[13] = 0;
+    values[500] = Number.POSITIVE_INFINITY;
+    tree.update(13, 14);
+    tree.update(500, 501);
+    check();
+
+    expect(tree.hasGapRing(990, 30)).toBe(scan(990, 1_000) || scan(0, 20));
+    expect(tree.hasGapRing(0, 0)).toBe(false);
+  });
 });

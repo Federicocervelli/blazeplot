@@ -76,6 +76,18 @@ export interface Dataset {
   upperBoundX(x: number): number;
   /** Drop cached summaries; called by `series.markDirty()` after the data was mutated in place. */
   invalidate?(): void;
+  /**
+   * Optional fast gap check: whether logical `[start, end)` holds any sample with non-finite Y
+   * or `isGap(index) === true`. Sampled line and area draws use it to break strips across
+   * skipped gaps without scanning every skipped sample.
+   */
+  hasGapInRange?(start: number, end: number): boolean;
+  /**
+   * Optional count of samples dropped from the front since creation, for datasets that shift
+   * logical indexes (wrapping ring buffers). Downsampling anchors buckets to
+   * `ordinalOffset + index` so bucket edges stay put while the data streams.
+   */
+  readonly ordinalOffset?: number;
 }
 
 /** Data-domain X interval represented by one dataset sample. */
@@ -216,6 +228,13 @@ export type LODStrategy = "minmax" | "none" | "server";
 /** Behavior when a fixed-capacity streaming buffer is full. */
 export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
 
+/**
+ * Storage for Y and OHLC price values. `"float32"` (the default) halves memory and keeps
+ * about 7 significant digits; `"float64"` stores values exactly, for large prices,
+ * counters, or timestamps where float32 rounding would show in tooltips and picks.
+ */
+export type ValuePrecision = "float32" | "float64";
+
 /** One data sample returned by picking and dataset queries. */
 export interface SeriesSample {
   readonly index: number;
@@ -242,6 +261,8 @@ export interface SeriesConfig {
   readonly xStep?: number;
   readonly downsample?: LODStrategy;
   readonly overflow?: BufferOverflowStrategy;
+  /** Value storage for the dataset BlazePlot creates when `dataset` is omitted. Defaults to `"float32"`. */
+  readonly valuePrecision?: ValuePrecision;
   readonly dataset?: Dataset;
   readonly yAxis?: SeriesYAxis;
   readonly id?: string;

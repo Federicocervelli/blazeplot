@@ -1157,9 +1157,9 @@ export class Chart implements ChartPluginContext {
       if (config.overflow !== undefined && config.overflow !== "wrap") {
         throw new TypeError("Series shorthand { capacity, xStep } uses UniformRingBuffer, which supports only wrap overflow.");
       }
-      return new UniformRingBuffer(capacity, { xStart: config.xStart, xStep: config.xStep });
+      return new UniformRingBuffer(capacity, { xStart: config.xStart, xStep: config.xStep, valuePrecision: config.valuePrecision });
     }
-    return new RingBuffer(capacity, { overflow: config.overflow });
+    return new RingBuffer(capacity, { overflow: config.overflow, valuePrecision: config.valuePrecision });
   }
 
   private resolveSeriesStyle(style: SeriesStyleOptions): SeriesStyle {

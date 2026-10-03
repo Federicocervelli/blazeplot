@@ -1,6 +1,7 @@
 import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxY } from "./MinMaxTree.js";
-import type { AcceleratedDataset, AppendableDataset, SampleCopyLayout, TimeRange, Viewport } from "./types.js";
+import { createValueArray } from "./valueArray.js";
+import type { AcceleratedDataset, AppendableDataset, SampleCopyLayout, TimeRange, ValuePrecision, Viewport } from "./types.js";
 
 function positiveModulo(value: number, modulo: number): number {
   return ((value % modulo) + modulo) % modulo;
@@ -12,6 +13,8 @@ export interface UniformRingBufferOptions {
   readonly xStart?: number;
   /** Distance between consecutive X values. Defaults to 1. */
   readonly xStep?: number;
+  /** Y storage. Defaults to `"float32"`; use `"float64"` to keep large values exact. */
+  readonly valuePrecision?: ValuePrecision;
 }
 
 /**
@@ -28,7 +31,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
   readonly rangeMinMaxExcludesGaps = true;
   /** Distance between consecutive derived X values. */
   readonly xStep: number;
-  private readonly yData: Float32Array;
+  private readonly yData: Float32Array | Float64Array;
   private readonly tree: MinMaxTree;
   private _length = 0;
   private _head = 0;
@@ -48,7 +51,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     this.capacity = capacity;
     this.xStep = xStep;
     this._nextX = options.xStart ?? 0;
-    this.yData = new Float32Array(capacity);
+    this.yData = createValueArray(capacity, options.valuePrecision);
     this.tree = new MinMaxTree(this.yData, capacity);
   }
 
@@ -78,7 +81,12 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     this._nextX += this.xStep;
   }
 
-  /** Append Y samples while seeding the first X value from `x` when needed. */
+  /**
+   * Append Y samples. X is derived as `xStart + index * xStep`, so `x` is only read to seed
+   * the stream: its first value when the buffer is empty, or the first retained value when
+   * a batch replaces the whole buffer. Otherwise `x` is ignored and X continues from the
+   * previous sample, even if the passed values differ; use `RingBuffer` for irregular X.
+   */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
     const requested = Math.min(x.length, y.length);
     if (requested <= 0) return;
@@ -164,6 +172,13 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const to = Math.min(this._length, Math.ceil(end));
     if (to <= from) return null;
     return this.tree.queryRing(this.logicalToPhysical(from), to - from);
+  }
+
+  /** Return whether logical `[start, end)` contains a gap (non-finite Y). */
+  hasGapInRange(start: number, end: number): boolean {
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this._length, Math.ceil(end));
+    return to > from && this.tree.hasGapRing(this.logicalToPhysical(from), to - from);
   }
 
   /** Copy visible samples into a packed render buffer. */
@@ -310,21 +325,12 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     };
 
     for (let index = from; index < to; index += stride) {
-      if (lastIndex >= 0 && index > lastIndex + 1 && this.hasGapInLogicalRange(lastIndex + 1, index) && !writeGap()) break;
+      if (lastIndex >= 0 && index > lastIndex + 1 && this.hasGapInRange(lastIndex + 1, index) && !writeGap()) break;
       if (!writeSample(index)) break;
       lastIndex = index;
     }
 
     return count;
-  }
-
-  private hasGapInLogicalRange(start: number, end: number): boolean {
-    const from = Math.max(0, start);
-    const to = Math.min(this._length, end);
-    for (let i = from; i < to; i++) {
-      if (!Number.isFinite(this.yData[this.logicalToPhysical(i)]!)) return true;
-    }
-    return false;
   }
 
   /** Physical samples below this index hold live data; the ring fills from index 0. */
