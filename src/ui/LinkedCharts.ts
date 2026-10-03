@@ -62,14 +62,21 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
   });
   target.appendChild(root);
 
-  for (const panel of options.panels) {
-    const cell = document.createElement("div");
-    cell.className = panel.className ?? "blazeplot-linked-panel";
-    Object.assign(cell.style, { position: "relative", minWidth: "0", minHeight: "0" });
-    root.appendChild(cell);
-    const shared = options.panelPlugins?.(syncGroup) ?? [];
-    const chartOptions = shared.length > 0 ? { ...panel.options, plugins: [...(panel.options?.plugins ?? []), ...shared] } : panel.options;
-    charts.push(new Chart(cell, chartOptions));
+  try {
+    for (const panel of options.panels) {
+      const cell = document.createElement("div");
+      cell.className = panel.className ?? "blazeplot-linked-panel";
+      Object.assign(cell.style, { position: "relative", minWidth: "0", minHeight: "0" });
+      root.appendChild(cell);
+      const shared = options.panelPlugins?.(syncGroup) ?? [];
+      const chartOptions = shared.length > 0 ? { ...panel.options, plugins: [...(panel.options?.plugins ?? []), ...shared] } : panel.options;
+      charts.push(new Chart(cell, chartOptions));
+    }
+  } catch (error) {
+    // One panel failed (e.g. no WebGL2): release the panels already built.
+    for (const chart of charts) chart.dispose();
+    root.remove();
+    throw error;
   }
 
   /** Apply `update` to every chart except `source` without re-entering the sync listeners. */

@@ -52,12 +52,12 @@ Generated from `dist/` after the package build.
 | interactions plugin | `dist/plugins/interactions.js` | 15 KiB |
 | annotations plugin | `dist/plugins/annotations.js` | 9 KiB |
 | navigator plugin | `dist/plugins/navigator.js` | 8 KiB |
-| selection plugin | `dist/plugins/selection.js` | 4 KiB |
+| selection plugin | `dist/plugins/selection.js` | 5 KiB |
 | legend plugin | `dist/plugins/legend.js` | 3 KiB |
 | tooltip plugin | `dist/plugins/tooltip.js` | 5 KiB |
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 131 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 133 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 3 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 4 KiB |
 
