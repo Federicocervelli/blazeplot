@@ -48,12 +48,13 @@ jobs:
           echo "sha=$(git rev-list -n 1 "$TAG")" >> "$GITHUB_OUTPUT"
 
       # A released site never changes, so only the first deploy after a release builds it.
+      # Bump the v1 segment to force a rebuild when the stable build steps change.
       - name: Restore stable site
         id: stable-cache
         uses: actions/cache@v6
         with:
           path: branches/stable/build/pages
-          key: pages-stable-${{ steps.release.outputs.sha }}
+          key: pages-stable-v1-${{ steps.release.outputs.sha }}
 
       - name: Checkout latest release
         if: steps.stable-cache.outputs.cache-hit != 'true'
