@@ -1,6 +1,6 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
-import { clamp, createOverlayLayer, isEditableTarget } from "./OverlayUtils.js";
+import { clamp, createOverlayLayer } from "./OverlayUtils.js";
 
 /** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
@@ -226,18 +226,18 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
 
       const onPointerUp = (event: PointerEvent): void => finishDrag(event, true);
       const onPointerCancel = (event: PointerEvent): void => finishDrag(event, false);
-      // Escape only belongs to this chart when focus is inside it, or the last
-      // pointer press landed in it and focus is not on some other editable control.
-      let lastPressInChart = false;
-      const onDocumentPointerDown = (event: PointerEvent): void => {
-        lastPressInChart = event.target instanceof Node && chart.rootElement.contains(event.target);
+      // Escape belongs to this chart while focus is inside it, or when the user's
+      // latest press or focus move landed in it. Pointer presses on the canvas do not
+      // move focus, so focus can still sit in a text field the user has since left.
+      const inChart = (target: EventTarget | null): boolean => target instanceof Node && chart.rootElement.contains(target);
+      let escapeArmed = false;
+      const onDocumentPointerOrFocus = (event: Event): void => {
+        escapeArmed = inChart(event.target);
       };
       const onKeyDown = (event: KeyboardEvent): void => {
         if (options.clearOnEscape === false || event.key !== "Escape" || event.defaultPrevented) return;
         if (!committedSelection && !drag) return;
-        const target = event.target;
-        const focusInChart = target instanceof Node && chart.rootElement.contains(target);
-        if (!focusInChart && (!lastPressInChart || isEditableTarget(target))) return;
+        if (!escapeArmed && !inChart(event.target)) return;
         clearSelection(event);
       };
 
@@ -256,7 +256,8 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       canvas.addEventListener("pointermove", onPointerMove);
       canvas.addEventListener("pointerup", onPointerUp);
       canvas.addEventListener("pointercancel", onPointerCancel);
-      globalThis.addEventListener("pointerdown", onDocumentPointerDown, { capture: true });
+      globalThis.addEventListener("pointerdown", onDocumentPointerOrFocus, { capture: true });
+      globalThis.addEventListener("focusin", onDocumentPointerOrFocus, { capture: true });
       globalThis.addEventListener("keydown", onKeyDown);
       const unsubscribeTheme = chart.subscribe("themechange", applyTheme);
       const unsubscribeRender = chart.subscribe("render", onRender);
@@ -266,7 +267,8 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         canvas.removeEventListener("pointermove", onPointerMove);
         canvas.removeEventListener("pointerup", onPointerUp);
         canvas.removeEventListener("pointercancel", onPointerCancel);
-        globalThis.removeEventListener("pointerdown", onDocumentPointerDown, { capture: true });
+        globalThis.removeEventListener("pointerdown", onDocumentPointerOrFocus, { capture: true });
+        globalThis.removeEventListener("focusin", onDocumentPointerOrFocus, { capture: true });
         globalThis.removeEventListener("keydown", onKeyDown);
         unsubscribeTheme();
         unsubscribeRender();

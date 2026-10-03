@@ -399,6 +399,13 @@ async function runSelectionCase(options: Options, serverUrl: string): Promise<vo
     await sleep(100);
     assert((await getRequiredSnapshot(cdp)).hasSelection, "Escape typed in an unrelated input keeps the chart selection");
 
+    // Pressing on the canvas does not move focus; re-focus the input so the focus move is explicit.
+    await click(cdp, rect.left + rect.width * 0.9, rect.top + rect.height * 0.9);
+    await evaluate(cdp, "(() => { const input = document.getElementById('outside-input'); input.blur(); input.focus(); })()", true);
+    await pressKey(cdp, "Escape", 27);
+    await sleep(100);
+    assert((await getRequiredSnapshot(cdp)).hasSelection, "Escape after moving focus out of the chart keeps the selection");
+
     await click(cdp, rect.left + rect.width * 0.9, rect.top + rect.height * 0.9);
     await pressKey(cdp, "Escape", 27);
     await sleep(100);
