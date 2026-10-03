@@ -201,7 +201,7 @@ Generated from `dist/` after the package build.
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
 | shared Chart chunk | `dist/Chart-*.js` | 133 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 3 KiB |
-| shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 5 KiB |
+| shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 4 KiB |
 
 ### All public exports
 
