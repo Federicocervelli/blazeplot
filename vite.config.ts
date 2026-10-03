@@ -1,20 +1,11 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
-import dts from "vite-plugin-dts";
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ command }) => {
   const root = command === "serve" ? resolve(__dirname, "tests/browser") : __dirname;
 
   return {
     root,
-    plugins: command === "build" && mode !== "js-only" ? [
-      dts({
-        tsconfigPath: resolve(__dirname, "tsconfig.build.json"),
-        entryRoot: resolve(__dirname, "src"),
-        outDirs: resolve(__dirname, "dist"),
-        insertTypesEntry: true,
-      }),
-    ] : [],
     resolve: {
       alias: {
         "@": resolve(__dirname, "src"),

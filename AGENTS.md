@@ -21,7 +21,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Run one test file: `bun test tests/core/RingBuffer.test.ts`.
 - Run one named test: `bun test tests/core/RingBuffer.test.ts -t "wraps around"`.
 - Typecheck: `bun run typecheck` (`tsc --noEmit`).
-- Build the npm package: `bun run build` (Vite library build plus declaration emit via `vite-plugin-dts`).
+- Build the npm package: `bun run build` (Vite library build plus declaration emit via `tsc -p tsconfig.build.json`).
 - Build JS only: `bun run build:js`.
 - Build the docs/site: `bun run pages:build`; preview with `bun run pages:preview`.
 - Dev server: `bun run dev` serves the Lit website (`website/`) with integrated docs and previews. Use `bun run fixtures:dev` only for browser fixture debugging under `tests/browser/`.
@@ -99,7 +99,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Use the `@/*` alias for `src/*` when it improves clarity; it is configured in both `tsconfig.json` and Vite configs.
 - Prefer relative imports inside `src/` package code so declaration output does not leak the `@/*` alias. Browser fixtures under `tests/browser/` can use `@/*`.
 - `tsconfig.json` is strict and enables `noUncheckedIndexedAccess`, `noUnusedLocals`, and `noUnusedParameters`; unused placeholders are usually prefixed with `_`.
-- `tsconfig.build.json` scopes declaration generation to `src/`; `vite-plugin-dts` emits package declarations during `vite build`.
+- `tsconfig.build.json` scopes declaration generation to `src/`; `tsc -p tsconfig.build.json` emits package declarations into `dist/` after the Vite build.
 
 ## Documentation Rules
 
