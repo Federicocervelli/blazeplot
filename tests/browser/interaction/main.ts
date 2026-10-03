@@ -5,6 +5,8 @@ import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
+import type { SelectionPlugin } from "@/plugins/selection.ts";
+import { runRobustnessProbes } from "./robustness.ts";
 
 interface RectSnapshot {
   readonly left: number;
@@ -28,6 +30,8 @@ interface InteractionSnapshot {
   readonly crosshairMoves: number;
   readonly selectionCommits: number;
   readonly selectionBounds: { xMin: number; xMax: number; yMin: number; yMax: number } | null;
+  readonly hasSelection: boolean;
+  readonly selectionOverlay: RectSnapshot | null;
   readonly visibleCrosshairs: number;
   readonly visibleTooltips: number;
   readonly crosshairX: number | null;
@@ -41,15 +45,17 @@ interface InteractionSnapshot {
 interface InteractionController {
   snapshot(): InteractionSnapshot;
   resetViewport(): void;
+  setViewport(viewport: Partial<Viewport>): void;
 }
 
 declare global {
   interface Window {
     __blazeplotInteractionTest: InteractionController;
+    __blazeplotRobustness?: typeof runRobustnessProbes;
   }
 }
 
-type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow";
+type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow" | "robustness";
 
 const params = new URLSearchParams(window.location.search);
 const rawCase = params.get("case");
@@ -61,6 +67,7 @@ const caseName: InteractionCase = rawCase === "selection"
   || rawCase === "render-loop"
   || rawCase === "continuous-render-loop"
   || rawCase === "live-follow"
+  || rawCase === "robustness"
   ? rawCase
   : "interactions";
 const chartTarget = requireElement<HTMLElement>("chart");
@@ -81,6 +88,7 @@ let selectionCommits = 0;
 let selectionBounds: InteractionSnapshot["selectionBounds"] = null;
 
 const charts: Chart[] = [];
+let selection: SelectionPlugin | null = null;
 
 if (caseName === "linked") {
   const linked = createLinkedCharts(chartTarget, {
@@ -92,7 +100,7 @@ if (caseName === "linked") {
   charts.push(...linked.charts);
 } else {
   const plugins: ChartPlugin[] = caseName === "selection"
-    ? [selectionPlugin({
+    ? [selection = selectionPlugin({
         mode: "xy",
         minDragDistancePx: 4,
         onChange: (event) => {
@@ -150,6 +158,8 @@ window.__blazeplotInteractionTest = {
     crosshairMoves,
     selectionCommits,
     selectionBounds,
+    hasSelection: selection?.getSelection() != null,
+    selectionOverlay: selectionOverlayRect(),
     visibleCrosshairs: countVisible(".blazeplot-crosshair"),
     visibleTooltips: countVisible(".blazeplot-tooltip"),
     crosshairX: crosshairX(),
@@ -159,6 +169,7 @@ window.__blazeplotInteractionTest = {
     latestXFollowPaused: chart.getXFollowState() === "paused",
     error,
   }),
+  setViewport: (viewport) => chart.setViewport(viewport),
   resetViewport: () => {
     for (const item of charts) {
       item.setViewport(initialViewport);
@@ -166,6 +177,15 @@ window.__blazeplotInteractionTest = {
     }
   },
 };
+
+if (caseName === "robustness") window.__blazeplotRobustness = runRobustnessProbes;
+if (caseName === "selection") {
+  // An unrelated text field, to check that Escape typed there leaves the chart selection alone.
+  const outside = document.createElement("input");
+  outside.id = "outside-input";
+  outside.style.cssText = "position:fixed;right:8px;top:4px;width:120px";
+  document.body.appendChild(outside);
+}
 
 try {
   for (const [chartIndex, item] of charts.entries()) {
@@ -231,6 +251,12 @@ function crosshairX(): number | null {
   if (!crosshair || !vertical || getComputedStyle(crosshair).display === "none") return null;
   const value = Number.parseFloat(vertical.style.left);
   return Number.isFinite(value) ? value : null;
+}
+
+function selectionOverlayRect(): RectSnapshot | null {
+  const overlay = document.querySelector<HTMLElement>(".blazeplot-selection-brush");
+  if (!overlay || getComputedStyle(overlay).display === "none") return null;
+  return rectOf(overlay);
 }
 
 function tooltipLeft(): number | null {

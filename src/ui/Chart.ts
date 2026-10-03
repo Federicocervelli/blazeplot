@@ -431,9 +431,36 @@ function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: numb
   return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
 }
 
-function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
-  let nextMin = includeZero ? Math.min(0, min) : min;
-  let nextMax = includeZero ? Math.max(0, max) : max;
+/**
+ * Pad a data domain in the axis's scale space, so log and symlog axes pad
+ * proportionally instead of past zero. Returns `null` when no valid domain exists
+ * for the scale, e.g. non-positive data or `includeZero` on a log axis.
+ */
+function paddedAxisDomain(
+  controller: AxisController,
+  axis: "x" | "y",
+  min: number,
+  max: number,
+  padding: number,
+  includeZero: boolean,
+): { min: number; max: number } | null {
+  const from = includeZero ? Math.min(0, min) : min;
+  const to = includeZero ? Math.max(0, max) : max;
+  let domain = paddedDomain(from, to, padding);
+  if (controller.isNonlinear(axis)) {
+    try {
+      const scaled = paddedDomain(controller.scaleValue(from, axis), controller.scaleValue(to, axis), padding);
+      domain = { min: controller.unscaleValue(scaled.min, axis), max: controller.unscaleValue(scaled.max, axis) };
+    } catch {
+      // Custom scales without fromScreen() cannot map back; keep the linear padding.
+    }
+  }
+  return controller.isValidDomain(axis, domain.min, domain.max) ? domain : null;
+}
+
+function paddedDomain(min: number, max: number, padding: number): { min: number; max: number } {
+  let nextMin = min;
+  let nextMax = max;
   let span = nextMax - nextMin;
   if (span <= 0) {
     const halfSpan = Math.max(1, Math.abs(nextMin)) * 0.5;
@@ -501,6 +528,8 @@ export class Chart implements ChartPluginContext {
   private restoreRenderRafId: number = 0;
   private running: boolean = false;
   private webglContextLost: boolean = false;
+  /** Last invalid-domain message reported, so a persistent problem logs once rather than every frame. */
+  private reportedDomainError: string | null = null;
   private readonly options: ChartOptions;
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (event.pointerType !== "touch") {
@@ -587,9 +616,17 @@ export class Chart implements ChartPluginContext {
     this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
-    this.installGpuResources(this.createGpuResources());
-    this.rebuildAxisOverlay();
-    this.updateTextOverlays();
+    try {
+      this.installGpuResources(this.createGpuResources());
+      this.rebuildAxisOverlay();
+      this.updateTextOverlays();
+    } catch (error) {
+      // E.g. no WebGL2: remove the half-built DOM and hand back a caller-supplied canvas.
+      this.axisOverlay?.dispose();
+      if (this.renderer) this.disposeRenderer(this.renderer);
+      this.layout.dispose();
+      throw error;
+    }
 
     this.canvas.addEventListener("pointermove", this.handlePointerMove);
     this.canvas.addEventListener("pointerdown", this.handlePointerDown);
@@ -698,14 +735,26 @@ export class Chart implements ChartPluginContext {
    * Changing X pauses latest-X following like a user pan would.
    */
   setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left"): void {
-    if (viewport.xMin !== undefined || viewport.xMax !== undefined) {
+    const setsX = viewport.xMin !== undefined || viewport.xMax !== undefined;
+    const setsY = viewport.yMin !== undefined || viewport.yMax !== undefined;
+    const camera = this.getCamera(yAxis);
+    const xMin = viewport.xMin ?? this.camera.xMin;
+    const xMax = viewport.xMax ?? this.camera.xMax;
+    const yMin = viewport.yMin ?? camera.yMin;
+    const yMax = viewport.yMax ?? camera.yMax;
+    // Validate both axes before mutating either, so a rejected call leaves the chart untouched.
+    if (setsX && !this.axis.isValidDomain("x", xMin, xMax)) {
+      throw new RangeError(`Chart.setViewport received an invalid X domain [${xMin}, ${xMax}] for the configured scale.`);
+    }
+    if (setsY && !(yAxis === "right" ? this.rightAxis : this.axis).isValidDomain("y", yMin, yMax)) {
+      throw new RangeError(`Chart.setViewport received an invalid Y domain [${yMin}, ${yMax}] for the configured scale.`);
+    }
+    if (setsX) {
       this.pauseXFollowForInteraction();
-      this.camera.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax });
+      this.camera.setViewport({ xMin, xMax });
       this.syncRightCameraX();
     }
-    if (viewport.yMin !== undefined || viewport.yMax !== undefined) {
-      this.getCamera(yAxis).setViewport({ yMin: viewport.yMin, yMax: viewport.yMax });
-    }
+    if (setsY) camera.setViewport({ yMin, yMax });
     this.emitViewportChange();
     this.refreshHover();
   }
@@ -719,19 +768,11 @@ export class Chart implements ChartPluginContext {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.pauseXFollowForInteraction();
-    if (yAxis === "right") {
-      if (next.dx !== 0) this.axis.pan({ dx: next.dx, dy: 0 });
-      if (next.dy !== 0) this.rightAxis.pan({ dx: 0, dy: next.dy });
-    } else {
-      this.axis.pan(next);
-      if (yAxis === undefined && next.dy !== 0) {
-        this.rightAxis.pan({ dx: 0, dy: this.rightYDirectionMatchesLeft() ? next.dy : -next.dy });
-      }
-    }
-    this.syncRightCameraX();
-    this.emitViewportChange();
-    this.scheduleHoverRefresh();
+    const left = yAxis === "right" ? { dx: next.dx, dy: 0 } : next;
+    const right = yAxis === "right"
+      ? { dx: 0, dy: next.dy }
+      : { dx: 0, dy: yAxis === undefined ? (this.rightYDirectionMatchesLeft() ? next.dy : -next.dy) : 0 };
+    this.applyViewportChange(this.axis.panViewport(left), this.rightAxis.panViewport(right));
   }
 
   /**
@@ -743,16 +784,31 @@ export class Chart implements ChartPluginContext {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.pauseXFollowForInteraction();
+    const zoomsY = next.axis !== "x";
+    let left: Viewport | null = this.camera.viewport;
+    let right: Viewport | null = this.rightCamera.viewport;
     if (yAxis === "right") {
-      if (next.axis !== "y") this.axis.zoom({ ...next, axis: "x" });
-      if (next.axis !== "x") this.rightAxis.zoom({ ...next, axis: "y" });
+      if (next.axis !== "y") left = this.axis.zoomViewport({ ...next, axis: "x" });
+      if (zoomsY) right = this.rightAxis.zoomViewport({ ...next, axis: "y" });
     } else {
-      this.axis.zoom(next);
-      if (yAxis === undefined && next.axis !== "x") {
-        this.rightAxis.zoom({ ...next, cy: this.rightYDirectionMatchesLeft() ? next.cy : 1 - next.cy, axis: "y" });
+      left = this.axis.zoomViewport(next);
+      if (yAxis === undefined && zoomsY) {
+        right = this.rightAxis.zoomViewport({ ...next, cy: this.rightYDirectionMatchesLeft() ? next.cy : 1 - next.cy, axis: "y" });
       }
     }
+    this.applyViewportChange(left, right);
+  }
+
+  /**
+   * Apply a gesture's left/right viewports together. When either is unusable (an
+   * invalid scale domain or a span beyond float precision) nothing changes, so a
+   * gesture never leaves the two Y axes out of step.
+   */
+  private applyViewportChange(left: Viewport | null, right: Viewport | null): void {
+    if (!left || !right) return;
+    this.pauseXFollowForInteraction();
+    this.camera.setViewport(left);
+    this.rightCamera.setViewport({ yMin: right.yMin, yMax: right.yMax });
     this.syncRightCameraX();
     this.emitViewportChange();
     this.scheduleHoverRefresh();
@@ -874,7 +930,11 @@ export class Chart implements ChartPluginContext {
     return this.xFollowPaused ? "paused" : "following";
   }
 
-  /** Fit the viewport to data bounds; returns `false` when nothing changed. */
+  /**
+   * Fit the viewport to data bounds; returns `false` when nothing changed. Padding is
+   * applied in scale space, and an axis is left unchanged when its data has no valid
+   * domain for the scale (e.g. non-positive values on a log axis).
+   */
   fitToData(options: ChartFitToDataOptions = {}): boolean {
     const fitX = options.x !== false;
     const fitY = options.y !== false;
@@ -906,21 +966,21 @@ export class Chart implements ChartPluginContext {
 
     let changed = false;
     if (fitX && Number.isFinite(xMin) && Number.isFinite(xMax)) {
-      const xDomain = paddedDomain(xMin, xMax, padding.x, false);
-      if (!domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xDomain.min, xDomain.max)) {
+      const xDomain = paddedAxisDomain(this.axis, "x", xMin, xMax, padding.x, false);
+      if (xDomain && !domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xDomain.min, xDomain.max)) {
         this.camera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
         changed = true;
       }
     }
-    const fitYAxis = (camera: Camera2D, min: number, max: number): void => {
+    const fitYAxis = (camera: Camera2D, controller: AxisController, min: number, max: number): void => {
       if (!Number.isFinite(min) || !Number.isFinite(max)) return;
-      const domain = paddedDomain(min, max, padding.y, options.includeZero === true);
-      if (domainsAlmostEqual(camera.yMin, camera.yMax, domain.min, domain.max)) return;
+      const domain = paddedAxisDomain(controller, "y", min, max, padding.y, options.includeZero === true);
+      if (!domain || domainsAlmostEqual(camera.yMin, camera.yMax, domain.min, domain.max)) return;
       camera.setViewport({ yMin: domain.min, yMax: domain.max });
       changed = true;
     };
-    if (fitY && yAxis !== "right") fitYAxis(this.camera, leftYMin, leftYMax);
-    if (fitY && yAxis !== "left") fitYAxis(this.rightCamera, rightYMin, rightYMax);
+    if (fitY && yAxis !== "right") fitYAxis(this.camera, this.axis, leftYMin, leftYMax);
+    if (fitY && yAxis !== "left") fitYAxis(this.rightCamera, this.rightAxis, rightYMin, rightYMax);
 
     if (changed) {
       this.syncRightCameraX();
@@ -1057,8 +1117,12 @@ export class Chart implements ChartPluginContext {
     this.rafId = requestAnimationFrame(() => {
       this.rafId = 0;
       if (!this.running) return;
-      this.render();
-      if (this.running && this.options.renderLoop === "continuous") this.requestRender();
+      try {
+        this.render();
+      } finally {
+        // Keep a continuous loop alive even if one frame throws.
+        if (this.running && this.options.renderLoop === "continuous") this.requestRender();
+      }
     });
   }
 
@@ -1109,9 +1173,7 @@ export class Chart implements ChartPluginContext {
     this.syncRightCameraX();
     this.applyFollowXPolicy();
     this.applyAutoFitYPolicy();
-    this.axis.validateDomain("x");
-    this.axis.validateDomain("y");
-    this.rightAxis.validateDomain("y");
+    if (!this.hasRenderableDomains()) return;
 
     try {
       const pixelRatio = this.canvas.width / Math.max(1, this.canvas.clientWidth);
@@ -1146,6 +1208,28 @@ export class Chart implements ChartPluginContext {
     if (this.running && this.options.renderLoop !== "continuous" && this.followXConfig?.currentX && !this.xFollowPaused) {
       this.requestRender();
     }
+  }
+
+  /**
+   * Check every axis domain against its scale. An invalid one (e.g. a camera
+   * moved below zero on a log axis) skips the frame and logs once instead of
+   * throwing, so the chart recovers as soon as the domain is fixed.
+   */
+  private hasRenderableDomains(): boolean {
+    try {
+      this.axis.validateDomain("x");
+      this.axis.validateDomain("y");
+      this.rightAxis.validateDomain("y");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message !== this.reportedDomainError) {
+        this.reportedDomainError = message;
+        console.error(`BlazePlot skipped rendering: ${message}`);
+      }
+      return false;
+    }
+    this.reportedDomainError = null;
+    return true;
   }
 
   private createDefaultDataset(config: SeriesConfig): Dataset {
@@ -1229,7 +1313,7 @@ export class Chart implements ChartPluginContext {
       ? config.window
       : this.camera.xMax - this.camera.xMin;
     const xMin = xMax - span;
-    if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax)) return;
+    if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax) || !this.axis.isValidDomain("x", xMin, xMax)) return;
     this.camera.setViewport({ xMin, xMax });
     this.syncRightCameraX();
     this.emitViewportChange();

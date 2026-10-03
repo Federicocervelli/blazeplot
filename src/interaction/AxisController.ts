@@ -1,4 +1,5 @@
 import type { Camera2D } from "./Camera2D.js";
+import type { Viewport } from "../core/types.js";
 
 /** Axis dimension targeted by axis helpers. */
 export type AxisRenderTarget = "x" | "y";
@@ -88,6 +89,18 @@ const MONTH_LONG = "January February March April May June July August September 
 const WEEKDAY_SHORT = "Sun Mon Tue Wed Thu Fri Sat".split(" ");
 const WEEKDAY_LONG = "Sunday Monday Tuesday Wednesday Thursday Friday Saturday".split(" ");
 
+/**
+ * Smallest span, relative to the domain's magnitude, that still leaves room for
+ * distinct tick values. Doubles carry ~16 significant digits, so this keeps ~3.
+ */
+const MIN_RELATIVE_SPAN = 1e-13;
+
+/** @internal Whether `[min, max]` is finite, ascending, and wide enough for float64 math to resolve. */
+export function isResolvableSpan(min: number, max: number): boolean {
+  const span = max - min;
+  return Number.isFinite(min) && Number.isFinite(max) && span > Math.max(Math.abs(min), Math.abs(max)) * MIN_RELATIVE_SPAN && Number.isFinite(1 / span);
+}
+
 /** Computes axis tick values and labels for a camera. */
 export class AxisController {
   private options: AxisControllerOptions;
@@ -132,10 +145,21 @@ export class AxisController {
 
   /** Throw when the current domain is invalid for the configured scale. */
   validateDomain(axis: AxisRenderTarget): void {
-    const options = axis === "x" ? this.options.x : this.options.y;
-    const min = axis === "x" ? this.camera.xMin : this.camera.yMin;
-    const max = axis === "x" ? this.camera.xMax : this.camera.yMax;
-    AxisController.validateAxisDomain(axis, min, max, options);
+    this.assertDomain(axis, axis === "x" ? this.camera.xMin : this.camera.yMin, axis === "x" ? this.camera.xMax : this.camera.yMax);
+  }
+
+  /** Return whether `[min, max]` is a valid domain for an axis's configured scale. */
+  isValidDomain(axis: AxisRenderTarget, min: number, max: number): boolean {
+    try {
+      this.assertDomain(axis, min, max);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private assertDomain(axis: AxisRenderTarget, min: number, max: number): void {
+    AxisController.validateAxisDomain(axis, min, max, axis === "x" ? this.options.x : this.options.y);
     const scaledMin = this.scaleValue(min, axis);
     const scaledMax = this.scaleValue(max, axis);
     if (!Number.isFinite(scaledMin) || !Number.isFinite(scaledMax) || scaledMax <= scaledMin) {
@@ -202,39 +226,68 @@ export class AxisController {
     return this.unscaleValue(scaledMin + normalized * (scaledMax - scaledMin), axis);
   }
 
-  /** Pan in scale space so logarithmic and custom axes move consistently. */
-  pan(intent: { readonly dx: number; readonly dy: number }): void {
-    const xMin = this.scaleValue(this.camera.xMin, "x");
-    const xMax = this.scaleValue(this.camera.xMax, "x");
-    const yMin = this.scaleValue(this.camera.yMin, "y");
-    const yMax = this.scaleValue(this.camera.yMax, "y");
-    const dx = intent.dx * (xMax - xMin);
-    const dy = intent.dy * (yMax - yMin);
-    this.camera.setViewport({
-      xMin: this.unscaleValue(xMin + dx, "x"),
-      xMax: this.unscaleValue(xMax + dx, "x"),
-      yMin: this.unscaleValue(yMin + dy, "y"),
-      yMax: this.unscaleValue(yMax + dy, "y"),
-    });
+  /** Pan in scale space so logarithmic and custom axes move consistently; returns `false` when the result would be unusable. */
+  pan(intent: { readonly dx: number; readonly dy: number }): boolean {
+    return this.apply(this.panViewport(intent));
   }
 
-  /** Zoom in scale space around normalized data-domain anchors. */
-  zoom(intent: { readonly factor: number; readonly cx: number; readonly cy: number; readonly axis: "x" | "y" | "xy" }): void {
-    if (!Number.isFinite(intent.factor) || intent.factor <= 0) throw new RangeError("Axis zoom factor must be > 0.");
-    const xMin = this.scaleValue(this.camera.xMin, "x");
-    const xMax = this.scaleValue(this.camera.xMax, "x");
-    const yMin = this.scaleValue(this.camera.yMin, "y");
-    const yMax = this.scaleValue(this.camera.yMax, "y");
-    const xCenter = xMin + (xMax - xMin) * intent.cx;
-    const yCenter = yMin + (yMax - yMin) * intent.cy;
-    const xSpan = intent.axis === "y" ? xMax - xMin : (xMax - xMin) / intent.factor;
-    const ySpan = intent.axis === "x" ? yMax - yMin : (yMax - yMin) / intent.factor;
-    this.camera.setViewport({
-      xMin: this.unscaleValue(xCenter - xSpan * intent.cx, "x"),
-      xMax: this.unscaleValue(xCenter + xSpan * (1 - intent.cx), "x"),
-      yMin: this.unscaleValue(yCenter - ySpan * intent.cy, "y"),
-      yMax: this.unscaleValue(yCenter + ySpan * (1 - intent.cy), "y"),
+  /** Zoom in scale space around normalized data-domain anchors; returns `false` at the zoom limits. */
+  zoom(intent: { readonly factor: number; readonly cx: number; readonly cy: number; readonly axis: "x" | "y" | "xy" }): boolean {
+    return this.apply(this.zoomViewport(intent));
+  }
+
+  /** Compute the viewport `pan` would produce, or `null` when it is invalid or beyond floating-point precision. */
+  panViewport(intent: { readonly dx: number; readonly dy: number }): Viewport | null {
+    const x = intent.dx === 0 ? null : this.transformDomain("x", (min, max) => {
+      const delta = intent.dx * (max - min);
+      return [min + delta, max + delta];
     });
+    const y = intent.dy === 0 ? null : this.transformDomain("y", (min, max) => {
+      const delta = intent.dy * (max - min);
+      return [min + delta, max + delta];
+    });
+    return this.combineViewport(x, y);
+  }
+
+  /** Compute the viewport `zoom` would produce, or `null` when it is invalid or beyond floating-point precision. */
+  zoomViewport(intent: { readonly factor: number; readonly cx: number; readonly cy: number; readonly axis: "x" | "y" | "xy" }): Viewport | null {
+    if (!Number.isFinite(intent.factor) || intent.factor <= 0) throw new RangeError("Axis zoom factor must be > 0.");
+    const zoomDomain = (anchor: number) => (min: number, max: number): [number, number] => {
+      const center = min + (max - min) * anchor;
+      const span = (max - min) / intent.factor;
+      return [center - span * anchor, center + span * (1 - anchor)];
+    };
+    const x = intent.axis === "y" ? null : this.transformDomain("x", zoomDomain(intent.cx));
+    const y = intent.axis === "x" ? null : this.transformDomain("y", zoomDomain(intent.cy));
+    return this.combineViewport(x, y);
+  }
+
+  /** Transform an axis domain in scale space; `undefined` marks an unusable result. */
+  private transformDomain(axis: AxisRenderTarget, transform: (min: number, max: number) => [number, number]): [number, number] | undefined {
+    const [scaledMin, scaledMax] = transform(
+      this.scaleValue(axis === "x" ? this.camera.xMin : this.camera.yMin, axis),
+      this.scaleValue(axis === "x" ? this.camera.xMax : this.camera.yMax, axis),
+    );
+    const min = this.unscaleValue(scaledMin, axis);
+    const max = this.unscaleValue(scaledMax, axis);
+    return isResolvableSpan(min, max) && this.isValidDomain(axis, min, max) ? [min, max] : undefined;
+  }
+
+  /** Merge per-axis domains (`null` = unchanged) into a full viewport, or `null` when any axis is unusable. */
+  private combineViewport(x: [number, number] | null | undefined, y: [number, number] | null | undefined): Viewport | null {
+    if (x === undefined || y === undefined) return null;
+    return {
+      xMin: x?.[0] ?? this.camera.xMin,
+      xMax: x?.[1] ?? this.camera.xMax,
+      yMin: y?.[0] ?? this.camera.yMin,
+      yMax: y?.[1] ?? this.camera.yMax,
+    };
+  }
+
+  private apply(viewport: Viewport | null): boolean {
+    if (!viewport) return false;
+    this.camera.setViewport(viewport);
+    return true;
   }
 
   private static validateAxisDomain(axis: AxisRenderTarget, min: number, max: number, options: AxisControllerAxisOptions | undefined): void {
