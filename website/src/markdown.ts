@@ -29,7 +29,7 @@ const HTML_ESCAPE: Record<string, string> = {
   '"': "&quot;",
 };
 
-const GITHUB_SOURCE_BASE = "https://github.com/Federicocervelli/blazeplot/blob/development/";
+const GITHUB_SOURCE_BASE = "https://github.com/Federicocervelli/blazeplot/blob/main/";
 
 const DOC_ROUTE_BY_SOURCE_PATH: Readonly<Record<string, string>> = Object.fromEntries(
   DOC_PAGES.map((page) => [page.sourcePath, `docs/${page.slug}`]),

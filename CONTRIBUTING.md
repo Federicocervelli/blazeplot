@@ -5,10 +5,10 @@ Thanks for helping improve BlazePlot. The project is still moving quickly, so th
 ## Workflow
 
 1. Fork the repository (or create a branch if you have write access).
-2. Branch from `development`, the default branch.
-3. Open a pull request against `development`. Keep it focused on one topic.
+2. Branch from `main`.
+3. Open a pull request against `main`. Keep it focused on one topic.
 
-CI runs on every pull request, including from forks, and needs no secrets. The required `validate` check passes when both CI jobs pass: `bun run check` and `bun run test:browser`. Maintainers merge green pull requests into `development`; releases are promoted from `development` to `main` separately.
+CI runs on every pull request, including from forks, and needs no secrets. The required `validate` check passes when both CI jobs pass: `bun run check` and `bun run test:browser`. Maintainers squash-merge green pull requests into `main`. Merging to `main` does not publish to npm; releases are separate PRs that bump the version.
 
 ## Local setup
 
@@ -65,6 +65,6 @@ A good PR description includes:
 
 ## Maintainer notes
 
-- `main` is the release branch. Merge release PRs from `development` with a merge commit; the release workflow publishes the unpublished `package.json` version, tags it, and fast-forwards `development` to `main`.
+- Releases are PRs from a `release/vX.Y.Z` branch that run `bun run release <patch|minor|major>`. When one merges, the release workflow publishes the new `package.json` version, tags it, and redeploys the stable site.
 - Tags are release outputs, not manual inputs.
 - See [`docs/internal/github-workflows.md`](docs/internal/github-workflows.md) for what each workflow does.

@@ -2,9 +2,7 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches:
-      - development
+  # Pushes to main run CI through the release workflow, which calls this one.
   workflow_call:
   workflow_dispatch:
 
@@ -20,7 +18,7 @@ jobs:
     name: Typecheck, tests, build, docs, package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - run: bun run check
 
@@ -28,12 +26,12 @@ jobs:
     name: Browser benchmark, visual, interaction, website
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - run: bun run test:browser
       - name: Upload visual test screenshots
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-tests
           path: build/visual-tests

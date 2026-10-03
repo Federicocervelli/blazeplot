@@ -2,7 +2,6 @@ version: 2
 updates:
   - package-ecosystem: npm
     directory: /
-    target-branch: development
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
@@ -14,7 +13,6 @@ updates:
       include: scope
   - package-ecosystem: github-actions
     directory: /
-    target-branch: development
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

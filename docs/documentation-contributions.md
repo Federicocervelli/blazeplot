@@ -4,7 +4,7 @@ BlazePlot docs should help a developer decide what to build, copy a correct star
 
 ## Contribution workflow
 
-1. Start from updated `development` and create a focused `docs/<topic>` branch.
+1. Start from updated `main` and create a focused `docs/<topic>` branch.
 2. Identify the user path before editing: first chart, streaming data, plugin usage, React, linked dashboards, export, or maintainer release work.
 3. Verify the API from source, tests, or generated declarations before documenting it.
 4. Prefer one small, complete example over several partial snippets.

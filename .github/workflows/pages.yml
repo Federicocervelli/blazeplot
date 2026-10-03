@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - development
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -24,50 +24,63 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout workflow actions
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           sparse-checkout: .github
 
-      - name: Checkout main preview
-        uses: actions/checkout@v6
+      - name: Checkout main
+        uses: actions/checkout@v7
         with:
           ref: main
-          path: branches/main
+          path: branches/next
+          fetch-depth: 0
 
-      - name: Checkout development preview
-        uses: actions/checkout@v6
+      # The stable site documents the latest npm release, not unreleased work on main.
+      - name: Resolve latest release tag
+        id: release
+        working-directory: branches/next
+        run: |
+          TAG=$(git tag --list 'v[0-9]*' --sort=-v:refname | head -n 1)
+          if [ -z "$TAG" ]; then
+            echo "::error::No release tag found."
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout latest release
+        uses: actions/checkout@v7
         with:
-          ref: development
-          path: branches/development
+          ref: ${{ steps.release.outputs.tag }}
+          path: branches/stable
 
       - uses: ./.github/actions/setup
         with:
-          working-directory: branches/main
+          working-directory: branches/stable
 
-      - name: Build main site
-        working-directory: branches/main
+      - name: Build stable site
+        working-directory: branches/stable
         run: bun run pages:build
 
       - uses: ./.github/actions/setup
         with:
-          working-directory: branches/development
+          working-directory: branches/next
 
-      - name: Build development site
-        working-directory: branches/development
+      - name: Build next site
+        working-directory: branches/next
         env:
-          BLAZEPLOT_PAGES_BASE: /development/
+          BLAZEPLOT_PAGES_BASE: /next/
         run: bun run pages:build
 
       - name: Assemble site
         run: |
           rm -rf build/pages
-          mkdir -p build/pages/development
-          cp -a branches/main/build/pages/. build/pages/
-          cp -a branches/development/build/pages/. build/pages/development/
-          rm -rf build/pages/visual build/pages/interaction build/pages/development/visual build/pages/development/interaction
-          mkdir -p build/pages/previews build/pages/development/previews
+          mkdir -p build/pages/next
+          cp -a branches/stable/build/pages/. build/pages/
+          cp -a branches/next/build/pages/. build/pages/next/
+          rm -rf build/pages/visual build/pages/interaction build/pages/next/visual build/pages/next/interaction
+          mkdir -p build/pages/previews build/pages/next/previews
           cp build/pages/index.html build/pages/previews/index.html
-          cp build/pages/development/index.html build/pages/development/previews/index.html
+          cp build/pages/next/index.html build/pages/next/previews/index.html
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

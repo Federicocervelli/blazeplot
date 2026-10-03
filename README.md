@@ -354,6 +354,6 @@ bun run bench:compare   # Manual headed BlazePlot/uPlot/Chart.js comparison benc
 bun run release patch  # Bump version, draft changelog, regenerate docs for a release PR
 ```
 
-Branch flow: `development` is the integration branch for regular work; open feature/fix PRs into `development`. Open release PRs from `development` into `main` with version and changelog already updated. Release PRs publish npm and create the GitHub Release on merge.
+Branch flow: open feature/fix PRs against `main`. Releases are separate PRs to `main` that bump the version and changelog; merging one publishes to npm and creates the GitHub Release.
 
 See [docs/release-and-benchmarks.md](https://github.com/Federicocervelli/blazeplot/blob/main/docs/release-and-benchmarks.md) for full workflow details.

@@ -7,8 +7,8 @@ const USAGE = `Usage: bun run release <patch|minor|major|x.y.z>
 
 Prepares a release on the current branch: bumps package.json, drafts
 changelogs/vX.Y.Z.md from the commits since the last tag, and regenerates the docs.
-It does not commit, tag, push, or publish. Open a PR from development to main and
-merge it with a merge commit; the release workflow does the rest.
+It does not commit, tag, push, or publish. Run it on a release/vX.Y.Z branch cut
+from main, then open a PR to main; merging it runs the release workflow.
 `;
 
 const [increment] = process.argv.slice(2);
@@ -31,7 +31,7 @@ if (!existsSync(changelogPath)) {
 
 execFileSync(process.platform === "win32" ? "bun.exe" : "bun", ["run", "docs:readme"], { stdio: "inherit" });
 
-console.log(`\nPrepared v${next}. Edit changelogs/v${next}.md, commit, and open a PR from development to main.`);
+console.log(`\nPrepared v${next}. Edit changelogs/v${next}.md, commit, and open a PR to main.`);
 
 function draftChanges() {
   const lastTag = git(["describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"]);

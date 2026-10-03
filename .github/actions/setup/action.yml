@@ -21,7 +21,7 @@ runs:
         bun-version: ${{ steps.bun.outputs.version }}
 
     - name: Cache Bun downloads
-      uses: actions/cache@v5
+      uses: actions/cache@v6
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ hashFiles(format('{0}/bun.lock', inputs.working-directory)) }}

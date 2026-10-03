@@ -55,7 +55,7 @@ export class BlazeplotSite extends LitElement {
         </main>
         <footer class="flex flex-wrap justify-center gap-5 px-3 py-5 text-[12px] text-[#aaa]" aria-label="Project links">
           <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer">npm</a>
-          <a href="https://github.com/Federicocervelli/blazeplot/blob/development/LICENSE" target="_blank" rel="noreferrer">MIT license</a>
+          <a href="https://github.com/Federicocervelli/blazeplot/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT license</a>
           <a href="https://github.com/sponsors/Federicocervelli" target="_blank" rel="noreferrer">Sponsor</a>
           <a href="https://cervelli.dev" target="_blank" rel="noreferrer">Portfolio</a>
         </footer>

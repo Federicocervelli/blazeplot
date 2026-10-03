@@ -116,14 +116,20 @@ export async function waitForHttp(url: string, timeoutMs: number): Promise<void>
   throw new Error(`Timed out waiting for ${url}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 }
 
-export async function createTarget(debugPort: number, url: string): Promise<{ webSocketDebuggerUrl: string }> {
+export async function createTarget(debugPort: number, url: string): Promise<{ id: string; webSocketDebuggerUrl: string }> {
   const endpoint = `http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(url)}`;
   let response = await fetch(endpoint, { method: "PUT" });
   if (!response.ok) response = await fetch(endpoint);
   if (!response.ok) throw new Error(`Could not create Chrome target: HTTP ${response.status}`);
-  const payload = await response.json() as { webSocketDebuggerUrl?: string };
-  if (!payload.webSocketDebuggerUrl) throw new Error("Chrome target response did not include webSocketDebuggerUrl");
-  return { webSocketDebuggerUrl: payload.webSocketDebuggerUrl };
+  const payload = await response.json() as { id?: string; webSocketDebuggerUrl?: string };
+  if (!payload.id || !payload.webSocketDebuggerUrl) throw new Error("Chrome target response did not include id and webSocketDebuggerUrl");
+  return { id: payload.id, webSocketDebuggerUrl: payload.webSocketDebuggerUrl };
+}
+
+/** Close a page target so its timers and animation frames stop competing with later pages. */
+export async function closeTarget(debugPort: number, id: string): Promise<void> {
+  const response = await fetch(`http://127.0.0.1:${debugPort}/json/close/${encodeURIComponent(id)}`);
+  if (!response.ok) throw new Error(`Could not close Chrome target ${id}: HTTP ${response.status}`);
 }
 
 export async function evaluate(cdp: CdpClient, expression: string, awaitPromise: boolean): Promise<unknown> {

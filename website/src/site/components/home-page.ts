@@ -62,7 +62,7 @@ export class BlazeplotHomePage extends LitElement {
             </h1>
             <p class="text-base text-[#bbb]">Fast WebGL2 charts for dense history and live data.</p>
             <nav class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1" aria-label="Project badges">
-              <a href="https://github.com/Federicocervelli/blazeplot/blob/development/LICENSE" target="_blank" rel="noreferrer" aria-label="BlazePlot license">
+              <a href="https://github.com/Federicocervelli/blazeplot/blob/main/LICENSE" target="_blank" rel="noreferrer" aria-label="BlazePlot license">
                 <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT license" class="block h-5" />
               </a>
               <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot npm downloads">

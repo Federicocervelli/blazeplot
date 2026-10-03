@@ -23,11 +23,11 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -89,14 +89,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file release-notes.md
+    outputs:
+      published: ${{ steps.version.outputs.publish }}
 
-      # Release PRs are merged with a merge commit, so development is an ancestor of
-      # main and can be fast-forwarded. This keeps both branches on the same commit.
-      - name: Fast-forward development to main
-        run: |
-          git fetch origin development
-          if git merge-base --is-ancestor origin/development HEAD; then
-            git push origin HEAD:refs/heads/development
-          else
-            echo "::warning::development has commits that are not on main; merge main into development manually."
-          fi
+  # The stable site is built from the latest release tag, so redeploy once the new tag exists.
+  pages:
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    uses: ./.github/workflows/pages.yml
+    permissions:
+      contents: read
+      pages: write
+      id-token: write

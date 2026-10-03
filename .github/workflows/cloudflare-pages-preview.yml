@@ -23,13 +23,13 @@ jobs:
       url: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.deploy.outputs.deployment-url }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Resolve branch metadata
         id: branch
         run: |
-          if [ "${GITHUB_REF_NAME}" = "main" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
-            echo "::error::Cloudflare previews are only for feature branches. Use GitHub Pages for main/development."
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "::error::Cloudflare previews are only for feature branches. Use GitHub Pages for main."
             exit 1
           fi
           echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
