@@ -37,9 +37,9 @@ Runs on pushes to `main` and by manual dispatch.
 
 1. `version`: reads `vX.Y.Z` from `package.json`. If the tag exists there is nothing to publish; if npm has the version but the tag is missing, it fails for manual investigation.
 2. `ci`: runs the full CI workflow (`workflow_call`), only when publishing.
-3. Appends release benchmarks to `changelogs/vX.Y.Z.md` if missing.
-4. Packs and publishes to npm with provenance through npm trusted publishing (OIDC). No npm token secret is used; the trusted publisher on npm is bound to this workflow file name.
-5. Creates the `vX.Y.Z` tag and GitHub release from the changelog plus the commit list.
+3. `release`: appends release benchmarks to `changelogs/vX.Y.Z.md` if missing.
+4. `release`: packs and publishes to npm with provenance through npm trusted publishing (OIDC). No npm token secret is used; the trusted publisher on npm is bound to this workflow file name.
+5. `release`: creates the `vX.Y.Z` tag and GitHub release from the changelog plus the commit list.
 6. `pages`: calls the Pages workflow. This is the only Pages deploy for `main`: it runs right after `version` for ordinary merges and after the tag is created for releases, so a release never deploys a stable site built from the previous tag.
 
 Every other push to `main` skips CI and publishing and only deploys Pages, because its `package.json` version already has a tag.
@@ -53,7 +53,7 @@ Called by the release workflow on every push to `main`, and by manual dispatch. 
 - The latest `v*` release tag at `/`, so the stable docs match what is on npm.
 - `main` at `/next/`, for unreleased work.
 
-The stable build is cached by the release tag's commit, so it is only rebuilt on the first deploy after a release.
+The stable build is cached by the release tag's commit, so it is only rebuilt on the first deploy after a release. Bump the `v1` segment of its cache key when the stable build steps change, to force a rebuild.
 
 Keep the copy step in sync with website routes that need SPA fallbacks, such as `/previews` and `/next/previews`.
 

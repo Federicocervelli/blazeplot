@@ -110,7 +110,7 @@ jobs:
   # The only Pages deploy for main: right away for ordinary merges, after the new tag exists for releases.
   pages:
     needs: [version, release]
-    if: always() && needs.version.result == 'success' && (needs.version.outputs.publish == 'false' || needs.release.result == 'success')
+    if: ${{ !cancelled() && needs.version.result == 'success' && (needs.version.outputs.publish == 'false' || needs.release.result == 'success') }}
     uses: ./.github/workflows/pages.yml
     permissions:
       contents: read
