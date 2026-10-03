@@ -42,21 +42,20 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 
 ## Branch and Release Flow
 
-- `development` is the default and integration branch for feature, fix, docs, and workflow work, including fork PRs. Branch from an updated `development`.
+- `main` is the default and only long-lived branch. It is protected: changes land through PRs that pass the `validate` check. Branch from an updated `main`.
 - Implement each requested feature/fix on its own branch, for example `feature/<topic>`, `fix/<topic>`, or `docs/<topic>`. Keep commits and PRs focused.
-- Open a focused feature PR from that branch back to `development` for normal feature/fix/docs work unless the maintainer explicitly asks for a direct local merge.
+- Open a focused PR from that branch to `main`. PRs are squash-merged and the branch is deleted on merge.
 - Commit `AGENTS.md`/process-guide updates separately from product code, tests, generated docs, or release changes.
-- Merge completed feature branches back to `development`; prefer `git merge --no-ff <feature-branch>` when asked to merge locally so feature boundaries remain visible.
-- `main` is the protected release branch. Open release PRs from `development` to `main` only when the user explicitly asks for a release PR, and merge them with a merge commit (not squash/rebase) so `development` stays an ancestor of `main`.
+- Merging to `main` does not publish unless the PR bumps `package.json#version`. Open release PRs only when the user explicitly asks for one.
 - Do not push tags manually for releases. Tags are outputs of `.github/workflows/release.yml`.
-- GitHub Pages deploys on pushes to `main` and `development`. Stable site: `https://blazeplot.cervelli.dev/`; stable previews: `https://blazeplot.cervelli.dev/previews`; development site: `https://blazeplot.cervelli.dev/development/`; development previews: `https://blazeplot.cervelli.dev/development/previews`.
+- GitHub Pages deploys on pushes to `main` and after each release. Stable site (latest release tag): `https://blazeplot.cervelli.dev/`; stable previews: `https://blazeplot.cervelli.dev/previews`; unreleased `main` site: `https://blazeplot.cervelli.dev/next/`; unreleased previews: `https://blazeplot.cervelli.dev/next/previews`.
 - Maintainers can request feature-branch browser previews with the manual `Cloudflare Pages Preview` workflow. See `docs/release-and-benchmarks.md` and `docs/internal/github-workflows.md` for alias rules and safety notes.
 - To prepare a release PR:
-  1. Start on updated `development`.
+  1. From updated `main`, create `release/vX.Y.Z`.
   2. Run `bun run release patch` (or `minor` / `major`). It bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates the docs.
   3. Edit the changelog notes and commit.
-  4. Push `development`, open a PR to `main`, wait for the `validate` check, then merge when approved/authorized. Benchmark tables are appended by the release workflow.
-- Merging an unpublished `package.json` version to `main` runs the release workflow: reusable CI, benchmark-result insertion if missing, npm publish with provenance (trusted publishing), `vX.Y.Z` tag and GitHub Release creation from `changelogs/vX.Y.Z.md` plus commits, then a fast-forward of `development` to `main`.
+  4. Push the branch, open a PR to `main`, wait for the `validate` check, then squash-merge when approved/authorized. Benchmark tables are appended by the release workflow.
+- Every push to `main` runs the release workflow: reusable CI, then, if the `package.json` version has no tag yet, benchmark-result insertion if missing, npm publish with provenance (trusted publishing), `vX.Y.Z` tag and GitHub Release creation from `changelogs/vX.Y.Z.md` plus commits, and a Pages redeploy.
 - If the `vX.Y.Z` tag already exists, the release workflow skips publishing for that version.
 
 ## Project Shape
