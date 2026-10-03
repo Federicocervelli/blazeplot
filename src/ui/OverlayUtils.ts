@@ -69,6 +69,14 @@ export function formatCompactNumber(value: number): string {
   return Number(value.toPrecision(6)).toString();
 }
 
+/** Whether a keyboard event target is a text field or other editable control that owns its keys. */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || (target instanceof HTMLElement && target.isContentEditable);
+}
+
 /** Clamp a number to an inclusive range. */
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

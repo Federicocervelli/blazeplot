@@ -1,6 +1,6 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
-import { clamp, createOverlayLayer } from "./OverlayUtils.js";
+import { clamp, createOverlayLayer, isEditableTarget } from "./OverlayUtils.js";
 
 /** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
@@ -140,8 +140,25 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     };
   };
 
+  /** Re-derive the committed rectangle from its data bounds, so it tracks pans, zooms, and resizes. */
+  const plotBoundsForSelection = (chart: ChartPluginContext, selection: SelectionState): SelectionPlotBounds => {
+    const width = chart.canvas.clientWidth;
+    const height = chart.canvas.clientHeight;
+    const [x0, y0] = chart.dataToPlot(selection.bounds.xMin, selection.bounds.yMin, yAxis);
+    const [x1, y1] = chart.dataToPlot(selection.bounds.xMax, selection.bounds.yMax, yAxis);
+    const left = mode === "y-range" ? 0 : clamp(Math.min(x0, x1), 0, width);
+    const top = mode === "x-range" ? 0 : clamp(Math.min(y0, y1), 0, height);
+    return {
+      left,
+      top,
+      width: mode === "y-range" ? width : clamp(Math.max(x0, x1), 0, width) - left,
+      height: mode === "x-range" ? height : clamp(Math.max(y0, y1), 0, height) - top,
+    };
+  };
+
   const clearSelection = (sourceEvent?: KeyboardEvent): void => {
     committedSelection = null;
+    drag = null;
     setOverlay(null);
     chartRef?.emitSelect(null);
     emit("clear", null, sourceEvent);
@@ -209,25 +226,50 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
 
       const onPointerUp = (event: PointerEvent): void => finishDrag(event, true);
       const onPointerCancel = (event: PointerEvent): void => finishDrag(event, false);
+      // Escape only belongs to this chart when focus is inside it, or the last
+      // pointer press landed in it and focus is not on some other editable control.
+      let lastPressInChart = false;
+      const onDocumentPointerDown = (event: PointerEvent): void => {
+        lastPressInChart = event.target instanceof Node && chart.rootElement.contains(event.target);
+      };
       const onKeyDown = (event: KeyboardEvent): void => {
-        if (options.clearOnEscape === false || event.key !== "Escape") return;
+        if (options.clearOnEscape === false || event.key !== "Escape" || event.defaultPrevented) return;
+        if (!committedSelection && !drag) return;
+        const target = event.target;
+        const focusInChart = target instanceof Node && chart.rootElement.contains(target);
+        if (!focusInChart && (!lastPressInChart || isEditableTarget(target))) return;
         clearSelection(event);
+      };
+
+      let lastLayoutKey = "";
+      const onRender = (): void => {
+        if (!committedSelection || drag) return;
+        const viewport = chart.getViewport(yAxis);
+        const key = `${viewport.xMin},${viewport.xMax},${viewport.yMin},${viewport.yMax},${canvas.width},${canvas.height}`;
+        if (key === lastLayoutKey) return;
+        lastLayoutKey = key;
+        committedSelection = { ...committedSelection, plotBounds: plotBoundsForSelection(chart, committedSelection) };
+        setOverlay(committedSelection.plotBounds);
       };
 
       canvas.addEventListener("pointerdown", onPointerDown);
       canvas.addEventListener("pointermove", onPointerMove);
       canvas.addEventListener("pointerup", onPointerUp);
       canvas.addEventListener("pointercancel", onPointerCancel);
+      globalThis.addEventListener("pointerdown", onDocumentPointerDown, { capture: true });
       globalThis.addEventListener("keydown", onKeyDown);
       const unsubscribeTheme = chart.subscribe("themechange", applyTheme);
+      const unsubscribeRender = chart.subscribe("render", onRender);
 
       return () => {
         canvas.removeEventListener("pointerdown", onPointerDown);
         canvas.removeEventListener("pointermove", onPointerMove);
         canvas.removeEventListener("pointerup", onPointerUp);
         canvas.removeEventListener("pointercancel", onPointerCancel);
+        globalThis.removeEventListener("pointerdown", onDocumentPointerDown, { capture: true });
         globalThis.removeEventListener("keydown", onKeyDown);
         unsubscribeTheme();
+        unsubscribeRender();
         overlay?.remove();
         overlay = null;
         chartRef = null;
