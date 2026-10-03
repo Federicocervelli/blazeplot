@@ -1,9 +1,8 @@
 name: Pages
 
+# Deploys for main come from the release workflow, so each merge deploys once and
+# a release never ships a stable site built from the previous tag.
 on:
-  push:
-    branches:
-      - main
   workflow_call:
   workflow_dispatch:
 
@@ -46,18 +45,30 @@ jobs:
             exit 1
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-list -n 1 "$TAG")" >> "$GITHUB_OUTPUT"
+
+      # A released site never changes, so only the first deploy after a release builds it.
+      - name: Restore stable site
+        id: stable-cache
+        uses: actions/cache@v6
+        with:
+          path: branches/stable/build/pages
+          key: pages-stable-${{ steps.release.outputs.sha }}
 
       - name: Checkout latest release
+        if: steps.stable-cache.outputs.cache-hit != 'true'
         uses: actions/checkout@v7
         with:
           ref: ${{ steps.release.outputs.tag }}
           path: branches/stable
 
-      - uses: ./.github/actions/setup
+      - if: steps.stable-cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup
         with:
           working-directory: branches/stable
 
       - name: Build stable site
+        if: steps.stable-cache.outputs.cache-hit != 'true'
         working-directory: branches/stable
         run: bun run pages:build
 

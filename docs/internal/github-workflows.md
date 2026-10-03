@@ -19,7 +19,7 @@ Keep permissions minimal: write scopes belong only to jobs that publish, deploy,
 
 File: `.github/workflows/ci.yml`
 
-Runs on every pull request, when called by the release workflow (which covers every push to `main`), and by manual dispatch. Superseded runs on the same pull request are cancelled.
+Runs on every pull request, when the release workflow is about to publish, and by manual dispatch. Ordinary pushes to `main` do not rerun it: branch protection requires an up-to-date, passing pull request first. Superseded runs on the same pull request are cancelled.
 
 | Job | Command | Covers |
 |---|---|---|
@@ -35,23 +35,25 @@ File: `.github/workflows/release.yml`
 
 Runs on pushes to `main` and by manual dispatch.
 
-1. Runs the full CI workflow (`workflow_call`).
-2. Reads `vX.Y.Z` from `package.json`. If the tag exists there is nothing to publish; if npm has the version but the tag is missing, it fails for manual investigation.
+1. `version`: reads `vX.Y.Z` from `package.json`. If the tag exists there is nothing to publish; if npm has the version but the tag is missing, it fails for manual investigation.
+2. `ci`: runs the full CI workflow (`workflow_call`), only when publishing.
 3. Appends release benchmarks to `changelogs/vX.Y.Z.md` if missing.
 4. Packs and publishes to npm with provenance through npm trusted publishing (OIDC). No npm token secret is used; the trusted publisher on npm is bound to this workflow file name.
 5. Creates the `vX.Y.Z` tag and GitHub release from the changelog plus the commit list.
-6. Redeploys Pages so the stable site picks up the new tag.
+6. `pages`: calls the Pages workflow. This is the only Pages deploy for `main`: it runs right after `version` for ordinary merges and after the tag is created for releases, so a release never deploys a stable site built from the previous tag.
 
-Every other push to `main` only runs CI, because its `package.json` version already has a tag.
+Every other push to `main` skips CI and publishing and only deploys Pages, because its `package.json` version already has a tag.
 
 ## Pages
 
 File: `.github/workflows/pages.yml`
 
-Runs on pushes to `main`, after a release publishes, and by manual dispatch. Builds two sites into one Pages artifact:
+Called by the release workflow on every push to `main`, and by manual dispatch. It has no push trigger of its own. Builds two sites into one Pages artifact:
 
 - The latest `v*` release tag at `/`, so the stable docs match what is on npm.
 - `main` at `/next/`, for unreleased work.
+
+The stable build is cached by the release tag's commit, so it is only rebuilt on the first deploy after a release.
 
 Keep the copy step in sync with website routes that need SPA fallbacks, such as `/previews` and `/next/previews`.
 
