@@ -24,12 +24,12 @@ Push the branch and open a PR to `main`. CI runs the typecheck, unit tests, buil
 
 Squash-merge the PR. Then `.github/workflows/release.yml`:
 
-1. Runs the full CI workflow.
-2. Reads `package.json` and computes `vX.Y.Z`; skips if that tag exists.
-3. Appends release benchmarks if missing.
-4. Publishes to npm with provenance (trusted publishing).
-5. Creates the tag and GitHub Release.
-6. Redeploys GitHub Pages so the stable site moves to the new tag.
+1. `version`: reads `package.json` and computes `vX.Y.Z`; skips publishing if that tag exists.
+2. `ci`: runs the full CI workflow as a gate before publishing.
+3. `release`: appends release benchmarks if missing.
+4. `release`: publishes to npm with provenance (trusted publishing).
+5. `release`: creates the tag and GitHub Release.
+6. `pages`: deploys GitHub Pages once, so the stable site moves to the new tag.
 
 Monitor:
 
