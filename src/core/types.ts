@@ -76,6 +76,18 @@ export interface Dataset {
   upperBoundX(x: number): number;
   /** Drop cached summaries; called by `series.markDirty()` after the data was mutated in place. */
   invalidate?(): void;
+  /**
+   * Optional fast gap check: whether logical `[start, end)` holds any sample with non-finite Y
+   * or `isGap(index) === true`. Sampled line and area draws use it to break strips across
+   * skipped gaps without scanning every skipped sample.
+   */
+  hasGapInRange?(start: number, end: number): boolean;
+  /**
+   * Optional count of samples dropped from the front since creation, for datasets that shift
+   * logical indexes (wrapping ring buffers). Downsampling anchors buckets to
+   * `ordinalOffset + index` so bucket edges stay put while the data streams.
+   */
+  readonly ordinalOffset?: number;
 }
 
 /** Data-domain X interval represented by one dataset sample. */
@@ -222,11 +234,6 @@ export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
  * counters, or timestamps where float32 rounding would show in tooltips and picks.
  */
 export type ValuePrecision = "float32" | "float64";
-
-/** @internal Allocate a value array with the requested precision. */
-export function createValueArray(length: number, precision: ValuePrecision = "float32"): Float32Array | Float64Array {
-  return precision === "float64" ? new Float64Array(length) : new Float32Array(length);
-}
 
 /** One data sample returned by picking and dataset queries. */
 export interface SeriesSample {

@@ -1,6 +1,6 @@
 import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxY } from "./MinMaxTree.js";
-import { createValueArray } from "./types.js";
+import { createValueArray } from "./valueArray.js";
 import type { AcceleratedDataset, AppendableDataset, SampleCopyLayout, TimeRange, ValuePrecision, Viewport } from "./types.js";
 
 function positiveModulo(value: number, modulo: number): number {

@@ -1031,12 +1031,11 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /**
    * First bucket start at or before `start`, aligned to absolute sample ordinals when the
-   * dataset reports them (`RingBuffer.ordinalOffset`). Aligning to logical indexes instead
+   * dataset reports them (`Dataset.ordinalOffset`). Aligning to logical indexes instead
    * would move every bucket edge each time a full ring buffer drops its oldest sample.
    */
   private alignBucketStart(start: number, width: number): number {
-    const offset = (this.dataset as { readonly ordinalOffset?: unknown }).ordinalOffset;
-    const ordinalOffset = typeof offset === "number" ? offset : 0;
+    const ordinalOffset = this.dataset.ordinalOffset ?? 0;
     return Math.floor((start + ordinalOffset) / width) * width - ordinalOffset;
   }
 
@@ -1158,8 +1157,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   private hasGapInRange(start: number, end: number): boolean {
-    const dataset = this.dataset as Dataset & { hasGapInRange?(start: number, end: number): boolean };
-    if (typeof dataset.hasGapInRange === "function") return dataset.hasGapInRange(start, end);
+    if (this.dataset.hasGapInRange) return this.dataset.hasGapInRange(start, end);
     const from = Math.max(0, start);
     const to = Math.min(this.dataset.length, end);
     for (let i = from; i < to; i++) {

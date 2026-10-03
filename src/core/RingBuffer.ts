@@ -1,7 +1,7 @@
 import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxY } from "./MinMaxTree.js";
-import { lowerBound, upperBound, warnUnsortedX } from "./search.js";
-import { createValueArray } from "./types.js";
+import { lowerBound, unsortedXWarning, upperBound } from "./search.js";
+import { createValueArray } from "./valueArray.js";
 import type { BufferOverflowStrategy, TimeRange, ValuePrecision } from "./types.js";
 
 /** Options for `RingBuffer`. */
@@ -19,8 +19,9 @@ export class RingBuffer {
   readonly rangeMinMaxExcludesGaps = true;
   private _length: number = 0;
   private _head: number = 0;
-  private _evicted: number = 0;
-  private warnedUnsortedX = false;
+  /** Samples ever stored, including ones skipped by oversized appends. */
+  private _written: number = 0;
+  private readonly checkOrder = unsortedXWarning("RingBuffer");
 
   private readonly xData: Float64Array;
   private readonly yData: Float32Array | Float64Array;
@@ -45,13 +46,9 @@ export class RingBuffer {
     return this._length;
   }
 
-  /**
-   * @internal Samples dropped from the front since creation, so `ordinalOffset + index` is a
-   * stable per-sample ordinal. LOD buckets anchor to it so a full, wrapping buffer does not
-   * shift every bucket on each push.
-   */
+  /** Samples dropped from the front since creation, so `ordinalOffset + index` is stable while the buffer wraps. */
   get ordinalOffset(): number {
-    return this._evicted;
+    return this._written - this._length;
   }
 
   /** X range covered by retained samples, or `null` when empty. */
@@ -67,16 +64,16 @@ export class RingBuffer {
       if (this.overflow === "error") throw new RangeError("RingBuffer capacity exceeded.");
     }
 
-    if (this._length > 0) this.checkOrder(this.xData[(this._head - 1 + this.capacity) % this.capacity]!, x);
+    this.checkOrder(this.lastX(), x);
     const physical = this._head;
     this.xData[physical] = x;
     this.yData[physical] = y;
     this._head = (physical + 1) % this.capacity;
+    this._written++;
     if (this._length < this.capacity) {
       this._length++;
       this.tree.include(physical, this.yData[physical]!);
     } else {
-      this._evicted++;
       this.tree.update(physical, physical + 1);
     }
   }
@@ -96,7 +93,7 @@ export class RingBuffer {
     }
 
     if (requested >= this.capacity) {
-      this._evicted += this._length + requested - this.capacity;
+      this._written += requested - this.capacity;
       this._head = 0;
       this._length = 0;
       this.appendChunks(x, y, requested - this.capacity, this.capacity);
@@ -171,7 +168,6 @@ export class RingBuffer {
 
   /** Remove all retained samples. */
   clear(): void {
-    this._evicted += this._length;
     this._length = 0;
     this._head = 0;
     this.tree.reset();
@@ -180,19 +176,19 @@ export class RingBuffer {
   private appendChunks(x: ArrayLike<number>, y: ArrayLike<number>, sourceOffset: number, count: number): void {
     let source = sourceOffset;
     let remaining = count;
-    let previousX = this._length > 0 ? this.xData[(this._head - 1 + this.capacity) % this.capacity]! : NaN;
+    let previousX = this.lastX();
     while (remaining > 0) {
       const start = this._head;
       const chunk = Math.min(remaining, this.capacity - start);
       for (let i = 0; i < chunk; i++) {
         const nextX = x[source + i]!;
-        if (nextX < previousX) this.checkOrder(previousX, nextX);
+        if (nextX < previousX) this.checkOrder(previousX, nextX); // Compare inline to keep the hot loop call-free.
         previousX = nextX;
         this.xData[start + i] = nextX;
         this.yData[start + i] = y[source + i]!;
       }
       this._head = (start + chunk) % this.capacity;
-      this._evicted += Math.max(0, this._length + chunk - this.capacity);
+      this._written += chunk;
       this._length = Math.min(this.capacity, this._length + chunk);
       this.tree.update(start, start + chunk, this.validEnd());
       source += chunk;
@@ -200,11 +196,9 @@ export class RingBuffer {
     }
   }
 
-  private checkOrder(previous: number, next: number): void {
-    if (next < previous && !this.warnedUnsortedX) {
-      this.warnedUnsortedX = true;
-      warnUnsortedX("RingBuffer", previous, next);
-    }
+  /** X of the newest sample, or NaN when empty (NaN never compares as out of order). */
+  private lastX(): number {
+    return this._length > 0 ? this.xData[(this._head - 1 + this.capacity) % this.capacity]! : NaN;
   }
 
   /** Physical samples below this index hold live data; the ring fills from index 0. */
