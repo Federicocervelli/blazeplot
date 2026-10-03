@@ -2,7 +2,6 @@ import type { SeriesYAxis } from "../core/types.js";
 import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
 import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
 import type { SyncMembership } from "./OverlayUtils.js";
-import { rgbaCss } from "./theme.js";
 
 /** Axis drawn by the crosshair overlay. */
 export type CrosshairAxis = "x" | "y" | "xy";
@@ -57,7 +56,7 @@ export interface CrosshairPluginOptions {
   readonly markerSize?: number;
   readonly markerStrokeColor?: string;
   readonly markerStrokeWidth?: number;
-  /** Override default pick highlighting. Defaults to points, or X-interval rectangles for items with `xRange`. */
+  /** Override default pick highlighting. Defaults to points, or a brightened X-interval for items with `xRange` (bars, histogram bins). */
   readonly renderHighlight?: CrosshairHighlightRenderer;
   readonly longPressMs?: number | false;
   readonly rulerModifier?: "none" | "ctrl" | "shift" | "alt" | "meta";
@@ -133,23 +132,23 @@ function resolveSharedPosition(chart: ChartPluginContext, dataX: number, yAxis: 
   return { dataX, dataY, plotX, plotY, items: [] };
 }
 
-function createXRangeHighlight(item: ChartPickItem, chart: Chart, strokeColor: string, strokeWidth: number): HTMLDivElement {
+/**
+ * Brighten the hovered bin in place: a translucent wash over its exact X interval, never
+ * narrower than one CSS pixel. It has no border or shadow, so it never hides neighbouring bins.
+ */
+function createXRangeHighlight(item: ChartPickItem, chart: Chart, color: string): HTMLDivElement {
   const yAxis = item.series.config.yAxis ?? "left";
   const baseline = item.series.style.baseline;
   const [leftX, valueY] = chart.dataToPlot(item.xRange!.xStart, item.y, yAxis);
   const [rightX, baselineY] = chart.dataToPlot(item.xRange!.xEnd, baseline, yAxis);
+  const width = Math.max(1, Math.abs(rightX - leftX));
   const marker = document.createElement("div");
   marker.style.position = "absolute";
-  marker.style.left = `${Math.min(leftX, rightX)}px`;
+  marker.style.left = `${(leftX + rightX) / 2 - width / 2}px`;
   marker.style.top = `${Math.min(valueY, baselineY)}px`;
-  marker.style.width = `${Math.max(2, Math.abs(rightX - leftX))}px`;
-  marker.style.height = `${Math.max(2, Math.abs(baselineY - valueY))}px`;
-  const [r, g, b] = item.series.style.color;
-  const tint = rgbaCss([r, g, b, 0.38]);
-  marker.style.border = `${strokeWidth}px solid ${strokeColor}`;
-  marker.style.background = `linear-gradient(${tint}, ${tint}), ${chart.theme.backgroundCssColor}`;
-  marker.style.boxShadow = "0 0 0 1px rgba(4, 8, 16, 0.85)";
-  marker.style.boxSizing = "border-box";
+  marker.style.width = `${width}px`;
+  marker.style.height = `${Math.max(1, Math.abs(baselineY - valueY))}px`;
+  marker.style.background = `color-mix(in srgb, ${color} 35%, transparent)`;
   return marker;
 }
 
@@ -248,7 +247,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     const strokeWidth = Math.max(0, options.markerStrokeWidth ?? 2);
     for (const item of position.items) {
       if (item.xRange && chartRef) {
-        markerLayer.appendChild(createXRangeHighlight(item, chartRef as Chart, options.markerStrokeColor ?? chartRef.theme.markerStrokeColor, strokeWidth));
+        markerLayer.appendChild(createXRangeHighlight(item, chartRef as Chart, options.markerStrokeColor ?? chartRef.theme.markerStrokeColor));
       } else {
         markerLayer.appendChild(createPickMarker(item, {
           sizePx: size,
