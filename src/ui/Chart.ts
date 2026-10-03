@@ -446,16 +446,18 @@ function paddedAxisDomain(
 ): { min: number; max: number } | null {
   const from = includeZero ? Math.min(0, min) : min;
   const to = includeZero ? Math.max(0, max) : max;
-  let domain = paddedDomain(from, to, padding);
-  if (controller.isNonlinear(axis)) {
-    try {
-      const scaled = paddedDomain(controller.scaleValue(from, axis), controller.scaleValue(to, axis), padding);
-      domain = { min: controller.unscaleValue(scaled.min, axis), max: controller.unscaleValue(scaled.max, axis) };
-    } catch {
-      // Custom scales without fromScreen() cannot map back; keep the linear padding.
-    }
-  }
+  const domain = (controller.isNonlinear(axis) && scaledPaddedDomain(controller, axis, from, to, padding)) || paddedDomain(from, to, padding);
   return controller.isValidDomain(axis, domain.min, domain.max) ? domain : null;
+}
+
+function scaledPaddedDomain(controller: AxisController, axis: "x" | "y", min: number, max: number, padding: number): { min: number; max: number } | null {
+  try {
+    const scaled = paddedDomain(controller.scaleValue(min, axis), controller.scaleValue(max, axis), padding);
+    return { min: controller.unscaleValue(scaled.min, axis), max: controller.unscaleValue(scaled.max, axis) };
+  } catch {
+    // Custom scales without fromScreen() cannot map back; the caller falls back to linear padding.
+    return null;
+  }
 }
 
 function paddedDomain(min: number, max: number, padding: number): { min: number; max: number } {
@@ -746,7 +748,7 @@ export class Chart implements ChartPluginContext {
     if (setsX && !this.axis.isValidDomain("x", xMin, xMax)) {
       throw new RangeError(`Chart.setViewport received an invalid X domain [${xMin}, ${xMax}] for the configured scale.`);
     }
-    if (setsY && !(yAxis === "right" ? this.rightAxis : this.axis).isValidDomain("y", yMin, yMax)) {
+    if (setsY && !this.controllerFor(yAxis).isValidDomain("y", yMin, yMax)) {
       throw new RangeError(`Chart.setViewport received an invalid Y domain [${yMin}, ${yMax}] for the configured scale.`);
     }
     if (setsX) {
@@ -768,11 +770,10 @@ export class Chart implements ChartPluginContext {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    const left = yAxis === "right" ? { dx: next.dx, dy: 0 } : next;
-    const right = yAxis === "right"
-      ? { dx: 0, dy: next.dy }
-      : { dx: 0, dy: yAxis === undefined ? (this.rightYDirectionMatchesLeft() ? next.dy : -next.dy) : 0 };
-    this.applyViewportChange(this.axis.panViewport(left), this.rightAxis.panViewport(right));
+    // X always pans on the left controller; Y pans the targeted axis, or both for a plot gesture.
+    const leftDy = yAxis === "right" ? 0 : next.dy;
+    const rightDy = yAxis === "right" ? next.dy : yAxis === "left" ? 0 : this.rightYDirectionMatchesLeft() ? next.dy : -next.dy;
+    this.applyViewportChange(this.axis.panViewport({ dx: next.dx, dy: leftDy }), this.rightAxis.panViewport({ dx: 0, dy: rightDy }));
   }
 
   /**
@@ -784,19 +785,14 @@ export class Chart implements ChartPluginContext {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    const zoomsY = next.axis !== "x";
-    let left: Viewport | null = this.camera.viewport;
-    let right: Viewport | null = this.rightCamera.viewport;
-    if (yAxis === "right") {
-      if (next.axis !== "y") left = this.axis.zoomViewport({ ...next, axis: "x" });
-      if (zoomsY) right = this.rightAxis.zoomViewport({ ...next, axis: "y" });
-    } else {
-      left = this.axis.zoomViewport(next);
-      if (yAxis === undefined && zoomsY) {
-        right = this.rightAxis.zoomViewport({ ...next, cy: this.rightYDirectionMatchesLeft() ? next.cy : 1 - next.cy, axis: "y" });
-      }
-    }
-    this.applyViewportChange(left, right);
+    // X always zooms on the left controller; Y zooms the targeted axis, or both for a plot gesture.
+    const leftAxis = yAxis === "right" ? (next.axis === "y" ? null : "x") : next.axis;
+    const zoomsRightY = next.axis !== "x" && yAxis !== "left";
+    const rightCy = yAxis === undefined && !this.rightYDirectionMatchesLeft() ? 1 - next.cy : next.cy;
+    this.applyViewportChange(
+      leftAxis ? this.axis.zoomViewport({ ...next, axis: leftAxis }) : this.camera.viewport,
+      zoomsRightY ? this.rightAxis.zoomViewport({ ...next, cy: rightCy, axis: "y" }) : this.rightCamera.viewport,
+    );
   }
 
   /**
@@ -1216,20 +1212,10 @@ export class Chart implements ChartPluginContext {
    * throwing, so the chart recovers as soon as the domain is fixed.
    */
   private hasRenderableDomains(): boolean {
-    try {
-      this.axis.validateDomain("x");
-      this.axis.validateDomain("y");
-      this.rightAxis.validateDomain("y");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message !== this.reportedDomainError) {
-        this.reportedDomainError = message;
-        console.error(`BlazePlot skipped rendering: ${message}`);
-      }
-      return false;
-    }
-    this.reportedDomainError = null;
-    return true;
+    const error = this.axis.currentDomainError("x") ?? this.axis.currentDomainError("y") ?? this.rightAxis.currentDomainError("y");
+    if (error && error !== this.reportedDomainError) console.error(`BlazePlot skipped rendering: ${error}`);
+    this.reportedDomainError = error;
+    return error === null;
   }
 
   private createDefaultDataset(config: SeriesConfig): Dataset {

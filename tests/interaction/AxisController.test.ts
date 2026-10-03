@@ -2,6 +2,13 @@ import { describe, it, expect } from "bun:test";
 import { AxisController } from "../../src/interaction/AxisController.ts";
 import { Camera2D } from "../../src/interaction/Camera2D.ts";
 
+/** Apply a computed viewport when it is usable; mirrors how Chart commits pan/zoom results. */
+function applyIfUsable(camera: Camera2D, viewport: ReturnType<AxisController["zoomViewport"]>): boolean {
+  if (!viewport) return false;
+  camera.setViewport(viewport);
+  return true;
+}
+
 describe("AxisController", () => {
   it("generates data-anchored x ticks around the viewport", () => {
     const camera = new Camera2D();
@@ -163,11 +170,11 @@ describe("AxisController", () => {
     camera.setViewport({ xMin: 1, xMax: 100, yMin: 1, yMax: 100 });
     const axis = new AxisController(camera, { x: { scale: "log" }, y: { scale: "log" } });
 
-    axis.pan({ dx: 0.5, dy: 0 });
+    camera.setViewport(axis.panViewport({ dx: 0.5, dy: 0 })!);
     expect(camera.xMin).toBeCloseTo(10);
     expect(camera.xMax).toBeCloseTo(1000);
 
-    axis.zoom({ factor: 2, cx: 0.5, cy: 0.5, axis: "y" });
+    camera.setViewport(axis.zoomViewport({ factor: 2, cx: 0.5, cy: 0.5, axis: "y" })!);
     expect(camera.yMin).toBeCloseTo(Math.sqrt(10));
     expect(camera.yMax).toBeCloseTo(10 * Math.sqrt(10));
   });
@@ -179,7 +186,7 @@ describe("AxisController", () => {
     const axis = new AxisController(camera, { x: { scale: "time" } });
 
     let zooms = 0;
-    while (zooms < 200 && axis.zoom({ factor: 2, cx: 0.37, cy: 0.5, axis: "x" })) zooms++;
+    while (zooms < 200 && applyIfUsable(camera, axis.zoomViewport({ factor: 2, cx: 0.37, cy: 0.5, axis: "x" }))) zooms++;
 
     expect(zooms).toBeGreaterThan(5);
     expect(zooms).toBeLessThan(200);
@@ -194,7 +201,7 @@ describe("AxisController", () => {
     const axis = new AxisController(camera, { y: { scale: "log" } });
 
     let zooms = 0;
-    while (zooms < 200 && axis.zoom({ factor: 0.5, cx: 0.5, cy: 0.5, axis: "y" })) zooms++;
+    while (zooms < 200 && applyIfUsable(camera, axis.zoomViewport({ factor: 0.5, cx: 0.5, cy: 0.5, axis: "y" }))) zooms++;
 
     expect(zooms).toBeLessThan(200);
     expect(Number.isFinite(camera.yMax)).toBe(true);
@@ -207,7 +214,7 @@ describe("AxisController", () => {
     const axis = new AxisController(camera, { y: { scale: "log" } });
 
     expect(axis.zoomViewport({ factor: 1e-300, cx: 0.5, cy: 0.5, axis: "y" })).toBeNull();
-    expect(axis.pan({ dx: Number.NaN, dy: 0 })).toBe(false);
+    expect(axis.panViewport({ dx: Number.NaN, dy: 0 })).toBeNull();
     expect(camera.viewport).toEqual({ xMin: 0, xMax: 1, yMin: 1, yMax: 10 });
   });
 
@@ -228,6 +235,7 @@ describe("AxisController", () => {
     expect(axis.isValidDomain("y", -1, 100)).toBe(false);
     expect(axis.isValidDomain("x", -1, 100)).toBe(true);
     expect(axis.isValidDomain("x", 5, 5)).toBe(false);
+    expect(axis.isValidDomain("x", 1e12, 1e12 + 1e-4)).toBe(false);
   });
 
   it("formats categorical ticks from labels", () => {

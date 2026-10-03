@@ -87,17 +87,28 @@ function normalizeBounds(a: [number, number], b: [number, number], current: View
   };
 }
 
-function plotBoundsForDrag(drag: DragState, rect: DOMRect, mode: SelectionMode): SelectionPlotBounds {
-  const x0 = clamp(drag.startX - rect.left, 0, rect.width);
-  const y0 = clamp(drag.startY - rect.top, 0, rect.height);
-  const x1 = clamp(drag.currentX - rect.left, 0, rect.width);
-  const y1 = clamp(drag.currentY - rect.top, 0, rect.height);
+/** Rectangle between two plot-space corners, clamped to the plot; unselected dimensions span it fully. */
+function boundsFromCorners(x0: number, y0: number, x1: number, y1: number, width: number, height: number, mode: SelectionMode): SelectionPlotBounds {
+  const left = clamp(Math.min(x0, x1), 0, width);
+  const top = clamp(Math.min(y0, y1), 0, height);
   return {
-    left: mode === "y-range" ? 0 : Math.min(x0, x1),
-    top: mode === "x-range" ? 0 : Math.min(y0, y1),
-    width: mode === "y-range" ? rect.width : Math.abs(x1 - x0),
-    height: mode === "x-range" ? rect.height : Math.abs(y1 - y0),
+    left: mode === "y-range" ? 0 : left,
+    top: mode === "x-range" ? 0 : top,
+    width: mode === "y-range" ? width : clamp(Math.max(x0, x1), 0, width) - left,
+    height: mode === "x-range" ? height : clamp(Math.max(y0, y1), 0, height) - top,
   };
+}
+
+function plotBoundsForDrag(drag: DragState, rect: DOMRect, mode: SelectionMode): SelectionPlotBounds {
+  return boundsFromCorners(
+    drag.startX - rect.left,
+    drag.startY - rect.top,
+    drag.currentX - rect.left,
+    drag.currentY - rect.top,
+    rect.width,
+    rect.height,
+    mode,
+  );
 }
 
 /** Create a plugin that lets users select chart ranges by dragging. */
@@ -142,18 +153,9 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
 
   /** Re-derive the committed rectangle from its data bounds, so it tracks pans, zooms, and resizes. */
   const plotBoundsForSelection = (chart: ChartPluginContext, selection: SelectionState): SelectionPlotBounds => {
-    const width = chart.canvas.clientWidth;
-    const height = chart.canvas.clientHeight;
     const [x0, y0] = chart.dataToPlot(selection.bounds.xMin, selection.bounds.yMin, yAxis);
     const [x1, y1] = chart.dataToPlot(selection.bounds.xMax, selection.bounds.yMax, yAxis);
-    const left = mode === "y-range" ? 0 : clamp(Math.min(x0, x1), 0, width);
-    const top = mode === "x-range" ? 0 : clamp(Math.min(y0, y1), 0, height);
-    return {
-      left,
-      top,
-      width: mode === "y-range" ? width : clamp(Math.max(x0, x1), 0, width) - left,
-      height: mode === "x-range" ? height : clamp(Math.max(y0, y1), 0, height) - top,
-    };
+    return boundsFromCorners(x0, y0, x1, y1, chart.canvas.clientWidth, chart.canvas.clientHeight, mode);
   };
 
   const clearSelection = (sourceEvent?: KeyboardEvent): void => {
