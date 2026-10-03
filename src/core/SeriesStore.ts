@@ -782,7 +782,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     if (end <= start) return 0;
 
     const bucketWidth = this.stableSampleBucketWidthForViewport(viewport, maxSegments);
-    const alignedStart = Math.floor(start / bucketWidth) * bucketWidth;
+    const alignedStart = this.alignBucketStart(start, bucketWidth);
     let written = 0;
     for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += bucketWidth) {
       const bucketEnd = Math.min(this.dataset.length, bucketStart + bucketWidth);
@@ -964,7 +964,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     hasIntervalBounds: boolean,
   ): number {
     const bucketWidth = this.stableSampleBucketWidthForViewport(viewport, maxPoints);
-    const alignedStart = Math.floor(start / bucketWidth) * bucketWidth;
+    const alignedStart = this.alignBucketStart(start, bucketWidth);
     let count = 0;
 
     const writeIndex = (index: number): boolean => {
@@ -1027,6 +1027,17 @@ export class SeriesStore<D extends Dataset = Dataset> {
     if (!(dataSpan > 0)) return Math.max(1, this.dataset.length);
 
     return Math.max(1, (xSpan / dataSpan) * (this.dataset.length - 1) + 1);
+  }
+
+  /**
+   * First bucket start at or before `start`, aligned to absolute sample ordinals when the
+   * dataset reports them (`RingBuffer.ordinalOffset`). Aligning to logical indexes instead
+   * would move every bucket edge each time a full ring buffer drops its oldest sample.
+   */
+  private alignBucketStart(start: number, width: number): number {
+    const offset = (this.dataset as { readonly ordinalOffset?: unknown }).ordinalOffset;
+    const ordinalOffset = typeof offset === "number" ? offset : 0;
+    return Math.floor((start + ordinalOffset) / width) * width - ordinalOffset;
   }
 
   private stableSampleBucketWidthForViewport(viewport: Viewport, maxPoints: number): number {
@@ -1101,7 +1112,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     if (end <= start) return 0;
 
     const stride = this.stableSampleBucketWidthForViewport(viewport, maxPoints);
-    const alignedStart = Math.floor(start / stride) * stride;
+    const alignedStart = this.alignBucketStart(start, stride);
     let count = 0;
     let lastIndex = -1;
     let lastWasGap = false;
@@ -1147,6 +1158,8 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   private hasGapInRange(start: number, end: number): boolean {
+    const dataset = this.dataset as Dataset & { hasGapInRange?(start: number, end: number): boolean };
+    if (typeof dataset.hasGapInRange === "function") return dataset.hasGapInRange(start, end);
     const from = Math.max(0, start);
     const to = Math.min(this.dataset.length, end);
     for (let i = from; i < to; i++) {

@@ -26,3 +26,11 @@ export function upperBound(length: number, valueAt: (index: number) => number, v
 export function upperBoundArray(values: readonly number[], value: number): number {
   return upperBound(values.length, (index) => values[index]!, value);
 }
+
+/** @internal Warn about an append that breaks ascending X order; callers warn once per buffer. */
+export function warnUnsortedX(owner: string, previous: number, next: number): void {
+  console.warn(
+    `${owner} received X ${next} after ${previous}. X values must be ascending: range queries, culling, and picking ` +
+      "binary-search X, so out-of-order samples can be hidden or drawn in the wrong place. Sort data before appending.",
+  );
+}

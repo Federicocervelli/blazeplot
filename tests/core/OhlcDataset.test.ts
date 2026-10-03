@@ -101,4 +101,11 @@ describe("OhlcRingBuffer", () => {
     expect(dataset.length).toBe(1);
     expect(dataset.getX(0)).toBe(1);
   });
+
+  it("keeps large prices exact with valuePrecision float64", () => {
+    const buf = new OhlcRingBuffer(2, { valuePrecision: "float64" });
+    buf.push(0, 100_000.01, 100_000.02, 99_999.99, 100_000.015);
+    expect(buf.getOpen(0)).toBe(100_000.01);
+    expect(buf.getClose(0)).toBe(100_000.015);
+  });
 });

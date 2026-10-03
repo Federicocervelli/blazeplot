@@ -175,4 +175,60 @@ describe("RingBuffer", () => {
     for (let i = 0; i < 400; i++) buf.push(x++, next());
     check();
   });
+
+  it("stores Y as float32 by default and exactly with valuePrecision float64", () => {
+    const narrow = new RingBuffer(2);
+    const wide = new RingBuffer(2, { valuePrecision: "float64" });
+    narrow.push(0, 123_456_789.12);
+    wide.push(0, 123_456_789.12);
+    expect(narrow.getY(0)).not.toBe(123_456_789.12);
+    expect(wide.getY(0)).toBe(123_456_789.12);
+    expect(wide.rangeMinMaxY(0, 1)).toEqual({ minY: 123_456_789.12, maxY: 123_456_789.12 });
+  });
+
+  it("counts evicted samples so ordinalOffset + index stays stable", () => {
+    const buf = new RingBuffer(4);
+    buf.append([0, 1, 2], [0, 0, 0]);
+    expect(buf.ordinalOffset).toBe(0);
+    buf.append([3, 4, 5], [0, 0, 0]);
+    expect(buf.ordinalOffset).toBe(2);
+    expect(buf.getX(0)).toBe(2);
+    buf.push(6, 0);
+    expect(buf.ordinalOffset).toBe(3);
+    buf.append([7, 8, 9, 10, 11], [0, 0, 0, 0, 0]);
+    expect(buf.ordinalOffset).toBe(8);
+    expect(buf.getX(0)).toBe(8);
+    buf.clear();
+    expect(buf.ordinalOffset).toBe(12);
+  });
+
+  it("finds gaps in logical ranges across the wrap point", () => {
+    const buf = new RingBuffer(6);
+    buf.append([0, 1, 2, 3, 4, 5, 6, 7], [0, Number.NaN, 2, 3, 4, 5, Number.NaN, 7]);
+    // Logical samples are x = 2..7; only x = 6 (logical 4) is a gap.
+    expect(buf.hasGapInRange(0, 4)).toBe(false);
+    expect(buf.hasGapInRange(3, 5)).toBe(true);
+    expect(buf.hasGapInRange(5, 6)).toBe(false);
+  });
+
+  it("warns once when X goes backwards", () => {
+    const original = console.warn;
+    const warnings: string[] = [];
+    console.warn = (message: string) => {
+      warnings.push(message);
+    };
+    try {
+      const buf = new RingBuffer(8);
+      buf.append([0, 1, 2], [0, 0, 0]);
+      buf.push(2, 0);
+      expect(warnings).toHaveLength(0);
+      buf.push(1, 0);
+      buf.append([0, -1], [0, 0]);
+      buf.update(0, 99, 0);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("RingBuffer received X 1 after 2");
+    } finally {
+      console.warn = original;
+    }
+  });
 });

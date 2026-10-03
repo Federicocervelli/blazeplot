@@ -748,4 +748,34 @@ describe("SeriesStore no-LOD", () => {
     expect(vertexCount).toBe(4);
     expect(Array.from(area)).toEqual([1, -2, 1, -1, 2, -2, 2, 7]);
   });
+
+  it("keeps min/max buckets anchored while a full ring buffer streams", () => {
+    const capacity = 1_000;
+    const dataset = new RingBuffer(capacity);
+    const series = new SeriesStore(dataset, { mode: "line", capacity, downsample: "minmax" }, testStyle({ color: [1, 1, 1, 1], lineWidth: 1 }));
+    const value = (x: number): number => Math.sin(x * 0.37) * (x % 11);
+    for (let x = 0; x < capacity; x++) dataset.push(x, value(x));
+
+    const buckets = (latestX: number): Map<number, string> => {
+      series.markDirty();
+      series.rebuildPyramid();
+      const out = new Float32Array(300);
+      const count = series.copyMinMaxInstanced({ xMin: latestX - 900, xMax: latestX, yMin: -20, yMax: 20 }, out, 100);
+      const byX = new Map<number, string>();
+      for (let i = 0; i < count; i++) byX.set(out[i * 3]!, `${out[i * 3 + 1]},${out[i * 3 + 2]}`);
+      return byX;
+    };
+
+    const before = buckets(capacity - 1);
+    dataset.push(capacity, value(capacity));
+    const after = buckets(capacity);
+
+    let shared = 0;
+    for (const [x, range] of after) {
+      if (!before.has(x)) continue;
+      shared++;
+      expect(range).toBe(before.get(x)!);
+    }
+    expect(shared).toBeGreaterThan(after.size - 3);
+  });
 });

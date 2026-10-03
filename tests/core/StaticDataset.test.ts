@@ -213,4 +213,14 @@ describe("StaticDataset", () => {
       expect(dataset.rangeMinMaxY(0, 1000)).toEqual({ minY: 0, maxY: 1000 });
     });
   });
+
+  it("copies object rows at float64 precision on request and answers gap ranges", () => {
+    const rows = [{ t: 0, v: 16_777_217 }, { t: 1, v: Number.NaN }, { t: 2, v: 3 }];
+    expect(StaticDataset.fromObjects(rows, { x: "t", y: "v" }).getY(0)).toBe(16_777_216);
+    const wide = StaticDataset.fromObjects(rows, { x: "t", y: "v", valuePrecision: "float64" });
+    expect(wide.getY(0)).toBe(16_777_217);
+    expect(wide.hasGapInRange(0, 1)).toBe(false);
+    expect(wide.hasGapInRange(0, 2)).toBe(true);
+    expect(wide.hasGapInRange(2, 3)).toBe(false);
+  });
 });

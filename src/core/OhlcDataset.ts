@@ -1,5 +1,6 @@
-import { lowerBound, upperBound } from "./search.js";
-import type { BufferOverflowStrategy, OhlcDataset, TimeRange } from "./types.js";
+import { lowerBound, upperBound, warnUnsortedX } from "./search.js";
+import { createValueArray } from "./types.js";
+import type { BufferOverflowStrategy, OhlcDataset, TimeRange, ValuePrecision } from "./types.js";
 
 /** Immutable OHLC dataset backed by parallel arrays. */
 export class StaticOhlcDataset implements OhlcDataset {
@@ -88,6 +89,8 @@ export class StaticOhlcDataset implements OhlcDataset {
 /** Options for `OhlcRingBuffer`. */
 export interface OhlcRingBufferOptions {
   readonly overflow?: BufferOverflowStrategy;
+  /** Open/high/low/close storage. Defaults to `"float32"`; use `"float64"` to keep large prices exact. */
+  readonly valuePrecision?: ValuePrecision;
 }
 
 /** Fixed-capacity streaming buffer for OHLC/candlestick data. */
@@ -96,12 +99,13 @@ export class OhlcRingBuffer implements OhlcDataset {
   readonly capacity: number;
   private readonly overflow: BufferOverflowStrategy;
   private readonly xData: Float64Array;
-  private readonly openData: Float32Array;
-  private readonly highData: Float32Array;
-  private readonly lowData: Float32Array;
-  private readonly closeData: Float32Array;
+  private readonly openData: Float32Array | Float64Array;
+  private readonly highData: Float32Array | Float64Array;
+  private readonly lowData: Float32Array | Float64Array;
+  private readonly closeData: Float32Array | Float64Array;
   private _length = 0;
   private _head = 0;
+  private warnedUnsortedX = false;
 
   /** Create a fixed-capacity streaming OHLC buffer. */
   constructor(capacity: number, options: OhlcRingBufferOptions = {}) {
@@ -112,10 +116,10 @@ export class OhlcRingBuffer implements OhlcDataset {
     this.capacity = capacity;
     this.overflow = options.overflow ?? "wrap";
     this.xData = new Float64Array(capacity);
-    this.openData = new Float32Array(capacity);
-    this.highData = new Float32Array(capacity);
-    this.lowData = new Float32Array(capacity);
-    this.closeData = new Float32Array(capacity);
+    this.openData = createValueArray(capacity, options.valuePrecision);
+    this.highData = createValueArray(capacity, options.valuePrecision);
+    this.lowData = createValueArray(capacity, options.valuePrecision);
+    this.closeData = createValueArray(capacity, options.valuePrecision);
   }
 
   /** Number of retained candles. */
@@ -136,6 +140,11 @@ export class OhlcRingBuffer implements OhlcDataset {
       if (this.overflow === "error") throw new RangeError("OhlcRingBuffer capacity exceeded.");
     }
 
+    const previousX = this._length > 0 ? this.xData[(this._head - 1 + this.capacity) % this.capacity]! : NaN;
+    if (x < previousX && !this.warnedUnsortedX) {
+      this.warnedUnsortedX = true;
+      warnUnsortedX("OhlcRingBuffer", previousX, x);
+    }
     this.xData[this._head] = x;
     this.openData[this._head] = open;
     this.highData[this._head] = high;

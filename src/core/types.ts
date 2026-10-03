@@ -216,6 +216,18 @@ export type LODStrategy = "minmax" | "none" | "server";
 /** Behavior when a fixed-capacity streaming buffer is full. */
 export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
 
+/**
+ * Storage for Y and OHLC price values. `"float32"` (the default) halves memory and keeps
+ * about 7 significant digits; `"float64"` stores values exactly, for large prices,
+ * counters, or timestamps where float32 rounding would show in tooltips and picks.
+ */
+export type ValuePrecision = "float32" | "float64";
+
+/** @internal Allocate a value array with the requested precision. */
+export function createValueArray(length: number, precision: ValuePrecision = "float32"): Float32Array | Float64Array {
+  return precision === "float64" ? new Float64Array(length) : new Float32Array(length);
+}
+
 /** One data sample returned by picking and dataset queries. */
 export interface SeriesSample {
   readonly index: number;
@@ -242,6 +254,8 @@ export interface SeriesConfig {
   readonly xStep?: number;
   readonly downsample?: LODStrategy;
   readonly overflow?: BufferOverflowStrategy;
+  /** Value storage for the dataset BlazePlot creates when `dataset` is omitted. Defaults to `"float32"`. */
+  readonly valuePrecision?: ValuePrecision;
   readonly dataset?: Dataset;
   readonly yAxis?: SeriesYAxis;
   readonly id?: string;
