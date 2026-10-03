@@ -32,7 +32,7 @@ try {
         await check(`document.documentElement.scrollWidth <= innerWidth && [...page.querySelectorAll('[data-preview-chart]')].every(el => { const r = el.getBoundingClientRect(); return r.width === 0 || (r.left >= 0 && r.right <= innerWidth + 1); })`, `${route} fits ${width}px viewport`);
         await check("getComputedStyle(site.shadowRoot.querySelector('main')).overflowY !== 'auto'", "page avoids nested scrolling");
         await check("page.querySelector('h1').getBoundingClientRect().top < 180", "preview heading stays near navigation");
-        await check("getComputedStyle(page.querySelector('[data-preview-chart]')?.closest('.grid.h-full') || page.querySelector('[data-live-preview-root]')).borderWidth === '0px'", "preview content is not wrapped in an extra border card");
+        await check("page.querySelectorAll('.stage').length === 1", "each demo renders inside one stage frame");
         if (["mobile", "live", "features"].includes(route)) await screenshot(`${route}-${width}`);
       }
     }
@@ -54,13 +54,17 @@ try {
   await run("live-state", async () => {
     await resize(1280);
     await goto("/", "blazeplot-home");
-    await check("!page.querySelector('[data-home-resume]') && !page.textContent.includes('Scroll to zoom')", "home hides redundant live state and interaction instructions");
+    await check("!page.querySelector('[data-home-resume]')", "home hides resume while following live");
     const rect = await js("(() => { const r = page.querySelector('canvas').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()") as {x: number; y: number};
-    await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", ...rect, deltaX: 0, deltaY: -180 });
+    const before = await js("scrollY") as number;
+    await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", ...rect, deltaX: 0, deltaY: 180 });
+    await wait(`scrollY > ${before}`);
+    await check("pageHost.homeChart.getXFollowState() === 'following'", "wheel over the landing chart scrolls the page instead of zooming");
+    await js("window.scrollTo({top:0, behavior:'instant'}); pageHost.homeChart.pan({dx:0.1,dy:0})");
     await wait("page.querySelector('[data-home-resume]')");
     await js("page.querySelector('[data-home-resume]').click()");
     await wait("!page.querySelector('[data-home-resume]')");
-    await js("page.querySelector('#homeDataMode').value = 'static'; page.querySelector('#homeDataMode').dispatchEvent(new Event('change'))");
+    await js("page.querySelector('[data-home-option=\"data:static\"]').click()");
     await wait("!page.querySelector('[data-home-resume]')");
     await check("page.querySelectorAll('canvas').length === 1", "switching data mode replaces the chart cleanly");
   });
@@ -78,7 +82,7 @@ try {
   await run("preview-context", async () => {
     await resize(390);
     await goto("/previews/mobile", "blazeplot-previews");
-    await check("page.querySelector('h1').textContent === 'Mobile' && page.querySelector('header p').textContent.includes('pinch')", "mobile demo explains gestures");
+    await check("page.querySelector('h1').textContent === 'Mobile' && page.querySelector('header h1 + p').textContent.includes('pinch')", "mobile demo explains gestures");
     await check("page.querySelector('header a').getAttribute('href') === '/docs/theming-and-layout'", "preview links to its guide");
     await goto("/previews/linked", "blazeplot-previews");
     await check("page.querySelector('header a').getAttribute('href') === '/docs/examples#linked-charts'", "guide includes relevant section");
@@ -86,14 +90,15 @@ try {
     await check("!page.textContent.includes('chart.addHistogram')", "preview instructions appear once");
     await resize(1280);
     await goto("/previews/linked", "blazeplot-previews");
-    await check("getComputedStyle(page.querySelector('h1')).position === 'absolute'", "desktop selected tab is not repeated as a visible heading");
+    await check("page.querySelector('h1').checkVisibility() && page.querySelector('aside a[aria-current=page]').textContent.trim() === 'Linked charts'", "desktop shows the demo title and marks it in the sidebar");
+    await check("page.querySelector('header a[href*=\"github.com\"]').href.endsWith('/website/src/site/previews/features.ts')", "demo links to its source file");
   });
   await run("home", async () => {
     await resize(390);
     await goto("/", "blazeplot-home");
     await check("!page.querySelector('article') && page.textContent.includes('npm install blazeplot')", "homepage has focused installation content");
-    await check("!page.textContent.includes('Prefer Bun') && !page.textContent.includes('quick start') && !page.textContent.includes('optional plugins')", "homepage has one concise product description");
-    await check("(() => { const badges = [...page.querySelectorAll('[aria-label=\"Project badges\"] img')]; return badges.length === 3 && badges.some(img => img.alt === 'Total npm downloads') && badges.some(img => img.alt === 'MIT license') && badges.some(img => img.alt === 'GitHub Sponsors'); })()", "homepage shows total downloads, license, and sponsor badges");
+    await check("page.querySelectorAll('h1').length === 1 && page.querySelector('a[href=\"/previews\"]')", "homepage has one headline and links to the demos");
+    await check("page.querySelectorAll('dl').length === 2 && page.querySelectorAll('dl > div').length >= 4", "benchmark highlights render from benchmarks/latest.json");
     await check("page.querySelector('.home-copy-button svg') && page.querySelector('.home-copy-button').textContent.trim() === ''", "homepage copy control is an icon-only button in the code box");
     await check("page.querySelector('.home-install-code [role=status]').classList.contains('sr-only')", "copy feedback stays visually hidden but accessible");
     await js("Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedInstall = text; } } }); page.querySelector('.home-copy-button').click()");
@@ -105,7 +110,7 @@ try {
     await js("document.execCommand = () => false; page.querySelector('.home-copy-button').click()");
     await wait("page.querySelector('.home-copy-button').dataset.copyState === 'failed'");
     await check("getComputedStyle(page.querySelector('.home-install-code [role=status]')).position === 'absolute'", "copy error announcement is accessible without inline error text");
-    await check("page.querySelector('[data-home-chart]').parentElement.getBoundingClientRect().width > 0 && getComputedStyle(page.querySelector('[data-home-chart]').parentElement).borderWidth === '0px'", "homepage chart does not have a decorative frame");
+    await check("page.querySelector('[data-home-chart]').getBoundingClientRect().right <= innerWidth", "homepage chart fits a phone");
     await check("page.querySelector('a[href=\"/docs/overview\"]').textContent === 'Get started'", "clear onboarding action");
   });
   await run("navigation", async () => {
@@ -202,7 +207,7 @@ try {
     await resize(1280);
     await goto("/", "blazeplot-home");
     for (const mode of ["line", "multi", "ohlc"]) {
-      await js(`page.querySelector('#homeChartMode').value = '${mode}'; page.querySelector('#homeChartMode').dispatchEvent(new Event('change'))`);
+      await js(`page.querySelector('[data-home-option="mode:${mode}"]').click()`);
       await wait("pageHost.homeChart?.getXFollowState() === 'following'");
       await check("Math.abs((pageHost.homeChart.getViewport().xMax - pageHost.homeChart.getViewport().xMin) - 419) < 0.01", "live window retains its original span");
       await js("pageHost.homeChart.pan({dx:0.1,dy:0})");
@@ -216,11 +221,11 @@ try {
     await resize(390);
     await goto("/", "blazeplot-home");
     await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
-    await js("page.querySelector('#homeDataMode').focus()");
-    await check("getComputedStyle(page.querySelector('#homeDataMode')).outlineStyle !== 'none'", "keyboard focus is visibly outlined");
+    await js("page.querySelector('[data-home-option=\"data:static\"]').focus()");
+    await check("getComputedStyle(page.querySelector('[data-home-option=\"data:static\"]')).outlineStyle !== 'none'", "keyboard focus is visibly outlined");
     await check("getComputedStyle(page.querySelector('a[href=\"/docs/overview\"]')).borderTopStyle === 'solid'", "utility borders render inside shadow roots");
-    await check("page.querySelector('#homeDataMode').getBoundingClientRect().height >= 36", "controls have usable height");
-    await check("getComputedStyle(pageHost).getPropertyValue('--muted').trim() === '#aaa'", "muted text uses the shared readable token");
+    await check("page.querySelector('a[href=\"/docs/overview\"]').getBoundingClientRect().height >= 36", "controls have usable height");
+    await check("getComputedStyle(pageHost).getPropertyValue('--muted').trim() === '#b5afa8'", "muted text uses the shared readable token");
     await screenshot("home-polished-mobile");
   });
   await run("legend", async () => {

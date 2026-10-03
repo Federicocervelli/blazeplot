@@ -2,6 +2,7 @@ import { Chart, type HistogramBin, type HistogramResult } from "../../../../src/
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
 import { legendPlugin } from "../../../../src/plugins/legend.ts";
+import { siteChartOptions } from "../charts/options.ts";
 import { PreviewResources } from "./resources.ts";
 
 export default class Preview extends PreviewResources {
@@ -39,7 +40,7 @@ export default class Preview extends PreviewResources {
       max: binCount,
     };
 
-    const chart = new Chart(target, {
+    const chart = new Chart(target, siteChartOptions({
       axes: { x: { position: "outside", title: "bin" }, y: { position: "outside", title: "count" } },
       grid: true,
       hover: { mode: "nearest-x", group: "none" },
@@ -49,7 +50,7 @@ export default class Preview extends PreviewResources {
         legendPlugin({ position: "top-left" }),
       ],
       accessibility: { label: "Histogram preview" },
-    });
+    }));
     this.previewCharts.push(chart);
 
     chart.addHistogram({ histogram, name: "1M bins" }, {

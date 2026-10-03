@@ -1,9 +1,16 @@
-import { LitElement, html, type TemplateResult } from "lit";
+import { LitElement, html, nothing, type TemplateResult } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import githubSvg from "../../github-mark.svg?raw";
 import logoUrl from "../../blazeplot-dark-cropped.png";
-import { appHref, type Section } from "../shared.ts";
+import { appHref, REPO_URL, type Section } from "../shared.ts";
 import { siteStyles } from "../styles.ts";
+
+declare const __BLAZEPLOT_VERSION__: string;
+
+const NAV: ReadonlyArray<{ section: Section; label: string; href: string }> = [
+  { section: "docs", label: "Docs", href: "docs/overview" },
+  { section: "previews", label: "Demos", href: "previews" },
+];
 
 export class BlazeplotTopbar extends LitElement {
   static override styles = siteStyles;
@@ -12,25 +19,30 @@ export class BlazeplotTopbar extends LitElement {
   constructor() { super(); this.section = "home"; }
 
   override render(): TemplateResult {
+    const hasSectionNav = this.section !== "home";
     return html`
-      <header class="flex items-center justify-between gap-2 bg-[#0a0a0a] px-2 py-2 sm:px-4">
-        <div class="flex min-w-0 items-center gap-2">
-          ${this.section !== "home" ? html`
-            <button type="button" class="inline-flex h-9 w-9 shrink-0 items-center justify-center text-[var(--muted)] md:hidden" aria-label=${this.section === "docs" ? "Open docs navigation" : "Open preview navigation"} aria-haspopup="dialog" @click=${this.openSectionNavigation}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
-            </button>` : ""}
-          <a href=${appHref("home")} aria-label="BlazePlot home" aria-current=${this.section === "home" ? "page" : "false"}>
-            <img src=${logoUrl} alt="BlazePlot" class="block w-[88px] sm:w-[112px]" />
+      <header class="border-b border-line bg-bg/85 backdrop-blur-md">
+        <div class="mx-auto flex h-[var(--header-h)] max-w-[1440px] items-center gap-3 px-4 sm:px-6">
+          ${hasSectionNav ? html`
+            <button type="button" class="icon-btn -ml-2 md:hidden" aria-label=${this.section === "docs" ? "Open docs navigation" : "Open demo navigation"} aria-haspopup="dialog" @click=${this.openSectionNavigation}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+            </button>` : nothing}
+          <a href=${appHref("home")} class="flex shrink-0 items-center" aria-label="BlazePlot home" aria-current=${this.section === "home" ? "page" : "false"}>
+            <img src=${logoUrl} alt="BlazePlot" width="104" height="26" class="block h-[22px] w-auto sm:h-[24px]" />
           </a>
+          <a href=${`${REPO_URL}/releases`} target="_blank" rel="noreferrer" class="hidden rounded-full border border-line px-2 py-0.5 font-mono text-[11px] text-fg-3 hover:border-line-strong hover:text-fg-2 sm:inline-block">v${__BLAZEPLOT_VERSION__}</a>
+          <nav aria-label="Main navigation" class="ml-auto flex items-center gap-1 text-sm">
+            ${NAV.map((item) => html`
+              <a href=${appHref(item.href)} aria-current=${this.section === item.section ? "page" : "false"}
+                class="rounded-md px-2.5 py-1.5 font-medium ${this.section === item.section ? "text-fg" : "text-fg-2 hover:text-fg"}">${item.label}</a>
+            `)}
+            <a href=${appHref("docs/benchmarks")} class="hidden rounded-md px-2.5 py-1.5 font-medium text-fg-2 hover:text-fg sm:block">Benchmarks</a>
+            <span class="mx-1 hidden h-5 w-px bg-line sm:block" aria-hidden="true"></span>
+            <a href=${REPO_URL} target="_blank" rel="noreferrer" aria-label="BlazePlot on GitHub" class="icon-btn">
+              <span aria-hidden="true" class="inline-flex h-[18px] w-[18px] [&_svg]:h-full [&_svg]:w-full">${unsafeHTML(githubSvg)}</span>
+            </a>
+          </nav>
         </div>
-        <nav aria-label="Main navigation" class="flex shrink-0 items-center gap-1 text-[12px] sm:gap-2">
-          ${(["docs", "previews"] as const).map((section) => html`
-            <a href=${appHref(section === "docs" ? "docs/overview" : "previews")} aria-current=${this.section === section ? "page" : "false"} class="px-2 py-2 no-underline ${this.section === section ? "text-[#fc4a05]" : "text-[var(--muted)] hover:text-[#e5e5e5]"}">${section === "docs" ? "Docs" : "Previews"}</a>
-          `)}
-          <a href="https://github.com/Federicocervelli/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot on GitHub" class="inline-flex h-9 w-9 items-center justify-center text-[var(--muted)] hover:text-[#e5e5e5]">
-            <span aria-hidden="true" class="inline-flex h-4 w-4 [&_svg]:h-full [&_svg]:w-full">${unsafeHTML(githubSvg)}</span>
-          </a>
-        </nav>
       </header>
     `;
   }

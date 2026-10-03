@@ -1,8 +1,11 @@
 import { defineSiteDrawer } from "./site-drawer.ts";
 import { LitElement, html, type TemplateResult } from "lit";
 import { PreviewChartsController } from "../previews-controller.ts";
-import { appHref, PREVIEWS, type PreviewId } from "../shared.ts";
+import { appHref, PREVIEW_GROUPS, PREVIEWS, REPO_URL, type PreviewId, type PreviewLink } from "../shared.ts";
 import { siteStyles } from "../styles.ts";
+
+/** Fixed stage height on large screens so demos fill the viewport without nested page scrolling. */
+const STAGE_HEIGHT = "lg:h-[calc(100dvh-var(--header-h)-176px)] lg:min-h-[560px]";
 
 export class BlazeplotPreviewsPage extends LitElement {
   static override styles = siteStyles;
@@ -21,11 +24,6 @@ export class BlazeplotPreviewsPage extends LitElement {
     new PreviewChartsController(this);
   }
 
-  private get previewIndex(): number {
-    const index = PREVIEWS.findIndex((preview) => preview.id === this.previewId);
-    return index >= 0 ? index : 0;
-  }
-
   override connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("blazeplot-previews-nav-toggle", this.togglePreviewNav);
@@ -37,207 +35,201 @@ export class BlazeplotPreviewsPage extends LitElement {
   }
 
   override render(): TemplateResult {
-    return this.renderPreviews();
+    const selected = PREVIEWS.find((preview) => preview.id === this.previewId) ?? PREVIEWS[0]!;
+    return html`
+      <site-drawer .open=${this.previewNavOpen} label="Demo navigation" @drawer-close=${this.closePreviewNav}>
+        <div class="space-y-6">${this.renderNav(selected, true)}</div>
+      </site-drawer>
+      <div class="mx-auto grid max-w-[1440px] md:grid-cols-[240px_minmax(0,1fr)]">
+        <aside class="hidden border-r border-line md:block">
+          <nav aria-label="Demos" class="sticky top-[var(--header-h)] max-h-[calc(100dvh-var(--header-h))] space-y-6 overflow-y-auto px-4 py-8">
+            ${this.renderNav(selected, false)}
+          </nav>
+        </aside>
+        <div class="min-w-0 px-4 pb-12 pt-6 sm:px-8 md:pt-8">
+          <header class="mb-5 flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+            <div class="max-w-[720px]">
+              <p class="eyebrow mb-2">${selected.group}</p>
+              <h1 class="text-2xl font-semibold tracking-[-0.02em] text-fg">${selected.title}</h1>
+              <p class="mt-2 text-sm leading-relaxed text-fg-2">${selected.description}</p>
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
+              <a class="btn btn-sm" href=${appHref(`docs/${selected.docs}`)}>Read the guide</a>
+              <a class="btn btn-sm btn-ghost" href=${`${REPO_URL}/blob/main/website/src/site/previews/${selected.source}`} target="_blank" rel="noreferrer">
+                View source
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M8 7h9v9" /></svg>
+              </a>
+            </div>
+          </header>
+          ${this.renderSelectedPreview(selected.id)}
+        </div>
+      </div>
+    `;
   }
 
-  /* ── Previews ── */
-
-  private renderPreviews(): TemplateResult {
-    const selected = PREVIEWS[this.previewIndex] ?? PREVIEWS[0]!;
-    return html`
-      <section class="grid h-auto min-h-[640px] min-w-0 grid-rows-[auto_minmax(0,1fr)] xl:h-[calc(100dvh-58px)]">
-        <site-drawer .open=${this.previewNavOpen} label="Preview navigation" @drawer-close=${this.closePreviewNav}>
-          <div class="space-y-1">${PREVIEWS.map((p, i) => html`
-            <a href=${appHref(`previews/${p.id}`)} aria-current=${i === this.previewIndex ? "page" : "false"} @click=${this.closePreviewNav} class="block px-3 py-2 ${i === this.previewIndex ? "font-semibold text-[#fc4a05]" : "text-[var(--muted)]"}">${p.title}</a>
-          `)}</div>
-        </site-drawer>
-        <nav class="mb-2 hidden gap-5 overflow-x-auto text-[12px] leading-none md:flex">
-          ${PREVIEWS.map(
-            (p, i) => html`
-              <button
-                type="button"
-                @click=${() => { this.selectPreview(i); }}
-                class="shrink-0 whitespace-nowrap bg-transparent px-0 py-1 font-mono ${i === this.previewIndex ? "font-semibold text-[#fc4a05]" : "text-[var(--muted)] hover:text-[#e5e5e5]"}"
-              >${p.title}</button>
-            `,
-          )}
-        </nav>
-        <div class="flex min-h-0 min-w-0 flex-col">
-          <header class="px-3 pb-3">
-            <h1 class="m-0 text-base font-semibold md:sr-only">${selected.title}</h1>
-            <p class="mt-1 text-[12px] text-[var(--muted)]">${selected.description} <a class="text-[#fc4a05]" href=${appHref(`docs/${selected.docs}`)}>Read the guide</a></p>
-          </header>
-          <div class="min-h-0 flex-1">${this.renderSelectedPreview(selected.id)}</div>
-        </div>
-      </section>
-    `;
+  private renderNav(selected: PreviewLink, closeOnSelect: boolean): TemplateResult[] {
+    return PREVIEW_GROUPS.map((group) => html`
+      <div>
+        <h2 class="side-heading">${group}</h2>
+        <ul>
+          ${PREVIEWS.filter((preview) => preview.group === group).map((preview) => html`
+            <li>
+              <a href=${appHref(`previews/${preview.id}`)} aria-current=${preview.id === selected.id ? "page" : "false"} class="side-link"
+                @click=${closeOnSelect ? this.closePreviewNav : undefined}>${preview.title}</a>
+            </li>
+          `)}
+        </ul>
+      </div>
+    `);
   }
 
   private renderSelectedPreview(id: PreviewId): TemplateResult {
     if (id === "sensor") return this.renderSensorStreamPreview();
     if (id === "features") return this.renderFeaturePreview();
-    if (id === "histogram") return this.renderHistogramPreview();
+    if (id === "histogram") return this.renderChartOnly("histogram");
     if (id === "linked") return this.renderLinkedChartsPreview();
     if (id === "server-sampled") return this.renderServerSampledPreview();
-    if (id === "flamechart") return this.renderFlameChartPreview();
+    if (id === "flamechart") return this.renderChartOnly("flamechart");
     if (id === "render-loop") return this.renderRenderLoopPreview();
-    if (id === "mobile") return this.renderMobilePreview();
+    if (id === "mobile") return this.renderChartOnly("mobile");
     return this.renderLivePreview();
   }
 
-  private renderPreviewPanel(body: TemplateResult): TemplateResult {
+  private renderChartOnly(chart: string): TemplateResult {
     return html`
-      <div class="grid h-full min-h-[520px] min-w-0 overflow-hidden">
-        <div class="min-h-0 min-w-0">${body}</div>
+      <div class="stage h-[520px] ${STAGE_HEIGHT}">
+        <div data-preview-chart=${chart} class="h-full w-full"></div>
       </div>
     `;
   }
 
   private renderLivePreview(): TemplateResult {
     return html`
-      <section data-live-preview-root class="grid h-full min-h-[620px] min-w-0 grid-rows-[minmax(280px,1fr)_auto] overflow-hidden text-[12px]">
-        <div class="relative min-h-0">
+      <section data-live-preview-root class="stage flex min-h-[620px] flex-col ${STAGE_HEIGHT}" aria-label="Live performance demo">
+        <div class="relative min-h-[300px] flex-1">
           <div data-preview-chart="live" class="h-full w-full"></div>
-          <div data-live-overlay hidden class="absolute left-0 top-0 z-40 max-w-full overflow-x-auto whitespace-pre bg-[#0a0a0a]/70 px-2.5 py-2 text-[#e5e5e5]"><span data-live-overlay-text>BlazePlot booting...</span></div>
+          <div data-live-overlay hidden class="absolute left-3 top-3 z-40 max-w-[calc(100%-24px)] overflow-x-auto whitespace-pre rounded-md border border-line bg-raised/90 px-3 py-2 font-mono text-[11px] leading-relaxed text-fg-2 backdrop-blur-sm"><span data-live-overlay-text>BlazePlot booting...</span></div>
         </div>
-        <section class="flex flex-wrap items-center gap-3 px-1 py-3 text-[#e5e5e5]" aria-label="Preview controls">
-          <label class="inline-flex items-center gap-1 whitespace-nowrap">view samples
-            <input data-live-view-samples type="number" min="1000" max="1000000000" step="1000000" value="86400" class="w-[12ch] site-input" />
+        <div class="stage-bar bottom" aria-label="Demo controls" role="group">
+          <label class="field">View samples
+            <input data-live-view-samples type="number" min="1000" max="1000000000" step="1000000" value="86400" class="input w-[12ch]" />
           </label>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap"><input data-live-follow type="checkbox" checked class="accent-[#777]" /> follow live</label>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap"><input data-live-stream type="checkbox" checked class="accent-[#777]" /> stream data</label>
-          <button data-live-reset type="button" class="site-button">reset view</button>
-          <span class="w-full text-[#bbb]" role="status" data-live-action-status></span>
-          <details class="w-full" data-live-advanced>
-            <summary class="cursor-pointer py-1 text-[var(--muted)]">Advanced settings & exports</summary>
-            <div class="flex flex-wrap items-center gap-3 pt-3">
-          <button data-live-perf-toggle type="button" class="site-button">show stats</button>
-          <button data-live-copy type="button" aria-label="Copy stats" title="Copy stats" class="site-button">📋</button>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap">theme
-            <select data-live-theme class="site-input"><option value="default">default</option><option value="light">light</option></select>
-          </label>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap">hover
-            <select data-live-hover-mode class="site-input"><option value="nearest-x">nearest-x</option><option value="nearest-point">nearest-point</option></select>
-          </label>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap">group
-            <select data-live-hover-group class="site-input"><option value="x">x</option><option value="none">none</option></select>
-          </label>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap">samples/sec
-            <input data-live-append-rate type="number" min="1" max="1000000" step="1000" value="1000" class="w-[9ch] site-input" />
-          </label>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap">axes
-            <select data-live-axes class="site-input"><option value="outside">outside</option><option value="inside">inside</option><option value="off">off</option></select>
-          </label>
-          <label class="inline-flex items-center gap-1 whitespace-nowrap"><input data-live-sync-x type="checkbox" checked class="accent-[#777]" /> sync X / Y-only zoom</label>
-          <button data-live-screenshot type="button" class="site-button">screenshot</button>
+          <label class="switch"><input data-live-follow type="checkbox" checked /> Follow live</label>
+          <label class="switch"><input data-live-stream type="checkbox" checked /> Stream data</label>
+          <button data-live-reset type="button" class="btn btn-sm">Reset view</button>
+          <span class="text-fg-3 empty:hidden" role="status" data-live-action-status></span>
+          <details class="disclosure w-full" data-live-advanced>
+            <summary class="py-1">Advanced settings and export</summary>
+            <div class="flex flex-wrap items-center gap-x-5 gap-y-3 pb-1 pt-3">
+              <label class="field">Theme
+                <select data-live-theme class="select"><option value="default">default</option><option value="light">light</option></select>
+              </label>
+              <label class="field">Hover
+                <select data-live-hover-mode class="select"><option value="nearest-x">nearest-x</option><option value="nearest-point">nearest-point</option></select>
+              </label>
+              <label class="field">Group
+                <select data-live-hover-group class="select"><option value="x">x</option><option value="none">none</option></select>
+              </label>
+              <label class="field">Samples/s
+                <input data-live-append-rate type="number" min="1" max="1000000" step="1000" value="1000" class="input w-[10ch]" />
+              </label>
+              <label class="field">Axes
+                <select data-live-axes class="select"><option value="outside">outside</option><option value="inside">inside</option><option value="off">off</option></select>
+              </label>
+              <label class="switch"><input data-live-sync-x type="checkbox" checked /> Sync X, Y-only zoom</label>
+              <span class="flex flex-wrap gap-2">
+                <button data-live-perf-toggle type="button" class="btn btn-sm">Hide stats</button>
+                <button data-live-copy type="button" class="btn btn-sm" aria-label="Copy stats">Copy stats</button>
+                <button data-live-screenshot type="button" class="btn btn-sm">Screenshot</button>
+              </span>
             </div>
           </details>
-        </section>
+        </div>
       </section>
     `;
   }
 
   private renderSensorStreamPreview(): TemplateResult {
-    return this.renderPreviewPanel(html`
-        <section class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[var(--muted)]">
-          <div class="flex flex-wrap items-center gap-3 pb-2">
-            <button data-sensor-live type="button" class="site-button text-[#e5e5e5]">resume live</button>
-            <span data-sensor-status class="text-[var(--muted)]">booting…</span>
-          </div>
-          <div class="relative min-h-0">
-            <div data-preview-chart="sensor" class="h-full min-h-0 w-full"></div>
-          </div>
-        </section>
-      `,
-    );
+    return html`
+      <section class="stage flex h-[560px] flex-col ${STAGE_HEIGHT}" aria-label="Sensor stream demo">
+        <div class="stage-bar top">
+          <button data-sensor-live type="button" class="btn btn-sm">Resume live</button>
+          <span data-sensor-status class="font-mono text-[11px] text-fg-3">booting…</span>
+        </div>
+        <div class="relative min-h-0 flex-1">
+          <div data-preview-chart="sensor" class="h-full w-full"></div>
+        </div>
+      </section>
+    `;
   }
 
   private renderFeaturePreview(): TemplateResult {
     return html`
-      <div class="flex h-full min-h-[560px] min-w-0 flex-col gap-3">
-        <div class="min-h-0 flex-1">${this.renderPreviewPanel(html`<div data-preview-chart="feature-hero" class="h-full min-h-[520px] w-full"></div>`)}</div>
-        <details class="text-[12px] text-[var(--muted)]">
-          <summary class="cursor-pointer">Interaction log</summary>
-          <pre data-feature-log class="m-0 max-h-40 overflow-auto py-2 text-[11px]"></pre>
-        </details>
-      </div>
+      ${this.renderChartOnly("feature-hero")}
+      <details class="disclosure mt-4">
+        <summary>Interaction log</summary>
+        <pre data-feature-log class="mt-3 max-h-48 overflow-auto rounded-lg border border-line bg-raised p-3 font-mono text-[11px] leading-relaxed text-fg-2"></pre>
+      </details>
     `;
-  }
-
-  private renderHistogramPreview(): TemplateResult {
-    return this.renderPreviewPanel(html`
-        <div data-preview-chart="histogram" class="h-full min-h-[560px] w-full"></div>
-      `,
-    );
   }
 
   private renderLinkedChartsPreview(): TemplateResult {
     return html`
-      <div class="grid h-auto min-h-[560px] min-w-0 gap-4 xl:h-full xl:grid-cols-[minmax(0,1fr)_220px]">
-        ${this.renderPreviewPanel(html`<div data-preview-chart="feature-linked" class="h-full min-h-[520px] w-full"></div>`)}
-        <div class="content-start">
-          <button data-feature-reset type="button" class="bg-transparent p-0 text-left font-mono text-[12px] text-[#fc4a05] underline underline-offset-4">reset linked views</button>
+      <section class="stage flex h-[560px] flex-col ${STAGE_HEIGHT}" aria-label="Linked charts demo">
+        <div class="stage-bar top">
+          <button data-feature-reset type="button" class="btn btn-sm">Reset linked views</button>
+          <span class="text-fg-3">Shared X range · lower panel uses a log scale</span>
         </div>
-      </div>
+        <div data-preview-chart="feature-linked" class="min-h-0 flex-1"></div>
+      </section>
     `;
   }
 
   private renderServerSampledPreview(): TemplateResult {
     return html`
-      <section data-server-sampled-root class="grid h-full min-h-[680px] min-w-0 grid-rows-[auto_minmax(0,0.9fr)_minmax(0,1.25fr)] overflow-hidden text-[13px] text-[#e5e7eb]">
-        <header class="flex flex-wrap items-center gap-x-3 gap-y-2 px-1 py-2">
-          <strong>Binance preview</strong>
-          <label class="inline-flex items-center gap-1.5">symbol
-            <select data-server-symbol class="site-input"><option>BTCUSDT</option><option>ETHUSDT</option><option>BNBUSDT</option></select>
+      <section data-server-sampled-root class="stage grid h-[720px] min-w-0 grid-rows-[auto_minmax(0,0.9fr)_auto_minmax(0,1.25fr)] ${STAGE_HEIGHT}" aria-label="Server-sampled demo">
+        <div class="stage-bar top">
+          <label class="field">Symbol
+            <select data-server-symbol class="select"><option>BTCUSDT</option><option>ETHUSDT</option><option>BNBUSDT</option></select>
           </label>
-          <label class="inline-flex items-center gap-1.5">server interval
-            <select data-server-interval class="site-input"><option value="15m">15m</option><option value="1h" selected>1h</option><option value="4h">4h</option><option value="1d">1d</option></select>
+          <label class="field">Bucket
+            <select data-server-interval class="select"><option value="15m">15m</option><option value="1h" selected>1h</option><option value="4h">4h</option><option value="1d">1d</option></select>
           </label>
-          <button data-server-reload type="button" class="site-button">fetch sampled buckets</button>
-          <span data-server-sampled-status class="text-[#9ca3af]">loading…</span>
-          <span data-server-live-status class="text-[#9ca3af]">connecting 5s live…</span>
-        </header>
-        <section class="relative min-h-0"><div data-server-sampled-chart class="h-full w-full"></div></section>
-        <section class="relative min-h-0"><div data-server-live-chart class="h-full w-full"></div></section>
+          <button data-server-reload type="button" class="btn btn-sm">Fetch buckets</button>
+          <span data-server-sampled-status class="font-mono text-[11px] text-fg-3">loading…</span>
+        </div>
+        <div class="relative min-h-0"><div data-server-sampled-chart class="h-full w-full"></div></div>
+        <div class="stage-bar top border-t">
+          <span class="font-medium text-fg">Live trades</span>
+          <span data-server-live-status class="font-mono text-[11px] text-fg-3">connecting 5s live…</span>
+        </div>
+        <div class="relative min-h-0"><div data-server-live-chart class="h-full w-full"></div></div>
         <div data-preview-chart="server-sampled" class="hidden"></div>
       </section>
     `;
   }
 
-  private renderFlameChartPreview(): TemplateResult {
-    return this.renderPreviewPanel(html`<div data-preview-chart="flamechart" class="h-full min-h-[520px] w-full"></div>`,
-    );
-  }
-
   private renderRenderLoopPreview(): TemplateResult {
-    return this.renderPreviewPanel(html`
-        <section data-preview-chart="render-loop" class="grid h-full min-h-[560px] w-full grid-rows-[auto_minmax(0,1fr)] gap-3 p-3 text-[12px] text-[var(--muted)]">
-          <div class="flex flex-wrap items-center gap-3 pb-2">
-            <button data-render-loop-append type="button" class="site-button text-[#e5e5e5]">append sample</button>
-            <button data-render-loop-request type="button" class="site-button text-[#e5e5e5]">request on-demand render</button>
-            <button data-render-loop-pan type="button" class="site-button text-[#e5e5e5]">change viewport</button>
+    return html`
+      <section data-preview-chart="render-loop" class="stage flex h-[640px] flex-col ${STAGE_HEIGHT}" aria-label="Render loop demo">
+        <div class="stage-bar top">
+          <button data-render-loop-append type="button" class="btn btn-sm">Append sample</button>
+          <button data-render-loop-request type="button" class="btn btn-sm">Request render</button>
+          <button data-render-loop-pan type="button" class="btn btn-sm">Change viewport</button>
+        </div>
+        <div class="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-2">
+          <div class="grid min-h-[240px] grid-rows-[auto_minmax(0,1fr)] border-line sm:border-r">
+            <div class="flex items-baseline justify-between px-3 py-2 text-xs text-fg-2"><span>On demand</span><span class="font-mono text-fg-3"><span data-render-loop-demand-count class="text-fg">0</span> renders</span></div>
+            <div data-render-loop-demand class="min-h-0"></div>
           </div>
-          <div class="grid min-h-0 grid-cols-1 gap-3 sm:grid-cols-2">
-            <div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-              <div class="px-1 py-1 text-[var(--muted)]">on-demand renders: <span data-render-loop-demand-count>0</span></div>
-              <div data-render-loop-demand class="min-h-0"></div>
-            </div>
-            <div class="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]">
-              <div class="px-1 py-1 text-[var(--muted)]">continuous renders: <span data-render-loop-continuous-count>0</span></div>
-              <div data-render-loop-continuous class="min-h-0"></div>
-            </div>
+          <div class="grid min-h-[240px] grid-rows-[auto_minmax(0,1fr)] border-t border-line sm:border-t-0">
+            <div class="flex items-baseline justify-between px-3 py-2 text-xs text-fg-2"><span>Continuous</span><span class="font-mono text-fg-3"><span data-render-loop-continuous-count class="text-fg">0</span> renders</span></div>
+            <div data-render-loop-continuous class="min-h-0"></div>
           </div>
-        </section>
-      `,
-    );
+        </div>
+      </section>
+    `;
   }
-
-  private renderMobilePreview(): TemplateResult {
-    return this.renderPreviewPanel(html`<div data-preview-chart="mobile" class="h-full min-h-[560px] w-full"></div>`,
-    );
-  }
-
-  /* ── Lit-rendered preview charts ── */
 
   private readonly togglePreviewNav = (): void => {
     this.previewNavOpen = !this.previewNavOpen;
@@ -246,18 +238,6 @@ export class BlazeplotPreviewsPage extends LitElement {
   private readonly closePreviewNav = (): void => {
     this.previewNavOpen = false;
   };
-
-  private selectPreview(index: number): void {
-    const selected = PREVIEWS[index];
-    if (!selected) return;
-    if (selected.id === this.previewId) {
-      this.closePreviewNav();
-      return;
-    }
-    this.dispatchEvent(new CustomEvent<PreviewId>("preview-select", { detail: selected.id, bubbles: true, composed: true }));
-  }
-
-
 }
 
 export function defineBlazeplotPreviewsPage(): void {

@@ -3,6 +3,7 @@ import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
 import { legendPlugin } from "../../../../src/plugins/legend.ts";
 import { tooltipPlugin } from "../../../../src/plugins/tooltip.ts";
+import { siteChartOptions } from "../charts/options.ts";
 import { PreviewResources } from "./resources.ts";
 
 export default class Preview extends PreviewResources {
@@ -11,7 +12,7 @@ export default class Preview extends PreviewResources {
     const status = root.querySelector<HTMLElement>("[data-sensor-status]");
     const liveButton = root.querySelector<HTMLButtonElement>("[data-sensor-live]");
 
-    const chart = new Chart(target, {
+    const chart = new Chart(target, siteChartOptions({
       axes: { x: { position: "outside", scale: "time" }, y: { position: "outside" }, y2: { visible: true, position: "outside" } },
       grid: true,
       autoFitY: { padding: { y: 0.15 }, yAxis: "both" },
@@ -21,7 +22,7 @@ export default class Preview extends PreviewResources {
         crosshairPlugin({ snap: "nearest-x", label: true }),
         legendPlugin({ position: "top-left" }),
       ],
-    });
+    }));
     this.previewCharts.push(chart);
 
     const temperature = chart.addLine({ capacity: 20_000, name: "temperature °C" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });

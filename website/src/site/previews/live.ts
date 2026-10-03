@@ -6,6 +6,7 @@ import { tooltipPlugin } from "../../../../src/plugins/tooltip.ts";
 import { ProceduralLineDataset } from "../../ProceduralLineDataset.ts";
 import { DEFAULT_APPEND_RATE, LIVE_BATCH_SIZE, MAX_VIEW_SAMPLES, OHLC_INTERVAL, SPARSE_INTERVAL, VIEW_SAMPLES, Y_VIEW, type PreviewDataBatch } from "../../preview-data-config.ts";
 import { addDisposableListener, runFeedbackAction } from ".././charts/dom.ts";
+import { SITE_CHART_THEME, siteChartOptions } from "../charts/options.ts";
 import { PreviewResources } from "./resources.ts";
 
 export default class Preview extends PreviewResources {
@@ -125,7 +126,7 @@ export default class Preview extends PreviewResources {
       },
     };
 
-    const chart = new Chart(target, {
+    const chart = new Chart(target, siteChartOptions({
       viewportPolicy: previewPolicy,
       axes: { x: { position: "outside", scale: "time", timezone: "local" }, y: { position: "outside" } },
       hover: hoverOptions,
@@ -135,7 +136,7 @@ export default class Preview extends PreviewResources {
         legendPlugin({ toggleOnClick: true }),
         tooltipPlugin(tooltipOptions),
       ],
-    });
+    }));
     this.previewCharts.push(chart);
 
     const dataWorker = new Worker(new URL("../../preview-data-worker.ts", import.meta.url), { type: "module" });
@@ -271,7 +272,7 @@ export default class Preview extends PreviewResources {
     const applyTheme = (name: PreviewTheme): void => {
       currentTheme = name;
       liveRoot.dataset.previewTheme = name;
-      chart.setTheme(name === "light" ? lightTheme : undefined);
+      chart.setTheme(name === "light" ? lightTheme : SITE_CHART_THEME);
     };
     const resetView = (): void => {
       followLive = true;
@@ -312,7 +313,7 @@ export default class Preview extends PreviewResources {
     addListener(followToggle, "change", () => { followLive = followToggle.checked; });
     addListener(streamToggle, "change", () => { const nextStreaming = streamToggle.checked; if (nextStreaming === streaming) return; streaming = nextStreaming; if (streaming) syncStreamClock(); });
     addListener(syncXToggle, "change", () => { syncX = syncXToggle.checked; });
-    addListener(perfToggleButton, "click", () => { showPerfPanel = !showPerfPanel; perfToggleButton.textContent = showPerfPanel ? "hide stats" : "show stats"; if (!showPerfPanel) overlayText.textContent = ""; });
+    addListener(perfToggleButton, "click", () => { showPerfPanel = !showPerfPanel; perfToggleButton.textContent = showPerfPanel ? "Hide stats" : "Show stats"; if (!showPerfPanel) overlayText.textContent = ""; });
     addListener(axesSelect, "change", () => {
       if (axesSelect.value === "off") chart.setAxes(false);
       else {
