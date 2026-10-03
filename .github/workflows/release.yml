@@ -11,17 +11,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci.yml
-    permissions:
-      contents: read
-
-  release:
-    needs: ci
+  # Cheap gate: decide whether this push publishes before spending time on CI.
+  version:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      id-token: write
+      contents: read
+    outputs:
+      publish: ${{ steps.version.outputs.publish }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -30,8 +28,6 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-
-      - uses: ./.github/actions/setup
 
       - name: Read package version
         id: version
@@ -50,14 +46,38 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
+  # Pull requests already passed CI on an up-to-date branch; rerun it only as a gate before publishing.
+  ci:
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  release:
+    needs: [version, ci]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: ./.github/actions/setup
+
       - name: Append release benchmark results
-        if: steps.version.outputs.publish == 'true'
         run: bun run release:benchmarks -- --if-missing
 
       - name: Write release notes
-        if: steps.version.outputs.publish == 'true'
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)
           {
@@ -72,7 +92,6 @@ jobs:
 
       # CI ran in separate jobs, so build the package here before packing it.
       - name: Build and pack
-        if: steps.version.outputs.publish == 'true'
         run: |
           bun run build
           bun pm pack
@@ -80,22 +99,18 @@ jobs:
 
       # Authenticates with npm trusted publishing (OIDC); no npm token secret is needed.
       - name: Publish to npm
-        if: steps.version.outputs.publish == 'true'
         run: npm publish ./blazeplot-*.tgz --provenance --access public
 
       - name: Tag and create GitHub release
-        if: steps.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: ${{ needs.version.outputs.tag }}
         run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file release-notes.md
-    outputs:
-      published: ${{ steps.version.outputs.publish }}
 
-  # The stable site is built from the latest release tag, so redeploy once the new tag exists.
+  # The only Pages deploy for main: right away for ordinary merges, after the new tag exists for releases.
   pages:
-    needs: release
-    if: needs.release.outputs.published == 'true'
+    needs: [version, release]
+    if: always() && needs.version.result == 'success' && (needs.version.outputs.publish == 'false' || needs.release.result == 'success')
     uses: ./.github/workflows/pages.yml
     permissions:
       contents: read

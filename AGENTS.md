@@ -48,14 +48,14 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Commit `AGENTS.md`/process-guide updates separately from product code, tests, generated docs, or release changes.
 - Merging to `main` does not publish unless the PR bumps `package.json#version`. Open release PRs only when the user explicitly asks for one.
 - Do not push tags manually for releases. Tags are outputs of `.github/workflows/release.yml`.
-- GitHub Pages deploys on pushes to `main` and after each release. Stable site (latest release tag): `https://blazeplot.cervelli.dev/`; stable previews: `https://blazeplot.cervelli.dev/previews`; unreleased `main` site: `https://blazeplot.cervelli.dev/next/`; unreleased previews: `https://blazeplot.cervelli.dev/next/previews`.
+- GitHub Pages deploys once per push to `main`, from the release workflow (after publishing when it is a release). Stable site (latest release tag): `https://blazeplot.cervelli.dev/`; stable previews: `https://blazeplot.cervelli.dev/previews`; unreleased `main` site: `https://blazeplot.cervelli.dev/next/`; unreleased previews: `https://blazeplot.cervelli.dev/next/previews`.
 - Maintainers can request feature-branch browser previews with the manual `Cloudflare Pages Preview` workflow. See `docs/release-and-benchmarks.md` and `docs/internal/github-workflows.md` for alias rules and safety notes.
 - To prepare a release PR:
   1. From updated `main`, create `release/vX.Y.Z`.
   2. Run `bun run release patch` (or `minor` / `major`). It bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates the docs.
   3. Edit the changelog notes and commit.
   4. Push the branch, open a PR to `main`, wait for the `validate` check, then squash-merge when approved/authorized. Benchmark tables are appended by the release workflow.
-- Every push to `main` runs the release workflow: reusable CI, then, if the `package.json` version has no tag yet, benchmark-result insertion if missing, npm publish with provenance (trusted publishing), `vX.Y.Z` tag and GitHub Release creation from `changelogs/vX.Y.Z.md` plus commits, and a Pages redeploy.
+- Every push to `main` runs the release workflow. If the `package.json` version has no tag yet, it runs reusable CI, inserts benchmark results if missing, publishes to npm with provenance (trusted publishing), and creates the `vX.Y.Z` tag and GitHub Release from `changelogs/vX.Y.Z.md` plus commits. Either way it then deploys Pages once. Ordinary merges do not rerun CI on `main`; the pull request already passed it on an up-to-date branch.
 - If the `vX.Y.Z` tag already exists, the release workflow skips publishing for that version.
 
 ## Project Shape

@@ -16,7 +16,7 @@ GitHub Pages publishes two builds into one site:
 - Unreleased integrated previews: <https://blazeplot.cervelli.dev/next/previews>
 - Legacy `previews.html` index is not generated; use the app preview routes directly.
 
-The Pages workflow runs on pushes to `main` and after each release. It builds the latest `v*` tag and `main` with the correct Vite `base`, then deploys a combined artifact. Legacy preview routes redirect to the integrated `#previews` view.
+The release workflow deploys Pages once per push to `main`: immediately for ordinary merges, and after the new tag exists for releases. The Pages workflow builds the latest `v*` tag and `main` with the correct Vite `base`, then deploys a combined artifact. Legacy preview routes redirect to the integrated `#previews` view.
 
 Feature branch browser previews can be requested by maintainers with the `Cloudflare Pages Preview` manual GitHub Actions workflow. The workflow deploys the selected feature branch's website build to the `blazeplot` Pages project and exposes a branch alias:
 
@@ -45,13 +45,13 @@ The command bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits
 
 On every push to `main` and on manual dispatch, `.github/workflows/release.yml`:
 
-1. Runs the full CI workflow.
-2. Reads `package.json` and computes `vX.Y.Z`; if that tag already exists, stops.
-3. Verifies the npm version is unpublished.
+1. Reads `package.json` and computes `vX.Y.Z`. If that tag already exists, skips straight to the Pages deploy; pull requests already passed CI on an up-to-date branch.
+2. Verifies the npm version is unpublished.
+3. Runs the full CI workflow as a gate before publishing.
 4. Appends benchmark tables to the changelog (`bun run release:benchmarks -- --if-missing`) so the release notes include them.
 5. Packs and publishes to npm with provenance via trusted publishing.
 6. Creates the `vX.Y.Z` tag and GitHub Release.
-7. Redeploys GitHub Pages so the stable site moves to the new tag.
+7. Deploys GitHub Pages once, so the stable site moves to the new tag.
 
 ## Benchmark and bundle-size commands
 
