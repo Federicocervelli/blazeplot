@@ -1,7 +1,8 @@
 import { LitElement, html, nothing, type TemplateResult } from "lit";
 import { DOC_PAGES, getDocPage } from "./docs.ts";
 import { defineBlazeplotTopbar } from "./site/components/site-topbar.ts";
-import { appHref, appRouteFromHash, appRouteFromPath, PREVIEWS, type PreviewId, type Section } from "./site/shared.ts";
+import { appHref, appRouteFromHash, appRouteFromPath, PREVIEWS, REPO_URL, type PreviewId, type Section } from "./site/shared.ts";
+import logoUrl from "./blazeplot-dark-cropped.png";
 import { siteStyles } from "./site/styles.ts";
 
 export class BlazeplotSite extends LitElement {
@@ -45,23 +46,67 @@ export class BlazeplotSite extends LitElement {
   override render(): TemplateResult {
     const doc = getDocPage(this.docSlug) ?? DOC_PAGES[0]!;
     return html`
-      <div class="min-h-screen bg-black text-[#e5e5e5] font-mono text-[13px] leading-relaxed" @click=${this.handleRouteClick} @preview-select=${this.handlePreviewSelect}>
+      <div class="flex min-h-screen flex-col bg-bg font-sans text-[15px] leading-normal text-fg antialiased" @click=${this.handleRouteClick} @preview-select=${this.handlePreviewSelect}>
+        <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:bg-surface focus:px-3 focus:py-2" @click=${this.skipToMain}>Skip to content</a>
         <blazeplot-topbar class="sticky top-0 z-50 block" .section=${this.section}></blazeplot-topbar>
-        <main class="w-full ${this.section === "previews" ? "min-w-0 px-0 pb-0 pt-1.5" : "mx-auto max-w-[1180px] px-3 pb-5 pt-3 sm:px-4 sm:pb-8 sm:pt-4"}">
+        <main id="main" tabindex="-1" class="w-full flex-1 outline-none">
           ${this.loadedSections.has("home") && this.section === "home" ? html`<blazeplot-home class="block"></blazeplot-home>` : nothing}
           ${this.loadedSections.has("docs") && this.section === "docs" ? html`<blazeplot-docs class="block" .doc=${doc}></blazeplot-docs>` : nothing}
           ${this.loadedSections.has("previews") && this.section === "previews" ? html`<blazeplot-previews class="block" .previewId=${this.previewId}></blazeplot-previews>` : nothing}
-          ${!this.loadedSections.has(this.section) ? this.loadError ? html`<p role="alert">Could not load this page. <button @click=${() => { this.loadError = false; void this.restoreAnchor(); }}>Try again</button></p>` : html`<p role="status">Loading page…</p>` : nothing}
+          ${!this.loadedSections.has(this.section) ? html`<div class="mx-auto max-w-[1440px] px-6 py-16 text-sm text-fg-3">${this.loadError ? html`<p role="alert">Could not load this page. <button class="link" @click=${() => { this.loadError = false; void this.restoreAnchor(); }}>Try again</button></p>` : html`<p role="status">Loading…</p>`}</div>` : nothing}
         </main>
-        <footer class="flex flex-wrap justify-center gap-5 px-3 py-5 text-[12px] text-[#aaa]" aria-label="Project links">
-          <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer">npm</a>
-          <a href="https://github.com/Federicocervelli/blazeplot/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT license</a>
-          <a href="https://github.com/sponsors/Federicocervelli" target="_blank" rel="noreferrer">Sponsor</a>
-          <a href="https://cervelli.dev" target="_blank" rel="noreferrer">Portfolio</a>
-        </footer>
+        ${this.renderFooter()}
       </div>
     `;
   }
+
+  private renderFooter(): TemplateResult {
+    const columns: ReadonlyArray<{ title: string; links: ReadonlyArray<{ label: string; href: string; external?: boolean }> }> = [
+      { title: "Docs", links: [
+        { label: "Overview", href: appHref("docs/overview") },
+        { label: "Examples", href: appHref("docs/examples") },
+        { label: "Plugins", href: appHref("docs/built-in-plugins") },
+        { label: "API reference", href: appHref("docs/api-reference") },
+      ] },
+      { title: "Project", links: [
+        { label: "Demos", href: appHref("previews") },
+        { label: "Benchmarks", href: appHref("docs/benchmarks") },
+        { label: "Roadmap", href: appHref("docs/roadmap") },
+        { label: "Releases", href: `${REPO_URL}/releases`, external: true },
+      ] },
+      { title: "Community", links: [
+        { label: "GitHub", href: REPO_URL, external: true },
+        { label: "npm", href: "https://www.npmjs.com/package/blazeplot", external: true },
+        { label: "Sponsor", href: "https://github.com/sponsors/Federicocervelli", external: true },
+        { label: "Portfolio", href: "https://cervelli.dev", external: true },
+      ] },
+    ];
+    return html`
+      <footer class="border-t border-line bg-bg" aria-label="Project links">
+        <div class="mx-auto grid max-w-[1440px] gap-10 px-6 py-12 sm:grid-cols-[1fr_auto] sm:px-8">
+          <div class="max-w-[280px]">
+            <img src=${logoUrl} alt="BlazePlot" width="96" height="24" class="h-[22px] w-auto opacity-90" />
+            <p class="mt-3 text-sm text-fg-3">WebGL2 charts for dense and live time series. Released under the <a class="text-fg-2 hover:text-fg" href=${`${REPO_URL}/blob/main/LICENSE`} target="_blank" rel="noreferrer">MIT license</a>.</p>
+          </div>
+          <div class="grid grid-cols-2 gap-8 text-sm sm:grid-cols-3 sm:gap-16">
+            ${columns.map((column) => html`
+              <div>
+                <h2 class="mb-3 text-xs font-semibold text-fg">${column.title}</h2>
+                <ul class="space-y-2">
+                  ${column.links.map((link) => html`<li><a href=${link.href} class="text-fg-3 hover:text-fg" target=${link.external ? "_blank" : "_self"} rel=${link.external ? "noreferrer" : nothing}>${link.label}</a></li>`)}
+                </ul>
+              </div>
+            `)}
+          </div>
+        </div>
+      </footer>
+    `;
+  }
+
+  private readonly skipToMain = (event: Event): void => {
+    event.preventDefault();
+    this.renderRoot.querySelector<HTMLElement>("#main")?.focus();
+  };
 
   private readonly onHash = (): void => {
     const route = appRouteFromHash(window.location.hash);
@@ -135,7 +180,7 @@ export class BlazeplotSite extends LitElement {
     try { id = decodeURIComponent(hash); } catch { return; }
     const heading = page.renderRoot.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`);
     if (!heading) return;
-    heading.style.scrollMarginTop = "72px";
+    heading.style.scrollMarginTop = "80px";
     heading.setAttribute("tabindex", "-1");
     heading.scrollIntoView({ block: "start", behavior: "instant" });
     heading.focus({ preventScroll: true });

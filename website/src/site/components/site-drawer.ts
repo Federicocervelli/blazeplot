@@ -3,7 +3,7 @@ import { siteStyles } from "../styles.ts";
 
 /** Native modal semantics provide focus containment and inert background content. */
 export class SiteDrawer extends LitElement {
-  static override styles = [siteStyles, css`:host { display: contents; } dialog::backdrop { background: rgb(0 0 0 / 70%); }`];
+  static override styles = [siteStyles, css`:host { display: contents; } dialog::backdrop { background: rgb(0 0 0 / 60%); backdrop-filter: blur(2px); }`];
   static override properties = { open: { type: Boolean }, label: { type: String } };
   declare open: boolean;
   declare label: string;
@@ -38,13 +38,15 @@ export class SiteDrawer extends LitElement {
     }
   }
   override render(): TemplateResult {
-    return html`<dialog aria-label=${this.label} class="fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(86vw,340px)] max-w-none border-0 bg-black p-0 text-[#e5e5e5]" @cancel=${this.onCancel} @click=${this.onBackdrop}>
+    return html`<dialog aria-label=${this.label} class="fixed inset-y-0 left-0 m-0 h-dvh max-h-none w-[min(86vw,320px)] max-w-none border-0 border-r border-line bg-raised p-0 text-fg" @cancel=${this.onCancel} @click=${this.onBackdrop}>
       <div class="flex h-full flex-col">
-        <header class="flex shrink-0 items-center justify-between p-4">
-          <h2 class="m-0 text-base font-semibold">${this.label}</h2>
-          <button type="button" class="px-2 py-2 text-[var(--muted)] hover:text-[#e5e5e5]" aria-label=${`Close ${this.label.toLowerCase()}`} @click=${this.requestClose}>Close</button>
+        <header class="flex h-[var(--header-h)] shrink-0 items-center justify-between border-b border-line px-4">
+          <h2 class="m-0 text-sm font-semibold">${this.label}</h2>
+          <button type="button" class="icon-btn -mr-2" aria-label=${`Close ${this.label.toLowerCase()}`} @click=${this.requestClose}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+          </button>
         </header>
-        <nav class="min-h-0 flex-1 overflow-y-auto p-4" aria-label=${this.label}><slot></slot></nav>
+        <nav class="min-h-0 flex-1 overflow-y-auto px-3 py-5" aria-label=${this.label}><slot></slot></nav>
       </div>
     </dialog>`;
   }

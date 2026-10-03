@@ -1,5 +1,6 @@
 import { Chart, UniformRingBuffer, type SeriesStore } from "../../../../src/index.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
+import { siteChartOptions } from "../charts/options.ts";
 import { PreviewResources } from "./resources.ts";
 
 export default class Preview extends PreviewResources {
@@ -18,13 +19,13 @@ export default class Preview extends PreviewResources {
     const makeChart = (element: HTMLElement, label: string, renderLoop: "auto" | "continuous"): { chart: Chart; series: SeriesStore } => {
       const dataset = new UniformRingBuffer(count * 2);
       for (let i = 0; i < count; i += 1) dataset.push(i, signal(i));
-      const chart = new Chart(element, {
+      const chart = new Chart(element, siteChartOptions({
         axes: { x: { position: "outside" }, y: { position: "outside" } },
         grid: true,
         plugins: [interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true })],
         accessibility: { label },
         renderLoop,
-      });
+      }));
       const series = chart.addLine({ dataset, name: label }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
       chart.setViewport({ xMin: 0, xMax: count - 1, yMin: -1.4, yMax: 1.4 });
       this.previewCharts.push(chart);

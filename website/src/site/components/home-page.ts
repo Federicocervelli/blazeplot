@@ -1,16 +1,57 @@
 import { copyCode } from "../copy-code.ts";
-import { LitElement, html, type PropertyValues, type TemplateResult } from "lit";
+import { LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { Chart, OhlcRingBuffer, StaticDataset, UniformRingBuffer, type ViewportPolicy } from "../../../../src/index.ts";
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
 import { tooltipPlugin } from "../../../../src/plugins/tooltip.ts";
-import logoUrl from "../../blazeplot-dark-cropped.png";
+import benchmarks from "../../../../benchmarks/latest.json";
+import { renderMarkdown } from "../../markdown.ts";
 import { demoOhlcValues, demoSignal, lineData } from "../charts/signals.ts";
 import { showChartFallback } from "../charts/dom.ts";
+import { SITE_SERIES, siteChartOptions } from "../charts/options.ts";
 import { siteStyles } from "../styles.ts";
-import { appHref, type HomeChartMode, type HomeDataMode } from "../shared.ts";
+import { appHref, PREVIEWS, type HomeChartMode, type HomeDataMode } from "../shared.ts";
 
-declare const __BLAZEPLOT_VERSION__: string;
+const QUICK_START = `\`\`\`ts
+import { Chart } from "blazeplot";
+import { tooltipPlugin } from "blazeplot/plugins/tooltip";
+
+const chart = new Chart(document.getElementById("chart")!, {
+  followX: { window: 60_000 },
+  autoFitY: true,
+  plugins: [tooltipPlugin()],
+});
+
+const cpu = chart.addLine({ capacity: 100_000, name: "cpu" });
+chart.start();
+
+socket.addEventListener("message", (event) => {
+  const { time, value } = JSON.parse(event.data);
+  cpu.append({ x: time, y: value });
+});
+\`\`\``;
+
+const FEATURES: ReadonlyArray<{ label: string; title: string; body: string }> = [
+  { label: "01", title: "Drawn on the GPU", body: "Lines, areas, bars, scatter, OHLC, and candlesticks are WebGL2 draw calls. The DOM only holds axis labels and the plugin UI you opt into." },
+  { label: "02", title: "Level of detail built in", body: "Each frame reduces the visible range to min/max buckets per pixel through a segment tree, so spikes survive and a 10M-point series still pans at display refresh rate." },
+  { label: "03", title: "Made for streams", body: "Fixed-capacity ring buffers, a uniform-rate shortcut for evenly spaced samples, and a follow-latest viewport that pauses while someone is inspecting history." },
+  { label: "04", title: "Pay for what you import", body: "Tooltip, legend, crosshair, navigator, annotations, selection, and flamegraph ship as separate subpath entries. No runtime dependencies." },
+];
+
+interface BenchRow { readonly library: string; readonly name: string; readonly value: number }
+
+function benchmarkRows(scenarioName: string, metric: "fps" | "work"): BenchRow[] {
+  const scenario = benchmarks.scenarios.find((candidate) => candidate.name === scenarioName);
+  if (!scenario) return [];
+  const libraries = benchmarks.libraries as Record<string, { name: string; version: string }>;
+  return scenario.results.flatMap((result) => {
+    const measurement = (result as { measurement?: { rafFps: number; updateMs: { p95: number }; chartFrameMs?: { p95: number } } }).measurement;
+    if (!result.ok || !measurement) return [];
+    const value = metric === "fps" ? measurement.rafFps : (measurement.chartFrameMs ?? measurement.updateMs).p95;
+    return [{ library: result.library, name: libraries[result.library]?.name ?? result.library, value }];
+  });
+}
 
 export class BlazeplotHomePage extends LitElement {
   static override styles = siteStyles;
@@ -27,6 +68,7 @@ export class BlazeplotHomePage extends LitElement {
   declare private followingLive: boolean;
   declare private chartFailed: boolean;
   private resumeLive: (() => void) | null = null;
+  private readonly quickStartHtml = renderMarkdown(QUICK_START);
 
   constructor() {
     super();
@@ -53,74 +95,168 @@ export class BlazeplotHomePage extends LitElement {
 
   override render(): TemplateResult {
     return html`
-      <section class="grid gap-5 py-6 sm:gap-6 sm:py-10 md:grid-cols-[300px_minmax(0,1fr)] md:items-stretch">
-        <div class="flex flex-col justify-between py-4 sm:py-5 md:min-h-[360px]">
+      ${this.renderHero()}
+      ${this.renderFeatures()}
+      ${this.renderQuickStart()}
+      ${this.renderBenchmarks()}
+      ${this.renderDemos()}
+    `;
+  }
+
+  private renderHero(): TemplateResult {
+    const segmented = <T extends string>(label: string, attr: string, value: T, options: ReadonlyArray<[T, string]>, onSelect: (value: T) => void): TemplateResult => html`
+      <div class="segmented" role="group" aria-label=${label}>
+        ${options.map(([option, text]) => html`<button type="button" data-home-option=${`${attr}:${option}`} aria-pressed=${value === option ? "true" : "false"} @click=${() => onSelect(option)}>${text}</button>`)}
+      </div>`;
+    return html`
+      <section class="relative overflow-hidden">
+        <div class="pointer-events-none absolute inset-0 opacity-[0.55] [background-image:linear-gradient(to_right,var(--color-line)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-line)_1px,transparent_1px)] [background-size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]" aria-hidden="true"></div>
+        <div class="relative mx-auto grid max-w-[1200px] gap-12 px-5 pb-16 pt-14 sm:px-8 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-center lg:gap-14 lg:pb-24 lg:pt-20">
           <div>
-            <h1 class="mb-4 flex items-center gap-3">
-              <img src=${logoUrl} alt="BlazePlot" class="block h-8 w-auto" />
-              <span class="mt-[7px] inline-flex items-center text-[12px] font-normal text-[var(--muted)]">v${__BLAZEPLOT_VERSION__}</span>
-            </h1>
-            <p class="text-base text-[#bbb]">Fast WebGL2 charts for dense history and live data.</p>
-            <nav class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1" aria-label="Project badges">
-              <a href="https://github.com/Federicocervelli/blazeplot/blob/main/LICENSE" target="_blank" rel="noreferrer" aria-label="BlazePlot license">
-                <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT license" class="block h-5" />
-              </a>
-              <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer" aria-label="BlazePlot npm downloads">
-                <img src="https://img.shields.io/npm/dt/blazeplot.svg" alt="Total npm downloads" class="block h-5" />
-              </a>
-              <a href="https://github.com/sponsors/Federicocervelli" target="_blank" rel="noreferrer" aria-label="Sponsor BlazePlot on GitHub">
-                <img src="https://img.shields.io/badge/sponsor-GitHub%20Sponsors-EA4AAA?logo=githubsponsors" alt="GitHub Sponsors" class="block h-5" />
-              </a>
-            </nav>
-            <div class="mt-5 flex flex-wrap gap-3">
-              <a class="flex min-h-[44px] items-center text-[#fc4a05] underline underline-offset-4" href=${appHref("docs/overview")}>Get started</a>
-              <a class="flex min-h-[44px] items-center text-[var(--muted)] underline underline-offset-4" href=${appHref("previews")}>Explore examples</a>
+            <h1 class="text-[40px] font-semibold leading-[1.05] tracking-[-0.03em] text-fg sm:text-[52px]">Charts for data that<br class="hidden sm:block" /> doesn’t fit on screen.</h1>
+            <p class="mt-5 max-w-[34rem] text-[17px] leading-relaxed text-fg-2">BlazePlot renders on the GPU, reduces millions of samples to what each pixel can show, and keeps the DOM out of the render loop. Built for dense history and live feeds.</p>
+            <div class="mt-8 flex flex-wrap items-center gap-3">
+              <a class="btn btn-primary btn-lg" href=${appHref("docs/overview")}>Get started</a>
+              <a class="btn btn-lg" href=${appHref("previews")}>Browse demos</a>
+            </div>
+            <div class="code-block home-install-code mt-8 max-w-[22rem]" @click=${copyCode}>
+              <div class="flex items-center">
+                <pre class="flex-1 py-2.5!"><span class="select-none text-fg-3">$ </span><code>npm install blazeplot</code></pre>
+                <button type="button" class="home-copy-button icon-btn mr-1" data-copy-code data-copy-state="ready" aria-label="Copy install command" title="Copy command">
+                  <svg data-copy-icon width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" /></svg>
+                  <svg data-copied-icon width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="m5 12 4 4L19 6" /></svg>
+                  <svg data-copy-failed-icon width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="M12 9v4m0 4h.01M10.3 3.9 1.9 18.5a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
+                </button>
+              </div>
+              <span class="sr-only" role="status" aria-live="polite"></span>
             </div>
           </div>
-          <div class="mt-6 grid grid-cols-[80px_140px] items-center gap-x-4 gap-y-3 text-[12px] sm:mt-8">
-            <label for="homeDataMode" class="text-[var(--muted)]">data</label>
-            <select
-              id="homeDataMode"
-              class="site-input w-[140px]"
-              @change=${this.handleHomeDataModeChange}
-            >
-              <option value="static" ?selected=${this.homeDataMode === "static"}>static</option>
-              <option value="streaming" ?selected=${this.homeDataMode === "streaming"}>streaming</option>
-            </select>
-            <label for="homeChartMode" class="text-[var(--muted)]">mode</label>
-            <select
-              id="homeChartMode"
-              class="site-input w-[140px]"
-              @change=${this.handleHomeChartModeChange}
-            >
-              <option value="line" ?selected=${this.homeChartMode === "line"}>line</option>
-              <option value="ohlc" ?selected=${this.homeChartMode === "ohlc"}>ohlc</option>
-              <option value="multi" ?selected=${this.homeChartMode === "multi"}>multi</option>
-            </select>
-          </div>
-        </div>
-        <div class="min-w-0 overflow-hidden">
-          <div data-home-chart class="h-[260px] w-full sm:h-[320px] md:h-[360px]"></div>
-          ${this.homeDataMode === "streaming" && !this.chartFailed && !this.followingLive ? html`
-            <div class="px-1 py-2">
-              <button type="button" class="site-button" data-home-resume @click=${() => this.resumeLive?.()}>Resume live</button>
+          <div class="stage min-w-0 shadow-[0_24px_80px_-32px_rgb(0_0_0/0.9)]">
+            <div class="stage-bar top justify-between">
+              ${segmented<HomeChartMode>("Chart type", "mode", this.homeChartMode, [["multi", "Multi"], ["line", "Line"], ["ohlc", "OHLC"]], (mode) => { this.homeChartMode = mode; })}
+              <div class="flex items-center gap-2">
+                ${this.homeDataMode === "streaming" && !this.chartFailed && !this.followingLive
+                  ? html`<button type="button" class="btn btn-sm" data-home-resume @click=${() => this.resumeLive?.()}>Resume live</button>`
+                  : nothing}
+                ${segmented<HomeDataMode>("Data source", "data", this.homeDataMode, [["streaming", "Live"], ["static", "Static"]], (mode) => { this.homeDataMode = mode; })}
+              </div>
             </div>
-          ` : ""}
+            <div data-home-chart class="h-[280px] w-full sm:h-[340px] lg:h-[380px]"></div>
+          </div>
         </div>
       </section>
-      <section class="py-6" aria-label="Install BlazePlot">
-        <h2 class="text-lg font-semibold">Add BlazePlot to your app</h2>
-        <div class="code-block home-install-code relative my-3" @click=${copyCode}>
-          <button type="button" class="home-copy-button" data-copy-code data-copy-state="ready" aria-label="Copy install command" title="Copy command">
-            <svg data-copy-icon width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="8" y="8" width="12" height="12" rx="2" />
-              <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
-            </svg>
-            <svg data-copied-icon width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="m5 12 4 4L19 6" /></svg>
-            <svg data-copy-failed-icon width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><path d="M12 9v4m0 4h.01M10.3 3.9 1.9 18.5a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" /></svg>
-          </button>
-          <span class="sr-only" role="status" aria-live="polite"></span>
-          <pre class="overflow-auto rounded border border-[#222] bg-[#0a0a0a] p-4"><code>npm install blazeplot</code></pre>
+    `;
+  }
+
+  private renderFeatures(): TemplateResult {
+    return html`
+      <section aria-labelledby="features-title">
+        <div class="mx-auto max-w-[1200px] px-5 py-20 sm:px-8">
+          <h2 id="features-title" class="sr-only">What BlazePlot does</h2>
+          <div class="grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
+            ${FEATURES.map((feature) => html`
+              <div class="bg-bg p-6">
+                <p class="font-mono text-xs text-flame">${feature.label}</p>
+                <h3 class="mt-3 text-base font-semibold text-fg">${feature.title}</h3>
+                <p class="mt-2 text-sm leading-relaxed text-fg-2">${feature.body}</p>
+              </div>
+            `)}
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  private renderQuickStart(): TemplateResult {
+    return html`
+      <section>
+        <div class="mx-auto grid max-w-[1200px] gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[minmax(0,4fr)_minmax(0,6fr)] lg:gap-16">
+          <div>
+            <p class="eyebrow mb-3">Quick start</p>
+            <h2 class="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-fg">A live chart in a dozen lines.</h2>
+            <p class="mt-4 text-fg-2">Give it a sized element, add a series, and append samples as they arrive. The viewport follows the newest minute and Y fits whatever is visible.</p>
+            <ul class="mt-6 space-y-3 text-sm text-fg-2">
+              <li class="flex gap-3"><span class="mt-[9px] h-px w-3 shrink-0 bg-flame"></span><span>Typed helpers for every series kind: <code class="font-mono text-[13px] text-fg">addLine</code>, <code class="font-mono text-[13px] text-fg">addArea</code>, <code class="font-mono text-[13px] text-fg">addBar</code>, <code class="font-mono text-[13px] text-fg">addCandlestick</code>…</span></li>
+              <li class="flex gap-3"><span class="mt-[9px] h-px w-3 shrink-0 bg-flame"></span><span>Datasets accept typed arrays, plain arrays, or object rows.</span></li>
+              <li class="flex gap-3"><span class="mt-[9px] h-px w-3 shrink-0 bg-flame"></span><span>Call <code class="font-mono text-[13px] text-fg">chart.dispose()</code> when the element goes away.</span></li>
+            </ul>
+            <div class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              <a class="link" href=${appHref("docs/overview")}>Read the overview</a>
+              <a class="link" href=${appHref("docs/examples")}>More examples</a>
+            </div>
+          </div>
+          <div class="article min-w-0 [&_.code-block]:my-0" @click=${copyCode}>${unsafeHTML(this.quickStartHtml)}</div>
+        </div>
+      </section>
+    `;
+  }
+
+  private renderBenchmarks(): TemplateResult {
+    const fps = benchmarkRows("line-10m-accelerated-pan", "fps");
+    const work = benchmarkRows("line-1m-stream", "work");
+    if (fps.length === 0 || work.length === 0) return html``;
+    const version = (benchmarks.libraries as Record<string, { version: string }>).blazeplot?.version ?? "";
+    const date = new Intl.DateTimeFormat("en", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(benchmarks.generatedAt));
+    const bars = (rows: readonly BenchRow[], unit: string, higherIsBetter: boolean): TemplateResult => {
+      const max = Math.max(...rows.map((row) => row.value));
+      const best = higherIsBetter ? Math.max(...rows.map((row) => row.value)) : Math.min(...rows.map((row) => row.value));
+      return html`<dl class="space-y-3">${rows.map((row) => html`
+        <div class="grid grid-cols-[84px_minmax(0,1fr)_76px] items-center gap-3 text-sm">
+          <dt class=${row.library === "blazeplot" ? "font-medium text-fg" : "text-fg-2"}>${row.name}</dt>
+          <div class="h-2 rounded-full bg-surface" aria-hidden="true"><div class="h-2 rounded-full ${row.library === "blazeplot" ? "bg-flame" : "bg-line-strong"}" style=${`width:${Math.max(2, (row.value / max) * 100)}%`}></div></div>
+          <dd class="whitespace-nowrap text-right font-mono text-xs ${row.value === best ? "text-fg" : "text-fg-3"}">${row.value.toFixed(1)} ${unit}</dd>
+        </div>`)}</dl>`;
+    };
+    return html`
+      <section aria-labelledby="bench-title">
+        <div class="mx-auto max-w-[1200px] px-5 py-20 sm:px-8">
+          <div class="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p class="eyebrow mb-3">Benchmarks</p>
+              <h2 id="bench-title" class="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-fg">Measured, not claimed.</h2>
+            </div>
+            <a class="link text-sm" href=${appHref("docs/benchmarks")}>Full results and method</a>
+          </div>
+          <div class="mt-10 grid gap-6 md:grid-cols-2">
+            <figure class="rounded-xl border border-line bg-raised p-6">
+              <figcaption class="mb-5"><span class="block font-medium text-fg">Panning a 10M-point line</span><span class="text-sm text-fg-3">Frames per second, higher is better</span></figcaption>
+              ${bars(fps, "fps", true)}
+            </figure>
+            <figure class="rounded-xl border border-line bg-raised p-6">
+              <figcaption class="mb-5"><span class="block font-medium text-fg">Streaming into a 1M-point line</span><span class="text-sm text-fg-3">Per-frame work p95 in ms, lower is better</span></figcaption>
+              ${bars(work, "ms", false)}
+            </figure>
+          </div>
+          <p class="mt-5 text-xs text-fg-3">Headed Chrome, ${benchmarks.environment.machine.cpuModel}, ${date}. BlazePlot ${version}. Reproduce with <code class="font-mono">bun run bench:compare</code>.</p>
+        </div>
+      </section>
+    `;
+  }
+
+  private renderDemos(): TemplateResult {
+    return html`
+      <section aria-labelledby="demos-title">
+        <div class="mx-auto max-w-[1200px] px-5 py-20 sm:px-8">
+          <div class="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p class="eyebrow mb-3">Demos</p>
+              <h2 id="demos-title" class="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-fg">See it run in your browser.</h2>
+            </div>
+            <a class="link text-sm" href=${appHref("previews")}>All demos</a>
+          </div>
+          <ul class="mt-10 grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-3">
+            ${PREVIEWS.map((preview) => html`
+              <li class="bg-bg">
+                <a href=${appHref(`previews/${preview.id}`)} class="group flex h-full flex-col gap-2 p-5 hover:bg-raised">
+                  <span class="flex items-center justify-between">
+                    <span class="font-medium text-fg">${preview.title}</span>
+                    <span class="font-mono text-[11px] text-fg-3">${preview.group}</span>
+                  </span>
+                  <span class="line-clamp-2 text-sm text-fg-2">${preview.description}</span>
+                </a>
+              </li>
+            `)}
+          </ul>
         </div>
       </section>
     `;
@@ -153,29 +289,27 @@ export class BlazeplotHomePage extends LitElement {
     };
 
     try {
-      const chart = new Chart(target, {
+      const chart = new Chart(target, siteChartOptions({
         viewportPolicy,
         axes: { x: { position: "outside" }, y: { position: "outside" } },
         hover: { mode: "nearest-x", group: "x" },
         plugins: [
           interactionsPlugin({
-            wheelZoom: true,
+            // Wheel and trackpad scrolling stay with the page on the landing hero.
+            wheelZoom: false,
+            trackpadPan: false,
             shiftDragPan: true,
             boxZoom: true,
             doubleClickReset: true,
+            pinchZoom: true,
+            doubleTapReset: true,
             resetViewport,
           }),
           ...(this.homeChartMode === "multi"
             ? [tooltipPlugin({ mode: "nearest-x", group: "x" })]
             : [crosshairPlugin({ mode: "crosshair", axis: "xy", snap: "nearest-x" })]),
         ],
-        theme: {
-          backgroundColor: [0, 0, 0, 1],
-          gridColor: [0.14, 0.14, 0.14, 0.65],
-          axisColor: "#888",
-          axisFont: "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-        },
-      });
+      }));
 
       this.homeChart = chart;
       const stream = this.addHomeSeries(chart, initialCount);
@@ -220,17 +354,17 @@ export class BlazeplotHomePage extends LitElement {
     if (this.homeDataMode === "streaming") {
       const dataset = new UniformRingBuffer(count * 2);
       for (let i = 0; i < count; i += 1) dataset.push(i, demoSignal(i, 0));
-      const series = chart.addLine({ dataset, name: "line" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
+      const series = chart.addLine({ dataset, name: "signal" }, { color: SITE_SERIES.flame, lineWidth: 2 });
       return { append: (x) => series.append({ x, y: demoSignal(x, 0) }) };
     }
 
     const { x, y } = lineData(count);
-    chart.addLine({ dataset: new StaticDataset(x, y), name: "line" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
+    chart.addLine({ dataset: new StaticDataset(x, y), name: "signal" }, { color: SITE_SERIES.flame, lineWidth: 2 });
     return null;
   }
 
   private addHomeMultiSeries(chart: Chart, count: number): { append: (x: number) => void } | null {
-    const colors = [[0.988, 0.29, 0.02, 1], [0.3, 0.6, 1, 0.92], [0.2, 0.8, 0.45, 0.9]] as const;
+    const colors = [SITE_SERIES.flame, SITE_SERIES.sky, SITE_SERIES.mint] as const;
     if (this.homeDataMode === "streaming") {
       const datasets = colors.map(() => new UniformRingBuffer(count * 2));
       for (let i = 0; i < count; i += 1) datasets.forEach((dataset, index) => dataset.push(i, demoSignal(i, index)));
@@ -250,7 +384,7 @@ export class BlazeplotHomePage extends LitElement {
     for (let i = 0; i < count; i += 1) this.pushHomeOhlc(dataset, i);
     const series = chart.addOhlc(
       { dataset, name: "ohlc" },
-      { color: [0.78, 0.82, 0.9, 1], upColor: [0.2, 0.8, 0.45, 1], downColor: [0.988, 0.29, 0.02, 1], wickColor: [0.72, 0.76, 0.84, 1], tickWidth: 0.7 },
+      { color: [0.78, 0.76, 0.72, 1], upColor: SITE_SERIES.mint, downColor: SITE_SERIES.flame, wickColor: [0.6, 0.57, 0.54, 1], tickWidth: 0.7 },
     );
     return this.homeDataMode === "streaming" ? { append: (x) => {
       const [open, high, low, close] = demoOhlcValues(x);
@@ -277,14 +411,6 @@ export class BlazeplotHomePage extends LitElement {
     const padding = Math.max(1, (max - min) * 0.12);
     return { yMin: min - padding, yMax: max + padding };
   }
-
-  private readonly handleHomeDataModeChange = (event: Event): void => {
-    this.homeDataMode = (event.currentTarget as HTMLSelectElement).value as HomeDataMode;
-  };
-
-  private readonly handleHomeChartModeChange = (event: Event): void => {
-    this.homeChartMode = (event.currentTarget as HTMLSelectElement).value as HomeChartMode;
-  };
 
   private disposeHomeChart(): void {
     if (this.homeStreamRaf !== 0) cancelAnimationFrame(this.homeStreamRaf);

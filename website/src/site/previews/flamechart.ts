@@ -1,6 +1,7 @@
 import { Chart } from "../../../../src/index.ts";
 import { buildFlameGraphModel, flameGraphPlugin } from "../../../../src/plugins/flamegraph.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
+import { siteChartOptions } from "../charts/options.ts";
 import { PreviewResources } from "./resources.ts";
 
 export default class Preview extends PreviewResources {
@@ -16,12 +17,12 @@ export default class Preview extends PreviewResources {
       },
       tooltipFormatter: (pick) => `${pick.frame.name}\n${pick.frame.value.toFixed(1)} ms (${(pick.percent * 100).toFixed(2)}%)`,
     });
-    const chart = new Chart(target, {
+    const chart = new Chart(target, siteChartOptions({
       axes: { x: { position: "outside", title: "profile time (ms)" }, y: { position: "outside", title: "stack depth" } },
       grid: false,
       plugins: [interactionsPlugin({ wheelZoom: true, shiftDragPan: true, boxZoom: true, doubleClickReset: true }), flame],
       accessibility: { label: "Flame chart preview" },
-    });
+    }));
     this.previewCharts.push(chart);
     chart.setViewport({ xMin: model.minX, xMax: model.maxX, yMin: 0, yMax: model.maxDepth + 1 });
     chart.start();

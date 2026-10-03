@@ -2,6 +2,7 @@ import { Chart, OhlcRingBuffer, ServerSampledDataset } from "../../../../src/ind
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
 import { addDisposableListener } from ".././charts/dom.ts";
+import { siteChartOptions } from "../charts/options.ts";
 import { PreviewResources } from "./resources.ts";
 
 export default class Preview extends PreviewResources {
@@ -29,7 +30,7 @@ export default class Preview extends PreviewResources {
     const reloadButton = requireControl<HTMLButtonElement>("[data-server-reload]");
 
     const sampledDataset = new ServerSampledDataset();
-    const sampledChart = new Chart(sampledChartEl, {
+    const sampledChart = new Chart(sampledChartEl, siteChartOptions({
       axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
       hover: { mode: "nearest-x", group: "x", maxDistancePx: 48 },
       plugins: [
@@ -45,7 +46,7 @@ export default class Preview extends PreviewResources {
         }),
       ],
       accessibility: { label: "Server sampled Binance kline preview" },
-    });
+    }));
     this.previewCharts.push(sampledChart);
     const sampledSeries = sampledChart.addLine({ dataset: sampledDataset, downsample: "server", name: "server buckets" }, { color: [0.35, 0.75, 1, 1], lineWidth: 1.5 });
 
@@ -62,7 +63,7 @@ export default class Preview extends PreviewResources {
     let tradeCount = 0;
     let highlightedCandleIndex = -1;
 
-    const liveChart = new Chart(liveChartEl, {
+    const liveChart = new Chart(liveChartEl, siteChartOptions({
       axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
       hover: { mode: "nearest-x", group: "none", maxDistancePx: 48 },
       followX: { window: liveWindowMs, pauseOnInteraction: true },
@@ -89,7 +90,7 @@ export default class Preview extends PreviewResources {
         }),
       ],
       accessibility: { label: "Live Binance five second candlestick chart" },
-    });
+    }));
     this.previewCharts.push(liveChart);
     const liveSeries = liveChart.addCandlestick(
       { dataset: liveDataset, name: "5s candles" },

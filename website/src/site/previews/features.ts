@@ -6,6 +6,7 @@ import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
 import { legendPlugin } from "../../../../src/plugins/legend.ts";
 import { navigatorPlugin } from "../../../../src/plugins/navigator.ts";
 import { tooltipPlugin } from "../../../../src/plugins/tooltip.ts";
+import { siteChartOptions } from "../charts/options.ts";
 import { PreviewResources } from "./resources.ts";
 
 export default class Preview extends PreviewResources {
@@ -18,7 +19,7 @@ export default class Preview extends PreviewResources {
     const { xs, cpu, latency, throughput, incidents, initialXMin, initialXMax } = this.featureData();
     const formatDate = this.featureFormatDate;
     const formatValue = this.featureFormatValue;
-    const chart = new Chart(target, {
+    const chart = new Chart(target, siteChartOptions({
       axes: {
         x: { position: "outside", scale: "time", timezone: "utc", tickFormat: "%b %d %H:%M" },
         y: { position: "outside", title: "CPU / throughput" },
@@ -49,7 +50,7 @@ export default class Preview extends PreviewResources {
         legendPlugin({ toggleOnClick: true }),
         tooltipPlugin({ mode: "nearest-x", group: "x", maxDistancePx: 48, formatter: (item) => `(${formatDate(item.x)}, ${formatValue(item.y)})` }),
       ],
-    });
+    }));
     this.previewCharts.push(chart);
 
     chart.addArea({ capacity: xs.length, dataset: new StaticDataset(xs, throughput), downsample: "none", name: "Throughput" }, { baseline: 0, fillColor: [0.125, 0.827, 0.933, 0.16], lineWidth: 1 });
@@ -82,16 +83,16 @@ export default class Preview extends PreviewResources {
       sharedX: true,
       panels: [
         {
-          options: {
+          options: siteChartOptions({
             axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
             plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
-          },
+          }),
         },
         {
-          options: {
+          options: siteChartOptions({
             axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside", scale: "log", logBase: 10 } },
             plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
-          },
+          }),
         },
       ],
     });
