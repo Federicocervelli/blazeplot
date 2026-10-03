@@ -4,10 +4,10 @@ What each GitHub Actions workflow owns and what to check before changing it.
 
 ## Branch flow
 
-- `development` is the default branch. Contributors (including forks) open pull requests against it; CI runs automatically and needs no secrets.
-- `main` is the release branch. A release is a pull request from `development` to `main`, merged with a **merge commit**.
-- After publishing, the release workflow fast-forwards `development` to `main`, so both branches point at the same commit after every release.
-- Dependabot targets `development`.
+- `main` is the only long-lived branch and the default branch. Contributors (including forks) open pull requests against it; CI runs automatically and needs no secrets.
+- Pull requests are squash-merged, and merged branches are deleted automatically.
+- A release is a pull request from a `release/vX.Y.Z` branch that bumps `package.json`. Merging it publishes that version.
+- Dependabot targets `main`.
 
 ## Shared setup
 
@@ -19,7 +19,7 @@ Keep permissions minimal: write scopes belong only to jobs that publish, deploy,
 
 File: `.github/workflows/ci.yml`
 
-Runs on every pull request, on pushes to `development`, when called by the release workflow, and by manual dispatch. Superseded runs on the same pull request are cancelled.
+Runs on every pull request, when called by the release workflow (which covers every push to `main`), and by manual dispatch. Superseded runs on the same pull request are cancelled.
 
 | Job | Command | Covers |
 |---|---|---|
@@ -40,18 +40,20 @@ Runs on pushes to `main` and by manual dispatch.
 3. Appends release benchmarks to `changelogs/vX.Y.Z.md` if missing.
 4. Packs and publishes to npm with provenance through npm trusted publishing (OIDC). No npm token secret is used; the trusted publisher on npm is bound to this workflow file name.
 5. Creates the `vX.Y.Z` tag and GitHub release from the changelog plus the commit list.
-6. Fast-forwards `development` to `main`. If `development` gained commits in the meantime it warns instead; merge `main` into `development` by hand.
+6. Redeploys Pages so the stable site picks up the new tag.
+
+Every other push to `main` only runs CI, because its `package.json` version already has a tag.
 
 ## Pages
 
 File: `.github/workflows/pages.yml`
 
-Runs on pushes to `main` or `development`, and by manual dispatch. Builds both sites into one Pages artifact:
+Runs on pushes to `main`, after a release publishes, and by manual dispatch. Builds two sites into one Pages artifact:
 
-- `main` at `/`
-- `development` at `/development/`
+- The latest `v*` release tag at `/`, so the stable docs match what is on npm.
+- `main` at `/next/`, for unreleased work.
 
-Keep the copy step in sync with website routes that need SPA fallbacks, such as `/previews` and `/development/previews`.
+Keep the copy step in sync with website routes that need SPA fallbacks, such as `/previews` and `/next/previews`.
 
 ## Cloudflare Pages Preview
 
@@ -74,8 +76,7 @@ Do not dispatch it for unreviewed external-contributor branches: the job runs wi
 |---|---|---|
 | `bun install --frozen-lockfile` fails | `package.json` and `bun.lock` disagree | Run `bun install` and commit the lockfile. |
 | `checks` fails on generated docs | Public API changed without regenerating docs | Run `bun run docs:readme` and commit the result. |
-| Pages deploys but `/development/...` routes 404 | Vite base or artifact assembly changed | Rebuild development with `BLAZEPLOT_PAGES_BASE=/development/` and keep SPA fallback copies. |
+| Pages deploys but `/next/...` routes 404 | Vite base or artifact assembly changed | Rebuild `main` with `BLAZEPLOT_PAGES_BASE=/next/` and keep SPA fallback copies. |
 | Release skips publish | Tag `vX.Y.Z` already exists | Expected on reruns. Bump the version for a new publish. |
 | Release fails because the npm version exists | npm published but tag is missing | Investigate manually; never overwrite npm. Release a patch if needed. |
-| Release warns that development diverged | Commits landed on `development` during the release | Merge `main` into `development`. |
 | Browser tests cannot find Chrome locally | Browser path detection | Set `BLAZEPLOT_BENCH_CHROME` or `CHROME_PATH`. |

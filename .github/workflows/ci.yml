@@ -2,9 +2,7 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches:
-      - development
+  # Pushes to main run CI through the release workflow, which calls this one.
   workflow_call:
   workflow_dispatch:
 

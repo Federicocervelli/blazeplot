@@ -18,7 +18,7 @@ describe("website markdown links", () => {
     });
 
     expect(html).toContain(
-      'href="https://github.com/Federicocervelli/blazeplot/blob/development/docs/internal/local-development.md"',
+      'href="https://github.com/Federicocervelli/blazeplot/blob/main/docs/internal/local-development.md"',
     );
   });
 });

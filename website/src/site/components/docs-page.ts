@@ -77,7 +77,7 @@ export class BlazeplotDocsPage extends LitElement {
       <section>
         <div class="mb-4 flex justify-between gap-4">
           <a href=${appHref("docs/docs-map")} class="text-[12px] text-[var(--muted)] no-underline hover:text-[#fc4a05]">all docs</a>
-          <a href=${`https://github.com/Federicocervelli/blazeplot/blob/development/${doc.sourcePath}`} target="_blank" rel="noreferrer" class="text-[12px] text-[var(--muted)] no-underline hover:text-[#fc4a05]">source</a>
+          <a href=${`https://github.com/Federicocervelli/blazeplot/blob/main/${doc.sourcePath}`} target="_blank" rel="noreferrer" class="text-[12px] text-[var(--muted)] no-underline hover:text-[#fc4a05]">source</a>
         </div>
         <p class="mb-5 mt-0 text-sm text-[var(--muted)]">${doc.description}</p>
         <site-drawer .open=${this.docsNavOpen} label="Docs navigation" @drawer-close=${this.closeDocsNav}>

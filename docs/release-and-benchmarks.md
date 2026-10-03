@@ -4,20 +4,19 @@ BlazePlot releases are driven by pull requests into `main`. Tags are outputs of 
 
 ## Branches
 
-- `development`: default and integration branch. Feature and fix pull requests (including from forks) target it.
-- `main`: protected release branch. Merging a release PR from `development` with a merge commit publishes the unpublished `package.json` version, then the workflow fast-forwards `development` to `main`.
+`main` is the only long-lived branch. Feature, fix, and docs pull requests (including from forks) target it and are squash-merged. A release is a pull request from a `release/vX.Y.Z` branch that bumps `package.json`; merging it publishes that version.
 
-## Branch previews
+## Site previews
 
-GitHub Pages publishes both active branches into one site:
+GitHub Pages publishes two builds into one site:
 
-- Stable `main` site: <https://blazeplot.cervelli.dev/>
+- Stable site, built from the latest release tag: <https://blazeplot.cervelli.dev/>
 - Stable integrated previews: <https://blazeplot.cervelli.dev/previews>
-- In-progress `development` site: <https://blazeplot.cervelli.dev/development/>
-- In-progress integrated previews: <https://blazeplot.cervelli.dev/development/previews>
+- Unreleased `main` site: <https://blazeplot.cervelli.dev/next/>
+- Unreleased integrated previews: <https://blazeplot.cervelli.dev/next/previews>
 - Legacy `previews.html` index is not generated; use the app preview routes directly.
 
-The Pages workflow runs on pushes to either `main` or `development`, checks out both branches, builds each Lit website with the correct Vite `base`, and deploys a combined artifact. Legacy preview routes redirect to the integrated `#previews` view.
+The Pages workflow runs on pushes to `main` and after each release. It builds the latest `v*` tag and `main` with the correct Vite `base`, then deploys a combined artifact. Legacy preview routes redirect to the integrated `#previews` view.
 
 Feature branch browser previews can be requested by maintainers with the `Cloudflare Pages Preview` manual GitHub Actions workflow. The workflow deploys the selected feature branch's website build to the `blazeplot` Pages project and exposes a branch alias:
 
@@ -34,16 +33,17 @@ For a copy-paste release PR checklist, see [Internal release checklist](./intern
 ## Preparing a release candidate
 
 ```bash
-git checkout development
+git checkout main
 git pull --ff-only
+git checkout -b release/vX.Y.Z
 bun run release patch      # or minor / major
 ```
 
-The command bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates `dist/`, `docs/api-reference.md`, and the README docs block. Edit the changelog, commit, and open a PR from `development` to `main`. The PR's `validate` check must pass, then merge it with a merge commit.
+The command bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates `dist/`, `docs/api-reference.md`, and the README docs block. Edit the changelog, commit, and open a PR to `main`. The PR's `validate` check must pass, then squash-merge it.
 
 ## What the release workflow does
 
-On pushes to `main` and manual dispatches, `.github/workflows/release.yml`:
+On every push to `main` and on manual dispatch, `.github/workflows/release.yml`:
 
 1. Runs the full CI workflow.
 2. Reads `package.json` and computes `vX.Y.Z`; if that tag already exists, stops.
@@ -51,7 +51,7 @@ On pushes to `main` and manual dispatches, `.github/workflows/release.yml`:
 4. Appends benchmark tables to the changelog (`bun run release:benchmarks -- --if-missing`) so the release notes include them.
 5. Packs and publishes to npm with provenance via trusted publishing.
 6. Creates the `vX.Y.Z` tag and GitHub Release.
-7. Fast-forwards `development` to `main`.
+7. Redeploys GitHub Pages so the stable site moves to the new tag.
 
 ## Benchmark and bundle-size commands
 

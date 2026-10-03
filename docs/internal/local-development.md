@@ -77,7 +77,7 @@ Use `bun run docs:bundle-size` to print the current bundle-size table and `bun r
 
 Release commands and branch policy live in [Release and benchmark notes](../release-and-benchmarks.md), with a copy-paste checklist in [Release checklist](./release-checklist.md). The short version:
 
-1. Branch from updated `development`.
+1. Create a `release/vX.Y.Z` branch from updated `main`.
 2. Run `bun run release patch` (or `minor` / `major`): bumps the version, drafts the changelog, and regenerates docs.
 3. Edit `changelogs/vX.Y.Z.md` and commit.
-4. Open the release PR from `development` to `main` and merge it with a merge commit.
+4. Open the release PR to `main` and squash-merge it.

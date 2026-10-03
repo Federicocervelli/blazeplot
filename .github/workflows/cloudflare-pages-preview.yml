@@ -28,8 +28,8 @@ jobs:
       - name: Resolve branch metadata
         id: branch
         run: |
-          if [ "${GITHUB_REF_NAME}" = "main" ] || [ "${GITHUB_REF_NAME}" = "development" ]; then
-            echo "::error::Cloudflare previews are only for feature branches. Use GitHub Pages for main/development."
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "::error::Cloudflare previews are only for feature branches. Use GitHub Pages for main."
             exit 1
           fi
           echo "name=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
