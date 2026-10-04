@@ -143,6 +143,7 @@ When replacing a public API:
 
 Maintainer usage, together with the `@deprecated` tag:
 
+<!-- snippet: skip maintainer-only class member fragment that imports an internal module, not public API -->
 ```ts
 import { warnDeprecated } from "../core/deprecation.js";
 

@@ -52,6 +52,11 @@ Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(confi
 Axis options live under `ChartOptions.axes`. Use them for time ticks, log/symlog scales, category labels, custom tick formatting, reversed axes, and left/right Y-axis placement.
 
 ```ts
+import { Chart, StaticDataset } from "blazeplot";
+
+const latencyDataset = new StaticDataset([0, 1000, 2000], [120, 180, 150]);
+const requestDataset = new StaticDataset([0, 1000, 2000], [40, 55, 48]);
+
 const chart = new Chart(element, {
   axes: {
     x: { scale: "time", timezone: "utc", title: "Time" },
@@ -88,6 +93,8 @@ For small screens, prefer:
 Provide accessible text at chart construction time. BlazePlot marks the canvas as hidden from assistive technology and puts the label on the chart root.
 
 ```ts
+import { Chart } from "blazeplot";
+
 const chart = new Chart(element, {
   title: "Latency",
   subtitle: "p95 by region",

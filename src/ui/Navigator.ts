@@ -142,7 +142,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     root.style.width = `${Math.max(1, alignRect.width)}px`;
   };
 
-  const render = (): void => {
+  /** `follow` pins the window to newly arrived data; viewport changes pass `false` so they are never undone. */
+  const render = (follow = true): void => {
     const chart = chartRef;
     if (!chart || !root || !overlay || !windowRect || !leftHandle || !rightHandle || !leftHandleHit || !rightHandleHit) return;
     updateRootPosition();
@@ -182,7 +183,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     }
 
     const viewport = chart.getViewport();
-    if (options.followLive !== false && wasAtRightEdge && domain.xMax > viewport.xMax) {
+    if (follow && options.followLive !== false && wasAtRightEdge && domain.xMax > viewport.xMax) {
       const span = viewport.xMax - viewport.xMin;
       chart.setViewport({ xMin: domain.xMax - span, xMax: domain.xMax });
     }
@@ -231,7 +232,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     }
     chart.setViewport({ xMin, xMax });
     options.onRangeChange?.({ xMin, xMax });
-    render();
+    render(false);
   };
 
   return {
@@ -297,7 +298,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
 
       const onRender = (): void => render();
       const unsubscribeRender = chart.subscribe("render", onRender);
-      const unsubscribeViewport = chart.subscribe("viewportchange", onRender);
+      const unsubscribeViewport = chart.subscribe("viewportchange", () => render(false));
       const unsubscribeTheme = chart.subscribe("themechange", () => {
         applyTheme();
         render();

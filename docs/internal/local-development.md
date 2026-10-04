@@ -21,7 +21,7 @@ Use Bun for repo work. `packageManager` pins the expected Bun version; CI also u
 | Type-check all source, tests, scripts, and website code | `bun run typecheck` | Fastest broad correctness check. |
 | Lint with Oxlint | `bun run lint` | Correctness rules only; config in `.oxlintrc.json`. Included in `bun run check`. |
 | Run unit tests | `bun test` | Covers datasets, render helpers, interactions, and data export helpers. |
-| Run unit tests with coverage floors | `bun run test:coverage` | Runs `bun test --coverage` via `scripts/coverage-check.ts` and fails if `src/core` or overall `src/` line/function coverage drops below the floors in that script. Included in `bun run check`. Floors sit just under the baseline (core ~93% lines, `src/` ~79% lines excluding browser-only `theme.ts`/`OverlayUtils.ts`); raise them when coverage improves, never lower them. |
+| Run unit tests with coverage floors | `bun run test:coverage` | Runs `bun test --coverage` via `scripts/coverage-check.ts` and fails if `src/core`, overall `src/`, the built-in plugin implementations (`src/ui` plugins and linked charts), or the public entry barrels (`src/index.ts`, `src/linked.ts`, `src/plugins/*`) drop below the line/function floors in that script. Included in `bun run check`. Floors sit just under the baseline (core ~94% lines, `src/` ~90%, plugins ~98%, public API 100%, excluding browser-only `theme.ts`); raise them when coverage improves, never lower them. Plugin tests live in `tests/ui` and run under happy-dom with the fake GPU backend; drawing that needs a real WebGL2 or 2D canvas (`WebGL2Backend`, screenshot compositing, flame graph pixels) stays in `bun run test:browser`. |
 | Build the library package | `bun run build` | Emits `dist/` and declarations. |
 | Build only JS output | `bun run build:js` | Useful before bundle analysis when declarations are irrelevant. |
 | Run the docs/site dev server | `bun run dev` | Serves the Lit documentation site. |
@@ -38,6 +38,7 @@ bun run test:visual
 bun run test:interaction
 bun run test:website
 bun run bench:ci
+bun run bench:gate
 ```
 
 `bun run test:website` checks the development and production website builds for routing, responsive previews, modal keyboard behavior, copy/export feedback, lazy loading, offscreen chart lifecycle, and legend focus in headless Chromium. Screenshots and test downloads are written to `build/website-ux/`. Run a focused case with `bun scripts/website-ux-test.ts <case>` (for example, `anchors` or `legend`). After `bun run pages:build`, run `bun scripts/website-ux-test.ts production` to smoke-test the built site.
@@ -64,12 +65,31 @@ On a Linux machine that matches CI (for example a container with the same Chrome
 
 To add a baselined case, add a `baseline` entry (and a `minInkRatio`) to its `CASE_CHECKS` record. Only baseline cases that need no pointer input and use static data, and prefer `region: "plot"` (the WebGL canvas only) over `"chart"` when DOM text is not what is being tested.
 
-CI runs the same two groups as separate jobs. Locally:
+`bun run bench:gate` is the performance regression gate: it runs the deterministic `perf-gate` scenario in 1 discarded plus 5 measured repetitions (10 if the first attempt fails), normalises timings by an in-page calibration workload, and compares medians with `benchmarks/thresholds.json`. Use `-- --report-only` to print the table without failing, and `-- --inject-slowdown-ms 2` to confirm the gate still catches a synthetic regression. Locally it is a sanity check: absolute numbers differ from the GitHub-hosted runners the baselines come from, so do not update `benchmarks/thresholds.json` from a laptop run. Methodology, hardware assumptions, and the update procedure are in [Release and benchmark notes](../release-and-benchmarks.md#performance-regression-gate).
+
+
+### Cross-browser smoke (Firefox and WebKit)
+
+`bun run test:cross-browser` uses Playwright to run a smoke test in Firefox and WebKit against the Vite-served visual and interaction fixtures. For each browser it checks that WebGL2 is available, that visual cases render non-blank pixels (page screenshot plus `chart.screenshot()`), that WebGL context restore works, and that hover, crosshair, wheel zoom, shift-drag pan, box zoom, and double-click reset work. It starts its own Vite server and does not need Chrome.
+
+```bash
+bunx playwright install firefox webkit      # once; add --with-deps on Linux
+bun run test:cross-browser
+bun run test:cross-browser --browsers webkit --cases line,scatter
+```
+
+Screenshots and `summary.json` go to `build/cross-browser/` (failures add `*-FAILED.png`). Options are listed by `bun run test:cross-browser --help`.
+
+- A browser without WebGL2 fails the run. To skip one on purpose, list it in `--allow-no-webgl2` or `BLAZEPLOT_CROSS_BROWSER_ALLOW_NO_WEBGL2`; the run then prints a `SKIP` line and the browser's other checks do not run. Document any allowlist entry in `docs/browser-support.md`.
+- On Linux CI, headless Firefox cannot find a GL driver, so the job runs it headed under Xvfb (`xvfb-run -a bun run test:cross-browser --headed firefox`) and gets Mesa llvmpipe WebGL2. Locally on a desktop, plain headless works if your GPU drivers expose WebGL2.
+- WebKit on Windows and Linux is the Playwright build, not Safari.
+
+CI runs the same groups as separate jobs. Locally:
 
 ```bash
 bun run check          # typecheck, unit tests, build, docs freshness, package checks
-bun run test:browser   # benchmark smoke, visual, interaction, website (needs Chrome)
-bun run ci             # both
+bun run test:browser   # benchmark smoke, perf gate, visual, interaction, website (needs Chrome)
+bun run ci             # both (cross-browser is a separate CI job: bun run test:cross-browser)
 ```
 
 ## Documentation changes

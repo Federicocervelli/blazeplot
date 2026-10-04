@@ -1,4 +1,4 @@
 [test]
 coverageSkipTestFiles = true
 # Browser-only / GLSL / website code is exercised by `bun run test:browser`, not unit tests.
-coverageIgnorePatterns = ["website/**", "tests/**", "**/*.vert", "**/*.frag", "src/ui/theme.ts", "src/ui/OverlayUtils.ts"]
+coverageIgnorePatterns = ["website/**", "tests/**", "**/*.vert", "**/*.frag", "src/ui/theme.ts"]

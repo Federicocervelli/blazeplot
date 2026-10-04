@@ -9,6 +9,7 @@ For timestamps or uneven X spacing, create a bounded ring buffer by passing `cap
 ```ts
 import { Chart } from "blazeplot";
 
+const socket = new WebSocket("wss://example.com/sensor");
 const chart = new Chart(element, {
   autoFitY: { padding: { y: 0.1 } },
 });
@@ -26,6 +27,8 @@ socket.onmessage = (event) => {
 For higher throughput, append batches:
 
 ```ts
+const timestampArray = new Float64Array([1_700_000_000_000, 1_700_000_000_050]);
+const valueArray = new Float32Array([0.2, 0.4]);
 series.append({ x: timestampArray, y: valueArray });
 ```
 
@@ -36,6 +39,8 @@ Keep X values sorted in append order. Picking, binary search, and LOD assume sor
 For signals with constant sample spacing, use the `{ capacity, xStart, xStep }` shorthand. BlazePlot creates an implicit-X `UniformRingBuffer`, so you only append Y values.
 
 ```ts
+import { Chart } from "blazeplot";
+
 const chart = new Chart(element, {
   followX: { window: 10_000, pauseOnInteraction: true },
 });
@@ -61,6 +66,9 @@ series.append([{ y: 0.2 }, { y: 0.4 }, { y: 0.3 }]);
 Use `updateLast(...)` when a feed revises the latest point instead of adding a new one.
 
 ```ts
+const latestValue = 0.5;
+const latestTimestamp = Date.now();
+
 series.updateLast({ y: latestValue });
 series.updateLast({ x: latestTimestamp, y: latestValue });
 ```
@@ -68,6 +76,8 @@ series.updateLast({ x: latestTimestamp, y: latestValue });
 Use `updateAt(index, ...)` for corrections to existing samples:
 
 ```ts
+const correctedValue = 0.45;
+
 series.updateAt(42, { y: correctedValue });
 ```
 
@@ -77,6 +87,9 @@ For spectra, waveforms, or any chart that redraws all of its points each frame, 
 
 ```ts
 import { Chart, StaticDataset } from "blazeplot";
+
+const frequencies = new Float64Array([20, 100, 1_000, 10_000]);
+const magnitudes = new Float32Array([-60, -30, -10, -50]);
 
 const chart = new Chart(element);
 const spectrum = chart.addLine({ dataset: new StaticDataset(frequencies, magnitudes), name: "spectrum" }, { lineWidth: 2 });
@@ -99,14 +112,12 @@ import { OhlcRingBuffer } from "blazeplot";
 
 const candles = chart.addCandlestick({ dataset: new OhlcRingBuffer(10_000), name: "candles" });
 
+const [x, open, high, low, close] = [Date.now(), 100, 104, 99, 102];
 candles.append({ x, open, high, low, close });
 candles.updateLast({ open, high, low, close });
-```
 
-For historical corrections, use a logical index:
-
-```ts
-candles.updateAt(index, { open, high, low, close });
+// For historical corrections, use a logical index.
+candles.updateAt(0, { open, high, low, close });
 ```
 
 ## Following the latest X value
@@ -137,6 +148,8 @@ Y-axis interactions do not pause X follow. X pan/zoom operations through the cha
 If you intentionally mutate a dataset directly, call `series.markDirty()` afterward:
 
 ```ts
+const batch = new Float32Array([0.2, 0.4, 0.3]);
+
 dataset.appendY(batch);
 series.markDirty();
 ```

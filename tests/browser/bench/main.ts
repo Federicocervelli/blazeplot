@@ -57,6 +57,10 @@ interface BenchmarkResult {
     readonly uploadBytes: NumericSummary;
   };
   readonly finalStats: ChartFrameStats;
+  /** Median wall time of a fixed CPU workload run in this page before and after measuring; used to normalise across machines. */
+  readonly calibrationMs: number;
+  /** Total wall time spent inside the initial fill appends (data generation plus ingest). */
+  readonly ingestMs: number;
   readonly userAgent: string;
 }
 
@@ -99,6 +103,24 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     yMax: 1.5,
     measureMs: 500,
     warmupMs: 100,
+  },
+  // Deterministic scenario for the CI performance gate (scripts/perf-gate.ts): fixed data and a
+  // panning sub-window of it, so every frame re-extracts LOD for line, scatter, and bar series.
+  "perf-gate": {
+    name: "perf-gate",
+    initialSamples: 1_000_000,
+    viewportSamples: 500_000,
+    capacity: 1_000_000,
+    fillBatchSize: 65_536,
+    liveBatchSize: 0,
+    sparseInterval: 256,
+    includeScatter: true,
+    includeBars: true,
+    yMin: -1.5,
+    yMax: 1.5,
+    measureMs: 3_000,
+    warmupMs: 500,
+    interaction: "pan",
   },
   "mixed-1m-live": {
     name: "mixed-1m-live",
@@ -244,6 +266,16 @@ const chart = new Chart(chartTarget, {
   plugins: chartPlugins,
 });
 
+// Gate self-test hook (`bun run bench:gate -- --inject-slowdown-ms <ms>`): burns CPU inside every
+// frame so maintainers can confirm the performance gate fails on a synthetic regression.
+const burnMs = readPositiveNumberParam("burnMs", 0);
+if (burnMs > 0) {
+  chart.subscribe("render", () => {
+    const until = performance.now() + burnMs;
+    while (performance.now() < until) { /* spin */ }
+  });
+}
+
 const lineDataset = config.proceduralLine ? new ProceduralLineDataset(config.capacity) : undefined;
 const lineSeries = chart.addSeries(
   { mode: "line", capacity: config.capacity, dataset: lineDataset, downsample: "minmax", name: "Benchmark wave" },
@@ -278,6 +310,7 @@ let progress = 0;
 let result: BenchmarkResult | null = null;
 let error: string | null = null;
 let nextX = 0;
+let ingestMs = 0;
 let measurePromise: Promise<BenchmarkResult> | null = null;
 
 window.__blazeplotBench = {
@@ -311,7 +344,9 @@ async function prepare(): Promise<void> {
 
     while (nextX < config.initialSamples) {
       const batchSize = Math.min(config.fillBatchSize, config.initialSamples - nextX);
+      const ingestStartedAt = performance.now();
       appendRange(nextX, batchSize);
+      ingestMs += performance.now() - ingestStartedAt;
       nextX += batchSize;
       progress = nextX / config.initialSamples;
       updateViewport();
@@ -352,6 +387,7 @@ async function measure(): Promise<BenchmarkResult> {
   const pointsRendered: number[] = [];
   const drawCalls: number[] = [];
   const uploadBytes: number[] = [];
+  const calibrationSamples = calibrate();
   const startMs = performance.now();
   let lastFrameMs: number | null = null;
   let liveSamplesAppended = 0;
@@ -383,11 +419,13 @@ async function measure(): Promise<BenchmarkResult> {
     renderStatus();
   }
 
+  const measuredMs = performance.now() - startMs;
+  calibrationSamples.push(...calibrate());
   chart.getFrameStats(frameStats);
   result = {
     scenario: config.name,
     renderer: frameStats.renderMode,
-    durationMs: performance.now() - startMs,
+    durationMs: measuredMs,
     initialSamples: config.initialSamples,
     liveSamplesAppended,
     totalLineSamples: nextX,
@@ -408,6 +446,8 @@ async function measure(): Promise<BenchmarkResult> {
       uploadBytes: summarize(uploadBytes),
     },
     finalStats: { ...frameStats },
+    calibrationMs: median(calibrationSamples),
+    ingestMs,
     userAgent: navigator.userAgent,
   };
   state = "done";
@@ -576,6 +616,46 @@ function sum(values: readonly number[]): number {
   let total = 0;
   for (const value of values) total += value;
   return total;
+}
+
+const CALIBRATION_SIZE = 262_144;
+const CALIBRATION_BUCKETS = 512;
+let calibrationY: Float32Array | null = null;
+
+/**
+ * Fixed single-thread CPU workload shaped like the engine's hot paths (typed-array fill with math,
+ * then a bucketed min/max scan). Returns wall times in ms; callers take the median so the result
+ * can normalise frame work for the speed and load of the machine running the page.
+ */
+function calibrate(runs = 7): number[] {
+  const ys = (calibrationY ??= new Float32Array(CALIBRATION_SIZE));
+  const bucketSize = CALIBRATION_SIZE / CALIBRATION_BUCKETS;
+  const samples: number[] = [];
+  let sink = 0;
+  for (let run = 0; run < runs; run++) {
+    const startedAt = performance.now();
+    for (let i = 0; i < CALIBRATION_SIZE; i++) ys[i] = Math.sin(i * 0.001) * 0.25 + noise01(i) * 0.01;
+    for (let b = 0; b < CALIBRATION_BUCKETS; b++) {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = b * bucketSize; i < (b + 1) * bucketSize; i++) {
+        const y = ys[i] ?? 0;
+        if (y < lo) lo = y;
+        if (y > hi) hi = y;
+      }
+      sink += hi - lo;
+    }
+    samples.push(performance.now() - startedAt);
+  }
+  if (sink === Infinity) console.warn("calibration sink", sink);
+  return samples;
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? (sorted[mid] ?? 0) : (((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2);
 }
 
 function noise01(seed: number): number {

@@ -36,5 +36,6 @@ Built-in scenarios live in `tests/browser/bench/main.ts`:
 - `line-5m-static`: static downsampled line scene.
 - `mixed-10m-live`: heavier version of the preview-style mixed live scene.
 - `line-1b-procedural`: billion-point line stress test backed by a procedural dataset, kept out of the interactive preview.
+- `perf-gate`: deterministic 1M-sample line + scatter + bars scene panning over a 500k-sample window; used only by `bun run bench:gate` (see [Release and benchmark notes](../release-and-benchmarks.md#performance-regression-gate)). Every run also reports `calibrationMs` (a fixed in-page CPU workload) and `ingestMs` (initial fill time) for normalisation.
 
 The benchmark page exposes `window.__blazeplotBench` for automation. It does not start measurement until the harness calls `start()`, so the emitted CPU profile covers only the measured interval rather than initial data loading.

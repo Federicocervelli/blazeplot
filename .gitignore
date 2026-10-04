@@ -12,6 +12,7 @@ benchmarks/*
 !benchmarks/README.md
 !benchmarks/latest.json
 !benchmarks/latest.md
+!benchmarks/thresholds.json
 
 # code coverage
 coverage

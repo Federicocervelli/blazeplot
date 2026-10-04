@@ -98,6 +98,11 @@ export class FakeRaf {
 export interface ListenerLedger {
   /** Net registered listeners (adds minus removes). */
   net(): number;
+  /**
+   * Net listeners that can still fire: on non-Node targets (window, document) or on Nodes still
+   * attached to the document. Listeners left on a detached node are garbage-collected with it.
+   */
+  reachable(): number;
   restore(): void;
 }
 
@@ -125,6 +130,15 @@ export function trackListeners(): ListenerLedger {
     net() {
       let n = 0;
       for (const byType of live.values()) for (const set of byType.values()) n += set.size;
+      return n;
+    },
+    reachable() {
+      let n = 0;
+      for (const [target, byType] of live) {
+        const node = target as Partial<Node>;
+        if (node.nodeType !== undefined && !node.isConnected) continue;
+        for (const set of byType.values()) n += set.size;
+      }
       return n;
     },
     restore() {

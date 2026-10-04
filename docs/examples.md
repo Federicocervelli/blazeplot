@@ -94,6 +94,7 @@ Precompute or inspect bins with the pure helper:
 ```ts
 import { Chart, histogram } from "blazeplot";
 
+const values = [12, 15, 15, 18, 22, 22, 22, 30, 41];
 const bins = histogram(values, { binCount: 20, normalize: "density" });
 
 const chart = new Chart(element);
@@ -161,6 +162,12 @@ Use `ServerSampledDataset` when your backend already reduced dense history into 
 
 ```ts
 import { Chart, ServerSampledDataset } from "blazeplot";
+
+// Bucket envelopes reduced by your backend; each bucket covers [xStart, xEnd].
+const bucketStarts = new Float64Array([0, 10, 20]);
+const bucketEnds = new Float64Array([10, 20, 30]);
+const bucketMins = new Float32Array([1, 0.5, 2]);
+const bucketMaxes = new Float32Array([4, 3.5, 5]);
 
 const dataset = new ServerSampledDataset({
   kind: "minmax",
@@ -249,8 +256,15 @@ OHLC bounds use high/low values, while generic `getY()` returns close. For live 
 Use `blazeplot/linked` for dashboards that share an X range but keep independent Y axes.
 
 ```ts
+import { StaticDataset } from "blazeplot";
 import { createLinkedCharts } from "blazeplot/linked";
 import { crosshairPlugin } from "blazeplot/plugins/crosshair";
+
+const dashboardElement = document.getElementById("dashboard")!;
+const priceDataset = new StaticDataset([0, 1, 2], [10, 12, 11]);
+const volumeDataset = new StaticDataset([0, 1, 2], [300, 450, 380]);
+const xMin = 0;
+const xMax = 2;
 
 const linked = createLinkedCharts(dashboardElement, {
   rows: 2,
