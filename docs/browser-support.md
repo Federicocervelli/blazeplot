@@ -31,6 +31,13 @@ Keep the fallback outside the chart constructor so users without WebGL2 still ge
 ```ts
 import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
 
+// Your own fallback: a static image from your backend, a table, or a message.
+function renderStaticFallback(x: number[], y: number[]): Node {
+  const note = document.createElement("p");
+  note.textContent = `WebGL2 is unavailable, so the ${Math.min(x.length, y.length)}-sample chart is not shown.`;
+  return note;
+}
+
 function renderTelemetryChart(element: HTMLElement, x: number[], y: number[]) {
   if (!isWebGL2Available()) {
     element.replaceChildren(renderStaticFallback(x, y));

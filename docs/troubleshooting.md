@@ -27,6 +27,13 @@ Check these first:
 ```ts
 import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
 
+const x = [0, 1, 2];
+const y = [3, 6, 4];
+
+function showUnsupportedBrowserMessage() {
+  element.textContent = "This chart needs WebGL2, which this browser does not provide.";
+}
+
 if (!isWebGL2Available()) {
   showUnsupportedBrowserMessage();
 } else {
@@ -42,6 +49,8 @@ if (!isWebGL2Available()) {
 For live telemetry, prefer `followX` over repeatedly calling `fitToData()` on every sample. `fitToData()` is best for initial setup and explicit reset actions; `followX` keeps a fixed-width window pinned to the newest sample.
 
 ```ts
+import { Chart } from "blazeplot";
+
 const chart = new Chart(element, {
   followX: { window: 60_000, pauseOnInteraction: true, resumeAfterMs: 3000 },
   autoFitY: { padding: { y: 0.1 } },
@@ -55,6 +64,9 @@ You can also enable it after construction with `chart.followLatestX(...)`. For t
 The default render loop is on demand. It wakes automatically for chart-owned changes, including appends through the returned series object:
 
 ```ts
+import { Chart } from "blazeplot";
+
+const chart = new Chart(element);
 const series = chart.addLine({ capacity: 120_000, xStart: Date.now(), xStep: 1000, name: "signal" });
 chart.start();
 
@@ -87,6 +99,8 @@ See [Performance recipes](./performance-recipes.md) for deeper guidance.
 A log axis requires a positive viewport. `fitToData()` leaves a log axis unchanged when its data includes zero or negative values. If the viewport still ends up invalid for the scale (for example through `chart.setViewport(...)`), the chart skips drawing, logs `BlazePlot skipped rendering: ...` once, and resumes as soon as the domain is valid. If your data can contain zero or negative values, use `scale: "symlog"` or keep the axis linear.
 
 ```ts
+import { Chart } from "blazeplot";
+
 const chart = new Chart(element, {
   axes: {
     y: { scale: "symlog", symlogConstant: 1 },
@@ -99,11 +113,20 @@ const chart = new Chart(element, {
 Create `Chart` once inside an effect and dispose it from that effect's cleanup. Do not construct charts during render.
 
 ```tsx
-useEffect(() => {
-  if (!hostRef.current) return;
-  const chart = new Chart(hostRef.current);
-  return () => chart.dispose();
-}, []);
+import { useEffect, useRef } from "react";
+import { Chart } from "blazeplot";
+
+export function TelemetryPanel() {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!hostRef.current) return;
+    const chart = new Chart(hostRef.current);
+    return () => chart.dispose();
+  }, []);
+
+  return <div ref={hostRef} style={{ height: 320 }} />;
+}
 ```
 
 ## Screenshots miss external UI
