@@ -5,7 +5,7 @@
   "discardedRepetitions": 1,
   "defaultHeadroom": 1.8,
   "metrics": {
-    "frameP50Ratio": { "baseline": 0.086, "description": "Chart frame work p50 (ms) divided by the in-page calibration workload (ms)" },
+    "frameP50Ratio": { "baseline": 0.086, "headroom": 1.7, "description": "Chart frame work p50 (ms) divided by the in-page calibration workload (ms)" },
     "frameP95Ratio": { "baseline": 0.165, "description": "Chart frame work p95 (ms) divided by the in-page calibration workload (ms)" },
     "ingestRatio": { "baseline": 5.7, "description": "Initial 1M-sample fill time (ms) divided by the in-page calibration workload (ms)" },
     "drawCallsP95": { "baseline": 4, "headroom": 1.2, "description": "Draw calls per frame, p95 (deterministic)" },

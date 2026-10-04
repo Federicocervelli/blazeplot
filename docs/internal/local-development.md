@@ -38,15 +38,18 @@ bun run test:visual
 bun run test:interaction
 bun run test:website
 bun run bench:ci
+bun run bench:gate
 ```
 
 `bun run test:website` checks the development and production website builds for routing, responsive previews, modal keyboard behavior, copy/export feedback, lazy loading, offscreen chart lifecycle, and legend focus in headless Chromium. Screenshots and test downloads are written to `build/website-ux/`. Run a focused case with `bun scripts/website-ux-test.ts <case>` (for example, `anchors` or `legend`). After `bun run pages:build`, run `bun scripts/website-ux-test.ts production` to smoke-test the built site.
+
+`bun run bench:gate` is the performance regression gate: it runs the deterministic `perf-gate` scenario in 1 discarded plus 5 measured repetitions (10 if the first attempt fails), normalises timings by an in-page calibration workload, and compares medians with `benchmarks/thresholds.json`. Use `-- --report-only` to print the table without failing, and `-- --inject-slowdown-ms 2` to confirm the gate still catches a synthetic regression. Locally it is a sanity check: absolute numbers differ from the GitHub-hosted runners the baselines come from, so do not update `benchmarks/thresholds.json` from a laptop run. Methodology, hardware assumptions, and the update procedure are in [Release and benchmark notes](../release-and-benchmarks.md#performance-regression-gate).
 
 CI runs the same two groups as separate jobs. Locally:
 
 ```bash
 bun run check          # typecheck, unit tests, build, docs freshness, package checks
-bun run test:browser   # benchmark smoke, visual, interaction, website (needs Chrome)
+bun run test:browser   # benchmark smoke, perf gate, visual, interaction, website (needs Chrome)
 bun run ci             # both
 ```
 
