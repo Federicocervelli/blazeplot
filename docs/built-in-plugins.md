@@ -54,6 +54,8 @@ Legends are positioned inside the chart root. They do not reserve outside layout
 import { Chart } from "blazeplot";
 import { annotationsPlugin } from "blazeplot/plugins/annotations";
 
+const earningsTime = Date.UTC(2026, 0, 28, 21, 30);
+
 const annotations = annotationsPlugin({
   annotations: [
     { id: "earnings", type: "x-line", x: earningsTime, label: "earnings" },
@@ -61,7 +63,7 @@ const annotations = annotationsPlugin({
 });
 
 const chart = new Chart(element, { plugins: [annotations] });
-annotations.add({ type: "point", x, y, label: "peak" });
+annotations.add({ type: "point", x: earningsTime + 3_600_000, y: 182.4, label: "peak" });
 ```
 
 The plugin handle supports `add`, `remove`, `clear`, `setAnnotations`, `getAnnotations`, `pick`, and `subscribe("hover" | "click", ...)`.
@@ -98,8 +100,14 @@ Use `mode: "x-range"` for time-window selection, `"y-range"` for horizontal band
 `navigatorPlugin` adds an overview control. It can reserve top or bottom space so it does not overlap the plot. This is useful for dense history where the main chart shows a small moving window.
 
 ```ts
-import { Chart } from "blazeplot";
+import { Chart, StaticDataset } from "blazeplot";
 import { navigatorPlugin } from "blazeplot/plugins/navigator";
+
+// The series the navigator summarizes; normally the one you already added to the chart.
+const priceSeries = new Chart(element).addLine({
+  dataset: new StaticDataset([0, 1, 2, 3], [10, 12, 11, 13]),
+  name: "price",
+});
 
 const navigator = navigatorPlugin({
   placement: "bottom",

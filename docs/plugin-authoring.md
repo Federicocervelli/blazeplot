@@ -44,6 +44,8 @@ The app that owns the chart controls `chart.start()` and `chart.stop()`. Plugin 
 Attach plot overlays to `chart.plotElement` when they should move with the plot. For UI outside the plot, reserve space with `chart.setLayoutReservation(...)` instead of hard-coding margins over the canvas. This keeps axes, screenshots, and responsive layout predictable.
 
 ```ts
+import type { ChartPlugin } from "blazeplot";
+
 export function footerPlugin(): ChartPlugin {
   return {
     install(chart) {
