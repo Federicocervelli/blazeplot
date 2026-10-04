@@ -120,7 +120,7 @@ Use this when reviewing a PR that changes public behavior.
 
 This is the process for retiring a public API. Which APIs it covers depends on their tier in [API stability](./stability.md): stable APIs always follow it, experimental APIs may skip it with a changelog note, and internal APIs are not covered.
 
-> **Proposal, pending maintainer confirmation.** Nothing in the codebase emits deprecation warnings yet, and no API is currently deprecated. The steps below describe the intended process from 1.0 on; the minimum time window and the warning helper are open decisions.
+> The warning helper is implemented (internal, not exported). No API is currently deprecated. The minimum removal window in step 7 is still a proposal pending maintainer confirmation.
 
 When replacing a public API:
 
@@ -135,11 +135,23 @@ When replacing a public API:
 3. **Keep the old API working** with its previous behavior. Prefer an alias that forwards to the new API.
 4. **Warn once in development.** When the deprecated API is used, log one `console.warn` per API per page load, in the form `BlazePlot: chart.foo() is deprecated since 1.3.0; use chart.bar() instead. It will be removed in 2.0.0.` Rules:
    - Warn from constructors, option parsing, and one-off calls only. Never warn inside per-frame, per-sample, or per-append code; for those APIs rely on `@deprecated` and the changelog.
-   - Skip the warning in production builds (when `process.env.NODE_ENV === "production"` is statically known to bundlers).
-   - Route every warning through one shared helper so it deduplicates and can be silenced in tests.
+   - Production builds skip the warning: the helper checks `process.env.NODE_ENV === "production"`, which consumer bundlers replace statically so the call becomes dead code.
+   - Route every warning through the internal helper `warnDeprecated(id, message)` in `src/core/deprecation.ts`. It is not exported from the package. It warns once per `id` for the page lifetime and prefixes the message with `BlazePlot: `. Use a stable id such as `chart.foo`.
 5. **Document the move**: add the old-to-new row to the migration table on this page and a "Deprecated" entry in `changelogs/vX.Y.Z.md`.
-6. **Test both names** while the alias exists, including that the warning fires once.
+6. **Test both names** while the alias exists, including that the warning fires once (see `tests/core/deprecation.test.ts`; call `resetDeprecationWarnings()` in `beforeEach` and spy on `console.warn`).
 7. **Remove only in a major release**, and only after the API has been deprecated for at least one full minor release (proposed minimum: 6 months or two minors, whichever is longer). An undocumented or experimental API, or an API whose retention creates a security or correctness risk, can be removed sooner with a changelog note.
+
+Maintainer usage, together with the `@deprecated` tag:
+
+```ts
+import { warnDeprecated } from "../core/deprecation.js";
+
+/** @deprecated Since 1.3.0. Use `chart.bar()` instead. Removed in 2.0.0. */
+foo(): void {
+  warnDeprecated("chart.foo", "chart.foo() is deprecated since 1.3.0; use chart.bar() instead. It will be removed in 2.0.0.");
+  this.bar();
+}
+```
 
 Chart rendering and ingestion code should avoid per-frame deprecation work.
 

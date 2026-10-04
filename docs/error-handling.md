@@ -144,4 +144,4 @@ export async function copyOrDownload(chart: Chart): Promise<void> {
 | `BlazePlot skipped rendering:` | `error` (once until fixed) | Viewport invalid for an axis scale. |
 | `BlazePlot failed to restore WebGL resources after context restoration.` | `error` | GPU resources could not be rebuilt after context loss. |
 
-BlazePlot has no other runtime logging. There is no debug flag and no deprecation logging yet; the [deprecation process](./versioning-and-migration.md#deprecation-process) describes the planned development-only warnings.
+BlazePlot has no other runtime logging. There is no debug flag. Deprecated APIs, once any exist, log a single development-only `BlazePlot: ... is deprecated` warning per API per page load; production builds are silent. See the [deprecation process](./versioning-and-migration.md#deprecation-process).
