@@ -313,9 +313,9 @@ describe("Chart events", () => {
     let themed = 0;
     chart.subscribe("select", (e) => selections.push(e.selection));
     chart.subscribe("themechange", () => themed++);
-    chart.emitSelect({ from: 1, to: 2 });
+    chart.emitSelect(null);
     chart.setTheme();
-    expect(selections).toEqual([{ from: 1, to: 2 }]);
+    expect(selections).toEqual([null]);
     expect(themed).toBe(1);
     chart.dispose();
   });

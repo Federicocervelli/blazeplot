@@ -69,7 +69,6 @@ Generated from `dist/index.d.ts` after the package build.
 |---|---|---|---|
 | `AcceleratedDataset` | interface | `./core/types` | Convenience contract for maximum-performance custom datasets. Implement this when a dataset can provide fast exact sample copies, stable viewport sampling, range min/max queries, and renderer-ready min/max buckets. |
 | `AppendableDataset` | interface | `./core/types` | Dataset that accepts appended X/Y samples; implementations may store X values explicitly or use them to seed implicit X spacing. |
-| `AttributeSpec` | interface | `./render/types` | Vertex attribute binding for a draw call. |
 | `AxisConfig` | interface | `./ui/Chart` | Axis visibility, placement, scale, tick formatting, and title options. |
 | `AxisControllerAxisOptions` | interface | `./interaction/AxisController` | Scale and formatting options for one axis. |
 | `AxisPosition` | type | `./ui/ChartLayout` | Placement for chart axis labels and ticks. |
@@ -79,14 +78,11 @@ Generated from `dist/index.d.ts` after the package build.
 | `AxisTickFormatter` | type | `./interaction/AxisController` | Function form for formatting axis tick values. |
 | `AxisTimeZone` | type | `./interaction/AxisController` | Time zone used for built-in time tick formatting. |
 | `BufferOverflowStrategy` | type | `./core/types` | Behavior when a fixed-capacity streaming buffer is full. |
-| `BufferSpec` | interface | `./render/types` | Parameters for allocating a GPU buffer. |
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | Built-in axis scale names. |
 | `Camera2D` | class | `./interaction/Camera2D` | Camera that maps data domains to clip, screen, and plot coordinates. |
 | `Chart` | class | `./ui/Chart` | Imperative WebGL chart instance for rendering, interaction, and plugins. |
 | `ChartAccessibilityOptions` | interface | `./ui/Chart` | ARIA and keyboard-navigation options for the chart root. |
 | `ChartAutoFitYOptions` | type | `./ui/Chart` | Options for automatically refitting Y as the X viewport changes. |
-| `ChartBackendFactory` | type | `./ui/Chart` | Creates the GPU backend used by a chart. |
-| `ChartBackendFactoryContext` | interface | `./ui/Chart` | Context passed to a custom GPU backend factory. |
 | `ChartEventMap` | interface | `./ui/Chart` | Payload delivered to `chart.subscribe(event, callback)` for each chart event. |
 | `ChartEventName` | type | `./ui/Chart` | Name of an event accepted by `Chart.subscribe`. |
 | `ChartFitToDataOptions` | interface | `./ui/Chart` | Options for fitting the viewport to series data bounds. |
@@ -108,7 +104,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartPointerEventType` | type | `./ui/Chart` | Pointer events that can be subscribed to through `Chart.subscribe`. |
 | `ChartRenderLoop` | type | `./ui/Chart` | Render loop scheduling mode. |
 | `ChartScreenshotOptions` | interface | `./ui/Chart` | Options for exporting the chart as an image blob. |
-| `ChartSelectEvent` | interface | `./ui/Chart` | Selection event payload emitted by selection plugins or custom code. |
+| `ChartSelectEvent` | interface | `./ui/Chart` | Selection event payload emitted by selection plugins or custom code. `null` means the selection was cleared. |
 | `ChartSeriesClickEvent` | interface | `./ui/Chart` | Click payload for the nearest chart series item. |
 | `ChartSeriesState` | interface | `./ui/Chart` | Runtime state for one chart series. |
 | `ChartTheme` | interface | `./ui/theme` | Partial chart theme supplied by callers. |
@@ -118,12 +114,6 @@ Generated from `dist/index.d.ts` after the package build.
 | `CustomAxisScale` | interface | `./interaction/AxisController` | Custom scale hooks for tick generation, formatting, and coordinate mapping. |
 | `Dataset` | interface | `./core/types` | Sorted XY data source consumed by chart series. |
 | `DEFAULT_CHART_THEME` | const | `./ui/theme` | Default dark chart theme. |
-| `DrawSpec` | interface | `./render/types` | Complete draw call description for a GPU backend. |
-| `GpuBackend` | interface | `./render/types` | Minimal GPU abstraction used by the renderer. |
-| `GpuBuffer` | interface | `./render/types` | Opaque handle for a GPU buffer. |
-| `GpuCapabilities` | interface | `./render/types` | Feature flags reported by a GPU backend. |
-| `GpuProgram` | interface | `./render/types` | Opaque handle for a linked GPU program. |
-| `GpuResource` | type | `./render/types` | GPU resource accepted by backend disposal. |
 | `histogram` | function | `./core/Histogram` | Convert one-dimensional finite values into histogram bins. |
 | `HistogramBin` | interface | `./core/Histogram` | One histogram bucket, suitable for rendering as a bar centered at `x`. |
 | `HistogramDataset` | class | `./core/Histogram` | Static histogram dataset that preserves each bucket's X interval for picks and tooltips. |
@@ -134,6 +124,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `isWebGL2Available` | function | `./render/WebGL2Backend` | Return whether the current environment can create a WebGL2 context. |
 | `LODStrategy` | type | `./core/types` | Downsampling strategy used when a series is denser than the plot. |
 | `MinMaxSegmentCopyDataset` | interface | `./core/types` | Optional high-performance min/max extraction capability for dense rendering. Implementations can use pyramids, segment trees, database aggregates, or analytic/procedural envelopes. Write up to `maxSegments` `[x - xOrigin, minY, maxY]` triples into `target` and return how many were written. |
+| `MinMaxY` | interface | `./core/MinMaxTree` | Inclusive Y extent of a sample range. |
 | `OhlcDataset` | interface | `./core/types` | Dataset that provides open, high, low, and close values per sample. |
 | `OhlcRingBuffer` | class | `./core/OhlcDataset` | Fixed-capacity streaming buffer for OHLC/candlestick data. |
 | `OhlcRingBufferOptions` | interface | `./core/OhlcDataset` | Options for `OhlcRingBuffer`. |
@@ -173,6 +164,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ServerSampledDataset` | class | `./core/ServerSampledDataset` | Mutable dataset for viewport samples that were already reduced by a server. Use point data with `downsample: "none"`, or min/max buckets with `downsample: "server"` so BlazePlot renders the supplied buckets directly instead of applying another client-side sampler. Swap in fresh data after each fetch with `series.replace(data)`. |
 | `ServerSampledPoints` | interface | `./core/ServerSampledDataset` | Server-provided point samples. |
 | `StaticDataset` | class | `./core/StaticDataset` | Sorted XY dataset backed by typed arrays, which are read in place rather than copied. Change the data with `series.replace({ y })`, or overwrite the arrays and call `series.markDirty()`. |
+| `StaticDatasetData` | interface | `./core/StaticDataset` | Data accepted by `StaticDataset.replace` and `series.replace(...)`. |
 | `StaticDatasetField` | type | `./core/StaticDataset` | Object-row field selector used by `StaticDataset.fromObjects`. |
 | `StaticDatasetFromObjectsOptions` | interface | `./core/StaticDataset` | Options for building a static dataset from object rows. |
 | `StaticOhlcDataset` | class | `./core/OhlcDataset` | Immutable OHLC dataset backed by parallel arrays. |
@@ -182,14 +174,12 @@ Generated from `dist/index.d.ts` after the package build.
 | `TypedSeriesConfig` | type | `./ui/Chart` | Series configuration used by typed helpers such as `addLine`. |
 | `UniformRingBuffer` | class | `./core/UniformRingBuffer` | High-throughput ring buffer for uniformly spaced X values. Store only Y samples and derive X as `xStart + index * xStep`. This is the fastest built-in dataset for live telemetry, signals, and other fixed-rate streams because appends copy a single typed array and min/max extraction uses a block segment tree over the physical ring. |
 | `UniformRingBufferOptions` | interface | `./core/UniformRingBuffer` | Options for implicit-X streaming buffers. |
-| `UniformValue` | type | `./render/types` | Uniform values accepted by `DrawSpec.uniforms`. |
 | `UpdatableDataset` | interface | `./core/types` | Dataset that supports updating existing X/Y samples. |
 | `ValuePrecision` | type | `./core/types` | Storage for Y and OHLC price values. `"float32"` (the default) halves memory and keeps about 7 significant digits; `"float64"` stores values exactly, for large prices, counters, or timestamps where float32 rounding would show in tooltips and picks. |
 | `Viewport` | interface | `./core/types` | Visible data-domain bounds for one chart camera. |
 | `ViewportPolicy` | interface | `./interaction/types` | Optional hooks that can constrain or react to viewport changes. |
 | `VisiblePointCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for point/scatter datasets. Implementations should cull against the full 2D viewport and may sample in screen space so dense point clouds respond to both X and Y zoom. |
 | `VisibleSampleCopyDataset` | interface | `./core/types` | Optional high-performance stable visible sampling capability. Unlike copySamplesRange, this method may stride/downsample, but should choose samples anchored to data coordinates so streamed appends do not make existing sampled points jitter. |
-| `WebGL2Backend` | class | `./render/WebGL2Backend` | Native WebGL2 implementation of BlazePlot's GPU backend. |
 | `WebGL2UnavailableError` | class | `./render/WebGL2Backend` | Error thrown when a WebGL2 backend cannot be created. |
 | `XRange` | interface | `./core/types` | Data-domain X interval represented by one dataset sample. |
 | `XRangeDataset` | interface | `./core/types` | Dataset whose sample X values represent intervals rather than points. |

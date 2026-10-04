@@ -8,7 +8,7 @@ The short version: **constructors and explicit configuration throw early; data v
 
 | Error | Thrown by | When |
 |---|---|---|
-| `WebGL2UnavailableError` (extends `Error`, `name === "WebGL2UnavailableError"`) | `new Chart(...)`, `new WebGL2Backend(canvas)`, `createLinkedCharts(...)` | The canvas cannot create a WebGL2 context. |
+| `WebGL2UnavailableError` (extends `Error`, `name === "WebGL2UnavailableError"`) | `new Chart(...)`, `createLinkedCharts(...)` | The canvas cannot create a WebGL2 context. |
 | `RangeError` | Datasets, `Camera2D`, axes, histogram and data helpers | A number is out of range: non-positive capacity, `xStep <= 0`, index out of range, `xMax <= xMin`, non-finite viewport edge, capacity exceeded with `overflow: "error"`, `binSize <= 0`, invalid histogram bins. |
 | `TypeError` | `Chart.addSeries`/`add*`, `SeriesStore` mutators, `StaticDataset.fromObjects`, `histogram` | The call does not fit the dataset or option shape: appending `{ y }` to a dataset without implicit X, mixing OHLC and XY rows, OHLC series without an `OhlcDataset`, a non-finite X in `fromObjects`, conflicting histogram options. |
 | `Error` | `blazeplot/export`, `chart.screenshot()`, flame graph plugin, WebGL internals | Browser feature missing (`ClipboardItem`, Clipboard API, 2D canvas), or a shader/program failed to compile or link. |

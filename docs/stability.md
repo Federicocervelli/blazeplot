@@ -61,7 +61,7 @@ These are the extension points. They are public, documented, and used by the bui
 
 | Item | Why experimental |
 |---|---|
-| Plugin authoring contract: `ChartPlugin`, `ChartPluginContext`, `ChartPluginHandle`, `ChartLayoutReservation`, `chart.setLayoutReservation`, `emitSelect` | The context exposes the same chart methods the built-in plugins need today. It may gain, rename, or narrow members as third-party plugins reveal gaps. Built-in plugin options are stable; the interface they are built on is not yet. |
+| Plugin authoring contract: `ChartPlugin`, `ChartPluginContext`, `ChartPluginHandle`, `ChartLayoutReservation`, `ChartPluginContext` members `setLayoutReservation`, `emitSelect`, `getWebGLContext`, `canvas`, and the `*Element` handles (all tagged `@experimental`) | The context exposes the same chart methods the built-in plugins need today. It may gain, rename, or narrow members as third-party plugins reveal gaps. Built-in plugin options are stable; the interface they are built on is not yet. |
 | Custom fast-path dataset interfaces: `AcceleratedDataset`, `RangeMinMaxDataset`, `RangeSampleCopyDataset`, `VisibleSampleCopyDataset`, `VisiblePointCopyDataset`, `MinMaxSegmentCopyDataset`, `XRangeDataset`, `SampleCopyLayout` | Their method signatures are renderer-ready fast paths and have changed before (see the 0.5 `copyMinMaxSegments` change). Implementing only the stable `Dataset` contract avoids this risk. Optional members such as `isGap` and `ordinalOffset` follow the `Dataset` tier. |
 | Camera access: `chart.getCamera()` and the `Camera2D` type, `CustomAxisScale`, `AxisRenderTarget`, `AxisControllerAxisOptions` | Direct camera mutation bypasses `ViewportPolicy` and the chart's follow/auto-fit state. Prefer `chart.setViewport`, `pan`, and `zoom`. |
 | `blazeplot/plugins/flamegraph` | See the entry point table. |
@@ -70,16 +70,12 @@ Experimental does not mean unsupported: bugs are fixed the same way. It means a 
 
 ## Internal
 
-These symbols are exported from `blazeplot` so declarations are complete and so a custom backend can be typed. They are not an API for application code.
-
-**Planned for 1.0:** the GPU backend types (`GpuBackend`, `WebGL2Backend`, the `Gpu*` types, `BufferSpec`, `AttributeSpec`, `DrawSpec`, `UniformValue`) will no longer be exported from the `blazeplot` root (tracked in issue #102). `WebGL2UnavailableError` and `isWebGL2Available` stay public.
+These are not an API for application code. The GPU backend types (`GpuBackend`, `WebGL2Backend`, the `Gpu*` types, `BufferSpec`, `AttributeSpec`, `DrawSpec`, `UniformValue`) are not exported from the `blazeplot` root. `WebGL2UnavailableError` and `isWebGL2Available` are public.
 
 | Item | Notes |
 |---|---|
-| `GpuBackend`, `GpuBuffer`, `GpuProgram`, `GpuResource`, `GpuCapabilities`, `BufferSpec`, `DrawSpec`, `AttributeSpec`, `UniformValue` | The renderer's GPU abstraction. It exists to isolate WebGL2 calls and may change whenever the renderer changes. |
-| `WebGL2Backend` | The default backend. Construct it only through `Chart`; its constructor throws `WebGL2UnavailableError` when WebGL2 is missing. |
-| `ChartOptions.backendFactory`, `ChartBackendFactory`, `ChartBackendFactoryContext` | Advanced hook for supplying a custom backend. A custom backend must implement the current `GpuBackend`, and shaders are written for the built-in renderer, so treat this as experimental-at-best. Not covered by semver promises. |
-| `chart.getWebGLContext()` and `ChartPluginContext.getWebGLContext()` | Escape hatch to the raw `WebGL2RenderingContext`. The chart may recreate it after context loss. State you change on it can interfere with rendering. |
+| `ChartOptions.backendFactory` and the backend types it takes | Marked `@internal` and stripped from published declarations. It exists for test fakes; shaders are written for the built-in renderer. Not covered by semver promises. |
+| `ChartPluginContext.getWebGLContext()` (`@experimental`) | Escape hatch to the raw `WebGL2RenderingContext`. The chart may recreate it after context loss. State you change on it can interfere with rendering. |
 | `/** @internal */` members | Stripped from published declarations. If you reach them through casts, expect breakage in patch releases. |
 | Generated DOM structure and `blazeplot-*` class names | Styling hooks you pass through `className` options are stable; the markup the chart generates around them is not. The documented ARIA contract in [Accessibility](./accessibility.md) is stable. |
 | Bundle chunk names such as `dist/Chart-*.js` | Hashed output files. Import only the documented entry points. |

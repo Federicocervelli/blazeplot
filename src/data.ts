@@ -120,7 +120,8 @@ interface MutableBin {
   lastY: number;
 }
 
-type ExportableChart = Pick<Chart, "getSeriesState" | "getViewport">;
+/** Chart-like object accepted by `exportChartData`: any `Chart`, or anything exposing these two methods. */
+export type ExportableChart = Pick<Chart, "getSeriesState" | "getViewport">;
 
 const CSV_COLUMNS = [
   "seriesIndex",
