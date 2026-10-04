@@ -54,19 +54,20 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 | Viewport policy | `ViewportPolicy`, `PanIntent`, `ZoomIntent`, `ZoomAxis` | Stable |
 | Axes | `AxisScale`, `AxisTickFormat`, `AxisTickFormatter`, `AxisTimeZone`, `BuiltInAxisScale`, `AxisConfig` | Stable |
 | WebGL2 availability | `isWebGL2Available`, `WebGL2UnavailableError` | Stable. See [Error handling](./error-handling.md). |
+| Plugin contract | `ChartPlugin`, `ChartPluginHandle` (with its `dispose`, `onResize`, `onThemeChange`, `onContextLost`, `onContextRestored` hooks), `ChartPluginContext` and its groups (`ChartPluginCoords`, `ChartPluginViewport`, `ChartPluginState`, `ChartPluginLayout`, `ChartPluginDom`, `ChartPluginEvents`), `ChartPluginEventMap`, `ChartPluginEventName`, `ChartMountSlot`, `ChartSurface`, `ChartSurfaceDecoration`, `ChartSurfaceStyle`, `ChartRect`, `ChartPlotSize`, `ChartLayoutReservation`, and the install/hook/dispose order | Stable, except `ctx.unstable` (below). New groups, members, slots, surfaces, hooks, and plugin events may be added in a minor release; existing ones keep their names and behavior. The built-in plugins are written against this surface only. See [Plugin authoring](./plugin-authoring.md). |
 
 ## Experimental
 
-These are the extension points. They are public, documented, and used by the built-in plugins, but they have had fewer outside users.
+These are the low-level extension points. They are public and documented, but they expose renderer-shaped details that may still move.
 
 | Item | Why experimental |
 |---|---|
-| Plugin authoring contract: `ChartPlugin`, `ChartPluginContext`, `ChartPluginHandle`, `ChartLayoutReservation`, `ChartPluginContext` members `setLayoutReservation`, `emitSelect`, `getWebGLContext`, `canvas`, and the `*Element` handles (all tagged `@experimental`) | The context exposes the same chart methods the built-in plugins need today. It may gain, rename, or narrow members as third-party plugins reveal gaps. Built-in plugin options are stable; the interface they are built on is not yet. |
+| Plugin escape hatches: `ChartPluginContext.unstable` (`ChartPluginUnstable`: `canvas`, `element(slot)`, `getWebGLContext()`, `getCamera()`) | Raw canvas, DOM, GPU, and camera access bypass the guarantees of the stable context groups (viewport policy, cleanup tracking, layout ownership). The built-in plugins do not use them. |
 | Custom fast-path dataset interfaces: `AcceleratedDataset`, `RangeMinMaxDataset`, `RangeSampleCopyDataset`, `VisibleSampleCopyDataset`, `VisiblePointCopyDataset`, `MinMaxSegmentCopyDataset`, `XRangeDataset`, `SampleCopyLayout` | Their method signatures are renderer-ready fast paths and have changed before (see the 0.5 `copyMinMaxSegments` change). Implementing only the stable `Dataset` contract avoids this risk. Optional members such as `isGap` and `ordinalOffset` follow the `Dataset` tier. |
 | Camera access: `chart.getCamera()` and the `Camera2D` type, `CustomAxisScale`, `AxisRenderTarget`, `AxisControllerAxisOptions` | Direct camera mutation bypasses `ViewportPolicy` and the chart's follow/auto-fit state. Prefer `chart.setViewport`, `pan`, and `zoom`. |
 | `blazeplot/plugins/flamegraph` | See the entry point table. |
 
-The same items carry an `@experimental` JSDoc tag in the published declarations, so editors show the tier on hover. `getCamera()` is tagged on both `Chart` and `ChartPluginContext`, and every export of `blazeplot/plugins/flamegraph` is tagged.
+The same items carry an `@experimental` JSDoc tag in the published declarations, so editors show the tier on hover. `getCamera()` is tagged on `Chart`, `ChartPluginContext.unstable` and `ChartPluginUnstable` are tagged, and every export of `blazeplot/plugins/flamegraph` is tagged.
 
 Experimental does not mean unsupported: bugs are fixed the same way. It means a minor release may require a code change, and the changelog will say so.
 
@@ -77,7 +78,7 @@ These are not an API for application code. The GPU backend types (`GpuBackend`, 
 | Item | Notes |
 |---|---|
 | `ChartOptions.backendFactory` and the backend types it takes | Marked `@internal` and stripped from published declarations. It exists for test fakes; shaders are written for the built-in renderer. Not covered by semver promises. |
-| `ChartPluginContext.getWebGLContext()` (`@experimental`) | Escape hatch to the raw `WebGL2RenderingContext`. The chart may recreate it after context loss. State you change on it can interfere with rendering. |
+| `ChartPluginContext.unstable.getWebGLContext()` and `chart.getWebGLContext()` (`@experimental` on the context) | Escape hatch to the raw `WebGL2RenderingContext`. The chart may recreate GPU state after context loss. State you change on it can interfere with rendering. |
 | `/** @internal */` members | Stripped from published declarations. If you reach them through casts, expect breakage in patch releases. |
 | Generated DOM structure and `blazeplot-*` class names | Styling hooks you pass through `className` options are stable; the markup the chart generates around them is not. The documented ARIA contract in [Accessibility](./accessibility.md) is stable. |
 | Bundle chunk names such as `dist/Chart-*.js` | Hashed output files. Import only the documented entry points. |
@@ -85,7 +86,7 @@ These are not an API for application code. The GPU backend types (`GpuBackend`, 
 ## Reading the tiers in practice
 
 - If you only use `Chart`, the built-in datasets, built-in plugins, `blazeplot/data`, and `blazeplot/export`, you are on the stable surface.
-- If you write a plugin, expect to re-test it on each minor release until the plugin contract is promoted to stable. Pin a version range such as `~0.x.y` or, after 1.0, test against the next minor in CI.
+- If you write a plugin against the stable context groups, a `^1` range is enough. If it uses `ctx.unstable`, test against the next minor in CI.
 - If you implement a custom `Dataset`, stay on the required `Dataset` methods unless you have measured a need for the fast paths.
 - If you need the raw GL context or a custom backend, pin an exact version.
 

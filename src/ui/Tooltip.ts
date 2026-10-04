@@ -1,4 +1,5 @@
-import type { Chart, ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
+import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./Chart.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSyncRegistry, formatCompactNumber, pickAtDataX, placeFixedWithinViewport, renderPickItems } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 
@@ -20,7 +21,7 @@ export interface TooltipPluginOptions {
   readonly zIndex?: number;
   readonly lockWidth?: boolean;
   readonly formatter?: (item: ChartPickItem, state: ChartHoverState) => string;
-  readonly render?: (state: ChartHoverState, container: HTMLElement, chart: Chart) => void;
+  readonly render?: (state: ChartHoverState, container: HTMLElement, chart: ChartPluginContext) => void;
 }
 
 function renderDefaultTooltip(state: ChartHoverState, container: HTMLElement, formatter: TooltipPluginOptions["formatter"]): void {
@@ -76,11 +77,10 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       container.style.whiteSpace = "pre";
       container.setAttribute("role", "tooltip");
       container.setAttribute("aria-hidden", "true");
-      const tooltipParent = chart.rootElement.ownerDocument.body ?? chart.rootElement;
-      tooltipParent.appendChild(container);
+      const unmountContainer = chart.dom.mount("body", container);
 
       const markerLayer = createOverlayLayer("blazeplot-tooltip-markers", { inset: "0", display: "block", zIndex: 25 });
-      chart.plotElement.appendChild(markerLayer);
+      const unmountMarkers = chart.dom.mount("plot", markerLayer);
 
       let lockedTooltipWidth = 0;
       let tooltipSize = { width: 0, height: 0 };
@@ -137,7 +137,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
           (options.group !== undefined && options.group !== state.group) ||
           (options.maxDistancePx !== undefined && options.maxDistancePx !== state.maxDistancePx)
         );
-        const effectiveState = shouldRepick ? chart.pick(state.clientX, state.clientY, options) : state;
+        const effectiveState = shouldRepick ? chart.state.pick(state.clientX, state.clientY, options) : state;
 
         renderMarkers(effectiveState);
         if (!effectiveState || effectiveState.items.length === 0) {
@@ -148,7 +148,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         }
 
         if (options.render) {
-          options.render(effectiveState, container, chart as Chart);
+          options.render(effectiveState, container, chart);
         } else {
           renderDefaultTooltip(effectiveState, container, options.formatter);
         }
@@ -177,7 +177,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       const notifyPeers = (state: ChartHoverState | null): void => sync.broadcast(state ? state.anchorX : null);
 
       const showAtClientPoint = (clientX: number, clientY: number): void => {
-        const state = chart.pick(clientX, clientY, {
+        const state = chart.state.pick(clientX, clientY, {
           mode: options.mode ?? "nearest-x",
           group: options.group ?? "x",
           maxDistancePx: options.maxDistancePx,
@@ -191,14 +191,16 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         onPoint: showAtClientPoint,
       });
 
-      chart.canvas.addEventListener("pointerdown", longPress.onPointerDown, { capture: true });
-      chart.canvas.addEventListener("pointermove", longPress.onPointerMove, { capture: true });
-      chart.canvas.addEventListener("pointerup", longPress.clearIfTouchPointer, { capture: true });
-      chart.canvas.addEventListener("pointercancel", longPress.clearIfTouchPointer, { capture: true });
-      chart.canvas.addEventListener("touchstart", longPress.onTouchStart, { capture: true, passive: true });
-      chart.canvas.addEventListener("touchmove", longPress.onTouchMove, { capture: true, passive: false });
-      chart.canvas.addEventListener("touchend", longPress.clear);
-      chart.canvas.addEventListener("touchcancel", longPress.clear);
+      const unlisten = [
+        chart.dom.listen("plot", "pointerdown", longPress.onPointerDown, { capture: true }),
+        chart.dom.listen("plot", "pointermove", longPress.onPointerMove, { capture: true }),
+        chart.dom.listen("plot", "pointerup", longPress.clearIfTouchPointer, { capture: true }),
+        chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer, { capture: true }),
+        chart.dom.listen("plot", "touchstart", longPress.onTouchStart, { capture: true, passive: true }),
+        chart.dom.listen("plot", "touchmove", longPress.onTouchMove, { capture: true, passive: false }),
+        chart.dom.listen("plot", "touchend", longPress.clear),
+        chart.dom.listen("plot", "touchcancel", longPress.clear),
+      ];
 
       let hoverRaf = 0;
       let pendingHoverState: ChartHoverState | null = null;
@@ -209,32 +211,26 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         render(state);
         notifyPeers(state);
       };
-      const unsubscribeHover = chart.subscribe("hover", (state) => {
+      const unsubscribeHover = chart.events.subscribe("hover", (state) => {
         pendingHoverState = state;
         if (hoverRaf === 0) hoverRaf = requestAnimationFrame(flushHover);
       });
-      const unsubscribeTheme = chart.subscribe("themechange", () => {
-        applyTheme();
-        render(chart.getHoverState());
-      });
       applyTheme();
-      return () => {
-        longPress.clear();
-        chart.canvas.removeEventListener("pointerdown", longPress.onPointerDown, { capture: true });
-        chart.canvas.removeEventListener("pointermove", longPress.onPointerMove, { capture: true });
-        chart.canvas.removeEventListener("pointerup", longPress.clearIfTouchPointer, { capture: true });
-        chart.canvas.removeEventListener("pointercancel", longPress.clearIfTouchPointer, { capture: true });
-        chart.canvas.removeEventListener("touchstart", longPress.onTouchStart, { capture: true });
-        chart.canvas.removeEventListener("touchmove", longPress.onTouchMove, { capture: true });
-        chart.canvas.removeEventListener("touchend", longPress.clear);
-        chart.canvas.removeEventListener("touchcancel", longPress.clear);
-        if (hoverRaf !== 0) cancelAnimationFrame(hoverRaf);
-        unsubscribeHover();
-        unsubscribeTheme();
-        sync.leave();
-        tooltipResizeObserver?.disconnect();
-        markerLayer.remove();
-        container.remove();
+      return {
+        onThemeChange() {
+          applyTheme();
+          render(chart.state.getHover());
+        },
+        dispose() {
+          longPress.clear();
+          for (const off of unlisten) off();
+          if (hoverRaf !== 0) cancelAnimationFrame(hoverRaf);
+          unsubscribeHover();
+          sync.leave();
+          tooltipResizeObserver?.disconnect();
+          unmountMarkers();
+          unmountContainer();
+        },
       };
     },
   };

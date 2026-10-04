@@ -1,7 +1,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { countNodes, FakeBackend, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
 import type { FakeRaf, ListenerLedger, TestEnv } from "./fakes.ts";
-import type { Chart as ChartType, ChartOptions, ChartPlugin } from "../../src/ui/Chart.ts";
+import type { Chart as ChartType, ChartOptions } from "../../src/ui/Chart.ts";
+import type { ChartPlugin, ChartPluginContext, ChartPluginHandle } from "../../src/ui/PluginHost.ts";
 import type { WebGL2UnavailableError as UnavailableErrorType } from "../../src/render/WebGL2Backend.ts";
 
 let env: TestEnv;
@@ -325,13 +326,14 @@ describe("Chart events", () => {
     chart.dispose();
   });
 
-  it("emits select with the payload and themechange on setTheme", () => {
-    const chart = make();
+  it("delivers plugin-emitted select events to chart subscribers and themechange on setTheme", () => {
+    let ctx = null as ChartPluginContext | null;
+    const chart = make({ plugins: [{ install: (c) => { ctx = c; } }] });
     const selections: unknown[] = [];
     let themed = 0;
     chart.subscribe("select", (e) => selections.push(e.selection));
     chart.subscribe("themechange", () => themed++);
-    chart.emitSelect(null);
+    ctx!.events.emit("select", { selection: null });
     chart.setTheme();
     expect(selections).toEqual([null]);
     expect(themed).toBe(1);
@@ -363,6 +365,23 @@ describe("Chart events", () => {
 });
 
 describe("Chart plugins", () => {
+  /** A plugin that records install, hook, and dispose calls under `name`. */
+  function recorder(name: string, log: string[]): ChartPlugin {
+    return {
+      install() {
+        log.push(`install ${name}`);
+        const handle: ChartPluginHandle = {
+          dispose: () => log.push(`dispose ${name}`),
+          onResize: (size) => log.push(`resize ${name} ${size.width}x${size.height}`),
+          onThemeChange: () => log.push(`theme ${name}`),
+          onContextLost: () => log.push(`lost ${name}`),
+          onContextRestored: () => log.push(`restored ${name}`),
+        };
+        return handle;
+      },
+    };
+  }
+
   it("installs plugins and disposes function and handle forms exactly once", () => {
     const log: string[] = [];
     const fnPlugin: ChartPlugin = { install: () => () => log.push("fn") };
@@ -376,16 +395,74 @@ describe("Chart plugins", () => {
     expect(log).toHaveLength(3);
   });
 
+  it("installs in registration order and disposes in reverse registration order", () => {
+    const log: string[] = [];
+    const chart = make({ plugins: [recorder("a", log), recorder("b", log), recorder("c", log)] });
+    expect(log).toEqual(["install a", "install b", "install c"]);
+    log.length = 0;
+    chart.dispose();
+    expect(log).toEqual(["dispose c", "dispose b", "dispose a"]);
+  });
+
+  it("runs lifecycle hooks in registration order, onThemeChange before the themechange event", () => {
+    const log: string[] = [];
+    const chart = make({ plugins: [recorder("a", log), recorder("b", log)] });
+    chart.subscribe("themechange", () => log.push("event themechange"));
+    log.length = 0;
+
+    chart.setTheme();
+    Object.defineProperty(chart.canvas, "clientWidth", { configurable: true, value: 320 });
+    Object.defineProperty(chart.canvas, "clientHeight", { configurable: true, value: 160 });
+    chart.resize(1);
+    fire(chart.canvas, new window.Event("webglcontextlost", { cancelable: true }));
+    fire(chart.canvas, new window.Event("webglcontextrestored"));
+
+    expect(log).toEqual([
+      "theme a", "theme b", "event themechange",
+      "resize a 320x160", "resize b 320x160",
+      "lost a", "lost b",
+      "restored a", "restored b",
+    ]);
+    chart.dispose();
+  });
+
+  it("isolates a throwing hook so later plugins still run", () => {
+    const log: string[] = [];
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    const chart = make({
+      plugins: [
+        { install: () => ({ onThemeChange: () => { throw new Error("boom"); } }) },
+        recorder("b", log),
+      ],
+    });
+    chart.setTheme();
+    expect(log).toContain("theme b");
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+    chart.dispose();
+  });
+
+  it("does not call hooks on a plugin disposed individually", () => {
+    const log: string[] = [];
+    const chart = make();
+    const dispose = chart.installPlugin(recorder("a", log));
+    dispose();
+    chart.setTheme();
+    expect(log).toEqual(["install a", "dispose a"]);
+    chart.dispose();
+    expect(log).toEqual(["install a", "dispose a"]);
+  });
+
   it("a throwing plugin disposer does not stop later disposers or chart cleanup", () => {
     const log: string[] = [];
     const chart = make({
       plugins: [
+        { install: () => () => log.push("first") },
         { install: () => () => { throw new Error("boom"); } },
-        { install: () => () => log.push("second") },
       ],
     });
     expect(() => chart.dispose()).not.toThrow();
-    expect(log).toEqual(["second"]);
+    expect(log).toEqual(["first"]);
     expect(target.children).toHaveLength(0);
     expect(backends[0]!.destroyCount).toBe(1);
   });
@@ -396,7 +473,13 @@ describe("Chart plugins", () => {
       make({
         plugins: [
           { install: () => () => log.push("first") },
-          { install: () => { throw new Error("install failed"); } },
+          {
+            install(ctx) {
+              ctx.dom.mount("plot", document.createElement("div"));
+              ctx.dom.listen("plot", "pointermove", () => {});
+              throw new Error("install failed");
+            },
+          },
         ],
       }),
     ).toThrow("install failed");
@@ -407,47 +490,112 @@ describe("Chart plugins", () => {
     expect(backends[0]!.liveResourceCount).toBe(0);
   });
 
-  it("sums layout reservations as root padding and releases them", () => {
-    const chart = make();
-    chart.setLayoutReservation("legend", { top: 10, left: 4 });
-    chart.setLayoutReservation("nav", { bottom: 20, top: 5 });
-    expect(padding(chart)).toBe("15px 0px 20px 4px");
-    chart.setLayoutReservation("legend", null);
-    expect(padding(chart)).toBe("5px 0px 20px 0px");
-    chart.setLayoutReservation("nav", null);
-    expect(padding(chart)).toBe("0px 0px 0px 0px");
-    chart.dispose();
-  });
-
-  it("replacing a reservation under the same id does not accumulate, and negatives are ignored", () => {
-    const chart = make();
-    chart.setLayoutReservation("a", { top: 10 });
-    chart.setLayoutReservation("a", { top: 30, right: -5 });
-    expect(padding(chart)).toBe("30px 0px 0px 0px");
-    chart.dispose();
-  });
-
-  it("plugins receive the chart as context and can release subscriptions and reservations on dispose", () => {
-    let ctx: unknown;
-    let calls = 0;
+  it("sums layout reservations from every plugin as root padding and releases them", () => {
+    const releases: Array<() => void> = [];
     const chart = make({
-      plugins: [{
-        install(c) {
-          ctx = c;
-          c.setLayoutReservation("p", { bottom: 12 });
-          const unsub = c.subscribe("render", () => calls++);
-          return () => {
-            unsub();
-            c.setLayoutReservation("p", null);
-          };
-        },
-      }],
+      plugins: [
+        { install: (ctx) => { releases.push(ctx.layout.reserve({ top: 10, left: 4 })); } },
+        { install: (ctx) => { releases.push(ctx.layout.reserve({ bottom: 20, top: 5, right: -5 })); } },
+      ],
     });
-    expect(ctx).toBe(chart);
+    expect(padding(chart)).toBe("15px 0px 20px 4px");
+    releases[0]!();
+    expect(padding(chart)).toBe("5px 0px 20px 0px");
+    releases[0]!();
+    expect(padding(chart)).toBe("5px 0px 20px 0px");
+    releases[1]!();
+    expect(padding(chart)).toBe("0px 0px 0px 0px");
+    chart.dispose();
+  });
+
+  it("gives each plugin its own context and releases context resources after dispose", () => {
+    const contexts: ChartPluginContext[] = [];
+    let renders = 0;
+    let moves = 0;
+    const node = document.createElement("div");
+    const chart = make({
+      plugins: [
+        {
+          install(ctx) {
+            contexts.push(ctx);
+            ctx.layout.reserve({ bottom: 12 });
+            ctx.events.subscribe("render", () => renders++);
+            ctx.dom.mount("root", node);
+            ctx.dom.listen("plot", "pointermove", () => moves++);
+            ctx.dom.decorate("axis-x", { style: { cursor: "ew-resize" }, classes: ["my-axis"], attributes: { "data-plugin": "x" } });
+            // No cleanup returned: the context releases everything it handed out.
+          },
+        },
+        { install: (ctx) => { contexts.push(ctx); } },
+      ],
+    });
+    expect(contexts[0]).not.toBe(contexts[1]);
+    expect(contexts[0]).not.toBe(chart as unknown);
     expect(padding(chart)).toBe("0px 0px 12px 0px");
+    expect(node.parentElement).toBe(chart.rootElement);
+    expect(chart.xAxisElement.style.cursor).toBe("ew-resize");
+    expect(chart.xAxisElement.classList.contains("my-axis")).toBe(true);
+    expect(chart.xAxisElement.getAttribute("data-plugin")).toBe("x");
+    fire(chart.canvas, new window.PointerEvent("pointermove", { clientX: 1, clientY: 1 }));
+    expect(moves).toBe(1);
+
     chart.dispose();
     expect(padding(chart)).toBe("0px 0px 0px 0px");
-    expect(calls).toBe(0);
+    expect(node.parentElement).toBeNull();
+    expect(chart.xAxisElement.style.cursor).toBe("");
+    expect(chart.xAxisElement.classList.contains("my-axis")).toBe(false);
+    expect(chart.xAxisElement.hasAttribute("data-plugin")).toBe(false);
+    expect(renders).toBe(0);
+    expect(ledger.net()).toBe(0);
+  });
+
+  it("decorations restore the previous values, so undoing in reverse order is exact", () => {
+    let ctx = null as ChartPluginContext | null;
+    const chart = make({ plugins: [{ install: (c) => { ctx = c; } }] });
+    const axis = chart.yAxisElement;
+    const before = axis.style.pointerEvents;
+    const undoOuter = ctx!.dom.decorate("axis-y", { style: { pointerEvents: "auto", filter: "blur(1px)" } });
+    const undoInner = ctx!.dom.decorate("axis-y", { style: { filter: "brightness(2)" } });
+    expect(axis.style.filter).toBe("brightness(2)");
+    undoInner();
+    expect(axis.style.filter).toBe("blur(1px)");
+    undoOuter();
+    expect(axis.style.pointerEvents).toBe(before);
+    expect(axis.style.filter).toBe("");
+    chart.dispose();
+  });
+
+  it("exposes coordinates, viewport, state, geometry, and the unstable escape hatches", () => {
+    let ctx = null as ChartPluginContext | null;
+    const chart = make({ plugins: [{ install: (c) => { ctx = c; } }] });
+    chart.canvas.getBoundingClientRect = () => ({ left: 10, top: 20, width: 400, height: 200, right: 410, bottom: 220, x: 10, y: 20, toJSON() {} }) as DOMRect;
+    const c = ctx!;
+    c.viewport.set({ xMin: 0, xMax: 100, yMin: 0, yMax: 10 });
+    expect(c.viewport.get()).toMatchObject({ xMin: 0, xMax: 100, yMin: 0, yMax: 10 });
+    expect(c.layout.plotRect()).toEqual({ left: 10, top: 20, width: 400, height: 200 });
+    expect(c.coords.clientToPlot(110, 70)).toEqual([100, 50]);
+    expect(c.coords.plotToClient(100, 50)).toEqual([110, 70]);
+    expect(c.coords.clientToData(210, 120)).toEqual([50, 5]);
+    expect(c.coords.clientToData(0, 0)).toBeNull();
+    expect(c.viewport.isReversed("x")).toBe(false);
+    expect(c.viewport.getFollowState()).toBe("off");
+    c.viewport.follow({ window: 10 });
+    expect(c.viewport.getFollowState()).toBe("following");
+    c.viewport.setFollowPaused(true);
+    expect(c.viewport.getFollowState()).toBe("paused");
+    c.viewport.stopFollow();
+    expect(c.viewport.getFollowState()).toBe("off");
+    expect(c.state.getSeries()).toEqual([]);
+    expect(c.state.getHover()).toBeNull();
+    expect(c.state.getFrameStats().renderMode).toBe("none");
+    expect(c.theme).toBe(chart.theme);
+    expect(c.dom.contains(chart.canvas)).toBe(true);
+    expect(c.dom.contains(document.body)).toBe(false);
+    expect(c.unstable.canvas).toBe(chart.canvas);
+    expect(c.unstable.element("plot")).toBe(chart.plotElement);
+    expect(c.unstable.element("body")).toBe(document.body);
+    expect(c.unstable.getCamera("right")).toBe(chart.getCamera("right"));
+    chart.dispose();
   });
 });
 

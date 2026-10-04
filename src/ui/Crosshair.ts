@@ -1,5 +1,6 @@
 import type { SeriesYAxis } from "../core/types.js";
-import type { Chart, ChartPickItem, ChartPickMode, ChartPlugin, ChartPluginContext } from "./Chart.js";
+import type { ChartPickItem, ChartPickMode } from "./Chart.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
 import type { SyncMembership } from "./OverlayUtils.js";
 
@@ -13,7 +14,7 @@ export type CrosshairMode = "crosshair" | "ruler";
 export type CrosshairLabelPlacement = "bottom-right" | "top-right" | "bottom-left" | "top-left";
 
 /** Custom renderer for crosshair pick highlights. */
-export type CrosshairHighlightRenderer = (position: CrosshairPosition, container: HTMLElement, chart: Chart) => void;
+export type CrosshairHighlightRenderer = (position: CrosshairPosition, container: HTMLElement, chart: ChartPluginContext) => void;
 
 /** Crosshair position in data coordinates and plot-relative CSS pixels. */
 export interface CrosshairPosition {
@@ -63,7 +64,7 @@ export interface CrosshairPluginOptions {
   readonly formatX?: (value: number) => string;
   readonly formatY?: (value: number) => string;
   readonly formatter?: (item: ChartPickItem, position: CrosshairPosition) => string;
-  readonly render?: (position: CrosshairPosition, container: HTMLElement, chart: Chart) => void;
+  readonly render?: (position: CrosshairPosition, container: HTMLElement, chart: ChartPluginContext) => void;
   readonly onMove?: (position: CrosshairPosition | null) => void;
   readonly onMeasureStart?: (position: CrosshairPosition) => void;
   readonly onMeasureChange?: (measurement: RulerMeasurement) => void;
@@ -82,7 +83,7 @@ export interface CrosshairPlugin extends ChartPlugin {
 function countSamplesInRange(chart: ChartPluginContext, xMin: number, xMax: number): number {
   const viewport = { xMin, xMax, yMin: -Infinity, yMax: Infinity };
   let total = 0;
-  for (const state of chart.getSeriesState()) {
+  for (const state of chart.state.getSeries()) {
     if (!state.visible) continue;
     const range = state.series.visibleIndexRange(viewport);
     total += Math.max(0, range.end - range.start);
@@ -99,13 +100,13 @@ function hasModifier(event: PointerEvent, modifier: CrosshairPluginOptions["rule
 }
 
 function positionFromPick(chart: ChartPluginContext, clientX: number, clientY: number, mode: ChartPickMode): CrosshairPosition | null {
-  const picked = chart.pick(clientX, clientY, { mode, group: "none" });
+  const picked = chart.state.pick(clientX, clientY, { mode, group: "none" });
   const item = picked?.items[0];
   return item ? { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: [item] } : null;
 }
 
 function resolvePosition(chart: ChartPluginContext, clientX: number, clientY: number, yAxis: SeriesYAxis, snap: CrosshairSnapMode): CrosshairPosition | null {
-  const rect = chart.canvas.getBoundingClientRect();
+  const rect = chart.layout.plotRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
 
   const pickMode: ChartPickMode = snap === "nearest-point" ? "nearest-point" : "nearest-x";
@@ -114,18 +115,18 @@ function resolvePosition(chart: ChartPluginContext, clientX: number, clientY: nu
     if (picked) return picked;
   }
 
-  const data = chart.clientToData(clientX, clientY, yAxis);
+  const data = chart.coords.clientToData(clientX, clientY, yAxis);
   if (!data) return null;
-  const [plotX, plotY] = chart.dataToPlot(data[0], data[1], yAxis);
+  const [plotX, plotY] = chart.coords.dataToPlot(data[0], data[1], yAxis);
   return { dataX: data[0], dataY: data[1], plotX, plotY, items: [] };
 }
 
 function resolveSharedPosition(chart: ChartPluginContext, dataX: number, yAxis: SeriesYAxis): CrosshairPosition | null {
-  const rect = chart.canvas.getBoundingClientRect();
+  const rect = chart.layout.plotRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
-  const viewport = chart.getViewport(yAxis);
+  const viewport = chart.viewport.get(yAxis);
   const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
-  const [plotX, plotY] = chart.dataToPlot(dataX, dataY, yAxis);
+  const [plotX, plotY] = chart.coords.dataToPlot(dataX, dataY, yAxis);
   const picked = pickAtDataX(chart, dataX, { yAxis, mode: "nearest-x", group: "none" });
   const item = picked?.items[0];
   if (item) return { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: [item] };
@@ -136,11 +137,11 @@ function resolveSharedPosition(chart: ChartPluginContext, dataX: number, yAxis: 
  * Brighten the hovered bin in place: a translucent wash over its exact X interval, never
  * narrower than one CSS pixel. It has no border or shadow, so it never hides neighbouring bins.
  */
-function createXRangeHighlight(item: ChartPickItem, chart: Chart, color: string): HTMLDivElement {
+function createXRangeHighlight(item: ChartPickItem, chart: ChartPluginContext, color: string): HTMLDivElement {
   const yAxis = item.series.config.yAxis ?? "left";
   const baseline = item.series.style.baseline;
-  const [leftX, valueY] = chart.dataToPlot(item.xRange!.xStart, item.y, yAxis);
-  const [rightX, baselineY] = chart.dataToPlot(item.xRange!.xEnd, baseline, yAxis);
+  const [leftX, valueY] = chart.coords.dataToPlot(item.xRange!.xStart, item.y, yAxis);
+  const [rightX, baselineY] = chart.coords.dataToPlot(item.xRange!.xEnd, baseline, yAxis);
   const width = Math.max(1, Math.abs(rightX - leftX));
   const marker = document.createElement("div");
   marker.style.position = "absolute";
@@ -231,7 +232,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     const rect = label.getBoundingClientRect();
     const offsetX = placement.endsWith("left") ? -rect.width - 12 : 12;
     const offsetY = placement.startsWith("top") ? -rect.height - 12 : 12;
-    placeAbsoluteWithinBox(label, position.plotX, position.plotY, chart.canvas.clientWidth, chart.canvas.clientHeight, { offsetX, offsetY });
+    const plot = chart.layout.plotRect();
+    placeAbsoluteWithinBox(label, position.plotX, position.plotY, plot.width, plot.height, { offsetX, offsetY });
   };
 
   const renderMarkers = (position: CrosshairPosition | null): void => {
@@ -239,7 +241,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     markerLayer.replaceChildren();
     if (options.highlight === false || !position) return;
     if (options.renderHighlight && chartRef) {
-      options.renderHighlight(position, markerLayer, chartRef as Chart);
+      options.renderHighlight(position, markerLayer, chartRef);
       return;
     }
 
@@ -247,7 +249,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     const strokeWidth = Math.max(0, options.markerStrokeWidth ?? 2);
     for (const item of position.items) {
       if (item.xRange && chartRef) {
-        markerLayer.appendChild(createXRangeHighlight(item, chartRef as Chart, options.markerStrokeColor ?? chartRef.theme.markerStrokeColor));
+        markerLayer.appendChild(createXRangeHighlight(item, chartRef, options.markerStrokeColor ?? chartRef.theme.markerStrokeColor));
       } else {
         markerLayer.appendChild(createPickMarker(item, {
           sizePx: size,
@@ -272,7 +274,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     if (options.label !== false) {
       label.style.display = "block";
       if (options.render) {
-        options.render(position, label, chartRef! as Chart);
+        options.render(position, label, chartRef!);
       } else {
         renderDefaultLabel(position, label, formatX, formatY, options.formatter);
       }
@@ -371,7 +373,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       overlayLayer.appendChild(markerLayer);
       overlayLayer.appendChild(label);
       root.append(lineLayer, overlayLayer);
-      chart.plotElement.appendChild(root);
+      const unmount = chart.dom.mount("plot", root);
 
       sync = joinCrosshairSyncGroup(options.syncGroup, {
         showAt(dataX) {
@@ -438,36 +440,30 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         rulerStart = null;
       };
 
-      chart.canvas.addEventListener("pointermove", onPointerMove);
-      chart.canvas.addEventListener("pointercancel", longPress.clear);
-      chart.canvas.addEventListener("touchstart", longPress.onTouchStart, { capture: true, passive: true });
-      chart.canvas.addEventListener("touchmove", longPress.onTouchMove, { capture: true, passive: false });
-      chart.canvas.addEventListener("touchend", longPress.clear);
-      chart.canvas.addEventListener("touchcancel", longPress.clear);
-      chart.canvas.addEventListener("pointerleave", onPointerLeave);
-      chart.canvas.addEventListener("pointerdown", onPointerDown, { capture: true });
-      chart.canvas.addEventListener("pointerup", onPointerUp, { capture: true });
+      const unlisten = [
+        chart.dom.listen("plot", "pointermove", onPointerMove),
+        chart.dom.listen("plot", "pointercancel", longPress.clear),
+        chart.dom.listen("plot", "touchstart", longPress.onTouchStart, { capture: true, passive: true }),
+        chart.dom.listen("plot", "touchmove", longPress.onTouchMove, { capture: true, passive: false }),
+        chart.dom.listen("plot", "touchend", longPress.clear),
+        chart.dom.listen("plot", "touchcancel", longPress.clear),
+        chart.dom.listen("plot", "pointerleave", onPointerLeave),
+        chart.dom.listen("plot", "pointerdown", onPointerDown, { capture: true }),
+        chart.dom.listen("plot", "pointerup", onPointerUp, { capture: true }),
+      ];
 
-      const unsubscribeRender = chart.subscribe("render", () => {
+      const unsubscribeRender = chart.events.subscribe("render", () => {
         if (!activeClientPoint) return;
         updateAtClientPoint(activeClientPoint.clientX, activeClientPoint.clientY);
       });
 
       return () => {
         longPress.clear();
-        chart.canvas.removeEventListener("pointermove", onPointerMove);
-        chart.canvas.removeEventListener("pointercancel", longPress.clear);
-        chart.canvas.removeEventListener("touchstart", longPress.onTouchStart, { capture: true });
-        chart.canvas.removeEventListener("touchmove", longPress.onTouchMove, { capture: true });
-        chart.canvas.removeEventListener("touchend", longPress.clear);
-        chart.canvas.removeEventListener("touchcancel", longPress.clear);
-        chart.canvas.removeEventListener("pointerleave", onPointerLeave);
-        chart.canvas.removeEventListener("pointerdown", onPointerDown, { capture: true });
-        chart.canvas.removeEventListener("pointerup", onPointerUp, { capture: true });
+        for (const off of unlisten) off();
         unsubscribeRender();
         sync?.leave();
         sync = null;
-        root?.remove();
+        unmount();
         root = null;
         lineLayer = null;
         overlayLayer = null;

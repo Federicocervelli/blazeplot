@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-127 exports.
+142 exports.
 
 #### interface AcceleratedDataset
 
@@ -145,7 +145,7 @@ class Camera2D {
 #### class Chart
 
 ```ts
-class Chart implements ChartPluginContext {
+class Chart {
     constructor(target: HTMLElement, options?: ChartOptions);
     get canvas(): HTMLCanvasElement;
     get rootElement(): HTMLElement;
@@ -200,9 +200,7 @@ class Chart implements ChartPluginContext {
     resize(dpr?: number): boolean;
     getFrameStats(target?: ChartFrameStats): ChartFrameStats;
     getHoverState(): ChartHoverState | null;
-    setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
     subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
-    emitSelect(selection: SelectionState | null): void;
     setTheme(theme?: ChartTheme): void;
     setGridVisible(visible: boolean): void;
     setAxes(axes: ChartOptions["axes"]): void;
@@ -235,13 +233,12 @@ type ChartAutoFitYOptions = Pick<ChartFitToDataOptions, "series" | "includeHidde
 #### interface ChartEventMap
 
 ```ts
-interface ChartEventMap {
+interface ChartEventMap extends ChartPluginEventMap {
     hover: ChartHoverState | null;
     serieschange: void;
     themechange: void;
     render: void;
     viewportchange: ChartViewportChangeEvent;
-    select: ChartSelectEvent;
     seriesclick: ChartSeriesClickEvent;
     click: ChartPointerEventState;
     dblclick: ChartPointerEventState;
@@ -346,6 +343,12 @@ interface ChartLayoutReservation {
 }
 ```
 
+#### type ChartMountSlot
+
+```ts
+type ChartMountSlot = "plot" | "root" | "axis-x" | "axis-y" | "axis-y2" | "body";
+```
+
 #### interface ChartOptions
 
 ```ts
@@ -408,11 +411,20 @@ interface ChartPickOptions {
 }
 ```
 
+#### interface ChartPlotSize
+
+```ts
+interface ChartPlotSize {
+    readonly width: number;
+    readonly height: number;
+}
+```
+
 #### interface ChartPlugin
 
 ```ts
 interface ChartPlugin {
-    install(chart: ChartPluginContext): void | (() => void) | ChartPluginHandle;
+    install(ctx: ChartPluginContext): void | (() => void) | ChartPluginHandle;
 }
 ```
 
@@ -420,15 +432,22 @@ interface ChartPlugin {
 
 ```ts
 interface ChartPluginContext {
-    readonly canvas: HTMLCanvasElement;
-    readonly rootElement: HTMLElement;
-    readonly plotElement: HTMLElement;
-    readonly xAxisElement: HTMLElement;
-    readonly yAxisElement: HTMLElement;
-    readonly y2AxisElement: HTMLElement;
     readonly theme: ResolvedChartTheme;
-    getWebGLContext(): WebGL2RenderingContext | null;
-    getCamera(yAxis?: SeriesYAxis): Camera2D;
+    readonly coords: ChartPluginCoords;
+    readonly viewport: ChartPluginViewport;
+    readonly state: ChartPluginState;
+    readonly layout: ChartPluginLayout;
+    readonly dom: ChartPluginDom;
+    readonly events: ChartPluginEvents;
+    requestRender(): void;
+    readonly unstable: ChartPluginUnstable;
+}
+```
+
+#### interface ChartPluginCoords
+
+```ts
+interface ChartPluginCoords {
     dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [
         number,
         number
@@ -437,23 +456,48 @@ interface ChartPluginContext {
         number,
         number
     ] | null;
-    getViewport(yAxis?: SeriesYAxis): Viewport;
-    setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
-    pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
-    zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
-    fitToData(options?: ChartFitToDataOptions): boolean;
-    getSeriesState(): ChartSeriesState[];
-    followLatestX(options?: ChartFollowXOptions): void;
-    stopFollowingLatestX(): void;
-    setXFollowPaused(paused: boolean): void;
-    getXFollowState(): ChartXFollowState;
-    getFrameStats(target?: ChartFrameStats): ChartFrameStats;
-    getHoverState(): ChartHoverState | null;
-    setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
-    requestRender(): void;
+    clientToPlot(clientX: number, clientY: number): [
+        number,
+        number
+    ];
+    plotToClient(plotX: number, plotY: number): [
+        number,
+        number
+    ];
+}
+```
+
+#### interface ChartPluginDom
+
+```ts
+interface ChartPluginDom {
+    mount(slot: ChartMountSlot, element: Element): () => void;
+    listen<K extends keyof HTMLElementEventMap>(surface: ChartSurface, type: K, listener: (event: HTMLElementEventMap[K]) => void, options?: boolean | AddEventListenerOptions): () => void;
+    decorate(surface: ChartSurface, decoration: ChartSurfaceDecoration): () => void;
+    contains(target: EventTarget | null | undefined): boolean;
+}
+```
+
+#### interface ChartPluginEventMap
+
+```ts
+interface ChartPluginEventMap {
+    select: ChartSelectEvent;
+}
+```
+
+#### type ChartPluginEventName
+
+```ts
+type ChartPluginEventName = keyof ChartPluginEventMap;
+```
+
+#### interface ChartPluginEvents
+
+```ts
+interface ChartPluginEvents {
     subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
-    pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
-    emitSelect(selection: SelectionState | null): void;
+    emit<K extends ChartPluginEventName>(event: K, payload: ChartPluginEventMap[K]): void;
 }
 ```
 
@@ -461,7 +505,60 @@ interface ChartPluginContext {
 
 ```ts
 interface ChartPluginHandle {
-    dispose(): void;
+    dispose?(): void;
+    onResize?(size: ChartPlotSize): void;
+    onThemeChange?(theme: ResolvedChartTheme): void;
+    onContextLost?(): void;
+    onContextRestored?(): void;
+}
+```
+
+#### interface ChartPluginLayout
+
+```ts
+interface ChartPluginLayout {
+    plotRect(): ChartRect;
+    rootRect(): ChartRect;
+    reserve(reservation: ChartLayoutReservation): () => void;
+}
+```
+
+#### interface ChartPluginState
+
+```ts
+interface ChartPluginState {
+    getSeries(): ChartSeriesState[];
+    getHover(): ChartHoverState | null;
+    pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
+    getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+}
+```
+
+#### interface ChartPluginUnstable
+
+```ts
+interface ChartPluginUnstable {
+    readonly canvas: HTMLCanvasElement;
+    element(slot: ChartMountSlot | ChartSurface): HTMLElement;
+    getWebGLContext(): WebGL2RenderingContext | null;
+    getCamera(yAxis?: SeriesYAxis): Camera2D;
+}
+```
+
+#### interface ChartPluginViewport
+
+```ts
+interface ChartPluginViewport {
+    get(yAxis?: SeriesYAxis): Viewport;
+    set(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
+    pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
+    zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
+    fitToData(options?: ChartFitToDataOptions): boolean;
+    isReversed(axis: "x" | "y", yAxis?: SeriesYAxis): boolean;
+    follow(options?: ChartFollowXOptions): void;
+    stopFollow(): void;
+    setFollowPaused(paused: boolean): void;
+    getFollowState(): ChartXFollowState;
 }
 ```
 
@@ -490,6 +587,17 @@ interface ChartPointerEventState {
 
 ```ts
 type ChartPointerEventType = "click" | "dblclick" | "pointerdown" | "pointerup" | "pointermove";
+```
+
+#### interface ChartRect
+
+```ts
+interface ChartRect {
+    readonly left: number;
+    readonly top: number;
+    readonly width: number;
+    readonly height: number;
+}
 ```
 
 #### type ChartRenderLoop
@@ -539,6 +647,35 @@ interface ChartSeriesState {
     readonly visible: boolean;
     readonly color: RgbaColor;
     readonly yAxis: SeriesYAxis;
+}
+```
+
+#### type ChartSurface
+
+```ts
+type ChartSurface = "plot" | "root" | "axis-x" | "axis-y" | "axis-y2";
+```
+
+#### interface ChartSurfaceDecoration
+
+```ts
+interface ChartSurfaceDecoration {
+    readonly style?: ChartSurfaceStyle;
+    readonly classes?: readonly string[];
+    readonly attributes?: Readonly<Record<string, string>>;
+}
+```
+
+#### interface ChartSurfaceStyle
+
+```ts
+interface ChartSurfaceStyle {
+    readonly cursor?: string;
+    readonly touchAction?: string;
+    readonly pointerEvents?: string;
+    readonly filter?: string;
+    readonly outline?: string;
+    readonly outlineOffset?: string;
 }
 ```
 
@@ -1739,7 +1876,7 @@ interface LegendPluginOptions {
     readonly mutedTextColor?: string;
     readonly font?: string;
     readonly zIndex?: number;
-    readonly render?: (state: readonly ChartSeriesState[], container: HTMLElement, chart: Chart) => void;
+    readonly render?: (state: readonly ChartSeriesState[], container: HTMLElement, chart: ChartPluginContext) => void;
 }
 ```
 
@@ -1772,7 +1909,7 @@ interface TooltipPluginOptions {
     readonly zIndex?: number;
     readonly lockWidth?: boolean;
     readonly formatter?: (item: ChartPickItem, state: ChartHoverState) => string;
-    readonly render?: (state: ChartHoverState, container: HTMLElement, chart: Chart) => void;
+    readonly render?: (state: ChartHoverState, container: HTMLElement, chart: ChartPluginContext) => void;
 }
 ```
 
@@ -2117,7 +2254,7 @@ type CrosshairAxis = "x" | "y" | "xy";
 #### type CrosshairHighlightRenderer
 
 ```ts
-type CrosshairHighlightRenderer = (position: CrosshairPosition, container: HTMLElement, chart: Chart) => void;
+type CrosshairHighlightRenderer = (position: CrosshairPosition, container: HTMLElement, chart: ChartPluginContext) => void;
 ```
 
 #### type CrosshairLabelPlacement
@@ -2170,7 +2307,7 @@ interface CrosshairPluginOptions {
     readonly formatX?: (value: number) => string;
     readonly formatY?: (value: number) => string;
     readonly formatter?: (item: ChartPickItem, position: CrosshairPosition) => string;
-    readonly render?: (position: CrosshairPosition, container: HTMLElement, chart: Chart) => void;
+    readonly render?: (position: CrosshairPosition, container: HTMLElement, chart: ChartPluginContext) => void;
     readonly onMove?: (position: CrosshairPosition | null) => void;
     readonly onMeasureStart?: (position: CrosshairPosition) => void;
     readonly onMeasureChange?: (measurement: RulerMeasurement) => void;

@@ -326,17 +326,32 @@ describe("flameGraphPlugin lifecycle", () => {
     const calls = gls.get(canvas)!.calls;
     plugin.setSearch("x");
     expect(h.raf.pending.size).toBeGreaterThan(0);
-    const observer = FakeResizeObserver.instances.at(-1)!;
     dispose();
     expect(countNodes(document.body)).toBe(nodes);
     expect(h.ledger().reachable()).toBe(listeners);
     expect(h.raf.pending.size).toBe(0);
-    expect(observer.disconnected).toBe(true);
     expect(calls.filter((c) => c.name === "deleteBuffer")).toHaveLength(3);
     expect(calls.some((c) => c.name === "deleteVertexArray")).toBe(true);
     expect(calls.some((c) => c.name === "deleteProgram")).toBe(true);
     // Disposing again, or after the chart is gone, is harmless.
     expect(() => plugin.dispose()).not.toThrow();
+    chart.dispose();
+  });
+
+  it("redraws through the chart's onResize hook instead of its own ResizeObserver", () => {
+    const observers = FakeResizeObserver.instances.length;
+    const { chart } = make();
+    expect(FakeResizeObserver.instances.length).toBe(observers + 1); // the chart's own observer only
+    frame(chart);
+    h.raf.flush();
+    const canvas = rectCanvas(chart);
+    Object.defineProperty(canvas, "clientWidth", { configurable: true, value: 300 });
+    Object.defineProperty(chart.canvas, "clientWidth", { configurable: true, value: 300 });
+    const drawsBefore = glCalls(chart).filter((c) => c.name === "drawArraysInstanced").length;
+    chart.resize(1);
+    h.raf.flush();
+    expect(canvas.width).toBe(300);
+    expect(glCalls(chart).filter((c) => c.name === "drawArraysInstanced").length).toBeGreaterThan(drawsBefore);
     chart.dispose();
   });
 

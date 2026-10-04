@@ -4,11 +4,11 @@ This guide is for applications and plugins written against BlazePlot 0.x. It lis
 
 The list was produced by comparing the published declarations of 0.5.5 with the 1.0 declarations (the `api/public-api.md` snapshot), plus the 1.0 changes that alter runtime behavior. If you are on 0.4 or older, apply the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) first (most upgrades there are mechanical renames), then come back here. Release candidates are published to the npm `rc` dist-tag until 1.0 ships.
 
-Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals and two flame graph helpers, with chart data export moved to `blazeplot/export`, one typing fix, and one data-ingestion rule (X must be finite and non-decreasing; see change 3).
+Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals and two flame graph helpers, with chart data export moved to `blazeplot/export`, one typing fix, one data-ingestion rule (X must be finite and non-decreasing; see change 3), and a reshaped (now stable) plugin contract that only custom plugin authors touch.
 
 ## What did not change
 
-- The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`/`addHistogram`, dataset classes, and every built-in plugin option keep their signatures. Datasets gained optional validation options (change 3).
+- The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`/`addHistogram`, dataset classes, and every built-in plugin option keep their signatures, except that the custom `render`/`renderHighlight` callbacks of the legend, tooltip, and crosshair plugins now receive the plugin context instead of the `Chart` (see change 8). Datasets gained optional validation options (change 3).
 - Entry points and subpaths are the same: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and `blazeplot/plugins/*`. What lives in `blazeplot/data` and `blazeplot/export` changed (see change 6).
 - The package was already ESM only and already required WebGL2; 1.0 now states both as policy.
 
@@ -46,9 +46,9 @@ if (isWebGL2Available()) {
 
 Custom backends are not supported, and `backendFactory` is not covered by semver. If you only used it for test fakes, keep doing so against the internal option at your own risk; otherwise render in a real browser (see [Troubleshooting](./troubleshooting.md)).
 
-### 2. `emitSelect` is typed, and `ChartSelectEvent` is no longer generic
+### 2. `emitSelect` is removed, and `ChartSelectEvent` is no longer generic
 
-`emitSelect(selection: unknown)` became `emitSelect(selection: SelectionState | null)`, on both `Chart` and `ChartPluginContext`. `ChartSelectEvent<T = unknown>` became a plain `ChartSelectEvent` whose `selection` is `SelectionState | null` (`null` means the selection was cleared). Every `select` subscriber therefore sees a typed payload without a cast.
+`chart.emitSelect(selection: unknown)` is gone from both `Chart` and the plugin context. `select` is now a typed plugin event: plugins emit it with `ctx.events.emit("select", { selection })` (see change 8), and apps keep receiving it through `chart.subscribe("select", ...)`. `ChartSelectEvent<T = unknown>` became a plain `ChartSelectEvent` whose `selection` is `SelectionState | null` (`null` means the selection was cleared). Every `select` subscriber therefore sees a typed payload without a cast.
 
 Before (0.5):
 
@@ -64,22 +64,34 @@ chart.subscribe("select", (event: ChartSelectEvent<MySelection>) => {
 chart.emitSelect({ from: 1, to: 2 });
 ```
 
-After (1.0): emit and read `SelectionState`. If you used `emitSelect` to carry your own payload, keep that payload in your own state or event emitter instead.
+After (1.0): read `SelectionState`, and emit it from a plugin. If you used `emitSelect` to carry your own payload, declare your own typed plugin event instead (see [Plugin events](./plugin-authoring.md#plugin-events)).
 
 ```ts
+import { Chart, type ChartPlugin } from "blazeplot";
 import type { SelectionState } from "blazeplot/plugins/selection";
 
-const unsubscribe = chart.subscribe("select", ({ selection }) => {
+// A custom selection UI emits through its plugin context.
+function customSelectionPlugin(onReady: (emit: (selection: SelectionState | null) => void) => void): ChartPlugin {
+  return {
+    install(ctx) {
+      onReady((selection) => ctx.events.emit("select", { selection }));
+    },
+  };
+}
+
+let emitSelection: (selection: SelectionState | null) => void = () => {};
+const selectionChart = new Chart(element, { plugins: [customSelectionPlugin((emit) => { emitSelection = emit; })] });
+const unsubscribe = selectionChart.subscribe("select", ({ selection }) => {
   if (selection === null) return; // cleared
   console.log(selection.bounds.xMin, selection.bounds.xMax);
 });
 
-declare const current: SelectionState | null;
-chart.emitSelect(current);
+emitSelection(null);
 unsubscribe();
+selectionChart.dispose();
 ```
 
-Code that only subscribed to `select` and let `event.selection` be inferred needs no change except handling `null`. Code that wrote `ChartSelectEvent<Something>` fails with "Type 'ChartSelectEvent' is not generic"; drop the type argument.
+Code that only subscribed to `select` and let `event.selection` be inferred needs no change except handling `null`. Code that wrote `ChartSelectEvent<Something>` fails with "Type 'ChartSelectEvent' is not generic"; drop the type argument. To mirror selections across charts, use `createLinkedCharts(..., { syncSelections: true })`.
 
 ### 3. Datasets enforce one X rule: finite and non-decreasing
 
@@ -118,15 +130,16 @@ buffer.push(Number.NaN, 2); // skipped, reported, not stored
 console.log(unsorted.length, trusted.length, buffer.rejectedSamples);
 ```
 
-### 4. Plugin and fast-path interfaces are experimental
+### 4. Fast-path interfaces and escape hatches are experimental
 
 Nothing was removed here, but the tier changed. These are now tagged `@experimental` in the declarations and may change in a minor release (the changelog will say so):
 
-- The plugin contract: `ChartPlugin`, `ChartPluginContext`, `ChartPluginHandle`, `ChartLayoutReservation`, and the `setLayoutReservation`, `emitSelect`, `getWebGLContext`, `canvas`, and `*Element` members.
 - The custom fast-path dataset interfaces: `AcceleratedDataset`, `RangeMinMaxDataset`, `RangeSampleCopyDataset`, `VisibleSampleCopyDataset`, `VisiblePointCopyDataset`, `MinMaxSegmentCopyDataset`, `XRangeDataset`, `SampleCopyLayout`.
-- Camera access (`getCamera()`, `Camera2D`) and every export of `blazeplot/plugins/flamegraph`.
+- Camera access (`chart.getCamera()`, `Camera2D`), the plugin context's `ctx.unstable` escape hatches, and every export of `blazeplot/plugins/flamegraph`.
 
-Action: if you ship a custom plugin or implement a fast-path dataset interface, pin a compatible 1.x range, read the changelog on minor upgrades, and prefer the stable `Dataset` contract where possible. Built-in plugin options and the core API are stable. See [API stability](./stability.md#experimental).
+The plugin contract itself is stable in 1.0, in its new shape (change 8).
+
+Action: if you implement a fast-path dataset interface or use `ctx.unstable`, pin a compatible 1.x range, read the changelog on minor upgrades, and prefer the stable `Dataset` contract and context groups where possible. See [API stability](./stability.md#experimental).
 
 ### 5. Newly exported helper types
 
@@ -197,6 +210,79 @@ element.addEventListener("click", (event) => {
 });
 chart.dispose();
 ```
+
+### 8. The plugin context is grouped, and the plugin contract is stable
+
+`install(ctx)` no longer receives the `Chart` (or a flat object mirroring it). It receives a `ChartPluginContext` with stable groups: `ctx.coords`, `ctx.viewport`, `ctx.state`, `ctx.layout`, `ctx.dom`, `ctx.events`, `ctx.theme`, and `ctx.requestRender()`. Raw DOM handles are replaced by named mount slots and surfaces, the raw WebGL context and camera moved under `ctx.unstable` (still experimental), and `ChartPluginHandle` gained optional lifecycle hooks. Plugins install in registration order and are now disposed in **reverse** registration order. `Chart` no longer implements the plugin context: `chart.emitSelect` and `chart.setLayoutReservation` are removed (use a plugin), while the rest of the `Chart` API, including `chart.canvas`, `chart.rootElement`, and the other `*Element` getters, is unchanged.
+
+| 0.5 plugin context | 1.0 |
+|---|---|
+| `canvas` (listening) | `ctx.dom.listen("plot", type, listener)` |
+| `canvas.getBoundingClientRect()`, `canvas.clientWidth/Height` | `ctx.layout.plotRect()` |
+| `rootElement.appendChild(el)` | `ctx.dom.mount("root", el)` |
+| `rootElement.ownerDocument.body.appendChild(el)` | `ctx.dom.mount("body", el)` |
+| `rootElement.getBoundingClientRect()` | `ctx.layout.rootRect()` |
+| `event.composedPath().includes(rootElement)` | `event.composedPath().some((t) => ctx.dom.contains(t))` |
+| `plotElement.appendChild(el)` | `ctx.dom.mount("plot", el)` |
+| `xAxisElement`, `yAxisElement`, `y2AxisElement` (listen, style) | `ctx.dom.listen("axis-x", ...)` (also `"axis-y"`, `"axis-y2"`), `ctx.dom.decorate(...)`, `ctx.dom.mount(...)` |
+| `theme` | `ctx.theme` (plus the `onThemeChange` hook) |
+| `getWebGLContext()` | `ctx.unstable.getWebGLContext()` (experimental) |
+| `getCamera(yAxis)` | `ctx.viewport.isReversed(axis, yAxis)` for direction, or `ctx.unstable.getCamera(yAxis)` (experimental) |
+| `dataToPlot(...)`, `clientToData(...)` | `ctx.coords.dataToPlot(...)`, `ctx.coords.clientToData(...)` (new: `clientToPlot`, `plotToClient`) |
+| `getViewport(yAxis)`, `setViewport(v, yAxis)` | `ctx.viewport.get(yAxis)`, `ctx.viewport.set(v, yAxis)` |
+| `pan(...)`, `zoom(...)`, `fitToData(...)` | `ctx.viewport.pan(...)`, `ctx.viewport.zoom(...)`, `ctx.viewport.fitToData(...)` |
+| `followLatestX(o)`, `stopFollowingLatestX()`, `setXFollowPaused(p)`, `getXFollowState()` | `ctx.viewport.follow(o)`, `ctx.viewport.stopFollow()`, `ctx.viewport.setFollowPaused(p)`, `ctx.viewport.getFollowState()` |
+| `getSeriesState()`, `getHoverState()`, `pick(...)`, `getFrameStats(t)` | `ctx.state.getSeries()`, `ctx.state.getHover()`, `ctx.state.pick(...)`, `ctx.state.getFrameStats(t)` |
+| `setLayoutReservation(id, r)` / `setLayoutReservation(id, null)` | `const release = ctx.layout.reserve(r)` / `release()` |
+| `requestRender()` | `ctx.requestRender()` |
+| `subscribe(event, cb)` | `ctx.events.subscribe(event, cb)` |
+| `emitSelect(selection)` | `ctx.events.emit("select", { selection })` |
+| `subscribe("themechange", ...)` inside a plugin | Return `{ onThemeChange }` (the event still works) |
+| A `ResizeObserver` on `plotElement` | Return `{ onResize }` |
+| `canvas` `webglcontextlost`/`webglcontextrestored` listeners | Return `{ onContextLost, onContextRestored }` |
+
+The `render` option of `legendPlugin` and `tooltipPlugin`, and the `render` and `renderHighlight` options of `crosshairPlugin`, now pass the `ChartPluginContext` as their third argument instead of the `Chart`. `ChartPluginHandle.dispose` is optional.
+
+Before (0.5):
+
+<!-- snippet: skip intentionally old 0.5 plugin context; these members no longer exist -->
+```ts
+const footerPlugin: ChartPlugin = {
+  install(chart) {
+    const footer = document.createElement("div");
+    chart.rootElement.appendChild(footer);
+    chart.setLayoutReservation("footer", { bottom: 28 });
+    const off = chart.subscribe("render", () => {
+      footer.textContent = `x from ${chart.getViewport().xMin}`;
+    });
+    return () => {
+      off();
+      chart.setLayoutReservation("footer", null);
+      footer.remove();
+    };
+  },
+};
+```
+
+After (1.0): everything handed out by the context is released when the plugin is disposed, so the cleanup is optional.
+
+```ts
+import type { ChartPlugin } from "blazeplot";
+
+const footerPlugin: ChartPlugin = {
+  install(ctx) {
+    const footer = document.createElement("div");
+    ctx.dom.mount("root", footer);
+    ctx.layout.reserve({ bottom: 28 });
+    ctx.events.subscribe("render", () => {
+      footer.textContent = `x from ${ctx.viewport.get().xMin}`;
+    });
+  },
+};
+export { footerPlugin };
+```
+
+See [Plugin authoring](./plugin-authoring.md) for the full contract, mount slots, lifecycle hooks, and typed plugin events.
 
 ## Platform requirements
 
@@ -270,11 +356,11 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 1. Upgrade to 0.5.5 first if you are on an older 0.x, and apply the [0.5 table](./versioning-and-migration.md#migrating-to-05).
 2. Confirm your tooling: ES module loading (no `require`), TypeScript 5.0 or newer, `moduleResolution` of `bundler`/`node16`/`nodenext`, `lib` including `DOM`.
 3. Search for `WebGL2Backend`, `GpuBackend`, `backendFactory`, `DrawSpec`, `BufferSpec`, `AttributeSpec`, `UniformValue`, `GpuBuffer`, `GpuProgram`, `GpuCapabilities`, `GpuResource`, `ChartBackendFactory`. Remove them; use `isWebGL2Available()` and `WebGL2UnavailableError` for support checks.
-4. Search for `ChartSelectEvent<`, `emitSelect(`, and `subscribe("select"`. Drop the type argument, emit `SelectionState | null`, and handle `selection === null`.
+4. Search for `ChartSelectEvent<`, `emitSelect(`, and `subscribe("select"`. Drop the type argument, handle `selection === null`, and move any `emitSelect` call into a plugin as `ctx.events.emit("select", { selection })`.
 5. Check every `new StaticDataset(...)`, `new StaticOhlcDataset(...)`, `series.replace(...)`, `ServerSampledDataset`, and `fromObjects(...)` call for unsorted or non-finite X: they now throw `RangeError`. Wrap unsorted input with `StaticDataset.sorted(...)` / `StaticOhlcDataset.sorted(...)` or pass `sort: true` to `fromObjects`; pass `assumeSorted: true` only for trusted, already-sorted data. Change `catch` blocks that matched `TypeError` from `fromObjects` to `RangeError`.
 6. Audit streaming feeds into `RingBuffer` and `OhlcRingBuffer` for non-finite or backwards X (clock glitches, parse failures, out-of-order packets). Those samples are now skipped; watch `rejectedSamples` or pass `onInvalidSample` to log them. Represent gaps as non-finite Y.
 7. Search for imports of `exportChartData`, `chartDataToCSV`, `ExportableChart`, and `ChartData*` types from `blazeplot/data` and import them from `blazeplot/export` instead. Keep `binSamples` and `rollingMean` on `blazeplot/data`.
 8. Search for `buildFlameGraphModel` and `pickFrame`. Pass `foldedStacks` and `build` to `flameGraphPlugin()` (or call `setFoldedStacks`), and use `plugin.pick(clientX, clientY)` for hit testing.
-9. If you write custom plugins or custom fast-path datasets, note they are experimental: pin a 1.x range and read each minor changelog.
+9. If you write custom plugins, port them to the grouped plugin context with the table in change 8 (search for `install(`, `setLayoutReservation`, `rootElement`, `plotElement`, `getCamera`, and `render:` callbacks of the legend, tooltip, and crosshair plugins). The new contract is stable. If you implement custom fast-path datasets or use `ctx.unstable`, note they are experimental: pin a 1.x range and read each minor changelog.
 10. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
 11. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.

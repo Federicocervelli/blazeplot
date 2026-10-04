@@ -1,4 +1,5 @@
-import type { ChartPlugin, ChartPluginContext, ChartPointerEventState } from "./Chart.js";
+import type { ChartPointerEventState } from "./Chart.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import type { SeriesYAxis } from "../core/types.js";
 
 /** Label styling for annotation overlays. */
@@ -215,7 +216,7 @@ function annotationBounds(annotation: Annotation): AnnotationHitBounds {
 
 function hitTestAnnotation(chart: ChartPluginContext, annotation: Annotation, plotX: number, plotY: number, width: number, height: number, tolerance: number): boolean {
   if (annotation.visible === false) return false;
-  const viewport = chart.getViewport(annotation.yAxis ?? "left");
+  const viewport = chart.viewport.get(annotation.yAxis ?? "left");
   const xToPx = (x: number): number => ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * width;
   const yToPx = (y: number): number => ((viewport.yMax - y) / (viewport.yMax - viewport.yMin)) * height;
 
@@ -252,11 +253,11 @@ function hitTestAnnotation(chart: ChartPluginContext, annotation: Annotation, pl
 }
 
 function createHitEvent(chart: ChartPluginContext, annotation: Annotation, clientX: number, clientY: number, source?: ChartPointerEventState): AnnotationHitEvent | null {
-  const rect = chart.canvas.getBoundingClientRect();
+  const rect = chart.layout.plotRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
   const plotX = clientX - rect.left;
   const plotY = clientY - rect.top;
-  const data = chart.clientToData(clientX, clientY, annotation.yAxis ?? "left");
+  const data = chart.coords.clientToData(clientX, clientY, annotation.yAxis ?? "left");
   if (!data) return null;
   return {
     annotation,
@@ -290,7 +291,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
 
   const pickAt = (clientX: number, clientY: number, source?: ChartPointerEventState): AnnotationHitEvent | null => {
     if (!chartRef) return null;
-    const rect = chartRef.canvas.getBoundingClientRect();
+    const rect = chartRef.layout.plotRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
     const plotX = clientX - rect.left;
     const plotY = clientY - rect.top;
@@ -326,15 +327,15 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
       overlay.style.overflow = "hidden";
       overlay.style.zIndex = String(options.zIndex ?? 12);
       overlay.setAttribute("aria-hidden", "true");
-      chart.plotElement.appendChild(overlay);
-      const unsubscribeRender = chart.subscribe("render", () => requestRender());
-      const unsubscribeMove = chart.subscribe("pointermove", (event) => {
+      const unmount = chart.dom.mount("plot", overlay);
+      const unsubscribeRender = chart.events.subscribe("render", () => requestRender());
+      const unsubscribeMove = chart.events.subscribe("pointermove", (event) => {
         const hit = pickAt(event.clientX, event.clientY, event);
         const nextAnnotation = hit?.annotation ?? null;
         if (nextAnnotation !== lastHoverAnnotation || hit) emitHover(hit);
         lastHoverAnnotation = nextAnnotation;
       });
-      const unsubscribeClick = chart.subscribe("click", (event) => {
+      const unsubscribeClick = chart.events.subscribe("click", (event) => {
         const hit = pickAt(event.clientX, event.clientY, event);
         if (hit) emitClick(hit);
       });
@@ -343,7 +344,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
         unsubscribeRender();
         unsubscribeMove();
         unsubscribeClick();
-        overlay?.remove();
+        unmount();
         overlay = null;
         chartRef = null;
       };
@@ -396,8 +397,9 @@ function render(
   defaultFillColor: string,
   defaultFont: string,
 ): void {
-  const width = Math.max(1, chart.canvas.clientWidth);
-  const height = Math.max(1, chart.canvas.clientHeight);
+  const plot = chart.layout.plotRect();
+  const width = Math.max(1, plot.width);
+  const height = Math.max(1, plot.height);
   overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
   overlay.replaceChildren();
 
@@ -417,7 +419,7 @@ function drawAnnotation(
   defaultFillColor: string,
   defaultFont: string,
 ): void {
-  const viewport = chart.getViewport(annotation.yAxis ?? "left");
+  const viewport = chart.viewport.get(annotation.yAxis ?? "left");
   const xToPx = (x: number): number => ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * width;
   const yToPx = (y: number): number => ((viewport.yMax - y) / (viewport.yMax - viewport.yMin)) * height;
   const group = createSvgElement("g");

@@ -1,5 +1,6 @@
 import { Chart } from "./Chart.js";
-import type { ChartOptions, ChartPlugin } from "./Chart.js";
+import type { ChartOptions, ChartSelectEvent } from "./Chart.js";
+import type { ChartPlugin } from "./PluginHost.js";
 
 /** Options for one chart panel in a linked layout. */
 export interface LinkedChartPanelOptions {
@@ -62,15 +63,26 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
   });
   target.appendChild(root);
 
+  // Re-emitting `select` on a panel goes through a tiny plugin, the same contract third-party plugins use.
+  const selectRelays = new Map<Chart, (selection: ChartSelectEvent["selection"]) => void>();
+
   for (const panel of options.panels) {
     const cell = document.createElement("div");
     cell.className = panel.className ?? "blazeplot-linked-panel";
     Object.assign(cell.style, { position: "relative", minWidth: "0", minHeight: "0" });
     root.appendChild(cell);
-    const shared = options.panelPlugins?.(syncGroup) ?? [];
+    let relay: ((selection: ChartSelectEvent["selection"]) => void) | null = null;
+    const relayPlugin: ChartPlugin = {
+      install(ctx) {
+        relay = (selection) => ctx.events.emit("select", { selection });
+      },
+    };
+    const shared = [...(options.panelPlugins?.(syncGroup) ?? []), ...(options.syncSelections ? [relayPlugin] : [])];
     const chartOptions = shared.length > 0 ? { ...panel.options, plugins: [...(panel.options?.plugins ?? []), ...shared] } : panel.options;
     try {
-      charts.push(new Chart(cell, chartOptions));
+      const chart = new Chart(cell, chartOptions);
+      charts.push(chart);
+      if (relay) selectRelays.set(chart, relay);
     } catch (error) {
       // A panel failed (e.g. no WebGL2): release the panels already built.
       for (const chart of charts) chart.dispose();
@@ -100,7 +112,7 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
     }
     if (options.syncSelections) {
       disposers.push(chart.subscribe("select", ({ selection }) => {
-        syncOthers(chart, (other) => other.emitSelect(selection));
+        syncOthers(chart, (other) => selectRelays.get(other)?.(selection));
       }));
     }
   }

@@ -1,4 +1,4 @@
-import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { placeFixedWithinViewport } from "./OverlayUtils.js";
 import type { RgbaColor } from "../core/types.js";
 import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
@@ -358,7 +358,6 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
   let hoverHighlightElement: HTMLDivElement | null = null;
   let glState: WebGLState | null = null;
   let rafId = 0;
-  let resizeObserver: ResizeObserver | null = null;
   let disposed = false;
   const subscriptionDisposers: Array<() => void> = [];
   let lastHover: FlameGraphPick<T> | null = null;
@@ -376,8 +375,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       rectCanvas = createOverlayCanvas("blazeplot-flamegraph-canvas", options.zIndex ?? 6);
       labelCanvas = createOverlayCanvas("blazeplot-flamegraph-labels", (options.zIndex ?? 6) + 1);
       glState = createWebGLState(rectCanvas);
-      nextChart.plotElement.appendChild(rectCanvas);
-      nextChart.plotElement.appendChild(labelCanvas);
+      subscriptionDisposers.push(nextChart.dom.mount("plot", rectCanvas), nextChart.dom.mount("plot", labelCanvas));
       if (options.hoverHighlight !== false) {
         hoverHighlightElement = document.createElement("div");
         hoverHighlightElement.className = "blazeplot-flamegraph-hover";
@@ -387,7 +385,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
         hoverHighlightElement.style.zIndex = String((options.zIndex ?? 6) + 2);
         hoverHighlightElement.style.background = rgbaCss(options.hoverHighlightColor ?? [1, 0.95, 0.35, 0.48]);
         hoverHighlightElement.style.outline = "1px solid rgba(255,255,255,0.88)";
-        nextChart.plotElement.appendChild(hoverHighlightElement);
+        subscriptionDisposers.push(nextChart.dom.mount("plot", hoverHighlightElement));
       }
       if (options.tooltip !== false) {
         tooltip = document.createElement("div");
@@ -405,28 +403,28 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
         tooltip.style.whiteSpace = "pre";
         tooltip.setAttribute("role", "tooltip");
         tooltip.setAttribute("aria-hidden", "true");
-        (nextChart.rootElement.ownerDocument.body ?? nextChart.rootElement).appendChild(tooltip);
+        subscriptionDisposers.push(nextChart.dom.mount("body", tooltip));
       }
 
       rectCanvas.addEventListener("webglcontextlost", handleContextLost);
       rectCanvas.addEventListener("webglcontextrestored", handleContextRestored);
-      nextChart.canvas.addEventListener("pointerdown", handlePointerDown);
-      nextChart.canvas.addEventListener("pointermove", handlePointerMove);
-      nextChart.canvas.addEventListener("pointerup", handlePointerUp);
-      nextChart.canvas.addEventListener("pointercancel", handlePointerCancel);
-      nextChart.canvas.addEventListener("pointerleave", handlePointerLeave);
-      nextChart.canvas.addEventListener("click", handleClick);
-      const unsubRender = nextChart.subscribe("render", () => render());
-      const unsubViewport = nextChart.subscribe("viewportchange", scheduleRender);
-      const unsubTheme = nextChart.subscribe("themechange", handleThemeChange);
-      subscriptionDisposers.push(unsubRender, unsubViewport, unsubTheme);
-      if (typeof ResizeObserver !== "undefined") {
-        resizeObserver = new ResizeObserver(scheduleRender);
-        resizeObserver.observe(nextChart.plotElement);
-      }
+      subscriptionDisposers.push(
+        nextChart.dom.listen("plot", "pointerdown", handlePointerDown),
+        nextChart.dom.listen("plot", "pointermove", handlePointerMove),
+        nextChart.dom.listen("plot", "pointerup", handlePointerUp),
+        nextChart.dom.listen("plot", "pointercancel", handlePointerCancel),
+        nextChart.dom.listen("plot", "pointerleave", handlePointerLeave),
+        nextChart.dom.listen("plot", "click", handleClick),
+        nextChart.events.subscribe("render", () => render()),
+        nextChart.events.subscribe("viewportchange", scheduleRender),
+      );
       if (options.autoFit !== false) plugin.fitToData();
       scheduleRender();
-      return plugin;
+      return {
+        dispose: () => plugin.dispose(),
+        onResize: scheduleRender,
+        onThemeChange: handleThemeChange,
+      };
     },
     setModel(nextModel) {
       model = nextModel;
@@ -449,16 +447,16 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       if (!chart) return;
       const xMin = model.minX;
       const xMax = model.maxX > model.minX ? model.maxX : model.minX + 1;
-      chart.setViewport({ xMin, xMax, yMin: 0, yMax: Math.max(1, model.maxDepth + 1) });
+      chart.viewport.set({ xMin, xMax, yMin: 0, yMax: Math.max(1, model.maxDepth + 1) });
     },
     pick(clientX, clientY) {
       if (!chart) return null;
-      const rect = chart.canvas.getBoundingClientRect();
+      const rect = chart.layout.plotRect();
       if (rect.width <= 0 || rect.height <= 0) return null;
       const plotX = clientX - rect.left;
       const plotY = clientY - rect.top;
       if (plotX < 0 || plotY < 0 || plotX > rect.width || plotY > rect.height) return null;
-      const viewport = chart.getViewport();
+      const viewport = chart.viewport.get();
       const dataX = viewport.xMin + (plotX / rect.width) * (viewport.xMax - viewport.xMin);
       const dataY = viewport.yMax - (plotY / rect.height) * (viewport.yMax - viewport.yMin);
       const drawn = pickVisibleFrame(visibleFrameScratch, plotX, plotY);
@@ -480,27 +478,14 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       disposed = true;
       if (rafId !== 0) cancelAnimationFrame(rafId);
       rafId = 0;
-      resizeObserver?.disconnect();
-      resizeObserver = null;
+      // Listeners, subscriptions, and mounted elements registered through the plugin context.
       for (const disposeSubscription of subscriptionDisposers.splice(0)) disposeSubscription();
-      if (chart) {
-        chart.canvas.removeEventListener("pointerdown", handlePointerDown);
-        chart.canvas.removeEventListener("pointermove", handlePointerMove);
-        chart.canvas.removeEventListener("pointerup", handlePointerUp);
-        chart.canvas.removeEventListener("pointercancel", handlePointerCancel);
-        chart.canvas.removeEventListener("pointerleave", handlePointerLeave);
-        chart.canvas.removeEventListener("click", handleClick);
-      }
       rectCanvas?.removeEventListener("webglcontextlost", handleContextLost);
       rectCanvas?.removeEventListener("webglcontextrestored", handleContextRestored);
       const releasedContext = glState?.gl;
       disposeWebGLState(glState);
       glState = null;
       releaseWebGLContext(releasedContext);
-      rectCanvas?.remove();
-      labelCanvas?.remove();
-      tooltip?.remove();
-      hoverHighlightElement?.remove();
       rectCanvas = null;
       labelCanvas = null;
       tooltip = null;
@@ -519,7 +504,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
 
   function render(): void {
     if (!chart || !rectCanvas || !labelCanvas || !glState) return;
-    const viewport = chart.getViewport();
+    const viewport = chart.viewport.get();
     const resized = resizeCanvases(rectCanvas, labelCanvas);
     if (resized) glState.gl.viewport(0, 0, rectCanvas.width, rectCanvas.height);
     const signature = [
@@ -609,9 +594,8 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       hoverHighlightElement.style.display = "none";
       return;
     }
-    const viewport = chart.getViewport();
-    const width = chart.canvas.clientWidth;
-    const height = chart.canvas.clientHeight;
+    const viewport = chart.viewport.get();
+    const { width, height } = chart.layout.plotRect();
     if (width <= 0 || height <= 0 || viewport.xMax <= viewport.xMin || viewport.yMax <= viewport.yMin) {
       hoverHighlightElement.style.display = "none";
       return;
