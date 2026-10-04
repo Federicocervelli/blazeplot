@@ -1,5 +1,6 @@
 import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxY } from "./MinMaxTree.js";
+import { nonFiniteXWarning } from "./search.js";
 import { createValueArray } from "./valueArray.js";
 import type { AcceleratedDataset, AppendableDataset, SampleCopyLayout, TimeRange, ValuePrecision, Viewport } from "./types.js";
 
@@ -36,6 +37,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
   private _length = 0;
   private _head = 0;
   private _nextX: number;
+  private readonly warnNonFiniteX = nonFiniteXWarning("UniformRingBuffer", "it was ignored as a seed and X continues from the current cursor");
 
   /** Create an implicit-X ring buffer with fixed spacing. */
   constructor(capacity: number, options: UniformRingBufferOptions = {}) {
@@ -68,7 +70,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
   /** Append one sample, using `x` to seed the stream when empty. */
   push(x: number, y: number): void {
-    if (this._length === 0 && Number.isFinite(x)) this._nextX = x;
+    if (this._length === 0) this.seed(x);
     const physical = this._head;
     this.yData[physical] = y;
     this._head = (physical + 1) % this.capacity;
@@ -91,15 +93,13 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const requested = Math.min(x.length, y.length);
     if (requested <= 0) return;
 
-    if (this._length === 0) {
-      const first = x[0];
-      if (Number.isFinite(first)) this._nextX = first!;
-    }
+    if (this._length === 0) this.seed(x[0]!);
 
     if (requested >= this.capacity) {
       const sourceOffset = requested - this.capacity;
       const retainedFirst = x[sourceOffset];
       const hasRetainedFirst = Number.isFinite(retainedFirst);
+      if (!hasRetainedFirst) this.warnNonFiniteX(retainedFirst!);
       if (hasRetainedFirst) this._nextX = retainedFirst!;
       this.replaceAll(y, sourceOffset, hasRetainedFirst ? this.capacity : requested);
       return;
@@ -248,6 +248,12 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     }
 
     return written;
+  }
+
+  /** Seed the X cursor from a supplied X; a non-finite seed is ignored (Y is still stored). */
+  private seed(x: number): void {
+    if (Number.isFinite(x)) this._nextX = x;
+    else this.warnNonFiniteX(x);
   }
 
   private replaceAll(y: ArrayLike<number>, sourceOffset: number, requested: number): void {
