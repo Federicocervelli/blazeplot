@@ -1,5 +1,6 @@
 import { Chart, StaticDataset } from "../../../../src/index.ts";
 import { createLinkedCharts } from "../../../../src/linked.ts";
+import { a11yPlugin } from "../../../../src/plugins/a11y.ts";
 import { annotationsPlugin } from "../../../../src/plugins/annotations.ts";
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
@@ -49,6 +50,8 @@ export default class Preview extends PreviewResources {
         navigatorPlugin({ height: 58, placement: "bottom", followLive: false }),
         legendPlugin({ toggleOnClick: true }),
         tooltipPlugin({ mode: "nearest-x", group: "x", maxDistancePx: 48, formatter: (item) => `(${formatDate(item.x)}, ${formatValue(item.y)})` }),
+        // Hidden data table plus keyboard inspection: focus the chart, press Enter, then use the arrow keys.
+        a11yPlugin({ formatX: formatDate, formatY: (value) => formatValue(value), table: { xLabel: "Time (UTC)", yLabel: "Value" } }),
       ],
     }));
     this.previewCharts.push(chart);

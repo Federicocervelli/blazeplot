@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-142 exports.
+147 exports.
 
 #### interface AcceleratedDataset
 
@@ -191,6 +191,7 @@ class Chart {
     }, style?: SeriesStyleOptions): SeriesStore<D>;
     addHistogram(config: HistogramSeriesConfig | PrecomputedHistogramSeriesConfig, style?: SeriesStyleOptions): SeriesStore<HistogramDataset>;
     removeSeries(series: SeriesStore): boolean;
+    getSummary(): ChartSummary;
     getSeriesState(): ChartSeriesState[];
     followLatestX(options?: ChartFollowXOptions): void;
     stopFollowingLatestX(): void;
@@ -218,9 +219,10 @@ class Chart {
 ```ts
 interface ChartAccessibilityOptions {
     readonly label?: string;
-    readonly description?: string;
+    readonly description?: string | ((summary: ChartSummary) => string);
     readonly role?: string;
     readonly keyboard?: boolean | ChartKeyboardOptions;
+    readonly forcedColors?: boolean;
 }
 ```
 
@@ -320,6 +322,16 @@ interface ChartHoverState {
     readonly group: ChartPickGroup;
     readonly maxDistancePx: number;
     readonly items: readonly ChartPickItem[];
+    readonly source?: "pointer" | "inspection";
+}
+```
+
+#### interface ChartInspectionTarget
+
+```ts
+interface ChartInspectionTarget {
+    readonly series: SeriesStore;
+    readonly index: number;
 }
 ```
 
@@ -464,6 +476,7 @@ interface ChartPluginCoords {
         number,
         number
     ];
+    format(value: number, axis: "x" | "y", yAxis?: SeriesYAxis): string;
 }
 ```
 
@@ -531,6 +544,8 @@ interface ChartPluginState {
     getHover(): ChartHoverState | null;
     pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
     getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+    inspect(target: ChartInspectionTarget | null): ChartHoverState | null;
+    getInspection(): ChartInspectionTarget | null;
 }
 ```
 
@@ -650,6 +665,42 @@ interface ChartSeriesState {
 }
 ```
 
+#### interface ChartSeriesSummary
+
+```ts
+interface ChartSeriesSummary {
+    readonly index: number;
+    readonly id?: string;
+    readonly name: string;
+    readonly mode: SeriesMode;
+    readonly visible: boolean;
+    readonly yAxis: SeriesYAxis;
+    readonly sampleCount: number;
+    readonly x: ChartSummaryRange | null;
+    readonly y: ChartSummaryRange | null;
+    readonly latest: SeriesSample | null;
+}
+```
+
+#### interface ChartSummary
+
+```ts
+interface ChartSummary {
+    readonly series: readonly ChartSeriesSummary[];
+    readonly x: ChartSummaryRange | null;
+    readonly text: string;
+}
+```
+
+#### interface ChartSummaryRange
+
+```ts
+interface ChartSummaryRange {
+    readonly min: number;
+    readonly max: number;
+}
+```
+
 #### type ChartSurface
 
 ```ts
@@ -706,6 +757,7 @@ interface ChartTheme {
     readonly selectionStrokeColor?: string;
     readonly crosshairColor?: string;
     readonly markerStrokeColor?: string;
+    readonly focusRingColor?: string;
 }
 ```
 
@@ -867,6 +919,12 @@ interface InvalidSample {
 type InvalidSampleReason = "non-finite-x" | "decreasing-x";
 ```
 
+#### const LIGHT_CHART_THEME
+
+```ts
+LIGHT_CHART_THEME: ResolvedChartTheme
+```
+
 #### type LODStrategy
 
 ```ts
@@ -1001,6 +1059,7 @@ interface ResolvedChartTheme {
     readonly selectionStrokeColor: string;
     readonly crosshairColor: string;
     readonly markerStrokeColor: string;
+    readonly focusRingColor: string;
 }
 ```
 
@@ -1980,6 +2039,9 @@ interface AnnotationBase {
     readonly yAxis?: SeriesYAxis;
     readonly className?: string;
     readonly label?: string | AnnotationLabelOptions;
+    readonly ariaLabel?: string;
+    readonly focusable?: boolean;
+    readonly removable?: boolean;
 }
 ```
 
@@ -2059,6 +2121,9 @@ interface AnnotationsPluginOptions {
     readonly hitTolerancePx?: number;
     readonly onHover?: (event: AnnotationHitEvent | null) => void;
     readonly onClick?: (event: AnnotationHitEvent) => void;
+    readonly focusable?: boolean;
+    readonly removable?: boolean;
+    readonly onRemove?: (annotation: Annotation) => void;
 }
 ```
 
@@ -2164,7 +2229,7 @@ function annotationsPlugin(options?: AnnotationsPluginOptions): AnnotationsPlugi
 
 ### `blazeplot/plugins/selection`
 
-8 exports.
+9 exports.
 
 #### interface SelectionEvent
 
@@ -2180,6 +2245,14 @@ interface SelectionEvent {
 
 ```ts
 type SelectionEventType = "start" | "update" | "commit" | "clear";
+```
+
+#### interface SelectionKeyboardOptions
+
+```ts
+interface SelectionKeyboardOptions {
+    readonly step?: number;
+}
 ```
 
 #### type SelectionMode
@@ -2220,6 +2293,7 @@ interface SelectionPluginOptions {
     readonly stroke?: string;
     readonly zIndex?: number;
     readonly clearOnEscape?: boolean;
+    readonly keyboard?: boolean | SelectionKeyboardOptions;
     readonly onChange?: (event: SelectionEvent) => void;
 }
 ```
@@ -2573,4 +2647,69 @@ function flameGraphPlugin<T = unknown>(options?: FlameGraphPluginOptions<T>): Fl
 
 ```ts
 function parseFoldedStacks<T = unknown>(input: string, separator?: string): FlameGraphFoldedStack<T>[];
+```
+
+### `blazeplot/plugins/a11y`
+
+6 exports.
+
+#### interface A11yInspection
+
+```ts
+interface A11yInspection {
+    readonly series: ChartSeriesState;
+    readonly sample: SeriesSample;
+    readonly position: number;
+    readonly total: number;
+    readonly x: string;
+    readonly y: string;
+}
+```
+
+#### interface A11yLiveOptions
+
+```ts
+interface A11yLiveOptions {
+    readonly intervalMs?: number;
+    readonly format?: (series: readonly ChartSeriesState[], chart: ChartPluginContext) => string;
+}
+```
+
+#### interface A11yPlugin
+
+```ts
+interface A11yPlugin extends ChartPlugin {
+    refresh(): void;
+    isInspecting(): boolean;
+}
+```
+
+#### interface A11yPluginOptions
+
+```ts
+interface A11yPluginOptions {
+    readonly table?: boolean | A11yTableOptions;
+    readonly inspection?: boolean;
+    readonly live?: boolean | A11yLiveOptions;
+    readonly formatX?: (value: number) => string;
+    readonly formatY?: (value: number, series: ChartSeriesState) => string;
+    readonly formatAnnouncement?: (inspection: A11yInspection) => string;
+}
+```
+
+#### interface A11yTableOptions
+
+```ts
+interface A11yTableOptions {
+    readonly maxRows?: number;
+    readonly updateMs?: number;
+    readonly xLabel?: string;
+    readonly yLabel?: string;
+}
+```
+
+#### function a11yPlugin
+
+```ts
+function a11yPlugin(options?: A11yPluginOptions): A11yPlugin;
 ```

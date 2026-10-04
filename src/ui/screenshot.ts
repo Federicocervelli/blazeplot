@@ -137,7 +137,8 @@ function drawDomTextForScreenshot(
   const elements = root.querySelectorAll<HTMLElement>("div");
   for (const el of elements) {
     const text = el.textContent;
-    if (!text || el.children.length > 0) continue;
+    // Visually hidden text (summaries, data tables, live regions) is for assistive technology only.
+    if (!text || el.children.length > 0 || el.closest(".blazeplot-visually-hidden")) continue;
 
     const style = getComputedStyle(el);
     if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;

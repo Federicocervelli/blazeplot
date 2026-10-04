@@ -63,6 +63,7 @@ function renderDefaultLegend(
       });
       const swatch = document.createElement("span");
       swatch.textContent = "\u2588";
+      swatch.className = "blazeplot-legend-swatch";
       swatch.setAttribute("aria-hidden", "true");
       swatch.style.flex = "0 0 auto";
       const label = document.createElement("span");
@@ -80,7 +81,9 @@ function renderDefaultLegend(
     element.style.color = item.visible
       ? options.textColor ?? chart.theme.legendTextColor
       : options.mutedTextColor ?? chart.theme.legendMutedTextColor;
-    element.style.opacity = item.visible ? "1" : "0.45";
+    // Hidden series keep readable (4.5:1) muted text; the dimmed swatch and strike-through mark the state without color.
+    swatch.style.opacity = item.visible ? "1" : "0.45";
+    label.style.textDecoration = item.visible ? "none" : "line-through";
     swatch.style.color = rgbaCss(item.color);
     label.textContent = name;
     // Leave existing nodes in place so theme and series updates retain keyboard focus.

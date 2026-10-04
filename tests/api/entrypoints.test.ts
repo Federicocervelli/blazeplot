@@ -16,6 +16,7 @@ const expectedExports: Record<string, readonly string[]> = {
     "Chart",
     "DEFAULT_CHART_THEME",
     "HistogramDataset",
+    "LIGHT_CHART_THEME",
     "OhlcRingBuffer",
     "RingBuffer",
     "ServerSampledDataset",
@@ -37,6 +38,7 @@ const expectedExports: Record<string, readonly string[]> = {
   "./plugins/crosshair": ["crosshairPlugin"],
   "./plugins/navigator": ["navigatorPlugin"],
   "./plugins/flamegraph": ["buildStatusChartModel", "flameGraphPlugin", "parseFoldedStacks"],
+  "./plugins/a11y": ["a11yPlugin"],
 };
 
 interface PackageJson {

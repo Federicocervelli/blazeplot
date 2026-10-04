@@ -54,12 +54,27 @@ interface InteractionSnapshot {
   renderEvents: number;
   followingLatestX: boolean;
   latestXFollowPaused: boolean;
+  a11y: {
+    active: string;
+    activeOutline: string;
+    announcement: string;
+    selectionStatus: string;
+    hoverSource: string | null;
+    hoverSeries: string | null;
+    hoverIndex: number | null;
+    annotationCount: number;
+    annotationClicks: number;
+    tableRows: number;
+    describedBy: string;
+  };
   error?: string | null;
 }
 
 // Each case gets a fresh page. Earlier pages are closed so their render loops
 // (continuous mode, live follow) do not compete for CPU with timing-sensitive cases.
 let openTargetId: string | null = null;
+/** CDP modifier bit for Shift. */
+const SHIFT = 8;
 
 await main();
 
@@ -91,10 +106,12 @@ async function main(): Promise<void> {
     await runContinuousRenderLoopCase(options, serverUrl);
     await runLiveFollowCase(options, serverUrl);
     await runRobustnessCase(options, serverUrl);
+    await runKeyboardA11yCase(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
-    if (userDataDir && !options.keepBrowser) await rm(userDataDir, { recursive: true, force: true });
+    // Windows can keep the profile locked briefly after Chrome exits; a failed cleanup must not mask test errors.
+    if (userDataDir && !options.keepBrowser) await rm(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
   }
 }
 
@@ -432,6 +449,89 @@ async function runRobustnessCase(options: Options, serverUrl: string): Promise<v
   } finally {
     cdp.close();
   }
+}
+
+/** Keyboard-only: Tab focus, inspection cursor, keyboard selection, annotation activation/removal, focus rings. */
+async function runKeyboardA11yCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "a11y");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    await sleep(1_200); // the summary (1 s) and data table (0.5 s) update on throttles
+    let snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.describedBy.includes("interaction line 1") && snapshot.a11y.describedBy.includes("1,000 points"), `generated summary describes the series (${snapshot.a11y.describedBy})`);
+    assert(snapshot.a11y.tableRows > 0, "a11y data table has rows");
+
+    await key(cdp, "Tab", 9);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.active === "chart-root", `Tab focuses the chart root first (got ${snapshot.a11y.active})`);
+    assert(snapshot.a11y.activeOutline.startsWith("solid 2px"), `chart root shows a 2px focus ring (got ${snapshot.a11y.activeOutline})`);
+
+    await key(cdp, "Enter", 13);
+    await sleep(120);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.hoverSource === "inspection", "Enter starts keyboard inspection");
+    assert(snapshot.a11y.announcement.startsWith("interaction line 1: x"), `inspection announces the value (${snapshot.a11y.announcement})`);
+    assert(snapshot.visibleTooltips >= 1 && snapshot.visibleCrosshairs >= 1, "tooltip and crosshair follow the inspection cursor");
+    const startIndex = snapshot.a11y.hoverIndex ?? -1;
+    const startCrosshairX = snapshot.crosshairX;
+
+    for (let i = 0; i < 3; i++) await key(cdp, "ArrowRight", 39);
+    await sleep(120);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.hoverIndex === startIndex + 3, `ArrowRight steps one sample at a time (${startIndex} -> ${snapshot.a11y.hoverIndex})`);
+    assert(snapshot.crosshairX !== null && startCrosshairX !== null && snapshot.crosshairX > startCrosshairX, "crosshair moves with the cursor");
+    assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1e-6) && snapshot.viewport.xMin === snapshot.initialViewport.xMin, "inspection keys do not pan the chart");
+
+    await key(cdp, "ArrowDown", 40);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.hoverSeries === "interaction cosine", `ArrowDown switches series (${snapshot.a11y.hoverSeries})`);
+    await key(cdp, "End", 35);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.hoverIndex === 999, `End jumps to the last visible sample (${snapshot.a11y.hoverIndex})`);
+    await key(cdp, "Escape", 27);
+    await sleep(120);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.hoverSource === null && snapshot.visibleTooltips === 0, "Escape ends inspection and hides the tooltip");
+    console.log("✓ keyboard: Tab focus ring, inspection cursor drives tooltip and crosshair, series switch, End, Escape");
+
+    for (let i = 0; i < 4; i++) await key(cdp, "ArrowRight", 39, SHIFT);
+    await key(cdp, "Enter", 13);
+    await sleep(120);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.selectionCommits === 1 && snapshot.selectionBounds !== null && snapshot.selectionBounds.xMax > snapshot.selectionBounds.xMin, "Shift+Arrow then Enter commits a keyboard selection");
+    assert(snapshot.a11y.selectionStatus.startsWith("Selected X from"), `keyboard selection is announced (${snapshot.a11y.selectionStatus})`);
+    console.log("✓ keyboard: Shift+Arrow selection committed with Enter");
+
+    await key(cdp, "Tab", 9);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.active === "annotation:Deploy", `Tab reaches the first annotation (got ${snapshot.a11y.active})`);
+    assert(snapshot.a11y.activeOutline.startsWith("solid 2px"), `annotation shows a focus ring (got ${snapshot.a11y.activeOutline})`);
+    await key(cdp, "Enter", 13);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.annotationClicks === 1, "Enter activates the focused annotation");
+    await key(cdp, "Delete", 46);
+    await sleep(80);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.annotationCount === 1, "Delete removes a removable annotation");
+    assert(snapshot.a11y.active === "annotation:Incident", `focus moves to the next annotation (got ${snapshot.a11y.active})`);
+    await key(cdp, "Delete", 46);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.annotationCount === 1, "Delete leaves non-removable annotations alone");
+
+    await key(cdp, "Tab", 9);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.active.startsWith("legend:"), `Tab reaches the legend (got ${snapshot.a11y.active})`);
+    assert(snapshot.a11y.activeOutline.startsWith("solid 2px"), `legend item shows a focus ring (got ${snapshot.a11y.activeOutline})`);
+    console.log("✓ keyboard: annotation focus, activation, removal; legend focus ring");
+  } finally {
+    cdp.close();
+  }
+}
+
+
+async function key(cdp: CdpClient, name: string, keyCode: number, modifiers = 0): Promise<void> {
+  await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: name, code: name, windowsVirtualKeyCode: keyCode, modifiers });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: name, code: name, windowsVirtualKeyCode: keyCode, modifiers });
 }
 
 async function openCase(options: Options, serverUrl: string, caseName: string): Promise<CdpClient> {

@@ -17,7 +17,7 @@ BlazePlot is for datasets that outgrow general-purpose charting libraries: milli
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **159 KiB raw**. Plugins and helpers ship as separate subpath entries.
+The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **170 KiB raw**. Plugins and helpers ship as separate subpath entries.
 
 Headline numbers from the manual headed comparison against uPlot and Chart.js:
 
@@ -81,7 +81,8 @@ For streaming data, pass `capacity` to `addLine` and append samples; see [Live d
 - **Series types.** Line, area, scatter, bar, histogram, OHLC, and candlestick, each with independent data, style, and visibility.
 - **Live and large data.** Streaming ring buffers (including fixed-rate `UniformRingBuffer`), static typed arrays, and a custom dataset contract for remote or procedural sources.
 - **Level-of-detail downsampling.** Min/max extraction keeps dense views accurate and cheap at any zoom; `ServerSampledDataset` renders server-reduced buckets directly.
-- **Plugins.** Legend, tooltip, interactions (pan, zoom, reset), annotations, selection, crosshair, navigator, and flame graph, built on the same public APIs available to custom plugins.
+- **Plugins.** Legend, tooltip, interactions (pan, zoom, reset), annotations, selection, crosshair, navigator, accessibility, and flame graph, built on the same public APIs available to custom plugins.
+- **Accessibility.** Charts are named figures with a generated data summary, keyboard pan/zoom, focus rings, and forced-colors support; `blazeplot/plugins/a11y` adds a hidden data table and a keyboard inspection cursor (see [Accessibility](docs/accessibility.md)).
 - **Linked charts.** `blazeplot/linked` synchronizes multi-panel layouts.
 - **Export.** `chart.screenshot()`, CSV/JSON data export, and pure transform helpers (see [Export image and data](docs/examples.md#export-image-and-data)).
 - **Diagnostics.** `chart.getFrameStats()` reports fps, frame time, vertex count, and draw calls.
@@ -106,6 +107,7 @@ Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](doc
 | `blazeplot/plugins/crosshair` | Built-in crosshair and ruler plugin. |
 | `blazeplot/plugins/navigator` | Built-in overview/navigator plugin. |
 | `blazeplot/plugins/flamegraph` | Built-in flame graph and status-span plugin. |
+| `blazeplot/plugins/a11y` | Built-in accessibility plugin: hidden data table, keyboard inspection cursor, live summary. |
 
 Every public export (with kind and summary) and the per-chunk bundle sizes are listed in the [API reference](docs/api-reference.md).
 <!-- README_DOCS_END -->

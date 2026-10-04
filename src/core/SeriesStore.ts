@@ -230,6 +230,11 @@ export class SeriesStore<D extends Dataset = Dataset> {
     return this.dataset.range;
   }
 
+  /** @internal Replace the resolved style, e.g. while the OS forces high-contrast colors. The chart re-renders. */
+  setStyle(style: SeriesStyle): void {
+    (this as { style: SeriesStyle }).style = style;
+  }
+
   /** Show or hide the series. Legends and other plugins update automatically. */
   setVisible(visible: boolean): void {
     if (this._visible === visible) return;

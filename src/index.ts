@@ -11,6 +11,7 @@ export type {
   ChartFollowXOptions,
   ChartFrameStats,
   ChartHoverState,
+  ChartInspectionTarget,
   ChartKeyboardOptions,
   ChartOptions,
   ChartPickGroup,
@@ -34,6 +35,7 @@ export type {
   TypedSeriesConfig,
 } from "./ui/Chart.js";
 export type { AxisPosition } from "./ui/ChartLayout.js";
+export type { ChartSeriesSummary, ChartSummary, ChartSummaryRange } from "./ui/ChartSummary.js";
 
 // Plugin contract
 export type {
@@ -57,7 +59,7 @@ export type {
   ChartSurfaceDecoration,
   ChartSurfaceStyle,
 } from "./ui/PluginHost.js";
-export { DEFAULT_CHART_THEME } from "./ui/theme.js";
+export { DEFAULT_CHART_THEME, LIGHT_CHART_THEME } from "./ui/theme.js";
 export type { ChartTheme, ResolvedChartTheme } from "./ui/theme.js";
 
 // Series handle and data contracts

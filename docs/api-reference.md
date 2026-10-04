@@ -36,6 +36,7 @@ Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./example
 | `blazeplot/plugins/crosshair` | Built-in crosshair and ruler plugin. |
 | `blazeplot/plugins/navigator` | Built-in overview/navigator plugin. |
 | `blazeplot/plugins/flamegraph` | Built-in flame graph and status-span plugin. |
+| `blazeplot/plugins/a11y` | Built-in accessibility plugin: hidden data table, keyboard inspection cursor, live summary. |
 
 The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; the README performance section reports the aggregate core runtime size.
 
@@ -50,14 +51,16 @@ Generated from `dist/` after the package build.
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
 | interactions plugin | `dist/plugins/interactions.js` | 11 KiB |
-| annotations plugin | `dist/plugins/annotations.js` | 9 KiB |
+| annotations plugin | `dist/plugins/annotations.js` | 13 KiB |
 | navigator plugin | `dist/plugins/navigator.js` | 8 KiB |
-| selection plugin | `dist/plugins/selection.js` | 5 KiB |
+| selection plugin | `dist/plugins/selection.js` | 8 KiB |
 | legend plugin | `dist/plugins/legend.js` | 3 KiB |
-| tooltip plugin | `dist/plugins/tooltip.js` | 4 KiB |
+| tooltip plugin | `dist/plugins/tooltip.js` | 5 KiB |
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 143 KiB |
+| a11y plugin | `dist/plugins/a11y.js` | 10 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 151 KiB |
+| shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 3 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 4 KiB |
 
@@ -81,7 +84,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | Built-in axis scale names. |
 | `Camera2D` | class | `./interaction/Camera2D` | Camera that maps data domains to clip, screen, and plot coordinates. |
 | `Chart` | class | `./ui/Chart` | Imperative WebGL chart instance for rendering, interaction, and plugins. |
-| `ChartAccessibilityOptions` | interface | `./ui/Chart` | ARIA and keyboard-navigation options for the chart root. |
+| `ChartAccessibilityOptions` | interface | `./ui/Chart` | ARIA, keyboard-navigation, and high-contrast options for the chart root. |
 | `ChartAutoFitYOptions` | type | `./ui/Chart` | Options for automatically refitting Y as the X viewport changes. |
 | `ChartEventMap` | interface | `./ui/Chart` | Payload delivered to `chart.subscribe(event, callback)` for each chart event. Includes the plugin events declared on `ChartPluginEventMap` (such as `select`). |
 | `ChartEventName` | type | `./ui/Chart` | Name of an event accepted by `Chart.subscribe`. |
@@ -90,6 +93,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartFollowXOptions` | interface | `./ui/Chart` | Options for keeping the X viewport anchored to the latest data. |
 | `ChartFrameStats` | interface | `./ui/Chart` | Render metrics from the last frame. |
 | `ChartHoverState` | interface | `./ui/Chart` | Current hover hit-test result, including pointer position and picked items. |
+| `ChartInspectionTarget` | interface | `./ui/Chart` | A sample to show as the hover state, set with `ctx.state.inspect(...)`. |
 | `ChartKeyboardOptions` | interface | `./ui/Chart` | Keyboard pan and zoom behavior for accessible charts. |
 | `ChartLayoutReservation` | interface | `./ui/PluginHost` | Extra CSS-pixel space reserved around the plot by a plugin, e.g. for a navigator or toolbar. Reservations from every plugin add up. |
 | `ChartMountSlot` | type | `./ui/PluginHost` | Where a plugin can attach its own DOM with `ctx.dom.mount(slot, element)`. - `"plot"`: the plot area, above the WebGL canvas. Coordinates match `ctx.coords` plot coordinates (CSS pixels from the plot's top-left). Overlays here should keep `pointer-events: none` unless they handle their own input. - `"root"`: the whole chart box, including axis gutters and space reserved with `ctx.layout.reserve(...)`. Use it for legends, toolbars, and navigators. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters (bottom, left, right). - `"body"`: the owning document's `<body>`, for `position: fixed` UI such as tooltips that must escape the chart's `overflow: hidden`. |
@@ -119,6 +123,9 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartSelectEvent` | interface | `./ui/Chart` | Selection event payload emitted by selection plugins or custom code. `null` means the selection was cleared. |
 | `ChartSeriesClickEvent` | interface | `./ui/Chart` | Click payload for the nearest chart series item. |
 | `ChartSeriesState` | interface | `./ui/Chart` | Runtime state for one chart series. |
+| `ChartSeriesSummary` | interface | `./ui/ChartSummary` | Per-series facts in a `ChartSummary`. |
+| `ChartSummary` | interface | `./ui/ChartSummary` | Data summary the chart exposes to assistive technology through `aria-describedby`. Pass `accessibility.description` as a function to turn it into your own text. |
+| `ChartSummaryRange` | interface | `./ui/ChartSummary` | Inclusive numeric range used by `ChartSummary`. |
 | `ChartSurface` | type | `./ui/PluginHost` | Chart-owned element a plugin can listen on or decorate with `ctx.dom.listen` and `ctx.dom.decorate`. - `"plot"`: the interactive plot surface (it receives pointer, wheel, and touch input). - `"root"`: the chart root; it is focusable and receives keyboard input when accessibility is enabled. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters. They ignore pointer input until a plugin decorates them with `pointerEvents: "auto"`. |
 | `ChartSurfaceDecoration` | interface | `./ui/PluginHost` | Styles, classes, and attributes applied to a chart surface by `ctx.dom.decorate`. |
 | `ChartSurfaceStyle` | interface | `./ui/PluginHost` | Inline style properties a plugin may set on a chart surface. |
@@ -140,6 +147,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `InvalidSample` | interface | `./core/types` | A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSampleReason` | type | `./core/types` | Why a sample broke the dataset X rule (X finite and non-decreasing): `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the previous accepted X (or, for `update`, outside its neighbors). |
 | `isWebGL2Available` | function | `./render/WebGL2Backend` | Return whether the current environment can create a WebGL2 context. |
+| `LIGHT_CHART_THEME` | const | `./ui/theme` | Light chart theme. Pass it as `theme`, or spread it and override a few tokens. Text tokens meet a 4.5:1 and series, selection, crosshair, and focus colors a 3:1 contrast ratio against its background. |
 | `LODStrategy` | type | `./core/types` | Downsampling strategy used when a series is denser than the plot. |
 | `MinMaxSegmentCopyDataset` | interface | `./core/types` | Optional high-performance min/max extraction capability for dense rendering. Implementations can use pyramids, segment trees, database aggregates, or analytic/procedural envelopes. Write up to `maxSegments` `[x - xOrigin, minY, maxY]` triples into `target` and return how many were written. |
 | `MinMaxY` | interface | `./core/MinMaxTree` | Inclusive Y extent of a sample range. |

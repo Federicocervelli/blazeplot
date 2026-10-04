@@ -3,7 +3,7 @@ import { selectionPlugin } from "../../src/plugins/selection.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
 import type { SelectionEvent, SelectionPluginOptions, SelectionState } from "../../src/ui/Selection.ts";
 import { countNodes } from "./fakes.ts";
-import { fire, installPlugin, keyEvent, pointerEvent, useChartHarness } from "./harness.ts";
+import { fire, installPlugin, keyEvent, pluginContext, pointerEvent, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();
 
@@ -203,5 +203,91 @@ describe("selectionPlugin", () => {
     const { chart } = make();
     chart.dispose();
     expect(h.ledger().reachable()).toBe(0);
+  });
+});
+
+describe("selectionPlugin keyboard", () => {
+  const press = (chart: Chart, key: string, init: Parameters<typeof keyEvent>[1] = {}, target: EventTarget = chart.rootElement): KeyboardEvent => {
+    const event = keyEvent(key, init);
+    fire(target, event);
+    return event;
+  };
+  const status = (chart: Chart): string => (chart.rootElement.querySelector(".blazeplot-selection-status")?.textContent ?? "").replace(/ $/, "");
+
+  it("extends a range from the plot center with Shift+Arrow, commits with Enter, and emits select", () => {
+    const { chart, plugin, events, selects } = make({ mode: "x-range" });
+    const right = press(chart, "ArrowRight", { shiftKey: true });
+    expect(right.defaultPrevented).toBe(true);
+    // The chart's own Shift+Arrow pan did not run.
+    expect(chart.getViewport().xMin).toBe(0);
+    press(chart, "ArrowRight", { shiftKey: true });
+    expect(events.map((event) => event.type)).toEqual(["start", "update"]);
+    expect(events[1]!.sourceEvent).toBeInstanceOf(window.KeyboardEvent);
+    expect(overlayOf(chart).style.display).toBe("block");
+    expect(overlayOf(chart).style.left).toBe("200px");
+    expect(overlayOf(chart).style.width).toBe("40px");
+    expect(status(chart)).toBe("Selecting X from 50.0 to 60.0.");
+    // Up/Down do nothing in x-range mode, so they fall through to the chart.
+    expect(press(chart, "ArrowUp", { shiftKey: true }).defaultPrevented).toBe(true);
+    expect(chart.getViewport().yMin).toBe(25);
+
+    expect(press(chart, "Enter").defaultPrevented).toBe(true);
+    expect(plugin.getSelection()?.bounds.xMin).toBeCloseTo(50, 8);
+    expect(plugin.getSelection()?.bounds.xMax).toBeCloseTo(60, 8);
+    expect(selects.at(-1)?.bounds.xMax).toBeCloseTo(60, 8);
+    expect(events.at(-1)?.type).toBe("commit");
+    expect(status(chart)).toBe("Selected X from 50.0 to 60.0.");
+    // Without a pending range, Enter is not consumed.
+    expect(press(chart, "Enter").defaultPrevented).toBe(false);
+    chart.dispose();
+  });
+
+  it("starts from the keyboard inspection cursor and cancels with Escape, keeping the committed selection", () => {
+    const { chart, plugin } = make({ mode: "xy" });
+    const series = chart.addLine({ capacity: 128, name: "A" });
+    for (let x = 0; x <= 100; x += 10) series.append({ x, y: x });
+    pluginContext(chart).state.inspect({ series, index: 2 });
+    press(chart, "ArrowLeft", { shiftKey: true });
+    expect(status(chart)).toBe("Selecting X from 15.0 to 20.0, Y from 20.0 to 20.0. Enter commits, Escape cancels.");
+    press(chart, "ArrowDown", { shiftKey: true });
+    expect(status(chart)).toBe("Selecting X from 15.0 to 20.0, Y from 15.0 to 20.0.");
+    press(chart, "Enter");
+    const committed = plugin.getSelection();
+    for (const [key, value] of Object.entries({ xMin: 15, xMax: 20, yMin: 15, yMax: 20 })) expect(committed?.bounds[key as "xMin"]).toBeCloseTo(value, 8);
+
+    press(chart, "ArrowRight", { shiftKey: true });
+    expect(press(chart, "Escape").defaultPrevented).toBe(true);
+    expect(status(chart)).toBe("Selection cancelled.");
+    expect(plugin.getSelection()).toBe(committed);
+    expect(overlayOf(chart).style.display).toBe("block");
+    chart.dispose();
+  });
+
+  it("ignores keys from child controls, with modifiers, or when keyboard is false", () => {
+    const { chart, events } = make();
+    const child = document.createElement("button");
+    chart.rootElement.appendChild(child);
+    press(chart, "ArrowRight", { shiftKey: true }, child);
+    press(chart, "ArrowRight", { shiftKey: true, ctrlKey: true });
+    press(chart, "ArrowRight");
+    expect(events).toEqual([]);
+    chart.dispose();
+
+    const off = make({ keyboard: false });
+    press(off.chart, "ArrowRight", { shiftKey: true });
+    expect(off.events).toEqual([]);
+    expect(off.chart.rootElement.querySelector(".blazeplot-selection-status")).toBeNull();
+    off.chart.dispose();
+  });
+
+  it("steps by the configured fraction and announces clearing", () => {
+    const { chart, plugin } = make({ mode: "x-range", keyboard: { step: 0.25 } });
+    press(chart, "ArrowLeft", { shiftKey: true });
+    press(chart, "Enter");
+    expect(plugin.getSelection()?.bounds.xMin).toBeCloseTo(25, 8);
+    expect(plugin.getSelection()?.bounds.xMax).toBeCloseTo(50, 8);
+    plugin.clear();
+    expect(status(chart)).toBe("Selection cleared.");
+    chart.dispose();
   });
 });

@@ -4,7 +4,7 @@ This guide is for applications and plugins written against BlazePlot 0.x. It lis
 
 The list was produced by comparing the published declarations of 0.5.5 with the 1.0 declarations (the `api/public-api.md` snapshot), plus the 1.0 changes that alter runtime behavior. If you are on 0.4 or older, apply the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) first (most upgrades there are mechanical renames), then come back here. Release candidates are published to the npm `rc` dist-tag until 1.0 ships.
 
-Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals and two flame graph helpers, with chart data export moved to `blazeplot/export`, one typing fix, one data-ingestion rule (X must be finite and non-decreasing; see change 3), and a reshaped (now stable) plugin contract that only custom plugin authors touch.
+Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals and two flame graph helpers, with chart data export moved to `blazeplot/export`, one typing fix, one data-ingestion rule (X must be finite and non-decreasing; see change 3), a reshaped (now stable) plugin contract that only custom plugin authors touch, and accessibility semantics on the chart root (`role="figure"`, a generated description, focus rings, and new keyboard paths; see change 9).
 
 ## What did not change
 
@@ -284,6 +284,25 @@ export { footerPlugin };
 
 See [Plugin authoring](./plugin-authoring.md) for the full contract, mount slots, lifecycle hooks, and typed plugin events.
 
+### 9. Chart semantics and keyboard changes
+
+1.0 makes charts readable by assistive technology and adds keyboard paths through the built-in plugins (see [Accessibility](./accessibility.md)). Behavior that changed:
+
+| 0.5 | 1.0 |
+|---|---|
+| Chart root `role="img"` | `role="figure"`, so the content inside (summary, data table, legend, navigator) is exposed. Pass `accessibility: { role: "img" }` to keep the old role. |
+| `accessibility.description` set `aria-description` | The root has `aria-describedby` pointing at a visually hidden element. By default it holds a generated data summary; a string `description` replaces it, a function rewords the `ChartSummary`, and `""` removes it. `aria-description` is no longer set. |
+| No focus styles of its own | A `<style class="blazeplot-style">` element inside the chart root adds 2px `:focus-visible` rings (theme token `focusRingColor`) and forced-colors rules. Tests that count `<style>` elements in the root should skip `.blazeplot-style`. |
+| Canvas ignored OS high-contrast mode | In `forced-colors: active`, the canvas and series use system colors, and switch back when the mode ends. Opt out with `accessibility.forcedColors: false`. |
+| `ResolvedChartTheme` | Has a new required `focusRingColor` token. Objects you build as a full `ResolvedChartTheme` (rather than a partial `ChartTheme`) need it. |
+| Shift + Arrow keys always panned 2.5x | With `selectionPlugin` installed (and `keyboard` not `false`), Shift + Arrow extends a keyboard selection instead, and Enter commits it. |
+| Escape always cleared the selection | The selection's Escape handler ignores events that another handler already `preventDefault()`ed (for example leaving keyboard inspection). |
+| Annotations were not focusable | Each visible annotation is a Tab stop with `role="button"`. Pass `focusable: false` to `annotationsPlugin` to keep the old Tab order. |
+| Hidden legend rows used `opacity: 0.45` | Hidden rows keep full opacity with muted text, a strike-through label, and a dimmed swatch, so the text keeps 4.5:1 contrast. |
+| `ChartHoverState` | Has an optional `source` (`"pointer"` or `"inspection"`). Plugins that re-pick hover states should leave `"inspection"` states alone. |
+
+New: `blazeplot/plugins/a11y`, `chart.getSummary()`, `LIGHT_CHART_THEME`, `ctx.state.inspect()` / `getInspection()`, and `ctx.coords.format()`.
+
 ## Platform requirements
 
 ### ESM only
@@ -362,5 +381,6 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 7. Search for imports of `exportChartData`, `chartDataToCSV`, `ExportableChart`, and `ChartData*` types from `blazeplot/data` and import them from `blazeplot/export` instead. Keep `binSamples` and `rollingMean` on `blazeplot/data`.
 8. Search for `buildFlameGraphModel` and `pickFrame`. Pass `foldedStacks` and `build` to `flameGraphPlugin()` (or call `setFoldedStacks`), and use `plugin.pick(clientX, clientY)` for hit testing.
 9. If you write custom plugins, port them to the grouped plugin context with the table in change 8 (search for `install(`, `setLayoutReservation`, `rootElement`, `plotElement`, `getCamera`, and `render:` callbacks of the legend, tooltip, and crosshair plugins). The new contract is stable. If you implement custom fast-path datasets or use `ctx.unstable`, note they are experimental: pin a 1.x range and read each minor changelog.
-10. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-11. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
+10. Check change 9 if you style or test the chart root: search for `role="img"`, `aria-description`, `querySelector("style")` on the chart root, and full `ResolvedChartTheme` objects (add `focusRingColor`). Give each chart an `accessibility.label`, and consider `a11yPlugin()` for charts whose values users need.
+11. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
+12. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.

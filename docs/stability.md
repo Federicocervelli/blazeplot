@@ -38,6 +38,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 | `blazeplot/plugins/selection` | Stable | Same. |
 | `blazeplot/plugins/crosshair` | Stable | Same. |
 | `blazeplot/plugins/navigator` | Stable | Same. |
+| `blazeplot/plugins/a11y` | Stable | Same. The wording of announcements and table captions is not part of the contract; use `formatAnnouncement` and the format options to pin it. |
 | `blazeplot/plugins/flamegraph` | Experimental | Newest and narrowest plugin; its model helpers (`parseFoldedStacks`, `buildStatusChartModel`) may still change. |
 
 "Stable" for a built-in plugin means the plugin function, its documented options, and its documented handle methods. Pixel-level appearance (spacing, default fonts, default colors) can change in a minor release; use `theme` and the plugin options to pin what matters to you.
@@ -50,11 +51,12 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 | Series handles | `SeriesStore` public methods (`append`, `updateAt`, `updateLast`, `replace`, `clear`, `setVisible`, `sampleAt`, `markDirty`, and so on) | Stable |
 | Datasets | `RingBuffer`, `UniformRingBuffer`, `StaticDataset`, `OhlcRingBuffer`, `StaticOhlcDataset`, `ServerSampledDataset`, `HistogramDataset`, `histogram` | Stable |
 | Dataset contract | `Dataset`, `AppendableDataset`, `YAppendableDataset`, `UpdatableDataset`, `YUpdatableDataset`, `OhlcDataset`, `SeriesConfig`, `SeriesStyle`, `Viewport`, `TimeRange`, `XRange`, `BufferOverflowStrategy`, `ValuePrecision`, `LODStrategy`, `SeriesMode` | Stable. See [Data semantics](./data-semantics.md). |
-| Theming | `DEFAULT_CHART_THEME`, `ChartTheme`, `ResolvedChartTheme`, `ThemeColor`, `RgbaColor` | Stable. New theme tokens may be added; existing token names are kept. |
+| Theming | `DEFAULT_CHART_THEME`, `LIGHT_CHART_THEME`, `ChartTheme`, `ResolvedChartTheme`, `ThemeColor`, `RgbaColor` | Stable. New theme tokens may be added; existing token names are kept. |
+| Accessibility | `ChartAccessibilityOptions`, `ChartKeyboardOptions`, `chart.getSummary()` with `ChartSummary`, `ChartSeriesSummary`, `ChartSummaryRange`, the root role/ARIA attributes and the key map in [Accessibility](./accessibility.md) | Stable. The wording of the generated summary text may improve in a minor release; pass `accessibility.description` to control it. |
 | Viewport policy | `ViewportPolicy`, `PanIntent`, `ZoomIntent`, `ZoomAxis` | Stable |
 | Axes | `AxisScale`, `AxisTickFormat`, `AxisTickFormatter`, `AxisTimeZone`, `BuiltInAxisScale`, `AxisConfig` | Stable |
 | WebGL2 availability | `isWebGL2Available`, `WebGL2UnavailableError` | Stable. See [Error handling](./error-handling.md). |
-| Plugin contract | `ChartPlugin`, `ChartPluginHandle` (with its `dispose`, `onResize`, `onThemeChange`, `onContextLost`, `onContextRestored` hooks), `ChartPluginContext` and its groups (`ChartPluginCoords`, `ChartPluginViewport`, `ChartPluginState`, `ChartPluginLayout`, `ChartPluginDom`, `ChartPluginEvents`), `ChartPluginEventMap`, `ChartPluginEventName`, `ChartMountSlot`, `ChartSurface`, `ChartSurfaceDecoration`, `ChartSurfaceStyle`, `ChartRect`, `ChartPlotSize`, `ChartLayoutReservation`, and the install/hook/dispose order | Stable, except `ctx.unstable` (below). New groups, members, slots, surfaces, hooks, and plugin events may be added in a minor release; existing ones keep their names and behavior. The built-in plugins are written against this surface only. See [Plugin authoring](./plugin-authoring.md). |
+| Plugin contract | `ChartPlugin`, `ChartPluginHandle` (with its `dispose`, `onResize`, `onThemeChange`, `onContextLost`, `onContextRestored` hooks), `ChartPluginContext` and its groups (`ChartPluginCoords` including `format`, `ChartPluginViewport`, `ChartPluginState` including `inspect`/`getInspection` with `ChartInspectionTarget`, `ChartPluginLayout`, `ChartPluginDom`, `ChartPluginEvents`), `ChartPluginEventMap`, `ChartPluginEventName`, `ChartMountSlot`, `ChartSurface`, `ChartSurfaceDecoration`, `ChartSurfaceStyle`, `ChartRect`, `ChartPlotSize`, `ChartLayoutReservation`, and the install/hook/dispose order | Stable, except `ctx.unstable` (below). New groups, members, slots, surfaces, hooks, and plugin events may be added in a minor release; existing ones keep their names and behavior. The built-in plugins are written against this surface only. See [Plugin authoring](./plugin-authoring.md). |
 
 ## Experimental
 

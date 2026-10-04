@@ -49,7 +49,7 @@ These pages are visible on the docs site and should be useful to package users.
 - [Migrating to 1.0](./migrating-to-1.0.md) — breaking changes from 0.x to 1.0 with before and after code and a checklist.
 - [API stability](./stability.md) — which exports and subpaths are stable, experimental, or internal.
 - [Error handling](./error-handling.md) — errors thrown, console output, and behavior for invalid data, viewports, and WebGL failures.
-- [Accessibility](./accessibility.md) — ARIA, keyboard navigation, built-in plugin behavior, and known limits.
+- [Accessibility](./accessibility.md) — Chart semantics, the a11y plugin, the key map, high contrast, built-in plugin behavior, and known limits.
 - [Roadmap](./roadmap.md) — current status, priorities, and non-goals.
 - [API reference](./api-reference.md) — generated package entry points, bundle-size table, and public exports.
 

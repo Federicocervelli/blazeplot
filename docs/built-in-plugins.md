@@ -1,6 +1,6 @@
 # Built-in plugins
 
-Built-in plugins are optional. Import them from subpaths so unused plugin code can stay out of your bundle. Every built-in plugin except `blazeplot/plugins/flamegraph` is stable; flamegraph is experimental (see [API stability](./stability.md)).
+Built-in plugins are optional. Import them from subpaths so unused plugin code can stay out of your bundle. Every built-in plugin except `blazeplot/plugins/flamegraph` is stable; flamegraph is experimental (see [API stability](./stability.md)). Keyboard and screen-reader behavior of each plugin is listed in [Accessibility](./accessibility.md#built-in-plugins).
 
 ```ts
 import { Chart } from "blazeplot";
@@ -27,7 +27,7 @@ For live charts using `chart.followLatestX(...)`, double-click/tap reset resumes
 - `crosshairPlugin` draws cursor guides, supports ruler measurements, and can sync across a group.
 - `legendPlugin` displays series names/colors and can toggle visibility.
 
-Use the `group` or `syncGroup` options when several charts should share hover state.
+Use the `group` or `syncGroup` options when several charts should share hover state. The tooltip and crosshair also follow the keyboard inspection cursor of `a11yPlugin` (any hover state with `source: "inspection"`).
 
 ```ts
 import { Chart } from "blazeplot";
@@ -68,6 +68,8 @@ annotations.add({ type: "point", x: earningsTime + 3_600_000, y: 182.4, label: "
 
 The plugin handle supports `add`, `remove`, `clear`, `setAnnotations`, `getAnnotations`, `pick`, and `subscribe("hover" | "click", ...)`.
 
+Each visible annotation is keyboard focusable (`role="button"`, named by `ariaLabel`, its label, or a generated description). Enter or Space activates it like a click. Set `removable: true` on the plugin or on an annotation to let Delete or Backspace remove it (`onRemove` is called), or `focusable: false` to keep annotations out of the Tab order.
+
 ## Selection
 
 `selectionPlugin` adds brush/range selection UI and emits chart selection events. Use it for zoom-to-selection, comparing ranges, or selecting data windows for export.
@@ -94,6 +96,25 @@ selection.clear();
 ```
 
 Use `mode: "x-range"` for time-window selection, `"y-range"` for horizontal bands, or `"xy"` for box selection.
+
+Keyboard users select from the focused chart: Shift + Arrow keys extend a range from the keyboard inspection cursor (with `a11yPlugin`) or from the plot center, Enter commits it (same `select` event and `commit` change), and Escape cancels it. Progress is announced through a polite live region. Tune the step with `keyboard: { step: 0.1 }` (fraction of the plot per press) or turn it off with `keyboard: false`; while it is on, Shift + Arrow no longer does the chart's faster pan.
+
+## Accessibility
+
+`a11yPlugin` adds a visually hidden data table of the visible data, a keyboard inspection cursor (Enter on the focused chart, then arrow keys) that drives the tooltip and crosshair and announces each value, and an optional throttled live summary for streaming charts. See [Accessibility](./accessibility.md) for the full key map and options.
+
+```ts
+import { Chart } from "blazeplot";
+import { a11yPlugin } from "blazeplot/plugins/a11y";
+import { tooltipPlugin } from "blazeplot/plugins/tooltip";
+
+const chart = new Chart(element, {
+  accessibility: { label: "Request rate per service" },
+  plugins: [a11yPlugin({ table: { maxRows: 50 }, live: { intervalMs: 30_000 } }), tooltipPlugin()],
+});
+chart.start();
+// chart.dispose() also stops the plugin's timers.
+```
 
 ## Navigator
 

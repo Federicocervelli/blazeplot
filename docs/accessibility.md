@@ -1,8 +1,12 @@
 # Accessibility
 
-This page states what BlazePlot does for keyboard and assistive-technology users, and what it does not. Charts are drawn on a WebGL canvas, so a screen reader cannot read data values from the plot. BlazePlot gives the chart a name, a keyboard-navigable viewport, and accessible controls for the built-in legend and navigator; **you are responsible for providing the data itself in an accessible form** when the chart carries information users need.
+This page states what BlazePlot does for keyboard and assistive-technology users, and what it does not. Charts are drawn on a WebGL canvas, so a screen reader cannot read pixels. BlazePlot exposes the chart through three layers:
 
-Everything below was checked against the source in `src/ui/`. Nothing here is a claim of conformance with WCAG or any other standard; BlazePlot has not been audited against one.
+1. **The chart itself** (always on): a named, focusable `figure` with a generated text summary, keyboard pan and zoom, visible focus rings, and forced-colors (high-contrast) support.
+2. **`blazeplot/plugins/a11y`** (opt in): a visually hidden data table of the visible data, a keyboard inspection cursor that drives the tooltip and crosshair, and an optional live summary for streaming charts.
+3. **Keyboard support in the built-in plugins**: legend buttons, the navigator slider, keyboard range selection, and focusable annotations.
+
+Everything below is checked against the source in `src/ui/`, unit tests in `tests/ui/`, keyboard-only browser tests (`bun run test:interaction`), and automated axe-core checks of every built-in plugin (`bun run test:a11y`, which fails on serious or critical violations). Nothing here is a claim of conformance with WCAG or any other standard: BlazePlot has not been audited against one, and the manual screen reader pass below has **not been run yet** (it is a release-checklist item for 1.0).
 
 ## What the chart provides
 
@@ -10,14 +14,14 @@ These apply to every chart unless you pass `accessibility: false`.
 
 | Behavior | Detail |
 |---|---|
-| Focusable root | The chart root gets `tabindex="0"` unless it already has a non-negative tab index. The browser's default focus outline is kept (BlazePlot only offsets it by `-2px` so it stays inside the chart). |
-| Role | `role="img"` by default. Override with `accessibility.role`. |
+| Role | `role="figure"` by default, so the summary, data table, legend, and other controls inside stay reachable. Override with `accessibility.role`. |
 | Accessible name | `aria-label` is `accessibility.label`, otherwise the chart `title` and `subtitle` joined with an em dash, otherwise `"BlazePlot chart"`. |
-| Description | `aria-description` is set only when `accessibility.description` is given. |
-| Hidden decoration | The WebGL canvas and the axis tick containers get `aria-hidden="true"`. The plot layer gets `role="presentation"`. Axis tick text is therefore not announced. |
-| Keyboard navigation | Enabled by default; see below. |
-
-Always set a meaningful label. A default of `"BlazePlot chart"` tells a screen-reader user nothing about the data.
+| Description | `aria-describedby` points at a visually hidden element holding a generated summary: chart type, series count, the X range, and for each series its name, point count, value range, and latest value. It is refreshed at most once a second while data changes (and immediately when the chart gains focus), never per frame. `accessibility.description` replaces it with a fixed string, rewords it with a function of the `ChartSummary`, or removes it with `""`. `chart.getSummary()` returns the same data on demand. |
+| Focusable root | The chart root gets `tabindex="0"` unless it already has a non-negative tab index. |
+| Focus ring | A 2px `:focus-visible` outline on the chart root and on every focusable control inside it (legend buttons, navigator, annotations), colored by the `focusRingColor` theme token. Pointer clicks do not show it. |
+| Hidden decoration | The WebGL canvas and the axis tick containers get `aria-hidden="true"`; the plot layer gets `role="presentation"`. |
+| Forced colors | When the OS forces a high-contrast palette (`forced-colors: active`, e.g. Windows Contrast themes), the canvas switches to CSS system colors (`Canvas`, `CanvasText`, `Highlight`, `LinkText`, ...), every series is drawn in the system palette, overlays get forced-colors styles, and it switches back when the mode ends. Opt out with `accessibility.forcedColors: false`. |
+| Keyboard navigation | Enabled by default; see the key map. |
 
 ```ts
 import { Chart } from "blazeplot";
@@ -26,8 +30,9 @@ const element = document.getElementById("latency-chart")!;
 const chart = new Chart(element, {
   title: "Latency",
   accessibility: {
-    label: "Line chart of p95 latency by region over the last hour",
-    description: "The same values are in the table below the chart.",
+    label: "p95 latency by region, last hour",
+    // Optional: reword the generated summary.
+    description: (summary) => `${summary.series.length} regions. ${summary.text}`,
   },
 });
 
@@ -35,19 +40,81 @@ chart.start();
 // Call chart.dispose() when the element is removed.
 ```
 
-### Keyboard navigation
+Always set a meaningful label. A default of `"BlazePlot chart"` tells a screen-reader user nothing about the data.
 
-Keys work when the chart root has focus. They are ignored when the event target is an `input`, `textarea`, or `select`, when Alt, Ctrl, or Meta is held, or when another handler already called `preventDefault()`. The key is only prevented from its default browser action when it was handled. Because the listener is on the chart root, key presses bubbling from focusable children inside it (for example legend buttons, other than Enter and Space) also reach it.
+## The accessibility plugin
+
+`a11yPlugin` from `blazeplot/plugins/a11y` adds what the core keeps out to stay small:
+
+- **Data table.** A visually hidden `<table>` per visible series with a caption (`"CPU: 100 points, evenly sampled from 4,812 visible points"`), column headers, and the X value as each row's header. Rows come from the visible range, evenly sampled down to `table.maxRows` (default 100, first and last point always kept). The table follows the viewport and data, rebuilt at most every `table.updateMs` (default 500 ms) and only when something changed. OHLC and candlestick series list open, high, low, and close.
+- **Inspection cursor.** With the chart root focused, Enter starts a keyboard cursor on the sample nearest the plot center. Each move is announced through a polite live region (`"CPU: x 12:00:05, y 45.2. Point 13 of 100."`), and the tooltip and crosshair plugins render at the inspected sample. Moving past the edge of the plot scrolls the viewport. Moving the mouse over the plot, Escape, or moving focus away ends it.
+- **Live summary** (opt in). `live: { intervalMs }` announces the latest value of each visible series through a polite live region at most every `intervalMs` (default 10 s, minimum 1 s), only when the text changed, and not while inspecting.
+
+Values are formatted like the axis labels (time, categorical, and custom tick formats included). Override with `formatX`, `formatY`, and `formatAnnouncement`.
+
+```ts
+import { Chart } from "blazeplot";
+import { a11yPlugin } from "blazeplot/plugins/a11y";
+import { crosshairPlugin } from "blazeplot/plugins/crosshair";
+import { tooltipPlugin } from "blazeplot/plugins/tooltip";
+
+const element = document.getElementById("cpu-chart")!;
+const accessibility = a11yPlugin({
+  table: { maxRows: 50, xLabel: "Time" },
+  live: { intervalMs: 15_000 },
+  formatY: (value) => `${value.toFixed(1)}%`,
+});
+const chart = new Chart(element, {
+  title: "CPU",
+  axes: { x: { scale: "time" } },
+  plugins: [accessibility, tooltipPlugin(), crosshairPlugin({ snap: "nearest-x" })],
+});
+chart.addLine({ capacity: 10_000, name: "CPU" });
+chart.start();
+
+// accessibility.refresh() rebuilds the table immediately; accessibility.isInspecting() reports the cursor.
+// Later: chart.dispose() also disposes the plugin and its timers.
+```
+
+The inspection cursor uses `ctx.state.inspect(...)` from the stable plugin contract, so a third-party plugin can drive the tooltip and crosshair the same way; see [Plugin authoring](./plugin-authoring.md#keyboard-inspection).
+
+## Key map
+
+All chart keys work while the **chart root itself** has focus (Tab to it). Keys typed in a control inside the chart (a legend button, an annotation, the navigator, an `input`) are handled by that control. Keys with Alt, Ctrl, or Meta held are ignored, and a key is only prevented from its default browser action when it was handled.
+
+### Navigation mode (default)
+
+| Key | Action | From |
+|---|---|---|
+| Arrow keys | Pan by 10% of the viewport. | Chart |
+| Shift + Arrow keys | Pan by 25%. With `selectionPlugin` installed, Shift + Left/Right (x-range and xy modes) and Shift + Up/Down (y-range and xy modes) extend a selection instead. | Chart / selection |
+| `+` or `=` / `-` or `_` | Zoom in / out on both axes around the plot center. | Chart |
+| PageUp / PageDown | Zoom the Y axis in / out. | Chart |
+| Home or `0` | Fit the viewport to the data (5% padding). | Chart |
+| Enter | Commit a pending keyboard selection; otherwise start the inspection cursor. | Selection / a11y plugin |
+| Escape | Cancel a pending keyboard selection, else clear the committed selection. | Selection |
+
+### Inspection mode (`a11yPlugin`)
 
 | Key | Action |
 |---|---|
-| Arrow keys | Pan by 10% of the viewport. Hold Shift for 2.5 times the step. |
-| `+` or `=` | Zoom in on both axes around the plot center. |
-| `-` or `_` | Zoom out on both axes. |
-| `PageUp` / `PageDown` | Zoom the Y axis in / out. |
-| `Home` or `0` | Fit the viewport to the data (5% padding). |
+| Left / Right | Previous / next sample of the active series, in screen direction (reversed X axes are handled). Scrolls the viewport when the sample is off-screen. |
+| Up / Down | Previous / next visible series, at the sample nearest the current X. |
+| PageUp / PageDown | Jump back / forward by 10% of the visible samples. |
+| Home / End | First / last visible sample; pressed again there, the first / last sample of the series. |
+| Shift + Arrow keys, Enter | Keyboard selection starting at the inspected sample (with `selectionPlugin`). |
+| `+`, `-`, `0` | Chart zoom and fit; the cursor stays on its sample. |
+| Escape | Leave inspection mode. |
 
-Tune the step sizes or turn the whole feature off:
+### Plugin controls
+
+| Control | Keys |
+|---|---|
+| Legend item (`legendPlugin`) | Tab between items; Enter or Space toggles the series. |
+| Navigator (`navigatorPlugin`) | Left/Right pan by 10% of the visible span (Shift: 25%); Home/End jump to the start/end of the domain. |
+| Annotation (`annotationsPlugin`) | Tab between visible annotations; Enter or Space activates it (calls `onClick` and `click` subscribers); Delete or Backspace removes it when it is `removable`. |
+
+Tune the chart's own step sizes or turn the chart keys off:
 
 ```ts
 import { Chart } from "blazeplot";
@@ -56,46 +123,65 @@ const element = document.getElementById("chart")!;
 const chart = new Chart(element, {
   accessibility: { keyboard: { panFraction: 0.2, zoomFactor: 1.5 } },
 });
-// accessibility: { keyboard: false } disables keys but keeps the ARIA attributes.
-// accessibility: false disables both.
+// accessibility: { keyboard: false } disables the chart keys but keeps ARIA and plugin keys.
+// accessibility: false disables the chart's ARIA, keys, summary, focus styles, and forced colors.
 chart.dispose();
 ```
 
-Keyboard pan and zoom pass through `ViewportPolicy.beforePan` and `beforeZoom`, so any viewport limits you set apply to keyboard users too.
+Keyboard pan and zoom pass through `ViewportPolicy.beforePan` and `beforeZoom`, so viewport limits apply to keyboard users too.
 
 ## Built-in plugins
 
 | Plugin | Keyboard and assistive-technology behavior |
 |---|---|
-| `legendPlugin` | Container is `role="group"` labelled "Chart series legend". With the default `toggleOnClick`, each series is a real `<button>` with `aria-pressed` reflecting visibility and the series name as `aria-label`. The colour swatch is `aria-hidden`. Tab, Enter, and Space work. Focus is preserved when series or theme update. Visibility is also shown by opacity, not only colour. |
-| `navigatorPlugin` | `role="slider"`, `tabindex="0"`, labelled "Chart navigator visible X range", with `aria-valuemin`, `aria-valuemax`, `aria-valuenow` (center of the visible range), and `aria-valuetext` ("Visible X range a to b"). Left/Right pan by 10% of the visible span (Shift: 25%); Home/End jump to the start/end of the domain. The overlay SVG is `aria-hidden`. |
-| `tooltipPlugin` | `role="tooltip"`, toggled between `aria-hidden="true"` (hidden) and `"false"` (shown). It follows the pointer, or a long press on touch. **It is not reachable from the keyboard** and is not announced as a live region. |
-| `crosshairPlugin` | Pointer-driven; no keyboard or ARIA support. |
-| `interactionsPlugin` | Pointer, wheel, and touch. The keyboard behavior above comes from `Chart` itself, not from this plugin. |
-| `selectionPlugin` | Drawing a selection is pointer-only. Escape clears the selection of the chart you last pressed or focused in. |
-| `annotationsPlugin` | Overlay is `aria-hidden`. Annotation text is not exposed to assistive technology. |
-| `flameGraphPlugin` | Its tooltip uses the same `role="tooltip"` / `aria-hidden` toggling as the tooltip plugin. Frames are not keyboard focusable. |
+| `a11yPlugin` | Hidden data table, inspection cursor, live summary; see above. |
+| `legendPlugin` | Container is `role="group"` labelled "Chart series legend". With the default `toggleOnClick`, each series is a `<button>` with `aria-pressed` and the series name as `aria-label`. Hidden series keep 4.5:1 text and are marked with a strike-through and a dimmed swatch, not only color. Focus is preserved when series or theme update. |
+| `navigatorPlugin` | `role="slider"`, `tabindex="0"`, labelled "Chart navigator visible X range", with `aria-valuemin`, `aria-valuemax`, `aria-valuenow` (center of the visible range), and `aria-valuetext`. The overlay SVG is `aria-hidden`. |
+| `tooltipPlugin` | `role="tooltip"`, toggled between `aria-hidden="true"` and `"false"`. Follows the pointer, a long press on touch, or the keyboard inspection cursor. Its content is not a live region; the a11y plugin announces inspected values. |
+| `crosshairPlugin` | Follows the pointer or the keyboard inspection cursor (`onMove` fires for both). Decorative for assistive technology. |
+| `selectionPlugin` | Pointer drag, or Shift + Arrow keys from the chart root (`keyboard: { step }`, default 5% of the plot per press; `keyboard: false` turns it off). The range being extended, the committed range, cancelling, and clearing are announced through a polite live region. Emits the same `select` event and `onChange` events (`sourceEvent` is the `KeyboardEvent`). |
+| `annotationsPlugin` | The SVG stays `aria-hidden`; each visible annotation gets a focus target with `role="button"`, `aria-roledescription="annotation"`, and an accessible name from `ariaLabel`, the label text, or a generated description ("Vertical line at x 50"). Opt out with `focusable: false` (per plugin or per annotation). Removal by keyboard needs `removable: true` and calls `onRemove`. |
+| `interactionsPlugin` | Pointer, wheel, and touch only; the keyboard equivalents come from the chart itself. |
+| `flameGraphPlugin` | Its tooltip uses the same `role="tooltip"` / `aria-hidden` toggling. Frames are not keyboard focusable. |
+
+## Contrast and high contrast
+
+The built-in dark theme (`DEFAULT_CHART_THEME`) and light theme (`LIGHT_CHART_THEME`) are checked by a unit test that computes WCAG contrast ratios from the theme tokens: text tokens (axis labels, titles, tooltip and legend text, including muted legend text) reach at least 4.5:1 against what they sit on, and series colors, the selection border, crosshair, point-marker outline, and focus ring reach at least 3:1 against the background. Translucent tokens are composited first. Grid lines are decorative and not checked. If you pass your own `theme`, checking its contrast is up to you.
+
+In forced-colors mode the chart follows the OS palette as described above. Series then differ by system color and by legend label only; if the series must stay distinguishable in high contrast, keep the count small or label them in the chart (for example with annotations).
 
 ## What BlazePlot does not provide
 
-- **No data in the accessibility tree.** Series values, tick labels, and picked points are not exposed. Provide a table, summary text, or download link next to the chart. `exportChartData` and `chartDataToCSV` from `blazeplot/export` turn the current series, the visible range, or a selection into rows you can render as a table.
-- **No keyboard path to point values.** Hover state (`chart.getHoverState()`, `chart.pick()`) is pointer-driven. If keyboard users need exact values, build your own control that calls `chart.pick(...)` or reads `exportChartData(chart, { range: "visible" })` and show the result in your page.
-- **No non-colour series encoding.** Series are told apart by colour only (plus legend labels). Choose palette colors that stay distinct for color-vision differences and pass `style.color` explicitly for critical series. Contrast between series colours, grid, and background is whatever the theme says; BlazePlot does not check it.
-- **No `forced-colors` or high-contrast adaptation.** Canvas pixels do not follow the operating-system forced-colors palette. Use `theme` tokens to supply a high-contrast theme when needed (see [Theming and layout](./theming-and-layout.md)).
-- **No reduced-motion switch.** BlazePlot runs no CSS transitions or animated easing. Viewport changes are immediate. Live charts update as data arrives; pause the feed or call `chart.setXFollowPaused(true)` if motion is a problem for your users.
-- **No live announcements.** Updates to streaming data are not announced.
-- **Role caveat.** The default `role="img"` makes screen readers treat the chart as a single image, which also hides it as an interactive widget even though it responds to the keys above. If keyboard control matters to your users, document it in `accessibility.description`, or pick a role that fits your page.
-- **Linked charts.** `createLinkedCharts` builds its panels with the same `Chart` defaults. Set a label for each panel with `panels: [{ options: { accessibility: { label: "..." } } }]`.
+- **No sonification or non-color series encoding.** Series are told apart by color and legend labels. Choose palette colors that stay distinct for color-vision differences and set `style.color` explicitly for critical series.
+- **No reduced-motion switch.** BlazePlot runs no CSS transitions. Live charts update as data arrives; pause the feed or call `chart.setXFollowPaused(true)` if motion is a problem for your users.
+- **Live data under the inspection cursor.** The cursor holds a logical sample index. On a wrapping ring buffer at capacity, new data shifts which sample that index points at; the announcement updates on the next key press.
+- **Linked charts** use the same defaults per panel. Set a label for each panel with `panels: [{ options: { accessibility: { label: "..." } } }]`, and add `a11yPlugin()` through `panelPlugins` where needed.
+
+## Manual screen reader pass
+
+Automated checks cannot tell whether announcements make sense. Before 1.0 ships, run this pass with the website previews and the `a11y` interaction fixture (`bun run fixtures:dev`, then `/interaction/?case=a11y`). **It has not been run yet**; it is tracked in the [release checklist](./internal/release-checklist.md). Record the browser and screen reader versions and file issues for anything that fails.
+
+Screen readers: NVDA with Firefox and with Chrome on Windows; VoiceOver with Safari on macOS.
+
+1. Tab to the chart. The name, role ("figure"), and generated summary are announced.
+2. Browse the chart content with the virtual cursor (NVDA browse mode, VoiceOver VO+arrows): the summary, the instructions, and each data table are reachable; table navigation (NVDA Ctrl+Alt+arrows, VoiceOver VO+arrows in a table) announces the X row header with each value.
+3. Press Enter on the chart: inspection starts and the first value is announced. NVDA must be in focus mode for the arrow keys to reach the chart; note whether it switches automatically.
+4. Left/Right, Up/Down, PageUp/PageDown, Home/End: each announces the new value once, without repeating stale text; the tooltip and crosshair follow on screen.
+5. Escape: "Stopped inspecting points" is announced and arrow keys pan again.
+6. Shift+Right a few times, then Enter: the range is announced while it grows and when it is committed; Escape cancels.
+7. Tab through annotations, legend items, and the navigator: each has a sensible name and role; Enter on an annotation activates it; Delete removes a removable one and focus lands on the next control.
+8. A streaming chart with `live` enabled announces the latest values no more often than configured and stays quiet while inspecting.
+9. Windows Contrast theme (forced colors): series, axes, focus rings, tooltip, legend, and selection stay visible, and switching the theme off restores the normal colors without a reload.
 
 ## Checklist for an accessible dashboard
 
-1. Give every chart a specific `accessibility.label` (and a `description` when it helps).
-2. Put the key numbers or a data table near the chart, generated from the same data.
-3. Use the legend plugin's button mode (the default) or your own real buttons to toggle series.
-4. Do not rely on hover for information that is not available elsewhere.
-5. Test with the keyboard only: Tab to the chart, then use the keys above.
-6. Check colours against your own contrast requirements.
+1. Give every chart a specific `accessibility.label`.
+2. Add `a11yPlugin()` where users need the values, or put your own table or key numbers next to the chart.
+3. Keep the legend's button mode (the default) or use your own real buttons to toggle series.
+4. Do not rely on hover alone: the inspection cursor and the data table cover keyboard and screen-reader users when the a11y plugin is installed.
+5. Test with the keyboard only, using the key map above.
+6. Check contrast if you change theme colors.
 
 ## Stability
 
-The ARIA attributes, roles, labels, and keyboard shortcuts in this page are part of the stable surface described in [API stability](./stability.md). Additional accessibility features can be added in minor releases.
+The roles, ARIA attributes, key map, the `accessibility` options, and `blazeplot/plugins/a11y` with its documented options are part of the stable surface described in [API stability](./stability.md). Wording of generated summaries and announcements is not; it may improve in minor releases (pass `description` or `formatAnnouncement` to control it). Additional accessibility features can be added in minor releases.

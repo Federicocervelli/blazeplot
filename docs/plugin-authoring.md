@@ -2,7 +2,7 @@
 
 A BlazePlot plugin is a small object installed with `new Chart(target, { plugins: [...] })`. Use plugins for UI or behavior that should stay outside the core renderer: legends, tooltips, custom overlays, interaction modes, or app-specific controls.
 
-The plugin contract is **stable** from 1.0: `ChartPlugin`, `ChartPluginContext` and its groups, `ChartPluginHandle`, `ChartPluginEventMap`, the mount slots and surfaces, and `ChartLayoutReservation`. Only `ctx.unstable` is experimental; see [API stability](./stability.md). The eight built-in plugins use nothing but this contract (a unit test enforces it), so anything they do, your plugin can do too.
+The plugin contract is **stable** from 1.0: `ChartPlugin`, `ChartPluginContext` and its groups, `ChartPluginHandle`, `ChartPluginEventMap`, the mount slots and surfaces, and `ChartLayoutReservation`. Only `ctx.unstable` is experimental; see [API stability](./stability.md). The nine built-in plugins use nothing but this contract (a unit test enforces it), so anything they do, your plugin can do too.
 
 ```ts
 import type { ChartPlugin } from "blazeplot";
@@ -28,9 +28,9 @@ export function examplePlugin(): ChartPlugin {
 | Group | Members | Use it for |
 |---|---|---|
 | `ctx.theme` | The current `ResolvedChartTheme` (read-only). | Colors and fonts for plugin UI. Re-read it in `onThemeChange`. |
-| `ctx.coords` | `dataToPlot(x, y, yAxis?)`, `clientToData(clientX, clientY, yAxis?)`, `clientToPlot(clientX, clientY)`, `plotToClient(plotX, plotY)` | Converting between data, plot-local CSS pixels, and pointer (client) coordinates. Data conversions honor log and custom axis scales. |
+| `ctx.coords` | `dataToPlot(x, y, yAxis?)`, `clientToData(clientX, clientY, yAxis?)`, `clientToPlot(clientX, clientY)`, `plotToClient(plotX, plotY)`, `format(value, axis, yAxis?)` | Converting between data, plot-local CSS pixels, and pointer (client) coordinates, and formatting values like the axis labels. Data conversions honor log and custom axis scales. |
 | `ctx.viewport` | `get(yAxis?)`, `set(viewport, yAxis?)`, `pan(intent, yAxis?)`, `zoom(intent, yAxis?)`, `fitToData(options?)`, `isReversed(axis, yAxis?)`, `follow(options?)`, `stopFollow()`, `setFollowPaused(paused)`, `getFollowState()` | Reading and changing the visible domain. Changes go through the chart's `ViewportPolicy` and pause latest-X following like a user gesture. |
-| `ctx.state` | `getSeries()`, `getHover()`, `pick(clientX, clientY, options?)`, `getFrameStats(target?)` | Series metadata, the current hover hit, hit-testing, and render metrics. |
+| `ctx.state` | `getSeries()`, `getHover()`, `pick(clientX, clientY, options?)`, `getFrameStats(target?)`, `inspect(target)`, `getInspection()` | Series metadata, the current hover hit, hit-testing, render metrics, and keyboard inspection (see below). |
 | `ctx.layout` | `plotRect()`, `rootRect()`, `reserve(reservation)` | Plot and chart geometry in client coordinates, and space around the plot for plugin UI. `reserve` returns a release function. |
 | `ctx.dom` | `mount(slot, element)`, `listen(surface, type, listener, options?)`, `decorate(surface, decoration)`, `contains(target)` | Attaching plugin DOM, listening to input on chart-owned elements, and styling them. Each returns an undo function. |
 | `ctx.events` | `subscribe(event, callback)`, `emit(event, payload)` | Chart events (`render`, `hover`, `viewportchange`, `serieschange`, pointer events, ...) and typed plugin events. |
@@ -176,6 +176,34 @@ cpu.append({ x: Date.now(), y: 42 });
 unsubscribe();
 chart.dispose();
 ```
+
+## Keyboard inspection
+
+`ctx.state.inspect({ series, index })` shows one sample as the chart's hover state, as if the pointer were on it. The tooltip, crosshair, and every `hover` subscriber follow it: the state has `source: "inspection"`, the inspected sample is `items[0]` (other visible series at the same X follow when hover grouping is `"x"`), and its client, plot, and data coordinates are the sample's. The chart re-projects it on every frame, so it stays on the sample through pans, zooms, and resizes; while the sample is hidden, a gap, or outside the plot, the hover state is `null` but the target is kept. `ctx.state.inspect(null)` ends it, and so does a pointer moving over the plot (check `ctx.state.getInspection()` in a `hover` subscriber to notice). A series that is not on the chart, or an index outside it, throws a `RangeError`.
+
+Keyboard handlers on the `"root"` surface should act only when the root itself has focus (`event.target === event.currentTarget`), so keys typed into controls inside the chart stay with those controls. The chart's own arrow-key pan listens on the root in the bubble phase; listen with `{ capture: true }` and call `preventDefault()` to take a key before it, and skip events that are already `defaultPrevented`.
+
+```ts
+import type { ChartPlugin } from "blazeplot";
+
+/** Press "L" on the focused chart to show the latest sample of the first series in the tooltip. */
+export function latestSamplePlugin(): ChartPlugin {
+  return {
+    install(ctx) {
+      ctx.dom.listen("root", "keydown", (event) => {
+        if (event.target !== event.currentTarget || event.defaultPrevented || event.key.toLowerCase() !== "l") return;
+        const state = ctx.state.getSeries().find((item) => item.visible && item.series.length > 0);
+        if (!state) return;
+        ctx.state.inspect({ series: state.series, index: state.series.length - 1 });
+        event.preventDefault();
+      }, { capture: true });
+      ctx.dom.listen("root", "blur", () => ctx.state.inspect(null));
+    },
+  };
+}
+```
+
+`ctx.coords.format(value, axis, yAxis?)` formats a value the way the axis labels it, which keeps announcements consistent with what sighted users read. `blazeplot/plugins/a11y` is built on exactly these calls; see [Accessibility](./accessibility.md).
 
 ## Layout guidance
 

@@ -36,6 +36,7 @@ Visual, interaction, stability, and benchmark checks need Chrome/Chromium/Brave.
 export BLAZEPLOT_BENCH_CHROME=/path/to/chrome
 bun run test:visual
 bun run test:interaction
+bun run test:a11y   # axe-core on the chart DOM; fails on serious or critical violations
 bun run test:stability
 bun run test:website
 bun run bench:ci

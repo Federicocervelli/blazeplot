@@ -22,6 +22,7 @@ const browserOnly = new Set(["src/ui/theme.ts"]);
 // backend (tests/ui). Drawing that needs a real WebGL2/2D canvas (FlameGraph rendering, screenshot
 // compositing, WebGL2Backend) is covered by `bun run test:browser`, not here.
 const pluginFiles = new Set([
+  "src/ui/A11y.ts",
   "src/ui/Annotations.ts",
   "src/ui/Crosshair.ts",
   "src/ui/FlameGraph.ts",
