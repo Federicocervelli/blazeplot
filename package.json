@@ -117,6 +117,7 @@
     "test:visual": "bun scripts/visual-test.ts",
     "test:exports": "bun scripts/package-export-smoke.ts",
     "test:package": "bun pm pack --dry-run",
+    "test:typescript-floor": "bun scripts/typescript-floor-test.ts",
     "test:api": "bun scripts/api-snapshot.ts",
     "test:bundle-size": "bun scripts/bundle-size-check.ts",
     "release": "node scripts/prepare-release.js",
