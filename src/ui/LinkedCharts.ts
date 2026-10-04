@@ -15,7 +15,7 @@ export interface LinkedChartsOptions {
   readonly rows?: number;
   readonly columns?: number;
   /** Keep every panel's X domain in sync. Defaults to true. */
-  readonly sharedX?: boolean;
+  readonly syncX?: boolean;
   /** Re-emit `select` events from one panel on the others. */
   readonly syncSelections?: boolean;
   /** Grid gap as CSS pixels or a CSS length. Defaults to 8px. */
@@ -105,7 +105,7 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
   };
 
   for (const chart of charts) {
-    if (options.sharedX !== false) {
+    if (options.syncX !== false) {
       disposers.push(chart.subscribe("viewportchange", ({ viewport }) => {
         syncOthers(chart, (other) => other.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax }));
       }));

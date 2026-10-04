@@ -412,7 +412,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         const target = options.resetViewport?.() ?? resetViewport ?? normalizeViewport(chart.viewport.get());
         chart.viewport.set(target);
         if (resetRightViewport) chart.viewport.set({ yMin: resetRightViewport.yMin, yMax: resetRightViewport.yMax }, "right");
-        if (options.resumeFollowOnReset !== false) chart.viewport.setFollowPaused(false);
+        if (options.resumeFollowOnReset !== false) chart.viewport.setFollowXPaused(false);
       };
 
       const onDoubleClick = (event: MouseEvent): void => {

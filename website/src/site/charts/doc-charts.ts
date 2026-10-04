@@ -188,7 +188,7 @@ class DocChartGroup {
     });
     const linked = createLinkedCharts(target, {
       rows: 2,
-      sharedX: true,
+      syncX: true,
       spacing: 0,
       panels: [
         {
@@ -245,7 +245,7 @@ class DocChartGroup {
   private mountLinkedDocChart(target: HTMLElement): void {
     const linked = createLinkedCharts(target, {
       rows: 2,
-      sharedX: true,
+      syncX: true,
       panelPlugins: (syncGroup) => [crosshairPlugin({ syncGroup })],
       panels: [
         { options: this.docChartOptions({ axes: { x: { position: "outside" }, y: { position: "outside" } }, grid: true }) },

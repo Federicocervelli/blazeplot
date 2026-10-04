@@ -127,13 +127,13 @@ export default class Preview extends PreviewResources {
       }, delay);
     };
 
-    const onLive = (): void => chart.setXFollowPaused(false);
+    const onLive = (): void => chart.setFollowXPaused(false);
     liveButton?.addEventListener("click", onLive);
     if (liveButton) this.previewDisposers.push(() => liveButton.removeEventListener("click", onLive));
     this.previewDisposers.push(() => window.clearTimeout(timeoutId));
 
     chart.fitToData({ padding: { x: 0.02, y: 0.12 } });
-    chart.followLatestX({ window: 30_000, pauseOnInteraction: true, currentX: () => Date.now() });
+    chart.followX({ window: 30_000, pauseOnInteraction: true, currentX: () => Date.now() });
     chart.start();
     schedule();
   }

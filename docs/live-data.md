@@ -15,7 +15,7 @@ const chart = new Chart(element, {
 });
 const series = chart.addLine({ capacity: 120_000, name: "sensor" });
 
-chart.followLatestX({ window: 60_000, pauseOnInteraction: true, resumeAfterMs: 3000 });
+chart.followX({ window: 60_000, pauseOnInteraction: true, resumeAfterMs: 3000 });
 chart.start();
 
 socket.onmessage = (event) => {
@@ -122,10 +122,10 @@ candles.updateAt(0, { open, high, low, close });
 
 ## Following the latest X value
 
-`followX` or `chart.followLatestX(...)` keeps a rolling X window pinned to the newest visible series sample. It is applied during rendering, so it cooperates with the on-demand render loop and built-in interaction plugins.
+`followX` or `chart.followX(...)` keeps a rolling X window pinned to the newest visible series sample. It is applied during rendering, so it cooperates with the on-demand render loop and built-in interaction plugins.
 
 ```ts
-chart.followLatestX({
+chart.followX({
   window: 30_000,
   pauseOnInteraction: true,
   resumeAfterMs: 5000,
@@ -137,8 +137,8 @@ chart.followLatestX({
 - `pauseOnInteraction` lets pan/zoom and box zoom stop live-follow while the user inspects history.
 - `resumeAfterMs` optionally resumes after interaction inactivity.
 - `currentX` is useful for timestamped real-time streams; it lets the viewport move continuously with the clock instead of stepping only when batches arrive.
-- `chart.setXFollowPaused(false)` jumps back to live immediately; `chart.getXFollowState()` returns `"off"`, `"following"`, or `"paused"` for your UI.
-- `chart.stopFollowingLatestX()` disables live-follow.
+- `chart.setFollowXPaused(false)` jumps back to live immediately; `chart.getFollowXState()` returns `"off"`, `"following"`, or `"paused"` for your UI.
+- `chart.stopFollowX()` disables live-follow.
 - With the built-in interactions plugin, double-click/tap reset resumes follow by default. Pass `interactionsPlugin({ resumeFollowOnReset: false })` to keep reset on a historical viewport.
 
 Y-axis interactions do not pause X follow. X pan/zoom operations through the chart/plugin APIs do pause when `pauseOnInteraction` is enabled.

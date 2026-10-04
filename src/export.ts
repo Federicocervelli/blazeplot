@@ -158,7 +158,7 @@ export function exportChartData(chart: ExportableChart, options: ChartDataExport
 }
 
 /** Serialize collected chart data as row-oriented CSV. */
-export function chartDataToCSV(data: ChartDataExport, options: ChartDataCsvOptions = {}): string {
+export function chartDataToCsv(data: ChartDataExport, options: ChartDataCsvOptions = {}): string {
   const delimiter = options.delimiter ?? ",";
   const newline = options.newline ?? "\n";
   const escapeFormulas = options.escapeFormulas !== false;

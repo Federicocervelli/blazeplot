@@ -1,4 +1,4 @@
-import type { ChartPointerEventState } from "./Chart.js";
+import type { ChartPointerEvent } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import type { SeriesYAxis } from "../core/types.js";
 
@@ -130,7 +130,7 @@ export interface AnnotationHitEvent {
   readonly dataX: number;
   readonly dataY: number;
   readonly bounds: AnnotationHitBounds;
-  readonly source?: ChartPointerEventState;
+  readonly source?: ChartPointerEvent;
 }
 
 /** Pointer interaction event type for annotations. */
@@ -268,7 +268,7 @@ function hitTestAnnotation(chart: ChartPluginContext, annotation: Annotation, pl
   }
 }
 
-function createHitEvent(chart: ChartPluginContext, annotation: Annotation, clientX: number, clientY: number, source?: ChartPointerEventState): AnnotationHitEvent | null {
+function createHitEvent(chart: ChartPluginContext, annotation: Annotation, clientX: number, clientY: number, source?: ChartPointerEvent): AnnotationHitEvent | null {
   const rect = chart.layout.plotRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
   const plotX = clientX - rect.left;
@@ -411,7 +411,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
     requestRender();
   };
 
-  const pickAt = (clientX: number, clientY: number, source?: ChartPointerEventState): AnnotationHitEvent | null => {
+  const pickAt = (clientX: number, clientY: number, source?: ChartPointerEvent): AnnotationHitEvent | null => {
     if (!chartRef) return null;
     const rect = chartRef.layout.plotRect();
     if (rect.width <= 0 || rect.height <= 0) return null;

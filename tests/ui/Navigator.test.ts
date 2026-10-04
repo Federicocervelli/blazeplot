@@ -113,7 +113,7 @@ describe("navigatorPlugin ARIA and layout", () => {
   });
 
   it("limits the overview to the configured series and applies styling options", () => {
-    const plugin = navigatorPlugin({ stroke: "red", strokeWidth: 3, fill: "blue", className: "nav", zIndex: 9 });
+    const plugin = navigatorPlugin({ strokeColor: "red", strokeWidth: 3, fillColor: "blue", className: "nav", zIndex: 9 });
     const chart = h.make({ plugins: [plugin] });
     const a = chart.addLine({ capacity: 16 });
     const b = chart.addLine({ capacity: 16 });

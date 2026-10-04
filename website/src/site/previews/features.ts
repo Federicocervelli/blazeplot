@@ -83,7 +83,7 @@ export default class Preview extends PreviewResources {
     const linked = createLinkedCharts(target, {
       rows: 2,
       spacing: 8,
-      sharedX: true,
+      syncX: true,
       panels: [
         {
           options: siteChartOptions({

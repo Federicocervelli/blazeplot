@@ -142,7 +142,7 @@ Helper functions are stricter than datasets because they are pure and run once:
 | `rollingMean(samples, windowSize)` | `RangeError` when `windowSize` is not a positive integer. Non-finite samples are skipped. |
 | `histogram(values, options)` | Skips `NaN`, infinities, and non-number values (counted in `invalid`). `TypeError` for mutually exclusive `binSize`/`binCount`/`thresholds`, non-finite thresholds, or an unsupported `normalize`. `RangeError` for fewer than two thresholds, non-increasing thresholds, non-positive `binSize`, non-integer `binCount`, or `max < min`. An empty or all-invalid input returns zero bins instead of throwing. |
 | `exportChartData(chart, options)` | Never throws for bad data. A `null` selection exports nothing; a non-finite `maxRowsPerSeries` is treated as no cap (positive) or zero rows (negative). |
-| `chartDataToCSV(data)` | Never throws. Text cells that start with `=`, `+`, `-`, `@`, tab, or carriage return get a leading `'` unless `escapeFormulas: false`. |
+| `chartDataToCsv(data)` | Never throws. Text cells that start with `=`, `+`, `-`, `@`, tab, or carriage return get a leading `'` unless `escapeFormulas: false`. |
 
 ## Rendering errors and context loss
 

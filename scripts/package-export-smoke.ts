@@ -10,7 +10,7 @@ const expectedExports = {
   "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "histogram", "isWebGL2Available", "WebGL2UnavailableError"],
   "blazeplot/linked": ["createLinkedCharts"],
   "blazeplot/data": ["binSamples", "rollingMean"],
-  "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob", "exportChartData", "chartDataToCSV"],
+  "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob", "exportChartData", "chartDataToCsv"],
   "blazeplot/plugins/legend": ["legendPlugin"],
   "blazeplot/plugins/tooltip": ["tooltipPlugin"],
   "blazeplot/plugins/interactions": ["interactionsPlugin"],
