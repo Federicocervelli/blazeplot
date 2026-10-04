@@ -34,7 +34,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Public manual comparison benchmark: `bun run bench:compare` (headed by default, fully automated after launch, compares BlazePlot/uPlot/Chart.js, overwrites `benchmarks/latest.json` and `benchmarks/latest.md`; not part of CI).
 - Run one benchmark scenario: `bun run bench -- --scenario <name>`.
 - Append benchmark report markdown to docs or another path: `bun run bench:report`.
-- Chart visual tests only: `bun run test:visual` (renders focused browser cases per chart/plugin feature and writes screenshots to `build/visual-tests/`).
+- Chart visual tests only: `bun run test:visual` (renders focused browser cases per chart/plugin feature, fails on blank canvases, compares focused cases with the committed pixel baselines in `tests/browser/visual/baselines/`, and writes screenshots/diffs to `build/visual-tests/`). Pixel baselines must come from the CI environment (ubuntu, SwiftShader), not a local GPU: download the `visual-tests` CI artifact (`gh run download <run-id> -n visual-tests`) and copy `actual/*.png` into the baselines dir, or run `bun run test:visual -- --update-baselines` on a CI-like Linux box. The pixel comparison is skipped on non-Linux platforms (`--compare-baselines` forces it, `--skip-baselines` disables it). Details: `docs/internal/local-development.md`.
 - Browser interaction tests only: `bun run test:interaction` (automates hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection through Chrome DevTools Protocol input events).
 - Package export smoke test: `bun run test:exports`.
 - Package contents dry-run: `bun run test:package` or `bun pm pack --dry-run`.
@@ -117,7 +117,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 
 - Unit tests cover core data structures (including raw sample picking helpers), OHLC/server/static datasets, data export helpers, render helpers, `Camera2D`, and axis behavior (`tests/core`, `tests/data`, `tests/render`, `tests/interaction`).
 - Website/docs tests cover generated documentation automation and markdown links (`tests/website`, `bun run test:generated-docs`, `bun run test:docs-snippets`).
-- Browser visual tests (`bun run test:visual`) cover focused WebGL/DOM/plugin rendering cases and write screenshots plus summaries to `build/visual-tests/`.
+- Browser visual tests (`bun run test:visual`) cover focused WebGL/DOM/plugin rendering cases. Per-case checks live in `CASE_CHECKS` in `scripts/visual-test.ts` (`minInkRatio` blank-canvas floor for every case, optional `baseline` for deterministic cases); the PNG codec/diff is `scripts/png-image.ts` with unit tests in `tests/scripts/`. Screenshots, `actual/` baseline candidates, `diff/` images, and `summary.json` go to `build/visual-tests/`; CI always uploads that folder as the `visual-tests` artifact.
 - Browser interaction tests (`bun run test:interaction`) drive Chrome DevTools Protocol input events for hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection.
 - Full local validation is `bun run ci`; use targeted test scripts for focused changes when the full browser suite is unnecessary.
 - Run `bun run test:exports` after `bun run build` when package entry points or Vite library entries change; run `bun run test:package` when package metadata or files change; run `bun run test:api` after `bun run build` when public types change; run `bun run test:bundle-size` when bundle composition may change.
