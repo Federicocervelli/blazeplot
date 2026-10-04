@@ -263,6 +263,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       overlay.setAttribute("aria-hidden", "true");
       overlay.style.display = "block";
       windowRect = createSvgElement("rect");
+      windowRect.setAttribute("class", "blazeplot-navigator-window");
       leftHandle = createSvgElement("rect");
       rightHandle = createSvgElement("rect");
       leftHandleHit = createSvgElement("rect");

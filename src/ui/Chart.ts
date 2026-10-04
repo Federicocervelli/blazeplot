@@ -56,8 +56,11 @@ const CHART_STYLESHEET = [
   "@media (forced-colors:active){",
   ".blazeplot-root:focus-visible,.blazeplot-root :focus-visible{outline-color:Highlight}",
   ".blazeplot-tooltip,.blazeplot-legend{border:1px solid CanvasText}",
-  ".blazeplot-legend-swatch,.blazeplot-pick-marker{forced-color-adjust:none}",
+  // Series swatches and markers carry series identity: keep their (already system) colors.
+  ".blazeplot-legend-swatch,.blazeplot-pick-swatch,.blazeplot-pick-marker{forced-color-adjust:none}",
   ".blazeplot-selection-brush{border-color:Highlight!important}",
+  // The navigator window is outlined; a filled wash would tint the overview series.
+  ".blazeplot-navigator-window{fill:transparent}",
   "}",
 ].join("");
 let nextSummaryId = 1;
