@@ -1,11 +1,13 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
+import { glslMinifyPlugin } from "./scripts/glsl-minify.ts";
 
 export default defineConfig(({ command }) => {
   const root = command === "serve" ? resolve(__dirname, "tests/browser") : __dirname;
 
   return {
     root,
+    plugins: [glslMinifyPlugin()],
     resolve: {
       alias: {
         "@": resolve(__dirname, "src"),
