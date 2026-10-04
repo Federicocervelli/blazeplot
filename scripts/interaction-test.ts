@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RobustnessResults } from "../tests/browser/interaction/robustness.ts";
 import { CdpClient, closeTarget, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
-import { decodePng } from "./png-image.js";
+import { decodePng, encodePng } from "./png-image.js";
 import type { RgbaImage } from "./png-image.js";
 
 interface Options {
@@ -558,8 +558,7 @@ async function runForcedColorsCase(options: Options, serverUrl: string): Promise
     assert(normal.seriesColors.length === 2, `fixture has two series (${normal.seriesColors.length})`);
     const normalBackground = rgb255(normal.theme.backgroundColor);
     const normalSeries = normal.seriesColors.map(rgb255);
-    let canvas = await captureCanvas(cdp);
-    assertNear(dominantColor(canvas), normalBackground, 6, "normal canvas background matches the theme background");
+    await expectCanvas(cdp, normalBackground, normalSeries, "normal theme", join(options.outDir, "normal-canvas.png"));
     await captureScreenshot(cdp, join(options.outDir, "normal.png"));
 
     // Dark scheme selects Chromium's dark forced palette, like a Windows dark Contrast theme.
@@ -596,13 +595,8 @@ async function runForcedColorsCase(options: Options, serverUrl: string): Promise
     assert(forced.navigatorWindowFill !== null, "navigator window is rendered");
     assert(isTransparentFill(forced.navigatorWindowFill), `navigator window does not wash over the overview series (fill ${forced.navigatorWindowFill})`);
 
-    await sleep(150);
-    canvas = await captureCanvas(cdp);
-    assertNear(dominantColor(canvas), canvasColor, 6, "canvas pixels are cleared to the Canvas system color");
-    forcedSeries.forEach((color, index) => {
-      const pixels = countNear(canvas, color, 24);
-      assert(pixels >= 200, `series ${index} is drawn in its system color (${pixels} px of ${color.join(",")})`);
-    });
+    // Canvas cleared to Canvas, each series drawn in its system color.
+    await expectCanvas(cdp, canvasColor, forcedSeries, "forced colors", join(options.outDir, "forced-canvas.png"));
     console.log(`✓ forced colors: theme, series (${forcedSeries.map((color) => color.join(",")).join(" / ")}), canvas pixels, axis text, and legend use system colors`);
 
     await key(cdp, "Tab", 9);
@@ -640,13 +634,7 @@ async function runForcedColorsCase(options: Options, serverUrl: string): Promise
     assertSwatches(restored.legendSwatchColors, normalSeries, "legend swatches restored");
     assertSwatches(restored.tooltipSwatchColors, normalSeries, "tooltip swatches restored");
     assert(restored.navigatorWindowFill === normal.navigatorWindowFill, `navigator window fill restored (${restored.navigatorWindowFill})`);
-    await sleep(150);
-    canvas = await captureCanvas(cdp);
-    assertNear(dominantColor(canvas), normalBackground, 6, "canvas background restored");
-    normalSeries.forEach((color, index) => {
-      const pixels = countNear(canvas, color, 24);
-      assert(pixels >= 200, `series ${index} drawn in its theme color again (${pixels} px)`);
-    });
+    await expectCanvas(cdp, normalBackground, normalSeries, "restored theme", join(options.outDir, "restored-canvas.png"));
     await captureScreenshot(cdp, join(options.outDir, "restored.png"));
     console.log(`✓ forced colors: turning emulation off restores the theme without reload (screenshots in ${options.outDir})`);
   } finally {
@@ -698,6 +686,42 @@ async function waitForThemeChange(cdp: CdpClient, previousChanges: number, timeo
     await sleep(50);
   }
   throw new Error("Interaction assertion failed: the chart did not react to the forced-colors media change (no themechange event)");
+}
+
+/**
+ * Poll plot-area screenshots until the background is the dominant color and every series color
+ * covers at least 200 px (a frame may still be pending after a theme change). On timeout, save the
+ * last capture to `failurePath` and fail with the colors that were found.
+ */
+async function expectCanvas(cdp: CdpClient, background: Rgb, seriesColors: readonly Rgb[], label: string, failurePath: string): Promise<void> {
+  const startedAt = Date.now();
+  let problem = "";
+  let image: RgbaImage | null = null;
+  while (Date.now() - startedAt < 5_000) {
+    const capture = await captureCanvas(cdp);
+    image = capture;
+    const dominant = dominantColor(capture);
+    const counts = seriesColors.map((color) => countNear(capture, color, 24));
+    problem = maxChannelDelta(dominant, background) > 6
+      ? `background is ${dominant.join(",")}, expected ${background.join(",")}`
+      : counts.some((count) => count < 200)
+        ? `series pixel counts ${counts.join(" / ")} for ${seriesColors.map((color) => color.join(",")).join(" / ")} (need 200 each)`
+        : "";
+    if (!problem) return;
+    await sleep(100);
+  }
+  if (image) await writeFile(failurePath, encodePng(image));
+  throw new Error(`Interaction assertion failed: ${label} canvas pixels: ${problem}; top colors ${image ? topColors(image, 8) : "n/a"} (capture saved to ${failurePath})`);
+}
+
+function topColors(image: RgbaImage, limit: number): string {
+  const counts = new Map<number, number>();
+  for (let i = 0; i < image.data.length; i += 4) {
+    const packed = (image.data[i]! << 16) | (image.data[i + 1]! << 8) | image.data[i + 2]!;
+    counts.set(packed, (counts.get(packed) ?? 0) + 1);
+  }
+  return [...counts].sort((a, b) => b[1] - a[1]).slice(0, limit)
+    .map(([packed, count]) => `${(packed >> 16) & 255},${(packed >> 8) & 255},${packed & 255}x${count}`).join(" ");
 }
 
 /** Screenshot the plot canvas area (WebGL pixels plus any overlays on top). */
