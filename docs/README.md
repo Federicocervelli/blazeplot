@@ -8,6 +8,7 @@ Use this map to decide where a topic belongs before adding or moving documentati
 |---|---|---|
 | Decide whether BlazePlot fits an app | [Overview](./overview.md) | [Browser support](./browser-support.md), [Performance recipes](./performance-recipes.md) |
 | Build the first chart | [Overview](./overview.md) | [Examples](./examples.md), [Troubleshooting](./troubleshooting.md) |
+| Use a framework or SSR | [Framework integration](./framework-integration.md) | [Browser support](./browser-support.md), [Troubleshooting](./troubleshooting.md) |
 | Stream or downsample data | [Live data](./live-data.md) | [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), [Examples](./examples.md#live-line-chart) |
 | Add interaction or overlays | [Built-in plugins](./built-in-plugins.md) | [Theming and layout](./theming-and-layout.md), [Plugin authoring](./plugin-authoring.md) |
 | Build a dashboard | [Examples](./examples.md#linked-charts) | [Built-in plugins](./built-in-plugins.md), [Performance recipes](./performance-recipes.md) |
@@ -25,6 +26,7 @@ These pages are visible on the docs site and should be useful to package users.
 
 - [Overview](./overview.md) — install, first chart, main tradeoffs.
 - [Examples](./examples.md) — copy-paste usage patterns for app developers.
+- [Framework integration](./framework-integration.md) — React, Vue 3, Svelte 5, SSR frameworks, and the no-WebGL2 fallback pattern.
 - [Troubleshooting](./troubleshooting.md) — common blank-chart, lifecycle, live viewport, React, and screenshot failures.
 
 ### Data and performance

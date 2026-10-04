@@ -128,7 +128,11 @@ try {
       await wait("page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
       await screenshot(component! + "-drawer");
       await check("document.body.style.overflow === 'hidden'", "modal prevents background scrolling");
-      for (let i = 0; i < 20; i++) {
+      // Native modal dialogs cycle through the browser UI (document.body) once per lap, so a fixed
+      // Tab count can land on that stop depending on how many drawer links exist. Never let focus
+      // rest on the page behind the drawer, and take one more Tab if it stopped on the browser stop.
+      for (let i = 0; i < 21; i++) {
+        if (i >= 20 && await js("document.activeElement === document.body") !== true) break;
         await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
         await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
       }

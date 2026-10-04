@@ -80,6 +80,7 @@ Use this checklist in PR descriptions for docs changes.
 | `docs/README.md` | Documentation map, reader paths, and organization rules |
 | `docs/overview.md` | First chart, package fit, and main tradeoffs |
 | `docs/examples.md` | Copy-paste usage patterns for app developers |
+| `docs/framework-integration.md` | React, Vue, Svelte, SSR framework lifecycle patterns and the no-WebGL2 fallback |
 | `docs/data-semantics.md` | Dataset ordering, gaps, bounds, and export behavior |
 | `docs/performance-recipes.md` | Data-shape choices and rendering budget guidance |
 | `docs/built-in-plugins.md` | Optional plugin usage and plugin handles |
