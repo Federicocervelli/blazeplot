@@ -108,9 +108,9 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
   // panning sub-window of it, so every frame re-extracts LOD for line, scatter, and bar series.
   "perf-gate": {
     name: "perf-gate",
-    initialSamples: 500_000,
-    viewportSamples: 200_000,
-    capacity: 500_000,
+    initialSamples: 1_000_000,
+    viewportSamples: 500_000,
+    capacity: 1_000_000,
     fillBatchSize: 65_536,
     liveBatchSize: 0,
     sparseInterval: 256,
@@ -265,6 +265,16 @@ const chart = new Chart(chartTarget, {
   hover: config.interaction === "hover" ? { mode: "nearest-x", group: "x" } : undefined,
   plugins: chartPlugins,
 });
+
+// Gate self-test hook (`bun run bench:gate -- --inject-slowdown-ms <ms>`): burns CPU inside every
+// frame so maintainers can confirm the performance gate fails on a synthetic regression.
+const burnMs = readPositiveNumberParam("burnMs", 0);
+if (burnMs > 0) {
+  chart.subscribe("render", () => {
+    const until = performance.now() + burnMs;
+    while (performance.now() < until) { /* spin */ }
+  });
+}
 
 const lineDataset = config.proceduralLine ? new ProceduralLineDataset(config.capacity) : undefined;
 const lineSeries = chart.addSeries(

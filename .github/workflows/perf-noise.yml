@@ -15,4 +15,5 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - run: nproc; grep -m1 "model name" /proc/cpuinfo; free -m | head -2
-      - run: bun run bench:gate -- --report-only --reps 11 --retry-reps 0 --discard 1
+      - run: bun run bench:gate -- --report-only --reps 9 --retry-reps 0 --discard 1
+      - run: bun run bench:gate -- --report-only --reps 5 --retry-reps 0 --discard 0 --inject-slowdown-ms 3 --out build/perf-gate/slow.json

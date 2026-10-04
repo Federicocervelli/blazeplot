@@ -18,6 +18,7 @@ interface Options {
   discard?: number;
   retryReps?: number;
   measureMs?: number;
+  slowdownMs?: number;
   width: number;
   height: number;
   port: number;
@@ -52,6 +53,7 @@ async function main(): Promise<void> {
   const benchUrl = new URL("/bench/", serverUrl);
   benchUrl.searchParams.set("scenario", thresholds.scenario);
   if (options.measureMs !== undefined) benchUrl.searchParams.set("measureMs", String(options.measureMs));
+  if (options.slowdownMs !== undefined) benchUrl.searchParams.set("burnMs", String(options.slowdownMs));
 
   let viteProc: Bun.Subprocess | null = null;
   let chromeProc: Bun.Subprocess | null = null;
@@ -181,8 +183,8 @@ function parseArgs(args: readonly string[]): Options {
   const parsed: Options = {
     thresholds: join(REPO_ROOT, "benchmarks", "thresholds.json"),
     out: join(REPO_ROOT, "build", "perf-gate", "result.json"),
-    width: 800,
-    height: 450,
+    width: 1600,
+    height: 900,
     port: 41741,
     debugPort: 9233,
     update: false,
@@ -204,6 +206,7 @@ function parseArgs(args: readonly string[]): Options {
       case "--reps": parsed.reps = readPositiveInteger(flag, readValue()); break;
       case "--discard": parsed.discard = readNonNegativeInteger(flag, readValue()); break;
       case "--retry-reps": parsed.retryReps = readNonNegativeInteger(flag, readValue()); break;
+      case "--inject-slowdown-ms": parsed.slowdownMs = readPositiveInteger(flag, readValue()); break;
       case "--measure-ms": parsed.measureMs = readPositiveInteger(flag, readValue()); break;
       case "--width": parsed.width = readPositiveInteger(flag, readValue()); break;
       case "--height": parsed.height = readPositiveInteger(flag, readValue()); break;
