@@ -282,7 +282,7 @@ function delay(ms: number): Promise<void> {
 
 function addLine(chart: Chart): void {
   const { x, y } = wave(512);
-  chart.addLine({ dataset: new StaticDataset(x, y), name: "line" }, { lineWidth: caseName === "line" ? 3 : 2, color: caseName === "tooltip" ? [0, 0, 0, 0] : undefined });
+  chart.addLine({ dataset: new StaticDataset(x, y), name: "line" }, { lineWidth: 2 });
   chart.setViewport({ xMin: 0, xMax: 511, yMin: -1.4, yMax: 1.4 });
 }
 
