@@ -17,9 +17,20 @@ interface VisualTestSnapshot {
   readonly error: string | null;
 }
 
+interface VisualRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 interface VisualTestController {
   snapshot(): VisualTestSnapshot;
   screenshot(): Promise<number>;
+  /** Toggle grid lines so pixel probes can measure series ink without grid. */
+  setGridVisible(visible: boolean): void;
+  /** Page-space (CSS px) rectangles used to crop browser screenshots. */
+  rects(): { readonly root: VisualRect; readonly plot: VisualRect; readonly flamegraph: VisualRect | null };
 }
 
 declare global {
@@ -71,6 +82,12 @@ window.__blazeplotVisualTest = {
     const blob = await chart.screenshot();
     return blob.size;
   },
+  setGridVisible: (visible) => chart.setGridVisible(visible),
+  rects: () => ({
+    root: toRect(chart.rootElement),
+    plot: toRect(chart.canvas),
+    flamegraph: toRectOrNull(chart.rootElement.querySelector(".blazeplot-flamegraph-canvas")),
+  }),
 };
 
 try {
@@ -83,6 +100,15 @@ try {
   error = caught instanceof Error ? caught.message : String(caught);
   state = "error";
   renderStatus();
+}
+
+function toRect(element: Element): VisualRect {
+  const { left, top, width, height } = element.getBoundingClientRect();
+  return { x: left + window.scrollX, y: top + window.scrollY, width, height };
+}
+
+function toRectOrNull(element: Element | null): VisualRect | null {
+  return element ? toRect(element) : null;
 }
 
 function isVisualCase(value: string): value is VisualCase {
