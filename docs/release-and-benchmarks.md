@@ -107,7 +107,7 @@ On every push to `main` or `v1` and on manual dispatch, `.github/workflows/relea
 - `bun run bench:ci`: fast smoke benchmark used by CI. It only checks that the scene renders; it asserts no timings.
 - `bun run bench:gate`: performance regression gate used by CI (see [Performance regression gate](#performance-regression-gate)).
 - `bun run bench:compare`: manual-only headed comparison benchmark for BlazePlot, uPlot, and Chart.js. It runs automatically after launch and overwrites `benchmarks/latest.json` plus `benchmarks/latest.md`.
-- `bun run test:visual`: browser visual chart tests used by CI; writes PNGs and `summary.json` to `build/visual-tests/`.
+- `bun run test:visual`: browser visual chart tests used by CI; fails on blank canvases and on pixel differences from the committed baselines in `tests/browser/visual/baselines/`; writes PNGs, diffs, and `summary.json` to `build/visual-tests/`. Regenerate baselines with `-- --update-baselines` using the CI procedure in [Local development](./internal/local-development.md#visual-pixel-baselines).
 - `bun run test:interaction`: browser input automation used by CI for hover, crosshair, zoom, pan, reset, and selection.
 - `bun run test:cross-browser`: Playwright Firefox and WebKit smoke test (WebGL2, non-blank render, basic interaction) used by the `cross-browser` CI job. See [Browser support](./browser-support.md#tested-browsers).
 - `bun run bench -- --scenario <name>`: run one benchmark scenario and print JSON.
