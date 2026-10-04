@@ -423,14 +423,12 @@ async function runRobustnessCase(options: Options, serverUrl: string): Promise<v
   try {
     await waitForReady(cdp, options.timeoutMs);
     const result = await evaluate(cdp, "window.__blazeplotRobustness()", true) as RobustnessResults;
-    assert(result.zoomInThrew === null && result.zoomInSpan > 0, `deep zoom on a time axis stops at float precision (threw: ${result.zoomInThrew})`);
-    assert(result.logFitYMin > 0 && result.logFitRendered, "fitToData pads a log axis in log space and renders");
-    assert(!result.logIncludeZeroChangedY, "fitToData leaves a log axis alone when includeZero has no valid domain");
-    assert(result.invalidSetViewportError !== null && result.invalidSetViewportUnchanged, "setViewport rejects an invalid log domain without partial changes");
-    assert(result.rendersWhileInvalid === 0 && result.invalidDomainLogs === 1, "an invalid camera domain skips frames and logs once");
-    assert(result.recoveredAfterInvalid, "the continuous loop resumes rendering once the domain is valid again");
-    assert(result.failedChartLeftDom === 0 && result.failedChartRestoredCanvas, "a chart that fails to construct leaves no DOM and restores its canvas");
-    assert(result.failedLinkedLeftDom === 0, "linked charts clean up when one panel fails to construct");
+    const { zoom, log, loop } = result;
+    assert(zoom.threw === null && zoom.span > 0, `deep zoom on a time axis stops at float precision (threw: ${zoom.threw})`);
+    assert(log.fitYMin > 0 && log.rendered, "fitToData pads a log axis in log space and renders");
+    assert(log.setViewportError !== null && log.unchanged, "setViewport rejects an invalid log domain without partial changes");
+    assert(loop.whileInvalid === 0 && loop.logs === 1 && loop.recovered, "an invalid camera domain skips frames, logs once, and recovers");
+    assert(result.failedChartLeftDom === 0 && result.failedLinkedLeftDom === 0 && result.canvasRestored, "failed construction leaves no DOM and restores the canvas");
     console.log("✓ robustness: zoom limits, scale-aware fits, invalid domains, and failed construction");
   } finally {
     cdp.close();

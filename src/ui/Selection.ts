@@ -87,28 +87,17 @@ function normalizeBounds(a: [number, number], b: [number, number], current: View
   };
 }
 
-/** Rectangle between two plot-space corners, clamped to the plot; unselected dimensions span it fully. */
-function boundsFromCorners(x0: number, y0: number, x1: number, y1: number, width: number, height: number, mode: SelectionMode): SelectionPlotBounds {
-  const left = clamp(Math.min(x0, x1), 0, width);
-  const top = clamp(Math.min(y0, y1), 0, height);
-  return {
-    left: mode === "y-range" ? 0 : left,
-    top: mode === "x-range" ? 0 : top,
-    width: mode === "y-range" ? width : clamp(Math.max(x0, x1), 0, width) - left,
-    height: mode === "x-range" ? height : clamp(Math.max(y0, y1), 0, height) - top,
-  };
-}
-
 function plotBoundsForDrag(drag: DragState, rect: DOMRect, mode: SelectionMode): SelectionPlotBounds {
-  return boundsFromCorners(
-    drag.startX - rect.left,
-    drag.startY - rect.top,
-    drag.currentX - rect.left,
-    drag.currentY - rect.top,
-    rect.width,
-    rect.height,
-    mode,
-  );
+  const x0 = clamp(drag.startX - rect.left, 0, rect.width);
+  const y0 = clamp(drag.startY - rect.top, 0, rect.height);
+  const x1 = clamp(drag.currentX - rect.left, 0, rect.width);
+  const y1 = clamp(drag.currentY - rect.top, 0, rect.height);
+  return {
+    left: mode === "y-range" ? 0 : Math.min(x0, x1),
+    top: mode === "x-range" ? 0 : Math.min(y0, y1),
+    width: mode === "y-range" ? rect.width : Math.abs(x1 - x0),
+    height: mode === "x-range" ? rect.height : Math.abs(y1 - y0),
+  };
 }
 
 /** Create a plugin that lets users select chart ranges by dragging. */
@@ -149,13 +138,6 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       bounds: normalizeBounds(start, end, chart.getViewport(yAxis), mode),
       plotBounds: plotBoundsForDrag(state, rect, mode),
     };
-  };
-
-  /** Re-derive the committed rectangle from its data bounds, so it tracks pans, zooms, and resizes. */
-  const plotBoundsForSelection = (chart: ChartPluginContext, selection: SelectionState): SelectionPlotBounds => {
-    const [x0, y0] = chart.dataToPlot(selection.bounds.xMin, selection.bounds.yMin, yAxis);
-    const [x1, y1] = chart.dataToPlot(selection.bounds.xMax, selection.bounds.yMax, yAxis);
-    return boundsFromCorners(x0, y0, x1, y1, chart.canvas.clientWidth, chart.canvas.clientHeight, mode);
   };
 
   const clearSelection = (sourceEvent?: KeyboardEvent): void => {
@@ -228,41 +210,25 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
 
       const onPointerUp = (event: PointerEvent): void => finishDrag(event, true);
       const onPointerCancel = (event: PointerEvent): void => finishDrag(event, false);
-      // Escape belongs to this chart while focus is inside it, or when the user's
-      // latest press or focus move landed in it. Pointer presses on the canvas do not
-      // move focus, so focus can still sit in a text field the user has since left.
-      const inChart = (target: EventTarget | null): boolean => target instanceof Node && chart.rootElement.contains(target);
+      // Escape belongs to this chart only when the latest press or focus move landed in it
+      // (pressing the canvas does not move focus, so focus alone cannot tell).
       let escapeArmed = false;
-      const onDocumentPointerOrFocus = (event: Event): void => {
-        escapeArmed = inChart(event.target);
+      const armEscape = (event: Event): void => {
+        escapeArmed = event.target instanceof Node && chart.rootElement.contains(event.target);
       };
       const onKeyDown = (event: KeyboardEvent): void => {
-        if (options.clearOnEscape === false || event.key !== "Escape" || event.defaultPrevented) return;
-        if (!committedSelection && !drag) return;
-        if (!escapeArmed && !inChart(event.target)) return;
+        if (options.clearOnEscape === false || event.key !== "Escape" || !escapeArmed || (!committedSelection && !drag)) return;
         clearSelection(event);
       };
-
-      // Re-derive the rectangle only when the viewport or canvas size changed since the last frame.
-      let lastViewport: Viewport | null = null;
-      let lastWidth = 0;
-      let lastHeight = 0;
+      // Keep the committed rectangle on its data bounds as the chart pans, zooms, or resizes.
       const onRender = (): void => {
         if (!committedSelection || drag) return;
-        const viewport = chart.getViewport(yAxis);
-        if (
-          lastViewport
-          && viewport.xMin === lastViewport.xMin
-          && viewport.xMax === lastViewport.xMax
-          && viewport.yMin === lastViewport.yMin
-          && viewport.yMax === lastViewport.yMax
-          && canvas.width === lastWidth
-          && canvas.height === lastHeight
-        ) return;
-        lastViewport = viewport;
-        lastWidth = canvas.width;
-        lastHeight = canvas.height;
-        committedSelection = { ...committedSelection, plotBounds: plotBoundsForSelection(chart, committedSelection) };
+        const rect = canvas.getBoundingClientRect();
+        const { bounds } = committedSelection;
+        const [x0, y0] = chart.dataToPlot(bounds.xMin, bounds.yMin, yAxis);
+        const [x1, y1] = chart.dataToPlot(bounds.xMax, bounds.yMax, yAxis);
+        const corners = { pointerId: 0, startX: rect.left + x0, startY: rect.top + y0, currentX: rect.left + x1, currentY: rect.top + y1 };
+        committedSelection = { ...committedSelection, plotBounds: plotBoundsForDrag(corners, rect, mode) };
         setOverlay(committedSelection.plotBounds);
       };
 
@@ -270,8 +236,8 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       canvas.addEventListener("pointermove", onPointerMove);
       canvas.addEventListener("pointerup", onPointerUp);
       canvas.addEventListener("pointercancel", onPointerCancel);
-      globalThis.addEventListener("pointerdown", onDocumentPointerOrFocus, { capture: true });
-      globalThis.addEventListener("focusin", onDocumentPointerOrFocus, { capture: true });
+      globalThis.addEventListener("pointerdown", armEscape, { capture: true });
+      globalThis.addEventListener("focusin", armEscape, { capture: true });
       globalThis.addEventListener("keydown", onKeyDown);
       const unsubscribeTheme = chart.subscribe("themechange", applyTheme);
       const unsubscribeRender = chart.subscribe("render", onRender);
@@ -281,8 +247,8 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         canvas.removeEventListener("pointermove", onPointerMove);
         canvas.removeEventListener("pointerup", onPointerUp);
         canvas.removeEventListener("pointercancel", onPointerCancel);
-        globalThis.removeEventListener("pointerdown", onDocumentPointerOrFocus, { capture: true });
-        globalThis.removeEventListener("focusin", onDocumentPointerOrFocus, { capture: true });
+        globalThis.removeEventListener("pointerdown", armEscape, { capture: true });
+        globalThis.removeEventListener("focusin", armEscape, { capture: true });
         globalThis.removeEventListener("keydown", onKeyDown);
         unsubscribeTheme();
         unsubscribeRender();

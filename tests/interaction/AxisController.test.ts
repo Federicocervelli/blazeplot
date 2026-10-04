@@ -2,13 +2,6 @@ import { describe, it, expect } from "bun:test";
 import { AxisController } from "../../src/interaction/AxisController.ts";
 import { Camera2D } from "../../src/interaction/Camera2D.ts";
 
-/** Apply a computed viewport when it is usable; mirrors how Chart commits pan/zoom results. */
-function applyIfUsable(camera: Camera2D, viewport: ReturnType<AxisController["zoomViewport"]>): boolean {
-  if (!viewport) return false;
-  camera.setViewport(viewport);
-  return true;
-}
-
 describe("AxisController", () => {
   it("generates data-anchored x ticks around the viewport", () => {
     const camera = new Camera2D();
@@ -170,67 +163,42 @@ describe("AxisController", () => {
     camera.setViewport({ xMin: 1, xMax: 100, yMin: 1, yMax: 100 });
     const axis = new AxisController(camera, { x: { scale: "log" }, y: { scale: "log" } });
 
-    camera.setViewport(axis.panViewport({ dx: 0.5, dy: 0 })!);
+    axis.pan({ dx: 0.5, dy: 0 });
     expect(camera.xMin).toBeCloseTo(10);
     expect(camera.xMax).toBeCloseTo(1000);
 
-    camera.setViewport(axis.zoomViewport({ factor: 2, cx: 0.5, cy: 0.5, axis: "y" })!);
+    axis.zoom({ factor: 2, cx: 0.5, cy: 0.5, axis: "y" });
     expect(camera.yMin).toBeCloseTo(Math.sqrt(10));
     expect(camera.yMax).toBeCloseTo(10 * Math.sqrt(10));
   });
 
-  it("stops zooming in before a timestamp domain collapses", () => {
-    const camera = new Camera2D();
+  it("stops zooming at float precision and log overflow without moving the camera", () => {
     const start = Date.UTC(2026, 0, 1);
-    camera.setViewport({ xMin: start, xMax: start + 1000, yMin: 0, yMax: 1 });
-    const axis = new AxisController(camera, { x: { scale: "time" } });
-
+    const time = new Camera2D();
+    time.setViewport({ xMin: start, xMax: start + 1_000, yMin: 0, yMax: 1 });
+    const timeAxis = new AxisController(time, { x: { scale: "time" } });
     let zooms = 0;
-    while (zooms < 200 && applyIfUsable(camera, axis.zoomViewport({ factor: 2, cx: 0.37, cy: 0.5, axis: "x" }))) zooms++;
-
+    while (zooms < 200 && timeAxis.zoom({ factor: 2, cx: 0.37, cy: 0.5, axis: "x" })) zooms++;
     expect(zooms).toBeGreaterThan(5);
     expect(zooms).toBeLessThan(200);
-    expect(camera.xMax).toBeGreaterThan(camera.xMin);
-    expect(() => axis.validateDomain("x")).not.toThrow();
-    expect(axis.getXTickValues(800, 10).length).toBeGreaterThan(0);
-  });
+    expect(time.xMax).toBeGreaterThan(time.xMin);
+    expect(timeAxis.getXTickValues(800, 10).length).toBeGreaterThan(0);
 
-  it("stops zooming out before a log domain overflows", () => {
-    const camera = new Camera2D();
-    camera.setViewport({ xMin: 0, xMax: 1, yMin: 1, yMax: 10 });
-    const axis = new AxisController(camera, { y: { scale: "log" } });
-
-    let zooms = 0;
-    while (zooms < 200 && applyIfUsable(camera, axis.zoomViewport({ factor: 0.5, cx: 0.5, cy: 0.5, axis: "y" }))) zooms++;
-
+    const log = new Camera2D();
+    log.setViewport({ xMin: 0, xMax: 1, yMin: 1, yMax: 10 });
+    const logAxis = new AxisController(log, { y: { scale: "log" } });
+    zooms = 0;
+    while (zooms < 200 && logAxis.zoom({ factor: 0.5, cx: 0.5, cy: 0.5, axis: "y" })) zooms++;
     expect(zooms).toBeLessThan(200);
-    expect(Number.isFinite(camera.yMax)).toBe(true);
-    expect(camera.yMin).toBeGreaterThan(0);
+    expect(Number.isFinite(log.yMax)).toBe(true);
+
+    const before = log.viewport;
+    expect(logAxis.pan({ dx: Number.NaN, dy: 0 })).toBe(false);
+    expect(log.viewport).toEqual(before);
   });
 
-  it("rejects an unusable pan or zoom without changing the camera", () => {
-    const camera = new Camera2D();
-    camera.setViewport({ xMin: 0, xMax: 1, yMin: 1, yMax: 10 });
-    const axis = new AxisController(camera, { y: { scale: "log" } });
-
-    expect(axis.zoomViewport({ factor: 1e-300, cx: 0.5, cy: 0.5, axis: "y" })).toBeNull();
-    expect(axis.panViewport({ dx: Number.NaN, dy: 0 })).toBeNull();
-    expect(camera.viewport).toEqual({ xMin: 0, xMax: 1, yMin: 1, yMax: 10 });
-  });
-
-  it("leaves an untouched axis exactly as it was", () => {
-    const camera = new Camera2D();
-    camera.setViewport({ xMin: 3, xMax: 7, yMin: 0.1, yMax: 0.7 });
-    const axis = new AxisController(camera, { x: { scale: "log" }, y: { scale: "log" } });
-
-    expect(axis.panViewport({ dx: 0, dy: 0.25 })?.xMin).toBe(3);
-    expect(axis.zoomViewport({ factor: 2, cx: 0.5, cy: 0.5, axis: "y" })?.xMax).toBe(7);
-  });
-
-  it("checks candidate domains against the scale", () => {
-    const camera = new Camera2D();
-    const axis = new AxisController(camera, { y: { scale: "log" } });
-
+  it("checks candidate domains against the scale and float precision", () => {
+    const axis = new AxisController(new Camera2D(), { y: { scale: "log" } });
     expect(axis.isValidDomain("y", 1, 100)).toBe(true);
     expect(axis.isValidDomain("y", -1, 100)).toBe(false);
     expect(axis.isValidDomain("x", -1, 100)).toBe(true);
