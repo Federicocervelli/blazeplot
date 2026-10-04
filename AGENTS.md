@@ -42,6 +42,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Package export smoke test: `bun run test:exports`.
 - Package contents dry-run: `bun run test:package` or `bun pm pack --dry-run`.
 - Public API snapshot check: `bun run build && bun run test:api` compares `dist/**/*.d.ts` exports against `api/public-api.md`; after an intentional API change run `bun run build && bun run test:api -- --update` and commit the snapshot. Never hand-edit it.
+- TypeScript 5.0 floor check: `bun run test:typescript-floor` (after `bun run build`; packs the package, installs it with TypeScript 5.0.4 and latest 5.x into a temp consumer, typechecks every export under `bundler` and `node16`; needs network, separate CI job, not in `check`).
 - Bundle-size budget check: `bun run test:bundle-size`; markdown summary: `bun run docs:bundle-size`; detailed analysis: `bun run bundle:analyze`.
 - Lint: `bun run lint` (Oxlint over `src`, `scripts`, `tests`, `website`; config in `.oxlintrc.json`, correctness category as errors). It runs as part of `bun run check`.
 - There is no formatter script in `package.json`.
