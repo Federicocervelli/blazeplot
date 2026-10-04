@@ -90,12 +90,20 @@ export interface XRange {
   readonly xEnd: number;
 }
 
-/** Dataset whose sample X values represent intervals rather than points. */
+/**
+ * Dataset whose sample X values represent intervals rather than points.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export interface XRangeDataset extends Dataset {
   getXRange(index: number): XRange | null;
 }
 
-/** Dataset that can answer min/max Y queries for index ranges. */
+/**
+ * Dataset that can answer min/max Y queries for index ranges.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export interface RangeMinMaxDataset extends Dataset {
   /** Set when range queries exclude samples marked by `isGap()`. */
   readonly rangeMinMaxExcludesGaps?: boolean;
@@ -105,6 +113,8 @@ export interface RangeMinMaxDataset extends Dataset {
 /**
  * Vertex layout requested when copying raw samples into a render buffer:
  * `"points"` writes `[x, y]` pairs, `"area"` writes `[x, baseline, x, y]` strip pairs.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export type SampleCopyLayout = "points" | "area";
 
@@ -112,6 +122,8 @@ export type SampleCopyLayout = "points" | "area";
  * Optional high-performance extraction capability for datasets that can copy raw
  * samples without going through repeated getX/getY calls. Implement this for
  * very large datasets, implicit-X datasets, or remote/memory-mapped sources.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface RangeSampleCopyDataset extends Dataset {
   copySamplesRange(
@@ -130,6 +142,8 @@ export interface RangeSampleCopyDataset extends Dataset {
  * copySamplesRange, this method may stride/downsample, but should choose samples
  * anchored to data coordinates so streamed appends do not make existing sampled
  * points jitter.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface VisibleSampleCopyDataset extends Dataset {
   copyVisibleSamples(
@@ -146,6 +160,8 @@ export interface VisibleSampleCopyDataset extends Dataset {
  * Optional high-performance extraction capability for point/scatter datasets.
  * Implementations should cull against the full 2D viewport and may sample in
  * screen space so dense point clouds respond to both X and Y zoom.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface VisiblePointCopyDataset extends Dataset {
   copyVisiblePoints(
@@ -164,6 +180,8 @@ export interface VisiblePointCopyDataset extends Dataset {
  * Implementations can use pyramids, segment trees, database aggregates, or
  * analytic/procedural envelopes. Write up to `maxSegments` `[x - xOrigin, minY, maxY]`
  * triples into `target` and return how many were written.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface MinMaxSegmentCopyDataset extends Dataset {
   copyMinMaxSegments(
@@ -178,6 +196,8 @@ export interface MinMaxSegmentCopyDataset extends Dataset {
  * Convenience contract for maximum-performance custom datasets. Implement this
  * when a dataset can provide fast exact sample copies, stable viewport sampling,
  * range min/max queries, and renderer-ready min/max buckets.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface AcceleratedDataset extends
   Dataset,

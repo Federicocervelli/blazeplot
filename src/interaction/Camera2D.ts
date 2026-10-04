@@ -1,7 +1,11 @@
 import type { Viewport } from "../core/types.js";
 import type { PanIntent, ZoomIntent } from "./types.js";
 
-/** Camera that maps data domains to clip, screen, and plot coordinates. */
+/**
+ * Camera that maps data domains to clip, screen, and plot coordinates.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export class Camera2D {
   private _xMin: number = 0;
   private _xMax: number = 1;
