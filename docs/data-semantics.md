@@ -57,7 +57,13 @@ For finite-to-finite session breaks, insert an explicit gap marker sample.
 
 `RingBuffer` stores explicit X/Y samples and supports three overflow modes: `"wrap"`, `"drop-new"`, and `"error"`. The default is `"wrap"`, which keeps the newest samples and preserves logical order after the physical buffer wraps.
 
-`UniformRingBuffer` is for fixed-rate data. It stores Y values and derives X as `xStart + index * xStep`; `xStep` must be positive. Prefer it for telemetry or signal data where every sample is evenly spaced. For chart-owned series, `chart.addLine({ capacity, xStart, xStep })` creates this dataset for you.
+X values must be ascending. Range queries, culling, and picking binary-search X, so `RingBuffer` and `OhlcRingBuffer` log a one-time console warning when an append or update makes X go backwards.
+
+`UniformRingBuffer` is for fixed-rate data. It stores Y values and derives X as `xStart + index * xStep`; `xStep` must be positive. Prefer it for telemetry or signal data where every sample is evenly spaced. For chart-owned series, `chart.addLine({ capacity, xStart, xStep })` creates this dataset for you. Once it holds data, `series.append({ x, y })` ignores the passed X values and keeps deriving X from `xStep`; use `RingBuffer` when spacing varies.
+
+### Value precision
+
+Built-in buffers store Y (and OHLC prices) as `float32` by default, which halves memory and keeps about 7 significant digits. Values such as `123456789.12` or prices above 100,000 with cents get rounded, and the rounded value is what tooltips and `chart.pick()` report. Pass `valuePrecision: "float64"` to `RingBuffer`, `UniformRingBuffer`, `OhlcRingBuffer`, `StaticDataset.fromObjects`, or a chart-owned series (`chart.addLine({ capacity, valuePrecision: "float64" })`) to store values exactly. X values are always stored as `float64`.
 
 ## Histograms and X/Y binning
 

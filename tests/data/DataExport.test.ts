@@ -85,6 +85,16 @@ describe("chart data export helpers", () => {
     expect(JSON.parse(JSON.stringify(data)).series[0].samples[1]).toEqual({ index: 2, x: 2, y: 30 });
   });
 
+  it("escapes spreadsheet formulas in text cells but not in numbers", () => {
+    const state = makeSeries("line", [0, 1], [-5, 2], { id: "=HYPERLINK(\"x\")", name: "+cmd" });
+    const data = exportChartData(makeChart([state]), { range: "all" });
+
+    const [, row] = chartDataToCSV(data).split("\n");
+    expect(row).toContain(`"'=HYPERLINK(""x"")",'+cmd`);
+    expect(row).toContain(",-5,");
+    expect(chartDataToCSV(data, { escapeFormulas: false }).split("\n")[1]).toContain(`"=HYPERLINK(""x"")",+cmd`);
+  });
+
   it("can filter visible exports by y viewport", () => {
     const state = makeSeries("scatter", [1, 2, 3], [10, 20, 90]);
     const data = exportChartData(makeChart([state]), { range: "visible", includeYRange: true });

@@ -103,4 +103,20 @@ describe("UniformRingBuffer", () => {
     expect(Array.from(samples.subarray(0, 2))).toEqual([0, 4]);
     expect(Array.from(samples.subarray(2, 4)).every(Number.isNaN)).toBe(true);
   });
+
+  it("stores float64 values on request", () => {
+    const buf = new UniformRingBuffer(5, { valuePrecision: "float64" });
+    buf.appendY([1, 2, Number.NaN, 4, 5, 6, 123_456_789.12]);
+    // Logical samples: NaN, 4, 5, 6, 123456789.12
+    expect(buf.getY(4)).toBe(123_456_789.12);
+  });
+
+  it("reports the X-grid ordinal of its first retained sample", () => {
+    const buf = new UniformRingBuffer(4, { xStart: 50, xStep: 0.5 });
+    buf.appendY([1, 2, 3]);
+    expect(buf.ordinalOffset).toBe(100);
+    buf.appendY([4, 5, 6, 7]);
+    expect(buf.ordinalOffset).toBe(103);
+    expect(buf.getX(0)).toBe(51.5);
+  });
 });

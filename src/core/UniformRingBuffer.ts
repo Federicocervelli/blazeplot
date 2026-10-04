@@ -1,6 +1,7 @@
 import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxY } from "./MinMaxTree.js";
-import type { AcceleratedDataset, AppendableDataset, SampleCopyLayout, TimeRange, Viewport } from "./types.js";
+import { createValueArray } from "./valueArray.js";
+import type { AcceleratedDataset, AppendableDataset, SampleCopyLayout, TimeRange, ValuePrecision, Viewport } from "./types.js";
 
 function positiveModulo(value: number, modulo: number): number {
   return ((value % modulo) + modulo) % modulo;
@@ -12,6 +13,8 @@ export interface UniformRingBufferOptions {
   readonly xStart?: number;
   /** Distance between consecutive X values. Defaults to 1. */
   readonly xStep?: number;
+  /** Y storage. Defaults to `"float32"`; use `"float64"` to keep large values exact. */
+  readonly valuePrecision?: ValuePrecision;
 }
 
 /**
@@ -28,7 +31,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
   readonly rangeMinMaxExcludesGaps = true;
   /** Distance between consecutive derived X values. */
   readonly xStep: number;
-  private readonly yData: Float32Array;
+  private readonly yData: Float32Array | Float64Array;
   private readonly tree: MinMaxTree;
   private _length = 0;
   private _head = 0;
@@ -48,7 +51,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     this.capacity = capacity;
     this.xStep = xStep;
     this._nextX = options.xStart ?? 0;
-    this.yData = new Float32Array(capacity);
+    this.yData = createValueArray(capacity, options.valuePrecision);
     this.tree = new MinMaxTree(this.yData, capacity);
   }
 
@@ -78,7 +81,12 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     this._nextX += this.xStep;
   }
 
-  /** Append Y samples while seeding the first X value from `x` when needed. */
+  /**
+   * Append Y samples. X is derived as `xStart + index * xStep`, so `x` is only read to seed
+   * the stream: its first value when the buffer is empty, or the first retained value when
+   * a batch replaces the whole buffer. Otherwise `x` is ignored and X continues from the
+   * previous sample, even if the passed values differ; use `RingBuffer` for irregular X.
+   */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
     const requested = Math.min(x.length, y.length);
     if (requested <= 0) return;
@@ -166,6 +174,11 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return this.tree.queryRing(this.logicalToPhysical(from), to - from);
   }
 
+  /** Ordinal of logical index 0 on the X grid, so `ordinalOffset + index` is stable while the buffer wraps. */
+  get ordinalOffset(): number {
+    return Math.round(this.firstX() / this.xStep);
+  }
+
   /** Copy visible samples into a packed render buffer. */
   copyVisibleSamples(
     viewport: Viewport,
@@ -181,8 +194,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
     const viewportSamples = Math.max(1, Math.ceil((viewport.xMax - viewport.xMin) / this.xStep));
     const stride = Math.max(1, Math.ceil(viewportSamples / maxPoints));
-    const firstOrdinal = Math.round(this.firstX() / this.xStep);
-    const remainder = positiveModulo(firstOrdinal + start, stride);
+    const remainder = positiveModulo(this.ordinalOffset + start, stride);
     const alignedStart = start + positiveModulo(-remainder, stride);
     return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
   }
@@ -216,8 +228,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
     const viewportSamples = Math.max(1, Math.ceil((viewport.xMax - viewport.xMin) / this.xStep) + 1);
     const stride = Math.max(1, Math.ceil(viewportSamples / maxSegments));
-    const firstOrdinal = Math.round(this.firstX() / this.xStep);
-    const alignedStart = start - positiveModulo(firstOrdinal + start, stride);
+    const alignedStart = start - positiveModulo(this.ordinalOffset + start, stride);
 
     let written = 0;
     for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += stride) {

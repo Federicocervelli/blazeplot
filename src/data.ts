@@ -59,6 +59,12 @@ export interface ChartDataCsvOptions {
   readonly header?: boolean;
   readonly delimiter?: string;
   readonly newline?: string;
+  /**
+   * Prefix text cells that start with `=`, `+`, `-`, `@`, tab, or carriage return with `'`, so
+   * spreadsheet apps show series ids and names as text instead of running them as formulas.
+   * Numeric cells are never changed. Defaults to true.
+   */
+  readonly escapeFormulas?: boolean;
 }
 
 /** Simple X/Y sample used by data resampling helpers. */
@@ -144,6 +150,7 @@ export function exportChartData(chart: ExportableChart, options: ChartDataExport
 export function chartDataToCSV(data: ChartDataExport, options: ChartDataCsvOptions = {}): string {
   const delimiter = options.delimiter ?? ",";
   const newline = options.newline ?? "\n";
+  const escapeFormulas = options.escapeFormulas !== false;
   const rows: string[] = [];
   if (options.header !== false) rows.push(CSV_COLUMNS.join(delimiter));
 
@@ -162,7 +169,7 @@ export function chartDataToCSV(data: ChartDataExport, options: ChartDataCsvOptio
         sample.high ?? "",
         sample.low ?? "",
         sample.close ?? "",
-      ].map((value) => csvCell(value, delimiter, newline)).join(delimiter));
+      ].map((value) => csvCell(value, delimiter, newline, escapeFormulas)).join(delimiter));
     }
   }
 
@@ -309,8 +316,10 @@ function normalizeMaxRows(value: number | undefined): number {
   return Math.max(0, Math.floor(value));
 }
 
-function csvCell(value: string | number, delimiter: string, newline: string): string {
-  const text = String(value);
+const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+
+function csvCell(value: string | number, delimiter: string, newline: string, escapeFormulas: boolean): string {
+  const text = typeof value === "string" && escapeFormulas && FORMULA_PREFIX.test(value) ? `'${value}` : String(value);
   return text.includes(delimiter) || text.includes("\"") || text.includes("\n") || text.includes("\r") || (newline !== "\n" && text.includes(newline))
     ? `"${text.replaceAll("\"", "\"\"")}"`
     : text;
