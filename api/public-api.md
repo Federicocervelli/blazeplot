@@ -147,15 +147,8 @@ class Camera2D {
 ```ts
 class Chart {
     constructor(target: HTMLElement, options?: ChartOptions);
-    get canvas(): HTMLCanvasElement;
     get rootElement(): HTMLElement;
-    get plotElement(): HTMLElement;
-    get xAxisElement(): HTMLElement;
-    get yAxisElement(): HTMLElement;
-    get y2AxisElement(): HTMLElement;
     get theme(): ResolvedChartTheme;
-    getWebGLContext(): WebGL2RenderingContext | null;
-    getCamera(yAxis?: SeriesYAxis): Camera2D;
     dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [
         number,
         number
@@ -193,10 +186,10 @@ class Chart {
     removeSeries(series: SeriesStore): boolean;
     getSummary(): ChartSummary;
     getSeriesState(): ChartSeriesState[];
-    followLatestX(options?: ChartFollowXOptions): void;
-    stopFollowingLatestX(): void;
-    setXFollowPaused(paused: boolean): void;
-    getXFollowState(): ChartXFollowState;
+    followX(options?: ChartFollowXOptions): void;
+    stopFollowX(): void;
+    setFollowXPaused(paused: boolean): void;
+    getFollowXState(): ChartFollowXState;
     fitToData(options?: ChartFitToDataOptions): boolean;
     resize(dpr?: number): boolean;
     getFrameStats(target?: ChartFrameStats): ChartFrameStats;
@@ -242,11 +235,11 @@ interface ChartEventMap extends ChartPluginEventMap {
     render: void;
     viewportchange: ChartViewportChangeEvent;
     seriesclick: ChartSeriesClickEvent;
-    click: ChartPointerEventState;
-    dblclick: ChartPointerEventState;
-    pointerdown: ChartPointerEventState;
-    pointerup: ChartPointerEventState;
-    pointermove: ChartPointerEventState;
+    click: ChartPointerEvent;
+    dblclick: ChartPointerEvent;
+    pointerdown: ChartPointerEvent;
+    pointerup: ChartPointerEvent;
+    pointermove: ChartPointerEvent;
 }
 ```
 
@@ -292,6 +285,12 @@ interface ChartFollowXOptions {
     readonly includeHidden?: boolean;
     readonly series?: readonly SeriesStore[];
 }
+```
+
+#### type ChartFollowXState
+
+```ts
+type ChartFollowXState = "off" | "following" | "paused";
 ```
 
 #### interface ChartFrameStats
@@ -570,17 +569,17 @@ interface ChartPluginViewport {
     zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
     fitToData(options?: ChartFitToDataOptions): boolean;
     isReversed(axis: "x" | "y", yAxis?: SeriesYAxis): boolean;
-    follow(options?: ChartFollowXOptions): void;
-    stopFollow(): void;
-    setFollowPaused(paused: boolean): void;
-    getFollowState(): ChartXFollowState;
+    followX(options?: ChartFollowXOptions): void;
+    stopFollowX(): void;
+    setFollowXPaused(paused: boolean): void;
+    getFollowXState(): ChartFollowXState;
 }
 ```
 
-#### interface ChartPointerEventState
+#### interface ChartPointerEvent
 
 ```ts
-interface ChartPointerEventState {
+interface ChartPointerEvent {
     readonly type: ChartPointerEventType;
     readonly clientX: number;
     readonly clientY: number;
@@ -645,7 +644,7 @@ interface ChartSelectEvent {
 #### interface ChartSeriesClickEvent
 
 ```ts
-interface ChartSeriesClickEvent extends ChartPointerEventState {
+interface ChartSeriesClickEvent extends ChartPointerEvent {
     readonly item: ChartPickItem;
 }
 ```
@@ -778,12 +777,6 @@ interface ChartViewportChangeEvent {
 }
 ```
 
-#### type ChartXFollowState
-
-```ts
-type ChartXFollowState = "off" | "following" | "paused";
-```
-
 #### interface CustomAxisScale
 
 ```ts
@@ -816,6 +809,12 @@ interface Dataset {
     invalidate?(): void;
     readonly ordinalOffset?: number;
 }
+```
+
+#### type DownsampleStrategy
+
+```ts
+type DownsampleStrategy = "minmax" | "none" | "server";
 ```
 
 #### interface HistogramBin
@@ -923,12 +922,6 @@ type InvalidSampleReason = "non-finite-x" | "decreasing-x";
 
 ```ts
 LIGHT_CHART_THEME: ResolvedChartTheme
-```
-
-#### type LODStrategy
-
-```ts
-type LODStrategy = "minmax" | "none" | "server";
 ```
 
 #### interface MinMaxSegmentCopyDataset
@@ -1135,7 +1128,7 @@ interface SeriesConfig {
     readonly capacity?: number;
     readonly xStart?: number;
     readonly xStep?: number;
-    readonly downsample?: LODStrategy;
+    readonly downsample?: DownsampleStrategy;
     readonly overflow?: BufferOverflowStrategy;
     readonly onInvalidSample?: (sample: InvalidSample) => void;
     readonly valuePrecision?: ValuePrecision;
@@ -1713,7 +1706,7 @@ interface LinkedChartsOptions {
     readonly panels: readonly LinkedChartPanelOptions[];
     readonly rows?: number;
     readonly columns?: number;
-    readonly sharedX?: boolean;
+    readonly syncX?: boolean;
     readonly syncSelections?: boolean;
     readonly spacing?: number | string;
     readonly className?: string;
@@ -1888,10 +1881,10 @@ interface ChartDownloadOptions extends ChartScreenshotOptions {
 type ExportableChart = Pick<Chart, "getSeriesState" | "getViewport">;
 ```
 
-#### function chartDataToCSV
+#### function chartDataToCsv
 
 ```ts
-function chartDataToCSV(data: ChartDataExport, options?: ChartDataCsvOptions): string;
+function chartDataToCsv(data: ChartDataExport, options?: ChartDataCsvOptions): string;
 ```
 
 #### function copyChartScreenshotToClipboard
@@ -2070,7 +2063,7 @@ interface AnnotationHitEvent {
     readonly dataX: number;
     readonly dataY: number;
     readonly bounds: AnnotationHitBounds;
-    readonly source?: ChartPointerEventState;
+    readonly source?: ChartPointerEvent;
 }
 ```
 
@@ -2289,8 +2282,8 @@ interface SelectionPluginOptions {
     readonly yAxis?: SeriesYAxis;
     readonly minDragDistancePx?: number;
     readonly className?: string;
-    readonly fill?: string;
-    readonly stroke?: string;
+    readonly fillColor?: string;
+    readonly strokeColor?: string;
     readonly zIndex?: number;
     readonly clearOnEscape?: boolean;
     readonly keyboard?: boolean | SelectionKeyboardOptions;
@@ -2366,7 +2359,7 @@ interface CrosshairPluginOptions {
     readonly width?: number;
     readonly dash?: string;
     readonly label?: boolean;
-    readonly labelBackground?: string;
+    readonly labelBackgroundColor?: string;
     readonly labelColor?: string;
     readonly labelFont?: string;
     readonly labelPlacement?: CrosshairLabelPlacement;
@@ -2448,13 +2441,13 @@ interface NavigatorPluginOptions {
     readonly maxSamplesPerSeries?: number;
     readonly followLive?: boolean;
     readonly className?: string;
-    readonly background?: string;
+    readonly backgroundColor?: string;
     readonly borderColor?: string;
-    readonly stroke?: string;
+    readonly strokeColor?: string;
     readonly strokeWidth?: number;
-    readonly fill?: string;
-    readonly windowFill?: string;
-    readonly windowStroke?: string;
+    readonly fillColor?: string;
+    readonly windowFillColor?: string;
+    readonly windowStrokeColor?: string;
     readonly handleWidth?: number;
     readonly handleHitWidth?: number;
     readonly zIndex?: number;

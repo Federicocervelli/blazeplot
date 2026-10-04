@@ -29,7 +29,7 @@ const expectedExports: Record<string, readonly string[]> = {
   ],
   "./linked": ["createLinkedCharts"],
   "./data": ["binSamples", "rollingMean"],
-  "./export": ["chartDataToCSV", "copyChartScreenshotToClipboard", "downloadBlob", "downloadChartScreenshot", "exportChartData"],
+  "./export": ["chartDataToCsv", "copyChartScreenshotToClipboard", "downloadBlob", "downloadChartScreenshot", "exportChartData"],
   "./plugins/legend": ["legendPlugin"],
   "./plugins/tooltip": ["tooltipPlugin"],
   "./plugins/interactions": ["interactionsPlugin"],

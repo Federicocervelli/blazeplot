@@ -131,7 +131,7 @@ const cleanup = () => {
 
 :::chart live-line Rolling live line chart
 
-Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. For timestamped streams, `chart.followLatestX({ currentX: () => Date.now(), ... })` scrolls smoothly between batched updates. You can also enable or change follow behavior at runtime with `chart.followLatestX(...)`, stop it with `chart.stopFollowingLatestX()`, and call `chart.setXFollowPaused(false)` from a "live" button if the user pans away and wants to jump back. Double-click/tap reset in the interactions plugin resumes follow by default. See [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
+Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. For timestamped streams, `chart.followX({ currentX: () => Date.now(), ... })` scrolls smoothly between batched updates. You can also enable or change follow behavior at runtime with `chart.followX(...)`, stop it with `chart.stopFollowX()`, and call `chart.setFollowXPaused(false)` from a "live" button if the user pans away and wants to jump back. Double-click/tap reset in the interactions plugin resumes follow by default. See [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
 
 If samples arrive at a fixed interval, use the `{ capacity, xStep }` shorthand so BlazePlot creates an implicit-X buffer:
 
@@ -213,7 +213,7 @@ const last = close.at(-1) ?? 0;
 
 const linked = createLinkedCharts(element, {
   rows: 2,
-  sharedX: true,
+  syncX: true,
   spacing: 0,
   panels: [
     {
@@ -332,11 +332,11 @@ const chart = new Chart(element, {
 Use `chart.screenshot()` for an image of the plot plus built-in DOM text overlays. Use `blazeplot/export` for downloadable visible data and image download helpers.
 
 ```ts
-import { chartDataToCSV, downloadBlob, exportChartData } from "blazeplot/export";
+import { chartDataToCsv, downloadBlob, exportChartData } from "blazeplot/export";
 
 const image = await chart.screenshot();
 const visible = exportChartData(chart, { range: "visible", includeYRange: true });
-const csv = chartDataToCSV(visible);
+const csv = chartDataToCsv(visible);
 
 downloadBlob(image, "chart.png");
 downloadBlob(new Blob([csv], { type: "text/csv" }), "visible-data.csv");

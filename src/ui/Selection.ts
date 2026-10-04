@@ -44,9 +44,9 @@ export interface SelectionPluginOptions {
   readonly minDragDistancePx?: number;
   readonly className?: string;
   /** Rectangle fill. Defaults to `theme.selectionFillColor`. */
-  readonly fill?: string;
+  readonly fillColor?: string;
   /** Rectangle border. Defaults to `theme.selectionStrokeColor`. */
-  readonly stroke?: string;
+  readonly strokeColor?: string;
   readonly zIndex?: number;
   /** Clear the selection with Escape. Defaults to true. */
   readonly clearOnEscape?: boolean;
@@ -174,8 +174,8 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       overlay = createOverlayLayer(options.className ?? "blazeplot-selection-brush", { zIndex: options.zIndex ?? 26 });
       const applyTheme = (): void => {
         if (!overlay) return;
-        overlay.style.border = `1px solid ${options.stroke ?? chart.theme.selectionStrokeColor}`;
-        overlay.style.background = options.fill ?? chart.theme.selectionFillColor;
+        overlay.style.border = `1px solid ${options.strokeColor ?? chart.theme.selectionStrokeColor}`;
+        overlay.style.background = options.fillColor ?? chart.theme.selectionFillColor;
       };
       applyTheme();
       const unmount = chart.dom.mount("plot", overlay);

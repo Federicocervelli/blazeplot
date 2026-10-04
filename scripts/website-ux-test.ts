@@ -59,7 +59,7 @@ try {
     const before = await js("scrollY") as number;
     await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", ...rect, deltaX: 0, deltaY: 180 });
     await wait(`scrollY > ${before}`);
-    await check("pageHost.homeChart.getXFollowState() === 'following'", "wheel over the landing chart scrolls the page instead of zooming");
+    await check("pageHost.homeChart.getFollowXState() === 'following'", "wheel over the landing chart scrolls the page instead of zooming");
     await js("window.scrollTo({top:0, behavior:'instant'}); pageHost.homeChart.pan({dx:0.1,dy:0})");
     await wait("page.querySelector('[data-home-resume]')");
     await js("page.querySelector('[data-home-resume]').click()");
@@ -212,12 +212,12 @@ try {
     await goto("/", "blazeplot-home");
     for (const mode of ["line", "multi", "ohlc"]) {
       await js(`page.querySelector('[data-home-option="mode:${mode}"]').click()`);
-      await wait("pageHost.homeChart?.getXFollowState() === 'following'");
+      await wait("pageHost.homeChart?.getFollowXState() === 'following'");
       await check("Math.abs((pageHost.homeChart.getViewport().xMax - pageHost.homeChart.getViewport().xMin) - 419) < 0.01", "live window retains its original span");
       await js("pageHost.homeChart.pan({dx:0.1,dy:0})");
       await wait("page.querySelector('[data-home-resume]')");
       await js("page.querySelector('[data-home-resume]').click()");
-      await wait("pageHost.homeChart.getXFollowState() === 'following' && !page.querySelector('[data-home-resume]')");
+      await wait("pageHost.homeChart.getFollowXState() === 'following' && !page.querySelector('[data-home-resume]')");
       await check("Number.isFinite(pageHost.homeChart.getViewport().yMin)", "each chart mode retains a valid Y range");
     }
   });

@@ -311,21 +311,21 @@ describe("interactionsPlugin reset", () => {
 
     const follow = make();
     follow.addLine({ capacity: 8 }).append({ x: 1, y: 1 });
-    follow.followLatestX({ window: 50 });
-    follow.setXFollowPaused(true);
-    expect(follow.getXFollowState()).toBe("paused");
+    follow.followX({ window: 50 });
+    follow.setFollowXPaused(true);
+    expect(follow.getFollowXState()).toBe("paused");
     fire(follow.canvas, new window.MouseEvent("dblclick", { bubbles: true, cancelable: true }));
-    expect(follow.getXFollowState()).toBe("following");
+    expect(follow.getFollowXState()).toBe("following");
     follow.dispose();
   });
 
   it("keeps follow paused when resumeFollowOnReset is false", () => {
     const chart = make({ resumeFollowOnReset: false });
     chart.addLine({ capacity: 8 }).append({ x: 1, y: 1 });
-    chart.followLatestX({ window: 50 });
-    chart.setXFollowPaused(true);
+    chart.followX({ window: 50 });
+    chart.setFollowXPaused(true);
     fire(chart.canvas, new window.MouseEvent("dblclick", { bubbles: true, cancelable: true }));
-    expect(chart.getXFollowState()).toBe("paused");
+    expect(chart.getFollowXState()).toBe("paused");
     chart.dispose();
   });
 });

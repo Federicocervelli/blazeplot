@@ -11,13 +11,13 @@ export interface NavigatorPluginOptions {
   readonly maxSamplesPerSeries?: number;
   readonly followLive?: boolean;
   readonly className?: string;
-  readonly background?: string;
+  readonly backgroundColor?: string;
   readonly borderColor?: string;
-  readonly stroke?: string;
+  readonly strokeColor?: string;
   readonly strokeWidth?: number;
-  readonly fill?: string;
-  readonly windowFill?: string;
-  readonly windowStroke?: string;
+  readonly fillColor?: string;
+  readonly windowFillColor?: string;
+  readonly windowStrokeColor?: string;
   readonly handleWidth?: number;
   readonly handleHitWidth?: number;
   readonly zIndex?: number;
@@ -176,9 +176,9 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       }
       path.style.display = "block";
       path.setAttribute("d", pathForSeries(series, domain, width, height, maxSamplesPerSeries));
-      path.setAttribute("stroke", options.stroke ?? rgbaCss(series.style.color));
+      path.setAttribute("stroke", options.strokeColor ?? rgbaCss(series.style.color));
       path.setAttribute("stroke-width", String(options.strokeWidth ?? Math.max(1, series.style.lineWidth)));
-      path.setAttribute("fill", options.fill ?? "none");
+      path.setAttribute("fill", options.fillColor ?? "none");
     }
 
     const viewport = chart.viewport.get();
@@ -287,10 +287,10 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
 
       const applyTheme = (): void => {
         if (!root || !windowRect || !leftHandle || !rightHandle) return;
-        const windowStroke = options.windowStroke ?? chart.theme.axisColor;
-        root.style.background = options.background ?? chart.theme.legendBackgroundColor;
+        const windowStroke = options.windowStrokeColor ?? chart.theme.axisColor;
+        root.style.background = options.backgroundColor ?? chart.theme.legendBackgroundColor;
         root.style.outline = `1px solid ${options.borderColor ?? chart.theme.legendBorderColor}`;
-        windowRect.setAttribute("fill", options.windowFill ?? rgbaCss(chart.theme.gridColor));
+        windowRect.setAttribute("fill", options.windowFillColor ?? rgbaCss(chart.theme.gridColor));
         windowRect.setAttribute("stroke", windowStroke);
         leftHandle.setAttribute("fill", windowStroke);
         rightHandle.setAttribute("fill", windowStroke);

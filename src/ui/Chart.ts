@@ -220,7 +220,7 @@ export interface ChartPickItem extends SeriesSample {
 export type ChartPointerEventType = "click" | "dblclick" | "pointerdown" | "pointerup" | "pointermove";
 
 /** Pointer event payload expressed in both screen and data coordinates. */
-export interface ChartPointerEventState {
+export interface ChartPointerEvent {
   readonly type: ChartPointerEventType;
   readonly clientX: number;
   readonly clientY: number;
@@ -238,7 +238,7 @@ export interface ChartPointerEventState {
 }
 
 /** Click payload for the nearest chart series item. */
-export interface ChartSeriesClickEvent extends ChartPointerEventState {
+export interface ChartSeriesClickEvent extends ChartPointerEvent {
   readonly item: ChartPickItem;
 }
 
@@ -295,11 +295,11 @@ export interface ChartEventMap extends ChartPluginEventMap {
   render: void;
   viewportchange: ChartViewportChangeEvent;
   seriesclick: ChartSeriesClickEvent;
-  click: ChartPointerEventState;
-  dblclick: ChartPointerEventState;
-  pointerdown: ChartPointerEventState;
-  pointerup: ChartPointerEventState;
-  pointermove: ChartPointerEventState;
+  click: ChartPointerEvent;
+  dblclick: ChartPointerEvent;
+  pointerdown: ChartPointerEvent;
+  pointerup: ChartPointerEvent;
+  pointermove: ChartPointerEvent;
 }
 
 /** Name of an event accepted by `Chart.subscribe`. */
@@ -364,7 +364,7 @@ export interface ChartFollowXOptions {
 }
 
 /** Latest-X follow state: disabled, actively following, or paused by interaction. */
-export type ChartXFollowState = "off" | "following" | "paused";
+export type ChartFollowXState = "off" | "following" | "paused";
 
 /** Render metrics from the last frame. */
 export interface ChartFrameStats {
@@ -695,32 +695,32 @@ export class Chart {
     return this.plugins.install(plugin);
   }
 
-  /** Canvas element used for chart rendering. */
+  /** @internal WebGL canvas. Plugins use `ctx.dom`, `ctx.layout`, or `ctx.unstable.canvas`. */
   get canvas(): HTMLCanvasElement {
     return this.layout.canvas;
   }
 
-  /** Root DOM element managed by the chart. */
+  /** Root DOM element managed by the chart, for app layout and styling. */
   get rootElement(): HTMLElement {
     return this.layout.root;
   }
 
-  /** Plot-area DOM element containing the canvas. */
+  /** @internal Plot-area element. Plugins mount into the `"plot"` slot with `ctx.dom.mount`. */
   get plotElement(): HTMLElement {
     return this.layout.plot;
   }
 
-  /** X-axis DOM element. */
+  /** @internal X-axis element. Plugins use the `"axis-x"` surface. */
   get xAxisElement(): HTMLElement {
     return this.layout.xAxis;
   }
 
-  /** Primary Y-axis DOM element. */
+  /** @internal Primary Y-axis element. Plugins use the `"axis-y"` surface. */
   get yAxisElement(): HTMLElement {
     return this.layout.yAxis;
   }
 
-  /** Secondary Y-axis DOM element. */
+  /** @internal Secondary Y-axis element. Plugins use the `"axis-y2"` surface. */
   get y2AxisElement(): HTMLElement {
     return this.layout.y2Axis;
   }
@@ -730,16 +730,12 @@ export class Chart {
     return this.resolvedTheme;
   }
 
-  /** Return the underlying WebGL2 context when the default backend is used. */
+  /** @internal WebGL2 context when the default backend is used. Plugins use `ctx.unstable.getWebGLContext()`. */
   getWebGLContext(): WebGL2RenderingContext | null {
     return this.renderer.getWebGLContext();
   }
 
-  /**
-   * Return the camera controlling the requested Y axis.
-   *
-   * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
-   */
+  /** @internal Camera for the requested Y axis. Plugins use `ctx.unstable.getCamera()`. */
   getCamera(yAxis: SeriesYAxis = "left"): Camera2D {
     return yAxis === "right" ? this.rightCamera : this.camera;
   }
@@ -943,7 +939,7 @@ export class Chart {
   }
 
   /** Keep the X viewport on the latest data, replacing any previous follow options. */
-  followLatestX(options: ChartFollowXOptions = {}): void {
+  followX(options: ChartFollowXOptions = {}): void {
     this.followXConfig = options;
     this.clearXFollowResumeTimer();
     this.xFollowPaused = false;
@@ -952,7 +948,7 @@ export class Chart {
   }
 
   /** Disable latest-X following. */
-  stopFollowingLatestX(): void {
+  stopFollowX(): void {
     if (!this.followXConfig && !this.xFollowPaused) return;
     this.followXConfig = null;
     this.xFollowPaused = false;
@@ -961,7 +957,7 @@ export class Chart {
   }
 
   /** Pause or resume latest-X following without changing its options. */
-  setXFollowPaused(paused: boolean): void {
+  setFollowXPaused(paused: boolean): void {
     this.clearXFollowResumeTimer();
     if (this.xFollowPaused === paused) return;
     this.xFollowPaused = paused;
@@ -970,7 +966,7 @@ export class Chart {
   }
 
   /** Return whether latest-X following is off, active, or paused by interaction. */
-  getXFollowState(): ChartXFollowState {
+  getFollowXState(): ChartFollowXState {
     if (!this.followXConfig) return "off";
     return this.xFollowPaused ? "paused" : "following";
   }
@@ -1461,7 +1457,7 @@ export class Chart {
     if (typeof resumeAfterMs !== "number" || !Number.isFinite(resumeAfterMs) || resumeAfterMs <= 0) return;
     this.xFollowResumeTimer = setTimeout(() => {
       this.xFollowResumeTimer = null;
-      this.setXFollowPaused(false);
+      this.setFollowXPaused(false);
     }, resumeAfterMs);
   }
 
@@ -2320,7 +2316,7 @@ export class Chart {
     this.emit("hover", state);
   }
 
-  private emitPointerEvent(type: ChartPointerEventType, source: MouseEvent | PointerEvent): ChartPointerEventState | null {
+  private emitPointerEvent(type: ChartPointerEventType, source: MouseEvent | PointerEvent): ChartPointerEvent | null {
     const rect = this.canvas.getBoundingClientRect();
     const plotX = source.clientX - rect.left;
     const plotY = source.clientY - rect.top;
@@ -2328,7 +2324,7 @@ export class Chart {
 
     const [dataX, dataY] = this.plotToData(plotX, plotY, rect, this.axis);
     const hover = this.pickAtPlot(plotX, plotY, source.clientX, source.clientY, rect, this.options.hover);
-    const event: ChartPointerEventState = {
+    const event: ChartPointerEvent = {
       type,
       clientX: source.clientX,
       clientY: source.clientY,

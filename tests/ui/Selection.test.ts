@@ -174,7 +174,7 @@ describe("selectionPlugin", () => {
     expect(overlayOf(chart).style.background).toBe("rgb(1, 2, 3)");
     chart.dispose();
 
-    const custom = make({ fill: "rgb(9, 9, 9)", stroke: "rgb(8, 8, 8)", className: "my-brush", zIndex: 3 });
+    const custom = make({ fillColor: "rgb(9, 9, 9)", strokeColor: "rgb(8, 8, 8)", className: "my-brush", zIndex: 3 });
     const overlay = custom.chart.plotElement.querySelector(".my-brush") as HTMLElement;
     expect(overlay.style.background).toBe("rgb(9, 9, 9)");
     expect(overlay.style.border).toContain("rgb(8, 8, 8)");
