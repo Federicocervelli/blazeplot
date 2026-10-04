@@ -34,6 +34,16 @@ function frames(count: number): Promise<void> {
   });
 }
 
+/** Run `action` and return the message it threw, or `null` when it did not throw. */
+function thrownMessage(action: () => unknown): string | null {
+  try {
+    action();
+    return null;
+  } catch (caught) {
+    return caught instanceof Error ? caught.message : String(caught);
+  }
+}
+
 function mount(options: ChartOptions): { chart: Chart; host: HTMLDivElement; renders: () => number } {
   const host = document.createElement("div");
   host.style.cssText = "position:fixed;left:0;top:0;width:480px;height:240px;opacity:0;pointer-events:none";
@@ -62,12 +72,9 @@ export async function runRobustnessProbes(): Promise<RobustnessResults> {
     const time = mount({ axes: { x: { scale: "time" } } });
     const start = Date.UTC(2026, 0, 1);
     time.chart.setViewport({ xMin: start, xMax: start + 1_000, yMin: 0, yMax: 1 });
-    let zoomInThrew: string | null = null;
-    try {
+    const zoomInThrew = thrownMessage(() => {
       for (let i = 0; i < 200; i++) time.chart.zoom({ factor: 2, cx: 0.37, cy: 0.5, axis: "x" });
-    } catch (caught) {
-      zoomInThrew = caught instanceof Error ? caught.message : String(caught);
-    }
+    });
     const zoomed = time.chart.getViewport();
     unmount(time);
 
@@ -87,13 +94,8 @@ export async function runRobustnessProbes(): Promise<RobustnessResults> {
     const logIncludeZeroChangedY = log.chart.fitToData({ x: false, includeZero: true });
 
     // setViewport rejects an invalid scale domain synchronously and atomically.
-    let invalidSetViewportError: string | null = null;
     const beforeInvalid = log.chart.getViewport();
-    try {
-      log.chart.setViewport({ xMin: 5, xMax: 6, yMin: -1, yMax: 10 });
-    } catch (caught) {
-      invalidSetViewportError = caught instanceof Error ? caught.message : String(caught);
-    }
+    const invalidSetViewportError = thrownMessage(() => log.chart.setViewport({ xMin: 5, xMax: 6, yMin: -1, yMax: 10 }));
     const afterInvalid = log.chart.getViewport();
     const invalidSetViewportUnchanged = JSON.stringify(afterInvalid) === JSON.stringify(beforeInvalid);
     unmount(log);
@@ -118,32 +120,20 @@ export async function runRobustnessProbes(): Promise<RobustnessResults> {
     // Construction failures leave no DOM behind and give back a caller-supplied canvas.
     const failedHost = document.createElement("div");
     document.body.appendChild(failedHost);
-    try {
-      new Chart(failedHost, { backendFactory: failingBackend });
-    } catch {
-      // Expected.
-    }
+    thrownMessage(() => new Chart(failedHost, { backendFactory: failingBackend }));
     const failedChartLeftDom = failedHost.childElementCount;
     const canvasHost = document.createElement("div");
     const canvas = document.createElement("canvas");
     canvasHost.appendChild(canvas);
     document.body.appendChild(canvasHost);
-    try {
-      new Chart(canvas, { backendFactory: failingBackend });
-    } catch {
-      // Expected.
-    }
+    thrownMessage(() => new Chart(canvas, { backendFactory: failingBackend }));
     const failedChartRestoredCanvas = canvas.parentElement === canvasHost && canvasHost.childElementCount === 1;
     failedHost.remove();
     canvasHost.remove();
 
     const linkedHost = document.createElement("div");
     document.body.appendChild(linkedHost);
-    try {
-      createLinkedCharts(linkedHost, { panels: [{}, { options: { backendFactory: failingBackend } }] });
-    } catch {
-      // Expected.
-    }
+    thrownMessage(() => createLinkedCharts(linkedHost, { panels: [{}, { options: { backendFactory: failingBackend } }] }));
     const failedLinkedLeftDom = linkedHost.childElementCount;
     linkedHost.remove();
 

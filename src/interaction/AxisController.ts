@@ -48,6 +48,19 @@ type TimeInterval = readonly [unit: TimeUnit, count: number, approxMs: number];
 /** Maps a scale-space `[min, max]` domain to a new one. */
 type DomainTransform = (min: number, max: number) => [number, number];
 
+/** Widen `[min, max]` by `padding` × its span; a zero-width span first opens to a magnitude-based width. */
+function padSpan(min: number, max: number, padding: number): [number, number] {
+  let low = min;
+  let high = max;
+  if (high - low <= 0) {
+    const halfSpan = Math.max(1, Math.abs(low)) * 0.5;
+    low -= halfSpan;
+    high += halfSpan;
+  }
+  const amount = (high - low) * padding;
+  return [low - amount, high + amount];
+}
+
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
@@ -148,7 +161,8 @@ export class AxisController {
 
   /** Why the current domain is unusable for the configured scale, or `null` when it is usable. */
   currentDomainError(axis: AxisRenderTarget): string | null {
-    return this.domainError(axis, axis === "x" ? this.camera.xMin : this.camera.yMin, axis === "x" ? this.camera.xMax : this.camera.yMax);
+    const [min, max] = this.cameraDomain(axis);
+    return this.domainError(axis, min, max);
   }
 
   /** Return whether `[min, max]` is a usable domain for an axis's configured scale. */
@@ -214,8 +228,7 @@ export class AxisController {
 
   /** Convert one data value to clip space using the configured scale and direction. */
   valueToClip(value: number, axis: AxisRenderTarget): number {
-    const min = axis === "x" ? this.camera.xMin : this.camera.yMin;
-    const max = axis === "x" ? this.camera.xMax : this.camera.yMax;
+    const [min, max] = this.cameraDomain(axis);
     const scaledMin = this.scaleValue(min, axis);
     const scaledMax = this.scaleValue(max, axis);
     let normalized = (this.scaleValue(value, axis) - scaledMin) / (scaledMax - scaledMin);
@@ -225,8 +238,7 @@ export class AxisController {
 
   /** Convert one clip-space coordinate back to a data value. */
   clipToValue(clip: number, axis: AxisRenderTarget): number {
-    const min = axis === "x" ? this.camera.xMin : this.camera.yMin;
-    const max = axis === "x" ? this.camera.xMax : this.camera.yMax;
+    const [min, max] = this.cameraDomain(axis);
     let normalized = (clip + 1) * 0.5;
     if (axis === "x" ? this.camera.xReversed : this.camera.yReversed) normalized = 1 - normalized;
     const scaledMin = this.scaleValue(min, axis);
@@ -254,22 +266,41 @@ export class AxisController {
     return this.transformViewport(intent.axis === "y" ? null : zoom(intent.cx), intent.axis === "x" ? null : zoom(intent.cy));
   }
 
+  /**
+   * Pad a data domain by `padding` × its span in scale space, so log and symlog axes pad
+   * proportionally instead of past zero. Returns `null` when no usable domain results,
+   * e.g. non-positive data or `includeZero` on a log axis.
+   */
+  paddedDomain(axis: AxisRenderTarget, min: number, max: number, padding: number, includeZero: boolean): [number, number] | null {
+    const from = includeZero ? Math.min(0, min) : min;
+    const to = includeZero ? Math.max(0, max) : max;
+    // Custom scales without fromScreen() cannot map back, so they pad linearly.
+    const scale = (axis === "x" ? this.options.x : this.options.y)?.scale;
+    const mapsBack = typeof scale !== "object" || !scale.toScreen || typeof scale.fromScreen === "function";
+    const [low, high] = padSpan(mapsBack ? this.scaleValue(from, axis) : from, mapsBack ? this.scaleValue(to, axis) : to, padding);
+    const domainMin = mapsBack ? this.unscaleValue(low, axis) : low;
+    const domainMax = mapsBack ? this.unscaleValue(high, axis) : high;
+    return this.isValidDomain(axis, domainMin, domainMax) ? [domainMin, domainMax] : null;
+  }
+
   /** Apply per-axis scale-space transforms (`null` keeps that axis); `null` when either result is unusable. */
   private transformViewport(x: DomainTransform | null, y: DomainTransform | null): Viewport | null {
-    const [xMin, xMax] = x ? this.transformDomain("x", x) ?? [] : [this.camera.xMin, this.camera.xMax];
-    const [yMin, yMax] = y ? this.transformDomain("y", y) ?? [] : [this.camera.yMin, this.camera.yMax];
-    if (xMin === undefined || xMax === undefined || yMin === undefined || yMax === undefined) return null;
-    return { xMin, xMax, yMin, yMax };
+    const xDomain = x ? this.transformDomain("x", x) : this.cameraDomain("x");
+    const yDomain = y ? this.transformDomain("y", y) : this.cameraDomain("y");
+    if (!xDomain || !yDomain) return null;
+    return { xMin: xDomain[0], xMax: xDomain[1], yMin: yDomain[0], yMax: yDomain[1] };
   }
 
   private transformDomain(axis: AxisRenderTarget, transform: DomainTransform): [number, number] | null {
-    const [scaledMin, scaledMax] = transform(
-      this.scaleValue(axis === "x" ? this.camera.xMin : this.camera.yMin, axis),
-      this.scaleValue(axis === "x" ? this.camera.xMax : this.camera.yMax, axis),
-    );
+    const [currentMin, currentMax] = this.cameraDomain(axis);
+    const [scaledMin, scaledMax] = transform(this.scaleValue(currentMin, axis), this.scaleValue(currentMax, axis));
     const min = this.unscaleValue(scaledMin, axis);
     const max = this.unscaleValue(scaledMax, axis);
     return this.isValidDomain(axis, min, max) ? [min, max] : null;
+  }
+
+  private cameraDomain(axis: AxisRenderTarget): [number, number] {
+    return axis === "x" ? [this.camera.xMin, this.camera.xMax] : [this.camera.yMin, this.camera.yMax];
   }
 
   private static validateAxisDomain(axis: AxisRenderTarget, min: number, max: number, options: AxisControllerAxisOptions | undefined): void {

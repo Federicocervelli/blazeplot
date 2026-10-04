@@ -431,48 +431,6 @@ function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: numb
   return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
 }
 
-/**
- * Pad a data domain in the axis's scale space, so log and symlog axes pad
- * proportionally instead of past zero. Returns `null` when no valid domain exists
- * for the scale, e.g. non-positive data or `includeZero` on a log axis.
- */
-function paddedAxisDomain(
-  controller: AxisController,
-  axis: "x" | "y",
-  min: number,
-  max: number,
-  padding: number,
-  includeZero: boolean,
-): { min: number; max: number } | null {
-  const from = includeZero ? Math.min(0, min) : min;
-  const to = includeZero ? Math.max(0, max) : max;
-  const domain = (controller.isNonlinear(axis) && scaledPaddedDomain(controller, axis, from, to, padding)) || paddedDomain(from, to, padding);
-  return controller.isValidDomain(axis, domain.min, domain.max) ? domain : null;
-}
-
-function scaledPaddedDomain(controller: AxisController, axis: "x" | "y", min: number, max: number, padding: number): { min: number; max: number } | null {
-  try {
-    const scaled = paddedDomain(controller.scaleValue(min, axis), controller.scaleValue(max, axis), padding);
-    return { min: controller.unscaleValue(scaled.min, axis), max: controller.unscaleValue(scaled.max, axis) };
-  } catch {
-    // Custom scales without fromScreen() cannot map back; the caller falls back to linear padding.
-    return null;
-  }
-}
-
-function paddedDomain(min: number, max: number, padding: number): { min: number; max: number } {
-  let nextMin = min;
-  let nextMax = max;
-  let span = nextMax - nextMin;
-  if (span <= 0) {
-    const halfSpan = Math.max(1, Math.abs(nextMin)) * 0.5;
-    nextMin -= halfSpan;
-    nextMax += halfSpan;
-    span = nextMax - nextMin;
-  }
-  const amount = span * padding;
-  return { min: nextMin - amount, max: nextMax + amount };
-}
 
 function titleText(config: string | TextOverlayConfig | undefined): string {
   return typeof config === "string" ? config : config?.text ?? "";
@@ -618,34 +576,28 @@ export class Chart implements ChartPluginContext {
     this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
+    // Any failure from here on (e.g. no WebGL2, a throwing plugin) disposes the partly built
+    // chart, which removes its DOM and hands back a caller-supplied canvas.
     try {
       this.installGpuResources(this.createGpuResources());
       this.rebuildAxisOverlay();
       this.updateTextOverlays();
-    } catch (error) {
-      // E.g. no WebGL2: remove the half-built DOM and hand back a caller-supplied canvas.
-      this.axisOverlay?.dispose();
-      if (this.renderer) this.disposeRenderer(this.renderer);
-      this.layout.dispose();
-      throw error;
-    }
 
-    this.canvas.addEventListener("pointermove", this.handlePointerMove);
-    this.canvas.addEventListener("pointerdown", this.handlePointerDown);
-    this.canvas.addEventListener("pointerup", this.handlePointerUp);
-    this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
-    this.canvas.addEventListener("click", this.handleClick);
-    this.canvas.addEventListener("dblclick", this.handleDoubleClick);
-    this.canvas.addEventListener("webglcontextlost", this.handleWebGLContextLost);
-    this.canvas.addEventListener("webglcontextrestored", this.handleWebGLContextRestored);
-    this.layout.root.addEventListener("keydown", this.handleKeyDown);
+      this.canvas.addEventListener("pointermove", this.handlePointerMove);
+      this.canvas.addEventListener("pointerdown", this.handlePointerDown);
+      this.canvas.addEventListener("pointerup", this.handlePointerUp);
+      this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
+      this.canvas.addEventListener("click", this.handleClick);
+      this.canvas.addEventListener("dblclick", this.handleDoubleClick);
+      this.canvas.addEventListener("webglcontextlost", this.handleWebGLContextLost);
+      this.canvas.addEventListener("webglcontextrestored", this.handleWebGLContextRestored);
+      this.layout.root.addEventListener("keydown", this.handleKeyDown);
 
-    if (typeof ResizeObserver !== "undefined") {
-      this.resizeObserver = new ResizeObserver(() => this.resize());
-      this.resizeObserver.observe(this.layout.plot);
-    }
+      if (typeof ResizeObserver !== "undefined") {
+        this.resizeObserver = new ResizeObserver(() => this.resize());
+        this.resizeObserver.observe(this.layout.plot);
+      }
 
-    try {
       for (const plugin of options.plugins ?? []) {
         const installed = plugin.install(this);
         if (typeof installed === "function") {
@@ -770,9 +722,9 @@ export class Chart implements ChartPluginContext {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    // X always pans on the left controller; Y pans the targeted axis, or both for a plot gesture.
+    const flipRight = yAxis === undefined && !this.rightYDirectionMatchesLeft();
     const leftDy = yAxis === "right" ? 0 : next.dy;
-    const rightDy = yAxis === "right" ? next.dy : yAxis === "left" ? 0 : this.rightYDirectionMatchesLeft() ? next.dy : -next.dy;
+    const rightDy = yAxis === "left" ? 0 : flipRight ? -next.dy : next.dy;
     this.applyViewportChange(this.axis.panViewport({ dx: next.dx, dy: leftDy }), this.rightAxis.panViewport({ dx: 0, dy: rightDy }));
   }
 
@@ -785,13 +737,13 @@ export class Chart implements ChartPluginContext {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    // X always zooms on the left controller; Y zooms the targeted axis, or both for a plot gesture.
-    const leftAxis = yAxis === "right" ? (next.axis === "y" ? null : "x") : next.axis;
-    const zoomsRightY = next.axis !== "x" && yAxis !== "left";
-    const rightCy = yAxis === undefined && !this.rightYDirectionMatchesLeft() ? 1 - next.cy : next.cy;
+    const flipRight = yAxis === undefined && !this.rightYDirectionMatchesLeft();
+    const zoomsLeftY = yAxis !== "right" && next.axis !== "x";
+    const zoomsRightY = yAxis !== "left" && next.axis !== "x";
+    const leftAxis = next.axis === "y" ? (zoomsLeftY ? "y" : null) : zoomsLeftY ? "xy" : "x";
     this.applyViewportChange(
       leftAxis ? this.axis.zoomViewport({ ...next, axis: leftAxis }) : this.camera.viewport,
-      zoomsRightY ? this.rightAxis.zoomViewport({ ...next, cy: rightCy, axis: "y" }) : this.rightCamera.viewport,
+      zoomsRightY ? this.rightAxis.zoomViewport({ ...next, cy: flipRight ? 1 - next.cy : next.cy, axis: "y" }) : this.rightCamera.viewport,
     );
   }
 
@@ -962,17 +914,17 @@ export class Chart implements ChartPluginContext {
 
     let changed = false;
     if (fitX && Number.isFinite(xMin) && Number.isFinite(xMax)) {
-      const xDomain = paddedAxisDomain(this.axis, "x", xMin, xMax, padding.x, false);
-      if (xDomain && !domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xDomain.min, xDomain.max)) {
-        this.camera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
+      const xDomain = this.axis.paddedDomain("x", xMin, xMax, padding.x, false);
+      if (xDomain && !domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xDomain[0], xDomain[1])) {
+        this.camera.setViewport({ xMin: xDomain[0], xMax: xDomain[1] });
         changed = true;
       }
     }
     const fitYAxis = (camera: Camera2D, controller: AxisController, min: number, max: number): void => {
       if (!Number.isFinite(min) || !Number.isFinite(max)) return;
-      const domain = paddedAxisDomain(controller, "y", min, max, padding.y, options.includeZero === true);
-      if (!domain || domainsAlmostEqual(camera.yMin, camera.yMax, domain.min, domain.max)) return;
-      camera.setViewport({ yMin: domain.min, yMax: domain.max });
+      const domain = controller.paddedDomain("y", min, max, padding.y, options.includeZero === true);
+      if (!domain || domainsAlmostEqual(camera.yMin, camera.yMax, domain[0], domain[1])) return;
+      camera.setViewport({ yMin: domain[0], yMax: domain[1] });
       changed = true;
     };
     if (fitY && yAxis !== "right") fitYAxis(this.camera, this.axis, leftYMin, leftYMax);
@@ -1334,7 +1286,8 @@ export class Chart implements ChartPluginContext {
     this.gridBuffer = resources.gridBuffer;
   }
 
-  private disposeRenderer(renderer: Renderer): void {
+  private disposeRenderer(renderer: Renderer | undefined): void {
+    if (!renderer) return;
     try {
       renderer.dispose();
     } catch {

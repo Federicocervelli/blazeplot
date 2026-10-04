@@ -243,13 +243,25 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         clearSelection(event);
       };
 
-      let lastLayoutKey = "";
+      // Re-derive the rectangle only when the viewport or canvas size changed since the last frame.
+      let lastViewport: Viewport | null = null;
+      let lastWidth = 0;
+      let lastHeight = 0;
       const onRender = (): void => {
         if (!committedSelection || drag) return;
         const viewport = chart.getViewport(yAxis);
-        const key = `${viewport.xMin},${viewport.xMax},${viewport.yMin},${viewport.yMax},${canvas.width},${canvas.height}`;
-        if (key === lastLayoutKey) return;
-        lastLayoutKey = key;
+        if (
+          lastViewport
+          && viewport.xMin === lastViewport.xMin
+          && viewport.xMax === lastViewport.xMax
+          && viewport.yMin === lastViewport.yMin
+          && viewport.yMax === lastViewport.yMax
+          && canvas.width === lastWidth
+          && canvas.height === lastHeight
+        ) return;
+        lastViewport = viewport;
+        lastWidth = canvas.width;
+        lastHeight = canvas.height;
         committedSelection = { ...committedSelection, plotBounds: plotBoundsForSelection(chart, committedSelection) };
         setOverlay(committedSelection.plotBounds);
       };

@@ -2,6 +2,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { RobustnessResults } from "../tests/browser/interaction/robustness.ts";
 import { CdpClient, closeTarget, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
 
 interface Options {
@@ -417,22 +418,6 @@ async function runSelectionCase(options: Options, serverUrl: string): Promise<vo
   }
 }
 
-interface RobustnessResults {
-  zoomInThrew: string | null;
-  zoomInSpan: number;
-  logFitYMin: number;
-  logFitRendered: boolean;
-  logIncludeZeroChangedY: boolean;
-  invalidSetViewportError: string | null;
-  invalidSetViewportUnchanged: boolean;
-  invalidDomainLogs: number;
-  rendersWhileInvalid: number;
-  recoveredAfterInvalid: boolean;
-  failedChartLeftDom: number;
-  failedChartRestoredCanvas: boolean;
-  failedLinkedLeftDom: number;
-}
-
 async function runRobustnessCase(options: Options, serverUrl: string): Promise<void> {
   const cdp = await openCase(options, serverUrl, "robustness");
   try {
@@ -557,8 +542,7 @@ async function pressKey(cdp: CdpClient, key: string, keyCode: number): Promise<v
 }
 
 async function doubleClick(cdp: CdpClient, x: number, y: number): Promise<void> {
-  await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1, pointerType: "mouse" });
-  await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1, pointerType: "mouse" });
+  await click(cdp, x, y);
   await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 2, pointerType: "mouse" });
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 2, pointerType: "mouse" });
 }
