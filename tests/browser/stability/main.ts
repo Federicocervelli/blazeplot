@@ -1,6 +1,7 @@
 import { Chart } from "@/index.ts";
 import type { ChartPlugin, SeriesStore } from "@/index.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
+import { flameGraphPlugin } from "@/plugins/flamegraph.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
@@ -293,12 +294,21 @@ function setStatus(text: string): void {
 // (1) Mount / unmount
 // ---------------------------------------------------------------------------
 
+let mountCounter = 0;
+const FLAME_STACKS = ["main;render;draw 12", "main;render;layout 7", "main;io;read 4"].join("\n");
+
+/** Every fourth mount is a flame graph, which owns a second WebGL context on top of the chart's. */
 async function mountOnce(): Promise<number> {
+  const flame = ++mountCounter % 4 === 0;
   const host = createHost(480, 280);
-  const chart = newChart(host, true);
+  const chart = flame
+    ? new Chart(host, { axes: { x: true, y: false }, plugins: [flameGraphPlugin({ foldedStacks: FLAME_STACKS })] })
+    : newChart(host, true);
   const renders = countRenders(chart);
-  addSampleSeries(chart);
-  chart.fitToData({ padding: 0.05 });
+  if (!flame) {
+    addSampleSeries(chart);
+    chart.fitToData({ padding: 0.05 });
+  }
   chart.start();
   await nextRender(chart);
   hover(chart);
@@ -569,6 +579,10 @@ async function contextLoss(cycles: number): Promise<ContextLossResult> {
     if (lit === 0) throw new Error(`cycle ${cycle}: restored chart rendered a blank frame`);
   }
 
+  // Taken before dispose: releasing the context on dispose fires one more (expected) lost event.
+  const lostDuringCycles = lostEvents;
+  const restoredDuringCycles = restoredEvents;
+
   // A chart disposed while its context is still lost must clean up without throwing, and a later restore must be harmless.
   const secondHost = createHost(320, 200);
   const second = newChart(secondHost, true);
@@ -594,7 +608,7 @@ async function contextLoss(cycles: number): Promise<ContextLossResult> {
   chart.dispose();
   host.remove();
   await frames(2);
-  return { cycles, lostEvents, restoredEvents, rendersAfterRestore, drawCallsAfterRestore, litPixelsAfterRestore, disposedWhileLost };
+  return { cycles, lostEvents: lostDuringCycles, restoredEvents: restoredDuringCycles, rendersAfterRestore, drawCallsAfterRestore, litPixelsAfterRestore, disposedWhileLost };
 }
 
 function requireElement(id: string): HTMLElement {
