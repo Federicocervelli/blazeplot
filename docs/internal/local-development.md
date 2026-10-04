@@ -42,12 +42,28 @@ bun run bench:ci
 
 `bun run test:website` checks the development and production website builds for routing, responsive previews, modal keyboard behavior, copy/export feedback, lazy loading, offscreen chart lifecycle, and legend focus in headless Chromium. Screenshots and test downloads are written to `build/website-ux/`. Run a focused case with `bun scripts/website-ux-test.ts <case>` (for example, `anchors` or `legend`). After `bun run pages:build`, run `bun scripts/website-ux-test.ts production` to smoke-test the built site.
 
-CI runs the same two groups as separate jobs. Locally:
+### Cross-browser smoke (Firefox and WebKit)
+
+`bun run test:cross-browser` uses Playwright to run a smoke test in Firefox and WebKit against the Vite-served visual and interaction fixtures. For each browser it checks that WebGL2 is available, that visual cases render non-blank pixels (page screenshot plus `chart.screenshot()`), that WebGL context restore works, and that hover, crosshair, wheel zoom, shift-drag pan, box zoom, and double-click reset work. It starts its own Vite server and does not need Chrome.
+
+```bash
+bunx playwright install firefox webkit      # once; add --with-deps on Linux
+bun run test:cross-browser
+bun run test:cross-browser --browsers webkit --cases line,scatter
+```
+
+Screenshots and `summary.json` go to `build/cross-browser/` (failures add `*-FAILED.png`). Options are listed by `bun run test:cross-browser --help`.
+
+- A browser without WebGL2 fails the run. To skip one on purpose, list it in `--allow-no-webgl2` or `BLAZEPLOT_CROSS_BROWSER_ALLOW_NO_WEBGL2`; the run then prints a `SKIP` line and the browser's other checks do not run. Document any allowlist entry in `docs/browser-support.md`.
+- On Linux CI, headless Firefox cannot find a GL driver, so the job runs it headed under Xvfb (`xvfb-run -a bun run test:cross-browser --headed firefox`) and gets Mesa llvmpipe WebGL2. Locally on a desktop, plain headless works if your GPU drivers expose WebGL2.
+- WebKit on Windows and Linux is the Playwright build, not Safari.
+
+CI runs the same groups as separate jobs. Locally:
 
 ```bash
 bun run check          # typecheck, unit tests, build, docs freshness, package checks
 bun run test:browser   # benchmark smoke, visual, interaction, website (needs Chrome)
-bun run ci             # both
+bun run ci             # both (cross-browser is a separate CI job: bun run test:cross-browser)
 ```
 
 ## Documentation changes

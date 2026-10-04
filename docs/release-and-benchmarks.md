@@ -108,6 +108,7 @@ On every push to `main` or `v1` and on manual dispatch, `.github/workflows/relea
 - `bun run bench:compare`: manual-only headed comparison benchmark for BlazePlot, uPlot, and Chart.js. It runs automatically after launch and overwrites `benchmarks/latest.json` plus `benchmarks/latest.md`.
 - `bun run test:visual`: browser visual chart tests used by CI; writes PNGs and `summary.json` to `build/visual-tests/`.
 - `bun run test:interaction`: browser input automation used by CI for hover, crosshair, zoom, pan, reset, and selection.
+- `bun run test:cross-browser`: Playwright Firefox and WebKit smoke test (WebGL2, non-blank render, basic interaction) used by the `cross-browser` CI job. See [Browser support](./browser-support.md#tested-browsers).
 - `bun run bench -- --scenario <name>`: run one benchmark scenario and print JSON.
 - `bun run bench:report`: append benchmark tables to `docs/internal/benchmark-results.md` or a path passed with `--out-md`.
 - `bun run release:benchmarks`: append benchmark tables to `changelogs/v<package.version>.md` (the release workflow runs this; rarely needed locally).
