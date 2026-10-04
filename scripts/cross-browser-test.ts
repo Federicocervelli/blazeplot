@@ -69,6 +69,7 @@ interface WebGl2Info {
   available: boolean;
   renderer: string | null;
   version: string | null;
+  creationError?: string;
 }
 
 interface PixelStats {
@@ -130,8 +131,7 @@ async function main(): Promise<void> {
 }
 
 async function runBrowser(name: string, type: BrowserType, options: Options, serverUrl: string): Promise<BrowserOutcome> {
-  const launchArgs = name === "chromium" ? ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] : [];
-  const browser = await type.launch({ headless: true, args: launchArgs });
+  const browser = await type.launch({ headless: true, ...launchOptions(name) });
   try {
     console.log(`  ${name} ${browser.version()}`);
     try {
@@ -149,8 +149,17 @@ async function runBrowser(name: string, type: BrowserType, options: Options, ser
   }
 }
 
+/** Per-engine flags so CI machines without a GPU fall back to software WebGL2 instead of blocklisting it. */
+function launchOptions(name: string): { args?: string[]; firefoxUserPrefs?: Record<string, string | number | boolean> } {
+  if (name === "chromium") return { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] };
+  if (name === "firefox") {
+    return { firefoxUserPrefs: { "webgl.disabled": false, "webgl.enable-webgl2": true, "webgl.force-enabled": true, "gfx.webrender.software": true } };
+  }
+  return {};
+}
+
 async function runChecks(name: string, browser: Browser, options: Options, serverUrl: string): Promise<void> {
-  const webgl2 = await checkWebGl2(name, browser, options, serverUrl);
+  const webgl2 = await checkWebGl2(name, browser, options);
   console.log(`✓ WebGL2 available (${webgl2.version ?? "unknown version"}; renderer: ${webgl2.renderer ?? "unknown"})`);
 
   for (const caseName of options.visualCases) await runVisualCase(name, browser, options, serverUrl, caseName);
@@ -171,20 +180,22 @@ async function newPage(browser: Browser, options: Options, caseName: string, lab
   return { page, errors, close: () => context.close() };
 }
 
-async function checkWebGl2(name: string, browser: Browser, options: Options, serverUrl: string): Promise<WebGl2Info> {
+async function checkWebGl2(name: string, browser: Browser, options: Options): Promise<WebGl2Info> {
   const { page, close } = await newPage(browser, options, "webgl2", name);
   try {
-    await page.goto(new URL("/visual/?case=line", serverUrl).toString());
+    await page.goto("about:blank");
     const info = await page.evaluate((): WebGl2Info => {
       const canvas = document.createElement("canvas");
+      let creationError = "";
+      canvas.addEventListener("webglcontextcreationerror", (event) => { creationError = (event as WebGLContextEvent).statusMessage; });
       const gl = canvas.getContext("webgl2");
-      if (!gl) return { available: false, renderer: null, version: null };
+      if (!gl) return { available: false, renderer: null, version: null, creationError };
       const debug = gl.getExtension("WEBGL_debug_renderer_info");
       const renderer = debug ? String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
       return { available: true, renderer, version: String(gl.getParameter(gl.VERSION)) };
     });
     if (!info.available) {
-      const message = `${name} cannot create a WebGL2 context in this environment`;
+      const message = `${name} cannot create a WebGL2 context in this environment${info.creationError ? ` (${info.creationError})` : ""}`;
       if (options.allowNoWebgl2.has(name)) throw new Skip(`${message} (allowlisted via --allow-no-webgl2; remaining ${name} checks are NOT run)`);
       throw new Error(`${message}. Fix the environment, or list the browser in --allow-no-webgl2 / BLAZEPLOT_CROSS_BROWSER_ALLOW_NO_WEBGL2 to skip it explicitly.`);
     }
