@@ -12,14 +12,20 @@ export default class Preview extends PreviewResources {
     const status = root.querySelector<HTMLElement>("[data-sensor-status]");
     const liveButton = root.querySelector<HTMLButtonElement>("[data-sensor-live]");
 
+    // X values are epoch milliseconds, so hover labels format them as times like the time axis does.
+    const timeFormatter = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 2 });
+    const valueFormatter = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 4 });
+    const formatTime = (value: number): string => timeFormatter.format(new Date(value));
+    const formatValue = (value: number): string => valueFormatter.format(value);
+
     const chart = new Chart(target, siteChartOptions({
       axes: { x: { position: "outside", scale: "time" }, y: { position: "outside" }, y2: { visible: true, position: "outside" } },
       grid: true,
       autoFitY: { padding: { y: 0.15 }, yAxis: "both" },
       plugins: [
         interactionsPlugin({ minDragDistancePx: 4 }),
-        tooltipPlugin(),
-        crosshairPlugin({ snap: "nearest-x", label: true }),
+        tooltipPlugin({ formatter: (item) => `(${formatTime(item.x)}, ${formatValue(item.y)})` }),
+        crosshairPlugin({ snap: "nearest-x", label: true, formatX: formatTime, formatY: formatValue }),
         legendPlugin({ position: "top-left" }),
       ],
     }));
