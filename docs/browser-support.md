@@ -79,9 +79,28 @@ export function ClientOnlyChart({ x, y }: { x: number[]; y: number[] }) {
 
 ## Tested browsers
 
-- Chromium is the primary automated test target.
-- Firefox and Safari are expected targets when WebGL2 and Pointer Events are enabled, but browser-specific regressions may need manual verification.
-- Mobile browsers should use touch-friendly interaction options and compact axis/layout settings. See [Theming and layout](./theming-and-layout.md#mobile-layouts).
+Automated coverage runs on every pull request in GitHub Actions (Ubuntu runners, software rendering, no physical GPU):
+
+| Engine | Browser | Coverage | Where |
+|---|---|---|---|
+| Chromium | Headless Chrome (current stable on the runner) | Full suite: benchmark smoke, every visual case, all interaction cases, website UX. | `browser` CI job (`bun run test:browser`) |
+| Gecko | Playwright Firefox | Smoke: WebGL2 context, non-blank chart pixels, `chart.screenshot()` readback, WebGL context loss/restore, hover, crosshair, wheel zoom, shift-drag pan, box zoom, double-click reset. | `cross-browser` CI job (`bun run test:cross-browser`) |
+| WebKit | Playwright WebKit (the engine behind Safari) | Same smoke as Firefox. | `cross-browser` CI job (`bun run test:cross-browser`) |
+
+The cross-browser job is a smoke test, not the full visual and interaction suite. Pixel-level screenshot baselines, the benchmark scenarios, touch gestures, and the remaining interaction cases (selection, linked charts, live follow) still run only in Chromium. A browser that cannot create a WebGL2 context fails the job instead of being skipped; the only way to skip it is an explicit, documented allowlist (`--allow-no-webgl2` or `BLAZEPLOT_CROSS_BROWSER_ALLOW_NO_WEBGL2`), which is empty today.
+
+Playwright WebKit is a build of the WebKit engine, not Safari itself, and the CI runners are Linux, so Safari on macOS and iOS (which use Metal through ANGLE) and Firefox on real GPUs are not exercised. Treat them as expected targets when WebGL2 and Pointer Events are enabled, and verify them manually.
+
+### Verified browsers per release
+
+For each release candidate and the final 1.0 release, the release checklist records:
+
+1. The Chromium, Firefox, and WebKit versions the `cross-browser` and `browser` jobs ran against (printed in the job logs).
+2. A manual pass of the interactive previews at <https://blazeplot.cervelli.dev/previews> in the latest stable Safari (macOS and iOS), Firefox, and Chrome on real hardware, since CI runs only software WebGL2.
+
+Mobile WebGL2 verification is manual and not yet automated.
+
+Mobile browsers should use touch-friendly interaction options and compact axis/layout settings. See [Theming and layout](./theming-and-layout.md#mobile-layouts).
 
 ## Clipboard and downloads
 
