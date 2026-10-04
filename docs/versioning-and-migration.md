@@ -28,7 +28,7 @@ BlazePlot ships its own `.d.ts` files; no `@types` package is needed.
 - The declarations reference DOM types (`HTMLElement`, `WebGL2RenderingContext`), so your `lib` must include `"DOM"`.
 - Proposed policy, pending maintainer confirmation: raising the minimum TypeScript version is a minor-release change announced in the changelog, and the new minimum will already be well past its release date.
 
-The minimum is a policy statement, not yet enforced in CI. Maintainers: see the open decision in the pull request that added this page about adding a TypeScript-floor job.
+The minimum is enforced in CI: the `typescript-floor` job installs the packed package into a consumer project and typechecks every entry point with TypeScript 5.0.4 and the latest 5.x under both resolution modes (`bun run test:typescript-floor`).
 
 ## Module format and runtime
 

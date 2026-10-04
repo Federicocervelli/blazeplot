@@ -137,9 +137,12 @@ bun run test:exports
 bun run test:package
 bun run test:api
 bun run test:bundle-size
+bun run test:typescript-floor
 ```
 
 `bun run test:api` compares the exported names and signatures in `dist/**/*.d.ts` (for every `package.json#exports` entry, comments and private members ignored) with the committed snapshot `api/public-api.md`. It needs a fresh `bun run build` first. When it fails, read the printed `-`/`+` lines: if the public API change is intentional, run `bun run build && bun run test:api -- --update` and commit the regenerated `api/public-api.md` in the same PR; if not, fix the source. The snapshot also lists types that public signatures reference but no entry point exports. Never hand-edit `api/public-api.md`.
+
+`bun run test:typescript-floor` (after `bun run build`) packs the package with `bun pm pack`, installs the tarball plus TypeScript 5.0.4 and the latest 5.x into a temp consumer project, and typechecks a file importing every `package.json#exports` entry with `skipLibCheck: false` under `moduleResolution: bundler` and `node16`. It needs network access to install TypeScript, so it is a separate CI job rather than part of `bun run check`. Pass `--ts 5.0.4,5.4.5` to pick versions and `--keep` to keep the temp project. When the minimum TypeScript version changes, update `FLOOR` in `scripts/typescript-floor-test.ts` and [TypeScript support](../versioning-and-migration.md#typescript-support).
 
 Use `bun run docs:bundle-size` to print the current bundle-size table and `bun run bundle:analyze` when a chunk grows unexpectedly.
 
