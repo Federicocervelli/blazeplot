@@ -104,6 +104,30 @@
     "order": 120
   },
   {
+    "slug": "stability",
+    "title": "Stability",
+    "description": "What is stable, experimental, and internal in each BlazePlot export and subpath.",
+    "sourcePath": "docs/stability.md",
+    "section": "Reference",
+    "order": 121
+  },
+  {
+    "slug": "error-handling",
+    "title": "Errors",
+    "description": "Errors thrown, console output, and how invalid data and viewports are handled.",
+    "sourcePath": "docs/error-handling.md",
+    "section": "Reference",
+    "order": 122
+  },
+  {
+    "slug": "accessibility",
+    "title": "Accessibility",
+    "description": "ARIA, keyboard navigation, and the limits of canvas charts for assistive technology.",
+    "sourcePath": "docs/accessibility.md",
+    "section": "Reference",
+    "order": 123
+  },
+  {
     "slug": "api-reference",
     "title": "API reference",
     "description": "Generated package entry point, symbol, bundle size, and public API reference.",

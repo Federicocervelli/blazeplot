@@ -89,6 +89,10 @@ export function ClientOnlyChart({ x, y }: { x: number[]; y: number[] }) {
 - `copyChartScreenshotToClipboard` requires `navigator.clipboard.write`, `ClipboardItem`, HTTPS, and usually a user gesture.
 - If clipboard export fails, show a download button that calls `downloadChartScreenshot`.
 
+## Packaging and TypeScript
+
+BlazePlot is ESM-only and ships its own type declarations (minimum TypeScript 5.0, with `moduleResolution` set to `bundler`, `node16`, or `nodenext`). See [TypeScript support](./versioning-and-migration.md#typescript-support) and [Module format and runtime](./versioning-and-migration.md#module-format-and-runtime). Errors thrown when WebGL2 is missing are listed in [Error handling](./error-handling.md#creating-a-chart); keyboard and screen-reader behavior is in [Accessibility](./accessibility.md).
+
 ## Dependencies
 
 The renderer uses native WebGL2 directly and has no runtime rendering dependency.
