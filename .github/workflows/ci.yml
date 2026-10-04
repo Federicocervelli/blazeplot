@@ -53,7 +53,6 @@ jobs:
         id: playwright
         run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browsers
-        id: playwright-cache
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
@@ -61,7 +60,8 @@ jobs:
       # System dependencies are not part of the cache, so always run the install; it skips downloads that are cached.
       - name: Install Firefox and WebKit
         run: bunx playwright install --with-deps firefox webkit
-      - run: bun run test:cross-browser
+      # Headless Firefox on Linux finds no GL driver; headed under Xvfb gets Mesa software WebGL2.
+      - run: xvfb-run -a bun run test:cross-browser --headed firefox
       - name: Upload cross-browser screenshots
         if: failure()
         uses: actions/upload-artifact@v7

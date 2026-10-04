@@ -25,6 +25,7 @@ interface Options {
   browsers: string[];
   visualCases: string[];
   allowNoWebgl2: Set<string>;
+  headed: Set<string>;
   outDir: string;
   width: number;
   height: number;
@@ -131,7 +132,7 @@ async function main(): Promise<void> {
 }
 
 async function runBrowser(name: string, type: BrowserType, options: Options, serverUrl: string): Promise<BrowserOutcome> {
-  const browser = await type.launch({ headless: true, ...launchOptions(name) });
+  const browser = await type.launch({ headless: !options.headed.has(name), ...launchOptions(name) });
   try {
     console.log(`  ${name} ${browser.version()}`);
     try {
@@ -357,6 +358,7 @@ function parseArgs(args: readonly string[]): Options {
     browsers: DEFAULT_BROWSERS,
     visualCases: DEFAULT_VISUAL_CASES,
     allowNoWebgl2: new Set(envAllow),
+    headed: new Set(),
     outDir: "build/cross-browser",
     width: 900,
     height: 520,
@@ -386,6 +388,9 @@ function parseArgs(args: readonly string[]): Options {
         break;
       case "--allow-no-webgl2":
         for (const value of list()) parsed.allowNoWebgl2.add(value);
+        break;
+      case "--headed":
+        for (const value of list()) parsed.headed.add(value);
         break;
       case "--out-dir":
         parsed.outDir = readValue();
@@ -428,6 +433,8 @@ Options:
   --cases <a,b>           Visual fixture cases (default: ${DEFAULT_VISUAL_CASES.join(",")})
   --allow-no-webgl2 <a,b> Browsers allowed to skip (loudly) when WebGL2 is unavailable.
                           Also read from BLAZEPLOT_CROSS_BROWSER_ALLOW_NO_WEBGL2.
+  --headed <a,b>          Browsers to run headed instead of headless. On Linux CI, Firefox only finds a
+                          software GL driver under a display, so CI runs: xvfb-run -a bun run test:cross-browser --headed firefox
   --out-dir <path>        Screenshot/report output directory (default: build/cross-browser)
   --width <px>            Viewport width
   --height <px>           Viewport height
