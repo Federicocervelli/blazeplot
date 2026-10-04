@@ -26,11 +26,12 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Build JS only: `bun run build:js`.
 - Build the docs/site: `bun run pages:build`; preview with `bun run pages:preview`.
 - Dev server: `bun run dev` serves the Lit website (`website/`) with integrated docs and previews. Use `bun run fixtures:dev` only for browser fixture debugging under `tests/browser/`.
-- Full CI locally: `bun run ci`, which runs the same two groups as the CI jobs: `bun run check` (typecheck, unit tests, build, generated-doc and snippet checks, export smoke test, package dry-run, public API snapshot, bundle budgets) and `bun run test:browser` (benchmark smoke, visual, interaction, website tests in headless Chrome). Add new checks to those scripts, not to the workflow.
+- Full CI locally: `bun run ci`, which runs the same two groups as the CI jobs: `bun run check` (typecheck, unit tests, build, generated-doc and snippet checks, export smoke test, package dry-run, public API snapshot, bundle budgets) and `bun run test:browser` (benchmark smoke, performance gate, visual, interaction, website tests in headless Chrome). Add new checks to those scripts, not to the workflow.
 - Generated docs check only: `bun run test:generated-docs`.
 - Documentation snippet typecheck only: `bun run test:docs-snippets`.
 - Regenerate README/API docs: `bun run docs:readme` (builds `dist/`, regenerates `docs/api-reference.md`, and refreshes generated README docs sections).
 - Benchmark smoke test only: `bun run bench:ci` (`ci-smoke` scenario in a headless Chrome/Chromium/Brave browser). Set `BLAZEPLOT_BENCH_CHROME=/path/to/browser` or `CHROME_PATH=/path/to/browser` if auto-detection fails.
+- Performance regression gate only: `bun run bench:gate` (deterministic `perf-gate` scenario, medians normalised by an in-page calibration workload and compared with `benchmarks/thresholds.json`; part of `bun run test:browser`). `-- --report-only` prints without failing; `-- --inject-slowdown-ms 2` self-tests that it still fails. Update thresholds only from CI numbers following `docs/release-and-benchmarks.md#performance-regression-gate`, never from a local run or just to silence a flaky failure.
 - Public manual comparison benchmark: `bun run bench:compare` (headed by default, fully automated after launch, compares BlazePlot/uPlot/Chart.js, overwrites `benchmarks/latest.json` and `benchmarks/latest.md`; not part of CI).
 - Run one benchmark scenario: `bun run bench -- --scenario <name>`.
 - Append benchmark report markdown to docs or another path: `bun run bench:report`.
