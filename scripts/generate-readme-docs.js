@@ -58,7 +58,6 @@ if (!existsSync(distIndexPath)) {
 
 const sourceCache = new Map();
 const declarationCache = new Map();
-const printer = ts.createPrinter({ removeComments: true });
 
 function packageEntryName(key) {
   return key === "." ? pkg.name : `${pkg.name}${key.slice(1)}`;

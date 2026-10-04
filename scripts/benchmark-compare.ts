@@ -362,7 +362,7 @@ async function readLibraryInfo(): Promise<Record<string, LibraryInfo>> {
     devDependencies?: Record<string, string>;
     dependencies?: Record<string, string>;
   };
-  const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   return {
     blazeplot: { name: "BlazePlot", version: pkg.version ?? "local" },
     uplot: { name: "uPlot", version: cleanVersion(deps.uplot) },

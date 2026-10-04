@@ -19,7 +19,9 @@ Use Bun for repo work. `packageManager` pins the expected Bun version; CI also u
 | Goal | Command | Notes |
 |---|---|---|
 | Type-check all source, tests, scripts, and website code | `bun run typecheck` | Fastest broad correctness check. |
+| Lint with Oxlint | `bun run lint` | Correctness rules only; config in `.oxlintrc.json`. Included in `bun run check`. |
 | Run unit tests | `bun test` | Covers datasets, render helpers, interactions, and data export helpers. |
+| Run unit tests with coverage floors | `bun run test:coverage` | Runs `bun test --coverage` via `scripts/coverage-check.ts` and fails if `src/core` or overall `src/` line/function coverage drops below the floors in that script. Included in `bun run check`. Floors sit just under the baseline (core ~93% lines, `src/` ~79% lines excluding browser-only `theme.ts`/`OverlayUtils.ts`); raise them when coverage improves, never lower them. |
 | Build the library package | `bun run build` | Emits `dist/` and declarations. |
 | Build only JS output | `bun run build:js` | Useful before bundle analysis when declarations are irrelevant. |
 | Run the docs/site dev server | `bun run dev` | Serves the Lit documentation site. |
