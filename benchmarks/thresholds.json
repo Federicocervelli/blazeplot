@@ -3,13 +3,13 @@
   "repetitions": 5,
   "retryRepetitions": 5,
   "discardedRepetitions": 1,
-  "defaultHeadroom": 2.5,
+  "defaultHeadroom": 1.8,
   "metrics": {
-    "frameP50Ratio": { "baseline": 1, "description": "Chart frame work p50 (ms) / calibration workload (ms)" },
-    "frameP95Ratio": { "baseline": 1, "description": "Chart frame work p95 (ms) / calibration workload (ms)" },
-    "ingestRatio": { "baseline": 1, "description": "Initial 1M-sample fill time (ms) / calibration workload (ms)" },
-    "drawCallsP95": { "baseline": 1, "description": "Draw calls per frame, p95 (deterministic)" },
-    "pointsRenderedP95": { "baseline": 1, "description": "Points rendered per frame, p95 (deterministic)" },
-    "uploadBytesP95": { "baseline": 1, "description": "GPU upload bytes per frame, p95 (deterministic)" }
+    "frameP50Ratio": { "baseline": 0.086, "description": "Chart frame work p50 (ms) divided by the in-page calibration workload (ms)" },
+    "frameP95Ratio": { "baseline": 0.165, "description": "Chart frame work p95 (ms) divided by the in-page calibration workload (ms)" },
+    "ingestRatio": { "baseline": 5.7, "description": "Initial 1M-sample fill time (ms) divided by the in-page calibration workload (ms)" },
+    "drawCallsP95": { "baseline": 4, "headroom": 1.2, "description": "Draw calls per frame, p95 (deterministic)" },
+    "pointsRenderedP95": { "baseline": 28306, "headroom": 1.15, "description": "Points rendered per frame, p95 (deterministic)" },
+    "uploadBytesP95": { "baseline": 226752, "headroom": 1.15, "description": "GPU upload bytes per frame, p95 (deterministic)" }
   }
 }
