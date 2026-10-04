@@ -188,7 +188,10 @@ async function openSession(options: Options, serverUrl: string, caseName: string
     const entry = (params as { entry?: { level?: string; text?: string } }).entry;
     const text = entry?.text ?? "";
     if (/Too many active WebGL contexts/i.test(text)) session.contextCapWarnings++;
-    else if (entry?.level === "warning" || entry?.level === "error") session.warnings++;
+    else if (/INVALID_OPERATION/i.test(text)) {
+      // E.g. deleting GL objects that belong to a lost context after restore.
+      session.pageErrors.push(`webgl ${entry?.level ?? "log"}: ${text.slice(0, 400)}`);
+    } else if (entry?.level === "warning" || entry?.level === "error") session.warnings++;
   });
   await cdp.send("Page.enable");
   await cdp.send("Runtime.enable");

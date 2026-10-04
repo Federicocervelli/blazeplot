@@ -177,6 +177,11 @@ async function newPage(browser: Browser, options: Options, caseName: string, lab
   });
   page.on("console", (message) => {
     if (message.type() === "error") console.error(`[${label}:${caseName}:console] ${message.text()}`);
+    // Deleting objects from a lost context (WebKit) is logged as a warning; it must fail the case.
+    if (/INVALID_OPERATION/i.test(message.text())) {
+      errors.push(`WebGL ${message.type()}: ${message.text()}`);
+      console.error(`[${label}:${caseName}:webgl] ${message.text()}`);
+    }
   });
   return { page, errors, close: () => context.close() };
 }
@@ -228,6 +233,8 @@ async function runVisualCase(name: string, browser: Browser, options: Options, s
     const pixels = await analyzePng(page, png);
     assert(pixels.distinctColors >= 3, `${caseName} screenshot has ${pixels.distinctColors} distinct colors (blank?)`);
     assert(pixels.nonBackgroundRatio > 0.002, `${caseName} screenshot is ${(pixels.nonBackgroundRatio * 100).toFixed(3)}% non-background pixels (blank?)`);
+    // Re-check after the screenshots: late context-restore warnings must fail the case too.
+    if (errors.length > 0) throw new Error(`page errors in ${caseName}: ${errors[0]}`);
     console.log(`✓ visual ${caseName}: ${pixels.distinctColors} colors, ${(pixels.nonBackgroundRatio * 100).toFixed(2)}% drawn, screenshot ${screenshotBytes}B`);
   } catch (error) {
     await page.screenshot({ path: join(options.outDir, `${name}-${caseName}-FAILED.png`) }).catch(() => undefined);

@@ -50,10 +50,12 @@ export class WebGL2Resources {
     }
   }
 
-  /** Delete all pooled WebGL buffers. */
-  destroy(): void {
-    for (const entry of this.pool) {
-      this.gl.deleteBuffer(entry.buffer);
+  /** Delete all pooled WebGL buffers; with `skipDelete` (lost context) only drop the references. */
+  destroy(skipDelete: boolean = false): void {
+    if (!skipDelete) {
+      for (const entry of this.pool) {
+        this.gl.deleteBuffer(entry.buffer);
+      }
     }
     this.pool.length = 0;
   }
