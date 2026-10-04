@@ -65,8 +65,46 @@ interface A11ySnapshot {
   readonly describedBy: string;
 }
 
+/** Theme and computed overlay colors, for the forced-colors (high-contrast) check. */
+interface ColorSnapshot {
+  readonly forcedColorsMatches: boolean;
+  readonly themeChanges: number;
+  /** System colors as the browser resolves them right now. */
+  readonly system: Readonly<Record<"Canvas" | "CanvasText" | "Highlight" | "LinkText" | "GrayText", string>>;
+  readonly theme: {
+    readonly backgroundCssColor: string;
+    readonly backgroundColor: readonly number[];
+    readonly seriesColors: readonly (readonly number[])[];
+    readonly axisColor: string;
+  };
+  /** `style.color` of each series, in order. */
+  readonly seriesColors: readonly (readonly number[])[];
+  readonly rootBackground: string;
+  readonly axisLabelColor: string | null;
+  readonly titleColor: string | null;
+  readonly legend: OverlayColors | null;
+  readonly tooltip: OverlayColors | null;
+  readonly selectionBorderColor: string | null;
+  readonly activeOutlineColor: string | null;
+  /** Computed `color` of the legend swatches and of the series swatches in the tooltip. */
+  readonly legendSwatchColors: readonly string[];
+  readonly tooltipSwatchColors: readonly string[];
+  /** Computed `background-color` of the visible hover/inspection markers on the plot. */
+  readonly pickMarkerBackgrounds: readonly string[];
+  /** Computed SVG `fill` of the navigator's visible-range window. */
+  readonly navigatorWindowFill: string | null;
+}
+
+interface OverlayColors {
+  readonly background: string;
+  readonly color: string;
+  readonly borderColor: string;
+  readonly borderStyle: string;
+}
+
 interface InteractionController {
   snapshot(): InteractionSnapshot;
+  colors(): ColorSnapshot;
   resetViewport(): void;
   setViewport(viewport: Partial<Viewport>): void;
 }
@@ -112,6 +150,8 @@ let selectionCommits = 0;
 let selectionBounds: InteractionSnapshot["selectionBounds"] = null;
 
 const charts: Chart[] = [];
+const seriesHandles: Array<ReturnType<Chart["addLine"]>> = [];
+let themeChanges = 0;
 let selection: SelectionPlugin | null = null;
 let annotations: AnnotationsPlugin | null = null;
 let annotationClicks = 0;
@@ -188,6 +228,9 @@ for (const item of charts) {
   item.subscribe("render", () => {
     renderEvents++;
   });
+  item.subscribe("themechange", () => {
+    themeChanges++;
+  });
 }
 
 window.__blazeplotInteractionTest = {
@@ -218,6 +261,7 @@ window.__blazeplotInteractionTest = {
     a11y: a11ySnapshot(),
     error,
   }),
+  colors: colorSnapshot,
   setViewport: (viewport) => chart.setViewport(viewport),
   resetViewport: () => {
     for (const item of charts) {
@@ -244,10 +288,10 @@ try {
       const series = item.addLine({ capacity: 1_000, xStart: 0, xStep: 1, name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
       series.append({ y });
     } else {
-      item.addLine({ dataset: new StaticDataset(x, y), name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
+      seriesHandles.push(item.addLine({ dataset: new StaticDataset(x, y), name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 }));
     }
     if (caseName === "a11y") {
-      item.addLine({ dataset: new StaticDataset(x, Float32Array.from(x, (value) => Math.cos(value * 0.025))), name: "interaction cosine" }, { lineWidth: 2 });
+      seriesHandles.push(item.addLine({ dataset: new StaticDataset(x, Float32Array.from(x, (value) => Math.cos(value * 0.025))), name: "interaction cosine" }, { lineWidth: 2 }));
     }
     if (caseName === "interactions") {
       const rightY = Float32Array.from(y, (value) => value * 1_000 + 5_000);
@@ -345,6 +389,65 @@ function a11ySnapshot(): A11ySnapshot {
     annotationClicks,
     tableRows: document.querySelectorAll(".blazeplot-a11y tbody tr").length,
     describedBy: describedBy ? document.getElementById(describedBy)?.textContent ?? "" : "",
+  };
+}
+
+function colorSnapshot(): ColorSnapshot {
+  const root = chart!.rootElement;
+  const resolveSystem = (name: string): string => {
+    const probe = document.createElement("span");
+    probe.style.color = name;
+    root.appendChild(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    return resolved;
+  };
+  const overlay = (selector: string): OverlayColors | null => {
+    const element = document.querySelector<HTMLElement>(selector);
+    if (!element || getComputedStyle(element).display === "none") return null;
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, color: style.color, borderColor: style.borderTopColor, borderStyle: style.borderTopStyle };
+  };
+  const colorOf = (selector: string): string | null => {
+    const element = root.querySelector<HTMLElement>(selector);
+    return element ? getComputedStyle(element).color : null;
+  };
+  const brush = document.querySelector<HTMLElement>(".blazeplot-selection-brush");
+  const active = document.activeElement as HTMLElement | null;
+  const theme = chart!.theme;
+  return {
+    forcedColorsMatches: window.matchMedia("(forced-colors: active)").matches,
+    themeChanges,
+    system: {
+      Canvas: resolveSystem("Canvas"),
+      CanvasText: resolveSystem("CanvasText"),
+      Highlight: resolveSystem("Highlight"),
+      LinkText: resolveSystem("LinkText"),
+      GrayText: resolveSystem("GrayText"),
+    },
+    theme: {
+      backgroundCssColor: theme.backgroundCssColor,
+      backgroundColor: [...theme.backgroundColor],
+      seriesColors: theme.seriesColors.map((color) => [...color]),
+      axisColor: theme.axisColor,
+    },
+    seriesColors: seriesHandles.map((series) => [...series.style.color]),
+    rootBackground: getComputedStyle(root).backgroundColor,
+    axisLabelColor: colorOf(".blazeplot-axis-y div"),
+    titleColor: colorOf(".blazeplot-title"),
+    legend: overlay(".blazeplot-legend"),
+    tooltip: overlay(".blazeplot-tooltip"),
+    selectionBorderColor: brush && getComputedStyle(brush).display !== "none" ? getComputedStyle(brush).borderTopColor : null,
+    activeOutlineColor: active && active !== document.body ? getComputedStyle(active).outlineColor : null,
+    legendSwatchColors: [...document.querySelectorAll<HTMLElement>(".blazeplot-legend-swatch")].map((swatch) => getComputedStyle(swatch).color),
+    tooltipSwatchColors: [...document.querySelectorAll<HTMLElement>(".blazeplot-tooltip .blazeplot-pick-swatch")].map((swatch) => getComputedStyle(swatch).color),
+    pickMarkerBackgrounds: [...document.querySelectorAll<HTMLElement>(".blazeplot-tooltip-markers .blazeplot-pick-marker")]
+      .filter((marker) => getComputedStyle(marker).display !== "none")
+      .map((marker) => getComputedStyle(marker).backgroundColor),
+    navigatorWindowFill: (() => {
+      const windowRect = document.querySelector<SVGElement>(".blazeplot-navigator-window");
+      return windowRect ? getComputedStyle(windowRect).fill : null;
+    })(),
   };
 }
 

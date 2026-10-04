@@ -35,7 +35,8 @@ Visual, interaction, stability, and benchmark checks need Chrome/Chromium/Brave.
 ```bash
 export BLAZEPLOT_BENCH_CHROME=/path/to/chrome
 bun run test:visual
-bun run test:interaction
+bun run test:interaction   # includes the forced-colors case; `-- --case <name>` runs one case
+bun run test:forced-colors # forced-colors emulation only; screenshots in build/visual-tests/forced-colors/
 bun run test:a11y   # axe-core on the chart DOM; fails on serious or critical violations
 bun run test:stability
 bun run test:website
