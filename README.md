@@ -21,21 +21,21 @@ The core runtime (`import { Chart } from "blazeplot"`, without optional plugins)
 
 Headline numbers from the manual headed comparison against uPlot and Chart.js:
 
-| Initial ready time (ms, lower is better) | BlazePlot 0.3.11 | uPlot 1.6.32 | Chart.js 4.5.1 |
+| Initial ready time (ms, lower is better) | BlazePlot 1.0.0-rc.1 | uPlot 1.6.32 | Chart.js 4.5.1 |
 |---|---:|---:|---:|
-| line-100k-static | 13.1 | **8.4** | 14.2 |
-| line-1m-static | **16.2** | 24.5 | 27.3 |
-| line-1m-pan | 14.0 | **6.5** | 13.2 |
-| line-1m-stream | 34.3 | **11.6** | 13.6 |
-| line-10m-accelerated-pan | **23.0** | 56.6 | 75.8 |
+| line-100k-static | 13.9 | 7.8 | **7.2** |
+| line-1m-static | 17.4 | **10.9** | 14.1 |
+| line-1m-pan | 15.3 | **4.9** | 6.5 |
+| line-1m-stream | 14.6 | **5.6** | 7.0 |
+| line-10m-accelerated-pan | **7.7** | 37.0 | 48.6 |
 
-| Pan/stream frame work p95 (lower is better) and RAF FPS | BlazePlot 0.3.11 | uPlot 1.6.32 | Chart.js 4.5.1 |
+| Pan/stream frame work p95 (lower is better) and RAF FPS | BlazePlot 1.0.0-rc.1 | uPlot 1.6.32 | Chart.js 4.5.1 |
 |---|---:|---:|---:|
-| line-1m-pan | **1.20** ms, 120 FPS | 2.10 ms, 120 FPS | 3.60 ms, 120 FPS |
-| line-1m-stream | **1.30** ms, 120 FPS | 2.30 ms, 120 FPS | 4.00 ms, 120 FPS |
-| line-10m-accelerated-pan | **0.50** ms, 120 FPS | 48.40 ms, 22 FPS | 51.00 ms, 20 FPS |
+| line-1m-pan | **1.00** ms, 144 FPS | 1.90 ms, 144 FPS | 2.30 ms, 144 FPS |
+| line-1m-stream | **0.90** ms, 144 FPS | 1.50 ms, 144 FPS | 2.20 ms, 144 FPS |
+| line-10m-accelerated-pan | **0.40** ms, 144 FPS | 30.60 ms, 33 FPS | 33.40 ms, 30 FPS |
 
-Measured 2026-05-22 on AMD Ryzen 5 5600H with Radeon Graphics (12 logical CPUs), NVIDIA GeForce RTX 3050 Laptop GPU, Chrome/148.0.7778.167, 1600x900 CSS px canvas. Each row discards 1 setup warmup run(s) after library prewarm. Ready time is chart construction plus the first browser frame; frame work is BlazePlot's internal frame time (or the synchronous update/redraw call for other libraries). Bold marks the best value in a row.
+Measured 2026-10-04 on AMD Ryzen 7 7800X3D 8-Core Processor            (16 logical CPUs), AMD Radeon RX 9070 (0x00007550) Direct3D11 vs_5_0 ps_5_0, Chrome/138.0.7204.303, 1280x720 CSS px canvas. Each row discards 1 setup warmup run(s) after library prewarm. Ready time is chart construction plus the first browser frame; frame work is BlazePlot's internal frame time (or the synchronous update/redraw call for other libraries). Bold marks the best value in a row.
 
 Full results, environment, and ratios: [docs/benchmarks.md](docs/benchmarks.md). Reproduce with `bun run bench:compare`.
 <!-- README_PERFORMANCE_END -->
