@@ -1,0 +1,8 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": { "correctness": "error" },
+  "rules": {
+    "unicorn/no-new-array": "off"
+  },
+  "ignorePatterns": ["dist/", "build/", "node_modules/", "benchmarks/", "docs/"]
+}

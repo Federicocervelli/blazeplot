@@ -19,6 +19,7 @@ Use Bun for repo work. `packageManager` pins the expected Bun version; CI also u
 | Goal | Command | Notes |
 |---|---|---|
 | Type-check all source, tests, scripts, and website code | `bun run typecheck` | Fastest broad correctness check. |
+| Lint with Oxlint | `bun run lint` | Correctness rules only; config in `.oxlintrc.json`. Included in `bun run check`. |
 | Run unit tests | `bun test` | Covers datasets, render helpers, interactions, and data export helpers. |
 | Build the library package | `bun run build` | Emits `dist/` and declarations. |
 | Build only JS output | `bun run build:js` | Useful before bundle analysis when declarations are irrelevant. |
