@@ -50,6 +50,15 @@ export class WebGL2Backend implements GpuBackend {
   private readonly allocatedPrograms: Set<WebGLProgram> = new Set();
   private enabledAttributes: Set<number> = new Set();
   private scratchAttributes: Set<number> = new Set();
+  /**
+   * True once the context this backend's objects belong to has been lost. A restored context is a
+   * new generation: every object created before the loss is invalid and deleting it logs
+   * INVALID_OPERATION, so teardown must drop those references without calling `gl.delete*`.
+   */
+  private contextLost: boolean = false;
+  private readonly handleContextLost = (): void => {
+    this.contextLost = true;
+  };
   readonly capabilities: GpuBackend["capabilities"];
 
   /** Create a WebGL2 backend for a canvas. */
@@ -73,6 +82,7 @@ export class WebGL2Backend implements GpuBackend {
       instancing: typeof gl.vertexAttribDivisor === "function" && typeof gl.drawArraysInstanced === "function",
     };
     this.resources = new WebGL2Resources(gl);
+    canvas.addEventListener("webglcontextlost", this.handleContextLost);
 
     this.gl.disable(this.gl.DEPTH_TEST);
     this.gl.disable(this.gl.STENCIL_TEST);
@@ -176,7 +186,7 @@ export class WebGL2Backend implements GpuBackend {
       return;
     }
     if (this.isNativeProgram(resource)) {
-      this.gl.deleteProgram(resource.program);
+      if (!this.isContextInvalid()) this.gl.deleteProgram(resource.program);
       this.allocatedPrograms.delete(resource.program);
       if (this.activeProgram === resource) this.activeProgram = null;
     }
@@ -203,6 +213,14 @@ export class WebGL2Backend implements GpuBackend {
 
   /** Release pooled resources owned by the backend. */
   destroy(): void {
+    this.canvas.removeEventListener("webglcontextlost", this.handleContextLost);
+    if (this.isContextInvalid()) {
+      this.enabledAttributes.clear();
+      this.activeProgram = null;
+      this.allocatedPrograms.clear();
+      this.resources.destroy(true);
+      return;
+    }
     for (const location of this.enabledAttributes) {
       this.gl.disableVertexAttribArray(location);
       this.gl.vertexAttribDivisor(location, 0);
@@ -214,6 +232,10 @@ export class WebGL2Backend implements GpuBackend {
     }
     this.allocatedPrograms.clear();
     this.resources.destroy();
+  }
+
+  private isContextInvalid(): boolean {
+    return this.contextLost || this.gl.isContextLost();
   }
 
   private compileShader(type: number, source: string): WebGLShader {

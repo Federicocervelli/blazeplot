@@ -127,6 +127,21 @@ window.__blazeplotStability = {
 };
 setStatus("ready");
 
+const ownedObjects = new WeakMap<WebGL2RenderingContext, Map<object, GlKind>>();
+
+function trackOwned(gl: WebGL2RenderingContext, object: object, kind: GlKind): void {
+  let owned = ownedObjects.get(gl);
+  if (!owned) ownedObjects.set(gl, (owned = new Map()));
+  owned.set(object, kind);
+}
+
+function forgetOwned(gl: WebGL2RenderingContext): void {
+  const owned = ownedObjects.get(gl);
+  if (!owned) return;
+  for (const kind of owned.values()) glLive[kind]--;
+  owned.clear();
+}
+
 function installGlTracking(): void {
   const proto = WebGL2RenderingContext.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
   const kinds: Array<[string, GlKind]> = [
@@ -146,14 +161,17 @@ function installGlTracking(): void {
     const deleted = new WeakSet<object>();
     proto[`create${suffix}`] = function patchedCreate(this: unknown, ...args: unknown[]): unknown {
       const object = create.apply(this, args);
-      if (object) glLive[kind]++;
+      if (object) {
+        glLive[kind]++;
+        trackOwned(this as WebGL2RenderingContext, object as object, kind);
+      }
       return object;
     };
     proto[`delete${suffix}`] = function patchedDelete(this: unknown, ...args: unknown[]): unknown {
       const object = args[0];
       if (object && typeof object === "object" && !deleted.has(object)) {
         deleted.add(object);
-        glLive[kind]--;
+        if (ownedObjects.get(this as WebGL2RenderingContext)?.delete(object)) glLive[kind]--;
       }
       return remove.apply(this, args);
     };
@@ -167,6 +185,8 @@ function installGlTracking(): void {
       seen.add(this);
       contextsCreated++;
       contextRefs.push(new WeakRef(context as WebGL2RenderingContext));
+      // Losing a context frees every object it owns; the browser invalidates them without any delete call.
+      this.addEventListener("webglcontextlost", () => forgetOwned(context as WebGL2RenderingContext));
     }
     return context;
   } as typeof HTMLCanvasElement.prototype.getContext;
