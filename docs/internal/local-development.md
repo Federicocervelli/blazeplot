@@ -66,6 +66,28 @@ bun run test:stability --case streaming --verbose  # one case, print every heap/
 
 `bun run test:website` checks the development and production website builds for routing, responsive previews, modal keyboard behavior, copy/export feedback, lazy loading, offscreen chart lifecycle, and legend focus in headless Chromium. Screenshots and test downloads are written to `build/website-ux/`. Run a focused case with `bun scripts/website-ux-test.ts <case>` (for example, `anchors` or `legend`). After `bun run pages:build`, run `bun scripts/website-ux-test.ts production` to smoke-test the built site.
 
+### Visual pixel baselines
+
+`bun run test:visual` renders each case in headless Chrome and checks two things beyond "it rendered":
+
+1. **Blank-canvas guard (every case).** After the draw-call assertions, the grid is hidden and the plot canvas (or the flamegraph canvas) is captured. A case fails when the fraction of pixels that differ from the border background color is below its `minInkRatio` in `CASE_CHECKS` (`scripts/visual-test.ts`). This catches "draw calls happened but nothing reached the canvas". Ratios are loose lower bounds; do not tighten them to the current render.
+2. **Pixel baselines (focused, deterministic cases).** Cases with a `baseline` entry in `CASE_CHECKS` are compared with the committed PNGs in `tests/browser/visual/baselines/`. A pixel counts as different when any channel differs by more than 32/255, and the case fails when more than 0.2% of pixels differ (1% for the cases that include DOM text: `axes-title-grid`, `annotations`, `flamegraph`). The diff is a small in-script PNG codec (`scripts/png-image.ts`, unit tested in `tests/scripts/`), so there are no extra dependencies.
+
+Artifacts land in `build/visual-tests/`: `<case>.png` (full page), `actual/<case>.png` (the exact crop compared with the baseline, ready to commit), and `diff/<case>.png` (expected dimmed with differing pixels in red, only on failure). Missing baselines fail the run.
+
+GPU, driver, and OS differences change anti-aliasing and text, so baselines must be generated in the CI environment (headless Chrome on `ubuntu-latest` with SwiftShader/ANGLE software GL), not on a laptop. For that reason the pixel comparison only runs on Linux by default; on other platforms it is skipped with a note and only the blank-canvas guard runs. `--compare-baselines` forces the comparison and `--skip-baselines` disables it.
+
+To regenerate baselines after an intentional rendering change, or to add a case:
+
+1. Push your branch and open or update the PR. The `browser` job uploads the `visual-tests` artifact on every run, pass or fail. (To refresh without a failing run, dispatch CI on the branch: `gh workflow run ci.yml --ref <branch>`.)
+2. Download the artifact: `gh run download <run-id> -n visual-tests -D build/ci-visual-tests`.
+3. Review `build/ci-visual-tests/actual/*.png` (and `diff/*.png` for failures) to confirm the change is intended.
+4. Copy the reviewed images over the baselines and commit them: `cp build/ci-visual-tests/actual/*.png tests/browser/visual/baselines/`. Only copy the cases you meant to change.
+
+On a Linux machine that matches CI (for example a container with the same Chrome), `bun run test:visual -- --update-baselines` writes `tests/browser/visual/baselines/*.png` directly. Running it on macOS or Windows prints a warning because the output will not match CI.
+
+To add a baselined case, add a `baseline` entry (and a `minInkRatio`) to its `CASE_CHECKS` record. Only baseline cases that need no pointer input and use static data, and prefer `region: "plot"` (the WebGL canvas only) over `"chart"` when DOM text is not what is being tested.
+
 `bun run bench:gate` is the performance regression gate: it runs the deterministic `perf-gate` scenario in 1 discarded plus 5 measured repetitions (10 if the first attempt fails), normalises timings by an in-page calibration workload, and compares medians with `benchmarks/thresholds.json`. Use `-- --report-only` to print the table without failing, and `-- --inject-slowdown-ms 2` to confirm the gate still catches a synthetic regression. Locally it is a sanity check: absolute numbers differ from the GitHub-hosted runners the baselines come from, so do not update `benchmarks/thresholds.json` from a laptop run. Methodology, hardware assumptions, and the update procedure are in [Release and benchmark notes](../release-and-benchmarks.md#performance-regression-gate).
 
 
