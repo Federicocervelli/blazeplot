@@ -2,15 +2,15 @@
 
 This page lists what BlazePlot throws, what it logs, and what it does silently with bad input. It is for app developers who feed charts from untrusted or imperfect sources. Every behavior here was checked against the source and unit tests; if the code and this page disagree, the code wins and the page is a bug.
 
-The short version: **constructors and explicit configuration throw early; data values never throw.** Bad numbers in data are skipped as gaps or produce undefined drawing (never an exception), and a broken viewport skips the frame instead of stopping the render loop.
+The short version: **constructors, static data, and explicit configuration throw early; streaming data never throws.** Static datasets reject non-finite or decreasing X with a `RangeError` when they are built, streaming buffers skip such samples and report them, non-finite Y values are gaps, and a broken viewport skips the frame instead of stopping the render loop.
 
 ## Error types
 
 | Error | Thrown by | When |
 |---|---|---|
 | `WebGL2UnavailableError` (extends `Error`, `name === "WebGL2UnavailableError"`) | `new Chart(...)`, `createLinkedCharts(...)` | The canvas cannot create a WebGL2 context. |
-| `RangeError` | Datasets, `Camera2D`, axes, histogram and data helpers | A number is out of range: non-positive capacity, `xStep <= 0`, index out of range, `xMax <= xMin`, non-finite viewport edge, capacity exceeded with `overflow: "error"`, `binSize <= 0`, invalid histogram bins. |
-| `TypeError` | `Chart.addSeries`/`add*`, `SeriesStore` mutators, `StaticDataset.fromObjects`, `histogram` | The call does not fit the dataset or option shape: appending `{ y }` to a dataset without implicit X, mixing OHLC and XY rows, OHLC series without an `OhlcDataset`, a non-finite X in `fromObjects`, conflicting histogram options. |
+| `RangeError` | Datasets, `Camera2D`, axes, histogram and data helpers | A number is out of range: non-positive capacity, `xStep <= 0`, index out of range, `xMax <= xMin`, non-finite viewport edge, capacity exceeded with `overflow: "error"`, `binSize <= 0`, invalid histogram bins, and a non-finite or decreasing X in static data (`StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`, `fromObjects`, `series.replace`). |
+| `TypeError` | `Chart.addSeries`/`add*`, `SeriesStore` mutators, `histogram` | The call does not fit the dataset or option shape: appending `{ y }` to a dataset without implicit X, mixing OHLC and XY rows, OHLC series without an `OhlcDataset`, conflicting histogram options. |
 | `Error` | `blazeplot/export`, `chart.screenshot()`, flame graph plugin, WebGL internals | Browser feature missing (`ClipboardItem`, Clipboard API, 2D canvas), or a shader/program failed to compile or link. |
 
 Only `WebGL2UnavailableError` is a named class. Match other failures with `instanceof RangeError` / `instanceof TypeError`, not by message text; messages are for humans and can be reworded in any release.
@@ -61,7 +61,44 @@ export function mountChart(element: HTMLElement): Chart | null {
 
 `RingBuffer.update`, `updateY`, and the equivalent methods on other buffers return `false` for an out-of-range index instead of throwing. `getX` and `getY` on the built-in datasets throw `RangeError` for a bad index.
 
-Dataset constructors validate their arguments: `RingBuffer`, `OhlcRingBuffer`, and `UniformRingBuffer` require a positive integer capacity, and `UniformRingBuffer` requires a positive finite `xStep`. All throw `RangeError`.
+Dataset constructors validate their arguments: `RingBuffer`, `OhlcRingBuffer`, and `UniformRingBuffer` require a positive integer capacity, and `UniformRingBuffer` requires a positive finite `xStep` and a finite `xStart`. All throw `RangeError`. `RingBuffer.update` also returns `false` when the new X is non-finite or outside its neighbors' X values (counted in `rejectedSamples`).
+
+## Static data
+
+`StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`, and `StaticDataset.fromObjects` check X in one O(n) pass when the data arrives and throw a `RangeError` naming the first bad position and the reason:
+
+| Call | Throws when |
+|---|---|
+| `new StaticDataset(x, y)`, `new StaticOhlcDataset(x, open, high, low, close)` | An X (within the shorter array's length) is non-finite or below the previous X. Skipped with `{ assumeSorted: true }`. |
+| `StaticDataset.replace(...)` / `series.replace({ x?, y })` | Same check for the new X (or for X values a longer Y brings into use). The current data is kept. Skipped when the dataset was built with `assumeSorted`. |
+| `StaticDataset.fromObjects(rows, options)` | A row's X is non-finite, or X decreases and `sort: true` was not passed. The message names the row. |
+| `new ServerSampledDataset(data)`, `replace(data)` | A point X, bucket `xStart`, or bucket `xEnd` is non-finite or decreasing, or a bucket has `xEnd < xStart` (`inverted-bucket`). The current data is kept. |
+
+Messages follow one format, for example:
+
+```text
+StaticDataset: X at index 2 is 1, below 2 at index 1 (decreasing-x). X values must be finite and non-decreasing. Use StaticDataset.sorted(x, y) to sort and drop non-finite X, or pass { assumeSorted: true } to skip this check for data you trust.
+StaticDataset: X at index 1 is NaN (non-finite-x). X values must be finite and non-decreasing. ...
+```
+
+Fix unsorted input with `StaticDataset.sorted(x, y)` or `StaticOhlcDataset.sorted(...)`, which copy the data, sort it stably by X, and drop samples with a non-finite X:
+
+```ts
+import { Chart, StaticDataset } from "blazeplot";
+
+declare const element: HTMLElement;
+const x = [3, 1, Number.NaN, 2];
+const y = [30, 10, 0, 20];
+
+const chart = new Chart(element);
+try {
+  chart.addLine({ dataset: new StaticDataset(x, y) });
+} catch (error) {
+  if (!(error instanceof RangeError)) throw error;
+  chart.addLine({ dataset: StaticDataset.sorted(x, y) }); // X 1, 2, 3
+}
+chart.dispose();
+```
 
 ## Viewport and axes
 
@@ -76,18 +113,19 @@ Dataset constructors validate their arguments: `RingBuffer`, `OhlcRingBuffer`, a
 
 ## Invalid data values
 
-Built-in datasets never validate values on every append, because that would be too expensive for live streams. They store what you give them, and the chart then handles bad values as follows. See [Data semantics](./data-semantics.md) for the data contract.
+Every built-in dataset follows one rule: X is finite and non-decreasing, and a non-finite Y is a gap. Static data that breaks the X rule throws (see [Static data](#static-data)); streaming buffers skip the sample instead, so one bad packet cannot crash a live dashboard. The check costs one comparison per appended sample. See [Data semantics](./data-semantics.md#the-x-rule) for the data contract.
 
 | Input | Behavior |
 |---|---|
 | `NaN`, `Infinity`, or `-Infinity` as Y | Treated as a gap. Not drawn, not picked, ignored by bounds and `fitToData`. Line and area series break the strip at the gap. Stored as given, so `RingBuffer.getY(i)` returns the original value. |
-| Non-finite Y in OHLC high/low | Bounds skip the sample; the dataset does not throw. |
-| `NaN`, `Infinity`, or `-Infinity` as X in `RingBuffer` | The sample is skipped (`push`, `append`) or the replacement is refused (`update` returns `false`), with one `console.warn` per buffer. Skipped samples do not count toward `length`, capacity, or `overflow` handling, so `overflow: "error"` does not throw for them. |
-| Non-finite X supplied to seed a `UniformRingBuffer` (`push`, `append`) | The X is ignored and one `console.warn` is logged per buffer; the Y sample is still stored and X continues from the current cursor. |
-| `NaN` or `Infinity` as X in `OhlcRingBuffer`, `StaticDataset` | Not rejected. The value is stored, and because every X search assumes ascending finite values, results for the whole series become unreliable (hidden samples, wrong picks, wrong bounds). Clean X before appending. |
-| `NaN` as X in `StaticDataset.fromObjects(...)` | Throws `TypeError` naming the row. The one place X is validated. |
-| Unsorted X | Not sorted or rejected. `RingBuffer` and `OhlcRingBuffer` call `console.warn` once per buffer instance when an append or update makes X go backwards. `StaticDataset`, `ServerSampledDataset`, and custom datasets give no warning. The effect is silent: samples can be hidden, drawn in the wrong place, or missed by picking and export. `StaticDataset.fromObjects(rows, { sort: true })` sorts for you. |
+| Non-finite open, high, low, or close in an OHLC candle | The candle is stored and treated as a gap: not drawn, not picked, skipped by bounds. |
+| `NaN`, `Infinity`, or `-Infinity` as X in `RingBuffer` or `OhlcRingBuffer` | The sample is skipped (`push`, `append`) or the replacement is refused (`RingBuffer.update` returns `false`). Counted in `rejectedSamples`, reported to `onInvalidSample` with reason `"non-finite-x"`, and logged with one `console.warn` per buffer when no callback is set. Skipped samples do not count toward `length`, capacity, or `overflow` handling, so `overflow: "error"` does not throw for them. |
+| X below the last accepted X in `RingBuffer` or `OhlcRingBuffer` | Skipped the same way, with reason `"decreasing-x"`. The rest of an `append` batch is still stored. After `clear()`, any finite X is accepted. |
+| Non-finite X supplied to seed a `UniformRingBuffer` (`push`, `append`) | The X is ignored and one `console.warn` is logged per buffer; the Y sample is still stored and X continues from the current cursor. `UniformRingBuffer` derives X, so it never rejects samples. |
+| Non-finite or decreasing X in `StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`, `fromObjects`, or `series.replace` | Throws `RangeError` naming the first bad index. See [Static data](#static-data). |
 | Duplicate X | Allowed. |
+| Data mutated in place followed by `series.markDirty()` | Not re-checked. Keep in-place edits sorted and finite. |
+| Custom `Dataset` with unsorted X | Not checked. Samples can be hidden, drawn in the wrong place, or missed by picking and export. |
 | Mismatched array lengths | `StaticDataset` and `RingBuffer.append(x, y)` use the shorter array and ignore the extra values. No error. |
 | Values beyond float32 precision | Stored as `float32` by default and rounded; pass `valuePrecision: "float64"` for exact storage. X is always `float64`. |
 | `UniformRingBuffer` with explicit X | X is ignored; the buffer derives X from `xStart + index * xStep`. |
@@ -140,7 +178,8 @@ export async function copyOrDownload(chart: Chart): Promise<void> {
 
 | Message starts with | Level | Meaning |
 |---|---|---|
-| `RingBuffer received X ...` / `OhlcRingBuffer received X ...` | `warn` (once per buffer) | X went backwards. Sort data before appending. |
+| `RingBuffer skipped a sample ...` / `OhlcRingBuffer skipped a sample ...` | `warn` (once per buffer, not logged when `onInvalidSample` is set) | A sample had a non-finite X or an X below the last accepted one and was skipped. Read `rejectedSamples` or pass `onInvalidSample` to track later ones. |
+| `UniformRingBuffer received non-finite X ...` | `warn` (once per buffer) | A non-finite seed X was ignored; the Y sample was kept. |
 | `BlazePlot skipped rendering:` | `error` (once until fixed) | Viewport invalid for an axis scale. |
 | `BlazePlot failed to restore WebGL resources after context restoration.` | `error` | GPU resources could not be rebuilt after context loss. |
 

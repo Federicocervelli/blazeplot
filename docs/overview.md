@@ -72,7 +72,7 @@ For a maintainer-oriented page list, see [Documentation map](./README.md).
 ## Main tradeoffs
 
 - WebGL2 is required.
-- X values must be sorted for built-in datasets and fast range queries.
+- X values must be finite and non-decreasing: static datasets throw on unsorted input, and streaming buffers skip out-of-order samples.
 - Plugins are opt-in so the base chart stays small.
 - Dense line and bar views use level-of-detail extraction by default; use `downsample: "none"` only when the visible point count is bounded.
 - `fitToData()` is an explicit fit/reset operation. For live charts, use `followX` and `autoFitY` instead of fitting on every sample.

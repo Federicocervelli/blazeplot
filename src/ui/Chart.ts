@@ -1248,7 +1248,7 @@ export class Chart implements ChartPluginContext {
       }
       return new UniformRingBuffer(capacity, { xStart: config.xStart, xStep: config.xStep, valuePrecision: config.valuePrecision });
     }
-    return new RingBuffer(capacity, { overflow: config.overflow, valuePrecision: config.valuePrecision });
+    return new RingBuffer(capacity, { overflow: config.overflow, valuePrecision: config.valuePrecision, onInvalidSample: config.onInvalidSample });
   }
 
   private resolveSeriesStyle(style: SeriesStyleOptions): SeriesStyle {

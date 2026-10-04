@@ -44,7 +44,7 @@ const budgets: Budget[] = [
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
-  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 140_000 },
+  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 142_000 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 8_000 },
   { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 8_000 },
 ];

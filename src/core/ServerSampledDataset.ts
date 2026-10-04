@@ -1,6 +1,9 @@
 import type { MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
 import type { Dataset, MinMaxSegmentCopyDataset, RangeMinMaxDataset, SampleCopyLayout, TimeRange, Viewport, XRange, XRangeDataset } from "./types.js";
+import { assertSortedFiniteX } from "./validation.js";
+
+const SERVER_HINT = "Sort server samples by X and drop non-finite X before passing them.";
 
 /** Server-provided point samples. */
 export interface ServerSampledPoints {
@@ -39,6 +42,10 @@ function copyFloat32(values: ArrayLike<number>, length: number): Float32Array {
  * `downsample: "server"` so BlazePlot renders the supplied buckets directly
  * instead of applying another client-side sampler. Swap in fresh data after
  * each fetch with `series.replace(data)`.
+ *
+ * Point X, bucket `xStart`, and bucket `xEnd` must each be finite and non-decreasing, and
+ * every bucket needs `xEnd >= xStart` (buckets may overlap). The constructor and `replace`
+ * throw a `RangeError` naming the first bad index and keep the current data.
  */
 export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMaxSegmentCopyDataset, XRangeDataset {
   readonly rangeMinMaxExcludesGaps = true;
@@ -76,11 +83,12 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
       : { start: this.xStart[0]!, end: this.xEnd[length - 1]! };
   }
 
-  /** Replace all samples with point or bucket data. */
+  /** Replace all samples with point or bucket data. Throws a `RangeError` for non-finite or decreasing X. */
   replace(data: ServerSampledData): void {
-    this._kind = data.kind;
     if (data.kind === "points") {
       const length = Math.min(data.x.length, data.y.length);
+      assertSortedFiniteX("ServerSampledDataset", data.x, length, SERVER_HINT);
+      this._kind = data.kind;
       this.x = copyFloat64(data.x, length);
       this.y = copyFloat32(data.y, length);
       this.xStart = this.xEnd = new Float64Array(0);
@@ -89,6 +97,16 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     }
 
     const length = Math.min(data.xStart.length, data.xEnd.length, data.minY.length, data.maxY.length);
+    assertSortedFiniteX("ServerSampledDataset xStart", data.xStart, length, SERVER_HINT, "bucket");
+    assertSortedFiniteX("ServerSampledDataset xEnd", data.xEnd, length, SERVER_HINT, "bucket");
+    for (let i = 0; i < length; i++) {
+      if (data.xEnd[i]! < data.xStart[i]!) {
+        throw new RangeError(
+          `ServerSampledDataset: bucket ${i} ends at ${data.xEnd[i]} before it starts at ${data.xStart[i]} (inverted-bucket). Each bucket needs xEnd >= xStart.`,
+        );
+      }
+    }
+    this._kind = data.kind;
     this.xStart = copyFloat64(data.xStart, length);
     this.xEnd = copyFloat64(data.xEnd, length);
     this.minY = copyFloat32(data.minY, length);

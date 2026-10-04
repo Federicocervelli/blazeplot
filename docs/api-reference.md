@@ -45,7 +45,7 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 9 KiB |
+| root entry | `dist/index.js` | 11 KiB |
 | linked entry | `dist/linked.js` | 2 KiB |
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
@@ -57,7 +57,7 @@ Generated from `dist/` after the package build.
 | tooltip plugin | `dist/plugins/tooltip.js` | 5 KiB |
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 135 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 138 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 3 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 4 KiB |
 
@@ -121,12 +121,15 @@ Generated from `dist/index.d.ts` after the package build.
 | `HistogramOptions` | interface | `./core/Histogram` | Options for converting one-dimensional values into histogram bins. |
 | `HistogramResult` | interface | `./core/Histogram` | Result of a histogram transform. |
 | `HistogramSeriesConfig` | interface | `./ui/Chart` | `Chart.addHistogram(...)` config that bins raw one-dimensional values. |
+| `InvalidOhlcSample` | interface | `./core/types` | An OHLC candle an `OhlcRingBuffer` skipped, passed to its `onInvalidSample` callback. |
+| `InvalidSample` | interface | `./core/types` | A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. |
+| `InvalidSampleReason` | type | `./core/types` | Why a sample broke the dataset X rule (X finite and non-decreasing): `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the previous accepted X (or, for `update`, outside its neighbors). |
 | `isWebGL2Available` | function | `./render/WebGL2Backend` | Return whether the current environment can create a WebGL2 context. |
 | `LODStrategy` | type | `./core/types` | Downsampling strategy used when a series is denser than the plot. |
 | `MinMaxSegmentCopyDataset` | interface | `./core/types` | Optional high-performance min/max extraction capability for dense rendering. Implementations can use pyramids, segment trees, database aggregates, or analytic/procedural envelopes. Write up to `maxSegments` `[x - xOrigin, minY, maxY]` triples into `target` and return how many were written. |
 | `MinMaxY` | interface | `./core/MinMaxTree` | Inclusive Y extent of a sample range. |
 | `OhlcDataset` | interface | `./core/types` | Dataset that provides open, high, low, and close values per sample. |
-| `OhlcRingBuffer` | class | `./core/OhlcDataset` | Fixed-capacity streaming buffer for OHLC/candlestick data. |
+| `OhlcRingBuffer` | class | `./core/OhlcDataset` | Fixed-capacity streaming buffer for OHLC/candlestick data. X must be finite and non-decreasing. A candle that breaks that rule is skipped (never thrown), counted in `rejectedSamples`, reported to `onInvalidSample`, and logged with one console warning per buffer when no callback is set. A candle with a non-finite price is stored and treated as a gap. |
 | `OhlcRingBufferOptions` | interface | `./core/OhlcDataset` | Options for `OhlcRingBuffer`. |
 | `PanIntent` | interface | `./interaction/types` | Pan request expressed in data units or screen pixels. |
 | `PrecomputedHistogramSeriesConfig` | interface | `./ui/Chart` | `Chart.addHistogram(...)` config for bins computed with `histogram(...)`. |
@@ -134,7 +137,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
 | `ResolvedChartTheme` | interface | `./ui/theme` | Fully resolved chart theme with concrete RGBA values. |
 | `RgbaColor` | type | `./core/types` | RGBA color tuple with 0-1 channel values. |
-| `RingBuffer` | class | `./core/RingBuffer` | Fixed-capacity sorted XY buffer for explicit X values. |
+| `RingBuffer` | class | `./core/RingBuffer` | Fixed-capacity sorted XY buffer for explicit X values. X must be finite and non-decreasing. A sample that breaks that rule is skipped (never thrown), counted in `rejectedSamples`, reported to `onInvalidSample`, and logged with one console warning per buffer when no callback is set. Non-finite Y is stored and drawn as a gap. |
 | `RingBufferOptions` | interface | `./core/RingBuffer` | Options for `RingBuffer`. |
 | `SampleCopyLayout` | type | `./core/types` | Vertex layout requested when copying raw samples into a render buffer: `"points"` writes `[x, y]` pairs, `"area"` writes `[x, baseline, x, y]` strip pairs. |
 | `SeriesAppendData` | type | `./core/SeriesStore` | Any payload accepted by `SeriesStore.append`. |
@@ -161,18 +164,22 @@ Generated from `dist/index.d.ts` after the package build.
 | `SeriesYAxis` | type | `./core/types` | Y axis used to scale and render a series. |
 | `ServerSampledBuckets` | interface | `./core/ServerSampledDataset` | Server-provided min/max buckets, each covering `[xStart, xEnd]`. |
 | `ServerSampledData` | type | `./core/ServerSampledDataset` | Data accepted by `ServerSampledDataset` and `series.replace(...)`. |
-| `ServerSampledDataset` | class | `./core/ServerSampledDataset` | Mutable dataset for viewport samples that were already reduced by a server. Use point data with `downsample: "none"`, or min/max buckets with `downsample: "server"` so BlazePlot renders the supplied buckets directly instead of applying another client-side sampler. Swap in fresh data after each fetch with `series.replace(data)`. |
+| `ServerSampledDataset` | class | `./core/ServerSampledDataset` | Mutable dataset for viewport samples that were already reduced by a server. Use point data with `downsample: "none"`, or min/max buckets with `downsample: "server"` so BlazePlot renders the supplied buckets directly instead of applying another client-side sampler. Swap in fresh data after each fetch with `series.replace(data)`. Point X, bucket `xStart`, and bucket `xEnd` must each be finite and non-decreasing, and every bucket needs `xEnd >= xStart` (buckets may overlap). The constructor and `replace` throw a `RangeError` naming the first bad index and keep the current data. |
 | `ServerSampledPoints` | interface | `./core/ServerSampledDataset` | Server-provided point samples. |
-| `StaticDataset` | class | `./core/StaticDataset` | Sorted XY dataset backed by typed arrays, which are read in place rather than copied. Change the data with `series.replace({ y })`, or overwrite the arrays and call `series.markDirty()`. |
+| `StaticDataset` | class | `./core/StaticDataset` | Sorted XY dataset backed by typed arrays, which are read in place rather than copied. X must be finite and non-decreasing: the constructor and `replace` check it in one pass and throw a `RangeError` naming the first bad index. Use `StaticDataset.sorted(x, y)` for unsorted input, or `{ assumeSorted: true }` to skip the check. Non-finite Y is a gap. Change the data with `series.replace({ y })`, or overwrite the arrays and call `series.markDirty()` (in-place edits are not re-checked). |
 | `StaticDatasetData` | interface | `./core/StaticDataset` | Data accepted by `StaticDataset.replace` and `series.replace(...)`. |
 | `StaticDatasetField` | type | `./core/StaticDataset` | Object-row field selector used by `StaticDataset.fromObjects`. |
 | `StaticDatasetFromObjectsOptions` | interface | `./core/StaticDataset` | Options for building a static dataset from object rows. |
-| `StaticOhlcDataset` | class | `./core/OhlcDataset` | Immutable OHLC dataset backed by parallel arrays. |
+| `StaticDatasetOptions` | interface | `./core/StaticDataset` | Options for the `StaticDataset` constructor. |
+| `StaticDatasetSortedOptions` | interface | `./core/StaticDataset` | Options for `StaticDataset.sorted`. |
+| `StaticOhlcDataset` | class | `./core/OhlcDataset` | Immutable OHLC dataset backed by parallel arrays. X must be finite and non-decreasing; the constructor checks it and throws a `RangeError` naming the first bad index. A candle with any non-finite price is a gap. |
+| `StaticOhlcDatasetOptions` | interface | `./core/OhlcDataset` | Options for `StaticOhlcDataset`. |
+| `StaticOhlcDatasetSortedOptions` | interface | `./core/OhlcDataset` | Options for `StaticOhlcDataset.sorted`. |
 | `TextOverlayConfig` | interface | `./ui/Chart` | Text and styling for an axis title. |
 | `ThemeColor` | type | `./core/types` | Any CSS color string (`"#3b82f6"`, `"rgb(59 130 246)"`, `"var(--accent)"`) or an RGBA tuple. |
 | `TimeRange` | interface | `./core/types` | Inclusive data X range. |
 | `TypedSeriesConfig` | type | `./ui/Chart` | Series configuration used by typed helpers such as `addLine`. |
-| `UniformRingBuffer` | class | `./core/UniformRingBuffer` | High-throughput ring buffer for uniformly spaced X values. Store only Y samples and derive X as `xStart + index * xStep`. This is the fastest built-in dataset for live telemetry, signals, and other fixed-rate streams because appends copy a single typed array and min/max extraction uses a block segment tree over the physical ring. |
+| `UniformRingBuffer` | class | `./core/UniformRingBuffer` | High-throughput ring buffer for uniformly spaced X values. Store only Y samples and derive X as `xStart + index * xStep`. This is the fastest built-in dataset for live telemetry, signals, and other fixed-rate streams because appends copy a single typed array and min/max extraction uses a block segment tree over the physical ring. Derived X is always finite and ascending, so no sample is ever rejected. X passed to `push`/`append` only seeds the stream; a non-finite seed is ignored with one console warning per buffer and the Y sample is still stored. Non-finite Y is a gap. |
 | `UniformRingBufferOptions` | interface | `./core/UniformRingBuffer` | Options for implicit-X streaming buffers. |
 | `UpdatableDataset` | interface | `./core/types` | Dataset that supports updating existing X/Y samples. |
 | `ValuePrecision` | type | `./core/types` | Storage for Y and OHLC price values. `"float32"` (the default) halves memory and keeps about 7 significant digits; `"float64"` stores values exactly, for large prices, counters, or timestamps where float32 rounding would show in tooltips and picks. |

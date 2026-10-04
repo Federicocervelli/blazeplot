@@ -61,7 +61,7 @@ describe("StaticDataset", () => {
 
   it("throws when object rows have invalid x values", () => {
     expect(() => StaticDataset.fromObjects([{ time: undefined, value: 3 }], { x: "time", y: "value" }))
-      .toThrow(TypeError);
+      .toThrow(RangeError);
   });
 
   it("handles mismatched x and y lengths", () => {
