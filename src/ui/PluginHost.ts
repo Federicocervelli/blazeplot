@@ -12,7 +12,7 @@ import type {
   ChartPickOptions,
   ChartSelectEvent,
   ChartSeriesState,
-  ChartXFollowState,
+  ChartFollowXState,
 } from "./Chart.js";
 import type { ResolvedChartTheme } from "./theme.js";
 
@@ -137,12 +137,12 @@ export interface ChartPluginViewport {
   /** Whether an axis runs right-to-left (`"x"`) or top-to-bottom (`"y"`) on screen. */
   isReversed(axis: "x" | "y", yAxis?: SeriesYAxis): boolean;
   /** Keep the X viewport on the latest data, replacing any previous follow options. */
-  follow(options?: ChartFollowXOptions): void;
+  followX(options?: ChartFollowXOptions): void;
   /** Disable latest-X following. */
-  stopFollow(): void;
+  stopFollowX(): void;
   /** Pause or resume latest-X following without changing its options. */
-  setFollowPaused(paused: boolean): void;
-  getFollowState(): ChartXFollowState;
+  setFollowXPaused(paused: boolean): void;
+  getFollowXState(): ChartFollowXState;
 }
 
 /** Read-only chart state. */
@@ -287,10 +287,10 @@ export interface PluginHostChart {
   pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
   zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
   fitToData(options?: ChartFitToDataOptions): boolean;
-  followLatestX(options?: ChartFollowXOptions): void;
-  stopFollowingLatestX(): void;
-  setXFollowPaused(paused: boolean): void;
-  getXFollowState(): ChartXFollowState;
+  followX(options?: ChartFollowXOptions): void;
+  stopFollowX(): void;
+  setFollowXPaused(paused: boolean): void;
+  getFollowXState(): ChartFollowXState;
   getSeriesState(): ChartSeriesState[];
   getHoverState(): ChartHoverState | null;
   pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
@@ -452,10 +452,10 @@ export class PluginHost {
         const camera = chart.getCamera(yAxis);
         return axis === "x" ? camera.xReversed : camera.yReversed;
       },
-      follow: (options) => chart.followLatestX(options),
-      stopFollow: () => chart.stopFollowingLatestX(),
-      setFollowPaused: (paused) => chart.setXFollowPaused(paused),
-      getFollowState: () => chart.getXFollowState(),
+      followX: (options) => chart.followX(options),
+      stopFollowX: () => chart.stopFollowX(),
+      setFollowXPaused: (paused) => chart.setFollowXPaused(paused),
+      getFollowXState: () => chart.getFollowXState(),
     };
 
     const state: ChartPluginState = {

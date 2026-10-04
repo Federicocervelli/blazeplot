@@ -256,8 +256,8 @@ window.__blazeplotInteractionTest = {
     crosshairX: crosshairX(),
     tooltipLeft: tooltipLeft(),
     renderEvents,
-    followingLatestX: chart.getXFollowState() === "following",
-    latestXFollowPaused: chart.getXFollowState() === "paused",
+    followingLatestX: chart.getFollowXState() === "following",
+    latestXFollowPaused: chart.getFollowXState() === "paused",
     a11y: a11ySnapshot(),
     error,
   }),
@@ -302,7 +302,7 @@ try {
     if (caseName === "live-follow") {
       const clockStartedAt = performance.now();
       const epochLikeX = 1_700_000_000_000;
-      item.followLatestX({ window: 100, pauseOnInteraction: true, resumeAfterMs: 120, currentX: () => epochLikeX + 1_020 + performance.now() - clockStartedAt });
+      item.followX({ window: 100, pauseOnInteraction: true, resumeAfterMs: 120, currentX: () => epochLikeX + 1_020 + performance.now() - clockStartedAt });
     }
     if (caseName === "lifecycle") {
       item.start();

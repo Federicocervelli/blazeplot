@@ -238,7 +238,7 @@ export interface YUpdatableDataset extends Dataset {
 }
 
 /** Downsampling strategy used when a series is denser than the plot. */
-export type LODStrategy = "minmax" | "none" | "server";
+export type DownsampleStrategy = "minmax" | "none" | "server";
 /** Behavior when a fixed-capacity streaming buffer is full. */
 export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
 
@@ -305,7 +305,7 @@ export interface SeriesConfig {
    * with `series.append({ y })` without manually constructing a dataset.
    */
   readonly xStep?: number;
-  readonly downsample?: LODStrategy;
+  readonly downsample?: DownsampleStrategy;
   readonly overflow?: BufferOverflowStrategy;
   /**
    * Called for each sample the chart-owned `RingBuffer` skips because its X is non-finite or

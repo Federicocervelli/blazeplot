@@ -59,8 +59,8 @@ See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes 
 | `interactionsPlugin({ selectionFill, selectionStroke })` | `theme.selectionFillColor`, `theme.selectionStrokeColor` |
 | `chart.setYViewport(axis, v)` | `chart.setViewport(v, axis)` |
 | `chart.setSeriesVisible(series, visible)` | `series.setVisible(visible)` (legends update automatically) |
-| `chart.resumeLatestXFollow()`, `chart.resumeXFollow()` | `chart.setXFollowPaused(false)` |
-| `chart.isFollowingLatestX()`, `chart.isLatestXFollowPaused()` | `chart.getXFollowState()` → `"off" \| "following" \| "paused"` |
+| `chart.resumeLatestXFollow()`, `chart.resumeXFollow()` | `chart.setFollowXPaused(false)` |
+| `chart.isFollowingLatestX()`, `chart.isLatestXFollowPaused()` | `chart.getFollowXState()` → `"off" \| "following" \| "paused"` |
 | `chart.start({ renderLoop })` | `new Chart(el, { renderLoop })` |
 | `chart.subscribe("render", (chart) => …)` | `chart.subscribe("render", () => …)` |
 | `Chart.isWebGL2Available()` | `isWebGL2Available()` |
@@ -74,7 +74,7 @@ See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes 
 | `series.append(x, y)`, `series.appendY(y)`, `series.appendOhlc(…)`, `series.updateLastOhlc(…)` | `series.append({ x, y })`, `series.append({ y })`, `series.append({ x, open, high, low, close })`, `series.updateLast({ open, high, low, close })` |
 | `exportVisibleChartData`, `exportSelectedChartData`, `exportAllChartData` | `exportChartData(chart, { range: "visible" \| selection \| "all" })` |
 | `visibleOnly: false` in data export options | `includeHidden: true` |
-| `chartDataToJSON(data)`, `chartDataToBlob(data, type)` | `JSON.stringify(data)`, `new Blob([chartDataToCSV(data)])` |
+| `chartDataToJSON(data)`, `chartDataToBlob(data, type)` | `JSON.stringify(data)`, `new Blob([chartDataToCsv(data)])` |
 | `resampleSamples` | `binSamples` |
 | `histogramDataset(values, options)` | `chart.addHistogram({ values, ...options })` or `new HistogramDataset(histogram(values, options))` |
 | `HistogramOptions.thresholds: number` | `binCount` (`thresholds` now takes explicit edges only) |

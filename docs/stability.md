@@ -30,7 +30,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 | `blazeplot` | Stable, with the exceptions listed in the tables below | Chart, datasets, data contracts, theming, `isWebGL2Available`, `WebGL2UnavailableError`. |
 | `blazeplot/linked` | Stable | `createLinkedCharts` and its option/handle types. |
 | `blazeplot/data` | Stable | `binSamples`, `rollingMean`, and their types (pure, chart-agnostic transforms). |
-| `blazeplot/export` | Stable | `exportChartData`, `chartDataToCSV`, `downloadBlob`, `downloadChartScreenshot`, `copyChartScreenshotToClipboard`, and their types. |
+| `blazeplot/export` | Stable | `exportChartData`, `chartDataToCsv`, `downloadBlob`, `downloadChartScreenshot`, `copyChartScreenshotToClipboard`, and their types. |
 | `blazeplot/plugins/legend` | Stable | Options may grow; existing option names are kept. |
 | `blazeplot/plugins/tooltip` | Stable | Same. |
 | `blazeplot/plugins/interactions` | Stable | Same. |
@@ -47,10 +47,10 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 
 | Area | Exports | Tier |
 |---|---|---|
-| Chart | `Chart` (constructor, `add*` helpers, `addSeries`, viewport/pan/zoom/fit methods, `pick`, `subscribe` for the events in `ChartEventMap`, `screenshot`, `start`, `stop`, `dispose`, `resize`, `setTheme`) and the option/result types it uses (`ChartOptions`, `AxisConfig`, `ChartPickItem`, `ChartHoverState`, and friends) | Stable |
+| Chart | `Chart` (constructor, `add*` helpers, `addSeries`, viewport/pan/zoom/fit methods, latest-X follow methods (`followX`, `stopFollowX`, `setFollowXPaused`, `getFollowXState`), `pick`, `subscribe` for the events in `ChartEventMap`, `screenshot`, `start`, `stop`, `dispose`, `resize`, `setTheme`, and the `rootElement` and `theme` getters) and the option/result types it uses (`ChartOptions`, `AxisConfig`, `ChartPickItem`, `ChartHoverState`, and friends) | Stable |
 | Series handles | `SeriesStore` public methods (`append`, `updateAt`, `updateLast`, `replace`, `clear`, `setVisible`, `sampleAt`, `markDirty`, and so on) | Stable |
 | Datasets | `RingBuffer`, `UniformRingBuffer`, `StaticDataset`, `OhlcRingBuffer`, `StaticOhlcDataset`, `ServerSampledDataset`, `HistogramDataset`, `histogram` | Stable |
-| Dataset contract | `Dataset`, `AppendableDataset`, `YAppendableDataset`, `UpdatableDataset`, `YUpdatableDataset`, `OhlcDataset`, `SeriesConfig`, `SeriesStyle`, `Viewport`, `TimeRange`, `XRange`, `BufferOverflowStrategy`, `ValuePrecision`, `LODStrategy`, `SeriesMode` | Stable. See [Data semantics](./data-semantics.md). |
+| Dataset contract | `Dataset`, `AppendableDataset`, `YAppendableDataset`, `UpdatableDataset`, `YUpdatableDataset`, `OhlcDataset`, `SeriesConfig`, `SeriesStyle`, `Viewport`, `TimeRange`, `XRange`, `BufferOverflowStrategy`, `ValuePrecision`, `DownsampleStrategy`, `SeriesMode` | Stable. See [Data semantics](./data-semantics.md). |
 | Theming | `DEFAULT_CHART_THEME`, `LIGHT_CHART_THEME`, `ChartTheme`, `ResolvedChartTheme`, `ThemeColor`, `RgbaColor` | Stable. New theme tokens may be added; existing token names are kept. |
 | Accessibility | `ChartAccessibilityOptions`, `ChartKeyboardOptions`, `chart.getSummary()` with `ChartSummary`, `ChartSeriesSummary`, `ChartSummaryRange`, the root role/ARIA attributes and the key map in [Accessibility](./accessibility.md) | Stable. The wording of the generated summary text may improve in a minor release; pass `accessibility.description` to control it. |
 | Viewport policy | `ViewportPolicy`, `PanIntent`, `ZoomIntent`, `ZoomAxis` | Stable |
@@ -66,10 +66,10 @@ These are the low-level extension points. They are public and documented, but th
 |---|---|
 | Plugin escape hatches: `ChartPluginContext.unstable` (`ChartPluginUnstable`: `canvas`, `element(slot)`, `getWebGLContext()`, `getCamera()`) | Raw canvas, DOM, GPU, and camera access bypass the guarantees of the stable context groups (viewport policy, cleanup tracking, layout ownership). The built-in plugins do not use them. |
 | Custom fast-path dataset interfaces: `AcceleratedDataset`, `RangeMinMaxDataset`, `RangeSampleCopyDataset`, `VisibleSampleCopyDataset`, `VisiblePointCopyDataset`, `MinMaxSegmentCopyDataset`, `XRangeDataset`, `SampleCopyLayout` | Their method signatures are renderer-ready fast paths and have changed before (see the 0.5 `copyMinMaxSegments` change). Implementing only the stable `Dataset` contract avoids this risk. Optional members such as `isGap` and `ordinalOffset` follow the `Dataset` tier. |
-| Camera access: `chart.getCamera()` and the `Camera2D` type, `CustomAxisScale`, `AxisRenderTarget`, `AxisControllerAxisOptions` | Direct camera mutation bypasses `ViewportPolicy` and the chart's follow/auto-fit state. Prefer `chart.setViewport`, `pan`, and `zoom`. |
+| Camera access: `ctx.unstable.getCamera()` and the `Camera2D` type (also passed to `ViewportPolicy` hooks), `CustomAxisScale`, `AxisRenderTarget`, `AxisControllerAxisOptions` | Direct camera mutation bypasses `ViewportPolicy` and the chart's follow/auto-fit state. Prefer `chart.setViewport`, `pan`, and `zoom`. |
 | `blazeplot/plugins/flamegraph` | See the entry point table. |
 
-The same items carry an `@experimental` JSDoc tag in the published declarations, so editors show the tier on hover. `getCamera()` is tagged on `Chart`, `ChartPluginContext.unstable` and `ChartPluginUnstable` are tagged, and every export of `blazeplot/plugins/flamegraph` is tagged.
+The same items carry an `@experimental` JSDoc tag in the published declarations, so editors show the tier on hover. `ChartPluginContext.unstable` and `ChartPluginUnstable` are tagged, and every export of `blazeplot/plugins/flamegraph` is tagged.
 
 Experimental does not mean unsupported: bugs are fixed the same way. It means a minor release may require a code change, and the changelog will say so.
 
@@ -80,7 +80,7 @@ These are not an API for application code. The GPU backend types (`GpuBackend`, 
 | Item | Notes |
 |---|---|
 | `ChartOptions.backendFactory` and the backend types it takes | Marked `@internal` and stripped from published declarations. It exists for test fakes; shaders are written for the built-in renderer. Not covered by semver promises. |
-| `ChartPluginContext.unstable.getWebGLContext()` and `chart.getWebGLContext()` (`@experimental` on the context) | Escape hatch to the raw `WebGL2RenderingContext`. The chart may recreate GPU state after context loss. State you change on it can interfere with rendering. |
+| `ChartPluginContext.unstable.getWebGLContext()` (`@experimental`) | Escape hatch to the raw `WebGL2RenderingContext`. The chart may recreate GPU state after context loss. State you change on it can interfere with rendering. |
 | `/** @internal */` members | Stripped from published declarations. If you reach them through casts, expect breakage in patch releases. |
 | Generated DOM structure and `blazeplot-*` class names | Styling hooks you pass through `className` options are stable; the markup the chart generates around them is not. The documented ARIA contract in [Accessibility](./accessibility.md) is stable. |
 | Bundle chunk names such as `dist/Chart-*.js` | Hashed output files. Import only the documented entry points. |

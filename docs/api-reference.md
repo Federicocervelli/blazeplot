@@ -91,6 +91,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartFitToDataOptions` | interface | `./ui/Chart` | Options for fitting the viewport to series data bounds. |
 | `ChartFitToDataPadding` | interface | `./ui/Chart` | Fractional padding applied when fitting domains to data. |
 | `ChartFollowXOptions` | interface | `./ui/Chart` | Options for keeping the X viewport anchored to the latest data. |
+| `ChartFollowXState` | type | `./ui/Chart` | Latest-X follow state: disabled, actively following, or paused by interaction. |
 | `ChartFrameStats` | interface | `./ui/Chart` | Render metrics from the last frame. |
 | `ChartHoverState` | interface | `./ui/Chart` | Current hover hit-test result, including pointer position and picked items. |
 | `ChartInspectionTarget` | interface | `./ui/Chart` | A sample to show as the hover state, set with `ctx.state.inspect(...)`. |
@@ -115,7 +116,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartPluginState` | interface | `./ui/PluginHost` | Read-only chart state. |
 | `ChartPluginUnstable` | interface | `./ui/PluginHost` | Escape hatches outside the stable plugin contract. |
 | `ChartPluginViewport` | interface | `./ui/PluginHost` | Viewport reads, changes, and latest-X follow control. Changes go through the chart's `ViewportPolicy`. |
-| `ChartPointerEventState` | interface | `./ui/Chart` | Pointer event payload expressed in both screen and data coordinates. |
+| `ChartPointerEvent` | interface | `./ui/Chart` | Pointer event payload expressed in both screen and data coordinates. |
 | `ChartPointerEventType` | type | `./ui/Chart` | Pointer events that can be subscribed to through `Chart.subscribe`. |
 | `ChartRect` | interface | `./ui/PluginHost` | A rectangle in CSS pixels. |
 | `ChartRenderLoop` | type | `./ui/Chart` | Render loop scheduling mode. |
@@ -132,10 +133,10 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartTheme` | interface | `./ui/theme` | Partial chart theme supplied by callers. |
 | `ChartTitleConfig` | interface | `./ui/Chart` | Chart title or subtitle text and alignment. |
 | `ChartViewportChangeEvent` | interface | `./ui/Chart` | Emitted after the visible domain changes. |
-| `ChartXFollowState` | type | `./ui/Chart` | Latest-X follow state: disabled, actively following, or paused by interaction. |
 | `CustomAxisScale` | interface | `./interaction/AxisController` | Custom scale hooks for tick generation, formatting, and coordinate mapping. |
 | `Dataset` | interface | `./core/types` | Sorted XY data source consumed by chart series. |
 | `DEFAULT_CHART_THEME` | const | `./ui/theme` | Default dark chart theme. |
+| `DownsampleStrategy` | type | `./core/types` | Downsampling strategy used when a series is denser than the plot. |
 | `histogram` | function | `./core/Histogram` | Convert one-dimensional finite values into histogram bins. |
 | `HistogramBin` | interface | `./core/Histogram` | One histogram bucket, suitable for rendering as a bar centered at `x`. |
 | `HistogramDataset` | class | `./core/Histogram` | Static histogram dataset that preserves each bucket's X interval for picks and tooltips. |
@@ -148,7 +149,6 @@ Generated from `dist/index.d.ts` after the package build.
 | `InvalidSampleReason` | type | `./core/types` | Why a sample broke the dataset X rule (X finite and non-decreasing): `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the previous accepted X (or, for `update`, outside its neighbors). |
 | `isWebGL2Available` | function | `./render/WebGL2Backend` | Return whether the current environment can create a WebGL2 context. |
 | `LIGHT_CHART_THEME` | const | `./ui/theme` | Light chart theme. Pass it as `theme`, or spread it and override a few tokens. Text tokens meet a 4.5:1 and series, selection, crosshair, and focus colors a 3:1 contrast ratio against its background. |
-| `LODStrategy` | type | `./core/types` | Downsampling strategy used when a series is denser than the plot. |
 | `MinMaxSegmentCopyDataset` | interface | `./core/types` | Optional high-performance min/max extraction capability for dense rendering. Implementations can use pyramids, segment trees, database aggregates, or analytic/procedural envelopes. Write up to `maxSegments` `[x - xOrigin, minY, maxY]` triples into `target` and return how many were written. |
 | `MinMaxY` | interface | `./core/MinMaxTree` | Inclusive Y extent of a sample range. |
 | `OhlcDataset` | interface | `./core/types` | Dataset that provides open, high, low, and close values per sample. |

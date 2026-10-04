@@ -29,13 +29,15 @@ export function examplePlugin(): ChartPlugin {
 |---|---|---|
 | `ctx.theme` | The current `ResolvedChartTheme` (read-only). | Colors and fonts for plugin UI. Re-read it in `onThemeChange`. |
 | `ctx.coords` | `dataToPlot(x, y, yAxis?)`, `clientToData(clientX, clientY, yAxis?)`, `clientToPlot(clientX, clientY)`, `plotToClient(plotX, plotY)`, `format(value, axis, yAxis?)` | Converting between data, plot-local CSS pixels, and pointer (client) coordinates, and formatting values like the axis labels. Data conversions honor log and custom axis scales. |
-| `ctx.viewport` | `get(yAxis?)`, `set(viewport, yAxis?)`, `pan(intent, yAxis?)`, `zoom(intent, yAxis?)`, `fitToData(options?)`, `isReversed(axis, yAxis?)`, `follow(options?)`, `stopFollow()`, `setFollowPaused(paused)`, `getFollowState()` | Reading and changing the visible domain. Changes go through the chart's `ViewportPolicy` and pause latest-X following like a user gesture. |
+| `ctx.viewport` | `get(yAxis?)`, `set(viewport, yAxis?)`, `pan(intent, yAxis?)`, `zoom(intent, yAxis?)`, `fitToData(options?)`, `isReversed(axis, yAxis?)`, `followX(options?)`, `stopFollowX()`, `setFollowXPaused(paused)`, `getFollowXState()` | Reading and changing the visible domain. Changes go through the chart's `ViewportPolicy` and pause latest-X following like a user gesture. |
 | `ctx.state` | `getSeries()`, `getHover()`, `pick(clientX, clientY, options?)`, `getFrameStats(target?)`, `inspect(target)`, `getInspection()` | Series metadata, the current hover hit, hit-testing, render metrics, and keyboard inspection (see below). |
 | `ctx.layout` | `plotRect()`, `rootRect()`, `reserve(reservation)` | Plot and chart geometry in client coordinates, and space around the plot for plugin UI. `reserve` returns a release function. |
 | `ctx.dom` | `mount(slot, element)`, `listen(surface, type, listener, options?)`, `decorate(surface, decoration)`, `contains(target)` | Attaching plugin DOM, listening to input on chart-owned elements, and styling them. Each returns an undo function. |
 | `ctx.events` | `subscribe(event, callback)`, `emit(event, payload)` | Chart events (`render`, `hover`, `viewportchange`, `serieschange`, pointer events, ...) and typed plugin events. |
 | `ctx.requestRender()` | | Schedule a frame after changing something the chart draws. Chart-owned changes already request one. |
 | `ctx.unstable` | `canvas`, `element(slot)`, `getWebGLContext()`, `getCamera(yAxis?)` | Experimental escape hatches. Prefer the groups above. |
+
+Group members drop the noun the group already names and otherwise match the `Chart` method: `ctx.viewport.get()` is `chart.getViewport()`, `ctx.state.getHover()` is `chart.getHoverState()`, and `ctx.viewport.followX()` is `chart.followX()`. The raw camera, WebGL context, canvas, and plot/axis elements are only available here, under `ctx.unstable`; `Chart` does not expose them.
 
 Everything a plugin creates *through the context* (listeners, subscriptions, mounted elements, decorations, and layout reservations) is released automatically after the plugin is disposed. Resources you create yourself, such as timers, observers, global listeners, and GPU objects, are yours to release.
 

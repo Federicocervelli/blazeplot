@@ -4,11 +4,11 @@ This guide is for applications and plugins written against BlazePlot 0.x. It lis
 
 The list was produced by comparing the published declarations of 0.5.5 with the 1.0 declarations (the `api/public-api.md` snapshot), plus the 1.0 changes that alter runtime behavior. If you are on 0.4 or older, apply the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) first (most upgrades there are mechanical renames), then come back here. Release candidates are published to the npm `rc` dist-tag until 1.0 ships.
 
-Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals and two flame graph helpers, with chart data export moved to `blazeplot/export`, one typing fix, one data-ingestion rule (X must be finite and non-decreasing; see change 3), a reshaped (now stable) plugin contract that only custom plugin authors touch, and accessibility semantics on the chart root (`role="figure"`, a generated description, focus rings, and new keyboard paths; see change 9).
+Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals and two flame graph helpers, with chart data export moved to `blazeplot/export`, one typing fix, one data-ingestion rule (X must be finite and non-decreasing; see change 3), a reshaped (now stable) plugin contract that only custom plugin authors touch, accessibility semantics on the chart root (`role="figure"`, a generated description, focus rings, and new keyboard paths; see change 9), and a final naming pass that renames a few methods, types, and options and removes the raw camera, GL, and element getters from `Chart` (change 10).
 
 ## What did not change
 
-- The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`/`addHistogram`, dataset classes, and every built-in plugin option keep their signatures, except that the custom `render`/`renderHighlight` callbacks of the legend, tooltip, and crosshair plugins now receive the plugin context instead of the `Chart` (see change 8). Datasets gained optional validation options (change 3).
+- The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`/`addHistogram`, dataset classes, and every built-in plugin option keep their signatures, except that the custom `render`/`renderHighlight` callbacks of the legend, tooltip, and crosshair plugins now receive the plugin context instead of the `Chart` (see change 8), and the renames in change 10. Datasets gained optional validation options (change 3).
 - Entry points and subpaths are the same: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and `blazeplot/plugins/*`. What lives in `blazeplot/data` and `blazeplot/export` changed (see change 6).
 - The package was already ESM only and already required WebGL2; 1.0 now states both as policy.
 
@@ -135,7 +135,7 @@ console.log(unsorted.length, trusted.length, buffer.rejectedSamples);
 Nothing was removed here, but the tier changed. These are now tagged `@experimental` in the declarations and may change in a minor release (the changelog will say so):
 
 - The custom fast-path dataset interfaces: `AcceleratedDataset`, `RangeMinMaxDataset`, `RangeSampleCopyDataset`, `VisibleSampleCopyDataset`, `VisiblePointCopyDataset`, `MinMaxSegmentCopyDataset`, `XRangeDataset`, `SampleCopyLayout`.
-- Camera access (`chart.getCamera()`, `Camera2D`), the plugin context's `ctx.unstable` escape hatches, and every export of `blazeplot/plugins/flamegraph`.
+- Camera access (`Camera2D`, reached through `ctx.unstable.getCamera()` and the `ViewportPolicy` hooks; `chart.getCamera()` is removed, see change 10), the plugin context's `ctx.unstable` escape hatches, and every export of `blazeplot/plugins/flamegraph`.
 
 The plugin contract itself is stable in 1.0, in its new shape (change 8).
 
@@ -152,7 +152,7 @@ These types appeared in public signatures but were not exported in 0.5.5. They a
 
 ### 6. Chart data export moved from `blazeplot/data` to `blazeplot/export`
 
-`exportChartData`, `chartDataToCSV`, and their types (`ExportableChart`, `ChartDataExport`, `ChartDataExportOptions`, `ChartDataCsvOptions`, `ChartDataSeries`, `ChartDataSample`, `ChartDataSource`) moved to `blazeplot/export`, next to the screenshot download and clipboard helpers. `blazeplot/data` now holds only pure, chart-agnostic transforms: `binSamples`, `rollingMean`, and their types (`XYSample`, `SampleReducer`, `ResampleX`, `ResampleOptions`, `BinnedSample`, `RollingMeanSample`). There is no re-export: importing the moved names from `blazeplot/data` fails with "Module has no exported member". Behavior is unchanged.
+`exportChartData`, `chartDataToCSV` (also renamed to `chartDataToCsv`, change 10), and their types (`ExportableChart`, `ChartDataExport`, `ChartDataExportOptions`, `ChartDataCsvOptions`, `ChartDataSeries`, `ChartDataSample`, `ChartDataSource`) moved to `blazeplot/export`, next to the screenshot download and clipboard helpers. `blazeplot/data` now holds only pure, chart-agnostic transforms: `binSamples`, `rollingMean`, and their types (`XYSample`, `SampleReducer`, `ResampleX`, `ResampleOptions`, `BinnedSample`, `RollingMeanSample`). There is no re-export: importing the moved names from `blazeplot/data` fails with "Module has no exported member". Behavior is unchanged.
 
 Before (0.5):
 
@@ -166,11 +166,11 @@ After (1.0):
 ```ts
 import { Chart } from "blazeplot";
 import { binSamples } from "blazeplot/data";
-import { chartDataToCSV, downloadBlob, exportChartData, type ChartDataExport } from "blazeplot/export";
+import { chartDataToCsv, downloadBlob, exportChartData, type ChartDataExport } from "blazeplot/export";
 
 const chart = new Chart(element);
 const visible: ChartDataExport = exportChartData(chart, { range: "visible" });
-downloadBlob(new Blob([chartDataToCSV(visible)], { type: "text/csv" }), "visible.csv");
+downloadBlob(new Blob([chartDataToCsv(visible)], { type: "text/csv" }), "visible.csv");
 const binned = binSamples(visible.series[0]?.samples ?? [], 1_000);
 console.log(binned.length);
 chart.dispose();
@@ -213,7 +213,7 @@ chart.dispose();
 
 ### 8. The plugin context is grouped, and the plugin contract is stable
 
-`install(ctx)` no longer receives the `Chart` (or a flat object mirroring it). It receives a `ChartPluginContext` with stable groups: `ctx.coords`, `ctx.viewport`, `ctx.state`, `ctx.layout`, `ctx.dom`, `ctx.events`, `ctx.theme`, and `ctx.requestRender()`. Raw DOM handles are replaced by named mount slots and surfaces, the raw WebGL context and camera moved under `ctx.unstable` (still experimental), and `ChartPluginHandle` gained optional lifecycle hooks. Plugins install in registration order and are now disposed in **reverse** registration order. `Chart` no longer implements the plugin context: `chart.emitSelect` and `chart.setLayoutReservation` are removed (use a plugin), while the rest of the `Chart` API, including `chart.canvas`, `chart.rootElement`, and the other `*Element` getters, is unchanged.
+`install(ctx)` no longer receives the `Chart` (or a flat object mirroring it). It receives a `ChartPluginContext` with stable groups: `ctx.coords`, `ctx.viewport`, `ctx.state`, `ctx.layout`, `ctx.dom`, `ctx.events`, `ctx.theme`, and `ctx.requestRender()`. Raw DOM handles are replaced by named mount slots and surfaces, the raw WebGL context and camera moved under `ctx.unstable` (still experimental), and `ChartPluginHandle` gained optional lifecycle hooks. Plugins install in registration order and are now disposed in **reverse** registration order. `Chart` no longer implements the plugin context: `chart.emitSelect` and `chart.setLayoutReservation` are removed (use a plugin). `chart.rootElement` stays for app layout; the other raw element getters, `getWebGLContext()`, and `getCamera()` left the public `Chart` (change 10).
 
 | 0.5 plugin context | 1.0 |
 |---|---|
@@ -231,7 +231,7 @@ chart.dispose();
 | `dataToPlot(...)`, `clientToData(...)` | `ctx.coords.dataToPlot(...)`, `ctx.coords.clientToData(...)` (new: `clientToPlot`, `plotToClient`) |
 | `getViewport(yAxis)`, `setViewport(v, yAxis)` | `ctx.viewport.get(yAxis)`, `ctx.viewport.set(v, yAxis)` |
 | `pan(...)`, `zoom(...)`, `fitToData(...)` | `ctx.viewport.pan(...)`, `ctx.viewport.zoom(...)`, `ctx.viewport.fitToData(...)` |
-| `followLatestX(o)`, `stopFollowingLatestX()`, `setXFollowPaused(p)`, `getXFollowState()` | `ctx.viewport.follow(o)`, `ctx.viewport.stopFollow()`, `ctx.viewport.setFollowPaused(p)`, `ctx.viewport.getFollowState()` |
+| `followLatestX(o)`, `stopFollowingLatestX()`, `setXFollowPaused(p)`, `getXFollowState()` | `ctx.viewport.followX(o)`, `ctx.viewport.stopFollowX()`, `ctx.viewport.setFollowXPaused(p)`, `ctx.viewport.getFollowXState()` |
 | `getSeriesState()`, `getHoverState()`, `pick(...)`, `getFrameStats(t)` | `ctx.state.getSeries()`, `ctx.state.getHover()`, `ctx.state.pick(...)`, `ctx.state.getFrameStats(t)` |
 | `setLayoutReservation(id, r)` / `setLayoutReservation(id, null)` | `const release = ctx.layout.reserve(r)` / `release()` |
 | `requestRender()` | `ctx.requestRender()` |
@@ -302,6 +302,64 @@ See [Plugin authoring](./plugin-authoring.md) for the full contract, mount slots
 | `ChartHoverState` | Has an optional `source` (`"pointer"` or `"inspection"`). Plugins that re-pick hover states should leave `"inspection"` states alone. |
 
 New: `blazeplot/plugins/a11y`, `chart.getSummary()`, `LIGHT_CHART_THEME`, `ctx.state.inspect()` / `getInspection()`, and `ctx.coords.format()`.
+
+### 10. Final naming pass
+
+1.0 renames the names that broke a pattern used everywhere else, and removes `Chart` members that only plugins needed. There are no deprecated aliases: the old names fail to compile ("Property 'followLatestX' does not exist", "Module has no exported member 'chartDataToCSV'").
+
+Conventions, which the rest of the API already followed:
+
+- Latest-X follow is one verb family named after the `followX` option: `followX`, `stopFollowX`, `setFollowXPaused`, `getFollowXState`, with the same names on `Chart` and `ctx.viewport`.
+- Plugin context groups drop the noun the group already names (`ctx.viewport.get()` for `chart.getViewport()`, `ctx.state.getHover()` for `chart.getHoverState()`); everything else keeps the `Chart` name.
+- Event payloads end in `Event`; option types are named after their option; acronyms are written as words (`Csv`, `Ohlc`).
+- Color options end in `Color`, matching the theme tokens they default to (`selectionFillColor` → `fillColor`).
+
+| 0.5 / rc | 1.0 |
+|---|---|
+| `chart.followLatestX(o)` | `chart.followX(o)` |
+| `chart.stopFollowingLatestX()` | `chart.stopFollowX()` |
+| `chart.setXFollowPaused(p)` | `chart.setFollowXPaused(p)` |
+| `chart.getXFollowState()` | `chart.getFollowXState()` |
+| `ctx.viewport.follow(o)`, `stopFollow()`, `setFollowPaused(p)`, `getFollowState()` (1.0 release candidates) | `ctx.viewport.followX(o)`, `stopFollowX()`, `setFollowXPaused(p)`, `getFollowXState()` |
+| `ChartXFollowState` | `ChartFollowXState` |
+| `ChartPointerEventState` (payload of `click`, `dblclick`, `pointer*`) | `ChartPointerEvent` |
+| `LODStrategy` (type of `SeriesConfig.downsample`) | `DownsampleStrategy` |
+| `chartDataToCSV(data)` | `chartDataToCsv(data)` |
+| `createLinkedCharts(el, { sharedX })` | `createLinkedCharts(el, { syncX })` (pairs with `syncSelections`) |
+| `selectionPlugin({ fill, stroke })` | `selectionPlugin({ fillColor, strokeColor })` |
+| `navigatorPlugin({ background, stroke, fill, windowFill, windowStroke })` | `navigatorPlugin({ backgroundColor, strokeColor, fillColor, windowFillColor, windowStrokeColor })` |
+| `crosshairPlugin({ labelBackground })` | `crosshairPlugin({ labelBackgroundColor })` |
+| `chart.getCamera(yAxis)` | `chart.getViewport` / `setViewport` / `pan` / `zoom`; in a plugin, `ctx.viewport.isReversed(...)` or `ctx.unstable.getCamera(yAxis)` (experimental) |
+| `chart.getWebGLContext()` | In a plugin, `ctx.unstable.getWebGLContext()` (experimental) |
+| `chart.canvas` | `chart.screenshot()` for pixels; in a plugin, `ctx.dom.listen("plot", ...)`, `ctx.layout.plotRect()`, or `ctx.unstable.canvas` |
+| `chart.plotElement` | A plugin that calls `ctx.dom.mount("plot", element)` |
+| `chart.xAxisElement`, `yAxisElement`, `y2AxisElement` | A plugin using the `"axis-x"`, `"axis-y"`, `"axis-y2"` surfaces of `ctx.dom` |
+
+`chart.rootElement` and `chart.theme` stay. `Camera2D` stays exported (experimental) because `ctx.unstable.getCamera()` and the `ViewportPolicy` hooks use it.
+
+Before (0.5):
+
+<!-- snippet: skip intentionally old names; removed without aliases in 1.0 -->
+```ts
+chart.followLatestX({ window: 10_000 });
+chart.plotElement.appendChild(overlay);
+const camera = chart.getCamera();
+```
+
+After (1.0): mount app overlays with a small plugin.
+
+```ts
+import { Chart, type ChartPlugin } from "blazeplot";
+
+const overlay = document.createElement("div");
+const overlayPlugin: ChartPlugin = {
+  install: (ctx) => ctx.dom.mount("plot", overlay),
+};
+const chart = new Chart(element, { plugins: [overlayPlugin] });
+chart.followX({ window: 10_000 });
+console.log(chart.getFollowXState(), chart.getViewport().xMin);
+chart.dispose();
+```
 
 ## Platform requirements
 
@@ -381,6 +439,7 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 7. Search for imports of `exportChartData`, `chartDataToCSV`, `ExportableChart`, and `ChartData*` types from `blazeplot/data` and import them from `blazeplot/export` instead. Keep `binSamples` and `rollingMean` on `blazeplot/data`.
 8. Search for `buildFlameGraphModel` and `pickFrame`. Pass `foldedStacks` and `build` to `flameGraphPlugin()` (or call `setFoldedStacks`), and use `plugin.pick(clientX, clientY)` for hit testing.
 9. If you write custom plugins, port them to the grouped plugin context with the table in change 8 (search for `install(`, `setLayoutReservation`, `rootElement`, `plotElement`, `getCamera`, and `render:` callbacks of the legend, tooltip, and crosshair plugins). The new contract is stable. If you implement custom fast-path datasets or use `ctx.unstable`, note they are experimental: pin a 1.x range and read each minor changelog.
-10. Check change 9 if you style or test the chart root: search for `role="img"`, `aria-description`, `querySelector("style")` on the chart root, and full `ResolvedChartTheme` objects (add `focusRingColor`). Give each chart an `accessibility.label`, and consider `a11yPlugin()` for charts whose values users need.
-11. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-12. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
+10. Apply the renames in change 10: search for `followLatestX`, `stopFollowingLatestX`, `setXFollowPaused`, `getXFollowState`, `ChartXFollowState`, `ChartPointerEventState`, `LODStrategy`, `chartDataToCSV`, `sharedX`, `labelBackground`, the `fill`/`stroke`/`background`/`window*` options of `selectionPlugin` and `navigatorPlugin`, and `chart.getCamera`, `chart.getWebGLContext`, `chart.canvas`, `chart.plotElement`, and the `*AxisElement` getters.
+11. Check change 9 if you style or test the chart root: search for `role="img"`, `aria-description`, `querySelector("style")` on the chart root, and full `ResolvedChartTheme` objects (add `focusRingColor`). Give each chart an `accessibility.label`, and consider `a11yPlugin()` for charts whose values users need.
+12. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
+13. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.

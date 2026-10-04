@@ -123,8 +123,8 @@ describe("createLinkedCharts X sync", () => {
     linked.dispose();
   });
 
-  it("does not link panels when sharedX is false", () => {
-    const { linked } = build(2, { sharedX: false });
+  it("does not link panels when syncX is false", () => {
+    const { linked } = build(2, { syncX: false });
     const [a, b] = linked.charts as [typeof linked.charts[0], typeof linked.charts[0]];
     a.setViewport({ xMin: 10, xMax: 20 });
     expect(b.getViewport()).not.toMatchObject({ xMin: 10, xMax: 20 });

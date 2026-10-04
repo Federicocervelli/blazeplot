@@ -153,7 +153,7 @@ In forced-colors mode the chart follows the OS palette as described above. Serie
 ## What BlazePlot does not provide
 
 - **No sonification or non-color series encoding.** Series are told apart by color and legend labels. Choose palette colors that stay distinct for color-vision differences and set `style.color` explicitly for critical series.
-- **No reduced-motion switch.** BlazePlot runs no CSS transitions. Live charts update as data arrives; pause the feed or call `chart.setXFollowPaused(true)` if motion is a problem for your users.
+- **No reduced-motion switch.** BlazePlot runs no CSS transitions. Live charts update as data arrives; pause the feed or call `chart.setFollowXPaused(true)` if motion is a problem for your users.
 - **Live data under the inspection cursor.** The cursor holds a logical sample index. On a wrapping ring buffer at capacity, new data shifts which sample that index points at; the announcement updates on the next key press.
 - **Linked charts** use the same defaults per panel. Set a label for each panel with `panels: [{ options: { accessibility: { label: "..." } } }]`, and add `a11yPlugin()` through `panelPlugins` where needed.
 

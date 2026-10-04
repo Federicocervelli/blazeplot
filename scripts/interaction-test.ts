@@ -180,8 +180,8 @@ async function runLiveFollowCase(options: Options, serverUrl: string): Promise<v
   try {
     let snapshot = await waitForReady(cdp, options.timeoutMs);
     const epochLikeX = 1_700_000_000_000;
-    assert(snapshot.viewport.xMax >= epochLikeX + 1_020, "followLatestX can use a live x clock ahead of the newest sample");
-    assert(close(spanX(snapshot.viewport), 100, 0.1), "followLatestX uses the configured rolling window");
+    assert(snapshot.viewport.xMax >= epochLikeX + 1_020, "followX can use a live x clock ahead of the newest sample");
+    assert(close(spanX(snapshot.viewport), 100, 0.1), "followX uses the configured rolling window");
     const initialRenderEvents = snapshot.renderEvents;
     await sleep(120);
     snapshot = await getRequiredSnapshot(cdp);

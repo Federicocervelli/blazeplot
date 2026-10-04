@@ -48,7 +48,7 @@ export interface CrosshairPluginOptions {
   readonly width?: number;
   readonly dash?: string;
   readonly label?: boolean;
-  readonly labelBackground?: string;
+  readonly labelBackgroundColor?: string;
   readonly labelColor?: string;
   readonly labelFont?: string;
   readonly labelPlacement?: CrosshairLabelPlacement;
@@ -348,7 +348,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       label.style.zIndex = "3";
       label.style.padding = "4px 6px";
       label.style.borderRadius = "3px";
-      label.style.background = options.labelBackground ?? chart.theme.tooltipBackgroundColor;
+      label.style.background = options.labelBackgroundColor ?? chart.theme.tooltipBackgroundColor;
       label.style.color = options.labelColor ?? chart.theme.tooltipTextColor;
       label.style.font = options.labelFont ?? chart.theme.tooltipFont;
       label.style.whiteSpace = "nowrap";
