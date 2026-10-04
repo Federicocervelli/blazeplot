@@ -89,7 +89,7 @@ Use this when reviewing a PR that changes public behavior.
 
 | Area | What to verify |
 |---|---|
-| Package exports | `package.json#exports`, generated declarations, README/API reference, and `bun run test:exports`. |
+| Package exports | `package.json#exports`, generated declarations, README/API reference, `bun run test:exports`, and the `api/public-api.md` snapshot (`bun run test:api`). |
 | Dataset contracts | Sorted X expectations, gap behavior, bounds, picking, export helpers, and accelerated methods. |
 | Chart lifecycle | `start()`, `stop()`, `dispose()`, ResizeObserver cleanup, plugin disposers, context restore. |
 | Interaction behavior | Wheel/pointer/touch gestures, axis dragging, box zoom, double-click reset, keyboard focus. |
@@ -114,7 +114,7 @@ Prefer warnings in docs and release notes over runtime console warnings in hot p
 1. Prefer additive options and subpath exports.
 2. Keep old names as aliases when practical.
 3. Document behavior changes in `changelogs/vX.Y.Z.md`.
-4. Regenerate generated docs with `bun run docs:readme`.
+4. Regenerate generated docs with `bun run docs:readme`, and update the public API snapshot with `bun run build && bun run test:api -- --update`. The snapshot diff in the PR is the reviewable record of the API change.
 5. Add unit, visual, interaction, or package export coverage for migration-sensitive behavior.
 6. Run the relevant checks from [Local development](./internal/local-development.md) before opening the PR.
 
