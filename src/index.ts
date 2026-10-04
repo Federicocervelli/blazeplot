@@ -4,8 +4,6 @@ export type {
   AxisConfig,
   ChartAccessibilityOptions,
   ChartAutoFitYOptions,
-  ChartBackendFactory,
-  ChartBackendFactoryContext,
   ChartEventMap,
   ChartEventName,
   ChartFitToDataOptions,
@@ -93,12 +91,13 @@ export type {
 } from "./core/types.js";
 
 // Datasets
+export type { MinMaxY } from "./core/MinMaxTree.js";
 export { RingBuffer } from "./core/RingBuffer.js";
 export type { RingBufferOptions } from "./core/RingBuffer.js";
 export { UniformRingBuffer } from "./core/UniformRingBuffer.js";
 export type { UniformRingBufferOptions } from "./core/UniformRingBuffer.js";
 export { StaticDataset } from "./core/StaticDataset.js";
-export type { StaticDatasetField, StaticDatasetFromObjectsOptions } from "./core/StaticDataset.js";
+export type { StaticDatasetData, StaticDatasetField, StaticDatasetFromObjectsOptions } from "./core/StaticDataset.js";
 export { OhlcRingBuffer, StaticOhlcDataset } from "./core/OhlcDataset.js";
 export type { OhlcRingBufferOptions } from "./core/OhlcDataset.js";
 export { ServerSampledDataset } from "./core/ServerSampledDataset.js";
@@ -111,6 +110,5 @@ export type { Camera2D } from "./interaction/Camera2D.js";
 export type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "./interaction/types.js";
 export type { AxisControllerAxisOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
 
-// GPU backend
-export { isWebGL2Available, WebGL2Backend, WebGL2UnavailableError } from "./render/WebGL2Backend.js";
-export type { AttributeSpec, BufferSpec, DrawSpec, GpuBackend, GpuBuffer, GpuCapabilities, GpuProgram, GpuResource, UniformValue } from "./render/types.js";
+// WebGL2 support detection
+export { isWebGL2Available, WebGL2UnavailableError } from "./render/WebGL2Backend.js";

@@ -8,9 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-130 exports.
-
-Referenced by this entry's signatures but not exported from any entry point (2): `MinMaxY`, `StaticDatasetData`
+120 exports.
 
 #### interface AcceleratedDataset
 
@@ -26,18 +24,6 @@ interface AppendableDataset extends Dataset {
     push(x: number, y: number): void;
     append(x: ArrayLike<number>, y: ArrayLike<number>): void;
     clear(): void;
-}
-```
-
-#### interface AttributeSpec
-
-```ts
-interface AttributeSpec {
-    readonly buffer: GpuBuffer;
-    readonly divisor: number;
-    readonly stride?: number;
-    readonly offset?: number;
-    readonly size?: number;
 }
 ```
 
@@ -105,16 +91,6 @@ type AxisTimeZone = "local" | "utc";
 
 ```ts
 type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
-```
-
-#### interface BufferSpec
-
-```ts
-interface BufferSpec {
-    readonly usage: "static" | "dynamic" | "stream";
-    readonly type: "float" | "element";
-    readonly length: number;
-}
 ```
 
 #### type BuiltInAxisScale
@@ -226,7 +202,7 @@ class Chart implements ChartPluginContext {
     getHoverState(): ChartHoverState | null;
     setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
     subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
-    emitSelect(selection: unknown): void;
+    emitSelect(selection: SelectionState | null): void;
     setTheme(theme?: ChartTheme): void;
     setGridVisible(visible: boolean): void;
     setAxes(axes: ChartOptions["axes"]): void;
@@ -254,20 +230,6 @@ interface ChartAccessibilityOptions {
 
 ```ts
 type ChartAutoFitYOptions = Pick<ChartFitToDataOptions, "series" | "includeHidden" | "yAxis" | "padding" | "includeZero">;
-```
-
-#### type ChartBackendFactory
-
-```ts
-type ChartBackendFactory = (context: ChartBackendFactoryContext) => GpuBackend;
-```
-
-#### interface ChartBackendFactoryContext
-
-```ts
-interface ChartBackendFactoryContext {
-    readonly canvas: HTMLCanvasElement;
-}
 ```
 
 #### interface ChartEventMap
@@ -404,7 +366,6 @@ interface ChartOptions {
     readonly renderLoop?: ChartRenderLoop;
     readonly plugins?: readonly ChartPlugin[];
     readonly theme?: ChartTheme;
-    readonly backendFactory?: ChartBackendFactory;
 }
 ```
 
@@ -492,7 +453,7 @@ interface ChartPluginContext {
     requestRender(): void;
     subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
     pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
-    emitSelect(selection: unknown): void;
+    emitSelect(selection: SelectionState | null): void;
 }
 ```
 
@@ -553,8 +514,8 @@ interface ChartScreenshotOptions {
 #### interface ChartSelectEvent
 
 ```ts
-interface ChartSelectEvent<T = unknown> {
-    readonly selection: T;
+interface ChartSelectEvent {
+    readonly selection: SelectionState | null;
 }
 ```
 
@@ -668,69 +629,6 @@ interface Dataset {
 }
 ```
 
-#### interface DrawSpec
-
-```ts
-interface DrawSpec {
-    readonly program: GpuProgram;
-    readonly primitive: "points" | "lines" | "line_strip" | "triangles" | "triangle_strip";
-    readonly count: number;
-    readonly instances?: number;
-    readonly uniforms: Readonly<Record<string, UniformValue>>;
-    readonly attributes: Readonly<Record<string, GpuBuffer | AttributeSpec>>;
-    readonly elements?: GpuBuffer;
-}
-```
-
-#### interface GpuBackend
-
-```ts
-interface GpuBackend {
-    readonly capabilities: GpuCapabilities;
-    createBuffer(spec: BufferSpec): GpuBuffer;
-    updateBuffer(buffer: GpuBuffer, data: Float32Array | Uint16Array, offset?: number): void;
-    createProgram(vert: string, frag: string): GpuProgram;
-    draw(spec: DrawSpec): void;
-    dispose(resource: GpuResource): void;
-    clear(r: number, g: number, b: number, a: number): void;
-    viewport(x: number, y: number, w: number, h: number): void;
-    getContext?(): WebGL2RenderingContext | null;
-    destroy(): void;
-}
-```
-
-#### interface GpuBuffer
-
-```ts
-interface GpuBuffer {
-    readonly kind: "buffer";
-    readonly length: number;
-    readonly type: BufferSpec["type"];
-}
-```
-
-#### interface GpuCapabilities
-
-```ts
-interface GpuCapabilities {
-    readonly instancing: boolean;
-}
-```
-
-#### interface GpuProgram
-
-```ts
-interface GpuProgram {
-    readonly kind: "program";
-}
-```
-
-#### type GpuResource
-
-```ts
-type GpuResource = GpuBuffer | GpuProgram;
-```
-
 #### interface HistogramBin
 
 ```ts
@@ -813,6 +711,15 @@ type LODStrategy = "minmax" | "none" | "server";
 ```ts
 interface MinMaxSegmentCopyDataset extends Dataset {
     copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number): number;
+}
+```
+
+#### interface MinMaxY
+
+```ts
+interface MinMaxY {
+    readonly minY: number;
+    readonly maxY: number;
 }
 ```
 
@@ -1271,6 +1178,15 @@ class StaticDataset implements Dataset {
 }
 ```
 
+#### interface StaticDatasetData
+
+```ts
+interface StaticDatasetData {
+    readonly x?: ArrayLike<number>;
+    readonly y: ArrayLike<number>;
+}
+```
+
 #### type StaticDatasetField
 
 ```ts
@@ -1377,12 +1293,6 @@ interface UniformRingBufferOptions {
 }
 ```
 
-#### type UniformValue
-
-```ts
-type UniformValue = number | boolean | readonly number[] | Float32Array;
-```
-
 #### interface UpdatableDataset
 
 ```ts
@@ -1431,24 +1341,6 @@ interface VisiblePointCopyDataset extends Dataset {
 ```ts
 interface VisibleSampleCopyDataset extends Dataset {
     copyVisibleSamples(viewport: Viewport, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number): number;
-}
-```
-
-#### class WebGL2Backend
-
-```ts
-class WebGL2Backend implements GpuBackend {
-    readonly capabilities: GpuBackend["capabilities"];
-    constructor(canvas: HTMLCanvasElement);
-    createBuffer(spec: BufferSpec): GpuBuffer;
-    updateBuffer(buffer: GpuBuffer, data: Float32Array | Uint16Array, offset?: number): void;
-    createProgram(vert: string, frag: string): GpuProgram;
-    draw(spec: DrawSpec): void;
-    dispose(resource: GpuResource): void;
-    clear(r: number, g: number, b: number, a: number): void;
-    viewport(x: number, y: number, w: number, h: number): void;
-    getContext(): WebGL2RenderingContext;
-    destroy(): void;
 }
 ```
 
@@ -1570,9 +1462,7 @@ function createLinkedCharts(target: HTMLElement, options: LinkedChartsOptions): 
 
 ### `blazeplot/data`
 
-16 exports.
-
-Referenced by this entry's signatures but not exported from any entry point (1): `ExportableChart`
+17 exports.
 
 #### interface BinnedSample
 
@@ -1652,6 +1542,12 @@ interface ChartDataSeries {
 
 ```ts
 type ChartDataSource = "all" | "visible" | "selection";
+```
+
+#### type ExportableChart
+
+```ts
+type ExportableChart = Pick<Chart, "getSeriesState" | "getViewport">;
 ```
 
 #### interface ResampleOptions

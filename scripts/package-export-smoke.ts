@@ -7,7 +7,7 @@ type PackageJson = {
 };
 
 const expectedExports = {
-  "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "histogram", "WebGL2Backend", "isWebGL2Available"],
+  "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "histogram", "isWebGL2Available", "WebGL2UnavailableError"],
   "blazeplot/linked": ["createLinkedCharts"],
   "blazeplot/data": ["exportChartData", "chartDataToCSV", "binSamples", "rollingMean"],
   "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob"],
@@ -51,7 +51,7 @@ for (const specifier of packageExportSpecifiers) {
 
 const rootSpecifier: string = "blazeplot";
 const rootExports = await import(rootSpecifier) as Record<string, unknown>;
-for (const removed of ["ReglBackend", "MinMaxPyramid", "SeriesStore", "DataCursor", "histogramDataset"]) {
+for (const removed of ["ReglBackend", "MinMaxPyramid", "SeriesStore", "DataCursor", "histogramDataset", "WebGL2Backend"]) {
   if (removed in rootExports) throw new Error(`blazeplot should not export ${removed}.`);
 }
 

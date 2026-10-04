@@ -18,6 +18,7 @@ import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
 import { resolveChartTheme, resolveThemeColor } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
+import type { SelectionState } from "./Selection.js";
 
 /** Vertices in the shared raw line/point/area upload buffer. */
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
@@ -88,12 +89,12 @@ export interface ChartKeyboardOptions {
   readonly zoomFactor?: number;
 }
 
-/** Context passed to a custom GPU backend factory. */
+/** @internal Context passed to a custom GPU backend factory. */
 export interface ChartBackendFactoryContext {
   readonly canvas: HTMLCanvasElement;
 }
 
-/** Creates the GPU backend used by a chart. */
+/** @internal Creates the GPU backend used by a chart. */
 export type ChartBackendFactory = (context: ChartBackendFactoryContext) => GpuBackend;
 
 /** Render loop scheduling mode. */
@@ -125,7 +126,7 @@ export interface ChartOptions {
   readonly renderLoop?: ChartRenderLoop;
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
-  /** Advanced hook for supplying a custom GPU backend. Defaults to `WebGL2Backend`. */
+  /** @internal Hook for supplying a custom GPU backend (test fakes). Defaults to `WebGL2Backend`. */
   readonly backendFactory?: ChartBackendFactory;
 }
 
@@ -205,9 +206,9 @@ export interface ChartViewportChangeEvent {
   readonly rightViewport: Viewport;
 }
 
-/** Selection event payload emitted by selection plugins or custom code. */
-export interface ChartSelectEvent<T = unknown> {
-  readonly selection: T;
+/** Selection event payload emitted by selection plugins or custom code. `null` means the selection was cleared. */
+export interface ChartSelectEvent {
+  readonly selection: SelectionState | null;
 }
 
 /** Current hover hit-test result, including pointer position and picked items. */
@@ -338,13 +339,20 @@ type DrawMode = Exclude<ChartFrameStats["renderMode"], "none" | "mixed">;
  * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface ChartPluginContext {
+  /** @experimental DOM and canvas handles are part of the experimental plugin contract. */
   readonly canvas: HTMLCanvasElement;
+  /** @experimental */
   readonly rootElement: HTMLElement;
+  /** @experimental */
   readonly plotElement: HTMLElement;
+  /** @experimental */
   readonly xAxisElement: HTMLElement;
+  /** @experimental */
   readonly yAxisElement: HTMLElement;
+  /** @experimental */
   readonly y2AxisElement: HTMLElement;
   readonly theme: ResolvedChartTheme;
+  /** @experimental Raw WebGL2 context; may change or be removed before the plugin contract is stable. */
   getWebGLContext(): WebGL2RenderingContext | null;
   /** @experimental May change in a minor release before it is promoted to stable. See docs/stability.md. */
   getCamera(yAxis?: SeriesYAxis): Camera2D;
@@ -368,7 +376,7 @@ export interface ChartPluginContext {
   subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
   pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
   /** @experimental May change in a minor release before it is promoted to stable. See docs/stability.md. */
-  emitSelect(selection: unknown): void;
+  emitSelect(selection: SelectionState | null): void;
 }
 
 /**
@@ -1049,7 +1057,7 @@ export class Chart implements ChartPluginContext {
    *
    * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
    */
-  emitSelect(selection: unknown): void {
+  emitSelect(selection: SelectionState | null): void {
     this.emit("select", { selection });
   }
 
