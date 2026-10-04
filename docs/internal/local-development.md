@@ -30,16 +30,39 @@ Use Bun for repo work. `packageManager` pins the expected Bun version; CI also u
 
 ## Browser-backed checks
 
-Visual, interaction, and benchmark checks need Chrome/Chromium/Brave. The scripts check `BLAZEPLOT_BENCH_CHROME`, then `CHROME_PATH`, then common browser binaries.
+Visual, interaction, stability, and benchmark checks need Chrome/Chromium/Brave. The scripts check `BLAZEPLOT_BENCH_CHROME`, then `CHROME_PATH`, then common browser binaries.
 
 ```bash
 export BLAZEPLOT_BENCH_CHROME=/path/to/chrome
 bun run test:visual
 bun run test:interaction
+bun run test:stability
 bun run test:website
 bun run bench:ci
 bun run bench:gate
 ```
+
+`bun run test:stability` is the real-browser leak and stability suite (`scripts/stability-test.ts`, fixture in `tests/browser/stability/`). It runs these cases, each on a fresh page:
+
+| Case | What it does | What must hold |
+|---|---|---|
+| `mount-unmount` | Mounts and disposes full-plugin charts (and flame graphs) hundreds of times, hovering each one. | After a forced GC (`HeapProfiler.collectGarbage`) JS heap, DOM nodes, documents, and JS event listeners are back at the post-warm-up baseline within tolerance. The page's own counters are exact: no leftover elements, canvases, live WebGL objects, or live (not lost) WebGL contexts. |
+| `resize-churn` | One chart, repeated host resizes and `resize(dpr)` calls. | Same baseline checks. |
+| `series-churn` | One chart, repeatedly adding and removing line/area/scatter/bar series. | Same baseline checks, including live WebGL buffers. |
+| `streaming` | Multi-series stream into ring buffers at capacity with plugins and hover. | Buffers hold exactly their capacity, heap does not grow with samples streamed (bounded growth, plus a trend check in `--long`), no new DOM, listeners, or GL objects. |
+| `context-loss` | `WEBGL_lose_context` lose/restore cycles, including appends and hover while lost and dispose while lost. | Chart renders non-blank frames after every restore; no renders while lost; nothing left behind. |
+| `detector-control` | Retains charts on purpose. | The same counters must move, then return to baseline after release. Proves the checks can fail. |
+
+Any page exception, `console.error`, or browser "Too many active WebGL contexts" warning also fails a case.
+
+```bash
+bun run test:stability                      # CI mode, about a minute
+bun run test:stability --long               # local soak: 1,000+ iterations, 90s streaming run
+bun run test:stability --long --duration-s 300   # longer streaming window
+bun run test:stability --case streaming --verbose  # one case, print every heap/DOM sample
+```
+
+`--verbose` prints each post-GC sample; `build/stability/report.json` records all measurements. Tolerances live in `scripts/stability-test.ts` (`toleranceFor`, the streaming limits). When the suite fails, read the message first: it names the counter that moved and the baseline and final values. Reproduce with `--case <name> --verbose`, then bisect by removing plugins from `fullPlugins()` in the fixture. Do not loosen a tolerance to make a failure pass; a real leak grows with iterations, so run `--long` and check whether the number scales.
 
 `bun run test:website` checks the development and production website builds for routing, responsive previews, modal keyboard behavior, copy/export feedback, lazy loading, offscreen chart lifecycle, and legend focus in headless Chromium. Screenshots and test downloads are written to `build/website-ux/`. Run a focused case with `bun scripts/website-ux-test.ts <case>` (for example, `anchors` or `legend`). After `bun run pages:build`, run `bun scripts/website-ux-test.ts production` to smoke-test the built site.
 
@@ -66,7 +89,7 @@ CI runs the same groups as separate jobs. Locally:
 
 ```bash
 bun run check          # typecheck, unit tests, build, docs freshness, package checks
-bun run test:browser   # benchmark smoke, perf gate, visual, interaction, website (needs Chrome)
+bun run test:browser   # benchmark smoke, perf gate, visual, interaction, stability, website (needs Chrome)
 bun run ci             # both (cross-browser is a separate CI job: bun run test:cross-browser)
 ```
 

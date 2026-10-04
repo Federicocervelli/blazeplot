@@ -29,6 +29,7 @@ For browser-backed benchmarks and visual/interaction tests, set Chrome explicitl
 export BLAZEPLOT_BENCH_CHROME=/path/to/chrome
 bun run test:visual
 bun run test:interaction
+bun run test:stability
 ```
 
 ## Before opening a pull request
