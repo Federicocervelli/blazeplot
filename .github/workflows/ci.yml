@@ -2,7 +2,10 @@ name: CI
 
 on:
   pull_request:
-  # Pushes to main run CI only through the release workflow, right before it publishes.
+    branches:
+      - main
+      - v1
+  # Pushes to main and v1 run CI only through the release workflow, right before it publishes.
   workflow_call:
   workflow_dispatch:
 
