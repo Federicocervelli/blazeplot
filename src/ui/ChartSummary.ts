@@ -44,15 +44,10 @@ const MAX_DESCRIBED_SERIES = 20;
 /** Samples scanned backwards from the end to skip trailing gaps when finding the latest value. */
 const LATEST_SCAN_LIMIT = 64;
 
-const MODE_NAMES: Readonly<Record<SeriesMode, string>> = {
-  line: "line",
-  area: "area",
-  envelope: "envelope",
-  scatter: "scatter",
-  bar: "bar",
-  ohlc: "OHLC",
-  candlestick: "candlestick",
-};
+/** Series mode as worded in the summary text. */
+function modeName(mode: SeriesMode): string {
+  return mode === "ohlc" ? "OHLC" : mode;
+}
 
 /** @internal Name used for a series in summaries, legends, and announcements. */
 export function seriesDisplayName(series: { readonly config: { readonly id?: string; readonly name?: string; readonly mode: SeriesMode } }, index: number): string {
@@ -108,12 +103,12 @@ function plural(count: number, singular: string, pluralForm: string = `${singula
 function summaryText(series: readonly ChartSeriesSummary[], x: ChartSummaryRange | null, format: SummaryValueFormatter): string {
   if (series.length === 0) return "Chart with no data series.";
   const modes = new Set(series.map((item) => item.mode));
-  const kind = modes.size === 1 ? `${capitalize(MODE_NAMES[series[0]!.mode])} chart` : "Chart";
+  const kind = modes.size === 1 ? `${capitalize(modeName(series[0]!.mode))} chart` : "Chart";
   const parts = [`${kind} with ${plural(series.length, "series", "series")}.`];
   if (x) parts.push(`X from ${format(x.min, "x", "left")} to ${format(x.max, "x", "left")}.`);
   for (const item of series.slice(0, MAX_DESCRIBED_SERIES)) {
     const facts: string[] = [];
-    if (modes.size > 1) facts.push(MODE_NAMES[item.mode]);
+    if (modes.size > 1) facts.push(modeName(item.mode));
     if (!item.visible) facts.push("hidden");
     facts.push(plural(item.sampleCount, "point"));
     if (item.y) facts.push(`values from ${format(item.y.min, "y", item.yAxis)} to ${format(item.y.max, "y", item.yAxis)}`);

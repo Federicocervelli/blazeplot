@@ -656,16 +656,7 @@ export class Chart {
     this.updateTextOverlays();
     this.updateSummary();
 
-    this.canvas.addEventListener("pointermove", this.handlePointerMove);
-    this.canvas.addEventListener("pointerdown", this.handlePointerDown);
-    this.canvas.addEventListener("pointerup", this.handlePointerUp);
-    this.canvas.addEventListener("pointerleave", this.handlePointerLeave);
-    this.canvas.addEventListener("click", this.handleClick);
-    this.canvas.addEventListener("dblclick", this.handleDoubleClick);
-    this.canvas.addEventListener("webglcontextlost", this.handleWebGLContextLost);
-    this.canvas.addEventListener("webglcontextrestored", this.handleWebGLContextRestored);
-    this.layout.root.addEventListener("keydown", this.handleKeyDown);
-    if (this.summaryElement) this.layout.root.addEventListener("focusin", this.handleRootFocusIn);
+    this.toggleDomListeners("addEventListener");
 
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -1190,16 +1181,7 @@ export class Chart {
     this.hoverRafId = 0;
     if (this.restoreRenderRafId !== 0) cancelAnimationFrame(this.restoreRenderRafId);
     this.restoreRenderRafId = 0;
-    this.canvas.removeEventListener("pointermove", this.handlePointerMove);
-    this.canvas.removeEventListener("pointerdown", this.handlePointerDown);
-    this.canvas.removeEventListener("pointerup", this.handlePointerUp);
-    this.canvas.removeEventListener("pointerleave", this.handlePointerLeave);
-    this.canvas.removeEventListener("click", this.handleClick);
-    this.canvas.removeEventListener("dblclick", this.handleDoubleClick);
-    this.canvas.removeEventListener("webglcontextlost", this.handleWebGLContextLost);
-    this.canvas.removeEventListener("webglcontextrestored", this.handleWebGLContextRestored);
-    this.layout.root.removeEventListener("keydown", this.handleKeyDown);
-    this.layout.root.removeEventListener("focusin", this.handleRootFocusIn);
+    this.toggleDomListeners("removeEventListener");
     this.unwatchForcedColors();
     if (this.summaryTimer !== null) clearTimeout(this.summaryTimer);
     this.summaryTimer = null;
@@ -1538,6 +1520,25 @@ export class Chart {
     this.stats.drawCalls = 0;
     this.stats.uploadBytes = 0;
     this.stats.renderMode = "none";
+  }
+
+  /** Add or remove the chart's own canvas and root listeners. */
+  private toggleDomListeners(method: "addEventListener" | "removeEventListener"): void {
+    const canvas = this.canvas;
+    const root = this.layout.root;
+    const listeners: Array<[EventTarget, string, (event: never) => void]> = [
+      [canvas, "pointermove", this.handlePointerMove],
+      [canvas, "pointerdown", this.handlePointerDown],
+      [canvas, "pointerup", this.handlePointerUp],
+      [canvas, "pointerleave", this.handlePointerLeave],
+      [canvas, "click", this.handleClick],
+      [canvas, "dblclick", this.handleDoubleClick],
+      [canvas, "webglcontextlost", this.handleWebGLContextLost],
+      [canvas, "webglcontextrestored", this.handleWebGLContextRestored],
+      [root, "keydown", this.handleKeyDown],
+    ];
+    if (this.summaryElement) listeners.push([root, "focusin", this.handleRootFocusIn]);
+    for (const [target, type, listener] of listeners) target[method](type, listener as EventListener);
   }
 
   private scheduleRenderAfterRestore(): void {

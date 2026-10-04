@@ -65,6 +65,11 @@ function hasExplicitGaps(dataset: Dataset): dataset is Dataset & { isGap(index: 
   return typeof dataset.isGap === "function";
 }
 
+/** Error for a series call the backing dataset does not support: `"<call> requires <requirement>."`. */
+function unsupported(call: string, requirement: string): TypeError {
+  return new TypeError(`${call} requires ${requirement}.`);
+}
+
 function toArrayLike(value: SeriesScalarOrArray): ArrayLike<number> {
   return typeof value === "number" ? [value] : value;
 }
@@ -313,7 +318,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   private appendXY(x: ArrayLike<number>, y: ArrayLike<number>): void {
     if (!hasAppendXY(this.dataset)) {
-      throw new TypeError("series.append({ x, y }) requires an appendable XY dataset such as RingBuffer. Create the series with chart.addLine({ capacity }).");
+      throw unsupported("series.append({ x, y })", "an appendable XY dataset such as RingBuffer. Create the series with chart.addLine({ capacity })");
     }
     this.dataset.append(x, y);
     this.markDataMutated(false);
@@ -321,7 +326,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   private appendYArray(y: ArrayLike<number>): void {
     if (!hasAppendY(this.dataset)) {
-      throw new TypeError("series.append({ y }) requires an implicit-X dataset such as UniformRingBuffer. Use series.append({ x, y }) or create the series with chart.addLine({ capacity, xStep }).");
+      throw unsupported("series.append({ y })", "an implicit-X dataset such as UniformRingBuffer. Use series.append({ x, y }) or create the series with chart.addLine({ capacity, xStep })");
     }
     this.dataset.appendY(y);
     this.markDataMutated(false);
@@ -335,7 +340,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     close: ArrayLike<number>,
   ): void {
     if (!hasOhlcAppend(this.dataset)) {
-      throw new TypeError("series.append({ x, open, high, low, close }) requires an appendable OHLC dataset such as OhlcRingBuffer.");
+      throw unsupported("series.append({ x, open, high, low, close })", "an appendable OHLC dataset such as OhlcRingBuffer");
     }
     this.dataset.append(x, open, high, low, close);
     this.markDataMutated(false);
@@ -357,18 +362,18 @@ export class SeriesStore<D extends Dataset = Dataset> {
   private updateXYAt(index: number, data: SeriesXYUpdateData): boolean {
     if (data.x !== undefined) {
       if (!hasUpdate(this.dataset)) {
-        throw new TypeError("series.updateAt(index, { x, y }) requires a mutable XY dataset such as RingBuffer.");
+        throw unsupported("series.updateAt(index, { x, y })", "a mutable XY dataset such as RingBuffer");
       }
       return this.dataset.update(index, data.x, data.y);
     }
     if (hasUpdateY(this.dataset)) return this.dataset.updateY(index, data.y);
     if (hasUpdate(this.dataset)) return this.dataset.update(index, this.dataset.getX(index), data.y);
-    throw new TypeError("series.updateAt(index, { y }) requires a mutable dataset such as RingBuffer or UniformRingBuffer.");
+    throw unsupported("series.updateAt(index, { y })", "a mutable dataset such as RingBuffer or UniformRingBuffer");
   }
 
   private updateOhlcAt(index: number, data: SeriesOhlcUpdateData): boolean {
     if (!hasOhlcAppend(this.dataset) || typeof this.dataset.updateAt !== "function") {
-      throw new TypeError("series.updateAt(index, { open, high, low, close }) requires a mutable OHLC dataset such as OhlcRingBuffer.");
+      throw unsupported("series.updateAt(index, { open, high, low, close })", "a mutable OHLC dataset such as OhlcRingBuffer");
     }
     return this.dataset.updateAt(index, data.open, data.high, data.low, data.close);
   }
@@ -377,7 +382,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   replace(data: SeriesReplaceData<D>): void {
     const dataset = this.dataset as Dataset & { replace?: (data: unknown) => void };
     if (typeof dataset.replace !== "function") {
-      throw new TypeError("series.replace(...) requires a dataset with replace(...) support, such as StaticDataset or ServerSampledDataset.");
+      throw unsupported("series.replace(...)", "a dataset with replace(...) support, such as StaticDataset or ServerSampledDataset");
     }
     dataset.replace(data);
     this._useRawMinMaxScan = false;
@@ -399,7 +404,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   /** Remove all samples from a clearable dataset such as `RingBuffer`. */
   clear(): void {
     if (!("clear" in this.dataset) || typeof this.dataset.clear !== "function") {
-      throw new TypeError("series.clear() requires a clearable dataset such as RingBuffer, UniformRingBuffer, or OhlcRingBuffer.");
+      throw unsupported("series.clear()", "a clearable dataset such as RingBuffer, UniformRingBuffer, or OhlcRingBuffer");
     }
 
     (this.dataset.clear as () => void).call(this.dataset);
