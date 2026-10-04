@@ -44,6 +44,8 @@ describe("docs automation", () => {
   });
 
   test("documentation TypeScript snippets typecheck", () => {
+    // Snippets are checked against the built declarations in dist/ (`bun run check` builds first).
+    if (!existsSync("dist/index.d.ts")) return;
     const result = run(["scripts/typecheck-doc-snippets.ts"]);
     expect(result.status, result.stderr || result.stdout).toBe(0);
     expect(result.stdout).toContain("Typechecked");
