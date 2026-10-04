@@ -32,6 +32,9 @@ Theme values are merged with the default theme, so you can override only the tok
 | Legend | `legendBackgroundColor`, `legendBorderColor`, `legendTextColor`, `legendMutedTextColor`, `legendFont` |
 | Titles | `titleColor`, `titleFont`, `subtitleColor`, `subtitleFont`, `axisTitleColor`, `axisTitleFont` |
 | Overlays | `selectionFillColor`, `selectionStrokeColor` (box zoom and selection), `crosshairColor`, `markerStrokeColor` (hover markers) |
+| Focus | `focusRingColor` (keyboard focus ring on the chart root, legend items, navigator, and annotations) |
+
+`DEFAULT_CHART_THEME` (dark) and `LIGHT_CHART_THEME` are the built-in themes; a unit test checks both for WCAG contrast (4.5:1 for text, 3:1 for graphics). Use the light one with `theme: LIGHT_CHART_THEME`, or spread it and override a few tokens. In the operating system's forced-colors (high-contrast) mode the chart switches to system colors on its own; see [Accessibility](./accessibility.md#contrast-and-high-contrast).
 
 Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(config, { color: "#f97316", lineWidth: 2 })`.
 

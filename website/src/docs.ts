@@ -136,7 +136,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   {
     slug: "accessibility",
     title: "Accessibility",
-    description: "ARIA, keyboard navigation, and the limits of canvas charts for assistive technology.",
+    description: "Chart semantics, the a11y plugin (data table, keyboard inspection), key map, high contrast, and known limits.",
     sourcePath: "docs/accessibility.md",
     loadMarkdown: () => import("../../docs/accessibility.md?raw").then((module) => module.default),
   },

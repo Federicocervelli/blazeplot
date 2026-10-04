@@ -46,7 +46,7 @@ Until 1.0 ships, candidates (`1.0.0-rc.N`) are published from the long-lived `v1
 2. Prepare: from an updated `v1`, create `release/v1.0.0-rc.N` and run `bun run release 1.0.0-rc.1` (first candidate) or `bun run release rc` (later ones). Use `--dry-run` first if unsure. Edit `changelogs/v1.0.0-rc.N.md`; do not add rc entries to the root `CHANGELOG.md`.
 3. PR: open it with base `v1`, wait for `validate` (it includes the Firefox and WebKit `cross-browser` job), then squash-merge. Note the browser versions from that job's log and complete the manual Safari/Firefox/Chrome preview pass described in [Verified browsers per release](../browser-support.md#verified-browsers-per-release).
 4. Monitor the release run on `v1`: `version`, `ci`, `release`; the `pages` job must be skipped. Check that `npm view blazeplot dist-tags` shows the new `rc` and an unchanged `latest`, and that the GitHub release is marked pre-release and is not "Latest".
-5. Final release: see "Shipping 1.0" in the release notes doc linked above.
+5. Final release: see "Shipping 1.0" in the release notes doc linked above. Before 1.0.0 (not each rc), complete the [manual screen reader pass](../accessibility.md#manual-screen-reader-pass) (NVDA with Firefox and Chrome on Windows, VoiceOver with Safari on macOS, plus a Windows Contrast theme check), record the versions used in the release notes, and update `docs/accessibility.md` to say it was run.
 
 ## Rollback notes
 
