@@ -188,8 +188,9 @@ async function openSession(options: Options, serverUrl: string, caseName: string
     const entry = (params as { entry?: { level?: string; text?: string } }).entry;
     const text = entry?.text ?? "";
     if (/Too many active WebGL contexts/i.test(text)) session.contextCapWarnings++;
-    else if (/INVALID_OPERATION/i.test(text)) {
-      // E.g. deleting GL objects that belong to a lost context after restore.
+    else if (/INVALID_OPERATION/i.test(text) && !/restoreContext/i.test(text)) {
+      // E.g. deleting GL objects that belong to a lost context after restore. The harness's own restoreContext()
+      // calls on a context that dispose already released are expected to warn and are not a library defect.
       session.pageErrors.push(`webgl ${entry?.level ?? "log"}: ${text.slice(0, 400)}`);
     } else if (entry?.level === "warning" || entry?.level === "error") session.warnings++;
   });

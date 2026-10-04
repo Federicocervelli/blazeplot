@@ -7,8 +7,7 @@
  */
 export function releaseWebGLContext(gl: WebGL2RenderingContext | null | undefined): void {
   try {
-    // Calling loseContext() on an already-lost context is itself an INVALID_OPERATION and blocks restore.
-    if (gl && !gl.isContextLost()) gl.getExtension("WEBGL_lose_context")?.loseContext();
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
   } catch {
     // Already lost or unsupported: nothing left to release.
   }
