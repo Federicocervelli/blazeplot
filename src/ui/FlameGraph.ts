@@ -1,6 +1,7 @@
 import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
 import { placeFixedWithinViewport } from "./OverlayUtils.js";
 import type { RgbaColor } from "../core/types.js";
+import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
 import { rgbaCss } from "./theme.js";
 
 const DEFAULT_FRAME_HEIGHT = 1;
@@ -493,8 +494,10 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       }
       rectCanvas?.removeEventListener("webglcontextlost", handleContextLost);
       rectCanvas?.removeEventListener("webglcontextrestored", handleContextRestored);
+      const releasedContext = glState?.gl;
       disposeWebGLState(glState);
       glState = null;
+      releaseWebGLContext(releasedContext);
       rectCanvas?.remove();
       labelCanvas?.remove();
       tooltip?.remove();
