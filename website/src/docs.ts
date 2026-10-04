@@ -99,6 +99,13 @@ export const DOC_PAGES: readonly DocPage[] = [
     loadMarkdown: () => import("../../docs/browser-support.md?raw").then((module) => module.default),
   },
   {
+    slug: "migrating-to-1.0",
+    title: "Migrating to 1.0",
+    description: "Breaking changes from 0.x to 1.0 with before and after code and an upgrade checklist.",
+    sourcePath: "docs/migrating-to-1.0.md",
+    loadMarkdown: () => import("../../docs/migrating-to-1.0.md?raw").then((module) => module.default),
+  },
+  {
     slug: "versioning-and-migration",
     title: "Migration",
     description: "Semver policy, migration expectations, and public API stability notes.",
@@ -160,7 +167,7 @@ export const DOC_NAV_SECTIONS: readonly DocNavSection[] = [
   { title: "Start", slugs: ["overview","docs-map","examples"] },
   { title: "Data and performance", slugs: ["live-data","data-semantics","performance-recipes","benchmarks"] },
   { title: "UI", slugs: ["built-in-plugins","theming-and-layout","plugin-authoring"] },
-  { title: "Reference", slugs: ["troubleshooting","browser-support","versioning-and-migration","stability","error-handling","accessibility","api-reference"] },
+  { title: "Reference", slugs: ["troubleshooting","browser-support","migrating-to-1.0","versioning-and-migration","stability","error-handling","accessibility","api-reference"] },
 ] as const;
 
 export function getDocPage(slug: string): DocPage | undefined {

@@ -14,7 +14,7 @@ Use this map to decide where a topic belongs before adding or moving documentati
 | Debug a chart | [Troubleshooting](./troubleshooting.md) | [Error handling](./error-handling.md), [Browser support](./browser-support.md), [Data semantics](./data-semantics.md) |
 | Decide what to depend on | [API stability](./stability.md) | [Versioning and migration](./versioning-and-migration.md), [Error handling](./error-handling.md) |
 | Make a chart accessible | [Accessibility](./accessibility.md) | [Theming and layout](./theming-and-layout.md) |
-| Upgrade or review API changes | [Versioning and migration](./versioning-and-migration.md) | [API reference](./api-reference.md), changelogs |
+| Upgrade or review API changes | [Migrating to 1.0](./migrating-to-1.0.md), [Versioning and migration](./versioning-and-migration.md) | [API reference](./api-reference.md), changelogs |
 | Maintain releases and docs | [Internal local development](./internal/local-development.md) | [Release checklist](./internal/release-checklist.md), [GitHub workflows](./internal/github-workflows.md) |
 
 ## Public docs
@@ -44,6 +44,7 @@ These pages are visible on the docs site and should be useful to package users.
 
 - [Browser support](./browser-support.md) — WebGL2 requirements, unsupported-browser fallbacks, SSR, clipboard, and downloads.
 - [Versioning and migration](./versioning-and-migration.md) — semver policy, TypeScript and ESM support, upgrade checklist, migration-risk review, and the deprecation process.
+- [Migrating to 1.0](./migrating-to-1.0.md) — breaking changes from 0.x to 1.0 with before and after code and a checklist.
 - [API stability](./stability.md) — which exports and subpaths are stable, experimental, or internal.
 - [Error handling](./error-handling.md) — errors thrown, console output, and behavior for invalid data, viewports, and WebGL failures.
 - [Accessibility](./accessibility.md) — ARIA, keyboard navigation, built-in plugin behavior, and known limits.

@@ -18,7 +18,7 @@ This page is generated from the built package. Use it as an index of import path
 | Linked dashboards | `blazeplot/linked` with `panelPlugins` |
 | Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
 
-Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./examples.md), [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance](./performance-recipes.md), [Benchmarks](./benchmarks.md), [Plugins](./built-in-plugins.md), [Theme & layout](./theming-and-layout.md), [Author plugins](./plugin-authoring.md), [Troubleshooting](./troubleshooting.md), [Browser](./browser-support.md), [Migration](./versioning-and-migration.md), [Stability](./stability.md), [Errors](./error-handling.md), [Accessibility](./accessibility.md), [Roadmap](./roadmap.md).
+Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./examples.md), [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance](./performance-recipes.md), [Benchmarks](./benchmarks.md), [Plugins](./built-in-plugins.md), [Theme & layout](./theming-and-layout.md), [Author plugins](./plugin-authoring.md), [Troubleshooting](./troubleshooting.md), [Browser](./browser-support.md), [Migrating to 1.0](./migrating-to-1.0.md), [Migration](./versioning-and-migration.md), [Stability](./stability.md), [Errors](./error-handling.md), [Accessibility](./accessibility.md), [Roadmap](./roadmap.md).
 
 ### Package entry points
 

@@ -104,6 +104,14 @@
     "order": 120
   },
   {
+    "slug": "migrating-to-1.0",
+    "title": "Migrating to 1.0",
+    "description": "Breaking changes from 0.x to 1.0 with before and after code and an upgrade checklist.",
+    "sourcePath": "docs/migrating-to-1.0.md",
+    "section": "Reference",
+    "order": 120
+  },
+  {
     "slug": "stability",
     "title": "Stability",
     "description": "What is stable, experimental, and internal in each BlazePlot export and subpath.",
