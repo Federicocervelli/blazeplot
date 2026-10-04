@@ -57,7 +57,7 @@ Generated from `dist/` after the package build.
 | tooltip plugin | `dist/plugins/tooltip.js` | 5 KiB |
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 134 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 132 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 3 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 4 KiB |
 

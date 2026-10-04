@@ -77,12 +77,6 @@ export interface Dataset {
   /** Drop cached summaries; called by `series.markDirty()` after the data was mutated in place. */
   invalidate?(): void;
   /**
-   * Optional fast gap check: whether logical `[start, end)` holds any sample with non-finite Y
-   * or `isGap(index) === true`. Sampled line and area draws use it to break strips across
-   * skipped gaps without scanning every skipped sample.
-   */
-  hasGapInRange?(start: number, end: number): boolean;
-  /**
    * Optional stable ordinal of logical index 0, for datasets whose logical indexes shift as
    * they stream (wrapping ring buffers). Downsampling anchors buckets to
    * `ordinalOffset + index` so bucket edges stay put while the data streams.

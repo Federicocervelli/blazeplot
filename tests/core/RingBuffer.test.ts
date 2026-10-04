@@ -202,15 +202,6 @@ describe("RingBuffer", () => {
     expect(buf.ordinalOffset).toBe(12);
   });
 
-  it("finds gaps in logical ranges across the wrap point", () => {
-    const buf = new RingBuffer(6);
-    buf.append([0, 1, 2, 3, 4, 5, 6, 7], [0, Number.NaN, 2, 3, 4, 5, Number.NaN, 7]);
-    // Logical samples are x = 2..7; only x = 6 (logical 4) is a gap.
-    expect(buf.hasGapInRange(0, 4)).toBe(false);
-    expect(buf.hasGapInRange(3, 5)).toBe(true);
-    expect(buf.hasGapInRange(5, 6)).toBe(false);
-  });
-
   it("warns once when X goes backwards", () => {
     const original = console.warn;
     const warnings: string[] = [];

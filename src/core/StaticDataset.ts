@@ -1,8 +1,8 @@
-import { MinMaxTree, hasNonFinite } from "./MinMaxTree.js";
+import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
-import { createValueArray } from "./valueArray.js";
 import type { Dataset, TimeRange, ValuePrecision } from "./types.js";
+import { createValueArray } from "./valueArray.js";
 
 /** Object-row field selector used by `StaticDataset.fromObjects`. */
 export type StaticDatasetField<Row> = keyof Row | ((row: Row, index: number) => number);
@@ -140,21 +140,6 @@ export class StaticDataset implements Dataset {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
     if (to <= from) return null;
-    return this.summary().query(from, to);
-  }
-
-  /** Return whether logical `[start, end)` contains a gap (non-finite Y). */
-  hasGapInRange(start: number, end: number): boolean {
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this.length, Math.ceil(end));
-    if (to <= from) return false;
-    // Without a current summary, scan rather than rebuild the whole tree: data replaced
-    // every frame would otherwise pay a full rebuild just for gap checks.
-    return this.tree && !this.treeStale ? this.tree.hasGap(from, to) : hasNonFinite(this.yData, from, to);
-  }
-
-  /** The min/max/gap summary tree, built on first use and refreshed after invalidation. */
-  private summary(): MinMaxTree {
     if (!this.tree) {
       this.tree = new MinMaxTree(this.yData, this.length);
       this.treeStale = true;
@@ -163,7 +148,7 @@ export class StaticDataset implements Dataset {
       this.tree.update(0, this.length);
       this.treeStale = false;
     }
-    return this.tree;
+    return this.tree.query(from, to);
   }
 
   private assertValidIndex(index: number): void {

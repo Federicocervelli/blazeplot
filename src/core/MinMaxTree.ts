@@ -11,22 +11,12 @@ const DEFAULT_BLOCK_SIZE = 64;
  *
  * Leaves summarize `blockSize` physical samples, so memory stays small while
  * range queries cost one partial-block scan at each end plus a logarithmic tree
- * walk. Non-finite values are treated as gaps: ignored by min/max queries and
- * counted per node, so `hasGap` is logarithmic too.
+ * walk. Non-finite values are treated as gaps and ignored.
  */
-/** Return whether `values[from, to)` contains a non-finite value. */
-export function hasNonFinite(values: ArrayLike<number>, from: number, to: number): boolean {
-  for (let i = from; i < to; i++) {
-    if (!Number.isFinite(values[i]!)) return true;
-  }
-  return false;
-}
-
 export class MinMaxTree {
   private readonly base: number;
   private readonly minTree: Float64Array;
   private readonly maxTree: Float64Array;
-  private readonly gapTree: Uint32Array;
 
   constructor(
     private readonly values: ArrayLike<number>,
@@ -40,14 +30,12 @@ export class MinMaxTree {
     this.base = 2 ** Math.ceil(Math.log2(blockCount));
     this.minTree = new Float64Array(this.base * 2).fill(Infinity);
     this.maxTree = new Float64Array(this.base * 2).fill(-Infinity);
-    this.gapTree = new Uint32Array(this.base * 2);
   }
 
   /** Forget all summarized values. */
   reset(): void {
     this.minTree.fill(Infinity);
     this.maxTree.fill(-Infinity);
-    this.gapTree.fill(0);
   }
 
   /** Recompute the blocks covering physical `[start, end)`, reading only indices below `validEnd`. */
@@ -60,19 +48,14 @@ export class MinMaxTree {
       const to = Math.min(validEnd, from + this.blockSize);
       let minY = Infinity;
       let maxY = -Infinity;
-      let gaps = 0;
       for (let i = from; i < to; i++) {
         const value = this.values[i]!;
-        if (!Number.isFinite(value)) {
-          gaps++;
-          continue;
-        }
+        if (!Number.isFinite(value)) continue;
         if (value < minY) minY = value;
         if (value > maxY) maxY = value;
       }
       this.minTree[this.base + block] = minY;
       this.maxTree[this.base + block] = maxY;
-      this.gapTree[this.base + block] = gaps;
     }
 
     let left = (this.base + firstBlock) >> 1;
@@ -89,11 +72,8 @@ export class MinMaxTree {
    * when the write did not overwrite a previously summarized sample.
    */
   include(index: number, value: number): void {
+    if (!Number.isFinite(value)) return;
     let node = this.base + Math.floor(index / this.blockSize);
-    if (!Number.isFinite(value)) {
-      for (; node >= 1; node >>= 1) this.gapTree[node]!++;
-      return;
-    }
     while (node >= 1) {
       const minChanged = value < this.minTree[node]!;
       const maxChanged = value > this.maxTree[node]!;
@@ -156,49 +136,6 @@ export class MinMaxTree {
     return minY <= maxY ? { minY, maxY } : null;
   }
 
-  /** Return whether physical `[start, end)` contains a non-finite value. */
-  hasGap(start: number, end: number): boolean {
-    const from = Math.max(0, start);
-    const to = Math.min(this.capacity, end);
-    const firstFullBlock = Math.ceil(from / this.blockSize);
-    const lastFullBlock = Math.floor(to / this.blockSize);
-    if (firstFullBlock >= lastFullBlock) return hasNonFinite(this.values, from, to);
-    if (hasNonFinite(this.values, from, firstFullBlock * this.blockSize) || hasNonFinite(this.values, lastFullBlock * this.blockSize, to)) return true;
-
-    let left = this.base + firstFullBlock;
-    let right = this.base + lastFullBlock;
-    while (left < right) {
-      if (left & 1 && this.gapTree[left++]! > 0) return true;
-      if (right & 1 && this.gapTree[--right]! > 0) return true;
-      left >>= 1;
-      right >>= 1;
-    }
-    return false;
-  }
-
-  /** Return whether `count` ring-buffer samples starting at a physical index contain a non-finite value. */
-  hasGapRing(physicalStart: number, count: number): boolean {
-    if (count <= 0) return false;
-    const end = physicalStart + count;
-    if (end <= this.capacity) return this.hasGap(physicalStart, end);
-    return this.hasGap(physicalStart, this.capacity) || this.hasGap(0, end - this.capacity);
-  }
-
-  /**
-   * Min/max of logical `[start, end)` in a ring buffer holding `length` samples whose newest
-   * sample sits just before physical `head`; indexes are clamped and rounded outward.
-   */
-  queryLogical(head: number, length: number, start: number, end: number): MinMaxY | null {
-    const span = this.physicalSpan(head, length, start, end);
-    return span ? this.queryRing(span[0], span[1]) : null;
-  }
-
-  /** Whether logical `[start, end)` of a ring buffer (see `queryLogical`) contains a non-finite value. */
-  hasGapLogical(head: number, length: number, start: number, end: number): boolean {
-    const span = this.physicalSpan(head, length, start, end);
-    return span !== null && this.hasGapRing(span[0], span[1]);
-  }
-
   /** Query `count` samples of a ring buffer starting at a physical index, wrapping at capacity. */
   queryRing(physicalStart: number, count: number): MinMaxY | null {
     if (count <= 0) return null;
@@ -212,19 +149,10 @@ export class MinMaxTree {
     return { minY: Math.min(first.minY, second.minY), maxY: Math.max(first.maxY, second.maxY) };
   }
 
-  /** Physical start and count of a clamped logical range, or `null` when it is empty. */
-  private physicalSpan(head: number, length: number, start: number, end: number): [number, number] | null {
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(length, Math.ceil(end));
-    if (to <= from) return null;
-    return [(head - length + from + this.capacity) % this.capacity, to - from];
-  }
-
   private recomputeNode(node: number): void {
     const left = node << 1;
     const right = left + 1;
     this.minTree[node] = Math.min(this.minTree[left]!, this.minTree[right]!);
     this.maxTree[node] = Math.max(this.maxTree[left]!, this.maxTree[right]!);
-    this.gapTree[node] = this.gapTree[left]! + this.gapTree[right]!;
   }
 }

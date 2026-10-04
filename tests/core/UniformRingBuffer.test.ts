@@ -104,13 +104,11 @@ describe("UniformRingBuffer", () => {
     expect(Array.from(samples.subarray(2, 4)).every(Number.isNaN)).toBe(true);
   });
 
-  it("supports float64 values and logarithmic gap checks across the wrap", () => {
+  it("stores float64 values on request", () => {
     const buf = new UniformRingBuffer(5, { valuePrecision: "float64" });
     buf.appendY([1, 2, Number.NaN, 4, 5, 6, 123_456_789.12]);
     // Logical samples: NaN, 4, 5, 6, 123456789.12
     expect(buf.getY(4)).toBe(123_456_789.12);
-    expect(buf.hasGapInRange(0, 1)).toBe(true);
-    expect(buf.hasGapInRange(1, 5)).toBe(false);
   });
 
   it("reports the X-grid ordinal of its first retained sample", () => {

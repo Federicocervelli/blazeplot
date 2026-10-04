@@ -154,12 +154,10 @@ export class RingBuffer {
 
   /** Return min/max Y values for a logical index range. */
   rangeMinMaxY(start: number, end: number): MinMaxY | null {
-    return this.tree.queryLogical(this._head, this._length, start, end);
-  }
-
-  /** Return whether logical `[start, end)` contains a gap (non-finite Y). */
-  hasGapInRange(start: number, end: number): boolean {
-    return this.tree.hasGapLogical(this._head, this._length, start, end);
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this._length, Math.ceil(end));
+    if (to <= from) return null;
+    return this.tree.queryRing(this.logicalToPhysical(from), to - from);
   }
 
   /** Remove all retained samples. */

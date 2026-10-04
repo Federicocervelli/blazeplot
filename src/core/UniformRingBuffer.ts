@@ -168,12 +168,10 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
   /** Return min/max Y values for a logical index range. */
   rangeMinMaxY(start: number, end: number): MinMaxY | null {
-    return this.tree.queryLogical(this._head, this._length, start, end);
-  }
-
-  /** Return whether logical `[start, end)` contains a gap (non-finite Y). */
-  hasGapInRange(start: number, end: number): boolean {
-    return this.tree.hasGapLogical(this._head, this._length, start, end);
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(this._length, Math.ceil(end));
+    if (to <= from) return null;
+    return this.tree.queryRing(this.logicalToPhysical(from), to - from);
   }
 
   /** Ordinal of logical index 0 on the X grid, so `ordinalOffset + index` is stable while the buffer wraps. */
@@ -323,12 +321,21 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     };
 
     for (let index = from; index < to; index += stride) {
-      if (lastIndex >= 0 && index > lastIndex + 1 && this.hasGapInRange(lastIndex + 1, index) && !writeGap()) break;
+      if (lastIndex >= 0 && index > lastIndex + 1 && this.hasGapInLogicalRange(lastIndex + 1, index) && !writeGap()) break;
       if (!writeSample(index)) break;
       lastIndex = index;
     }
 
     return count;
+  }
+
+  private hasGapInLogicalRange(start: number, end: number): boolean {
+    const from = Math.max(0, start);
+    const to = Math.min(this._length, end);
+    for (let i = from; i < to; i++) {
+      if (!Number.isFinite(this.yData[this.logicalToPhysical(i)]!)) return true;
+    }
+    return false;
   }
 
   /** Physical samples below this index hold live data; the ring fills from index 0. */

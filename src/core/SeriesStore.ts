@@ -1157,7 +1157,6 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   private hasGapInRange(start: number, end: number): boolean {
-    if (this.dataset.hasGapInRange) return this.dataset.hasGapInRange(start, end);
     const from = Math.max(0, start);
     const to = Math.min(this.dataset.length, end);
     for (let i = from; i < to; i++) {
