@@ -82,7 +82,7 @@ Built-in datasets never validate values on every append, because that would be t
 |---|---|
 | `NaN`, `Infinity`, or `-Infinity` as Y | Treated as a gap. Not drawn, not picked, ignored by bounds and `fitToData`. Line and area series break the strip at the gap. Stored as given, so `RingBuffer.getY(i)` returns the original value. |
 | Non-finite Y in OHLC high/low | Bounds skip the sample; the dataset does not throw. |
-| `NaN` or `Infinity` as X in `RingBuffer`, `OhlcRingBuffer`, `StaticDataset` | Not rejected. The value is stored, and because every X search assumes ascending finite values, results for the whole series become unreliable (hidden samples, wrong picks, wrong bounds). Clean X before appending. |
+| `NaN` or `Infinity` as X in `RingBuffer`, `OhlcRingBuffer`, `StaticDataset` | Not rejected today. The value is stored, and because every X search assumes ascending finite values, results for the whole series become unreliable (hidden samples, wrong picks, wrong bounds). Clean X before appending. **From 1.0**, `RingBuffer` (and `UniformRingBuffer` where X is supplied) skips samples with non-finite X and warns once in development instead of storing them (issue #105). |
 | `NaN` as X in `StaticDataset.fromObjects(...)` | Throws `TypeError` naming the row. The one place X is validated. |
 | Unsorted X | Not sorted or rejected. `RingBuffer` and `OhlcRingBuffer` call `console.warn` once per buffer instance when an append or update makes X go backwards. `StaticDataset`, `ServerSampledDataset`, and custom datasets give no warning. The effect is silent: samples can be hidden, drawn in the wrong place, or missed by picking and export. `StaticDataset.fromObjects(rows, { sort: true })` sorts for you. |
 | Duplicate X | Allowed. |

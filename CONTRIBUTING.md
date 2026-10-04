@@ -88,7 +88,7 @@ Participation in this project is covered by the [Code of Conduct](CODE_OF_CONDUC
 1. Invite at least one additional trusted maintainer with merge rights on `main` and the ability to run the release workflow.
 2. Add a second owner to the npm package and a second admin to the repository, so publishing and administration survive the loss of one account.
 3. If the maintainer becomes unavailable for an extended period, the additional maintainer may announce it in the README and continue releases, or mark the package deprecated on npm with a pointer to a fork.
-4. Publish a backup contact for security reports; see the support-window proposal in [`SECURITY.md`](SECURITY.md).
+4. Make sure a second person can receive and act on private vulnerability reports (see [`SECURITY.md`](SECURITY.md)).
 
 ## Maintainer notes
 

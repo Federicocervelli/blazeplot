@@ -72,6 +72,8 @@ Experimental does not mean unsupported: bugs are fixed the same way. It means a 
 
 These symbols are exported from `blazeplot` so declarations are complete and so a custom backend can be typed. They are not an API for application code.
 
+**Planned for 1.0:** the GPU backend types (`GpuBackend`, `WebGL2Backend`, the `Gpu*` types, `BufferSpec`, `AttributeSpec`, `DrawSpec`, `UniformValue`) will no longer be exported from the `blazeplot` root (tracked in issue #102). `WebGL2UnavailableError` and `isWebGL2Available` stay public.
+
 | Item | Notes |
 |---|---|
 | `GpuBackend`, `GpuBuffer`, `GpuProgram`, `GpuResource`, `GpuCapabilities`, `BufferSpec`, `DrawSpec`, `AttributeSpec`, `UniformValue` | The renderer's GPU abstraction. It exists to isolate WebGL2 calls and may change whenever the renderer changes. |
