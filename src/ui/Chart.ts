@@ -516,6 +516,7 @@ export class Chart implements ChartPluginContext {
   private hoverRafId: number = 0;
   private restoreRenderRafId: number = 0;
   private running: boolean = false;
+  private disposed: boolean = false;
   private webglContextLost: boolean = false;
   private domainErrorLogged: boolean = false;
   private readonly options: ChartOptions;
@@ -1100,6 +1101,8 @@ export class Chart implements ChartPluginContext {
 
   /** Stop rendering and release DOM, plugin, and GPU resources. */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.stop();
     this.clearXFollowResumeTimer();
     this.resizeObserver?.disconnect();
