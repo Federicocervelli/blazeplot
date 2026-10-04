@@ -20,6 +20,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Run all unit tests: `bun test`.
 - Run one test file: `bun test tests/core/RingBuffer.test.ts`.
 - Run one named test: `bun test tests/core/RingBuffer.test.ts -t "wraps around"`.
+- Unit tests with coverage floors: `bun run test:coverage` (`scripts/coverage-check.ts`; part of `check`). Floors are ratchets just under baseline: raise them as coverage improves, never lower them.
 - Typecheck: `bun run typecheck` (`tsc --noEmit`).
 - Build the npm package: `bun run build` (Vite library build plus declaration emit via `tsc -p tsconfig.build.json`).
 - Build JS only: `bun run build:js`.
@@ -39,7 +40,8 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Package contents dry-run: `bun run test:package` or `bun pm pack --dry-run`.
 - Public API snapshot check: `bun run build && bun run test:api` compares `dist/**/*.d.ts` exports against `api/public-api.md`; after an intentional API change run `bun run build && bun run test:api -- --update` and commit the snapshot. Never hand-edit it.
 - Bundle-size budget check: `bun run test:bundle-size`; markdown summary: `bun run docs:bundle-size`; detailed analysis: `bun run bundle:analyze`.
-- There is no lint or formatter script in `package.json`.
+- Lint: `bun run lint` (Oxlint over `src`, `scripts`, `tests`, `website`; config in `.oxlintrc.json`, correctness category as errors). It runs as part of `bun run check`.
+- There is no formatter script in `package.json`.
 
 ## Branch and Release Flow
 

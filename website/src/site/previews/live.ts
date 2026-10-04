@@ -48,6 +48,7 @@ export default class Preview extends PreviewResources {
     let appendRate = DEFAULT_APPEND_RATE;
     let previewStartTime = Date.now();
     let dataGeneration = 0;
+    // oxlint-disable-next-line no-unused-vars -- frame counter is reset/incremented but not currently read
     let frames = 0;
     let appendedSinceStats = 0;
     let lastStatsAt = performance.now();
