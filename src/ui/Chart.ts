@@ -729,7 +729,7 @@ export class Chart implements ChartPluginContext {
       (setsX && !this.axis.isValidDomain("x", viewport.xMin ?? camera.xMin, viewport.xMax ?? camera.xMax))
       || (setsY && !this.controllerFor(yAxis).isValidDomain("y", viewport.yMin ?? camera.yMin, viewport.yMax ?? camera.yMax))
     ) {
-      throw new RangeError("Chart.setViewport received a domain that is invalid for the axis scale or too narrow to resolve.");
+      throw new RangeError("Chart.setViewport received a domain that is not finite, ascending, and valid for the axis scale.");
     }
     if (setsX) {
       this.pauseXFollowForInteraction();

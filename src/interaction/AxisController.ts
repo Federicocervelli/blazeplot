@@ -238,13 +238,8 @@ export class AxisController {
     });
   }
 
-  /**
-   * Whether `[min, max]` is a usable domain: valid for the axis scale and wide enough for
-   * float64 to resolve. Spans below ~1e-13 of the magnitude would collapse while zooming.
-   */
+  /** Whether `[min, max]` is finite, ascending, and valid for the axis scale. */
   isValidDomain(axis: AxisRenderTarget, min: number, max: number): boolean {
-    const span = max - min;
-    if (!(span > Math.max(Math.abs(min), Math.abs(max)) * 1e-13) || !Number.isFinite(1 / span)) return false;
     try {
       AxisController.validateAxisDomain(axis, min, max, axis === "x" ? this.options.x : this.options.y);
     } catch {
@@ -255,8 +250,11 @@ export class AxisController {
     return Number.isFinite(scaledMin) && Number.isFinite(scaledMax) && scaledMax > scaledMin;
   }
 
+  /** Apply a pan/zoom result only when both axes stay valid and wider than ~1e-13 of their magnitude, where float64 collapses. */
   private trySetViewport(viewport: Viewport): boolean {
-    if (!this.isValidDomain("x", viewport.xMin, viewport.xMax) || !this.isValidDomain("y", viewport.yMin, viewport.yMax)) return false;
+    const usable = (axis: AxisRenderTarget, min: number, max: number): boolean =>
+      max - min > Math.max(Math.abs(min), Math.abs(max)) * 1e-13 && this.isValidDomain(axis, min, max);
+    if (!usable("x", viewport.xMin, viewport.xMax) || !usable("y", viewport.yMin, viewport.yMax)) return false;
     this.camera.setViewport(viewport);
     return true;
   }

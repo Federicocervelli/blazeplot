@@ -197,13 +197,12 @@ describe("AxisController", () => {
     expect(log.viewport).toEqual(before);
   });
 
-  it("checks candidate domains against the scale and float precision", () => {
+  it("checks candidate domains against the scale", () => {
     const axis = new AxisController(new Camera2D(), { y: { scale: "log" } });
     expect(axis.isValidDomain("y", 1, 100)).toBe(true);
     expect(axis.isValidDomain("y", -1, 100)).toBe(false);
     expect(axis.isValidDomain("x", -1, 100)).toBe(true);
     expect(axis.isValidDomain("x", 5, 5)).toBe(false);
-    expect(axis.isValidDomain("x", 1e12, 1e12 + 1e-4)).toBe(false);
   });
 
   it("formats categorical ticks from labels", () => {
