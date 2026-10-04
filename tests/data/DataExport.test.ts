@@ -6,12 +6,8 @@ import { SeriesStore } from "../../src/core/SeriesStore.ts";
 import type { SeriesMode, SeriesYAxis, Viewport } from "../../src/core/types.ts";
 import type { Chart, ChartSeriesState } from "../../src/ui/Chart.ts";
 import type { SelectionState } from "../../src/ui/Selection.ts";
-import {
-  binSamples,
-  chartDataToCSV,
-  exportChartData,
-  rollingMean,
-} from "../../src/data.ts";
+import { binSamples, rollingMean } from "../../src/data.ts";
+import { chartDataToCSV, exportChartData } from "../../src/export.ts";
 
 const STYLE = testStyle({ color: [1, 1, 1, 1] as const, lineWidth: 1 });
 const LEFT_VIEWPORT: Viewport = { xMin: 1, xMax: 3, yMin: 15, yMax: 35 };

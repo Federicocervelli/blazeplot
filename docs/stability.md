@@ -29,8 +29,8 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 |---|---|---|
 | `blazeplot` | Stable, with the exceptions listed in the tables below | Chart, datasets, data contracts, theming, `isWebGL2Available`, `WebGL2UnavailableError`. |
 | `blazeplot/linked` | Stable | `createLinkedCharts` and its option/handle types. |
-| `blazeplot/data` | Stable | `exportChartData`, `chartDataToCSV`, `binSamples`, `rollingMean`, and their types. |
-| `blazeplot/export` | Stable | `downloadBlob`, `downloadChartScreenshot`, `copyChartScreenshotToClipboard`. |
+| `blazeplot/data` | Stable | `binSamples`, `rollingMean`, and their types (pure, chart-agnostic transforms). |
+| `blazeplot/export` | Stable | `exportChartData`, `chartDataToCSV`, `downloadBlob`, `downloadChartScreenshot`, `copyChartScreenshotToClipboard`, and their types. |
 | `blazeplot/plugins/legend` | Stable | Options may grow; existing option names are kept. |
 | `blazeplot/plugins/tooltip` | Stable | Same. |
 | `blazeplot/plugins/interactions` | Stable | Same. |
@@ -38,7 +38,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 | `blazeplot/plugins/selection` | Stable | Same. |
 | `blazeplot/plugins/crosshair` | Stable | Same. |
 | `blazeplot/plugins/navigator` | Stable | Same. |
-| `blazeplot/plugins/flamegraph` | Experimental | Newest and narrowest plugin; its model helpers (`buildFlameGraphModel`, `parseFoldedStacks`, `pickFrame`, `buildStatusChartModel`) may still change. |
+| `blazeplot/plugins/flamegraph` | Experimental | Newest and narrowest plugin; its model helpers (`parseFoldedStacks`, `buildStatusChartModel`) may still change. |
 
 "Stable" for a built-in plugin means the plugin function, its documented options, and its documented handle methods. Pixel-level appearance (spacing, default fonts, default colors) can change in a minor release; use `theme` and the plugin options to pin what matters to you.
 

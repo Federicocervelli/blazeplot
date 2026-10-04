@@ -78,7 +78,7 @@ Keyboard pan and zoom pass through `ViewportPolicy.beforePan` and `beforeZoom`, 
 
 ## What BlazePlot does not provide
 
-- **No data in the accessibility tree.** Series values, tick labels, and picked points are not exposed. Provide a table, summary text, or download link next to the chart. `exportChartData` and `chartDataToCSV` from `blazeplot/data` turn the current series, the visible range, or a selection into rows you can render as a table.
+- **No data in the accessibility tree.** Series values, tick labels, and picked points are not exposed. Provide a table, summary text, or download link next to the chart. `exportChartData` and `chartDataToCSV` from `blazeplot/export` turn the current series, the visible range, or a selection into rows you can render as a table.
 - **No keyboard path to point values.** Hover state (`chart.getHoverState()`, `chart.pick()`) is pointer-driven. If keyboard users need exact values, build your own control that calls `chart.pick(...)` or reads `exportChartData(chart, { range: "visible" })` and show the result in your page.
 - **No non-colour series encoding.** Series are told apart by colour only (plus legend labels). Choose palette colors that stay distinct for color-vision differences and pass `style.color` explicitly for critical series. Contrast between series colours, grid, and background is whatever the theme says; BlazePlot does not check it.
 - **No `forced-colors` or high-contrast adaptation.** Canvas pixels do not follow the operating-system forced-colors palette. Use `theme` tokens to supply a high-contrast theme when needed (see [Theming and layout](./theming-and-layout.md)).

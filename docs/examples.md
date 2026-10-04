@@ -329,11 +329,10 @@ const chart = new Chart(element, {
 
 ## Export image and data
 
-Use `chart.screenshot()` for an image of the plot plus built-in DOM text overlays. Use `blazeplot/data` and `blazeplot/export` for downloadable visible data.
+Use `chart.screenshot()` for an image of the plot plus built-in DOM text overlays. Use `blazeplot/export` for downloadable visible data and image download helpers.
 
 ```ts
-import { chartDataToCSV, exportChartData } from "blazeplot/data";
-import { downloadBlob } from "blazeplot/export";
+import { chartDataToCSV, downloadBlob, exportChartData } from "blazeplot/export";
 
 const image = await chart.screenshot();
 const visible = exportChartData(chart, { range: "visible", includeYRange: true });

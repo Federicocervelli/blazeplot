@@ -17,7 +17,7 @@ export interface SelectionPlotBounds {
 
 /**
  * Current or committed selection. Pass it to `exportChartData(chart, { range: selection })`
- * from `blazeplot/data` to collect the selected samples.
+ * from `blazeplot/export` to collect the selected samples.
  */
 export interface SelectionState {
   readonly mode: SelectionMode;

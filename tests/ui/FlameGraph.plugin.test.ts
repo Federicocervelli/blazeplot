@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { buildFlameGraphModel, flameGraphPlugin } from "../../src/plugins/flamegraph.ts";
+import { flameGraphPlugin } from "../../src/plugins/flamegraph.ts";
+import { buildFlameGraphModel } from "../../src/ui/FlameGraph.ts";
 import type { FlameGraphPick, FlameGraphPluginOptions } from "../../src/plugins/flamegraph.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
 import { countNodes, FakeResizeObserver } from "./fakes.ts";

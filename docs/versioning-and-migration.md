@@ -54,7 +54,7 @@ See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes 
 | `crosshairPlugin({ group })` | `crosshairPlugin({ syncGroup })` (same name as `tooltipPlugin`) |
 | `crosshair.subscribe("move" \| "measure…", cb)`, `onMeasure` | `onMove`, `onMeasureStart`, `onMeasureChange`, `onMeasureEnd` options |
 | `selectionPlugin({ onStart, onUpdate, onCommit, onClear })` | `selectionPlugin({ onChange: (event) => { if (event.type === "commit") … } })` |
-| `SelectionState.samples`, `samplePhase`, `maxSamplesPerSeries`, `onSeriesSelectionChange` | `exportChartData(chart, { range: selection })` from `blazeplot/data` |
+| `SelectionState.samples`, `samplePhase`, `maxSamplesPerSeries`, `onSeriesSelectionChange` | `exportChartData(chart, { range: selection })` from `blazeplot/export` (`blazeplot/data` before 1.0) |
 | `interactionsPlugin({ viewportPolicy })` | `new Chart(el, { viewportPolicy })`; `beforePan`/`beforeZoom` now apply to every pan/zoom, including keyboard and API calls |
 | `interactionsPlugin({ selectionFill, selectionStroke })` | `theme.selectionFillColor`, `theme.selectionStrokeColor` |
 | `chart.setYViewport(axis, v)` | `chart.setViewport(v, axis)` |

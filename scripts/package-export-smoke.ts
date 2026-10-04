@@ -9,8 +9,8 @@ type PackageJson = {
 const expectedExports = {
   "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "histogram", "isWebGL2Available", "WebGL2UnavailableError"],
   "blazeplot/linked": ["createLinkedCharts"],
-  "blazeplot/data": ["exportChartData", "chartDataToCSV", "binSamples", "rollingMean"],
-  "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob"],
+  "blazeplot/data": ["binSamples", "rollingMean"],
+  "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob", "exportChartData", "chartDataToCSV"],
   "blazeplot/plugins/legend": ["legendPlugin"],
   "blazeplot/plugins/tooltip": ["tooltipPlugin"],
   "blazeplot/plugins/interactions": ["interactionsPlugin"],
@@ -18,7 +18,7 @@ const expectedExports = {
   "blazeplot/plugins/selection": ["selectionPlugin"],
   "blazeplot/plugins/crosshair": ["crosshairPlugin"],
   "blazeplot/plugins/navigator": ["navigatorPlugin"],
-  "blazeplot/plugins/flamegraph": ["flameGraphPlugin", "buildFlameGraphModel", "buildStatusChartModel", "parseFoldedStacks"],
+  "blazeplot/plugins/flamegraph": ["flameGraphPlugin", "buildStatusChartModel", "parseFoldedStacks"],
 } as const;
 
 const packageJsonPath = resolve(dirname(fileURLToPath(import.meta.url)), "../package.json");
