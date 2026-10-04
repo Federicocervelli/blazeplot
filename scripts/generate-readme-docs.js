@@ -243,6 +243,20 @@ function renderGuideLinks(basePath) {
     .join(", ");
 }
 
+function renderReadmeDocs() {
+  return [
+    docsStartMarker,
+    "## Documentation",
+    "",
+    `Guides: ${renderGuideLinks("docs")}.`,
+    "",
+    renderEntrypoints(),
+    "",
+    "Every public export (with kind and summary) and the per-chunk bundle sizes are listed in the [API reference](docs/api-reference.md).",
+    docsEndMarker,
+  ].join("\n");
+}
+
 function renderGeneratedDocs(options = {}) {
   const publicExports = collectPublicExports();
   const guideBasePath = options.guideBasePath ?? "";
@@ -276,7 +290,7 @@ function renderGeneratedDocs(options = {}) {
     "",
     renderEntrypoints(),
     "",
-    "The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; use the README performance section for the aggregate core runtime size.",
+    "The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; the README performance section reports the aggregate core runtime size.",
     "",
     renderBundleSizeSummary(),
   ];
@@ -438,14 +452,11 @@ function renderComparisonPerformanceBlock(report, size) {
     scenario.name,
     ...libraries.map((id) => formatReadyCell(scenario, id, true)),
   ]);
-  const measuredRows = report.scenarios
+  const align = `|---|${libraries.map(() => "---:").join("|")}|`;
+  const runtimeRows = report.scenarios
     .filter((scenario) => scenario.operation !== "static")
-    .flatMap((scenario) => [
-      [`${scenario.name} RAF FPS`, ...libraries.map((id) => formatMeasurementCell(scenario, id, "rafFps", true))],
-      [`${scenario.name} RAF p95 ms`, ...libraries.map((id) => formatMeasurementCell(scenario, id, "rafP95", true))],
-      [`${scenario.name} work p95 ms`, ...libraries.map((id) => formatMeasurementCell(scenario, id, "workP95", true))],
-    ]);
-  const runtimeComparisons = runtimeComparisonTables(report);
+    .map((scenario) => [scenario.name, ...libraries.map((id) => formatRuntimeSummaryCell(scenario, id))]);
+  const date = typeof report.generatedAt === "string" ? report.generatedAt.slice(0, 10) : "unknown date";
   const machine = report.environment?.machine;
   const page = report.environment?.page;
   const browser = report.environment?.browser;
@@ -457,38 +468,40 @@ function renderComparisonPerformanceBlock(report, size) {
     performanceStartMarker,
     "## Performance",
     "",
-    `The core chart runtime is intentionally compact: the production build for \`blazeplot\` (without optional plugins) is about **${size}**. Optional plugins and helpers ship as separate subpath entries.`,
+    `The core runtime (\`import { Chart } from "blazeplot"\`, without optional plugins) is about **${size}**. Plugins and helpers ship as separate subpath entries.`,
     "",
-    `Latest manual headed comparison: ${report.generatedAt} on ${machine?.cpuModel ?? "local machine"} (${machine?.cpuCount ?? "?"} logical CPUs), ${page?.webglRenderer ?? "unknown GPU"}, ${browser?.product ?? page?.userAgent ?? "unknown browser"}. The harness prewarms each selected library before measured runs (${formatNumber(report.prewarmMs, 1)} ms total) and discards ${report.options?.setupWarmupRuns ?? 0} setup warmup run(s) before each displayed row. Source: \`benchmarks/latest.json\`.`, 
-    ...warnings,
+    "Headline numbers from the manual headed comparison against uPlot and Chart.js:",
     "",
-    "Initial chart ready time in milliseconds (chart construction plus first browser frame after shared data preparation):",
-    "",
-    `| Scenario | ${libraryHeader.join(" | ")} |`,
-    `|---|${libraries.map(() => "---:").join("|")}|`,
+    `| Initial ready time (ms, lower is better) | ${libraryHeader.join(" | ")} |`,
+    align,
     ...readyRows.map((row) => `| ${row.map(markdownEscape).join(" | ")} |`),
     "",
-    "Automated pan/stream measurements (no user interaction after launch). Work time uses BlazePlot internal chart frame time when available and otherwise the synchronous library update/redraw call:",
+    `| Pan/stream frame work p95 (lower is better) and RAF FPS | ${libraryHeader.join(" | ")} |`,
+    align,
+    ...runtimeRows.map((row) => `| ${row.map(markdownEscape).join(" | ")} |`),
     "",
-    `| Metric | ${libraryHeader.join(" | ")} |`,
-    `|---|${libraries.map(() => "---:").join("|")}|`,
-    ...measuredRows.map((row) => `| ${row.map(markdownEscape).join(" | ")} |`),
-    ...runtimeComparisons.flatMap((runtimeComparison) => [
-      "",
-      `${runtimeComparison.primaryLabel} vs ${runtimeComparison.referenceLabel} runtime ratios. Higher favors ${runtimeComparison.primaryLabel}; FPS is ${runtimeComparison.primaryLabel}/${runtimeComparison.referenceLabel} and work p95 is ${runtimeComparison.referenceLabel}/${runtimeComparison.primaryLabel}:`,
-      "",
-      `| Scenario | FPS ratio | Work p95 ratio | ${runtimeComparison.primaryLabel} FPS | ${runtimeComparison.referenceLabel} FPS | ${runtimeComparison.primaryLabel} work p95 | ${runtimeComparison.referenceLabel} work p95 |`,
-      "|---|---:|---:|---:|---:|---:|---:|",
-      ...runtimeComparison.rows.map((row) => `| ${row.map(markdownEscape).join(" | ")} |`),
-    ]),
+    `Measured ${date} on ${machine?.cpuModel ?? "local machine"} (${machine?.cpuCount ?? "?"} logical CPUs), ${shortGpuName(page?.webglRenderer)}, ${browser?.product ?? page?.userAgent ?? "unknown browser"}, ${report.options?.width ?? "?"}x${report.options?.height ?? "?"} CSS px canvas. Each row discards ${report.options?.setupWarmupRuns ?? 0} setup warmup run(s) after library prewarm. Ready time is chart construction plus the first browser frame; frame work is BlazePlot's internal frame time (or the synchronous update/redraw call for other libraries). Bold marks the best value in a row.`,
+    ...warnings,
     "",
-    "Full generated benchmark details: [docs/benchmarks.md](docs/benchmarks.md).",
-    "",
-    `Command: \`${report.command}\``, 
+    "Full results, environment, and ratios: [docs/benchmarks.md](docs/benchmarks.md). Reproduce with `bun run bench:compare`.",
     performanceEndMarker,
   ].join("\n");
 }
 
+function formatRuntimeSummaryCell(scenario, libraryId) {
+  const result = scenario.results.find((entry) => entry.library === libraryId);
+  if (!result) return "—";
+  if (!result.ok) return "failed";
+  const work = formatMeasurementCell(scenario, libraryId, "workP95", true);
+  const fps = formatNumber(measurementMetricValue(result, "rafFps"), 0);
+  return `${work} ms, ${fps} FPS`;
+}
+
+function shortGpuName(renderer) {
+  if (!renderer) return "unknown GPU";
+  const match = /ANGLE \(([^,]+), ([^,/]+)/.exec(renderer);
+  return match ? match[2].trim() : renderer;
+}
 function formatReadyCell(scenario, libraryId, highlightBest = false) {
   const result = scenario.results.find((entry) => entry.library === libraryId);
   if (!result) return "—";
@@ -683,7 +696,7 @@ const nextApi = `${apiGenerated}\n`;
 const nextBenchmarkDocs = `${renderBenchmarkComparisonDocs().trimEnd()}\n`;
 let nextReadme = existsSync(readmePath) ? readFileSync(readmePath, "utf-8") : "";
 if (nextReadme) {
-  const readmeGeneratedBlock = renderGeneratedDocs({ guideBasePath: "docs" });
+  const readmeGeneratedBlock = renderReadmeDocs();
   if (!nextReadme.includes(performanceStartMarker)) {
     nextReadme = nextReadme.replace(/^## Performance[\s\S]*?\n## Installation/m, `${performanceStartMarker}\n## Performance\n\n${performanceEndMarker}\n\n## Installation`);
   }

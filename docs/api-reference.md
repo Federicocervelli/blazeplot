@@ -37,7 +37,7 @@ Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./example
 | `blazeplot/plugins/navigator` | Built-in overview/navigator plugin. |
 | `blazeplot/plugins/flamegraph` | Built-in flame graph and status-span plugin. |
 
-The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; use the README performance section for the aggregate core runtime size.
+The bundle table lists emitted files after Vite code-splitting. Entry rows can be tiny stubs that load shared chunks; the README performance section reports the aggregate core runtime size.
 
 ### Bundle size summary
 
