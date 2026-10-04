@@ -24,6 +24,14 @@
     "order": 30
   },
   {
+    "slug": "framework-integration",
+    "title": "Frameworks",
+    "description": "Use BlazePlot with React, Vue, Svelte, SSR frameworks, and a no-WebGL2 fallback.",
+    "sourcePath": "docs/framework-integration.md",
+    "section": "Start",
+    "order": 35
+  },
+  {
     "slug": "live-data",
     "title": "Live data",
     "description": "Streaming appends, fixed-rate shortcuts, sample updates, and follow-latest behavior.",

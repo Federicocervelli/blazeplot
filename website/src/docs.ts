@@ -36,6 +36,13 @@ export const DOC_PAGES: readonly DocPage[] = [
     loadMarkdown: () => import("../../docs/examples.md?raw").then((module) => module.default),
   },
   {
+    slug: "framework-integration",
+    title: "Frameworks",
+    description: "Use BlazePlot with React, Vue, Svelte, SSR frameworks, and a no-WebGL2 fallback.",
+    sourcePath: "docs/framework-integration.md",
+    loadMarkdown: () => import("../../docs/framework-integration.md?raw").then((module) => module.default),
+  },
+  {
     slug: "live-data",
     title: "Live data",
     description: "Streaming appends, fixed-rate shortcuts, sample updates, and follow-latest behavior.",
@@ -157,7 +164,7 @@ export const DOC_PAGES: readonly DocPage[] = [
 ];
 
 export const DOC_NAV_SECTIONS: readonly DocNavSection[] = [
-  { title: "Start", slugs: ["overview","docs-map","examples"] },
+  { title: "Start", slugs: ["overview","docs-map","examples","framework-integration"] },
   { title: "Data and performance", slugs: ["live-data","data-semantics","performance-recipes","benchmarks"] },
   { title: "UI", slugs: ["built-in-plugins","theming-and-layout","plugin-authoring"] },
   { title: "Reference", slugs: ["troubleshooting","browser-support","versioning-and-migration","stability","error-handling","accessibility","api-reference"] },

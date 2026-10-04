@@ -60,7 +60,7 @@ Good fallback options:
 
 ## Server-side rendering
 
-Charts are browser-only. In SSR apps, create charts after client mount or dynamically import chart components on the client. `isWebGL2Available()` returns `false` when `document` is unavailable, so do not treat a server-side `false` result as a browser capability check.
+Charts are browser-only. In SSR apps, create charts after client mount or dynamically import chart components on the client (see [Framework integration](./framework-integration.md)). `isWebGL2Available()` returns `false` when `document` is unavailable, so do not treat a server-side `false` result as a browser capability check.
 
 ```tsx
 import { useEffect, useRef } from "react";
