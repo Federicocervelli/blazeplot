@@ -1036,7 +1036,8 @@ export class SeriesStore<D extends Dataset = Dataset> {
    */
   private alignBucketStart(start: number, width: number): number {
     const ordinalOffset = this.dataset.ordinalOffset ?? 0;
-    return Math.floor((start + ordinalOffset) / width) * width - ordinalOffset;
+    // Only the remainder is needed, which stays exact even for very large ordinals.
+    return start - ((((start + ordinalOffset) % width) + width) % width);
   }
 
   private stableSampleBucketWidthForViewport(viewport: Viewport, maxPoints: number): number {
