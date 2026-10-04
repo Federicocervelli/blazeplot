@@ -37,6 +37,10 @@ The minimum is a policy statement, not yet enforced in CI. Maintainers: see the 
 - **Bundlers** such as Vite, esbuild, Rollup, and webpack 5 resolve the `exports` map. Import only the documented entry points; deep paths into `dist/` are not exported.
 - **Node.js** can import the package for tooling and type checks, but charts only run in a browser DOM with WebGL2.
 
+## Migrating to 1.0
+
+See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes since 0.5.5 (removed GPU backend exports, typed `emitSelect`, non-finite X handling), the experimental tier, ESM/TypeScript requirements, and a checklist.
+
 ## Migrating to 0.5
 
 0.5 removes duplicate and dead APIs so each task has one way to do it. Most upgrades are mechanical renames.
