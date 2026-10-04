@@ -40,13 +40,43 @@ jobs:
           path: build/visual-tests
           if-no-files-found: ignore
 
+  # Engine coverage beyond Chromium: WebGL2, non-blank rendering, and basic interaction in
+  # Firefox and WebKit through Playwright. Not a replacement for the Chrome `browser` job.
+  cross-browser:
+    name: Cross-browser smoke (Firefox, WebKit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: Read Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-firefox-webkit
+      # System dependencies are not part of the cache, so always run the install; it skips downloads that are cached.
+      - name: Install Firefox and WebKit
+        run: bunx playwright install --with-deps firefox webkit
+      - run: bun run test:cross-browser
+      - name: Upload cross-browser screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cross-browser-tests
+          path: build/cross-browser
+          if-no-files-found: ignore
+
   # Single required status check for branch protection; stays stable as jobs are added.
   validate:
     if: always()
-    needs: [checks, browser]
+    needs: [checks, browser, cross-browser]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI jobs to pass
-        if: needs.checks.result != 'success' || needs.browser.result != 'success'
+        if: needs.checks.result != 'success' || needs.browser.result != 'success' || needs.cross-browser.result != 'success'
         run: exit 1
       - run: echo "All CI jobs passed."
