@@ -25,7 +25,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Build JS only: `bun run build:js`.
 - Build the docs/site: `bun run pages:build`; preview with `bun run pages:preview`.
 - Dev server: `bun run dev` serves the Lit website (`website/`) with integrated docs and previews. Use `bun run fixtures:dev` only for browser fixture debugging under `tests/browser/`.
-- Full CI locally: `bun run ci`, which runs the same two groups as the CI jobs: `bun run check` (typecheck, unit tests, build, generated-doc and snippet checks, export smoke test, package dry-run, bundle budgets) and `bun run test:browser` (benchmark smoke, visual, interaction, website tests in headless Chrome). Add new checks to those scripts, not to the workflow.
+- Full CI locally: `bun run ci`, which runs the same two groups as the CI jobs: `bun run check` (typecheck, unit tests, build, generated-doc and snippet checks, export smoke test, package dry-run, public API snapshot, bundle budgets) and `bun run test:browser` (benchmark smoke, visual, interaction, website tests in headless Chrome). Add new checks to those scripts, not to the workflow.
 - Generated docs check only: `bun run test:generated-docs`.
 - Documentation snippet typecheck only: `bun run test:docs-snippets`.
 - Regenerate README/API docs: `bun run docs:readme` (builds `dist/`, regenerates `docs/api-reference.md`, and refreshes generated README docs sections).
@@ -37,6 +37,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Browser interaction tests only: `bun run test:interaction` (automates hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection through Chrome DevTools Protocol input events).
 - Package export smoke test: `bun run test:exports`.
 - Package contents dry-run: `bun run test:package` or `bun pm pack --dry-run`.
+- Public API snapshot check: `bun run build && bun run test:api` compares `dist/**/*.d.ts` exports against `api/public-api.md`; after an intentional API change run `bun run build && bun run test:api -- --update` and commit the snapshot. Never hand-edit it.
 - Bundle-size budget check: `bun run test:bundle-size`; markdown summary: `bun run docs:bundle-size`; detailed analysis: `bun run bundle:analyze`.
 - There is no lint or formatter script in `package.json`.
 
@@ -115,4 +116,4 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Browser visual tests (`bun run test:visual`) cover focused WebGL/DOM/plugin rendering cases and write screenshots plus summaries to `build/visual-tests/`.
 - Browser interaction tests (`bun run test:interaction`) drive Chrome DevTools Protocol input events for hover, crosshair, wheel zoom, shift-drag pan, box zoom, reset, and selection.
 - Full local validation is `bun run ci`; use targeted test scripts for focused changes when the full browser suite is unnecessary.
-- Run `bun run test:exports` after `bun run build` when package entry points or Vite library entries change; run `bun run test:package` when package metadata or files change; run `bun run test:bundle-size` when bundle composition may change.
+- Run `bun run test:exports` after `bun run build` when package entry points or Vite library entries change; run `bun run test:package` when package metadata or files change; run `bun run test:api` after `bun run build` when public types change; run `bun run test:bundle-size` when bundle composition may change.
