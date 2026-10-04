@@ -1,12 +1,20 @@
 import type { Camera2D } from "./Camera2D.js";
 import type { Viewport } from "../core/types.js";
 
-/** Axis dimension targeted by axis helpers. */
+/**
+ * Axis dimension targeted by axis helpers.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export type AxisRenderTarget = "x" | "y";
 /** Built-in axis scale names. */
 export type BuiltInAxisScale = "linear" | "time" | "log" | "symlog" | "categorical";
 
-/** Custom scale hooks for tick generation, formatting, and coordinate mapping. */
+/**
+ * Custom scale hooks for tick generation, formatting, and coordinate mapping.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export interface CustomAxisScale {
   readonly type: "custom";
   ticks?(min: number, max: number, maxTicks: number): readonly number[];
@@ -24,7 +32,11 @@ export type AxisTickFormatter = (value: number, axis: AxisRenderTarget) => strin
 /** Built-in format string or custom tick formatter. */
 export type AxisTickFormat = string | AxisTickFormatter;
 
-/** Scale and formatting options for one axis. */
+/**
+ * Scale and formatting options for one axis.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export interface AxisControllerAxisOptions {
   readonly scale?: AxisScale;
   readonly tickFormat?: AxisTickFormat;
