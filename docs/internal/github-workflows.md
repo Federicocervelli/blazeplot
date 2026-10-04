@@ -26,7 +26,7 @@ Runs on pull requests targeting `main` or `v1`, when the release workflow is abo
 | Job | Command | Covers |
 |---|---|---|
 | `checks` | `bun run check` | Typecheck, unit tests, library build, generated-docs freshness, doc snippet types, package exports, package contents, bundle budgets. |
-| `browser` | `bun run test:browser` | Benchmark smoke, visual tests, interaction tests, website UX tests in headless Chrome. Uploads `build/visual-tests` when it fails. |
+| `browser` | `bun run test:browser` | Benchmark smoke, visual tests, interaction tests, website UX tests in headless Chrome. Always uploads `build/visual-tests` as the `visual-tests` artifact (screenshots, `actual/` baseline candidates rendered on the runner, `diff/` for failing baselines; kept 14 days). See [Visual pixel baselines](./local-development.md#visual-pixel-baselines). |
 | `validate` | — | Passes only when every job above passed. This is the single required status check for branch protection, so adding or splitting jobs does not require settings changes. |
 
 `bun run ci` runs both groups locally. Add new checks to the `check` or `test:browser` scripts in `package.json`, not to the workflow, so local and CI runs stay identical.

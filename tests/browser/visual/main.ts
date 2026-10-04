@@ -103,8 +103,13 @@ try {
 }
 
 function toRect(element: Element): VisualRect {
-  const { left, top, width, height } = element.getBoundingClientRect();
-  return { x: left + window.scrollX, y: top + window.scrollY, width, height };
+  const { left, top, right, bottom } = element.getBoundingClientRect();
+  // Clamp to the viewport: browser screenshots cannot see past it (some cases overflow a 900px-wide page).
+  const x0 = Math.max(0, left);
+  const y0 = Math.max(0, top);
+  const x1 = Math.min(window.innerWidth, right);
+  const y1 = Math.min(window.innerHeight, bottom);
+  return { x: x0 + window.scrollX, y: y0 + window.scrollY, width: Math.max(0, x1 - x0), height: Math.max(0, y1 - y0) };
 }
 
 function toRectOrNull(element: Element | null): VisualRect | null {

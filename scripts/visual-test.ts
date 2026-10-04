@@ -113,26 +113,26 @@ const DEFAULT_CASES = [
  * possible so they do not depend on DOM font rendering.
  */
 const CASE_CHECKS: Readonly<Record<string, CaseCheck>> = {
-  line: { minInkRatio: 0.002, baseline: { region: "plot" } },
-  area: { minInkRatio: 0.05, baseline: { region: "plot" } },
-  scatter: { minInkRatio: 0.005, baseline: { region: "plot" } },
-  bar: { minInkRatio: 0.1, baseline: { region: "plot" } },
-  histogram: { minInkRatio: 0.05, baseline: { region: "plot" } },
-  ohlc: { minInkRatio: 0.003, baseline: { region: "plot" } },
-  candlestick: { minInkRatio: 0.01, baseline: { region: "plot" } },
-  "axes-title-grid": { minInkRatio: 0.002, baseline: { region: "chart", maxDiffRatio: 0.01 } },
-  legend: { minInkRatio: 0.002 },
-  tooltip: { minInkRatio: 0.002 },
-  crosshair: { minInkRatio: 0.002 },
-  annotations: { minInkRatio: 0.002, baseline: { region: "chart", maxDiffRatio: 0.01 } },
-  selection: { minInkRatio: 0.002 },
-  navigator: { minInkRatio: 0.002 },
-  flamegraph: { minInkRatio: 0.05, probe: "flamegraph", baseline: { region: "chart", maxDiffRatio: 0.01 } },
-  "scale-options": { minInkRatio: 0.002, baseline: { region: "plot" } },
-  "overlay-layering": { minInkRatio: 0.002 },
-  "context-restore": { minInkRatio: 0.002 },
+  line: { minInkRatio: 0.004, baseline: { region: "plot" } },
+  area: { minInkRatio: 0.1, baseline: { region: "plot" } },
+  scatter: { minInkRatio: 0.01, baseline: { region: "plot" } },
+  bar: { minInkRatio: 0.15, baseline: { region: "plot" } },
+  histogram: { minInkRatio: 0.2, baseline: { region: "plot" } },
+  ohlc: { minInkRatio: 0.004, baseline: { region: "plot" } },
+  candlestick: { minInkRatio: 0.012, baseline: { region: "plot" } },
+  "axes-title-grid": { minInkRatio: 0.006, baseline: { region: "chart", maxDiffRatio: 0.01 } },
+  legend: { minInkRatio: 0.004 },
+  tooltip: { minInkRatio: 0.004 },
+  crosshair: { minInkRatio: 0.004 },
+  annotations: { minInkRatio: 0.1, baseline: { region: "chart", maxDiffRatio: 0.01 } },
+  selection: { minInkRatio: 0.004 },
+  navigator: { minInkRatio: 0.004 },
+  flamegraph: { minInkRatio: 0.25, probe: "flamegraph", baseline: { region: "chart", maxDiffRatio: 0.01 } },
+  "scale-options": { minInkRatio: 0.0025, baseline: { region: "plot" } },
+  "overlay-layering": { minInkRatio: 0.003 },
+  "context-restore": { minInkRatio: 0.004 },
 };
-const DEFAULT_CASE_CHECK: CaseCheck = { minInkRatio: 0.002 };
+const DEFAULT_CASE_CHECK: CaseCheck = { minInkRatio: 0.004 };
 
 await main();
 
