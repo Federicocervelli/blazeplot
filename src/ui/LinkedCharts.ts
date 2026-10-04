@@ -69,7 +69,14 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
     root.appendChild(cell);
     const shared = options.panelPlugins?.(syncGroup) ?? [];
     const chartOptions = shared.length > 0 ? { ...panel.options, plugins: [...(panel.options?.plugins ?? []), ...shared] } : panel.options;
-    charts.push(new Chart(cell, chartOptions));
+    try {
+      charts.push(new Chart(cell, chartOptions));
+    } catch (error) {
+      // A panel failed (e.g. no WebGL2): release the panels already built.
+      for (const chart of charts) chart.dispose();
+      root.remove();
+      throw error;
+    }
   }
 
   /** Apply `update` to every chart except `source` without re-entering the sync listeners. */

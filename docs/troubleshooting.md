@@ -10,7 +10,7 @@ Use this page when a chart renders blank, feels slow, or behaves differently fro
 | Live view keeps resetting | Repeated `fitToData()` calls instead of `followX` | [Live chart keeps jumping away from the latest data](#live-chart-keeps-jumping-away-from-the-latest-data) |
 | Live data only updates after pan/zoom | Direct dataset mutation without `series.markDirty()` | [Live data does not repaint until interaction](#live-data-does-not-repaint-until-interaction) |
 | Chart slows down over time | Per-point appends, chart recreation, hidden render loops, DOM overlays | [Performance drops over time](#performance-drops-over-time) |
-| Log axis fails | Zero or negative viewport values | [Log axis throws a domain error](#log-axis-throws-a-domain-error) |
+| Log axis fails or stops drawing | Zero or negative viewport values | [Log axis throws a domain error](#log-axis-throws-a-domain-error) |
 | React chart remounts | Unstable `options` identity or missing effect cleanup | [React chart recreates unexpectedly](#react-chart-recreates-unexpectedly) |
 | Screenshot omits controls | Controls live outside the chart root | [Screenshots miss external UI](#screenshots-miss-external-ui) |
 
@@ -84,7 +84,7 @@ See [Performance recipes](./performance-recipes.md) for deeper guidance.
 
 ## Log axis throws a domain error
 
-A log axis requires a positive viewport. If your data can contain zero or negative values, use `scale: "symlog"` or keep the axis linear.
+A log axis requires a positive viewport. `fitToData()` leaves a log axis unchanged when its data includes zero or negative values. If the viewport still ends up invalid for the scale (for example through `chart.setViewport(...)`), the chart skips drawing, logs `BlazePlot skipped rendering: ...` once, and resumes as soon as the domain is valid. If your data can contain zero or negative values, use `scale: "symlog"` or keep the axis linear.
 
 ```ts
 const chart = new Chart(element, {

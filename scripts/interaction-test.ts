@@ -2,6 +2,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { RobustnessResults } from "../tests/browser/interaction/robustness.ts";
 import { CdpClient, closeTarget, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
 
 interface Options {
@@ -44,6 +45,8 @@ interface InteractionSnapshot {
   crosshairMoves: number;
   selectionCommits: number;
   selectionBounds: ViewportSnapshot | null;
+  hasSelection: boolean;
+  selectionOverlay: { left: number; top: number; width: number; height: number } | null;
   visibleCrosshairs: number;
   visibleTooltips: number;
   crosshairX: number | null;
@@ -87,6 +90,7 @@ async function main(): Promise<void> {
     await runRenderLoopCase(options, serverUrl);
     await runContinuousRenderLoopCase(options, serverUrl);
     await runLiveFollowCase(options, serverUrl);
+    await runRobustnessCase(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
@@ -379,6 +383,52 @@ async function runSelectionCase(options: Options, serverUrl: string): Promise<vo
     assert(after.selectionCommits > 0, "selection commit fired");
     assert(after.selectionBounds !== null && after.selectionBounds.xMax > after.selectionBounds.xMin, "selection bounds are valid");
     console.log("✓ selection: drag commit and data bounds");
+
+    const committed = after.selectionOverlay;
+    assert(committed !== null, "committed selection rectangle is visible");
+    const viewport = after.viewport;
+    const span = viewport.xMax - viewport.xMin;
+    await evaluate(cdp, `window.__blazeplotInteractionTest.setViewport({ xMin: ${viewport.xMin - span / 2}, xMax: ${viewport.xMax + span / 2} })`, true);
+    await sleep(150);
+    const zoomedOut = await getRequiredSnapshot(cdp);
+    assert(zoomedOut.selectionOverlay !== null && Math.abs(zoomedOut.selectionOverlay.width - committed.width / 2) < 3, "selection rectangle follows the data when the viewport zooms out");
+    console.log("✓ selection: committed rectangle tracks viewport changes");
+
+    const input = await evaluate(cdp, "(() => { const r = document.getElementById('outside-input').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()", true) as { x: number; y: number };
+    await click(cdp, input.x, input.y);
+    await pressKey(cdp, "Escape", 27);
+    await sleep(100);
+    assert((await getRequiredSnapshot(cdp)).hasSelection, "Escape typed in an unrelated input keeps the chart selection");
+
+    // Pressing on the canvas does not move focus; re-focus the input so the focus move is explicit.
+    await click(cdp, rect.left + rect.width * 0.9, rect.top + rect.height * 0.9);
+    await evaluate(cdp, "(() => { const input = document.getElementById('outside-input'); input.blur(); input.focus(); })()", true);
+    await pressKey(cdp, "Escape", 27);
+    await sleep(100);
+    assert((await getRequiredSnapshot(cdp)).hasSelection, "Escape after moving focus out of the chart keeps the selection");
+
+    await click(cdp, rect.left + rect.width * 0.9, rect.top + rect.height * 0.9);
+    await pressKey(cdp, "Escape", 27);
+    await sleep(100);
+    const cleared = await getRequiredSnapshot(cdp);
+    assert(!cleared.hasSelection && cleared.selectionOverlay === null, "Escape after clicking the chart clears its selection");
+    console.log("✓ selection: Escape is scoped to the chart");
+  } finally {
+    cdp.close();
+  }
+}
+
+async function runRobustnessCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "robustness");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    const result = await evaluate(cdp, "window.__blazeplotRobustness()", true) as RobustnessResults;
+    const { zoom, log, loop } = result;
+    assert(zoom.threw === null && zoom.span > 0, `deep zoom on a time axis stops at float precision (threw: ${zoom.threw})`);
+    assert(log.fitYMin > 0 && log.rendered, "fitToData pads a log axis in log space and renders");
+    assert(loop.whileInvalid === 0 && loop.logs === 1 && loop.recovered, "an invalid camera domain skips frames, logs once, and recovers");
+    assert(result.failedChartLeftDom === 0 && result.failedLinkedLeftDom === 0 && result.canvasRestored, "failed construction leaves no DOM and restores the canvas");
+    console.log("✓ robustness: zoom limits, scale-aware fits, invalid domains, and failed construction");
   } finally {
     cdp.close();
   }
@@ -478,9 +528,18 @@ async function drag(cdp: CdpClient, x0: number, y0: number, x1: number, y1: numb
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: x1, y: y1, button: "left", buttons: 0, clickCount: 1, modifiers, pointerType: "mouse" });
 }
 
-async function doubleClick(cdp: CdpClient, x: number, y: number): Promise<void> {
+async function click(cdp: CdpClient, x: number, y: number): Promise<void> {
   await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1, pointerType: "mouse" });
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1, pointerType: "mouse" });
+}
+
+async function pressKey(cdp: CdpClient, key: string, keyCode: number): Promise<void> {
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, windowsVirtualKeyCode: keyCode });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: keyCode });
+}
+
+async function doubleClick(cdp: CdpClient, x: number, y: number): Promise<void> {
+  await click(cdp, x, y);
   await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 2, pointerType: "mouse" });
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 2, pointerType: "mouse" });
 }
@@ -561,6 +620,6 @@ function close(a: number, b: number, tolerance: number): boolean {
   return Math.abs(a - b) <= tolerance;
 }
 
-function assert(condition: boolean, label: string): void {
+function assert(condition: boolean, label: string): asserts condition {
   if (!condition) throw new Error(`Interaction assertion failed: ${label}`);
 }

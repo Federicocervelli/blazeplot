@@ -431,6 +431,22 @@ function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: numb
   return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
 }
 
+/** Pad a fit domain in the axis's scale space, so log axes stay positive; `null` when no usable domain results. */
+function paddedAxisDomain(controller: AxisController, axis: "x" | "y", min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } | null {
+  let domain = paddedDomain(min, max, padding, includeZero);
+  if (controller.isNonlinear(axis)) {
+    try {
+      const from = includeZero ? Math.min(0, min) : min;
+      const to = includeZero ? Math.max(0, max) : max;
+      const scaled = paddedDomain(controller.scaleValue(from, axis), controller.scaleValue(to, axis), padding, false);
+      domain = { min: controller.unscaleValue(scaled.min, axis), max: controller.unscaleValue(scaled.max, axis) };
+    } catch {
+      // Custom scales without fromScreen() cannot map back; keep the linear padding.
+    }
+  }
+  return controller.isValidDomain(axis, domain.min, domain.max) ? domain : null;
+}
+
 function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
   let nextMin = includeZero ? Math.min(0, min) : min;
   let nextMax = includeZero ? Math.max(0, max) : max;
@@ -501,6 +517,7 @@ export class Chart implements ChartPluginContext {
   private restoreRenderRafId: number = 0;
   private running: boolean = false;
   private webglContextLost: boolean = false;
+  private domainErrorLogged: boolean = false;
   private readonly options: ChartOptions;
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (event.pointerType !== "touch") {
@@ -587,7 +604,13 @@ export class Chart implements ChartPluginContext {
     this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
-    this.installGpuResources(this.createGpuResources());
+    try {
+      this.installGpuResources(this.createGpuResources());
+    } catch (error) {
+      // E.g. no WebGL2: remove the half-built DOM and hand back a caller-supplied canvas.
+      this.layout.dispose();
+      throw error;
+    }
     this.rebuildAxisOverlay();
     this.updateTextOverlays();
 
@@ -719,19 +742,13 @@ export class Chart implements ChartPluginContext {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.pauseXFollowForInteraction();
-    if (yAxis === "right") {
-      if (next.dx !== 0) this.axis.pan({ dx: next.dx, dy: 0 });
-      if (next.dy !== 0) this.rightAxis.pan({ dx: 0, dy: next.dy });
-    } else {
-      this.axis.pan(next);
-      if (yAxis === undefined && next.dy !== 0) {
-        this.rightAxis.pan({ dx: 0, dy: this.rightYDirectionMatchesLeft() ? next.dy : -next.dy });
+    this.applyGesture(() => {
+      if (yAxis === "right") {
+        return (next.dx === 0 || this.axis.pan({ dx: next.dx, dy: 0 })) && (next.dy === 0 || this.rightAxis.pan({ dx: 0, dy: next.dy }));
       }
-    }
-    this.syncRightCameraX();
-    this.emitViewportChange();
-    this.scheduleHoverRefresh();
+      return this.axis.pan(next)
+        && (yAxis !== undefined || next.dy === 0 || this.rightAxis.pan({ dx: 0, dy: this.rightYDirectionMatchesLeft() ? next.dy : -next.dy }));
+    });
   }
 
   /**
@@ -743,16 +760,28 @@ export class Chart implements ChartPluginContext {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.pauseXFollowForInteraction();
-    if (yAxis === "right") {
-      if (next.axis !== "y") this.axis.zoom({ ...next, axis: "x" });
-      if (next.axis !== "x") this.rightAxis.zoom({ ...next, axis: "y" });
-    } else {
-      this.axis.zoom(next);
-      if (yAxis === undefined && next.axis !== "x") {
-        this.rightAxis.zoom({ ...next, cy: this.rightYDirectionMatchesLeft() ? next.cy : 1 - next.cy, axis: "y" });
+    this.applyGesture(() => {
+      if (yAxis === "right") {
+        return (next.axis === "y" || this.axis.zoom({ ...next, axis: "x" })) && (next.axis === "x" || this.rightAxis.zoom({ ...next, axis: "y" }));
       }
+      return this.axis.zoom(next)
+        && (yAxis !== undefined || next.axis === "x" || this.rightAxis.zoom({ ...next, cy: this.rightYDirectionMatchesLeft() ? next.cy : 1 - next.cy, axis: "y" }));
+    });
+  }
+
+  /**
+   * Run a pan/zoom that moves one or both cameras. If any step is rejected (invalid scale
+   * domain or a span beyond float precision), restore both so the axes never drift apart.
+   */
+  private applyGesture(move: () => boolean): void {
+    const left = this.camera.viewport;
+    const right = this.rightCamera.viewport;
+    if (!move()) {
+      this.camera.setViewport(left);
+      this.rightCamera.setViewport(right);
+      return;
     }
+    this.pauseXFollowForInteraction();
     this.syncRightCameraX();
     this.emitViewportChange();
     this.scheduleHoverRefresh();
@@ -874,7 +903,10 @@ export class Chart implements ChartPluginContext {
     return this.xFollowPaused ? "paused" : "following";
   }
 
-  /** Fit the viewport to data bounds; returns `false` when nothing changed. */
+  /**
+   * Fit the viewport to data bounds; returns `false` when nothing changed. Padding applies in
+   * scale space, and an axis with no usable domain (e.g. non-positive data on a log axis) is left alone.
+   */
   fitToData(options: ChartFitToDataOptions = {}): boolean {
     const fitX = options.x !== false;
     const fitY = options.y !== false;
@@ -906,21 +938,21 @@ export class Chart implements ChartPluginContext {
 
     let changed = false;
     if (fitX && Number.isFinite(xMin) && Number.isFinite(xMax)) {
-      const xDomain = paddedDomain(xMin, xMax, padding.x, false);
-      if (!domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xDomain.min, xDomain.max)) {
+      const xDomain = paddedAxisDomain(this.axis, "x", xMin, xMax, padding.x, false);
+      if (xDomain && !domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xDomain.min, xDomain.max)) {
         this.camera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
         changed = true;
       }
     }
-    const fitYAxis = (camera: Camera2D, min: number, max: number): void => {
+    const fitYAxis = (camera: Camera2D, controller: AxisController, min: number, max: number): void => {
       if (!Number.isFinite(min) || !Number.isFinite(max)) return;
-      const domain = paddedDomain(min, max, padding.y, options.includeZero === true);
-      if (domainsAlmostEqual(camera.yMin, camera.yMax, domain.min, domain.max)) return;
+      const domain = paddedAxisDomain(controller, "y", min, max, padding.y, options.includeZero === true);
+      if (!domain || domainsAlmostEqual(camera.yMin, camera.yMax, domain.min, domain.max)) return;
       camera.setViewport({ yMin: domain.min, yMax: domain.max });
       changed = true;
     };
-    if (fitY && yAxis !== "right") fitYAxis(this.camera, leftYMin, leftYMax);
-    if (fitY && yAxis !== "left") fitYAxis(this.rightCamera, rightYMin, rightYMax);
+    if (fitY && yAxis !== "right") fitYAxis(this.camera, this.axis, leftYMin, leftYMax);
+    if (fitY && yAxis !== "left") fitYAxis(this.rightCamera, this.rightAxis, rightYMin, rightYMax);
 
     if (changed) {
       this.syncRightCameraX();
@@ -1057,8 +1089,12 @@ export class Chart implements ChartPluginContext {
     this.rafId = requestAnimationFrame(() => {
       this.rafId = 0;
       if (!this.running) return;
-      this.render();
-      if (this.running && this.options.renderLoop === "continuous") this.requestRender();
+      try {
+        this.render();
+      } finally {
+        // Keep a continuous loop alive even if one frame throws.
+        if (this.running && this.options.renderLoop === "continuous") this.requestRender();
+      }
     });
   }
 
@@ -1109,9 +1145,17 @@ export class Chart implements ChartPluginContext {
     this.syncRightCameraX();
     this.applyFollowXPolicy();
     this.applyAutoFitYPolicy();
-    this.axis.validateDomain("x");
-    this.axis.validateDomain("y");
-    this.rightAxis.validateDomain("y");
+    try {
+      this.axis.validateDomain("x");
+      this.axis.validateDomain("y");
+      this.rightAxis.validateDomain("y");
+      this.domainErrorLogged = false;
+    } catch (error) {
+      // Skip the frame instead of throwing out of requestAnimationFrame; log once until fixed.
+      if (!this.domainErrorLogged) console.error("BlazePlot skipped rendering:", error);
+      this.domainErrorLogged = true;
+      return;
+    }
 
     try {
       const pixelRatio = this.canvas.width / Math.max(1, this.canvas.clientWidth);
@@ -1229,7 +1273,7 @@ export class Chart implements ChartPluginContext {
       ? config.window
       : this.camera.xMax - this.camera.xMin;
     const xMin = xMax - span;
-    if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax)) return;
+    if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax) || !this.axis.isValidDomain("x", xMin, xMax)) return;
     this.camera.setViewport({ xMin, xMax });
     this.syncRightCameraX();
     this.emitViewportChange();

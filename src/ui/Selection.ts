@@ -142,6 +142,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
 
   const clearSelection = (sourceEvent?: KeyboardEvent): void => {
     committedSelection = null;
+    drag = null;
     setOverlay(null);
     chartRef?.emitSelect(null);
     emit("clear", null, sourceEvent);
@@ -209,25 +210,48 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
 
       const onPointerUp = (event: PointerEvent): void => finishDrag(event, true);
       const onPointerCancel = (event: PointerEvent): void => finishDrag(event, false);
+      // Escape belongs to this chart only when the latest press or focus move landed in it
+      // (pressing the canvas does not move focus, so focus alone cannot tell).
+      let escapeArmed = false;
+      const armEscape = (event: Event): void => {
+        escapeArmed = event.composedPath().includes(chart.rootElement);
+      };
       const onKeyDown = (event: KeyboardEvent): void => {
-        if (options.clearOnEscape === false || event.key !== "Escape") return;
+        if (options.clearOnEscape === false || event.key !== "Escape" || !escapeArmed || (!committedSelection && !drag)) return;
         clearSelection(event);
+      };
+      // Keep the committed rectangle on its data bounds as the chart pans, zooms, or resizes.
+      const onRender = (): void => {
+        if (!committedSelection || drag) return;
+        const rect = canvas.getBoundingClientRect();
+        const { bounds } = committedSelection;
+        const [x0, y0] = chart.dataToPlot(bounds.xMin, bounds.yMin, yAxis);
+        const [x1, y1] = chart.dataToPlot(bounds.xMax, bounds.yMax, yAxis);
+        const corners = { pointerId: 0, startX: rect.left + x0, startY: rect.top + y0, currentX: rect.left + x1, currentY: rect.top + y1 };
+        committedSelection = { ...committedSelection, plotBounds: plotBoundsForDrag(corners, rect, mode) };
+        setOverlay(committedSelection.plotBounds);
       };
 
       canvas.addEventListener("pointerdown", onPointerDown);
       canvas.addEventListener("pointermove", onPointerMove);
       canvas.addEventListener("pointerup", onPointerUp);
       canvas.addEventListener("pointercancel", onPointerCancel);
+      globalThis.addEventListener("pointerdown", armEscape, { capture: true });
+      globalThis.addEventListener("focusin", armEscape, { capture: true });
       globalThis.addEventListener("keydown", onKeyDown);
       const unsubscribeTheme = chart.subscribe("themechange", applyTheme);
+      const unsubscribeRender = chart.subscribe("render", onRender);
 
       return () => {
         canvas.removeEventListener("pointerdown", onPointerDown);
         canvas.removeEventListener("pointermove", onPointerMove);
         canvas.removeEventListener("pointerup", onPointerUp);
         canvas.removeEventListener("pointercancel", onPointerCancel);
+        globalThis.removeEventListener("pointerdown", armEscape, { capture: true });
+        globalThis.removeEventListener("focusin", armEscape, { capture: true });
         globalThis.removeEventListener("keydown", onKeyDown);
         unsubscribeTheme();
+        unsubscribeRender();
         overlay?.remove();
         overlay = null;
         chartRef = null;
