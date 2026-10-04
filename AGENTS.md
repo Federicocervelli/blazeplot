@@ -39,7 +39,8 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Package export smoke test: `bun run test:exports`.
 - Package contents dry-run: `bun run test:package` or `bun pm pack --dry-run`.
 - Bundle-size budget check: `bun run test:bundle-size`; markdown summary: `bun run docs:bundle-size`; detailed analysis: `bun run bundle:analyze`.
-- There is no lint or formatter script in `package.json`.
+- Lint: `bun run lint` (Oxlint over `src`, `scripts`, `tests`, `website`; config in `.oxlintrc.json`, correctness category as errors). It runs as part of `bun run check`.
+- There is no formatter script in `package.json`.
 
 ## Branch and Release Flow
 

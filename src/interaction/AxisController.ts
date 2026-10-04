@@ -484,23 +484,23 @@ export class AxisController {
       case "millisecond":
         return value + count;
       case "second":
-        utc ? date.setUTCSeconds(date.getUTCSeconds() + count) : date.setSeconds(date.getSeconds() + count);
-        return date.getTime();
+        return utc
+          ? date.setUTCSeconds(date.getUTCSeconds() + count)
+          : date.setSeconds(date.getSeconds() + count);
       case "minute":
-        utc ? date.setUTCMinutes(date.getUTCMinutes() + count) : date.setMinutes(date.getMinutes() + count);
-        return date.getTime();
+        return utc
+          ? date.setUTCMinutes(date.getUTCMinutes() + count)
+          : date.setMinutes(date.getMinutes() + count);
       case "hour":
-        utc ? date.setUTCHours(date.getUTCHours() + count) : date.setHours(date.getHours() + count);
-        return date.getTime();
+        return utc ? date.setUTCHours(date.getUTCHours() + count) : date.setHours(date.getHours() + count);
       case "day":
-        utc ? date.setUTCDate(date.getUTCDate() + count) : date.setDate(date.getDate() + count);
-        return date.getTime();
+        return utc ? date.setUTCDate(date.getUTCDate() + count) : date.setDate(date.getDate() + count);
       case "month":
-        utc ? date.setUTCMonth(date.getUTCMonth() + count) : date.setMonth(date.getMonth() + count);
-        return date.getTime();
+        return utc ? date.setUTCMonth(date.getUTCMonth() + count) : date.setMonth(date.getMonth() + count);
       case "year":
-        utc ? date.setUTCFullYear(date.getUTCFullYear() + count) : date.setFullYear(date.getFullYear() + count);
-        return date.getTime();
+        return utc
+          ? date.setUTCFullYear(date.getUTCFullYear() + count)
+          : date.setFullYear(date.getFullYear() + count);
     }
   }
 
