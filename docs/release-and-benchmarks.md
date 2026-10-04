@@ -110,6 +110,7 @@ On every push to `main` or `v1` and on manual dispatch, `.github/workflows/relea
 - `bun run test:visual`: browser visual chart tests used by CI; fails on blank canvases and on pixel differences from the committed baselines in `tests/browser/visual/baselines/`; writes PNGs, diffs, and `summary.json` to `build/visual-tests/`. Regenerate baselines with `-- --update-baselines` using the CI procedure in [Local development](./internal/local-development.md#visual-pixel-baselines).
 - `bun run test:interaction`: browser input automation used by CI for hover, crosshair, zoom, pan, reset, and selection.
 - `bun run test:cross-browser`: Playwright Firefox and WebKit smoke test (WebGL2, non-blank render, basic interaction) used by the `cross-browser` CI job. See [Browser support](./browser-support.md#tested-browsers).
+- `bun run test:stability`: real-browser leak and stability tests used by CI (chart mount/unmount, resize and series churn, streaming memory at ring-buffer capacity, WebGL context loss/restore). Add `--long` for the local soak. See `docs/internal/local-development.md`.
 - `bun run bench -- --scenario <name>`: run one benchmark scenario and print JSON.
 - `bun run bench:report`: append benchmark tables to `docs/internal/benchmark-results.md` or a path passed with `--out-md`.
 - `bun run release:benchmarks`: append benchmark tables to `changelogs/v<package.version>.md` (the release workflow runs this; rarely needed locally).
