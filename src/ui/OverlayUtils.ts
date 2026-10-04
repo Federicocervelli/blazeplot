@@ -142,6 +142,7 @@ export function renderPickItems<TContext>(
   items.forEach((item, index) => {
     if (index > 0) container.append(document.createElement("br"));
     const swatch = document.createElement("span");
+    swatch.className = "blazeplot-pick-swatch";
     swatch.style.color = rgbaCss(item.series.style.color);
     swatch.textContent = "\u2588";
     const value = formatter ? formatter(item, context) : defaultFormatter(item, context);
@@ -183,6 +184,7 @@ export function pickAtDataX(chart: ChartPluginContext, dataX: number, options: P
 /** Create a marker element for a picked series point. */
 export function createPickMarker(item: ChartPickItem, options: PickMarkerOptions): HTMLDivElement {
   const marker = document.createElement("div");
+  marker.className = "blazeplot-pick-marker";
   marker.style.position = "absolute";
   marker.style.left = `${item.plotX}px`;
   marker.style.top = `${item.plotY}px`;

@@ -150,13 +150,19 @@ const FORCED_SERIES_SYSTEM_COLORS = ["Highlight", "LinkText", "CanvasText", "Vis
  * DOM overlays use CSS system colors directly; the WebGL canvas gets the same colors resolved to RGBA.
  */
 export function forcedColorsTheme(base: ResolvedChartTheme, context?: Element): ResolvedChartTheme {
-  const canvas = resolveThemeColor("Canvas", base.backgroundColor, context);
-  const text = resolveThemeColor("CanvasText", [1, 1, 1, 1], context);
-  const gray = resolveThemeColor("GrayText", text, context);
+  // System colors can resolve translucent (Chromium on Linux reports Highlight at 0.8 alpha);
+  // draw them opaque so high-contrast lines keep their full contrast against Canvas.
+  const resolveOpaque = (name: string, fallback: RgbaColor): RgbaColor => {
+    const [r, g, b] = resolveThemeColor(name, fallback, context);
+    return [r, g, b, 1];
+  };
+  const canvas = resolveOpaque("Canvas", base.backgroundColor);
+  const text = resolveOpaque("CanvasText", [1, 1, 1, 1]);
+  const gray = resolveOpaque("GrayText", text);
   const seen = new Set<string>([rgbaCss(canvas)]);
   const seriesColors: RgbaColor[] = [];
   for (const name of FORCED_SERIES_SYSTEM_COLORS) {
-    const color = resolveThemeColor(name, text, context);
+    const color = resolveOpaque(name, text);
     const key = rgbaCss(color);
     if (seen.has(key)) continue;
     seen.add(key);

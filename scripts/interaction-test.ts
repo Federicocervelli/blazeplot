@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RobustnessResults } from "../tests/browser/interaction/robustness.ts";
 import { CdpClient, closeTarget, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
+import { decodePng, encodePng } from "./png-image.js";
+import type { RgbaImage } from "./png-image.js";
 
 interface Options {
   width: number;
@@ -14,6 +16,10 @@ interface Options {
   url?: string;
   chrome?: string;
   keepBrowser: boolean;
+  /** Run only these cases (`--case`, repeatable); all cases when empty. */
+  cases: string[];
+  /** Where the forced-colors case writes its review screenshots. */
+  outDir: string;
 }
 
 interface RectSnapshot {
@@ -96,17 +102,23 @@ async function main(): Promise<void> {
     chromeProc = launchChrome(chromePath, userDataDir, options);
     await waitForHttp(`http://127.0.0.1:${options.debugPort}/json/version`, 30_000);
 
-    await runInteractionsCase(options, serverUrl);
-    await runSelectionCase(options, serverUrl);
-    await runLinkedCase(options, serverUrl);
-    await runMobileCase(options, serverUrl);
-    await runMobileLongPressCase(options, serverUrl);
-    await runLifecycleCase(options, serverUrl);
-    await runRenderLoopCase(options, serverUrl);
-    await runContinuousRenderLoopCase(options, serverUrl);
-    await runLiveFollowCase(options, serverUrl);
-    await runRobustnessCase(options, serverUrl);
-    await runKeyboardA11yCase(options, serverUrl);
+    const cases: ReadonlyArray<readonly [string, (options: Options, serverUrl: string) => Promise<void>]> = [
+      ["interactions", runInteractionsCase],
+      ["selection", runSelectionCase],
+      ["linked", runLinkedCase],
+      ["mobile", runMobileCase],
+      ["mobile-longpress", runMobileLongPressCase],
+      ["lifecycle", runLifecycleCase],
+      ["render-loop", runRenderLoopCase],
+      ["continuous-render-loop", runContinuousRenderLoopCase],
+      ["live-follow", runLiveFollowCase],
+      ["robustness", runRobustnessCase],
+      ["a11y", runKeyboardA11yCase],
+      ["forced-colors", runForcedColorsCase],
+    ];
+    const selected = options.cases.length > 0 ? cases.filter(([name]) => options.cases.includes(name)) : cases;
+    if (selected.length === 0) throw new Error(`No interaction case matches --case ${options.cases.join(", ")}. Cases: ${cases.map(([name]) => name).join(", ")}`);
+    for (const [, run] of selected) await run(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
@@ -528,6 +540,281 @@ async function runKeyboardA11yCase(options: Options, serverUrl: string): Promise
   }
 }
 
+/**
+ * Forced colors (Windows high-contrast) in a real browser: emulate `forced-colors: active` over CDP
+ * on the all-plugins a11y fixture, check that the theme, series, canvas pixels, and DOM overlays
+ * switch to system colors and stay visible, then turn emulation off and check that the caller
+ * theme comes back through the `matchMedia` change listener, without a reload.
+ */
+async function runForcedColorsCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "a11y");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    await mkdir(options.outDir, { recursive: true });
+    await sleep(200);
+
+    const normal = await getColors(cdp);
+    assert(!normal.forcedColorsMatches, "forced colors are off before emulation");
+    assert(normal.seriesColors.length === 2, `fixture has two series (${normal.seriesColors.length})`);
+    const normalBackground = rgb255(normal.theme.backgroundColor);
+    const normalSeries = normal.seriesColors.map(rgb255);
+    await expectCanvas(cdp, normalBackground, normalSeries, "normal theme", join(options.outDir, "normal-canvas.png"));
+    await captureScreenshot(cdp, join(options.outDir, "normal.png"));
+
+    // Dark scheme selects Chromium's dark forced palette, like a Windows dark Contrast theme.
+    await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }, { name: "prefers-color-scheme", value: "dark" }] });
+    let forced = await waitForThemeChange(cdp, normal.themeChanges, options.timeoutMs);
+    assert(forced.forcedColorsMatches, "matchMedia reports forced colors after emulation");
+    const system = mapRecord(forced.system, parseCssRgb);
+    const canvasColor = system.Canvas;
+    const textColor = system.CanvasText;
+    assert(forced.theme.backgroundCssColor === "Canvas", `theme background is the Canvas system color (${forced.theme.backgroundCssColor})`);
+    assertNear(rgb255(forced.theme.backgroundColor), canvasColor, 1, "theme background RGBA resolves to the Canvas system color");
+    assert(forced.theme.axisColor === "CanvasText", `axis color is CanvasText (${forced.theme.axisColor})`);
+    const systemSeries = [system.Highlight, system.LinkText, system.CanvasText, system.GrayText];
+    const forcedSeries = forced.seriesColors.map(rgb255);
+    forcedSeries.forEach((color, index) => {
+      assert(systemSeries.some((candidate) => maxChannelDelta(candidate, color) <= 1), `series ${index} uses a system color (${color.join(",")})`);
+      assert(maxChannelDelta(color, rgb255(forced.theme.seriesColors[index % forced.theme.seriesColors.length]!)) <= 1, `series ${index} follows the forced theme palette`);
+      assert(contrastRatio(color, canvasColor) >= 3, `series ${index} has at least 3:1 contrast with Canvas (${contrastRatio(color, canvasColor).toFixed(2)})`);
+    });
+    assert(maxChannelDelta(forcedSeries[0]!, forcedSeries[1]!) > 32, "the two series get different system colors");
+    assert(forced.seriesColors.every((color) => color[3] === 1) && forced.theme.backgroundColor[3] === 1, `forced series and background are opaque (${forced.seriesColors.map((color) => color[3]).join(", ")})`);
+    assert(maxChannelDelta(forcedSeries[0]!, normalSeries[0]!) > 0 || maxChannelDelta(canvasColor, normalBackground) > 0, "forced palette differs from the normal theme");
+    assertNear(parseCssRgb(forced.rootBackground), canvasColor, 1, "chart root background is Canvas");
+    assert(forced.axisLabelColor !== null, "axis tick labels are rendered");
+    assertNear(parseCssRgb(forced.axisLabelColor), textColor, 1, "axis tick labels use CanvasText");
+    assert(forced.titleColor !== null, "chart title is rendered");
+    assertNear(parseCssRgb(forced.titleColor), textColor, 1, "chart title uses CanvasText");
+    assert(contrastRatio(textColor, canvasColor) >= 4.5, `CanvasText has at least 4.5:1 contrast with Canvas (${contrastRatio(textColor, canvasColor).toFixed(2)})`);
+    assert(forced.legend !== null, "legend is visible");
+    assertNear(parseCssRgb(forced.legend.background), canvasColor, 1, "legend background is Canvas");
+    assertNear(parseCssRgb(forced.legend.color), textColor, 1, "legend text is CanvasText");
+    assert(forced.legend.borderStyle === "solid", `legend keeps a visible border (${forced.legend.borderStyle})`);
+    assertNear(parseCssRgb(forced.legend.borderColor), textColor, 1, "legend border is CanvasText");
+    assertSwatches(forced.legendSwatchColors, forcedSeries, "legend swatches keep the series colors (forced-color-adjust: none)");
+    assert(forced.navigatorWindowFill !== null, "navigator window is rendered");
+    assert(isTransparentFill(forced.navigatorWindowFill), `navigator window does not wash over the overview series (fill ${forced.navigatorWindowFill})`);
+
+    // Canvas cleared to Canvas, each series drawn in its system color.
+    await expectCanvas(cdp, canvasColor, forcedSeries, "forced colors", join(options.outDir, "forced-canvas.png"));
+    console.log(`✓ forced colors: theme, series (${forcedSeries.map((color) => color.join(",")).join(" / ")}), canvas pixels, axis text, and legend use system colors`);
+
+    await key(cdp, "Tab", 9);
+    forced = await getColors(cdp);
+    assert(forced.activeOutlineColor !== null, "chart root is focused");
+    assertNear(parseCssRgb(forced.activeOutlineColor), system.Highlight, 1, "focus ring uses Highlight");
+    for (let i = 0; i < 4; i++) await key(cdp, "ArrowRight", 39, SHIFT);
+    await key(cdp, "Enter", 13);
+    await sleep(120);
+    forced = await getColors(cdp);
+    assert(forced.selectionBorderColor !== null, "keyboard selection brush is visible");
+    assertNear(parseCssRgb(forced.selectionBorderColor), system.Highlight, 1, "selection brush border uses Highlight");
+    await key(cdp, "Enter", 13);
+    await sleep(150);
+    forced = await getColors(cdp);
+    assert(forced.tooltip !== null, "inspection tooltip is visible");
+    assertNear(parseCssRgb(forced.tooltip.background), canvasColor, 1, "tooltip background is Canvas");
+    assertNear(parseCssRgb(forced.tooltip.color), textColor, 1, "tooltip text is CanvasText");
+    assert(forced.tooltip.borderStyle === "solid", `tooltip has a visible border (${forced.tooltip.borderStyle})`);
+    assertNear(parseCssRgb(forced.tooltip.borderColor), textColor, 1, "tooltip border is CanvasText");
+    assertSwatches(forced.tooltipSwatchColors, forcedSeries, "tooltip swatches keep the series colors");
+    assertSwatches(forced.pickMarkerBackgrounds, forcedSeries, "inspection markers keep the series colors");
+    await captureScreenshot(cdp, join(options.outDir, "forced-colors.png"));
+    console.log("✓ forced colors: focus ring, selection brush, tooltip, swatches, and markers use system colors");
+
+    await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "none" }, { name: "prefers-color-scheme", value: "dark" }] });
+    const restored = await waitForThemeChange(cdp, forced.themeChanges, options.timeoutMs);
+    assert(!restored.forcedColorsMatches, "matchMedia reports forced colors off");
+    assert(restored.theme.backgroundCssColor === normal.theme.backgroundCssColor, `theme background restored (${restored.theme.backgroundCssColor})`);
+    assertNear(rgb255(restored.theme.backgroundColor), normalBackground, 0, "theme background RGBA restored");
+    assert(restored.theme.axisColor === normal.theme.axisColor, `axis color restored (${restored.theme.axisColor})`);
+    restored.seriesColors.map(rgb255).forEach((color, index) => assertNear(color, normalSeries[index]!, 0, `series ${index} color restored`));
+    assert(restored.rootBackground === normal.rootBackground, `root background restored (${restored.rootBackground})`);
+    assert(restored.legend !== null && normal.legend !== null && restored.legend.background === normal.legend.background && restored.legend.color === normal.legend.color, "legend colors restored");
+    assertSwatches(restored.legendSwatchColors, normalSeries, "legend swatches restored");
+    assertSwatches(restored.tooltipSwatchColors, normalSeries, "tooltip swatches restored");
+    assert(restored.navigatorWindowFill === normal.navigatorWindowFill, `navigator window fill restored (${restored.navigatorWindowFill})`);
+    await expectCanvas(cdp, normalBackground, normalSeries, "restored theme", join(options.outDir, "restored-canvas.png"));
+    await captureScreenshot(cdp, join(options.outDir, "restored.png"));
+    console.log(`✓ forced colors: turning emulation off restores the theme without reload (screenshots in ${options.outDir})`);
+  } finally {
+    await cdp.send("Emulation.setEmulatedMedia", { features: [] }).catch(() => undefined);
+    cdp.close();
+  }
+}
+
+interface ColorSnapshot {
+  forcedColorsMatches: boolean;
+  themeChanges: number;
+  system: Record<"Canvas" | "CanvasText" | "Highlight" | "LinkText" | "GrayText", string>;
+  theme: { backgroundCssColor: string; backgroundColor: number[]; seriesColors: number[][]; axisColor: string };
+  seriesColors: number[][];
+  rootBackground: string;
+  axisLabelColor: string | null;
+  titleColor: string | null;
+  legend: OverlayColors | null;
+  tooltip: OverlayColors | null;
+  selectionBorderColor: string | null;
+  activeOutlineColor: string | null;
+  legendSwatchColors: string[];
+  tooltipSwatchColors: string[];
+  pickMarkerBackgrounds: string[];
+  navigatorWindowFill: string | null;
+}
+
+interface OverlayColors {
+  background: string;
+  color: string;
+  borderColor: string;
+  borderStyle: string;
+}
+
+type Rgb = readonly [number, number, number];
+
+async function getColors(cdp: CdpClient): Promise<ColorSnapshot> {
+  const colors = await evaluate(cdp, "window.__blazeplotInteractionTest?.colors?.() ?? null", true) as ColorSnapshot | null;
+  if (!colors) throw new Error("Interaction controller colors() is not available");
+  return colors;
+}
+
+/** Wait for the chart's `themechange` event, fired by its `(forced-colors: active)` listener. */
+async function waitForThemeChange(cdp: CdpClient, previousChanges: number, timeoutMs: number): Promise<ColorSnapshot> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < Math.min(timeoutMs, 5_000)) {
+    const colors = await getColors(cdp);
+    if (colors.themeChanges > previousChanges) return colors;
+    await sleep(50);
+  }
+  throw new Error("Interaction assertion failed: the chart did not react to the forced-colors media change (no themechange event)");
+}
+
+/**
+ * Poll plot-area screenshots until the background is the dominant color and every series color
+ * covers at least 200 px (a frame may still be pending after a theme change). On timeout, save the
+ * last capture to `failurePath` and fail with the colors that were found.
+ */
+async function expectCanvas(cdp: CdpClient, background: Rgb, seriesColors: readonly Rgb[], label: string, failurePath: string): Promise<void> {
+  const startedAt = Date.now();
+  let problem = "";
+  let image: RgbaImage | null = null;
+  while (Date.now() - startedAt < 5_000) {
+    const capture = await captureCanvas(cdp);
+    image = capture;
+    const dominant = dominantColor(capture);
+    const counts = seriesColors.map((color) => countNear(capture, color, 24));
+    problem = maxChannelDelta(dominant, background) > 6
+      ? `background is ${dominant.join(",")}, expected ${background.join(",")}`
+      : counts.some((count) => count < 200)
+        ? `series pixel counts ${counts.join(" / ")} for ${seriesColors.map((color) => color.join(",")).join(" / ")} (need 200 each)`
+        : "";
+    if (!problem) return;
+    await sleep(100);
+  }
+  if (image) await writeFile(failurePath, encodePng(image));
+  throw new Error(`Interaction assertion failed: ${label} canvas pixels: ${problem}; top colors ${image ? topColors(image, 8) : "n/a"} (capture saved to ${failurePath})`);
+}
+
+function topColors(image: RgbaImage, limit: number): string {
+  const counts = new Map<number, number>();
+  for (let i = 0; i < image.data.length; i += 4) {
+    const packed = (image.data[i]! << 16) | (image.data[i + 1]! << 8) | image.data[i + 2]!;
+    counts.set(packed, (counts.get(packed) ?? 0) + 1);
+  }
+  return [...counts].sort((a, b) => b[1] - a[1]).slice(0, limit)
+    .map(([packed, count]) => `${(packed >> 16) & 255},${(packed >> 8) & 255},${packed & 255}x${count}`).join(" ");
+}
+
+/** Screenshot the plot canvas area (WebGL pixels plus any overlays on top). */
+async function captureCanvas(cdp: CdpClient): Promise<RgbaImage> {
+  const rect = (await getRequiredSnapshot(cdp)).canvasRect;
+  const clip = { x: Math.ceil(rect.left) + 2, y: Math.ceil(rect.top) + 2, width: Math.floor(rect.width) - 4, height: Math.floor(rect.height) - 4, scale: 1 };
+  const response = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, clip }) as { data?: string };
+  if (!response.data) throw new Error("Page.captureScreenshot returned no data");
+  return decodePng(Buffer.from(response.data, "base64"));
+}
+
+async function captureScreenshot(cdp: CdpClient, path: string): Promise<void> {
+  const response = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }) as { data?: string };
+  if (!response.data) throw new Error("Page.captureScreenshot returned no data");
+  await writeFile(path, Buffer.from(response.data, "base64"));
+}
+
+function rgb255(color: readonly number[]): Rgb {
+  return [Math.round((color[0] ?? 0) * 255), Math.round((color[1] ?? 0) * 255), Math.round((color[2] ?? 0) * 255)];
+}
+
+function parseCssRgb(css: string): Rgb {
+  const match = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(css);
+  if (!match) throw new Error(`Interaction assertion failed: cannot parse CSS color ${css}`);
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function mapRecord<K extends string, V, R>(record: Record<K, V>, map: (value: V) => R): Record<K, R> {
+  return Object.fromEntries(Object.entries(record).map(([name, value]) => [name, map(value as V)])) as Record<K, R>;
+}
+
+/** Every swatch is one of the series colors and every series color appears. */
+function assertSwatches(swatches: readonly string[], seriesColors: readonly Rgb[], label: string): void {
+  assert(swatches.length >= seriesColors.length, `${label}: expected ${seriesColors.length} swatches, found ${swatches.length}`);
+  const parsed = swatches.map(parseCssRgb);
+  for (const swatch of parsed) {
+    assert(seriesColors.some((color) => maxChannelDelta(color, swatch) <= 1), `${label} (swatch ${swatch.join(",")} is not a series color ${seriesColors.map((color) => color.join(",")).join(" / ")})`);
+  }
+  for (const color of seriesColors) {
+    assert(parsed.some((swatch) => maxChannelDelta(color, swatch) <= 1), `${label} (no swatch for ${color.join(",")})`);
+  }
+}
+
+function isTransparentFill(fill: string): boolean {
+  return fill === "none" || fill === "transparent" || /^rgba\(.*,\s*0\)$/.test(fill);
+}
+
+function maxChannelDelta(a: Rgb, b: Rgb): number {
+  return Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
+}
+
+function assertNear(actual: Rgb, expected: Rgb, tolerance: number, label: string): void {
+  assert(maxChannelDelta(actual, expected) <= tolerance, `${label} (got ${actual.join(",")}, expected ${expected.join(",")})`);
+}
+
+/** WCAG 2 contrast ratio between two sRGB colors. */
+function contrastRatio(a: Rgb, b: Rgb): number {
+  const luminance = (color: Rgb): number => {
+    const [r, g, b2] = color.map((channel) => {
+      const c = channel / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }) as [number, number, number];
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b2;
+  };
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** Most frequent opaque pixel color. */
+function dominantColor(image: RgbaImage): Rgb {
+  const counts = new Map<number, number>();
+  let best = 0;
+  let bestCount = -1;
+  for (let i = 0; i < image.data.length; i += 4) {
+    const packed = (image.data[i]! << 16) | (image.data[i + 1]! << 8) | image.data[i + 2]!;
+    const count = (counts.get(packed) ?? 0) + 1;
+    counts.set(packed, count);
+    if (count > bestCount) {
+      best = packed;
+      bestCount = count;
+    }
+  }
+  return [(best >> 16) & 255, (best >> 8) & 255, best & 255];
+}
+
+function countNear(image: RgbaImage, color: Rgb, tolerance: number): number {
+  let count = 0;
+  for (let i = 0; i < image.data.length; i += 4) {
+    if (Math.abs(image.data[i]! - color[0]) <= tolerance && Math.abs(image.data[i + 1]! - color[1]) <= tolerance && Math.abs(image.data[i + 2]! - color[2]) <= tolerance) count++;
+  }
+  return count;
+}
 
 async function key(cdp: CdpClient, name: string, keyCode: number, modifiers = 0): Promise<void> {
   await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: name, code: name, windowsVirtualKeyCode: keyCode, modifiers });
@@ -553,7 +840,7 @@ async function openCase(options: Options, serverUrl: string, caseName: string): 
 }
 
 function parseArgs(args: readonly string[]): Options {
-  const parsed: Options = { width: 900, height: 520, port: 41733, debugPort: 9225, timeoutMs: 30_000, keepBrowser: false };
+  const parsed: Options = { width: 900, height: 520, port: 41733, debugPort: 9225, timeoutMs: 30_000, keepBrowser: false, cases: [], outDir: "build/visual-tests/forced-colors" };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg) continue;
@@ -573,6 +860,8 @@ function parseArgs(args: readonly string[]): Options {
       case "--url": parsed.url = readValue(); break;
       case "--chrome": parsed.chrome = readValue(); break;
       case "--keep-browser": parsed.keepBrowser = true; break;
+      case "--case": parsed.cases.push(readValue()); break;
+      case "--out-dir": parsed.outDir = readValue(); break;
       case "--help": case "-h": printHelpAndExit(); break;
       default: throw new Error(`Unknown argument: ${arg}`);
     }
@@ -581,7 +870,7 @@ function parseArgs(args: readonly string[]): Options {
 }
 
 function printHelpAndExit(): never {
-  console.log(`Usage: bun run test:interaction [options]\n\nRuns automated browser interaction tests for hover, crosshair, wheel zoom, pan, box zoom, reset, selection, and linked sync.\n`);
+  console.log(`Usage: bun run test:interaction [options]\n\nRuns automated browser interaction tests for hover, crosshair, wheel zoom, pan, box zoom, reset, selection, linked sync, keyboard accessibility, and forced colors.\n\nOptions:\n  --case <name>      Run one case (repeatable), e.g. --case forced-colors\n  --out-dir <dir>    Forced-colors screenshot directory (default build/visual-tests/forced-colors)\n  --chrome <path>    Browser executable\n  --keep-browser     Leave Chrome running\n`);
   process.exit(0);
 }
 

@@ -6,7 +6,7 @@ This page states what BlazePlot does for keyboard and assistive-technology users
 2. **`blazeplot/plugins/a11y`** (opt in): a visually hidden data table of the visible data, a keyboard inspection cursor that drives the tooltip and crosshair, and an optional live summary for streaming charts.
 3. **Keyboard support in the built-in plugins**: legend buttons, the navigator slider, keyboard range selection, and focusable annotations.
 
-Everything below is checked against the source in `src/ui/`, unit tests in `tests/ui/`, keyboard-only browser tests (`bun run test:interaction`), and automated axe-core checks of every built-in plugin (`bun run test:a11y`, which fails on serious or critical violations). Nothing here is a claim of conformance with WCAG or any other standard: BlazePlot has not been audited against one, and the manual screen reader pass below has **not been run yet** (it is a release-checklist item for 1.0).
+Everything below is checked against the source in `src/ui/` and verified by unit tests in `tests/ui/`, keyboard-only browser tests (`bun run test:interaction`), automated axe-core checks of every built-in plugin (`bun run test:a11y`, which fails on serious or critical violations), and an automated forced-colors check in headless Chrome (`bun run test:forced-colors`, part of `bun run test:interaction`). BlazePlot has not been tested manually with screen readers. Nothing here is a claim of conformance with WCAG or any other standard: BlazePlot has not been audited against one.
 
 ## What the chart provides
 
@@ -157,11 +157,11 @@ In forced-colors mode the chart follows the OS palette as described above. Serie
 - **Live data under the inspection cursor.** The cursor holds a logical sample index. On a wrapping ring buffer at capacity, new data shifts which sample that index points at; the announcement updates on the next key press.
 - **Linked charts** use the same defaults per panel. Set a label for each panel with `panels: [{ options: { accessibility: { label: "..." } } }]`, and add `a11yPlugin()` through `panelPlugins` where needed.
 
-## Manual screen reader pass
+## Testing with a screen reader
 
-Automated checks cannot tell whether announcements make sense. Before 1.0 ships, run this pass with the website previews and the `a11y` interaction fixture (`bun run fixtures:dev`, then `/interaction/?case=a11y`). **It has not been run yet**; it is tracked in the [release checklist](./internal/release-checklist.md). Record the browser and screen reader versions and file issues for anything that fails.
+Automated checks cannot tell whether announcements make sense, so test your own charts with a screen reader before relying on them. Contributors can run the same steps against the website previews and the `a11y` interaction fixture (`bun run fixtures:dev`, then `/interaction/?case=a11y`). Note the browser and screen reader versions when you report a problem.
 
-Screen readers: NVDA with Firefox and with Chrome on Windows; VoiceOver with Safari on macOS.
+Common combinations: NVDA with Firefox or Chrome on Windows; VoiceOver with Safari on macOS.
 
 1. Tab to the chart. The name, role ("figure"), and generated summary are announced.
 2. Browse the chart content with the virtual cursor (NVDA browse mode, VoiceOver VO+arrows): the summary, the instructions, and each data table are reachable; table navigation (NVDA Ctrl+Alt+arrows, VoiceOver VO+arrows in a table) announces the X row header with each value.
@@ -171,7 +171,7 @@ Screen readers: NVDA with Firefox and with Chrome on Windows; VoiceOver with Saf
 6. Shift+Right a few times, then Enter: the range is announced while it grows and when it is committed; Escape cancels.
 7. Tab through annotations, legend items, and the navigator: each has a sensible name and role; Enter on an annotation activates it; Delete removes a removable one and focus lands on the next control.
 8. A streaming chart with `live` enabled announces the latest values no more often than configured and stays quiet while inspecting.
-9. Windows Contrast theme (forced colors): series, axes, focus rings, tooltip, legend, and selection stay visible, and switching the theme off restores the normal colors without a reload.
+9. Windows Contrast theme (forced colors): series, axes, focus rings, tooltip, legend, and selection stay visible, and switching the theme off restores the normal colors without a reload. BlazePlot's own charts are covered by an automated test that emulates `forced-colors: active` in headless Chrome (`bun run test:forced-colors`); a real Contrast theme is still worth a look with your own theme and plugins.
 
 ## Checklist for an accessible dashboard
 
