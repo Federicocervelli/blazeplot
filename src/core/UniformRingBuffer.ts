@@ -168,17 +168,17 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
   /** Return min/max Y values for a logical index range. */
   rangeMinMaxY(start: number, end: number): MinMaxY | null {
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this._length, Math.ceil(end));
-    if (to <= from) return null;
-    return this.tree.queryRing(this.logicalToPhysical(from), to - from);
+    return this.tree.queryLogical(this._head, this._length, start, end);
   }
 
   /** Return whether logical `[start, end)` contains a gap (non-finite Y). */
   hasGapInRange(start: number, end: number): boolean {
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this._length, Math.ceil(end));
-    return to > from && this.tree.hasGapRing(this.logicalToPhysical(from), to - from);
+    return this.tree.hasGapLogical(this._head, this._length, start, end);
+  }
+
+  /** Ordinal of logical index 0 on the X grid, so `ordinalOffset + index` is stable while the buffer wraps. */
+  get ordinalOffset(): number {
+    return Math.round(this.firstX() / this.xStep);
   }
 
   /** Copy visible samples into a packed render buffer. */
@@ -196,8 +196,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
     const viewportSamples = Math.max(1, Math.ceil((viewport.xMax - viewport.xMin) / this.xStep));
     const stride = Math.max(1, Math.ceil(viewportSamples / maxPoints));
-    const firstOrdinal = Math.round(this.firstX() / this.xStep);
-    const remainder = positiveModulo(firstOrdinal + start, stride);
+    const remainder = positiveModulo(this.ordinalOffset + start, stride);
     const alignedStart = start + positiveModulo(-remainder, stride);
     return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
   }
@@ -231,8 +230,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
     const viewportSamples = Math.max(1, Math.ceil((viewport.xMax - viewport.xMin) / this.xStep) + 1);
     const stride = Math.max(1, Math.ceil(viewportSamples / maxSegments));
-    const firstOrdinal = Math.round(this.firstX() / this.xStep);
-    const alignedStart = start - positiveModulo(firstOrdinal + start, stride);
+    const alignedStart = start - positiveModulo(this.ordinalOffset + start, stride);
 
     let written = 0;
     for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += stride) {

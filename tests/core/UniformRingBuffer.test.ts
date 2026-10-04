@@ -112,4 +112,13 @@ describe("UniformRingBuffer", () => {
     expect(buf.hasGapInRange(0, 1)).toBe(true);
     expect(buf.hasGapInRange(1, 5)).toBe(false);
   });
+
+  it("reports the X-grid ordinal of its first retained sample", () => {
+    const buf = new UniformRingBuffer(4, { xStart: 50, xStep: 0.5 });
+    buf.appendY([1, 2, 3]);
+    expect(buf.ordinalOffset).toBe(100);
+    buf.appendY([4, 5, 6, 7]);
+    expect(buf.ordinalOffset).toBe(103);
+    expect(buf.getX(0)).toBe(51.5);
+  });
 });

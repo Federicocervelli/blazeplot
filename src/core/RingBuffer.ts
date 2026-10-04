@@ -64,7 +64,8 @@ export class RingBuffer {
       if (this.overflow === "error") throw new RangeError("RingBuffer capacity exceeded.");
     }
 
-    this.checkOrder(this.lastX(), x);
+    const lastX = this.lastX();
+    if (x < lastX) this.checkOrder(lastX, x);
     const physical = this._head;
     this.xData[physical] = x;
     this.yData[physical] = y;
@@ -153,17 +154,12 @@ export class RingBuffer {
 
   /** Return min/max Y values for a logical index range. */
   rangeMinMaxY(start: number, end: number): MinMaxY | null {
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this._length, Math.ceil(end));
-    if (to <= from) return null;
-    return this.tree.queryRing(this.logicalToPhysical(from), to - from);
+    return this.tree.queryLogical(this._head, this._length, start, end);
   }
 
   /** Return whether logical `[start, end)` contains a gap (non-finite Y). */
   hasGapInRange(start: number, end: number): boolean {
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this._length, Math.ceil(end));
-    return to > from && this.tree.hasGapRing(this.logicalToPhysical(from), to - from);
+    return this.tree.hasGapLogical(this._head, this._length, start, end);
   }
 
   /** Remove all retained samples. */
@@ -182,7 +178,7 @@ export class RingBuffer {
       const chunk = Math.min(remaining, this.capacity - start);
       for (let i = 0; i < chunk; i++) {
         const nextX = x[source + i]!;
-        if (nextX < previousX) this.checkOrder(previousX, nextX); // Compare inline to keep the hot loop call-free.
+        if (nextX < previousX) this.checkOrder(previousX, nextX);
         previousX = nextX;
         this.xData[start + i] = nextX;
         this.yData[start + i] = y[source + i]!;
@@ -198,7 +194,7 @@ export class RingBuffer {
 
   /** X of the newest sample, or NaN when empty (NaN never compares as out of order). */
   private lastX(): number {
-    return this._length > 0 ? this.xData[(this._head - 1 + this.capacity) % this.capacity]! : NaN;
+    return this._length > 0 ? this.xData[this._head === 0 ? this.capacity - 1 : this._head - 1]! : NaN;
   }
 
   /** Physical samples below this index hold live data; the ring fills from index 0. */

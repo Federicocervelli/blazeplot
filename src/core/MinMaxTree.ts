@@ -14,6 +14,14 @@ const DEFAULT_BLOCK_SIZE = 64;
  * walk. Non-finite values are treated as gaps: ignored by min/max queries and
  * counted per node, so `hasGap` is logarithmic too.
  */
+/** Return whether `values[from, to)` contains a non-finite value. */
+export function hasNonFinite(values: ArrayLike<number>, from: number, to: number): boolean {
+  for (let i = from; i < to; i++) {
+    if (!Number.isFinite(values[i]!)) return true;
+  }
+  return false;
+}
+
 export class MinMaxTree {
   private readonly base: number;
   private readonly minTree: Float64Array;
@@ -150,12 +158,12 @@ export class MinMaxTree {
 
   /** Return whether physical `[start, end)` contains a non-finite value. */
   hasGap(start: number, end: number): boolean {
-    let i = Math.max(0, start);
+    const from = Math.max(0, start);
     const to = Math.min(this.capacity, end);
-    const firstFullBlock = Math.ceil(i / this.blockSize);
+    const firstFullBlock = Math.ceil(from / this.blockSize);
     const lastFullBlock = Math.floor(to / this.blockSize);
-    if (firstFullBlock >= lastFullBlock) return this.scanForGap(i, to);
-    if (this.scanForGap(i, firstFullBlock * this.blockSize) || this.scanForGap(lastFullBlock * this.blockSize, to)) return true;
+    if (firstFullBlock >= lastFullBlock) return hasNonFinite(this.values, from, to);
+    if (hasNonFinite(this.values, from, firstFullBlock * this.blockSize) || hasNonFinite(this.values, lastFullBlock * this.blockSize, to)) return true;
 
     let left = this.base + firstFullBlock;
     let right = this.base + lastFullBlock;
@@ -176,6 +184,21 @@ export class MinMaxTree {
     return this.hasGap(physicalStart, this.capacity) || this.hasGap(0, end - this.capacity);
   }
 
+  /**
+   * Min/max of logical `[start, end)` in a ring buffer holding `length` samples whose newest
+   * sample sits just before physical `head`; indexes are clamped and rounded outward.
+   */
+  queryLogical(head: number, length: number, start: number, end: number): MinMaxY | null {
+    const span = this.physicalSpan(head, length, start, end);
+    return span ? this.queryRing(span[0], span[1]) : null;
+  }
+
+  /** Whether logical `[start, end)` of a ring buffer (see `queryLogical`) contains a non-finite value. */
+  hasGapLogical(head: number, length: number, start: number, end: number): boolean {
+    const span = this.physicalSpan(head, length, start, end);
+    return span !== null && this.hasGapRing(span[0], span[1]);
+  }
+
   /** Query `count` samples of a ring buffer starting at a physical index, wrapping at capacity. */
   queryRing(physicalStart: number, count: number): MinMaxY | null {
     if (count <= 0) return null;
@@ -189,11 +212,12 @@ export class MinMaxTree {
     return { minY: Math.min(first.minY, second.minY), maxY: Math.max(first.maxY, second.maxY) };
   }
 
-  private scanForGap(from: number, to: number): boolean {
-    for (let i = from; i < to; i++) {
-      if (!Number.isFinite(this.values[i]!)) return true;
-    }
-    return false;
+  /** Physical start and count of a clamped logical range, or `null` when it is empty. */
+  private physicalSpan(head: number, length: number, start: number, end: number): [number, number] | null {
+    const from = Math.max(0, Math.floor(start));
+    const to = Math.min(length, Math.ceil(end));
+    if (to <= from) return null;
+    return [(head - length + from + this.capacity) % this.capacity, to - from];
   }
 
   private recomputeNode(node: number): void {

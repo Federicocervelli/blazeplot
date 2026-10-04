@@ -83,8 +83,8 @@ export interface Dataset {
    */
   hasGapInRange?(start: number, end: number): boolean;
   /**
-   * Optional count of samples dropped from the front since creation, for datasets that shift
-   * logical indexes (wrapping ring buffers). Downsampling anchors buckets to
+   * Optional stable ordinal of logical index 0, for datasets whose logical indexes shift as
+   * they stream (wrapping ring buffers). Downsampling anchors buckets to
    * `ordinalOffset + index` so bucket edges stay put while the data streams.
    */
   readonly ordinalOffset?: number;

@@ -1,4 +1,4 @@
-import { MinMaxTree } from "./MinMaxTree.js";
+import { MinMaxTree, hasNonFinite } from "./MinMaxTree.js";
 import type { MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
 import { createValueArray } from "./valueArray.js";
@@ -148,13 +148,9 @@ export class StaticDataset implements Dataset {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
     if (to <= from) return false;
-    if (this.tree && !this.treeStale) return this.tree.hasGap(from, to);
-    // No current summary: scan rather than rebuild the whole tree, since data replaced
+    // Without a current summary, scan rather than rebuild the whole tree: data replaced
     // every frame would otherwise pay a full rebuild just for gap checks.
-    for (let i = from; i < to; i++) {
-      if (!Number.isFinite(this.yData[i]!)) return true;
-    }
-    return false;
+    return this.tree && !this.treeStale ? this.tree.hasGap(from, to) : hasNonFinite(this.yData, from, to);
   }
 
   /** The min/max/gap summary tree, built on first use and refreshed after invalidation. */

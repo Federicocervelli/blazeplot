@@ -140,7 +140,8 @@ export class OhlcRingBuffer implements OhlcDataset {
       if (this.overflow === "error") throw new RangeError("OhlcRingBuffer capacity exceeded.");
     }
 
-    if (this._length > 0) this.checkOrder(this.xData[(this._head - 1 + this.capacity) % this.capacity]!, x);
+    const lastX = this._length > 0 ? this.xData[this._head === 0 ? this.capacity - 1 : this._head - 1]! : NaN;
+    if (x < lastX) this.checkOrder(lastX, x);
     this.xData[this._head] = x;
     this.openData[this._head] = open;
     this.highData[this._head] = high;
