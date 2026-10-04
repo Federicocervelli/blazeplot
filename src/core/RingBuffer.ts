@@ -1,6 +1,6 @@
 import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxY } from "./MinMaxTree.js";
-import { lowerBound, unsortedXWarning, upperBound } from "./search.js";
+import { lowerBound, nonFiniteXWarning, unsortedXWarning, upperBound } from "./search.js";
 import { createValueArray } from "./valueArray.js";
 import type { BufferOverflowStrategy, TimeRange, ValuePrecision } from "./types.js";
 
@@ -22,6 +22,7 @@ export class RingBuffer {
   /** Samples ever stored, including ones skipped by oversized appends. */
   private _written: number = 0;
   private readonly checkOrder = unsortedXWarning("RingBuffer");
+  private readonly warnNonFiniteX = nonFiniteXWarning("RingBuffer", "the sample was skipped");
 
   private readonly xData: Float64Array;
   private readonly yData: Float32Array | Float64Array;
@@ -57,8 +58,12 @@ export class RingBuffer {
     return { start: this.getX(0), end: this.getX(this._length - 1) };
   }
 
-  /** Append one XY sample. */
+  /** Append one XY sample. A non-finite `x` skips the sample and warns once. */
   push(x: number, y: number): void {
+    if (!Number.isFinite(x)) {
+      this.warnNonFiniteX(x);
+      return;
+    }
     if (this._length >= this.capacity) {
       if (this.overflow === "drop-new") return;
       if (this.overflow === "error") throw new RangeError("RingBuffer capacity exceeded.");
@@ -79,9 +84,29 @@ export class RingBuffer {
     }
   }
 
-  /** Append matching X and Y arrays. */
+  /** Append matching X and Y arrays. Samples with a non-finite X are skipped (one warning per buffer) and do not count toward capacity or overflow. */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
-    const requested = Math.min(x.length, y.length);
+    let requested = Math.min(x.length, y.length);
+    if (requested <= 0) return;
+
+    for (let i = 0; i < requested; i++) {
+      if (Number.isFinite(x[i]!)) continue;
+      this.warnNonFiniteX(x[i]!);
+      const keptX = new Float64Array(requested);
+      const keptY = new Float64Array(requested);
+      let kept = 0;
+      for (let j = 0; j < requested; j++) {
+        const xj = x[j]!;
+        if (!Number.isFinite(xj)) continue;
+        keptX[kept] = xj;
+        keptY[kept] = y[j]!;
+        kept++;
+      }
+      x = keptX;
+      y = keptY;
+      requested = kept;
+      break;
+    }
     if (requested <= 0) return;
 
     if (this.overflow !== "wrap") {
@@ -104,9 +129,13 @@ export class RingBuffer {
     this.appendChunks(x, y, 0, requested);
   }
 
-  /** Replace a sample by logical index. */
+  /** Replace a sample by logical index. A non-finite `x` leaves the sample unchanged, warns once, and returns `false`. */
   update(index: number, x: number, y: number): boolean {
     if (!this.isValidIndex(index)) return false;
+    if (!Number.isFinite(x)) {
+      this.warnNonFiniteX(x);
+      return false;
+    }
     if (index > 0) this.checkOrder(this.getX(index - 1), x);
     if (index < this._length - 1) this.checkOrder(x, this.getX(index + 1));
     const physical = this.logicalToPhysical(index);

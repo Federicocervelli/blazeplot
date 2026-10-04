@@ -1,6 +1,6 @@
 # Built-in plugins
 
-Built-in plugins are optional. Import them from subpaths so unused plugin code can stay out of your bundle.
+Built-in plugins are optional. Import them from subpaths so unused plugin code can stay out of your bundle. Every built-in plugin except `blazeplot/plugins/flamegraph` is stable; flamegraph is experimental (see [API stability](./stability.md)).
 
 ```ts
 import { Chart } from "blazeplot";
@@ -117,6 +117,8 @@ navigator.refresh();
 ## Flame graphs and status spans
 
 `flameGraphPlugin` adds an optional WebGL2 overlay for FlameGraph-style stack traces and lane/status charts. It lives in its own subpath so the core XY renderer stays small.
+
+> **Experimental.** `blazeplot/plugins/flamegraph` and its exports (`flameGraphPlugin`, `buildFlameGraphModel`, `parseFoldedStacks`, `pickFrame`, `buildStatusChartModel`, and their types) are tagged `@experimental` and may change in a minor release. See [API stability](./stability.md#experimental).
 
 ```ts
 import { Chart } from "blazeplot";

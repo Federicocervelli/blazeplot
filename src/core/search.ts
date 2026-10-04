@@ -27,6 +27,19 @@ export function upperBoundArray(values: readonly number[], value: number): numbe
   return upperBound(values.length, (index) => values[index]!, value);
 }
 
+/** @internal Return a function that warns once when a buffer skips or ignores a non-finite X. */
+export function nonFiniteXWarning(owner: string, action: string): (x: number) => void {
+  let warned = false;
+  return (x) => {
+    if (warned) return;
+    warned = true;
+    console.warn(
+      `${owner} received non-finite X ${x}; ${action}. X values must be finite numbers. ` +
+        "This warning is shown once per buffer.",
+    );
+  };
+}
+
 /** @internal Return a check that warns once when a buffer's X values stop ascending. */
 export function unsortedXWarning(owner: string): (previous: number, next: number) => void {
   let warned = false;

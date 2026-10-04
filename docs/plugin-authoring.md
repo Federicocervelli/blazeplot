@@ -2,6 +2,8 @@
 
 A BlazePlot plugin is a small object installed with `new Chart(target, { plugins: [...] })`. Use plugins for UI or behavior that should stay outside the core renderer: legends, tooltips, custom overlays, interaction modes, or app-specific controls.
 
+> **Experimental.** The plugin contract (`ChartPlugin`, `ChartPluginContext`, `ChartPluginHandle`, `ChartLayoutReservation`, `setLayoutReservation`, `emitSelect`) and `getCamera()` are tagged `@experimental` in the type declarations. They may change in a minor release until promoted to stable; see [API stability](./stability.md#experimental). Built-in plugin options are stable.
+
 ```ts
 import type { ChartPlugin } from "blazeplot";
 

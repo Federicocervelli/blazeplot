@@ -225,7 +225,7 @@ describe("UniformRingBuffer vs reference model", () => {
       for (let step = 0; step < 60; step++) {
         const n = r() < 0.5 ? 1 : int(r, 0, cap * 3);
         const ys = Array.from({ length: n }, () => randomY(r));
-        if (n === 1) buf.push(NaN, ys[0]!);
+        if (n === 1) buf.push(buf.length === 0 ? xStart : 0, ys[0]!); // x only seeds an empty buffer
         else buf.appendY(ys);
         all = all.concat(ys);
         const ret = all.slice(-cap);
@@ -437,29 +437,37 @@ describe("invalid input: documented current behavior", () => {
     }
   });
 
-  it("RingBuffer NaN X is stored and defeats the order check silently", () => {
+  it("RingBuffer skips NaN X with a one-time warning, so the order check keeps working", () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       const ring = new RingBuffer(8);
       ring.push(1, 1);
       ring.push(NaN, 2);
-      ring.push(0, 3); // after NaN, out-of-order is not detected (NaN comparisons are false)
-      expect(warn).not.toHaveBeenCalled();
-      expect(ring.length).toBe(3);
-      expect(Number.isNaN(ring.getX(1))).toBe(true);
+      expect(ring.length).toBe(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+      ring.push(0, 3); // genuinely out of order: still detected because NaN was never stored
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(ring.length).toBe(2);
+      expect(ring.getX(0)).toBe(1);
     } finally {
       warn.mockRestore();
     }
   });
 
-  it("RingBuffer stores +/-Infinity X without error", () => {
-    const ring = new RingBuffer(4);
-    ring.append([-Infinity, 0, Infinity], [1, 2, 3]);
-    expect(ring.length).toBe(3);
-    expect(ring.lowerBoundX(0)).toBe(1);
-    expect(ring.upperBoundX(0)).toBe(2);
-    expect(ring.lowerBoundX(Infinity)).toBe(2);
-    expect(ring.upperBoundX(Infinity)).toBe(3);
+  it("RingBuffer skips +/-Infinity X in bulk appends and keeps the finite samples", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const ring = new RingBuffer(4);
+      ring.append([-Infinity, 0, Infinity], [1, 2, 3]);
+      expect(ring.length).toBe(1);
+      expect(ring.getX(0)).toBe(0);
+      expect(ring.getY(0)).toBe(2);
+      expect(ring.lowerBoundX(0)).toBe(0);
+      expect(ring.upperBoundX(0)).toBe(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("StaticDataset does not validate X order; fromObjects rejects non-finite X", () => {
@@ -485,8 +493,15 @@ describe("invalid input: documented current behavior", () => {
 
   it("UniformRingBuffer keeps the previous cursor when seeded with a non-finite X", () => {
     const buf = new UniformRingBuffer(4, { xStart: 5 });
-    buf.append([NaN], [1]);
-    expect(buf.getX(0)).toBe(5);
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      buf.append([NaN], [1]);
+      expect(buf.getX(0)).toBe(5);
+      expect(buf.length).toBe(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("out-of-range or non-integer indices: updateY returns false, getters throw", () => {
