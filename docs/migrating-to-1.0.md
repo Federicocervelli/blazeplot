@@ -4,12 +4,12 @@ This guide is for applications and plugins written against BlazePlot 0.x. It lis
 
 The list was produced by comparing the published declarations of 0.5.5 with the 1.0 declarations (the `api/public-api.md` snapshot), plus the 1.0 changes that alter runtime behavior. If you are on 0.4 or older, apply the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) first (most upgrades there are mechanical renames), then come back here. Release candidates are published to the npm `rc` dist-tag until 1.0 ships.
 
-Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals, with one typing fix and one data-ingestion rule.
+Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals and two flame graph helpers, with chart data export moved to `blazeplot/export`, one typing fix, and one data-ingestion rule.
 
 ## What did not change
 
 - The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`/`addHistogram`, datasets, and every built-in plugin option are unchanged.
-- Entry points and subpaths are the same: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and `blazeplot/plugins/*`.
+- Entry points and subpaths are the same: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and `blazeplot/plugins/*`. What lives in `blazeplot/data` and `blazeplot/export` changed (see change 6).
 - The package was already ESM only and already required WebGL2; 1.0 now states both as policy.
 
 ## Breaking changes
@@ -126,7 +126,68 @@ These types appeared in public signatures but were not exported in 0.5.5. They a
 | Type | Entry |
 |---|---|
 | `MinMaxY`, `StaticDatasetData` | `blazeplot` |
-| `ExportableChart` | `blazeplot/data` |
+| `ExportableChart` | `blazeplot/export` |
+
+### 6. Chart data export moved from `blazeplot/data` to `blazeplot/export`
+
+`exportChartData`, `chartDataToCSV`, and their types (`ExportableChart`, `ChartDataExport`, `ChartDataExportOptions`, `ChartDataCsvOptions`, `ChartDataSeries`, `ChartDataSample`, `ChartDataSource`) moved to `blazeplot/export`, next to the screenshot download and clipboard helpers. `blazeplot/data` now holds only pure, chart-agnostic transforms: `binSamples`, `rollingMean`, and their types (`XYSample`, `SampleReducer`, `ResampleX`, `ResampleOptions`, `BinnedSample`, `RollingMeanSample`). There is no re-export: importing the moved names from `blazeplot/data` fails with "Module has no exported member". Behavior is unchanged.
+
+Before (0.5):
+
+<!-- snippet: skip intentionally old 0.5 import path; blazeplot/data no longer exports chart data export -->
+```ts
+import { binSamples, chartDataToCSV, exportChartData, type ChartDataExport } from "blazeplot/data";
+```
+
+After (1.0):
+
+```ts
+import { Chart } from "blazeplot";
+import { binSamples } from "blazeplot/data";
+import { chartDataToCSV, downloadBlob, exportChartData, type ChartDataExport } from "blazeplot/export";
+
+const chart = new Chart(element);
+const visible: ChartDataExport = exportChartData(chart, { range: "visible" });
+downloadBlob(new Blob([chartDataToCSV(visible)], { type: "text/csv" }), "visible.csv");
+const binned = binSamples(visible.series[0]?.samples ?? [], 1_000);
+console.log(binned.length);
+chart.dispose();
+```
+
+### 7. `buildFlameGraphModel` and `pickFrame` are no longer exported
+
+`blazeplot/plugins/flamegraph` no longer exports `buildFlameGraphModel` or `pickFrame`; both are now internal. The plugin already builds and picks for you. `FlameGraphModel`, `FlameGraphRenderableFrame`, and `FlameGraphLevelIndex` stay exported because `setModel`, `FlameGraphPick`, and `tooltipFormatter` use them, and `parseFoldedStacks` and `buildStatusChartModel` stay public.
+
+Before (0.5):
+
+<!-- snippet: skip intentionally old 0.5 API; buildFlameGraphModel and pickFrame are no longer exported -->
+```ts
+import { buildFlameGraphModel, flameGraphPlugin, pickFrame } from "blazeplot/plugins/flamegraph";
+
+const model = buildFlameGraphModel(stacks, { flameChart: true });
+const flame = flameGraphPlugin({ model });
+const frame = pickFrame(model, dataX, dataY);
+```
+
+After (1.0): pass the stacks and build options to the plugin, replace them with `setFoldedStacks`, and pick with `plugin.pick(clientX, clientY)`.
+
+```ts
+import { Chart } from "blazeplot";
+import { flameGraphPlugin } from "blazeplot/plugins/flamegraph";
+
+const stacks = [
+  { stack: ["root", "parse"], value: 28 },
+  { stack: ["root", "render"], value: 16 },
+];
+const flame = flameGraphPlugin({ foldedStacks: stacks, build: { flameChart: true } });
+const chart = new Chart(element, { axes: false, grid: false, plugins: [flame] });
+
+flame.setFoldedStacks(stacks, { flameChart: true });
+element.addEventListener("click", (event) => {
+  console.log(flame.pick(event.clientX, event.clientY)?.frame.name);
+});
+chart.dispose();
+```
 
 ## Platform requirements
 
@@ -202,6 +263,8 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 3. Search for `WebGL2Backend`, `GpuBackend`, `backendFactory`, `DrawSpec`, `BufferSpec`, `AttributeSpec`, `UniformValue`, `GpuBuffer`, `GpuProgram`, `GpuCapabilities`, `GpuResource`, `ChartBackendFactory`. Remove them; use `isWebGL2Available()` and `WebGL2UnavailableError` for support checks.
 4. Search for `ChartSelectEvent<`, `emitSelect(`, and `subscribe("select"`. Drop the type argument, emit `SelectionState | null`, and handle `selection === null`.
 5. Audit data feeds into `RingBuffer` and `UniformRingBuffer` for non-finite X (clock glitches, parse failures). Sanitize upstream and expect one console warning per buffer if any slip through. Represent gaps as non-finite Y.
-6. If you write custom plugins or custom fast-path datasets, note they are experimental: pin a 1.x range and read each minor changelog.
-7. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-8. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
+6. Search for imports of `exportChartData`, `chartDataToCSV`, `ExportableChart`, and `ChartData*` types from `blazeplot/data` and import them from `blazeplot/export` instead. Keep `binSamples` and `rollingMean` on `blazeplot/data`.
+7. Search for `buildFlameGraphModel` and `pickFrame`. Pass `foldedStacks` and `build` to `flameGraphPlugin()` (or call `setFoldedStacks`), and use `plugin.pick(clientX, clientY)` for hit testing.
+8. If you write custom plugins or custom fast-path datasets, note they are experimental: pin a 1.x range and read each minor changelog.
+9. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
+10. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.

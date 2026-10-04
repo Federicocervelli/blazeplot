@@ -27,8 +27,8 @@ const expectedExports: Record<string, readonly string[]> = {
     "isWebGL2Available",
   ],
   "./linked": ["createLinkedCharts"],
-  "./data": ["binSamples", "chartDataToCSV", "exportChartData", "rollingMean"],
-  "./export": ["copyChartScreenshotToClipboard", "downloadBlob", "downloadChartScreenshot"],
+  "./data": ["binSamples", "rollingMean"],
+  "./export": ["chartDataToCSV", "copyChartScreenshotToClipboard", "downloadBlob", "downloadChartScreenshot", "exportChartData"],
   "./plugins/legend": ["legendPlugin"],
   "./plugins/tooltip": ["tooltipPlugin"],
   "./plugins/interactions": ["interactionsPlugin"],
@@ -36,7 +36,7 @@ const expectedExports: Record<string, readonly string[]> = {
   "./plugins/selection": ["selectionPlugin"],
   "./plugins/crosshair": ["crosshairPlugin"],
   "./plugins/navigator": ["navigatorPlugin"],
-  "./plugins/flamegraph": ["buildFlameGraphModel", "buildStatusChartModel", "flameGraphPlugin", "parseFoldedStacks", "pickFrame"],
+  "./plugins/flamegraph": ["buildStatusChartModel", "flameGraphPlugin", "parseFoldedStacks"],
 };
 
 interface PackageJson {

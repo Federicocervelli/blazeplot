@@ -16,7 +16,7 @@ This page is generated from the built package. Use it as an index of import path
 | Tooltips, legends, annotations, selection, flame graphs | `blazeplot/plugins/*` subpaths |
 | React | Create and dispose `Chart` in an effect |
 | Linked dashboards | `blazeplot/linked` with `panelPlugins` |
-| Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |
+| Image/data export | `chart.screenshot()`, `blazeplot/export` |
 
 Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./examples.md), [Frameworks](./framework-integration.md), [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance](./performance-recipes.md), [Benchmarks](./benchmarks.md), [Plugins](./built-in-plugins.md), [Theme & layout](./theming-and-layout.md), [Author plugins](./plugin-authoring.md), [Troubleshooting](./troubleshooting.md), [Browser](./browser-support.md), [Migrating to 1.0](./migrating-to-1.0.md), [Migration](./versioning-and-migration.md), [Stability](./stability.md), [Errors](./error-handling.md), [Accessibility](./accessibility.md), [Roadmap](./roadmap.md).
 
@@ -26,8 +26,8 @@ Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./example
 |---|---|
 | `blazeplot` | Chart, datasets, data contracts, theming, and the WebGL2 backend. |
 | `blazeplot/linked` | Multi-panel layouts with shared X and per-panel plugins. |
-| `blazeplot/data` | Pure chart data export and transform helpers. |
-| `blazeplot/export` | Screenshot download and clipboard helpers. |
+| `blazeplot/data` | Pure, chart-agnostic data transforms (binning, rolling mean). |
+| `blazeplot/export` | Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers. |
 | `blazeplot/plugins/legend` | Built-in legend plugin. |
 | `blazeplot/plugins/tooltip` | Built-in tooltip plugin. |
 | `blazeplot/plugins/interactions` | Built-in pan, zoom, axis interaction, and reset plugin. |
@@ -47,8 +47,8 @@ Generated from `dist/` after the package build.
 |---|---|---:|
 | root entry | `dist/index.js` | 9 KiB |
 | linked entry | `dist/linked.js` | 2 KiB |
-| data entry | `dist/data.js` | 4 KiB |
-| export entry | `dist/export.js` | 1 KiB |
+| data entry | `dist/data.js` | 2 KiB |
+| export entry | `dist/export.js` | 4 KiB |
 | interactions plugin | `dist/plugins/interactions.js` | 15 KiB |
 | annotations plugin | `dist/plugins/annotations.js` | 9 KiB |
 | navigator plugin | `dist/plugins/navigator.js` | 8 KiB |

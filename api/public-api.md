@@ -1462,7 +1462,7 @@ function createLinkedCharts(target: HTMLElement, options: LinkedChartsOptions): 
 
 ### `blazeplot/data`
 
-17 exports.
+8 exports.
 
 #### interface BinnedSample
 
@@ -1473,6 +1473,69 @@ interface BinnedSample extends XYSample {
     readonly count: number;
     readonly minY: number;
     readonly maxY: number;
+}
+```
+
+#### interface ResampleOptions
+
+```ts
+interface ResampleOptions {
+    readonly reducer?: SampleReducer;
+    readonly align?: number;
+    readonly x?: ResampleX;
+}
+```
+
+#### type ResampleX
+
+```ts
+type ResampleX = "start" | "center" | "end";
+```
+
+#### interface RollingMeanSample
+
+```ts
+interface RollingMeanSample extends XYSample {
+    readonly count: number;
+}
+```
+
+#### type SampleReducer
+
+```ts
+type SampleReducer = "mean" | "sum" | "min" | "max" | "first" | "last";
+```
+
+#### interface XYSample
+
+```ts
+interface XYSample {
+    readonly x: number;
+    readonly y: number;
+}
+```
+
+#### function binSamples
+
+```ts
+function binSamples(samples: readonly XYSample[], binSize: number, options?: ResampleOptions): BinnedSample[];
+```
+
+#### function rollingMean
+
+```ts
+function rollingMean(samples: readonly XYSample[], windowSize: number): RollingMeanSample[];
+```
+
+### `blazeplot/export`
+
+14 exports.
+
+#### interface ChartClipboardOptions
+
+```ts
+interface ChartClipboardOptions extends ChartScreenshotOptions {
+    readonly clipboard?: Clipboard;
 }
 ```
 
@@ -1544,93 +1607,24 @@ interface ChartDataSeries {
 type ChartDataSource = "all" | "visible" | "selection";
 ```
 
-#### type ExportableChart
-
-```ts
-type ExportableChart = Pick<Chart, "getSeriesState" | "getViewport">;
-```
-
-#### interface ResampleOptions
-
-```ts
-interface ResampleOptions {
-    readonly reducer?: SampleReducer;
-    readonly align?: number;
-    readonly x?: ResampleX;
-}
-```
-
-#### type ResampleX
-
-```ts
-type ResampleX = "start" | "center" | "end";
-```
-
-#### interface RollingMeanSample
-
-```ts
-interface RollingMeanSample extends XYSample {
-    readonly count: number;
-}
-```
-
-#### type SampleReducer
-
-```ts
-type SampleReducer = "mean" | "sum" | "min" | "max" | "first" | "last";
-```
-
-#### interface XYSample
-
-```ts
-interface XYSample {
-    readonly x: number;
-    readonly y: number;
-}
-```
-
-#### function binSamples
-
-```ts
-function binSamples(samples: readonly XYSample[], binSize: number, options?: ResampleOptions): BinnedSample[];
-```
-
-#### function chartDataToCSV
-
-```ts
-function chartDataToCSV(data: ChartDataExport, options?: ChartDataCsvOptions): string;
-```
-
-#### function exportChartData
-
-```ts
-function exportChartData(chart: ExportableChart, options?: ChartDataExportOptions): ChartDataExport;
-```
-
-#### function rollingMean
-
-```ts
-function rollingMean(samples: readonly XYSample[], windowSize: number): RollingMeanSample[];
-```
-
-### `blazeplot/export`
-
-5 exports.
-
-#### interface ChartClipboardOptions
-
-```ts
-interface ChartClipboardOptions extends ChartScreenshotOptions {
-    readonly clipboard?: Clipboard;
-}
-```
-
 #### interface ChartDownloadOptions
 
 ```ts
 interface ChartDownloadOptions extends ChartScreenshotOptions {
     readonly filename?: string;
 }
+```
+
+#### type ExportableChart
+
+```ts
+type ExportableChart = Pick<Chart, "getSeriesState" | "getViewport">;
+```
+
+#### function chartDataToCSV
+
+```ts
+function chartDataToCSV(data: ChartDataExport, options?: ChartDataCsvOptions): string;
 ```
 
 #### function copyChartScreenshotToClipboard
@@ -1649,6 +1643,12 @@ function downloadBlob(blob: Blob, filename?: string): void;
 
 ```ts
 function downloadChartScreenshot(chart: Chart, options?: ChartDownloadOptions): Promise<Blob>;
+```
+
+#### function exportChartData
+
+```ts
+function exportChartData(chart: ExportableChart, options?: ChartDataExportOptions): ChartDataExport;
 ```
 
 ### `blazeplot/plugins/legend`
@@ -2194,7 +2194,7 @@ function navigatorPlugin(options?: NavigatorPluginOptions): NavigatorPlugin;
 
 ### `blazeplot/plugins/flamegraph`
 
-16 exports.
+14 exports.
 
 #### interface BuildFlameGraphModelOptions
 
@@ -2349,12 +2349,6 @@ interface FlameGraphStatusSpan<T = unknown> {
 }
 ```
 
-#### function buildFlameGraphModel
-
-```ts
-function buildFlameGraphModel<T = unknown>(input: string | readonly FlameGraphFoldedStack<T>[], options?: BuildFlameGraphModelOptions): FlameGraphModel<T>;
-```
-
 #### function buildStatusChartModel
 
 ```ts
@@ -2371,10 +2365,4 @@ function flameGraphPlugin<T = unknown>(options?: FlameGraphPluginOptions<T>): Fl
 
 ```ts
 function parseFoldedStacks<T = unknown>(input: string, separator?: string): FlameGraphFoldedStack<T>[];
-```
-
-#### function pickFrame
-
-```ts
-function pickFrame<T>(model: FlameGraphModel<T>, dataX: number, dataY: number): FlameGraphRenderableFrame<T> | null;
 ```

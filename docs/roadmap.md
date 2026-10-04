@@ -48,7 +48,7 @@ BlazePlot is a fast WebGL2 plotting engine for dense browser time-series charts.
    - [ ] Add keyboard and mobile editing affordances.
 
 7. **Data pipeline helpers**
-   - [x] `blazeplot/data` export and transform helpers.
+   - [x] `blazeplot/export` chart data export and `blazeplot/data` transform helpers.
    - [x] Add first-class histogram helpers for one-dimensional value distributions.
    - [ ] Add optional ingestion helpers for CSV, JSON, typed arrays, and worker-fed batches.
    - [ ] Document worker/server-side transform guidance for high-rate streams.

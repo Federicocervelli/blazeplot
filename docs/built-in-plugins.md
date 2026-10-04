@@ -74,7 +74,7 @@ The plugin handle supports `add`, `remove`, `clear`, `setAnnotations`, `getAnnot
 
 ```ts
 import { Chart } from "blazeplot";
-import { exportChartData } from "blazeplot/data";
+import { exportChartData } from "blazeplot/export";
 import { selectionPlugin } from "blazeplot/plugins/selection";
 
 const selection = selectionPlugin({
@@ -126,19 +126,17 @@ navigator.refresh();
 
 `flameGraphPlugin` adds an optional WebGL2 overlay for FlameGraph-style stack traces and lane/status charts. It lives in its own subpath so the core XY renderer stays small.
 
-> **Experimental.** `blazeplot/plugins/flamegraph` and its exports (`flameGraphPlugin`, `buildFlameGraphModel`, `parseFoldedStacks`, `pickFrame`, `buildStatusChartModel`, and their types) are tagged `@experimental` and may change in a minor release. See [API stability](./stability.md#experimental).
+> **Experimental.** `blazeplot/plugins/flamegraph` and its exports (`flameGraphPlugin`, `parseFoldedStacks`, `buildStatusChartModel`, and their types) are tagged `@experimental` and may change in a minor release. See [API stability](./stability.md#experimental).
 
 ```ts
 import { Chart } from "blazeplot";
-import { buildFlameGraphModel, flameGraphPlugin } from "blazeplot/plugins/flamegraph";
-
-const model = buildFlameGraphModel([
-  { stack: ["root", "parse", "tokenize"], value: 28 },
-  { stack: ["root", "render", "paint"], value: 16 },
-]);
+import { flameGraphPlugin } from "blazeplot/plugins/flamegraph";
 
 const flame = flameGraphPlugin({
-  model,
+  foldedStacks: [
+    { stack: ["root", "parse", "tokenize"], value: 28 },
+    { stack: ["root", "render", "paint"], value: 16 },
+  ],
   search: "render",
   hoverHighlight: true,
   hoverHighlightColor: [1, 0.95, 0.35, 1],
@@ -152,7 +150,7 @@ const chart = new Chart(element, {
 });
 ```
 
-Use `parseFoldedStacks(text)` for Brendan Gregg folded-stack text, `buildFlameGraphModel(..., { flameChart: true })` for chronological unmerged stacks, or `buildStatusChartModel(spans)` for explicit `{ start, end, depth }` intervals. The plugin renders rectangles in WebGL2 and labels on a 2D canvas overlay; `chart.screenshot()` includes both overlay canvases.
+`foldedStacks` also accepts Brendan Gregg folded-stack text (`parseFoldedStacks(text)` returns the parsed samples if you need them). Pass `build: { flameChart: true }` for chronological unmerged stacks, or `statusSpans` (or `buildStatusChartModel(spans)` for the `model` option) for explicit `{ start, end, depth }` intervals. To replace the data later, call `flame.setFoldedStacks(stacks, buildOptions)`, `flame.setStatusSpans(spans)`, or `flame.setModel(model)`; `flame.pick(clientX, clientY)` returns the frame under a point. The plugin renders rectangles in WebGL2 and labels on a 2D canvas overlay; `chart.screenshot()` includes both overlay canvases.
 
 ## Linked charts
 

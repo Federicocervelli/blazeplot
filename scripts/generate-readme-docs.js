@@ -34,8 +34,8 @@ const pkg = JSON.parse(readFileSync(packagePath, "utf-8"));
 const exportDescriptions = new Map([
   [".", "Chart, datasets, data contracts, theming, and the WebGL2 backend."],
   ["./linked", "Multi-panel layouts with shared X and per-panel plugins."],
-  ["./data", "Pure chart data export and transform helpers."],
-  ["./export", "Screenshot download and clipboard helpers."],
+  ["./data", "Pure, chart-agnostic data transforms (binning, rolling mean)."],
+  ["./export", "Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers."],
   ["./plugins/interactions", "Built-in pan, zoom, axis interaction, and reset plugin."],
   ["./plugins/legend", "Built-in legend plugin."],
   ["./plugins/tooltip", "Built-in tooltip plugin."],
@@ -276,7 +276,7 @@ function renderGeneratedDocs(options = {}) {
     "| Tooltips, legends, annotations, selection, flame graphs | `blazeplot/plugins/*` subpaths |",
     "| React | Create and dispose `Chart` in an effect |",
     "| Linked dashboards | `blazeplot/linked` with `panelPlugins` |",
-    "| Image/data export | `chart.screenshot()`, `blazeplot/export`, `blazeplot/data` |",
+    "| Image/data export | `chart.screenshot()`, `blazeplot/export` |",
     "",
     `Guides: ${renderGuideLinks(guideBasePath)}.`,
   ].join("\n");

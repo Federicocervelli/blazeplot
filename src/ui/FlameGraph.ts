@@ -258,9 +258,8 @@ export function parseFoldedStacks<T = unknown>(input: string, separator = ";"): 
 }
 
 /**
- * Build a renderable flame graph model from frames or folded stacks.
- *
- * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ * @internal Build a renderable flame graph model from folded stacks. Not part of the public API:
+ * pass `foldedStacks` and `build` to `flameGraphPlugin()` or call `plugin.setFoldedStacks()` instead.
  */
 export function buildFlameGraphModel<T = unknown>(
   input: string | readonly FlameGraphFoldedStack<T>[],
@@ -669,9 +668,8 @@ function pickVisibleFrame<T>(visible: readonly VisibleFrame<T>[], plotX: number,
 }
 
 /**
- * Return the rendered frame at a model coordinate, if any.
- *
- * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ * @internal Return the rendered frame at a model coordinate, if any. Not part of the public API:
+ * use `plugin.pick(clientX, clientY)` instead.
  */
 export function pickFrame<T>(model: FlameGraphModel<T>, dataX: number, dataY: number): FlameGraphRenderableFrame<T> | null {
   const depth = Math.floor(dataY);

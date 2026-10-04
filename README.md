@@ -96,8 +96,8 @@ Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](doc
 |---|---|
 | `blazeplot` | Chart, datasets, data contracts, theming, and the WebGL2 backend. |
 | `blazeplot/linked` | Multi-panel layouts with shared X and per-panel plugins. |
-| `blazeplot/data` | Pure chart data export and transform helpers. |
-| `blazeplot/export` | Screenshot download and clipboard helpers. |
+| `blazeplot/data` | Pure, chart-agnostic data transforms (binning, rolling mean). |
+| `blazeplot/export` | Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers. |
 | `blazeplot/plugins/legend` | Built-in legend plugin. |
 | `blazeplot/plugins/tooltip` | Built-in tooltip plugin. |
 | `blazeplot/plugins/interactions` | Built-in pan, zoom, axis interaction, and reset plugin. |
