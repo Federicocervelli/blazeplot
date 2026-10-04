@@ -12,11 +12,30 @@ BlazePlot follows npm semver. Use this page to decide whether a change is patch/
 
 ## Stability expectations
 
-- `blazeplot` and the documented subpath exports are intended to stay stable within a major version.
+- `blazeplot` and the documented subpath exports are intended to stay stable within a major version. [API stability](./stability.md) classifies each export as stable, experimental, or internal.
 - Built-in plugin options may grow over time, but existing option names should be preserved when practical.
-- Low-level renderer/backend types are the most likely to change before a future backend is added.
-- Deprecated names may stay as aliases for at least one minor version when that does not create maintenance risk.
+- Low-level renderer/backend types are internal and the most likely to change before a future backend is added.
+- Deprecated names follow the [deprecation process](#deprecation-process) below.
 - Generated docs and package export smoke tests should reflect the shipped package, not only source files.
+- Errors, console warnings, and invalid-input behavior are documented in [Error handling](./error-handling.md); changing a documented behavior there is a breaking change.
+
+## TypeScript support
+
+BlazePlot ships its own `.d.ts` files; no `@types` package is needed.
+
+- **Minimum supported TypeScript: 5.0.** The published declarations were compiled and checked with `skipLibCheck: false` against a consumer importing every entry point and subpath, under `moduleResolution: "bundler"` and `"node16"`, with TypeScript 5.0.4, 5.4.5, 5.9.3, 6.0.2, and 7.0.2 (checked on 0.5.5). Older compilers are not tested; 4.9 also accepted the declarations under `node16` resolution during that check, but it is outside the support policy.
+- `moduleResolution` must understand package `exports` and subpath imports: `bundler`, `node16`, or `nodenext`. The legacy `node`/`node10` setting cannot resolve subpaths such as `blazeplot/plugins/tooltip`.
+- The declarations reference DOM types (`HTMLElement`, `WebGL2RenderingContext`), so your `lib` must include `"DOM"`.
+- Proposed policy, pending maintainer confirmation: raising the minimum TypeScript version is a minor-release change announced in the changelog, and the new minimum will already be well past its release date.
+
+The minimum is a policy statement, not yet enforced in CI. Maintainers: see the open decision in the pull request that added this page about adding a TypeScript-floor job.
+
+## Module format and runtime
+
+- **ESM only.** `package.json` declares `"type": "module"` and exposes only an `import` condition. `require("blazeplot")` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`; load it with `import` or `await import("blazeplot")`. CommonJS and UMD builds are not planned.
+- **Output target** is modern browsers with WebGL2 (see [Browser support](./browser-support.md)). The library is built with the Vite `esnext` target, so the published JavaScript is not transpiled for older engines; if you need to support one, transpile `node_modules/blazeplot` with your bundler.
+- **Bundlers** such as Vite, esbuild, Rollup, and webpack 5 resolve the `exports` map. Import only the documented entry points; deep paths into `dist/` are not exported.
+- **Node.js** can import the package for tooling and type checks, but charts only run in a browser DOM with WebGL2.
 
 ## Migrating to 0.5
 
@@ -97,17 +116,32 @@ Use this when reviewing a PR that changes public behavior.
 | Bundle size | `bun run test:bundle-size` and aggregate runtime-size notes when chunking changes. |
 | Docs | Examples include complete imports, lifecycle cleanup, and regenerated README/API docs when public symbols change. |
 
-## Deprecation guidance
+## Deprecation process
+
+This is the process for retiring a public API. Which APIs it covers depends on their tier in [API stability](./stability.md): stable APIs always follow it, experimental APIs may skip it with a changelog note, and internal APIs are not covered.
+
+> **Proposal, pending maintainer confirmation.** Nothing in the codebase emits deprecation warnings yet, and no API is currently deprecated. The steps below describe the intended process from 1.0 on; the minimum time window and the warning helper are open decisions.
 
 When replacing a public API:
 
-1. Add the new API first.
-2. Keep the old name as an alias when practical.
-3. Document the replacement in the changelog and affected guide page.
-4. Add test coverage for both old and new names while the alias exists.
-5. Remove the old name only in a major release, or when the old name was never documented and keeping it creates real risk.
+1. **Add the replacement first**, with tests and docs, in a minor release.
+2. **Mark the old API `@deprecated`** in its TSDoc comment, naming the replacement and the release that deprecated it:
 
-Prefer warnings in docs and release notes over runtime console warnings in hot paths. Chart rendering and ingestion code should avoid per-frame deprecation work.
+   ```ts
+   /** @deprecated Since 1.3.0. Use `chart.setViewport(viewport, axis)` instead. Removed in 2.0.0. */
+   ```
+
+   The tag shows as a strikethrough in editors and in the generated declarations.
+3. **Keep the old API working** with its previous behavior. Prefer an alias that forwards to the new API.
+4. **Warn once in development.** When the deprecated API is used, log one `console.warn` per API per page load, in the form `BlazePlot: chart.foo() is deprecated since 1.3.0; use chart.bar() instead. It will be removed in 2.0.0.` Rules:
+   - Warn from constructors, option parsing, and one-off calls only. Never warn inside per-frame, per-sample, or per-append code; for those APIs rely on `@deprecated` and the changelog.
+   - Skip the warning in production builds (when `process.env.NODE_ENV === "production"` is statically known to bundlers).
+   - Route every warning through one shared helper so it deduplicates and can be silenced in tests.
+5. **Document the move**: add the old-to-new row to the migration table on this page and a "Deprecated" entry in `changelogs/vX.Y.Z.md`.
+6. **Test both names** while the alias exists, including that the warning fires once.
+7. **Remove only in a major release**, and only after the API has been deprecated for at least one full minor release (proposed minimum: 6 months or two minors, whichever is longer). An undocumented or experimental API, or an API whose retention creates a security or correctness risk, can be removed sooner with a changelog note.
+
+Chart rendering and ingestion code should avoid per-frame deprecation work.
 
 ## For maintainers changing public APIs
 

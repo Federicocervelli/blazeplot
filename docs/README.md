@@ -11,7 +11,9 @@ Use this map to decide where a topic belongs before adding or moving documentati
 | Stream or downsample data | [Live data](./live-data.md) | [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), [Examples](./examples.md#live-line-chart) |
 | Add interaction or overlays | [Built-in plugins](./built-in-plugins.md) | [Theming and layout](./theming-and-layout.md), [Plugin authoring](./plugin-authoring.md) |
 | Build a dashboard | [Examples](./examples.md#linked-charts) | [Built-in plugins](./built-in-plugins.md), [Performance recipes](./performance-recipes.md) |
-| Debug a chart | [Troubleshooting](./troubleshooting.md) | [Browser support](./browser-support.md), [Data semantics](./data-semantics.md) |
+| Debug a chart | [Troubleshooting](./troubleshooting.md) | [Error handling](./error-handling.md), [Browser support](./browser-support.md), [Data semantics](./data-semantics.md) |
+| Decide what to depend on | [API stability](./stability.md) | [Versioning and migration](./versioning-and-migration.md), [Error handling](./error-handling.md) |
+| Make a chart accessible | [Accessibility](./accessibility.md) | [Theming and layout](./theming-and-layout.md) |
 | Upgrade or review API changes | [Versioning and migration](./versioning-and-migration.md) | [API reference](./api-reference.md), changelogs |
 | Maintain releases and docs | [Internal local development](./internal/local-development.md) | [Release checklist](./internal/release-checklist.md), [GitHub workflows](./internal/github-workflows.md) |
 
@@ -41,7 +43,10 @@ These pages are visible on the docs site and should be useful to package users.
 ### Reference
 
 - [Browser support](./browser-support.md) — WebGL2 requirements, unsupported-browser fallbacks, SSR, clipboard, and downloads.
-- [Versioning and migration](./versioning-and-migration.md) — semver policy, upgrade checklist, migration-risk review, and deprecation guidance.
+- [Versioning and migration](./versioning-and-migration.md) — semver policy, TypeScript and ESM support, upgrade checklist, migration-risk review, and the deprecation process.
+- [API stability](./stability.md) — which exports and subpaths are stable, experimental, or internal.
+- [Error handling](./error-handling.md) — errors thrown, console output, and behavior for invalid data, viewports, and WebGL failures.
+- [Accessibility](./accessibility.md) — ARIA, keyboard navigation, built-in plugin behavior, and known limits.
 - [Roadmap](./roadmap.md) — current status, priorities, and non-goals.
 - [API reference](./api-reference.md) — generated package entry points, bundle-size table, and public exports.
 
@@ -63,5 +68,6 @@ These pages are primarily for contributors and release maintainers.
 - Keep correctness rules in `data-semantics.md`.
 - Keep performance decisions in `performance-recipes.md`.
 - Keep plugin usage in `built-in-plugins.md`; custom plugin lifecycle belongs in `plugin-authoring.md`.
+- Keep support promises in `stability.md` (what is stable), `error-handling.md` (what throws or logs), and `versioning-and-migration.md` (versions, TypeScript, deprecation). Do not restate them elsewhere; link instead.
 - Keep maintainer-only process in `documentation-contributions.md` or `docs/internal/*`.
 - Do not hand-edit generated sections in `README.md`, `docs/api-reference.md`, or `docs/benchmarks.md`; run `bun run docs:readme` instead.

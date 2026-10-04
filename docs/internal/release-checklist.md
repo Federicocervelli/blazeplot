@@ -14,7 +14,7 @@ bun install
 bun run release patch      # or minor / major
 ```
 
-This bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates `dist/`, `docs/api-reference.md`, and the README docs block. Edit the changelog into user-facing notes and commit. Benchmark tables are appended by the release workflow.
+This bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates `dist/`, `docs/api-reference.md`, and the README docs block. Edit the changelog into user-facing notes, add the release to the top of the list in the root `CHANGELOG.md`, and commit. Benchmark tables are appended by the release workflow.
 
 ## 2. Open the release PR
 

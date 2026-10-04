@@ -106,6 +106,27 @@ export const DOC_PAGES: readonly DocPage[] = [
     loadMarkdown: () => import("../../docs/versioning-and-migration.md?raw").then((module) => module.default),
   },
   {
+    slug: "stability",
+    title: "Stability",
+    description: "What is stable, experimental, and internal in each BlazePlot export and subpath.",
+    sourcePath: "docs/stability.md",
+    loadMarkdown: () => import("../../docs/stability.md?raw").then((module) => module.default),
+  },
+  {
+    slug: "error-handling",
+    title: "Errors",
+    description: "Errors thrown, console output, and how invalid data and viewports are handled.",
+    sourcePath: "docs/error-handling.md",
+    loadMarkdown: () => import("../../docs/error-handling.md?raw").then((module) => module.default),
+  },
+  {
+    slug: "accessibility",
+    title: "Accessibility",
+    description: "ARIA, keyboard navigation, and the limits of canvas charts for assistive technology.",
+    sourcePath: "docs/accessibility.md",
+    loadMarkdown: () => import("../../docs/accessibility.md?raw").then((module) => module.default),
+  },
+  {
     slug: "api-reference",
     title: "API reference",
     description: "Generated package entry point, symbol, bundle size, and public API reference.",
@@ -139,7 +160,7 @@ export const DOC_NAV_SECTIONS: readonly DocNavSection[] = [
   { title: "Start", slugs: ["overview","docs-map","examples"] },
   { title: "Data and performance", slugs: ["live-data","data-semantics","performance-recipes","benchmarks"] },
   { title: "UI", slugs: ["built-in-plugins","theming-and-layout","plugin-authoring"] },
-  { title: "Reference", slugs: ["troubleshooting","browser-support","versioning-and-migration","api-reference"] },
+  { title: "Reference", slugs: ["troubleshooting","browser-support","versioning-and-migration","stability","error-handling","accessibility","api-reference"] },
 ] as const;
 
 export function getDocPage(slug: string): DocPage | undefined {
