@@ -108,6 +108,24 @@ describe("Chart construct / dispose", () => {
     expect(backends[0]!.destroyCount).toBe(1);
   });
 
+  it("releases its WebGL context on dispose instead of leaving it to GC", () => {
+    const chart = make();
+    chart.start();
+    expect(backends[0]!.contextReleases).toBe(0);
+    chart.dispose();
+    expect(backends[0]!.contextReleases).toBe(1);
+    chart.dispose();
+    expect(backends[0]!.contextReleases).toBe(1);
+  });
+
+  it("still disposes cleanly when the context cannot be released", () => {
+    const chart = make();
+    const gl = backends[0]!.getContext()!;
+    gl.getExtension = () => { throw new Error("context is gone"); };
+    expect(() => chart.dispose()).not.toThrow();
+    expect(target.children).toHaveLength(0);
+  });
+
   it("does not schedule frames after dispose", () => {
     const chart = make({ renderLoop: "continuous" });
     chart.start();
@@ -516,9 +534,13 @@ describe("Chart WebGL context loss", () => {
     expect(renders).toBe(1);
     expect(fresh.draws.length).toBeGreaterThan(0);
 
+    // The restored backend reuses the old backend's context, so only the final dispose may release it.
+    expect(old.contextReleases + fresh.contextReleases).toBe(0);
+
     chart.dispose();
     expect(fresh.destroyCount).toBe(1);
     expect(old.destroyCount).toBe(1);
+    expect(fresh.contextReleases).toBe(1);
     expect(raf.pending.size).toBe(0);
   });
 

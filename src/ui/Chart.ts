@@ -7,6 +7,7 @@ import { HistogramDataset, histogram } from "../core/Histogram.js";
 import type { HistogramOptions, HistogramResult } from "../core/Histogram.js";
 import { Renderer } from "../render/Renderer.js";
 import type { RenderProjection } from "../render/Renderer.js";
+import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
 import { WebGL2Backend } from "../render/WebGL2Backend.js";
 import type { GpuBackend, GpuBuffer } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
@@ -1166,7 +1167,9 @@ export class Chart implements ChartPluginContext {
       }
     }
     this.axisOverlay?.dispose();
+    const gl = this.renderer.getWebGLContext();
     this.disposeRenderer(this.renderer);
+    releaseWebGLContext(gl);
     this.layout.dispose();
   }
 

@@ -1,4 +1,5 @@
 import type { GpuBackend, GpuBuffer, GpuProgram, GpuResource, BufferSpec, DrawSpec, AttributeSpec, UniformValue } from "./types.js";
+import { releaseWebGLContext } from "./releaseWebGLContext.js";
 import { WebGL2Resources } from "./WebGL2Resources.js";
 
 type NativeGpuBuffer = GpuBuffer & {
@@ -33,8 +34,10 @@ export class WebGL2UnavailableError extends Error {
 /** Return whether the current environment can create a WebGL2 context. */
 export function isWebGL2Available(): boolean {
   if (typeof document === "undefined") return false;
-  const canvas = document.createElement("canvas");
-  return canvas.getContext("webgl2") !== null;
+  const gl = document.createElement("canvas").getContext("webgl2");
+  // The probe context counts against the browser's live-context cap until GC unless it is released.
+  releaseWebGLContext(gl);
+  return gl !== null;
 }
 
 /** Native WebGL2 implementation of BlazePlot's GPU backend. */

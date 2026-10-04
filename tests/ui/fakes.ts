@@ -10,8 +10,13 @@ export class FakeBackend implements GpuBackend {
   draws: DrawSpec[] = [];
   destroyCount = 0;
   contextLost = false;
+  /** Times `WEBGL_lose_context.loseContext()` was called on this backend's context. */
+  contextReleases = 0;
   readonly canvas: HTMLCanvasElement | null;
-  private readonly gl = { isContextLost: () => this.contextLost } as unknown as WebGL2RenderingContext;
+  private readonly gl = {
+    isContextLost: () => this.contextLost,
+    getExtension: (name: string) => (name === "WEBGL_lose_context" ? { loseContext: () => { this.contextReleases++; } } : null),
+  } as unknown as WebGL2RenderingContext;
 
   constructor(canvas: HTMLCanvasElement | null = null) {
     this.canvas = canvas;
