@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, jest } from "bun:test";
 import type { Chart, ChartHoverState, ChartOptions } from "../../src/ui/Chart.ts";
 import { buildChartSummary } from "../../src/ui/ChartSummary.ts";
+import { DEFAULT_CHART_THEME, forcedColorsTheme } from "../../src/ui/theme.ts";
 import { fire, pluginContext, pointerEvent, useChartHarness } from "./harness.ts";
 
 // Core semantics documented in docs/accessibility.md: role, generated summary, inspection contract, forced colors.
@@ -163,6 +164,25 @@ describe("forced colors", () => {
       expect(media.listeners()).toBe(0);
     } finally {
       media.restore();
+    }
+  });
+
+  it("draws translucent system colors opaque", () => {
+    // Chromium on Linux resolves Highlight with 0.8 alpha; series must not be drawn translucent.
+    // happy-dom drops system color keywords, so answer by resolution order: Canvas, CanvasText,
+    // GrayText, then the series candidates (Highlight first), every one translucent.
+    const original = globalThis.getComputedStyle;
+    const resolved = ["rgba(0, 0, 0, 0.5)", "rgba(255, 255, 255, 0.9)", "rgba(63, 242, 63, 0.7)", "rgba(0, 230, 255, 0.8)", "rgba(255, 255, 0, 0.9)"];
+    let calls = 0;
+    globalThis.getComputedStyle = (() => ({ color: resolved[calls++] ?? "rgba(200, 100, 50, 0.6)" }) as CSSStyleDeclaration) as typeof getComputedStyle;
+    try {
+      const theme = forcedColorsTheme(DEFAULT_CHART_THEME, document.body);
+      expect(theme.backgroundColor).toEqual([0, 0, 0, 1]);
+      expect(theme.seriesColors[0]).toEqual([0, 230 / 255, 1, 1]);
+      expect(theme.seriesColors.length).toBeGreaterThan(1);
+      expect(theme.seriesColors.every((color) => color[3] === 1)).toBe(true);
+    } finally {
+      globalThis.getComputedStyle = original;
     }
   });
 

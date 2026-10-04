@@ -579,6 +579,7 @@ async function runForcedColorsCase(options: Options, serverUrl: string): Promise
       assert(contrastRatio(color, canvasColor) >= 3, `series ${index} has at least 3:1 contrast with Canvas (${contrastRatio(color, canvasColor).toFixed(2)})`);
     });
     assert(maxChannelDelta(forcedSeries[0]!, forcedSeries[1]!) > 32, "the two series get different system colors");
+    assert(forced.seriesColors.every((color) => color[3] === 1) && forced.theme.backgroundColor[3] === 1, `forced series and background are opaque (${forced.seriesColors.map((color) => color[3]).join(", ")})`);
     assert(maxChannelDelta(forcedSeries[0]!, normalSeries[0]!) > 0 || maxChannelDelta(canvasColor, normalBackground) > 0, "forced palette differs from the normal theme");
     assertNear(parseCssRgb(forced.rootBackground), canvasColor, 1, "chart root background is Canvas");
     assert(forced.axisLabelColor !== null, "axis tick labels are rendered");
