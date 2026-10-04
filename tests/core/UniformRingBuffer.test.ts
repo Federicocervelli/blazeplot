@@ -119,4 +119,43 @@ describe("UniformRingBuffer", () => {
     expect(buf.ordinalOffset).toBe(103);
     expect(buf.getX(0)).toBe(51.5);
   });
+
+  it("ignores a non-finite seed X, keeps the Y sample, and warns once", () => {
+    const original = console.warn;
+    const warnings: string[] = [];
+    console.warn = (message: string) => {
+      warnings.push(message);
+    };
+    try {
+      const buf = new UniformRingBuffer(4, { xStart: 7 });
+      buf.push(NaN, 1);
+      buf.append([Infinity, 5], [2, 3]); // not empty: X is not read as a seed
+      expect(buf.length).toBe(3);
+      expect(buf.getX(0)).toBe(7);
+      expect(buf.getX(2)).toBe(9);
+      buf.clear();
+      buf.append([-Infinity], [4]);
+      expect(buf.length).toBe(1);
+      expect(Number.isFinite(buf.getX(0))).toBe(true);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain("non-finite X");
+    } finally {
+      console.warn = original;
+    }
+  });
+
+  it("a non-finite retained-first X in a replacing batch does not corrupt the cursor", () => {
+    const original = console.warn;
+    console.warn = () => {};
+    try {
+      const buf = new UniformRingBuffer(2, { xStart: 0 });
+      buf.append([0, 1], [1, 2]);
+      buf.append([NaN, 0, 0], [3, 4, 5]);
+      expect(buf.length).toBe(2);
+      expect(Number.isFinite(buf.getX(0))).toBe(true);
+      expect(Number.isFinite(buf.getX(1))).toBe(true);
+    } finally {
+      console.warn = original;
+    }
+  });
 });

@@ -309,7 +309,11 @@ export interface ChartFollowXOptions {
 /** Latest-X follow state: disabled, actively following, or paused by interaction. */
 export type ChartXFollowState = "off" | "following" | "paused";
 
-/** Extra CSS-pixel space reserved around the plot by plugins or overlays. */
+/**
+ * Extra CSS-pixel space reserved around the plot by plugins or overlays.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export interface ChartLayoutReservation {
   readonly top?: number;
   readonly right?: number;
@@ -329,7 +333,11 @@ export interface ChartFrameStats {
 
 type DrawMode = Exclude<ChartFrameStats["renderMode"], "none" | "mixed">;
 
-/** Chart API available to plugins. */
+/**
+ * Chart API available to plugins.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export interface ChartPluginContext {
   /** @experimental DOM and canvas handles are part of the experimental plugin contract. */
   readonly canvas: HTMLCanvasElement;
@@ -346,6 +354,7 @@ export interface ChartPluginContext {
   readonly theme: ResolvedChartTheme;
   /** @experimental Raw WebGL2 context; may change or be removed before the plugin contract is stable. */
   getWebGLContext(): WebGL2RenderingContext | null;
+  /** @experimental May change in a minor release before it is promoted to stable. See docs/stability.md. */
   getCamera(yAxis?: SeriesYAxis): Camera2D;
   dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
   clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
@@ -361,21 +370,29 @@ export interface ChartPluginContext {
   getXFollowState(): ChartXFollowState;
   getFrameStats(target?: ChartFrameStats): ChartFrameStats;
   getHoverState(): ChartHoverState | null;
-  /** @experimental Reserve extra space around the plot; part of the experimental plugin contract. */
+  /** @experimental May change in a minor release before it is promoted to stable. See docs/stability.md. */
   setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
   requestRender(): void;
   subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
   pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
-  /** @experimental Emit a `select` event; part of the experimental plugin contract. */
+  /** @experimental May change in a minor release before it is promoted to stable. See docs/stability.md. */
   emitSelect(selection: SelectionState | null): void;
 }
 
-/** Disposable handle returned by a plugin. */
+/**
+ * Disposable handle returned by a plugin.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export interface ChartPluginHandle {
   dispose(): void;
 }
 
-/** Plugin installer for extending chart behavior. */
+/**
+ * Plugin installer for extending chart behavior.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export interface ChartPlugin {
   install(chart: ChartPluginContext): void | (() => void) | ChartPluginHandle;
 }
@@ -695,7 +712,11 @@ export class Chart implements ChartPluginContext {
     return this.renderer.getWebGLContext();
   }
 
-  /** Return the camera controlling the requested Y axis. */
+  /**
+   * Return the camera controlling the requested Y axis.
+   *
+   * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+   */
   getCamera(yAxis: SeriesYAxis = "left"): Camera2D {
     return yAxis === "right" ? this.rightCamera : this.camera;
   }
@@ -993,7 +1014,11 @@ export class Chart implements ChartPluginContext {
     return this.currentHover;
   }
 
-  /** Reserve or release plot-adjacent layout space for a plugin or overlay. */
+  /**
+   * Reserve or release plot-adjacent layout space for a plugin or overlay.
+   *
+   * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+   */
   setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void {
     if (reservation) {
       this.layoutReservations.set(id, reservation);
@@ -1027,7 +1052,11 @@ export class Chart implements ChartPluginContext {
     };
   }
 
-  /** @experimental Emit a `select` event, e.g. from a custom selection UI. */
+  /**
+   * Emit a `select` event, e.g. from a custom selection UI.
+   *
+   * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+   */
   emitSelect(selection: SelectionState | null): void {
     this.emit("select", { selection });
   }

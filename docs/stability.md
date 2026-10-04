@@ -38,7 +38,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 | `blazeplot/plugins/selection` | Stable | Same. |
 | `blazeplot/plugins/crosshair` | Stable | Same. |
 | `blazeplot/plugins/navigator` | Stable | Same. |
-| `blazeplot/plugins/flamegraph` | Experimental (proposed) | Newest and narrowest plugin; its model helpers (`buildFlameGraphModel`, `parseFoldedStacks`, `pickFrame`, `buildStatusChartModel`) may still change. |
+| `blazeplot/plugins/flamegraph` | Experimental | Newest and narrowest plugin; its model helpers (`buildFlameGraphModel`, `parseFoldedStacks`, `pickFrame`, `buildStatusChartModel`) may still change. |
 
 "Stable" for a built-in plugin means the plugin function, its documented options, and its documented handle methods. Pixel-level appearance (spacing, default fonts, default colors) can change in a minor release; use `theme` and the plugin options to pin what matters to you.
 
@@ -65,6 +65,8 @@ These are the extension points. They are public, documented, and used by the bui
 | Custom fast-path dataset interfaces: `AcceleratedDataset`, `RangeMinMaxDataset`, `RangeSampleCopyDataset`, `VisibleSampleCopyDataset`, `VisiblePointCopyDataset`, `MinMaxSegmentCopyDataset`, `XRangeDataset`, `SampleCopyLayout` | Their method signatures are renderer-ready fast paths and have changed before (see the 0.5 `copyMinMaxSegments` change). Implementing only the stable `Dataset` contract avoids this risk. Optional members such as `isGap` and `ordinalOffset` follow the `Dataset` tier. |
 | Camera access: `chart.getCamera()` and the `Camera2D` type, `CustomAxisScale`, `AxisRenderTarget`, `AxisControllerAxisOptions` | Direct camera mutation bypasses `ViewportPolicy` and the chart's follow/auto-fit state. Prefer `chart.setViewport`, `pan`, and `zoom`. |
 | `blazeplot/plugins/flamegraph` | See the entry point table. |
+
+The same items carry an `@experimental` JSDoc tag in the published declarations, so editors show the tier on hover. `getCamera()` is tagged on both `Chart` and `ChartPluginContext`, and every export of `blazeplot/plugins/flamegraph` is tagged.
 
 Experimental does not mean unsupported: bugs are fixed the same way. It means a minor release may require a code change, and the changelog will say so.
 
