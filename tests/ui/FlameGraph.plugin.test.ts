@@ -295,7 +295,7 @@ describe("flameGraphPlugin WebGL context handling", () => {
     const lost = new window.Event("webglcontextlost", { cancelable: true });
     fire(canvas, lost);
     expect(lost.defaultPrevented).toBe(true);
-    expect(glCalls(chart).some((c) => c.name === "deleteProgram")).toBe(true);
+    expect(glCalls(chart).some((c) => ["deleteProgram", "deleteBuffer", "deleteVertexArray"].includes(c.name))).toBe(false); // stale objects must not be deleted after restore
     const created = programs();
     chart.requestRender();
     h.raf.flush();

@@ -647,7 +647,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
 
   function handleContextLost(event: Event): void {
     event.preventDefault();
-    disposeWebGLState(glState);
+    // Objects from the lost context are invalid; deleting them after restore logs INVALID_OPERATION.
     glState = null;
   }
 
