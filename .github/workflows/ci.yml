@@ -25,6 +25,17 @@ jobs:
       - uses: ./.github/actions/setup
       - run: bun run check
 
+  # Installs the packed tarball into a consumer project with TypeScript 5.0.4 and the latest 5.x.
+  # Not part of `bun run check` because it installs TypeScript from npm (needs network).
+  typescript-floor:
+    name: TypeScript 5.0 floor (packed consumer)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: bun run build
+      - run: bun run test:typescript-floor
+
   browser:
     name: Browser benchmark, visual, interaction, website
     runs-on: ubuntu-latest
@@ -76,10 +87,10 @@ jobs:
   # Single required status check for branch protection; stays stable as jobs are added.
   validate:
     if: always()
-    needs: [checks, browser, cross-browser]
+    needs: [checks, typescript-floor, browser, cross-browser]
     runs-on: ubuntu-latest
     steps:
       - name: Require all CI jobs to pass
-        if: needs.checks.result != 'success' || needs.browser.result != 'success' || needs.cross-browser.result != 'success'
+        if: needs.checks.result != 'success' || needs.typescript-floor.result != 'success' || needs.browser.result != 'success' || needs.cross-browser.result != 'success'
         run: exit 1
       - run: echo "All CI jobs passed."
