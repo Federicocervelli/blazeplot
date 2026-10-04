@@ -426,7 +426,6 @@ async function runRobustnessCase(options: Options, serverUrl: string): Promise<v
     const { zoom, log, loop } = result;
     assert(zoom.threw === null && zoom.span > 0, `deep zoom on a time axis stops at float precision (threw: ${zoom.threw})`);
     assert(log.fitYMin > 0 && log.rendered, "fitToData pads a log axis in log space and renders");
-    assert(log.setViewportError !== null && log.unchanged, "setViewport rejects an invalid log domain without partial changes");
     assert(loop.whileInvalid === 0 && loop.logs === 1 && loop.recovered, "an invalid camera domain skips frames, logs once, and recovers");
     assert(result.failedChartLeftDom === 0 && result.failedLinkedLeftDom === 0 && result.canvasRestored, "failed construction leaves no DOM and restores the canvas");
     console.log("✓ robustness: zoom limits, scale-aware fits, invalid domains, and failed construction");

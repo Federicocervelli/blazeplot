@@ -68,10 +68,7 @@ export async function runRobustnessProbes() {
     chart.fitToData({ padding: 0.1 });
     chart.start();
     await frames(2);
-    const fitYMin = chart.getViewport().yMin;
-    const before = JSON.stringify(chart.getViewport());
-    const setViewportError = thrownMessage(() => chart.setViewport({ xMin: 5, xMax: 6, yMin: -1, yMax: 10 }));
-    return { fitYMin, rendered: renders() > 0, setViewportError, unchanged: JSON.stringify(chart.getViewport()) === before };
+    return { fitYMin: chart.getViewport().yMin, rendered: renders() > 0 };
   });
 
   const errors: unknown[] = [];
@@ -82,10 +79,10 @@ export async function runRobustnessProbes() {
     chart.start();
     await frames(3);
     const before = renders();
-    chart.getCamera().setViewport({ yMin: -5, yMax: 10 });
+    chart.setViewport({ yMin: -5, yMax: 10 });
     await frames(8);
     const whileInvalid = renders() - before;
-    chart.getCamera().setViewport({ yMin: 1, yMax: 100 });
+    chart.setViewport({ yMin: 1, yMax: 100 });
     await frames(3);
     return { logs: errors.length, whileInvalid, recovered: renders() - before > whileInvalid };
   }).finally(() => {

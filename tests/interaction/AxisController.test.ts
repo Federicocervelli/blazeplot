@@ -192,6 +192,10 @@ describe("AxisController", () => {
     expect(zooms).toBeLessThan(200);
     expect(Number.isFinite(log.yMax)).toBe(true);
 
+    // The floor only applies to the axis a gesture moves: a narrow Y range does not block X zoom.
+    log.setViewport({ yMin: 1e9, yMax: 1e9 + 1e-5 });
+    expect(logAxis.zoom({ factor: 2, cx: 0.5, cy: 0.5, axis: "x" })).toBe(true);
+
     const before = log.viewport;
     expect(logAxis.pan({ dx: Number.NaN, dy: 0 })).toBe(false);
     expect(log.viewport).toEqual(before);

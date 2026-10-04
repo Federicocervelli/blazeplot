@@ -721,23 +721,13 @@ export class Chart implements ChartPluginContext {
    * Changing X pauses latest-X following like a user pan would.
    */
   setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left"): void {
-    const camera = this.getCamera(yAxis);
-    const setsX = viewport.xMin !== undefined || viewport.xMax !== undefined;
-    const setsY = viewport.yMin !== undefined || viewport.yMax !== undefined;
-    // Validate both axes before changing either, so a rejected call leaves the chart untouched.
-    if (
-      (setsX && !this.axis.isValidDomain("x", viewport.xMin ?? camera.xMin, viewport.xMax ?? camera.xMax))
-      || (setsY && !this.controllerFor(yAxis).isValidDomain("y", viewport.yMin ?? camera.yMin, viewport.yMax ?? camera.yMax))
-    ) {
-      throw new RangeError("Chart.setViewport received a domain that is not finite, ascending, and valid for the axis scale.");
-    }
-    if (setsX) {
+    if (viewport.xMin !== undefined || viewport.xMax !== undefined) {
       this.pauseXFollowForInteraction();
       this.camera.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax });
       this.syncRightCameraX();
     }
-    if (setsY) {
-      camera.setViewport({ yMin: viewport.yMin, yMax: viewport.yMax });
+    if (viewport.yMin !== undefined || viewport.yMax !== undefined) {
+      this.getCamera(yAxis).setViewport({ yMin: viewport.yMin, yMax: viewport.yMax });
     }
     this.emitViewportChange();
     this.refreshHover();

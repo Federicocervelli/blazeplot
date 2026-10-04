@@ -214,7 +214,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       // (pressing the canvas does not move focus, so focus alone cannot tell).
       let escapeArmed = false;
       const armEscape = (event: Event): void => {
-        escapeArmed = event.target instanceof Node && chart.rootElement.contains(event.target);
+        escapeArmed = event.composedPath().includes(chart.rootElement);
       };
       const onKeyDown = (event: KeyboardEvent): void => {
         if (options.clearOnEscape === false || event.key !== "Escape" || !escapeArmed || (!committedSelection && !drag)) return;

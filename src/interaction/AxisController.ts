@@ -211,7 +211,7 @@ export class AxisController {
     const yMax = this.scaleValue(this.camera.yMax, "y");
     const dx = intent.dx * (xMax - xMin);
     const dy = intent.dy * (yMax - yMin);
-    return this.trySetViewport({
+    return this.trySetViewport(intent.dx !== 0, intent.dy !== 0, {
       xMin: this.unscaleValue(xMin + dx, "x"),
       xMax: this.unscaleValue(xMax + dx, "x"),
       yMin: this.unscaleValue(yMin + dy, "y"),
@@ -230,7 +230,7 @@ export class AxisController {
     const yCenter = yMin + (yMax - yMin) * intent.cy;
     const xSpan = intent.axis === "y" ? xMax - xMin : (xMax - xMin) / intent.factor;
     const ySpan = intent.axis === "x" ? yMax - yMin : (yMax - yMin) / intent.factor;
-    return this.trySetViewport({
+    return this.trySetViewport(intent.axis !== "y", intent.axis !== "x", {
       xMin: this.unscaleValue(xCenter - xSpan * intent.cx, "x"),
       xMax: this.unscaleValue(xCenter + xSpan * (1 - intent.cx), "x"),
       yMin: this.unscaleValue(yCenter - ySpan * intent.cy, "y"),
@@ -250,11 +250,14 @@ export class AxisController {
     return Number.isFinite(scaledMin) && Number.isFinite(scaledMax) && scaledMax > scaledMin;
   }
 
-  /** Apply a pan/zoom result only when both axes stay valid and wider than ~1e-13 of their magnitude, where float64 collapses. */
-  private trySetViewport(viewport: Viewport): boolean {
-    const usable = (axis: AxisRenderTarget, min: number, max: number): boolean =>
-      max - min > Math.max(Math.abs(min), Math.abs(max)) * 1e-13 && this.isValidDomain(axis, min, max);
-    if (!usable("x", viewport.xMin, viewport.xMax) || !usable("y", viewport.yMin, viewport.yMax)) return false;
+  /**
+   * Apply a pan/zoom result only when both axes stay valid and each moved axis stays wider
+   * than ~1e-13 of its magnitude, below which float64 collapses the range.
+   */
+  private trySetViewport(movesX: boolean, movesY: boolean, viewport: Viewport): boolean {
+    const usable = (axis: AxisRenderTarget, moves: boolean, min: number, max: number): boolean =>
+      (!moves || max - min > Math.max(Math.abs(min), Math.abs(max)) * 1e-13) && this.isValidDomain(axis, min, max);
+    if (!usable("x", movesX, viewport.xMin, viewport.xMax) || !usable("y", movesY, viewport.yMin, viewport.yMax)) return false;
     this.camera.setViewport(viewport);
     return true;
   }

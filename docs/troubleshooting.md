@@ -84,7 +84,7 @@ See [Performance recipes](./performance-recipes.md) for deeper guidance.
 
 ## Log axis throws a domain error
 
-A log axis requires a positive viewport. `chart.setViewport(...)` throws a `RangeError` for a non-positive log domain, and `fitToData()` leaves a log axis unchanged when its data includes zero or negative values. If the camera still ends up with an invalid domain (for example through `chart.getCamera().setViewport(...)`), the chart skips drawing, logs `BlazePlot skipped rendering: ...` once, and resumes as soon as the domain is valid. If your data can contain zero or negative values, use `scale: "symlog"` or keep the axis linear.
+A log axis requires a positive viewport. `fitToData()` leaves a log axis unchanged when its data includes zero or negative values. If the viewport still ends up invalid for the scale (for example through `chart.setViewport(...)`), the chart skips drawing, logs `BlazePlot skipped rendering: ...` once, and resumes as soon as the domain is valid. If your data can contain zero or negative values, use `scale: "symlog"` or keep the axis linear.
 
 ```ts
 const chart = new Chart(element, {
