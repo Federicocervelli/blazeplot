@@ -172,6 +172,43 @@ describe("AxisController", () => {
     expect(camera.yMax).toBeCloseTo(10 * Math.sqrt(10));
   });
 
+  it("stops zooming at float precision and log overflow without moving the camera", () => {
+    const start = Date.UTC(2026, 0, 1);
+    const time = new Camera2D();
+    time.setViewport({ xMin: start, xMax: start + 1_000, yMin: 0, yMax: 1 });
+    const timeAxis = new AxisController(time, { x: { scale: "time" } });
+    let zooms = 0;
+    while (zooms < 200 && timeAxis.zoom({ factor: 2, cx: 0.37, cy: 0.5, axis: "x" })) zooms++;
+    expect(zooms).toBeGreaterThan(5);
+    expect(zooms).toBeLessThan(200);
+    expect(time.xMax).toBeGreaterThan(time.xMin);
+    expect(timeAxis.getXTickValues(800, 10).length).toBeGreaterThan(0);
+
+    const log = new Camera2D();
+    log.setViewport({ xMin: 0, xMax: 1, yMin: 1, yMax: 10 });
+    const logAxis = new AxisController(log, { y: { scale: "log" } });
+    zooms = 0;
+    while (zooms < 200 && logAxis.zoom({ factor: 0.5, cx: 0.5, cy: 0.5, axis: "y" })) zooms++;
+    expect(zooms).toBeLessThan(200);
+    expect(Number.isFinite(log.yMax)).toBe(true);
+
+    // The floor only applies to the axis a gesture moves: a narrow Y range does not block X zoom.
+    log.setViewport({ yMin: 1e9, yMax: 1e9 + 1e-5 });
+    expect(logAxis.zoom({ factor: 2, cx: 0.5, cy: 0.5, axis: "x" })).toBe(true);
+
+    const before = log.viewport;
+    expect(logAxis.pan({ dx: Number.NaN, dy: 0 })).toBe(false);
+    expect(log.viewport).toEqual(before);
+  });
+
+  it("checks candidate domains against the scale", () => {
+    const axis = new AxisController(new Camera2D(), { y: { scale: "log" } });
+    expect(axis.isValidDomain("y", 1, 100)).toBe(true);
+    expect(axis.isValidDomain("y", -1, 100)).toBe(false);
+    expect(axis.isValidDomain("x", -1, 100)).toBe(true);
+    expect(axis.isValidDomain("x", 5, 5)).toBe(false);
+  });
+
   it("formats categorical ticks from labels", () => {
     const camera = new Camera2D();
     camera.setViewport({ xMin: 0, xMax: 3, yMin: -1, yMax: 1 });
