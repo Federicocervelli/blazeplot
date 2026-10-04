@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - v1
   workflow_dispatch:
 
 concurrency:
@@ -20,6 +21,9 @@ jobs:
       publish: ${{ steps.version.outputs.publish }}
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      npm_tag: ${{ steps.version.outputs.npm_tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      pages: ${{ steps.version.outputs.pages }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -31,11 +35,37 @@ jobs:
 
       - name: Read package version
         id: version
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          # Channels: main publishes stable versions to npm "latest"; v1 publishes
+          # 1.0.0-rc.N candidates to npm "rc". Anything else (a prerelease on main, a stable
+          # version on v1 after merging main into it, any other branch) never publishes.
+          # Pages deploys from main only.
+          if [ "$BRANCH" = main ]; then echo "pages=true" >> "$GITHUB_OUTPUT"; else echo "pages=false" >> "$GITHUB_OUTPUT"; fi
+          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            KIND=stable
+            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            KIND=rc
+            echo "npm_tag=rc" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Unsupported version ${VERSION}; expected x.y.z or x.y.z-rc.N."
+            exit 1
+          fi
+          if { [ "$BRANCH" = main ] && [ "$KIND" = stable ]; } || { [ "$BRANCH" = v1 ] && [ "$KIND" = rc ]; }; then
+            :
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${VERSION} (${KIND}) is not published from ${BRANCH}; main publishes stable versions and v1 publishes -rc.N versions."
+            exit 0
+          fi
           if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
             echo "${TAG} already exists; nothing to publish."
@@ -78,8 +108,12 @@ jobs:
       - name: Write release notes
         env:
           VERSION: ${{ needs.version.outputs.version }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2>/dev/null || true)
+          # Stable notes list commits since the last stable tag; rc notes since the last tag of any kind.
+          EXCLUDE=()
+          if [ "$PRERELEASE" != "true" ]; then EXCLUDE=(--exclude 'v*-*'); fi
+          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${EXCLUDE[@]}" HEAD^ 2>/dev/null || true)
           {
             if [ -f "changelogs/v${VERSION}.md" ]; then cat "changelogs/v${VERSION}.md"; printf '\n\n'; fi
             if [ -n "$PREV_TAG" ]; then
@@ -99,18 +133,26 @@ jobs:
 
       # Authenticates with npm trusted publishing (OIDC); no npm token secret is needed.
       - name: Publish to npm
-        run: npm publish ./blazeplot-*.tgz --provenance --access public
+        env:
+          NPM_TAG: ${{ needs.version.outputs.npm_tag }}
+        run: npm publish ./blazeplot-*.tgz --provenance --access public --tag "$NPM_TAG"
 
       - name: Tag and create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
-        run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file release-notes.md
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          FLAGS=()
+          # Release candidates are pre-releases and must never become the repository's "Latest" release.
+          if [ "$PRERELEASE" = "true" ]; then FLAGS=(--prerelease --latest=false); fi
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file release-notes.md "${FLAGS[@]}"
 
   # The only Pages deploy for main: right away for ordinary merges, after the new tag exists for releases.
+  # Never runs for v1: release candidates do not change the public site.
   pages:
     needs: [version, release]
-    if: ${{ !cancelled() && needs.version.result == 'success' && (needs.version.outputs.publish == 'false' || needs.release.result == 'success') }}
+    if: ${{ !cancelled() && needs.version.result == 'success' && needs.version.outputs.pages == 'true' && (needs.version.outputs.publish == 'false' || needs.release.result == 'success') }}
     uses: ./.github/workflows/pages.yml
     permissions:
       contents: read

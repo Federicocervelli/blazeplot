@@ -4,7 +4,40 @@ BlazePlot releases are driven by pull requests into `main`. Tags are outputs of 
 
 ## Branches
 
-`main` is the only long-lived branch. Feature, fix, and docs pull requests (including from forks) target it and are squash-merged. A release is a pull request from a `release/vX.Y.Z` branch that bumps `package.json`; merging it publishes that version.
+`main` is the stable line. Feature, fix, and docs pull requests (including from forks) target it and are squash-merged. A release is a pull request from a `release/vX.Y.Z` branch that bumps `package.json`; merging it publishes that version to npm `latest`.
+
+Until 1.0 ships there is one more long-lived branch, `v1`; see [The v1 branch](#the-v1-branch-10-release-candidates).
+
+## The v1 branch (1.0 release candidates)
+
+`v1` is the integration branch for the 1.0 release candidates. It exists only until 1.0 is released.
+
+- Branch from `v1` for 1.0 work (`feature/<topic>`, `fix/<topic>`, `docs/<topic>`) and open pull requests against `v1`. They are squash-merged like any other PR, and CI (`validate`) runs the same as for `main`.
+- Fixes that should also ship before 1.0 as stable patch releases go to `main` first and reach `v1` through the sync below, not by cherry-picking.
+- Candidates are `1.0.0-rc.N`. Merging a pull request that bumps `package.json` to `1.0.0-rc.N` into `v1` publishes it to npm with the `rc` dist-tag (`npm i blazeplot@rc`) and creates a GitHub pre-release. It never touches `latest`, never becomes the GitHub "Latest" release, and never deploys Pages.
+- The release workflow only publishes `-rc.N` versions from `v1` and only stable versions from `main`. A stable version on `v1` or an rc version on `main` is skipped with a notice.
+
+### Syncing main into v1
+
+Merge `main` into `v1` so `v1` never drifts: at least once a week, immediately after every stable release from `main`, and before cutting each release candidate.
+
+```bash
+git fetch origin
+git checkout -b sync/main-into-v1-YYYY-MM-DD origin/v1
+git merge origin/main      # resolve conflicts here
+git push -u origin HEAD    # open a PR with base v1
+```
+
+- Land sync PRs with **Create a merge commit**, not squash, so history records what is already merged and later syncs stay small.
+- When `package.json` conflicts, keep `v1`'s `1.0.0-rc.N` version. Do not keep a changelog from `main` that duplicates an rc one.
+- If the merge brings a stable `package.json` version into `v1` (because `v1` has no rc bump yet), nothing publishes; the release workflow skips stable versions on `v1`.
+
+### Shipping 1.0
+
+1. Sync `main` into `v1` one last time and cut the last candidate.
+2. On a `release/v1.0.0` branch from `v1`, run `bun run release 1.0.0` and open a PR with base `v1` for the version and changelog.
+3. Open a PR from `v1` to `main` and land it with **Create a merge commit**. The push to `main` runs the normal stable release, publishing `1.0.0` to `latest` and deploying Pages.
+4. Delete `v1`, remove it from the workflow triggers and CI branch filter, and restore the single-branch policy in the docs.
 
 ## Site previews
 
@@ -30,7 +63,7 @@ Preview deploys are intentionally manual so arbitrary PRs do not create Cloudfla
 
 For a copy-paste release PR checklist, see [Internal release checklist](./internal/release-checklist.md). For workflow ownership and failure modes, see [GitHub workflow runbook](./internal/github-workflows.md).
 
-## Preparing a release candidate
+## Preparing a release
 
 ```bash
 git checkout main
@@ -39,19 +72,31 @@ git checkout -b release/vX.Y.Z
 bun run release patch      # or minor / major
 ```
 
-The command bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates `dist/`, `docs/api-reference.md`, and the README docs block. Edit the changelog, commit, and open a PR to `main`. The PR's `validate` check must pass, then squash-merge it.
+The command bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last stable tag, and regenerates `dist/`, `docs/api-reference.md`, and the README docs block. Edit the changelog, commit, and open a PR to `main`. The PR's `validate` check must pass, then squash-merge it.
+
+## Preparing a release candidate
+
+Release candidates are cut from `v1`, after syncing `main` into it:
+
+```bash
+git fetch origin
+git checkout -b release/v1.0.0-rc.N origin/v1
+bun run release 1.0.0-rc.1   # first candidate; afterwards: bun run release rc
+```
+
+`bun run release rc` bumps `x.y.z-rc.N` to `x.y.z-rc.N+1`; an explicit `x.y.z-rc.N` or `x.y.z` version is also accepted but must be greater than the current one. Add `--dry-run` to print the planned version and changelog without writing anything. Candidate changelogs list commits since the last tag of any kind. Edit the changelog, commit, and open a PR with base `v1`.
 
 ## What the release workflow does
 
-On every push to `main` and on manual dispatch, `.github/workflows/release.yml`:
+On every push to `main` or `v1` and on manual dispatch, `.github/workflows/release.yml` runs the steps below. `main` publishes only stable `x.y.z` versions (npm `latest`); `v1` publishes only `x.y.z-rc.N` versions (npm `rc`, GitHub pre-release, no Pages deploy). Other combinations are skipped with a notice.
 
-1. Reads `package.json` and computes `vX.Y.Z`. If that tag already exists, skips straight to the Pages deploy; pull requests already passed CI on an up-to-date branch.
+1. Reads `package.json` and computes `vX.Y.Z[-rc.N]`. If that tag already exists, skips straight to the Pages deploy (`main` only); pull requests already passed CI on an up-to-date branch.
 2. Verifies the npm version is unpublished.
 3. Runs the full CI workflow as a gate before publishing.
 4. Appends benchmark tables to the changelog (`bun run release:benchmarks -- --if-missing`) so the release notes include them.
 5. Packs and publishes to npm with provenance via trusted publishing.
 6. Creates the `vX.Y.Z` tag and GitHub Release.
-7. Deploys GitHub Pages once, so the stable site moves to the new tag.
+7. On `main` only, deploys GitHub Pages once, so the stable site moves to the new tag.
 
 ## Benchmark and bundle-size commands
 
