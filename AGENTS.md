@@ -20,6 +20,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Run all unit tests: `bun test`.
 - Run one test file: `bun test tests/core/RingBuffer.test.ts`.
 - Run one named test: `bun test tests/core/RingBuffer.test.ts -t "wraps around"`.
+- Unit tests with coverage floors: `bun run test:coverage` (`scripts/coverage-check.ts`; part of `check`). Floors are ratchets just under baseline: raise them as coverage improves, never lower them.
 - Typecheck: `bun run typecheck` (`tsc --noEmit`).
 - Build the npm package: `bun run build` (Vite library build plus declaration emit via `tsc -p tsconfig.build.json`).
 - Build JS only: `bun run build:js`.
