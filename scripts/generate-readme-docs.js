@@ -44,6 +44,7 @@ const exportDescriptions = new Map([
   ["./plugins/crosshair", "Built-in crosshair and ruler plugin."],
   ["./plugins/navigator", "Built-in overview/navigator plugin."],
   ["./plugins/flamegraph", "Built-in flame graph and status-span plugin."],
+  ["./plugins/a11y", "Built-in accessibility plugin: hidden data table, keyboard inspection cursor, live summary."],
 ]);
 
 validateExportDescriptions();

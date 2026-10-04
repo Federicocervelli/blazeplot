@@ -82,7 +82,7 @@ const publicNames = publicRootNames();
 
 describe("built-in plugin boundary", () => {
   it("covers every built-in plugin implementation", () => {
-    for (const name of ["Annotations", "Crosshair", "FlameGraph", "Interactions", "Legend", "Navigator", "Selection", "Tooltip"]) {
+    for (const name of ["A11y", "Annotations", "Crosshair", "FlameGraph", "Interactions", "Legend", "Navigator", "Selection", "Tooltip"]) {
       expect(modules.has(`src/ui/${name}.ts`)).toBe(true);
     }
   });

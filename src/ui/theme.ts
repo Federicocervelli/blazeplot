@@ -29,6 +29,8 @@ export interface ChartTheme {
   readonly crosshairColor?: string;
   /** Outline of hover/crosshair point markers. */
   readonly markerStrokeColor?: string;
+  /** Keyboard focus ring around the chart root, legend items, navigator, and annotations. */
+  readonly focusRingColor?: string;
 }
 
 /** Fully resolved chart theme with concrete RGBA values. */
@@ -57,6 +59,7 @@ export interface ResolvedChartTheme {
   readonly selectionStrokeColor: string;
   readonly crosshairColor: string;
   readonly markerStrokeColor: string;
+  readonly focusRingColor: string;
 }
 
 const DEFAULT_SERIES_COLORS: readonly RgbaColor[] = [
@@ -94,7 +97,95 @@ export const DEFAULT_CHART_THEME: ResolvedChartTheme = {
   selectionStrokeColor: "rgba(147, 197, 253, 0.95)",
   crosshairColor: "rgba(148, 163, 184, 0.55)",
   markerStrokeColor: "#f8fafc",
+  focusRingColor: "#60a5fa",
 };
+
+const LIGHT_SERIES_COLORS: readonly RgbaColor[] = [
+  [29 / 255, 78 / 255, 216 / 255, 1],
+  [185 / 255, 28 / 255, 28 / 255, 1],
+  [21 / 255, 128 / 255, 61 / 255, 1],
+  [180 / 255, 83 / 255, 9 / 255, 1],
+  [126 / 255, 34 / 255, 206 / 255, 1],
+  [14 / 255, 116 / 255, 144 / 255, 1],
+];
+
+/**
+ * Light chart theme. Pass it as `theme`, or spread it and override a few tokens. Text tokens
+ * meet a 4.5:1 and series, selection, crosshair, and focus colors a 3:1 contrast ratio against
+ * its background.
+ */
+export const LIGHT_CHART_THEME: ResolvedChartTheme = {
+  backgroundColor: [1, 1, 1, 1],
+  backgroundCssColor: "rgba(255, 255, 255, 1)",
+  gridColor: [0.06, 0.09, 0.16, 0.12],
+  axisColor: "#404040",
+  axisFont: DEFAULT_CHART_THEME.axisFont,
+  seriesColors: LIGHT_SERIES_COLORS,
+  tooltipBackgroundColor: "rgba(255, 255, 255, 0.96)",
+  tooltipTextColor: "#171717",
+  tooltipFont: DEFAULT_CHART_THEME.tooltipFont,
+  legendBackgroundColor: "rgba(255, 255, 255, 0.92)",
+  legendBorderColor: "#d4d4d4",
+  legendTextColor: "#171717",
+  legendMutedTextColor: "#525252",
+  legendFont: DEFAULT_CHART_THEME.legendFont,
+  titleColor: "#0a0a0a",
+  titleFont: DEFAULT_CHART_THEME.titleFont,
+  subtitleColor: "#404040",
+  subtitleFont: DEFAULT_CHART_THEME.subtitleFont,
+  axisTitleColor: "#404040",
+  axisTitleFont: DEFAULT_CHART_THEME.axisTitleFont,
+  selectionFillColor: "rgba(37, 99, 235, 0.14)",
+  selectionStrokeColor: "rgba(29, 78, 216, 0.95)",
+  crosshairColor: "rgba(64, 64, 64, 0.8)",
+  markerStrokeColor: "#0a0a0a",
+  focusRingColor: "#1d4ed8",
+};
+
+/** CSS system colors tried, in order, for series in forced-colors (high-contrast) mode. */
+const FORCED_SERIES_SYSTEM_COLORS = ["Highlight", "LinkText", "CanvasText", "VisitedText", "ActiveText", "GrayText"] as const;
+
+/**
+ * @internal Theme used while the OS forces a high-contrast palette (`forced-colors: active`).
+ * DOM overlays use CSS system colors directly; the WebGL canvas gets the same colors resolved to RGBA.
+ */
+export function forcedColorsTheme(base: ResolvedChartTheme, context?: Element): ResolvedChartTheme {
+  const canvas = resolveThemeColor("Canvas", base.backgroundColor, context);
+  const text = resolveThemeColor("CanvasText", [1, 1, 1, 1], context);
+  const gray = resolveThemeColor("GrayText", text, context);
+  const seen = new Set<string>([rgbaCss(canvas)]);
+  const seriesColors: RgbaColor[] = [];
+  for (const name of FORCED_SERIES_SYSTEM_COLORS) {
+    const color = resolveThemeColor(name, text, context);
+    const key = rgbaCss(color);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    seriesColors.push(color);
+  }
+  if (seriesColors.length === 0) seriesColors.push(text);
+  return {
+    ...base,
+    backgroundColor: canvas,
+    backgroundCssColor: "Canvas",
+    gridColor: [gray[0], gray[1], gray[2], 0.6],
+    axisColor: "CanvasText",
+    seriesColors,
+    tooltipBackgroundColor: "Canvas",
+    tooltipTextColor: "CanvasText",
+    legendBackgroundColor: "Canvas",
+    legendBorderColor: "CanvasText",
+    legendTextColor: "CanvasText",
+    legendMutedTextColor: "GrayText",
+    titleColor: "CanvasText",
+    subtitleColor: "CanvasText",
+    axisTitleColor: "CanvasText",
+    selectionFillColor: "transparent",
+    selectionStrokeColor: "Highlight",
+    crosshairColor: "CanvasText",
+    markerStrokeColor: "CanvasText",
+    focusRingColor: "Highlight",
+  };
+}
 
 /** Merge a partial theme with defaults and resolve CSS colors. */
 export function resolveChartTheme(theme: ChartTheme | undefined, context?: Element): ResolvedChartTheme {

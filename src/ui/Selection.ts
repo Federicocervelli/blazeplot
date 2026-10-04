@@ -50,8 +50,20 @@ export interface SelectionPluginOptions {
   readonly zIndex?: number;
   /** Clear the selection with Escape. Defaults to true. */
   readonly clearOnEscape?: boolean;
+  /**
+   * Keyboard selection while the chart root has focus: Shift+Arrow keys extend a range from the
+   * keyboard inspection cursor (or the plot center), Enter commits it, and Escape cancels it.
+   * Progress is announced through a polite live region. Defaults to true; `false` disables it.
+   */
+  readonly keyboard?: boolean | SelectionKeyboardOptions;
   /** Called on `start`, `update`, `commit`, and `clear`; switch on `event.type`. */
   readonly onChange?: (event: SelectionEvent) => void;
+}
+
+/** Keyboard selection tuning for `selectionPlugin`. */
+export interface SelectionKeyboardOptions {
+  /** Fraction of the plot width (or height) one Shift+Arrow press moves the range edge. Defaults to 0.05. */
+  readonly step?: number;
 }
 
 /** Selection plugin with imperative state access. */
@@ -109,6 +121,9 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
   let overlay: HTMLDivElement | null = null;
   let drag: DragState | null = null;
   let committedSelection: SelectionState | null = null;
+  /** Keyboard range being extended: data coordinates on `yAxis`. */
+  let keyDrag: { readonly anchor: [number, number]; current: [number, number] } | null = null;
+  let announce: ((text: string) => void) | null = null;
 
   const emit = (type: SelectionEventType, selection: SelectionState | null, sourceEvent?: PointerEvent | KeyboardEvent): void => {
     options.onChange?.({ type, selection, sourceEvent });
@@ -141,11 +156,14 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
   };
 
   const clearSelection = (sourceEvent?: KeyboardEvent): void => {
+    const hadSelection = committedSelection !== null || keyDrag !== null;
     committedSelection = null;
     drag = null;
+    keyDrag = null;
     setOverlay(null);
     chartRef?.events.emit("select", { selection: null });
     emit("clear", null, sourceEvent);
+    if (hadSelection) announce?.("Selection cleared.");
   };
 
   return {
@@ -220,12 +238,118 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         escapeArmed = event.composedPath().some((target) => chart.dom.contains(target));
       };
       const onKeyDown = (event: KeyboardEvent): void => {
-        if (options.clearOnEscape === false || event.key !== "Escape" || !escapeArmed || (!committedSelection && !drag)) return;
+        // A handler that already consumed Escape (e.g. leaving keyboard inspection) wins.
+        if (options.clearOnEscape === false || event.key !== "Escape" || event.defaultPrevented || !escapeArmed || (!committedSelection && !drag)) return;
         clearSelection(event);
       };
+
+      // Keyboard selection: a polite live region reports the range; the overlay shows it.
+      const keyboard = options.keyboard === false ? null : (typeof options.keyboard === "object" ? options.keyboard : {});
+      const keyStep = typeof keyboard?.step === "number" && Number.isFinite(keyboard.step) && keyboard.step > 0 ? Math.min(1, keyboard.step) : 0.05;
+      let liveRegion: HTMLDivElement | null = null;
+      if (keyboard) {
+        liveRegion = document.createElement("div");
+        liveRegion.className = "blazeplot-visually-hidden blazeplot-selection-status";
+        liveRegion.setAttribute("role", "status");
+        liveRegion.setAttribute("aria-live", "polite");
+        liveRegion.setAttribute("aria-atomic", "true");
+        chart.dom.mount("root", liveRegion);
+        let toggle = false;
+        announce = (text) => {
+          // Alternate a trailing no-break space so repeating the same text is announced again.
+          toggle = !toggle;
+          if (liveRegion) liveRegion.textContent = toggle ? text : `${text} `;
+        };
+      }
+      const describe = (bounds: Viewport): string => {
+        const x = `X from ${chart.coords.format(bounds.xMin, "x", yAxis)} to ${chart.coords.format(bounds.xMax, "x", yAxis)}`;
+        const y = `Y from ${chart.coords.format(bounds.yMin, "y", yAxis)} to ${chart.coords.format(bounds.yMax, "y", yAxis)}`;
+        return mode === "x-range" ? x : mode === "y-range" ? y : `${x}, ${y}`;
+      };
+      const keySelection = (): SelectionState | null => {
+        if (!keyDrag) return null;
+        const rect = chart.layout.plotRect();
+        if (rect.width <= 0 || rect.height <= 0) return null;
+        const bounds = normalizeBounds(keyDrag.anchor, keyDrag.current, chart.viewport.get(yAxis), mode);
+        const [x0, y0] = chart.coords.dataToPlot(keyDrag.anchor[0], keyDrag.anchor[1], yAxis);
+        const [x1, y1] = chart.coords.dataToPlot(keyDrag.current[0], keyDrag.current[1], yAxis);
+        const corners = { pointerId: 0, startX: rect.left + x0, startY: rect.top + y0, currentX: rect.left + x1, currentY: rect.top + y1 };
+        return { mode, yAxis, bounds, plotBounds: plotBoundsForDrag(corners, rect, mode) };
+      };
+      /** Start point: the keyboard inspection cursor when one is active, else the plot center. */
+      const keyAnchor = (): [number, number] | null => {
+        const rect = chart.layout.plotRect();
+        const center = clampedClientToData(chart, rect.left + rect.width / 2, rect.top + rect.height / 2, rect, yAxis);
+        const hover = chart.state.getHover();
+        const item = hover?.source === "inspection" ? hover.items[0] : undefined;
+        if (!item || !center) return center;
+        return [item.x, (item.series.config.yAxis ?? "left") === yAxis ? item.y : center[1]];
+      };
+      const extendByKey = (event: KeyboardEvent, dxFraction: number, dyFraction: number): void => {
+        const rect = chart.layout.plotRect();
+        const starting = keyDrag === null;
+        if (!keyDrag) {
+          const anchor = keyAnchor();
+          if (!anchor) return;
+          keyDrag = { anchor, current: [anchor[0], anchor[1]] };
+        }
+        const [plotX, plotY] = chart.coords.dataToPlot(keyDrag.current[0], keyDrag.current[1], yAxis);
+        const next = clampedClientToData(chart, rect.left + plotX + dxFraction * rect.width, rect.top + plotY + dyFraction * rect.height, rect, yAxis);
+        if (next) keyDrag.current = next;
+        const selection = keySelection();
+        setOverlay(selection?.plotBounds ?? null);
+        emit(starting ? "start" : "update", selection, event);
+        if (selection) announce?.(`Selecting ${describe(selection.bounds)}.${starting ? " Enter commits, Escape cancels." : ""}`);
+      };
+      const commitKeySelection = (event: KeyboardEvent): boolean => {
+        const selection = keySelection();
+        if (!selection || selection.bounds.xMax <= selection.bounds.xMin || selection.bounds.yMax <= selection.bounds.yMin) return false;
+        keyDrag = null;
+        committedSelection = selection;
+        setOverlay(selection.plotBounds);
+        chart.events.emit("select", { selection });
+        emit("commit", selection, event);
+        announce?.(`Selected ${describe(selection.bounds)}.`);
+        return true;
+      };
+      const onRootKeyDown = (event: KeyboardEvent): void => {
+        // Only while the chart root itself has focus; controls inside it keep their keys.
+        if (!keyboard || event.target !== event.currentTarget || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+        let handled = true;
+        switch (event.key) {
+          case "ArrowLeft":
+          case "ArrowRight":
+            if (!event.shiftKey || mode === "y-range") return;
+            extendByKey(event, event.key === "ArrowRight" ? keyStep : -keyStep, 0);
+            break;
+          case "ArrowUp":
+          case "ArrowDown":
+            if (!event.shiftKey || mode === "x-range") return;
+            extendByKey(event, 0, event.key === "ArrowDown" ? keyStep : -keyStep);
+            break;
+          case "Enter":
+            handled = keyDrag !== null && commitKeySelection(event);
+            break;
+          case "Escape":
+            if (!keyDrag) return;
+            keyDrag = null;
+            setOverlay(committedSelection?.plotBounds ?? null);
+            announce?.("Selection cancelled.");
+            break;
+          default:
+            handled = false;
+        }
+        if (handled) event.preventDefault();
+      };
+
       // Keep the committed rectangle on its data bounds as the chart pans, zooms, or resizes.
       const onRender = (): void => {
-        if (!committedSelection || drag) return;
+        if (drag) return;
+        if (keyDrag) {
+          setOverlay(keySelection()?.plotBounds ?? null);
+          return;
+        }
+        if (!committedSelection) return;
         const rect = chart.layout.plotRect();
         const { bounds } = committedSelection;
         const [x0, y0] = chart.coords.dataToPlot(bounds.xMin, bounds.yMin, yAxis);
@@ -240,6 +364,8 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         chart.dom.listen("plot", "pointermove", onPointerMove),
         chart.dom.listen("plot", "pointerup", onPointerUp),
         chart.dom.listen("plot", "pointercancel", onPointerCancel),
+        // Capture runs before the chart's own Shift+Arrow pan on the same root element.
+        chart.dom.listen("root", "keydown", onRootKeyDown, { capture: true }),
       ];
       globalThis.addEventListener("pointerdown", armEscape, { capture: true });
       globalThis.addEventListener("focusin", armEscape, { capture: true });
@@ -260,6 +386,9 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
           drag = null;
           captureTarget = null;
           committedSelection = null;
+          keyDrag = null;
+          announce = null;
+          liveRegion = null;
         },
       };
     },

@@ -132,7 +132,8 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       };
 
       const render = (state: ChartHoverState | null): void => {
-        const shouldRepick = state !== null && (
+        // Keyboard inspection pins the tooltip to the inspected sample; never re-pick it.
+        const shouldRepick = state !== null && state.source !== "inspection" && (
           (options.mode !== undefined && options.mode !== state.mode) ||
           (options.group !== undefined && options.group !== state.group) ||
           (options.maxDistancePx !== undefined && options.maxDistancePx !== state.maxDistancePx)

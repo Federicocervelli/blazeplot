@@ -457,10 +457,34 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         updateAtClientPoint(activeClientPoint.clientX, activeClientPoint.clientY);
       });
 
+      // Keyboard inspection (`ctx.state.inspect`) drives the crosshair to the inspected sample.
+      let inspecting = false;
+      const unsubscribeHover = chart.events.subscribe("hover", (state) => {
+        if (state?.source === "inspection") {
+          const item = state.items[0];
+          if (!item) return;
+          inspecting = true;
+          activeClientPoint = null;
+          const position: CrosshairPosition = { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: [item] };
+          renderPosition(position);
+          emitMove(position);
+          sync?.broadcast(position.dataX);
+          return;
+        }
+        if (!inspecting) return;
+        inspecting = false;
+        // The pointer took over; its own handlers already placed the crosshair.
+        if (activeClientPoint) return;
+        if (!rulerStart) renderPosition(null);
+        emitMove(null);
+        sync?.broadcast(null);
+      });
+
       return () => {
         longPress.clear();
         for (const off of unlisten) off();
         unsubscribeRender();
+        unsubscribeHover();
         sync?.leave();
         sync = null;
         unmount();

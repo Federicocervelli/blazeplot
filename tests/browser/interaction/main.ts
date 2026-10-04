@@ -1,7 +1,12 @@
 import { Chart, StaticDataset } from "@/index.ts";
 import { createLinkedCharts } from "@/linked.ts";
 import type { ChartHoverState, ChartPlugin, Viewport } from "@/index.ts";
+import { a11yPlugin } from "@/plugins/a11y.ts";
+import { annotationsPlugin } from "@/plugins/annotations.ts";
+import type { AnnotationsPlugin } from "@/plugins/annotations.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
+import { legendPlugin } from "@/plugins/legend.ts";
+import { navigatorPlugin } from "@/plugins/navigator.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
@@ -39,7 +44,25 @@ interface InteractionSnapshot {
   readonly renderEvents: number;
   readonly followingLatestX: boolean;
   readonly latestXFollowPaused: boolean;
+  readonly a11y: A11ySnapshot;
   readonly error: string | null;
+}
+
+/** Keyboard-only state for the `a11y` case. */
+interface A11ySnapshot {
+  /** `chart-root`, `annotation:<name>`, `legend:<name>`, the element's role, or `body`. */
+  readonly active: string;
+  /** Computed outline of the focused element, to check visible focus styles. */
+  readonly activeOutline: string;
+  readonly announcement: string;
+  readonly selectionStatus: string;
+  readonly hoverSource: string | null;
+  readonly hoverSeries: string | null;
+  readonly hoverIndex: number | null;
+  readonly annotationCount: number;
+  readonly annotationClicks: number;
+  readonly tableRows: number;
+  readonly describedBy: string;
 }
 
 interface InteractionController {
@@ -55,11 +78,12 @@ declare global {
   }
 }
 
-type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow" | "robustness";
+type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow" | "robustness" | "a11y";
 
 const params = new URLSearchParams(window.location.search);
 const rawCase = params.get("case");
 const caseName: InteractionCase = rawCase === "selection"
+  || rawCase === "a11y"
   || rawCase === "linked"
   || rawCase === "mobile"
   || rawCase === "mobile-longpress"
@@ -89,8 +113,32 @@ let selectionBounds: InteractionSnapshot["selectionBounds"] = null;
 
 const charts: Chart[] = [];
 let selection: SelectionPlugin | null = null;
+let annotations: AnnotationsPlugin | null = null;
+let annotationClicks = 0;
 
-if (caseName === "linked") {
+if (caseName === "a11y") {
+  // Every keyboard-reachable built-in, for keyboard-only and axe checks.
+  selection = selectionPlugin({
+    mode: "x-range",
+    onChange: (event) => {
+      if (event.type !== "commit") return;
+      selectionCommits++;
+      selectionBounds = event.selection?.bounds ?? null;
+    },
+  });
+  annotations = annotationsPlugin({
+    annotations: [
+      { type: "x-line", x: 300, label: "Deploy", removable: true },
+      { type: "x-range", xMin: 600, xMax: 700, label: "Incident" },
+    ],
+    onClick: () => { annotationClicks++; },
+  });
+  charts.push(new Chart(chartTarget, {
+    title: "Accessible interaction chart",
+    axes: { x: { position: "outside" }, y: { position: "outside" } },
+    plugins: [a11yPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }), selection, annotations, legendPlugin(), navigatorPlugin({ height: 48 })],
+  }));
+} else if (caseName === "linked") {
   const linked = createLinkedCharts(chartTarget, {
     rows: 2,
     panels: [{}, {}],
@@ -167,6 +215,7 @@ window.__blazeplotInteractionTest = {
     renderEvents,
     followingLatestX: chart.getXFollowState() === "following",
     latestXFollowPaused: chart.getXFollowState() === "paused",
+    a11y: a11ySnapshot(),
     error,
   }),
   setViewport: (viewport) => chart.setViewport(viewport),
@@ -196,6 +245,9 @@ try {
       series.append({ y });
     } else {
       item.addLine({ dataset: new StaticDataset(x, y), name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
+    }
+    if (caseName === "a11y") {
+      item.addLine({ dataset: new StaticDataset(x, Float32Array.from(x, (value) => Math.cos(value * 0.025))), name: "interaction cosine" }, { lineWidth: 2 });
     }
     if (caseName === "interactions") {
       const rightY = Float32Array.from(y, (value) => value * 1_000 + 5_000);
@@ -265,6 +317,35 @@ function tooltipLeft(): number | null {
   const translated = /translate\(([-0-9.]+)px/.exec(tooltip.style.transform)?.[1];
   const value = Number.parseFloat(translated ?? tooltip.style.left);
   return Number.isFinite(value) ? value : null;
+}
+
+function describeActive(): string {
+  const active = document.activeElement as HTMLElement | null;
+  if (!active || active === document.body) return "body";
+  if (active === chart?.rootElement) return "chart-root";
+  if (active.classList.contains("blazeplot-annotation-focus")) return `annotation:${active.getAttribute("aria-label") ?? ""}`;
+  if (active.closest(".blazeplot-legend")) return `legend:${active.getAttribute("aria-label") ?? ""}`;
+  return active.getAttribute("role") ?? active.tagName.toLowerCase();
+}
+
+function a11ySnapshot(): A11ySnapshot {
+  const hover = chart?.getHoverState() ?? null;
+  const active = document.activeElement as HTMLElement | null;
+  const outline = active && active !== document.body ? getComputedStyle(active) : null;
+  const describedBy = chart?.rootElement.getAttribute("aria-describedby");
+  return {
+    active: describeActive(),
+    activeOutline: outline ? `${outline.outlineStyle} ${outline.outlineWidth} ${outline.outlineColor}` : "",
+    announcement: (document.querySelector(".blazeplot-a11y-announcer")?.textContent ?? "").trim(),
+    selectionStatus: (document.querySelector(".blazeplot-selection-status")?.textContent ?? "").trim(),
+    hoverSource: hover?.source ?? null,
+    hoverSeries: hover?.items[0]?.name ?? null,
+    hoverIndex: hover?.items[0]?.index ?? null,
+    annotationCount: annotations?.getAnnotations().length ?? 0,
+    annotationClicks,
+    tableRows: document.querySelectorAll(".blazeplot-a11y tbody tr").length,
+    describedBy: describedBy ? document.getElementById(describedBy)?.textContent ?? "" : "",
+  };
 }
 
 function renderStatus(): void {

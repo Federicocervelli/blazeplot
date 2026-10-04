@@ -1,5 +1,6 @@
 import { Chart } from "@/index.ts";
 import type { ChartPlugin, SeriesStore } from "@/index.ts";
+import { a11yPlugin } from "@/plugins/a11y.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import { flameGraphPlugin } from "@/plugins/flamegraph.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
@@ -227,6 +228,7 @@ function fullPlugins(): ChartPlugin[] {
     selectionPlugin(),
     annotationsPlugin({ annotations: [{ type: "x-line", x: 50, label: "marker" }] }),
     navigatorPlugin(),
+    a11yPlugin({ live: { intervalMs: 1_000 }, table: { updateMs: 50 } }),
   ];
 }
 
@@ -268,6 +270,11 @@ function hover(chart: Chart): void {
   chart.canvas.dispatchEvent(new PointerEvent("pointerdown", { ...init, button: 0, buttons: 1 }));
   chart.canvas.dispatchEvent(new PointerEvent("pointerup", { ...init, button: 0, buttons: 0 }));
   chart.canvas.dispatchEvent(new PointerEvent("pointerleave", init));
+  // Keyboard paths: inspection cursor (a11y plugin) and keyboard selection, ending both.
+  const root = chart.rootElement;
+  for (const [key, shiftKey] of [["Enter", false], ["ArrowRight", false], ["Escape", false], ["ArrowRight", true], ["Escape", false]] as const) {
+    root.dispatchEvent(new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true }));
+  }
 }
 
 /** Resolve after the next completed chart render, or fail after `timeoutMs`. */

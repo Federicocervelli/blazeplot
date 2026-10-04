@@ -19,6 +19,12 @@ export interface AnnotationBase {
   readonly yAxis?: SeriesYAxis;
   readonly className?: string;
   readonly label?: string | AnnotationLabelOptions;
+  /** Accessible name for the focusable annotation. Defaults to the label text, else a generated description. */
+  readonly ariaLabel?: string;
+  /** Put this annotation in the Tab order. Defaults to the plugin's `focusable` option. */
+  readonly focusable?: boolean;
+  /** Let Delete or Backspace remove this annotation while it has focus. Defaults to the plugin's `removable` option. */
+  readonly removable?: boolean;
 }
 
 /** Vertical annotation line at a data X value. */
@@ -140,7 +146,17 @@ export interface AnnotationsPluginOptions {
   readonly zIndex?: number;
   readonly hitTolerancePx?: number;
   readonly onHover?: (event: AnnotationHitEvent | null) => void;
+  /** Called for a pointer click on an annotation, and for Enter or Space while it has keyboard focus. */
   readonly onClick?: (event: AnnotationHitEvent) => void;
+  /**
+   * Give each visible annotation a keyboard focus target (`role="button"`, named by its label)
+   * in the Tab order. Enter or Space activates it like a click. Defaults to true.
+   */
+  readonly focusable?: boolean;
+  /** Let Delete or Backspace remove a focused annotation. Annotations can override it. Defaults to false. */
+  readonly removable?: boolean;
+  /** Called after an annotation was removed from the keyboard. */
+  readonly onRemove?: (annotation: Annotation) => void;
 }
 
 /** Annotation plugin with imperative annotation updates. */
@@ -272,6 +288,60 @@ function createHitEvent(chart: ChartPluginContext, annotation: Annotation, clien
   };
 }
 
+/** Plot-space box a keyboard focus target covers for one annotation, or `null` when it is off-screen. */
+function annotationFocusRect(chart: ChartPluginContext, annotation: Annotation, width: number, height: number): { x: number; y: number; w: number; h: number } | null {
+  const viewport = chart.viewport.get(annotation.yAxis ?? "left");
+  const xToPx = (x: number): number => ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * width;
+  const yToPx = (y: number): number => ((viewport.yMax - y) / (viewport.yMax - viewport.yMin)) * height;
+  const band = 4;
+  switch (annotation.type) {
+    case "x-line": {
+      const x = xToPx(annotation.x);
+      return x < 0 || x > width ? null : { x: x - band, y: 0, w: band * 2, h: height };
+    }
+    case "y-line": {
+      const y = yToPx(annotation.y);
+      return y < 0 || y > height ? null : { x: 0, y: y - band, w: width, h: band * 2 };
+    }
+    case "x-range":
+      return clampRect(xToPx(annotation.xMin), 0, xToPx(annotation.xMax), height, width, height);
+    case "y-range":
+      return clampRect(0, yToPx(annotation.yMax), width, yToPx(annotation.yMin), width, height);
+    case "box":
+      return clampRect(xToPx(annotation.xMin), yToPx(annotation.yMax), xToPx(annotation.xMax), yToPx(annotation.yMin), width, height);
+    case "point": {
+      const x = xToPx(annotation.x);
+      const y = yToPx(annotation.y);
+      const radius = (annotation.radius ?? 5) + 2;
+      return isInsidePlot(x, y, width, height) ? { x: x - radius, y: y - radius, w: radius * 2, h: radius * 2 } : null;
+    }
+    case "label": {
+      const x = xToPx(annotation.x);
+      const y = yToPx(annotation.y);
+      return isInsidePlot(x, y, width, height) ? { x: x - 4, y: y - 2, w: Math.max(16, annotation.text.length * 7 + 8), h: 18 } : null;
+    }
+  }
+}
+
+/** Accessible name: `ariaLabel`, else the label text, else a description of the shape and position. */
+function annotationName(chart: ChartPluginContext, annotation: Annotation): string {
+  if (annotation.ariaLabel) return annotation.ariaLabel;
+  const text = labelText(annotation.label) ?? (annotation.type === "label" ? annotation.text : null);
+  if (text) return text;
+  const yAxis = annotation.yAxis ?? "left";
+  const x = (value: number): string => chart.coords.format(value, "x", yAxis);
+  const y = (value: number): string => chart.coords.format(value, "y", yAxis);
+  switch (annotation.type) {
+    case "x-line": return `Vertical line at x ${x(annotation.x)}`;
+    case "y-line": return `Horizontal line at y ${y(annotation.y)}`;
+    case "x-range": return `X range from ${x(annotation.xMin)} to ${x(annotation.xMax)}`;
+    case "y-range": return `Y range from ${y(annotation.yMin)} to ${y(annotation.yMax)}`;
+    case "box": return `Box from x ${x(annotation.xMin)} to ${x(annotation.xMax)}, y ${y(annotation.yMin)} to ${y(annotation.yMax)}`;
+    case "point": return `Point at x ${x(annotation.x)}, y ${y(annotation.y)}`;
+    case "label": return `Label at x ${x(annotation.x)}, y ${y(annotation.y)}`;
+  }
+}
+
 /** Create a plugin that renders lines, ranges, boxes, points, and labels. */
 export function annotationsPlugin(options: AnnotationsPluginOptions = {}): AnnotationsPlugin {
   let annotations = [...(options.annotations ?? [])];
@@ -284,9 +354,61 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
   const hoverSubscribers = new Set<(event: AnnotationHitEvent | null) => void>();
   const clickSubscribers = new Set<(event: AnnotationHitEvent) => void>();
   let lastHoverAnnotation: Annotation | null = null;
+  /** HTML focus targets laid over the (aria-hidden) SVG; they persist across renders so focus survives. */
+  let focusLayer: HTMLDivElement | null = null;
+  const focusTargets = new Map<Annotation, HTMLDivElement>();
+  const focusedAnnotation = new WeakMap<Element, Annotation>();
+
+  const isFocusable = (annotation: Annotation): boolean => annotation.visible !== false && (annotation.focusable ?? options.focusable ?? true);
+  const isRemovable = (annotation: Annotation): boolean => annotation.removable ?? options.removable ?? false;
+
+  const syncFocusTargets = (chart: ChartPluginContext, layer: HTMLDivElement): void => {
+    const plot = chart.layout.plotRect();
+    const width = Math.max(1, plot.width);
+    const height = Math.max(1, plot.height);
+    const live = new Set<Annotation>();
+    let position = 0;
+    for (const annotation of annotations) {
+      if (!isFocusable(annotation)) continue;
+      const rect = annotationFocusRect(chart, annotation, width, height);
+      if (!rect) continue;
+      live.add(annotation);
+      let target = focusTargets.get(annotation);
+      if (!target) {
+        target = document.createElement("div");
+        target.className = "blazeplot-annotation-focus";
+        target.tabIndex = 0;
+        target.setAttribute("role", "button");
+        target.setAttribute("aria-roledescription", "annotation");
+        Object.assign(target.style, { position: "absolute", pointerEvents: "none", borderRadius: "2px", boxSizing: "border-box" });
+        focusTargets.set(annotation, target);
+        focusedAnnotation.set(target, annotation);
+      }
+      target.setAttribute("aria-label", annotationName(chart, annotation));
+      if (isRemovable(annotation)) target.setAttribute("aria-keyshortcuts", "Enter Delete");
+      else target.setAttribute("aria-keyshortcuts", "Enter");
+      target.style.left = `${rect.x}px`;
+      target.style.top = `${rect.y}px`;
+      target.style.width = `${rect.w}px`;
+      target.style.height = `${rect.h}px`;
+      if (layer.children.item(position) !== target) layer.insertBefore(target, layer.children.item(position));
+      position++;
+    }
+    for (const [annotation, target] of focusTargets) {
+      if (live.has(annotation)) continue;
+      target.remove();
+      focusTargets.delete(annotation);
+    }
+  };
 
   const requestRender = (): void => {
     if (chartRef && overlay) render(chartRef, overlay, annotations, color, fillColor, font);
+    if (chartRef && focusLayer) syncFocusTargets(chartRef, focusLayer);
+  };
+
+  const removeAnnotation = (annotation: Annotation): void => {
+    annotations = annotations.filter((item) => item !== annotation);
+    requestRender();
   };
 
   const pickAt = (clientX: number, clientY: number, source?: ChartPointerEventState): AnnotationHitEvent | null => {
@@ -328,6 +450,32 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
       overlay.style.zIndex = String(options.zIndex ?? 12);
       overlay.setAttribute("aria-hidden", "true");
       const unmount = chart.dom.mount("plot", overlay);
+
+      focusLayer = document.createElement("div");
+      focusLayer.className = "blazeplot-annotation-focus-layer";
+      Object.assign(focusLayer.style, { position: "absolute", inset: "0", pointerEvents: "none", zIndex: String(options.zIndex ?? 12) });
+      chart.dom.mount("plot", focusLayer);
+      const onFocusKeyDown = (event: KeyboardEvent): void => {
+        const target = event.target instanceof Element ? event.target : null;
+        const annotation = target ? focusedAnnotation.get(target) : undefined;
+        if (!target || !annotation || event.altKey || event.ctrlKey || event.metaKey) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          const box = target.getBoundingClientRect();
+          const hit = createHitEvent(chart, annotation, box.left + box.width / 2, box.top + box.height / 2);
+          if (hit) emitClick(hit);
+          return;
+        }
+        if ((event.key === "Delete" || event.key === "Backspace") && isRemovable(annotation)) {
+          event.preventDefault();
+          // Keep focus in the chart: the next annotation, else the previous one, else the chart root.
+          const next = (target.nextElementSibling ?? target.previousElementSibling) as HTMLElement | null;
+          removeAnnotation(annotation);
+          options.onRemove?.(annotation);
+          (next?.isConnected ? next : focusLayer?.closest<HTMLElement>(".blazeplot-root"))?.focus();
+        }
+      };
+      focusLayer.addEventListener("keydown", onFocusKeyDown);
       const unsubscribeRender = chart.events.subscribe("render", () => requestRender());
       const unsubscribeMove = chart.events.subscribe("pointermove", (event) => {
         const hit = pickAt(event.clientX, event.clientY, event);
@@ -345,6 +493,10 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
         unsubscribeMove();
         unsubscribeClick();
         unmount();
+        focusLayer?.removeEventListener("keydown", onFocusKeyDown);
+        focusLayer?.remove();
+        focusLayer = null;
+        focusTargets.clear();
         overlay = null;
         chartRef = null;
       };

@@ -8,6 +8,7 @@ import type {
   ChartFollowXOptions,
   ChartFrameStats,
   ChartHoverState,
+  ChartInspectionTarget,
   ChartPickOptions,
   ChartSelectEvent,
   ChartSeriesState,
@@ -114,6 +115,11 @@ export interface ChartPluginCoords {
   clientToPlot(clientX: number, clientY: number): [number, number];
   /** Plot-local CSS pixels to client coordinates. */
   plotToClient(plotX: number, plotY: number): [number, number];
+  /**
+   * Format a data value the way the axis labels it (tick format, time, categorical, or custom
+   * scale formatting). Use it for text that should match the axes, such as announcements.
+   */
+  format(value: number, axis: "x" | "y", yAxis?: SeriesYAxis): string;
 }
 
 /** Viewport reads, changes, and latest-X follow control. Changes go through the chart's `ViewportPolicy`. */
@@ -149,6 +155,17 @@ export interface ChartPluginState {
   pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
   /** Copy the latest render metrics into `target` and return it. */
   getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+  /**
+   * Show one sample as the chart's hover state, as if the pointer were on it, so the tooltip,
+   * crosshair, and `hover` subscribers follow a keyboard cursor. The state has
+   * `source: "inspection"` and the sample as `items[0]`, and is re-projected every frame.
+   * Pass `null` to end inspection; a pointer moving over the plot also ends it. Returns the new
+   * hover state, which is `null` while the sample is hidden, a gap, or outside the plot.
+   * Throws a `RangeError` for a series that is not on this chart or an index outside it.
+   */
+  inspect(target: ChartInspectionTarget | null): ChartHoverState | null;
+  /** The sample being inspected, or `null` when no inspection is active. */
+  getInspection(): ChartInspectionTarget | null;
 }
 
 /** Layout geometry and space reservations. */
@@ -286,6 +303,9 @@ export interface PluginHostChart {
 export interface PluginHostInternals {
   emit<K extends ChartEventName>(event: K, payload: ChartEventMap[K]): void;
   setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
+  inspect(target: ChartInspectionTarget | null): ChartHoverState | null;
+  getInspection(): ChartInspectionTarget | null;
+  formatValue(value: number, axis: "x" | "y", yAxis?: SeriesYAxis): string;
 }
 
 interface InstalledPlugin {
@@ -419,6 +439,7 @@ export class PluginHost {
         const rect = plotClientRect();
         return [rect.left + plotX, rect.top + plotY];
       },
+      format: (value, axis, yAxis) => internals.formatValue(value, axis, yAxis),
     };
 
     const viewport: ChartPluginViewport = {
@@ -442,6 +463,8 @@ export class PluginHost {
       getHover: () => chart.getHoverState(),
       pick: (clientX, clientY, options) => chart.pick(clientX, clientY, options),
       getFrameStats: (target) => chart.getFrameStats(target),
+      inspect: (target) => internals.inspect(target),
+      getInspection: () => internals.getInspection(),
     };
 
     const layout: ChartPluginLayout = {

@@ -19,13 +19,16 @@ const press = (chart: Chart, key: string, init: Parameters<typeof keyEvent>[1] =
 };
 
 describe("chart accessibility attributes", () => {
-  it("makes the root a focusable labelled image and hides decoration", () => {
+  it("makes the root a focusable labelled figure and hides decoration", () => {
     const chart = make({ title: "Latency", subtitle: "p95" });
     const root = chart.rootElement;
     expect(root.tabIndex).toBe(0);
-    expect(root.getAttribute("role")).toBe("img");
+    expect(root.getAttribute("role")).toBe("figure");
     expect(root.getAttribute("aria-label")).toBe("Latency — p95");
     expect(root.hasAttribute("aria-description")).toBe(false);
+    const summary = document.getElementById(root.getAttribute("aria-describedby")!);
+    expect(summary?.textContent).toBe("Chart with no data series.");
+    expect(summary?.className).toBe("blazeplot-visually-hidden");
     expect(chart.plotElement.getAttribute("role")).toBe("presentation");
     for (const hidden of [chart.canvas, chart.xAxisElement, chart.yAxisElement, chart.y2AxisElement]) {
       expect(hidden.getAttribute("aria-hidden")).toBe("true");
@@ -41,10 +44,10 @@ describe("chart accessibility attributes", () => {
     expect(plain.rootElement.getAttribute("aria-label")).toBe("BlazePlot chart");
     plain.dispose();
 
-    const custom = make({ title: "ignored", accessibility: { label: "CPU by core", description: "See the table below", role: "figure" } });
+    const custom = make({ title: "ignored", accessibility: { label: "CPU by core", description: "See the table below", role: "img" } });
     expect(custom.rootElement.getAttribute("aria-label")).toBe("CPU by core");
-    expect(custom.rootElement.getAttribute("aria-description")).toBe("See the table below");
-    expect(custom.rootElement.getAttribute("role")).toBe("figure");
+    expect(document.getElementById(custom.rootElement.getAttribute("aria-describedby")!)?.textContent).toBe("See the table below");
+    expect(custom.rootElement.getAttribute("role")).toBe("img");
     custom.dispose();
   });
 
@@ -63,7 +66,7 @@ describe("chart accessibility attributes", () => {
 
   it("keeps ARIA but disables keys when keyboard is false", () => {
     const chart = make({ accessibility: { keyboard: false } });
-    expect(chart.rootElement.getAttribute("role")).toBe("img");
+    expect(chart.rootElement.getAttribute("role")).toBe("figure");
     const event = press(chart, "ArrowRight");
     expect(event.defaultPrevented).toBe(false);
     expect(chart.getViewport().xMin).toBe(0);

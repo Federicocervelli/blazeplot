@@ -29,7 +29,7 @@ describe("legendPlugin", () => {
     chart.dispose();
   });
 
-  it("toggles series visibility on click and mirrors it in aria-pressed, title, and opacity", () => {
+  it("toggles series visibility on click and mirrors it in aria-pressed, title, swatch opacity, and strike-through", () => {
     const chart = h.make({ plugins: [legendPlugin()] });
     const series = chart.addLine({ capacity: 4, name: "CPU" });
     const row = legendOf(chart.rootElement).children[0] as HTMLButtonElement;
@@ -38,12 +38,15 @@ describe("legendPlugin", () => {
     expect(series.visible).toBe(false);
     expect(row.getAttribute("aria-pressed")).toBe("false");
     expect(row.title).toBe("Show CPU");
-    expect(row.style.opacity).toBe("0.45");
+    expect((row.children[0] as HTMLElement).style.opacity).toBe("0.45");
+    expect((row.children[1] as HTMLElement).style.textDecoration).toBe("line-through");
+    expect(row.style.opacity).toBe("");
 
     fire(row, new window.MouseEvent("click", { bubbles: true }));
     expect(series.visible).toBe(true);
     expect(row.getAttribute("aria-pressed")).toBe("true");
-    expect(row.style.opacity).toBe("1");
+    expect((row.children[0] as HTMLElement).style.opacity).toBe("1");
+    expect((row.children[1] as HTMLElement).style.textDecoration).toBe("none");
     chart.dispose();
   });
 

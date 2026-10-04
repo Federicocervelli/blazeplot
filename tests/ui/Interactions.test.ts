@@ -44,7 +44,7 @@ describe("interactionsPlugin install and dispose", () => {
     expect(x.style.pointerEvents).toBe("auto");
     expect(x.style.cursor).toBe("ew-resize");
     expect(y.style.cursor).toBe("ns-resize");
-    expect(root.querySelector("style")).not.toBeNull();
+    expect(root.querySelector("style:not(.blazeplot-style)")).not.toBeNull();
     fire(x, pointerEvent("pointerenter", 0, 0));
     expect(x.style.filter).toContain("brightness");
 
@@ -64,7 +64,7 @@ describe("interactionsPlugin install and dispose", () => {
     expect(chart.xAxisElement.style.pointerEvents).not.toBe("auto");
     expect(chart.xAxisElement.style.cursor).toBe("");
     expect(chart.canvas.style.touchAction).toBe(h.make().canvas.style.touchAction);
-    expect(chart.rootElement.querySelector("style")).toBeNull();
+    expect(chart.rootElement.querySelector("style:not(.blazeplot-style)")).toBeNull();
     // Wheel over a gutter does nothing without axisInteractions.
     const before = chart.getViewport();
     const event = wheelEvent(10, 10, { deltaY: -100 });

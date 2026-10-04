@@ -272,6 +272,82 @@ describe("annotationsPlugin lifecycle", () => {
     chart.dispose();
   });
 
+  it("gives visible annotations named, focusable button targets that survive re-renders", () => {
+    const { chart, plugin } = make({
+      annotations: [
+        { type: "x-line", x: 50, label: "Deploy" },
+        { type: "y-line", y: 50 },
+        { type: "box", xMin: 10, xMax: 20, yMin: 10, yMax: 20, ariaLabel: "Incident window" },
+        { type: "point", x: 500, y: 1 },
+        { type: "label", x: 80, y: 80, text: "Peak", focusable: false },
+      ],
+    });
+    const targets = (): HTMLElement[] => [...chart.plotElement.querySelectorAll<HTMLElement>(".blazeplot-annotation-focus")];
+    expect(targets().map((target) => target.getAttribute("aria-label"))).toEqual(["Deploy", "Horizontal line at y 50.0", "Incident window"]);
+    const [line] = targets();
+    expect(line!.tabIndex).toBe(0);
+    expect(line!.getAttribute("role")).toBe("button");
+    expect(line!.getAttribute("aria-roledescription")).toBe("annotation");
+    expect(line!.getAttribute("aria-keyshortcuts")).toBe("Enter");
+    expect(line!.style).toMatchObject({ left: "196px", top: "0px", width: "8px", height: "200px", pointerEvents: "none" });
+
+    line!.focus();
+    chart.setViewport({ xMin: 0, xMax: 200 });
+    h.raf.flush();
+    expect(targets()[0]).toBe(line!);
+    expect(document.activeElement).toBe(line!);
+    expect(line!.style.left).toBe("96px");
+    plugin.setAnnotations([]);
+    expect(targets()).toEqual([]);
+    chart.dispose();
+  });
+
+  it("activates with Enter or Space like a click and removes removable annotations with Delete", () => {
+    const clicks: AnnotationHitEvent[] = [];
+    const removed: Annotation[] = [];
+    const first: Annotation = { type: "x-line", x: 25, id: "a", label: "A", removable: true };
+    const second: Annotation = { type: "x-line", x: 75, id: "b", label: "B" };
+    const { chart, plugin } = make({ annotations: [first, second], onClick: (event) => clicks.push(event), onRemove: (annotation) => removed.push(annotation) });
+    const targets = (): HTMLElement[] => [...chart.plotElement.querySelectorAll<HTMLElement>(".blazeplot-annotation-focus")];
+    const [a, b] = targets();
+    for (const target of [a!, b!]) target.getBoundingClientRect = () => ({ left: 100, top: 0, width: 8, height: 200, right: 108, bottom: 200, x: 100, y: 0, toJSON() {} }) as DOMRect;
+
+    const enter = new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    fire(a!, enter);
+    expect(enter.defaultPrevented).toBe(true);
+    fire(b!, new window.KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }));
+    expect(clicks.map((event) => event.annotation)).toEqual([first, second]);
+    expect(clicks[0]!.source).toBeUndefined();
+    expect(a!.getAttribute("aria-keyshortcuts")).toBe("Enter Delete");
+
+    // Not removable: Delete is ignored.
+    const ignored = new window.KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true });
+    fire(b!, ignored);
+    expect(ignored.defaultPrevented).toBe(false);
+    expect(plugin.getAnnotations()).toHaveLength(2);
+
+    a!.focus();
+    fire(a!, new window.KeyboardEvent("keydown", { key: "Delete", bubbles: true, cancelable: true }));
+    expect(plugin.getAnnotations()).toEqual([second]);
+    expect(removed).toEqual([first]);
+    expect(a!.isConnected).toBe(false);
+    expect(document.activeElement).toBe(b!);
+
+    plugin.setAnnotations([{ ...second, removable: true }]);
+    const only = targets()[0]!;
+    only.focus();
+    fire(only, new window.KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
+    expect(plugin.getAnnotations()).toEqual([]);
+    expect(document.activeElement).toBe(chart.rootElement);
+    chart.dispose();
+  });
+
+  it("can opt out of focus targets plugin-wide", () => {
+    const { chart } = make({ focusable: false, annotations: [{ type: "x-line", x: 50 }] });
+    expect(chart.plotElement.querySelector(".blazeplot-annotation-focus")).toBeNull();
+    chart.dispose();
+  });
+
   it("leaves no DOM or listeners behind across install/dispose cycles", () => {
     const nodes = countNodes(document.body);
     for (let i = 0; i < 5; i++) {

@@ -41,11 +41,16 @@ const budgets: Budget[] = [
   { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 8_000 },
   { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 16_000 },
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 48_000 },
+  { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 12_000 },
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
-  // Raised from 142_000 for the stable plugin host (grouped context, lifecycle hooks, cleanup tracking).
-  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 148_000 },
+  // Raised from 142_000 for the stable plugin host (grouped context, lifecycle hooks, cleanup tracking),
+  // then from 148_000 for chart semantics (generated aria-describedby summary), keyboard inspection,
+  // and forced-colors support.
+  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 160_000 },
+  // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
+  { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 8_000 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 8_000 },
   { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 8_000 },
 ];
