@@ -71,7 +71,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 
 - Public top-level API exports live in `src/index.ts`; charts are created with the `Chart` constructor.
 - npm package output includes `dist/index.js` / `dist/index.d.ts` plus subpath entries for `linked`, `data`, `export`, and built-in plugins under `plugins/*`. Do not add subpaths that re-export root symbols. Keep `package.json#exports`, `vite.config.ts#build.lib.entry`, and `scripts/package-export-smoke.ts` in sync. `tsconfig.build.json` uses `stripInternal`: mark renderer/internal members `/** @internal */` to keep them out of published typings.
-- Optional plugin subpaths currently include `legend`, `tooltip`, `interactions`, `annotations`, `selection`, `crosshair`, `navigator`, and `flamegraph`.
+- Optional plugin subpaths currently include `legend`, `tooltip`, `interactions`, `annotations`, `selection`, `crosshair`, `navigator`, `flamegraph`, and `a11y`.
 - `src/core/` is the data engine and should not depend on UI, DOM, or GPU code.
 - `src/render/` owns the GPU abstraction, renderer orchestration, shader programs, WebGL2 resources, and native WebGL2 backend.
 - `src/interaction/` owns `Camera2D`, `AxisController`, and viewport policy/intent types; interaction mutates the camera, not series data.
@@ -97,7 +97,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - LOD queries use sorted logical X values via `RingBuffer.lowerBoundX` / `upperBoundX`; preserve that assumption when changing append/query code.
 - `Chart.render()` calls `SeriesStore.rebuildPyramid()` before drawing visible series and re-extracts visible samples/segments from the current `Camera2D` viewport every frame.
 - `ViewportPolicy` transforms `PanIntent`/`ZoomIntent` and can update `Camera2D` before render. Keep behavior rules there, not in core/rendering.
-- Optional built-ins like interactions, legend, tooltip, annotations, selection, crosshair, navigator, and flamegraph are Chart plugins exported from subpaths (`blazeplot/plugins/*`). `Chart` owns only the lightweight plugin contract and public state/pick/camera APIs; avoid importing built-in plugins into `Chart.ts` or the top-level entry.
+- Optional built-ins like interactions, legend, tooltip, annotations, selection, crosshair, navigator, flamegraph, and a11y are Chart plugins exported from subpaths (`blazeplot/plugins/*`). `Chart` owns only the lightweight plugin contract and public state/pick/camera APIs; avoid importing built-in plugins into `Chart.ts` or the top-level entry.
 - The stable plugin contract (`ChartPluginContext` groups, mount slots/surfaces, `ChartPluginHandle` hooks, `ChartPluginEventMap`) and the `PluginHost` that builds per-plugin contexts live in `src/ui/PluginHost.ts`. Plugins install in registration order, hooks run in registration order, and disposal runs in reverse. Built-in plugins must use only the context and public types (no `Chart` import, no `ctx.unstable`); `tests/plugins/plugin-boundary.test.ts` enforces this. Tests install plugins on a live chart through the `@internal` `chart.installPlugin(...)`.
 - Hover state refreshes every render while the pointer is inside the plot, so live-follow charts update tooltips even when the cursor is still. `chart.pick()` returns actual raw sample coordinates plus plot/client coordinates for marker overlays.
 - In the website preview, synced-X behavior keeps live X follow active while wheel zoom/pan are Y-only.
