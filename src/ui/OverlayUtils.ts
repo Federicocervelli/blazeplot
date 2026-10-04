@@ -1,5 +1,6 @@
 import type { SeriesYAxis } from "../core/types.js";
-import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode, ChartPluginContext } from "./Chart.js";
+import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./Chart.js";
+import type { ChartPluginContext } from "./PluginHost.js";
 import { rgbaCss } from "./theme.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -167,12 +168,12 @@ export interface PickAtDataXOptions {
 /** Pick chart items at a data-X value using midpoint Y for pointer-based pick APIs. */
 export function pickAtDataX(chart: ChartPluginContext, dataX: number, options: PickAtDataXOptions = {}): ChartHoverState | null {
   const yAxis = options.yAxis ?? "left";
-  const rect = chart.canvas.getBoundingClientRect();
+  const rect = chart.layout.plotRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
-  const viewport = chart.getViewport(yAxis);
+  const viewport = chart.viewport.get(yAxis);
   const dataY = viewport.yMin + (viewport.yMax - viewport.yMin) * 0.5;
-  const [plotX, plotY] = chart.dataToPlot(dataX, dataY, yAxis);
-  return chart.pick(rect.left + plotX, rect.top + plotY, {
+  const [plotX, plotY] = chart.coords.dataToPlot(dataX, dataY, yAxis);
+  return chart.state.pick(rect.left + plotX, rect.top + plotY, {
     mode: options.mode ?? "nearest-x",
     group: options.group ?? "x",
     maxDistancePx: options.maxDistancePx,

@@ -20,6 +20,8 @@ import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
 import { resolveChartTheme, resolveThemeColor } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import type { SelectionState } from "./Selection.js";
+import { PluginHost } from "./PluginHost.js";
+import type { ChartLayoutReservation, ChartPlugin, ChartPluginEventMap } from "./PluginHost.js";
 
 /** Vertices in the shared raw line/point/area upload buffer. */
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
@@ -125,6 +127,7 @@ export interface ChartOptions {
    * mutated outside BlazePlot.
    */
   readonly renderLoop?: ChartRenderLoop;
+  /** Installed in this order when the chart is constructed; disposed in reverse order by `dispose()`. */
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
   /** @internal Hook for supplying a custom GPU backend (test fakes). Defaults to `WebGL2Backend`. */
@@ -227,8 +230,11 @@ export interface ChartHoverState {
   readonly items: readonly ChartPickItem[];
 }
 
-/** Payload delivered to `chart.subscribe(event, callback)` for each chart event. */
-export interface ChartEventMap {
+/**
+ * Payload delivered to `chart.subscribe(event, callback)` for each chart event. Includes the
+ * plugin events declared on `ChartPluginEventMap` (such as `select`).
+ */
+export interface ChartEventMap extends ChartPluginEventMap {
   /** Hovered items changed, or `null` when the pointer left the plot. */
   hover: ChartHoverState | null;
   /** A series was added, removed, or shown/hidden. */
@@ -237,7 +243,6 @@ export interface ChartEventMap {
   /** A frame finished drawing. */
   render: void;
   viewportchange: ChartViewportChangeEvent;
-  select: ChartSelectEvent;
   seriesclick: ChartSeriesClickEvent;
   click: ChartPointerEventState;
   dblclick: ChartPointerEventState;
@@ -310,18 +315,6 @@ export interface ChartFollowXOptions {
 /** Latest-X follow state: disabled, actively following, or paused by interaction. */
 export type ChartXFollowState = "off" | "following" | "paused";
 
-/**
- * Extra CSS-pixel space reserved around the plot by plugins or overlays.
- *
- * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
- */
-export interface ChartLayoutReservation {
-  readonly top?: number;
-  readonly right?: number;
-  readonly bottom?: number;
-  readonly left?: number;
-}
-
 /** Render metrics from the last frame. */
 export interface ChartFrameStats {
   fps: number;
@@ -333,70 +326,6 @@ export interface ChartFrameStats {
 }
 
 type DrawMode = Exclude<ChartFrameStats["renderMode"], "none" | "mixed">;
-
-/**
- * Chart API available to plugins.
- *
- * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
- */
-export interface ChartPluginContext {
-  /** @experimental DOM and canvas handles are part of the experimental plugin contract. */
-  readonly canvas: HTMLCanvasElement;
-  /** @experimental */
-  readonly rootElement: HTMLElement;
-  /** @experimental */
-  readonly plotElement: HTMLElement;
-  /** @experimental */
-  readonly xAxisElement: HTMLElement;
-  /** @experimental */
-  readonly yAxisElement: HTMLElement;
-  /** @experimental */
-  readonly y2AxisElement: HTMLElement;
-  readonly theme: ResolvedChartTheme;
-  /** @experimental Raw WebGL2 context; may change or be removed before the plugin contract is stable. */
-  getWebGLContext(): WebGL2RenderingContext | null;
-  /** @experimental May change in a minor release before it is promoted to stable. See docs/stability.md. */
-  getCamera(yAxis?: SeriesYAxis): Camera2D;
-  dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
-  clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
-  getViewport(yAxis?: SeriesYAxis): Viewport;
-  setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
-  pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
-  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
-  fitToData(options?: ChartFitToDataOptions): boolean;
-  getSeriesState(): ChartSeriesState[];
-  followLatestX(options?: ChartFollowXOptions): void;
-  stopFollowingLatestX(): void;
-  setXFollowPaused(paused: boolean): void;
-  getXFollowState(): ChartXFollowState;
-  getFrameStats(target?: ChartFrameStats): ChartFrameStats;
-  getHoverState(): ChartHoverState | null;
-  /** @experimental May change in a minor release before it is promoted to stable. See docs/stability.md. */
-  setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void;
-  requestRender(): void;
-  subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
-  pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
-  /** @experimental May change in a minor release before it is promoted to stable. See docs/stability.md. */
-  emitSelect(selection: SelectionState | null): void;
-}
-
-/**
- * Disposable handle returned by a plugin.
- *
- * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
- */
-export interface ChartPluginHandle {
-  dispose(): void;
-}
-
-/**
- * Plugin installer for extending chart behavior.
- *
- * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
- */
-export interface ChartPlugin {
-  install(chart: ChartPluginContext): void | (() => void) | ChartPluginHandle;
-}
 
 type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | TextOverlayConfig };
 
@@ -498,7 +427,7 @@ function withAlpha(color: RgbaColor, factor: number): RgbaColor {
 }
 
 /** Imperative WebGL chart instance for rendering, interaction, and plugins. */
-export class Chart implements ChartPluginContext {
+export class Chart {
   private series: SeriesStore[] = [];
   private camera: Camera2D;
   private rightCamera: Camera2D;
@@ -522,7 +451,7 @@ export class Chart implements ChartPluginContext {
   private layout: ChartLayout;
   private readonly stats: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" };
   private resizeObserver: ResizeObserver | null = null;
-  private readonly pluginDisposers: Array<() => void> = [];
+  private readonly plugins: PluginHost;
   /** Listener sets keyed by event; `never` payloads let every typed listener share one map. */
   private readonly listeners = new Map<ChartEventName, Set<(payload: never) => void>>();
   private readonly layoutReservations = new Map<string, ChartLayoutReservation>();
@@ -597,6 +526,7 @@ export class Chart implements ChartPluginContext {
       this.restoreRenderRafId = 0;
     }
     this.resetFrameStats();
+    this.plugins.notify("onContextLost");
   };
   private readonly handleWebGLContextRestored = (): void => {
     const oldRenderer = this.renderer;
@@ -613,6 +543,7 @@ export class Chart implements ChartPluginContext {
     this.disposeRenderer(oldRenderer);
     this.webglContextLost = false;
     this.applyCanvasSize();
+    this.plugins.notify("onContextRestored");
     this.scheduleRenderAfterRestore();
   };
 
@@ -658,19 +589,24 @@ export class Chart implements ChartPluginContext {
       this.resizeObserver.observe(this.layout.plot);
     }
 
+    this.plugins = new PluginHost(this, {
+      emit: (event, payload) => this.emit(event, payload),
+      setLayoutReservation: (id, reservation) => this.setLayoutReservation(id, reservation),
+    });
     try {
-      for (const plugin of options.plugins ?? []) {
-        const installed = plugin.install(this);
-        if (typeof installed === "function") {
-          this.pluginDisposers.push(installed);
-        } else if (installed) {
-          this.pluginDisposers.push(() => installed.dispose());
-        }
-      }
+      for (const plugin of options.plugins ?? []) this.plugins.install(plugin);
     } catch (error) {
       this.dispose();
       throw error;
     }
+  }
+
+  /**
+   * @internal Install a plugin on a live chart (tests and linked layouts). Returns a function
+   * that disposes just that plugin; `dispose()` also disposes it.
+   */
+  installPlugin(plugin: ChartPlugin): () => void {
+    return this.plugins.install(plugin);
   }
 
   /** Canvas element used for chart rendering. */
@@ -999,6 +935,8 @@ export class Chart implements ChartPluginContext {
   resize(dpr: number = globalThis.devicePixelRatio): boolean {
     const resized = this.applyCanvasSize(dpr);
     if (resized) {
+      // `plugins` is unset while the constructor sizes the canvas, before any plugin exists.
+      this.plugins?.notify("onResize", { width: this.canvas.clientWidth, height: this.canvas.clientHeight });
       this.refreshHover();
       this.requestRender();
     }
@@ -1015,12 +953,8 @@ export class Chart implements ChartPluginContext {
     return this.currentHover;
   }
 
-  /**
-   * Reserve or release plot-adjacent layout space for a plugin or overlay.
-   *
-   * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
-   */
-  setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void {
+  /** Reserve or release plot-adjacent layout space; plugins reach it through `ctx.layout.reserve`. */
+  private setLayoutReservation(id: string, reservation: ChartLayoutReservation | null): void {
     if (reservation) {
       this.layoutReservations.set(id, reservation);
     } else {
@@ -1053,21 +987,13 @@ export class Chart implements ChartPluginContext {
     };
   }
 
-  /**
-   * Emit a `select` event, e.g. from a custom selection UI.
-   *
-   * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
-   */
-  emitSelect(selection: SelectionState | null): void {
-    this.emit("select", { selection });
-  }
-
-  /** Replace the chart theme and re-render. */
+  /** Replace the chart theme and re-render. Plugin `onThemeChange` hooks run before the `themechange` event. */
   setTheme(theme?: ChartTheme): void {
     this.resolvedTheme = resolveChartTheme(theme, this.layout.root);
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
     this.axisOverlay?.setOptions({ color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont });
     this.updateTextOverlays();
+    this.plugins.notify("onThemeChange", this.resolvedTheme);
     this.emit("themechange", undefined);
     this.requestRender();
     this.refreshHover();
@@ -1159,13 +1085,8 @@ export class Chart implements ChartPluginContext {
     this.canvas.removeEventListener("webglcontextlost", this.handleWebGLContextLost);
     this.canvas.removeEventListener("webglcontextrestored", this.handleWebGLContextRestored);
     this.layout.root.removeEventListener("keydown", this.handleKeyDown);
-    for (const dispose of this.pluginDisposers.splice(0)) {
-      try {
-        dispose();
-      } catch {
-        // Plugin cleanup must not prevent chart-owned resources from being released.
-      }
-    }
+    // Reverse registration order; plugin cleanup errors never block chart-owned cleanup.
+    this.plugins?.disposeAll();
     this.axisOverlay?.dispose();
     const gl = this.renderer.getWebGLContext();
     this.disposeRenderer(this.renderer);

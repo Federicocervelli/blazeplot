@@ -12,15 +12,11 @@ export type {
   ChartFrameStats,
   ChartHoverState,
   ChartKeyboardOptions,
-  ChartLayoutReservation,
   ChartOptions,
   ChartPickGroup,
   ChartPickItem,
   ChartPickMode,
   ChartPickOptions,
-  ChartPlugin,
-  ChartPluginContext,
-  ChartPluginHandle,
   ChartPointerEventState,
   ChartPointerEventType,
   ChartRenderLoop,
@@ -38,6 +34,29 @@ export type {
   TypedSeriesConfig,
 } from "./ui/Chart.js";
 export type { AxisPosition } from "./ui/ChartLayout.js";
+
+// Plugin contract
+export type {
+  ChartLayoutReservation,
+  ChartMountSlot,
+  ChartPlotSize,
+  ChartPlugin,
+  ChartPluginContext,
+  ChartPluginCoords,
+  ChartPluginDom,
+  ChartPluginEventMap,
+  ChartPluginEventName,
+  ChartPluginEvents,
+  ChartPluginHandle,
+  ChartPluginLayout,
+  ChartPluginState,
+  ChartPluginUnstable,
+  ChartPluginViewport,
+  ChartRect,
+  ChartSurface,
+  ChartSurfaceDecoration,
+  ChartSurfaceStyle,
+} from "./ui/PluginHost.js";
 export { DEFAULT_CHART_THEME } from "./ui/theme.js";
 export type { ChartTheme, ResolvedChartTheme } from "./ui/theme.js";
 

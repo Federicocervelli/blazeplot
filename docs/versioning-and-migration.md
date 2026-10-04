@@ -39,7 +39,7 @@ The minimum is enforced in CI: the `typescript-floor` job installs the packed pa
 
 ## Migrating to 1.0
 
-See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes since 0.5.5 (removed GPU backend exports, typed `emitSelect`, non-finite X handling), the experimental tier, ESM/TypeScript requirements, and a checklist.
+See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes since 0.5.5 (removed GPU backend exports, typed `select` events, the grouped and now stable plugin context, non-finite X handling), the experimental tier, ESM/TypeScript requirements, and a checklist.
 
 ## Migrating to 0.5
 

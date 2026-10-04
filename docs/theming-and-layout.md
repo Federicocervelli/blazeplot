@@ -19,7 +19,7 @@ Theme values are merged with the default theme, so you can override only the tok
 |---|---|
 | Brand colors or dark mode | `theme` at construction time, then `chart.setTheme(...)` for runtime changes. |
 | Compact dashboards | Inside axes, fewer visible axes, smaller title/axis fonts, and plugin layout reservations. |
-| External controls or legends | A plugin with `chart.setLayoutReservation(...)`; avoid hard-coded margins. |
+| External controls or legends | A plugin that mounts into the `"root"` slot and calls `ctx.layout.reserve(...)`; avoid hard-coded margins. |
 | Screenshot-safe overlays | Built-in DOM/SVG overlays or plugin-owned elements inside the chart root. |
 | Mobile layouts | Inside axes, fewer ticks, touch interactions, and controls outside the plot. |
 
@@ -73,7 +73,7 @@ Use `scale: "log"` only for positive domains. Use `scale: "symlog"` when values 
 
 ## Plugin layout
 
-Plugins that need space outside the plot should use `chart.setLayoutReservation(id, reservation)`. This avoids overlapping axes and keeps screenshots consistent. Plot overlays, such as crosshairs or custom markers, should attach to `chart.plotElement`.
+Plugins that need space outside the plot should mount their UI into the `"root"` slot and call `ctx.layout.reserve(reservation)`, which returns a release function. This avoids overlapping axes and keeps screenshots consistent. Plot overlays, such as crosshairs or custom markers, should mount into the `"plot"` slot with `ctx.dom.mount("plot", element)`. See [Plugin authoring](./plugin-authoring.md#mount-slots-and-surfaces).
 
 The built-in legend is positioned inside the chart root and does not reserve space. The navigator can reserve top or bottom space. For external legends or controls, create a plugin with a layout reservation.
 

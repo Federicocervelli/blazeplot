@@ -1,4 +1,5 @@
-import type { Chart, ChartPlugin, ChartPluginContext, ChartSeriesState } from "./Chart.js";
+import type { ChartSeriesState } from "./Chart.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { rgbaCss } from "./theme.js";
 
 /** Options for the built-in series legend plugin. */
@@ -12,7 +13,8 @@ export interface LegendPluginOptions {
   readonly mutedTextColor?: string;
   readonly font?: string;
   readonly zIndex?: number;
-  readonly render?: (state: readonly ChartSeriesState[], container: HTMLElement, chart: Chart) => void;
+  /** Replace the default rows. Called on install, series changes, and theme changes. */
+  readonly render?: (state: readonly ChartSeriesState[], container: HTMLElement, chart: ChartPluginContext) => void;
 }
 
 function applyPosition(el: HTMLElement, position: NonNullable<LegendPluginOptions["position"]>): void {
@@ -106,7 +108,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.setAttribute("role", "group");
       container.setAttribute("aria-label", "Chart series legend");
       applyPosition(container, options.position ?? "top-right");
-      chart.rootElement.appendChild(container);
+      const unmount = chart.dom.mount("root", container);
 
       const applyTheme = (): void => {
         container.style.border = legendBorder(options, chart);
@@ -118,23 +120,24 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       const rows = new Map<ChartSeriesState["series"], LegendRow>();
       const render = (): void => {
         applyTheme();
-        const state = chart.getSeriesState();
+        const state = chart.state.getSeries();
         if (options.render) {
-          options.render(state, container, chart as Chart);
+          options.render(state, container, chart);
         } else {
           renderDefaultLegend(state, container, chart, options.toggleOnClick !== false, options, rows);
         }
       };
 
-      const unsubscribeSeries = chart.subscribe("serieschange", render);
-      const unsubscribeTheme = chart.subscribe("themechange", render);
+      const unsubscribeSeries = chart.events.subscribe("serieschange", render);
       render();
 
-      return () => {
-        unsubscribeSeries();
-        unsubscribeTheme();
-        rows.clear();
-        container.remove();
+      return {
+        onThemeChange: render,
+        dispose() {
+          unsubscribeSeries();
+          rows.clear();
+          unmount();
+        },
       };
     },
   };

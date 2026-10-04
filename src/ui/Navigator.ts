@@ -1,5 +1,5 @@
 import type { SeriesStore } from "../core/SeriesStore.js";
-import type { ChartPlugin, ChartPluginContext } from "./Chart.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { createSvgElement } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 
@@ -50,7 +50,7 @@ interface DragState {
 
 function seriesList(chart: ChartPluginContext, option: NavigatorPluginOptions["series"]): SeriesStore[] {
   if (option) return Array.isArray(option) ? [...(option as readonly SeriesStore[])] : [option as SeriesStore];
-  return chart.getSeriesState().filter((state) => state.visible).map((state) => state.series);
+  return chart.state.getSeries().filter((state) => state.visible).map((state) => state.series);
 }
 
 function computeDomain(series: readonly SeriesStore[], maxSamplesPerSeries: number): Domain | null {
@@ -116,7 +116,6 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
   const maxSamplesPerSeries = Math.max(16, options.maxSamplesPerSeries ?? 512);
   const handleWidth = Math.max(4, options.handleWidth ?? 8);
   const handleHitWidth = Math.max(handleWidth, options.handleHitWidth ?? 18);
-  const reservationId = `navigator-${Math.random().toString(36).slice(2)}`;
   let chartRef: ChartPluginContext | null = null;
   let root: HTMLDivElement | null = null;
   let overlay: SVGSVGElement | null = null;
@@ -136,8 +135,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
   const updateRootPosition = (): void => {
     const chart = chartRef;
     if (!chart || !root) return;
-    const rootRect = chart.rootElement.getBoundingClientRect();
-    const alignRect = options.align === "chart" ? rootRect : chart.plotElement.getBoundingClientRect();
+    const rootRect = chart.layout.rootRect();
+    const alignRect = options.align === "chart" ? rootRect : chart.layout.plotRect();
     root.style.left = `${Math.max(0, alignRect.left - rootRect.left)}px`;
     root.style.width = `${Math.max(1, alignRect.width)}px`;
   };
@@ -182,13 +181,13 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       path.setAttribute("fill", options.fill ?? "none");
     }
 
-    const viewport = chart.getViewport();
+    const viewport = chart.viewport.get();
     if (follow && options.followLive !== false && wasAtRightEdge && domain.xMax > viewport.xMax) {
       const span = viewport.xMax - viewport.xMin;
-      chart.setViewport({ xMin: domain.xMax - span, xMax: domain.xMax });
+      chart.viewport.set({ xMin: domain.xMax - span, xMax: domain.xMax });
     }
 
-    const current = chart.getViewport();
+    const current = chart.viewport.get();
     root.setAttribute("aria-valuenow", String((current.xMin + current.xMax) * 0.5));
     root.setAttribute("aria-valuetext", `Visible X range ${current.xMin} to ${current.xMax}`);
     wasAtRightEdge = Math.abs(current.xMax - domain.xMax) <= (domain.xMax - domain.xMin) * 0.005;
@@ -230,7 +229,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       xMax = domain.xMax;
       xMin = xMax - span;
     }
-    chart.setViewport({ xMin, xMax });
+    chart.viewport.set({ xMin, xMax });
     options.onRangeChange?.({ xMin, xMax });
     render(false);
   };
@@ -254,9 +253,9 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       root.setAttribute("role", "slider");
       root.setAttribute("aria-label", "Chart navigator visible X range");
 
-      if (options.reserveSpace !== false) {
-        chart.setLayoutReservation(reservationId, placement === "top" ? { top: height + margin * 2 } : { bottom: height + margin * 2 });
-      }
+      const releaseSpace = options.reserveSpace === false
+        ? null
+        : chart.layout.reserve(placement === "top" ? { top: height + margin * 2 } : { bottom: height + margin * 2 });
 
       overlay = createSvgElement("svg");
       overlay.style.width = "100%";
@@ -283,7 +282,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       overlay.appendChild(leftHandleHit);
       overlay.appendChild(rightHandleHit);
       root.appendChild(overlay);
-      chart.rootElement.appendChild(root);
+      const unmount = chart.dom.mount("root", root);
 
       const applyTheme = (): void => {
         if (!root || !windowRect || !leftHandle || !rightHandle) return;
@@ -297,19 +296,15 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       };
 
       const onRender = (): void => render();
-      const unsubscribeRender = chart.subscribe("render", onRender);
-      const unsubscribeViewport = chart.subscribe("viewportchange", () => render(false));
-      const unsubscribeTheme = chart.subscribe("themechange", () => {
-        applyTheme();
-        render();
-      });
+      const unsubscribeRender = chart.events.subscribe("render", onRender);
+      const unsubscribeViewport = chart.events.subscribe("viewportchange", () => render(false));
       applyTheme();
 
       const onPointerDown = (event: PointerEvent): void => {
         if (!root || !domain || event.button !== 0) return;
         const rect = root.getBoundingClientRect();
         const x = event.clientX - rect.left;
-        const viewport = chart.getViewport();
+        const viewport = chart.viewport.get();
         const left = dataToX(viewport.xMin, rect.width);
         const right = dataToX(viewport.xMax, rect.width);
         const target = event.target;
@@ -345,7 +340,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
 
       const onKeyDown = (event: KeyboardEvent): void => {
         if (!domain || !chartRef) return;
-        const viewport = chartRef.getViewport();
+        const viewport = chartRef.viewport.get();
         const span = viewport.xMax - viewport.xMin;
         const step = span * (event.shiftKey ? 0.25 : 0.1);
         let nextMin = viewport.xMin;
@@ -385,29 +380,34 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       root.addEventListener("keydown", onKeyDown);
       render();
 
-      return () => {
-        unsubscribeRender();
-        unsubscribeViewport();
-        unsubscribeTheme();
-        root?.removeEventListener("pointerdown", onPointerDown);
-        root?.removeEventListener("pointermove", onPointerMove);
-        root?.removeEventListener("pointerup", onPointerUp);
-        root?.removeEventListener("pointercancel", onPointerUp);
-        root?.removeEventListener("dblclick", onDoubleClick);
-        root?.removeEventListener("keydown", onKeyDown);
-        if (options.reserveSpace !== false) chart.setLayoutReservation(reservationId, null);
-        root?.remove();
-        root = null;
-        overlay = null;
-        windowRect = null;
-        leftHandle = null;
-        rightHandle = null;
-        leftHandleHit = null;
-        rightHandleHit = null;
-        paths = [];
-        domain = null;
-        drag = null;
-        chartRef = null;
+      return {
+        onThemeChange() {
+          applyTheme();
+          render();
+        },
+        dispose() {
+          unsubscribeRender();
+          unsubscribeViewport();
+          root?.removeEventListener("pointerdown", onPointerDown);
+          root?.removeEventListener("pointermove", onPointerMove);
+          root?.removeEventListener("pointerup", onPointerUp);
+          root?.removeEventListener("pointercancel", onPointerUp);
+          root?.removeEventListener("dblclick", onDoubleClick);
+          root?.removeEventListener("keydown", onKeyDown);
+          releaseSpace?.();
+          unmount();
+          root = null;
+          overlay = null;
+          windowRect = null;
+          leftHandle = null;
+          rightHandle = null;
+          leftHandleHit = null;
+          rightHandleHit = null;
+          paths = [];
+          domain = null;
+          drag = null;
+          chartRef = null;
+        },
       };
     },
     refresh(): void {

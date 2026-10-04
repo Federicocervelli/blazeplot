@@ -44,7 +44,8 @@ const budgets: Budget[] = [
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
-  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 142_000 },
+  // Raised from 142_000 for the stable plugin host (grouped context, lifecycle hooks, cleanup tracking).
+  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 148_000 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 8_000 },
   { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 8_000 },
 ];

@@ -1,7 +1,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
 import { FakeBackend, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
 import type { FakeRaf, ListenerLedger, TestEnv } from "./fakes.ts";
-import type { Chart as ChartType, ChartOptions, ChartPlugin } from "../../src/ui/Chart.ts";
+import type { Chart as ChartType, ChartOptions } from "../../src/ui/Chart.ts";
+import type { ChartPlugin, ChartPluginContext } from "../../src/ui/PluginHost.ts";
 
 export interface ChartHarness {
   readonly raf: FakeRaf;
@@ -109,10 +110,14 @@ export function touchEvent(type: string, points: ReadonlyArray<{ clientX: number
  * normalizing the function, handle, and void return forms.
  */
 export function installPlugin(chart: ChartType, plugin: ChartPlugin): () => void {
-  const result = plugin.install(chart);
-  if (typeof result === "function") return result;
-  if (result && typeof result === "object") return () => result.dispose();
-  return () => {};
+  return chart.installPlugin(plugin);
+}
+
+/** Install a no-op plugin on a live chart and return its context, e.g. to emit plugin events. */
+export function pluginContext(chart: ChartType): ChartPluginContext {
+  let captured: ChartPluginContext | null = null;
+  chart.installPlugin({ install: (ctx) => { captured = ctx; } });
+  return captured!;
 }
 
 export function fire(el: EventTarget, event: Event): boolean {

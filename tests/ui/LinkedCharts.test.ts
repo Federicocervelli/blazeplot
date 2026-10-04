@@ -1,10 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { createLinkedCharts } from "../../src/linked.ts";
 import type { LinkedChartsOptions, LinkedChartsHandle } from "../../src/linked.ts";
-import type { ChartOptions, ChartPlugin } from "../../src/ui/Chart.ts";
+import type { ChartOptions } from "../../src/ui/Chart.ts";
+import type { ChartPlugin } from "../../src/ui/PluginHost.ts";
 import type { SelectionState } from "../../src/ui/Selection.ts";
 import { countNodes, FakeBackend } from "./fakes.ts";
-import { useChartHarness } from "./harness.ts";
+import { pluginContext, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();
 
@@ -139,9 +140,9 @@ describe("createLinkedCharts selection sync", () => {
     const { linked } = build(3, { syncSelections: true });
     const seen: Array<Array<SelectionState | null>> = linked.charts.map(() => []);
     linked.charts.forEach((chart, i) => chart.subscribe("select", (e) => seen[i]!.push(e.selection as SelectionState | null)));
-    linked.charts[0]!.emitSelect(selection);
+    pluginContext(linked.charts[0]!).events.emit("select", { selection });
     expect(seen).toEqual([[selection], [selection], [selection]]);
-    linked.charts[1]!.emitSelect(null);
+    pluginContext(linked.charts[1]!).events.emit("select", { selection: null });
     expect(seen.map((list) => list.length)).toEqual([2, 2, 2]);
     expect(seen[0]!.at(-1)).toBeNull();
     linked.dispose();
@@ -149,7 +150,7 @@ describe("createLinkedCharts selection sync", () => {
     const off = build(2);
     const received: unknown[] = [];
     off.linked.charts[1]!.subscribe("select", (e) => received.push(e.selection));
-    off.linked.charts[0]!.emitSelect(selection);
+    pluginContext(off.linked.charts[0]!).events.emit("select", { selection });
     expect(received).toEqual([]);
     off.linked.dispose();
   });
