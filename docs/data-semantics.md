@@ -36,7 +36,7 @@ If you need unsorted source data, sort it before passing it to a built-in datase
 
 ## Invalid values
 
-- X values should be finite numbers. From 1.0, `RingBuffer` (and `UniformRingBuffer` where X is supplied) skips samples with non-finite X and warns once in development; until then they are stored as given and make X searches unreliable.
+- X values should be finite numbers. `RingBuffer` skips samples with non-finite X and warns once per buffer; `UniformRingBuffer` ignores a non-finite seed X (keeping the Y sample) and warns once. `OhlcRingBuffer` and `StaticDataset` store them as given, which makes X searches unreliable.
 - Non-finite Y values (`NaN`, `Infinity`, `-Infinity`) act as missing/gap samples for built-in extraction, picking, and data bounds.
 - Built-in datasets store numeric values as provided. They do not reorder data or scan everything for invalid values by default.
 
