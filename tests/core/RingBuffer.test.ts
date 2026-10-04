@@ -202,7 +202,7 @@ describe("RingBuffer", () => {
     expect(buf.ordinalOffset).toBe(12);
   });
 
-  it("warns once when X goes backwards", () => {
+  it("skips samples whose X goes backwards and warns once", () => {
     const original = console.warn;
     const warnings: string[] = [];
     console.warn = (message: string) => {
@@ -215,9 +215,12 @@ describe("RingBuffer", () => {
       expect(warnings).toHaveLength(0);
       buf.push(1, 0);
       buf.append([0, -1], [0, 0]);
-      buf.update(0, 99, 0);
+      expect(buf.update(0, 99, 0)).toBe(false);
+      expect(buf.length).toBe(4);
+      expect([0, 1, 2, 3].map((i) => buf.getX(i))).toEqual([0, 1, 2, 2]);
+      expect(buf.rejectedSamples).toBe(4);
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toContain("RingBuffer received X 1 after 2");
+      expect(warnings[0]).toContain("RingBuffer skipped a sample with X 1 after 2 (decreasing-x)");
     } finally {
       console.warn = original;
     }

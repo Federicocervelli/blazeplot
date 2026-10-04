@@ -17,7 +17,7 @@ Use this table before reaching for a generic chart example. The dataset choice d
 | React ownership of the DOM | Create and dispose `Chart` in an effect |
 | Multiple charts sharing an X range | `createLinkedCharts` from `blazeplot/linked` |
 
-All built-in datasets expect sorted X values. If source data arrives out of order, sort it before constructing the dataset or write a custom dataset that exposes sorted logical access.
+All built-in datasets require finite, non-decreasing X values: static datasets throw a `RangeError` for unsorted input and streaming buffers skip out-of-order samples. If source data arrives out of order, build the dataset with `StaticDataset.sorted(x, y)` or write a custom dataset that exposes sorted logical access. See [Data semantics](./data-semantics.md#the-x-rule).
 
 ## Example structure
 

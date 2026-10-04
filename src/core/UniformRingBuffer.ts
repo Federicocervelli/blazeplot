@@ -25,6 +25,10 @@ export interface UniformRingBufferOptions {
  * fastest built-in dataset for live telemetry, signals, and other fixed-rate
  * streams because appends copy a single typed array and min/max extraction uses
  * a block segment tree over the physical ring.
+ *
+ * Derived X is always finite and ascending, so no sample is ever rejected. X passed to
+ * `push`/`append` only seeds the stream; a non-finite seed is ignored with one console
+ * warning per buffer and the Y sample is still stored. Non-finite Y is a gap.
  */
 export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset {
   /** Maximum number of retained samples. */
@@ -50,9 +54,14 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
       throw new RangeError("UniformRingBuffer xStep must be a positive finite number.");
     }
 
+    const xStart = options.xStart ?? 0;
+    if (!Number.isFinite(xStart)) {
+      throw new RangeError("UniformRingBuffer xStart must be a finite number.");
+    }
+
     this.capacity = capacity;
     this.xStep = xStep;
-    this._nextX = options.xStart ?? 0;
+    this._nextX = xStart;
     this.yData = createValueArray(capacity, options.valuePrecision);
     this.tree = new MinMaxTree(this.yData, capacity);
   }

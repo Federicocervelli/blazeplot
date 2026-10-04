@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-120 exports.
+127 exports.
 
 #### interface AcceleratedDataset
 
@@ -700,6 +700,36 @@ interface HistogramSeriesConfig extends SeriesIdentityConfig, HistogramOptions {
 }
 ```
 
+#### interface InvalidOhlcSample
+
+```ts
+interface InvalidOhlcSample extends InvalidSample {
+    readonly open: number;
+    readonly high: number;
+    readonly low: number;
+    readonly close: number;
+}
+```
+
+#### interface InvalidSample
+
+```ts
+interface InvalidSample {
+    readonly reason: InvalidSampleReason;
+    readonly operation: "push" | "append" | "update";
+    readonly index: number;
+    readonly x: number;
+    readonly y: number;
+    readonly neighborX: number;
+}
+```
+
+#### type InvalidSampleReason
+
+```ts
+type InvalidSampleReason = "non-finite-x" | "decreasing-x";
+```
+
 #### type LODStrategy
 
 ```ts
@@ -741,6 +771,7 @@ class OhlcRingBuffer implements OhlcDataset {
     readonly capacity: number;
     constructor(capacity: number, options?: OhlcRingBufferOptions);
     get length(): number;
+    get rejectedSamples(): number;
     get range(): TimeRange | null;
     push(x: number, open: number, high: number, low: number, close: number): void;
     updateAt(index: number, open: number, high: number, low: number, close: number): boolean;
@@ -752,6 +783,7 @@ class OhlcRingBuffer implements OhlcDataset {
     getHigh(index: number): number;
     getLow(index: number): number;
     getClose(index: number): number;
+    isGap(index: number): boolean;
     lowerBoundX(x: number): number;
     upperBoundX(x: number): number;
 }
@@ -763,6 +795,7 @@ class OhlcRingBuffer implements OhlcDataset {
 interface OhlcRingBufferOptions {
     readonly overflow?: BufferOverflowStrategy;
     readonly valuePrecision?: ValuePrecision;
+    readonly onInvalidSample?: (sample: InvalidOhlcSample) => void;
 }
 ```
 
@@ -854,6 +887,7 @@ class RingBuffer {
     constructor(capacity: number, options?: RingBufferOptions);
     get length(): number;
     get ordinalOffset(): number;
+    get rejectedSamples(): number;
     get range(): TimeRange | null;
     push(x: number, y: number): void;
     append(x: ArrayLike<number>, y: ArrayLike<number>): void;
@@ -875,6 +909,7 @@ class RingBuffer {
 interface RingBufferOptions {
     readonly overflow?: BufferOverflowStrategy;
     readonly valuePrecision?: ValuePrecision;
+    readonly onInvalidSample?: (sample: InvalidSample) => void;
 }
 ```
 
@@ -906,6 +941,7 @@ interface SeriesConfig {
     readonly xStep?: number;
     readonly downsample?: LODStrategy;
     readonly overflow?: BufferOverflowStrategy;
+    readonly onInvalidSample?: (sample: InvalidSample) => void;
     readonly valuePrecision?: ValuePrecision;
     readonly dataset?: Dataset;
     readonly yAxis?: SeriesYAxis;
@@ -1164,7 +1200,8 @@ interface ServerSampledPoints {
 class StaticDataset implements Dataset {
     readonly rangeMinMaxExcludesGaps = true;
     static fromObjects<Row>(rows: readonly Row[], options: StaticDatasetFromObjectsOptions<Row>): StaticDataset;
-    constructor(xData: ArrayLike<number>, yData: ArrayLike<number>);
+    static sorted(x: ArrayLike<number>, y: ArrayLike<number>, options?: StaticDatasetSortedOptions): StaticDataset;
+    constructor(xData: ArrayLike<number>, yData: ArrayLike<number>, options?: StaticDatasetOptions);
     get length(): number;
     replace(data: StaticDatasetData): void;
     invalidate(): void;
@@ -1204,12 +1241,29 @@ interface StaticDatasetFromObjectsOptions<Row> {
 }
 ```
 
+#### interface StaticDatasetOptions
+
+```ts
+interface StaticDatasetOptions {
+    readonly assumeSorted?: boolean;
+}
+```
+
+#### interface StaticDatasetSortedOptions
+
+```ts
+interface StaticDatasetSortedOptions {
+    readonly valuePrecision?: ValuePrecision;
+}
+```
+
 #### class StaticOhlcDataset
 
 ```ts
 class StaticOhlcDataset implements OhlcDataset {
     readonly length: number;
-    constructor(x: ArrayLike<number>, open: ArrayLike<number>, high: ArrayLike<number>, low: ArrayLike<number>, close: ArrayLike<number>);
+    static sorted(x: ArrayLike<number>, open: ArrayLike<number>, high: ArrayLike<number>, low: ArrayLike<number>, close: ArrayLike<number>, options?: StaticOhlcDatasetSortedOptions): StaticOhlcDataset;
+    constructor(x: ArrayLike<number>, open: ArrayLike<number>, high: ArrayLike<number>, low: ArrayLike<number>, close: ArrayLike<number>, options?: StaticOhlcDatasetOptions);
     get range(): TimeRange | null;
     getX(index: number): number;
     getY(index: number): number;
@@ -1217,8 +1271,25 @@ class StaticOhlcDataset implements OhlcDataset {
     getHigh(index: number): number;
     getLow(index: number): number;
     getClose(index: number): number;
+    isGap(index: number): boolean;
     lowerBoundX(x: number): number;
     upperBoundX(x: number): number;
+}
+```
+
+#### interface StaticOhlcDatasetOptions
+
+```ts
+interface StaticOhlcDatasetOptions {
+    readonly assumeSorted?: boolean;
+}
+```
+
+#### interface StaticOhlcDatasetSortedOptions
+
+```ts
+interface StaticOhlcDatasetSortedOptions {
+    readonly valuePrecision?: ValuePrecision;
 }
 ```
 

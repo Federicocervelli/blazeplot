@@ -4,11 +4,11 @@ This guide is for applications and plugins written against BlazePlot 0.x. It lis
 
 The list was produced by comparing the published declarations of 0.5.5 with the 1.0 declarations (the `api/public-api.md` snapshot), plus the 1.0 changes that alter runtime behavior. If you are on 0.4 or older, apply the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) first (most upgrades there are mechanical renames), then come back here. Release candidates are published to the npm `rc` dist-tag until 1.0 ships.
 
-Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals and two flame graph helpers, with chart data export moved to `blazeplot/export`, one typing fix, and one data-ingestion rule.
+Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals and two flame graph helpers, with chart data export moved to `blazeplot/export`, one typing fix, and one data-ingestion rule (X must be finite and non-decreasing; see change 3).
 
 ## What did not change
 
-- The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`/`addHistogram`, datasets, and every built-in plugin option are unchanged.
+- The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`/`addHistogram`, dataset classes, and every built-in plugin option keep their signatures. Datasets gained optional validation options (change 3).
 - Entry points and subpaths are the same: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and `blazeplot/plugins/*`. What lives in `blazeplot/data` and `blazeplot/export` changed (see change 6).
 - The package was already ESM only and already required WebGL2; 1.0 now states both as policy.
 
@@ -81,33 +81,42 @@ unsubscribe();
 
 Code that only subscribed to `select` and let `event.selection` be inferred needs no change except handling `null`. Code that wrote `ChartSelectEvent<Something>` fails with "Type 'ChartSelectEvent' is not generic"; drop the type argument.
 
-### 3. Non-finite X samples are skipped with a warning
+### 3. Datasets enforce one X rule: finite and non-decreasing
 
-`RingBuffer` now skips any sample whose X is `NaN`, `Infinity`, or `-Infinity`, instead of storing it. One `console.warn` is logged per buffer. Skipped samples do not count toward capacity or the `overflow` strategy. This applies to `push` and to `append` (the finite samples in the same call are still stored). A non-finite X given to `UniformRingBuffer` is ignored as a seed: the Y sample is kept and X continues from the current cursor. See [Data semantics](./data-semantics.md) and [Error handling](./error-handling.md).
+Every built-in dataset now follows the same rule: **X is finite and non-decreasing; a non-finite Y is a gap.** In 0.5, unsorted X only logged a warning (or nothing) and left searches, LOD, picking, and exports silently wrong. 1.0 enforces the rule at the boundary instead:
 
-A stored non-finite X corrupted binary search, level-of-detail extraction, picking, and exports, so this turns silent breakage into a skipped sample. It matters if you relied on `length` growing for every pushed sample, or if you encoded a gap with an `x` of `NaN`. Gaps belong in Y.
+- **Static data throws.** `new StaticDataset(x, y)`, `StaticDataset.replace(...)` / `series.replace(...)`, `new StaticOhlcDataset(...)`, and `ServerSampledDataset` check X in one O(n) pass and throw a `RangeError` naming the first bad index and reason, for example `StaticDataset: X at index 2 is 1, below 2 at index 1 (decreasing-x). ...`. `StaticDataset.fromObjects(...)` throws `RangeError` (was `TypeError`) for a non-finite X and now also for decreasing X unless `sort: true` is passed.
+- **Streaming data skips.** `RingBuffer` and `OhlcRingBuffer` skip any sample whose X is `NaN`, `Infinity`, `-Infinity`, or below the last accepted X, instead of storing it. Skipped samples do not count toward capacity or the `overflow` strategy, and the rest of an `append` batch is still stored. They never throw for bad X: one bad packet should not crash a dashboard. One `console.warn` is logged per buffer, `rejectedSamples` counts the skips, and the new `onInvalidSample` option (also on `SeriesConfig`) reports each one. `RingBuffer.update(...)` returns `false` for an X outside its neighbors.
+- `UniformRingBuffer` derives X, so it never rejects samples. A non-finite seed X is ignored (Y is kept) with one warning, and a non-finite `xStart` option now throws `RangeError`.
+- An OHLC candle with any non-finite open, high, low, or close is stored and treated as a gap.
 
-Before (0.5): a `NaN` X was stored and broke later queries.
+It matters if you passed unsorted arrays to `StaticDataset`, relied on `length` growing for every pushed sample, caught `TypeError` from `fromObjects`, or encoded a gap with an `x` of `NaN`. Gaps belong in Y.
 
-<!-- snippet: skip intentionally old 0.5 behavior; shows data that the 1.0 buffer rejects -->
+Before (0.5): unsorted static data was accepted and drew wrong; a `NaN` or backwards X in a ring buffer was stored and broke later queries.
+
+<!-- snippet: skip intentionally old 0.5 behavior; shows data that 1.0 rejects -->
 ```ts
+const dataset = new StaticDataset([3, 1, 2], [30, 10, 20]); // accepted, searches unreliable
 buffer.push(Number.NaN, 1); // stored, later queries unreliable
+buffer.push(5, 1);
+buffer.push(4, 1); // stored out of order with a warning
 ```
 
-After (1.0): sanitize upstream, and mark gaps with a non-finite Y at a valid X.
+After (1.0): sort static data with `StaticDataset.sorted(...)` (stable, drops non-finite X) or `fromObjects(..., { sort: true })`; skip the O(n) check for huge data you already trust with `assumeSorted: true`; observe streaming rejections with `onInvalidSample` or `rejectedSamples`.
 
 ```ts
-import { RingBuffer } from "blazeplot";
+import { RingBuffer, StaticDataset } from "blazeplot";
 
-const buffer = new RingBuffer(10_000);
+const unsorted = StaticDataset.sorted([3, 1, 2], [30, 10, 20]);
+const trusted = new StaticDataset(new Float64Array([0, 1, 2]), new Float32Array([5, 6, 7]), { assumeSorted: true });
 
-function onSample(timeMs: number, value: number | null): void {
-  if (!Number.isFinite(timeMs)) return; // would be skipped with a warning
-  buffer.push(timeMs, value ?? Number.NaN); // NaN Y = gap
-}
+const buffer = new RingBuffer(10_000, {
+  onInvalidSample: ({ reason, x, index }) => console.debug(`dropped sample ${index}: ${reason} (x = ${x})`),
+});
+buffer.push(Date.now(), 1);
+buffer.push(Number.NaN, 2); // skipped, reported, not stored
+console.log(unsorted.length, trusted.length, buffer.rejectedSamples);
 ```
-
-`OhlcRingBuffer` and `StaticDataset` still store non-finite X as given. Keep X finite and sorted for them.
 
 ### 4. Plugin and fast-path interfaces are experimental
 
@@ -262,9 +271,10 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 2. Confirm your tooling: ES module loading (no `require`), TypeScript 5.0 or newer, `moduleResolution` of `bundler`/`node16`/`nodenext`, `lib` including `DOM`.
 3. Search for `WebGL2Backend`, `GpuBackend`, `backendFactory`, `DrawSpec`, `BufferSpec`, `AttributeSpec`, `UniformValue`, `GpuBuffer`, `GpuProgram`, `GpuCapabilities`, `GpuResource`, `ChartBackendFactory`. Remove them; use `isWebGL2Available()` and `WebGL2UnavailableError` for support checks.
 4. Search for `ChartSelectEvent<`, `emitSelect(`, and `subscribe("select"`. Drop the type argument, emit `SelectionState | null`, and handle `selection === null`.
-5. Audit data feeds into `RingBuffer` and `UniformRingBuffer` for non-finite X (clock glitches, parse failures). Sanitize upstream and expect one console warning per buffer if any slip through. Represent gaps as non-finite Y.
-6. Search for imports of `exportChartData`, `chartDataToCSV`, `ExportableChart`, and `ChartData*` types from `blazeplot/data` and import them from `blazeplot/export` instead. Keep `binSamples` and `rollingMean` on `blazeplot/data`.
-7. Search for `buildFlameGraphModel` and `pickFrame`. Pass `foldedStacks` and `build` to `flameGraphPlugin()` (or call `setFoldedStacks`), and use `plugin.pick(clientX, clientY)` for hit testing.
-8. If you write custom plugins or custom fast-path datasets, note they are experimental: pin a 1.x range and read each minor changelog.
-9. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-10. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
+5. Check every `new StaticDataset(...)`, `new StaticOhlcDataset(...)`, `series.replace(...)`, `ServerSampledDataset`, and `fromObjects(...)` call for unsorted or non-finite X: they now throw `RangeError`. Wrap unsorted input with `StaticDataset.sorted(...)` / `StaticOhlcDataset.sorted(...)` or pass `sort: true` to `fromObjects`; pass `assumeSorted: true` only for trusted, already-sorted data. Change `catch` blocks that matched `TypeError` from `fromObjects` to `RangeError`.
+6. Audit streaming feeds into `RingBuffer` and `OhlcRingBuffer` for non-finite or backwards X (clock glitches, parse failures, out-of-order packets). Those samples are now skipped; watch `rejectedSamples` or pass `onInvalidSample` to log them. Represent gaps as non-finite Y.
+7. Search for imports of `exportChartData`, `chartDataToCSV`, `ExportableChart`, and `ChartData*` types from `blazeplot/data` and import them from `blazeplot/export` instead. Keep `binSamples` and `rollingMean` on `blazeplot/data`.
+8. Search for `buildFlameGraphModel` and `pickFrame`. Pass `foldedStacks` and `build` to `flameGraphPlugin()` (or call `setFoldedStacks`), and use `plugin.pick(clientX, clientY)` for hit testing.
+9. If you write custom plugins or custom fast-path datasets, note they are experimental: pin a 1.x range and read each minor changelog.
+10. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
+11. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.

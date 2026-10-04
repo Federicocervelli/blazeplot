@@ -64,6 +64,9 @@ export type {
   AppendableDataset,
   BufferOverflowStrategy,
   Dataset,
+  InvalidOhlcSample,
+  InvalidSample,
+  InvalidSampleReason,
   LODStrategy,
   MinMaxSegmentCopyDataset,
   OhlcDataset,
@@ -97,9 +100,9 @@ export type { RingBufferOptions } from "./core/RingBuffer.js";
 export { UniformRingBuffer } from "./core/UniformRingBuffer.js";
 export type { UniformRingBufferOptions } from "./core/UniformRingBuffer.js";
 export { StaticDataset } from "./core/StaticDataset.js";
-export type { StaticDatasetData, StaticDatasetField, StaticDatasetFromObjectsOptions } from "./core/StaticDataset.js";
+export type { StaticDatasetData, StaticDatasetField, StaticDatasetFromObjectsOptions, StaticDatasetOptions, StaticDatasetSortedOptions } from "./core/StaticDataset.js";
 export { OhlcRingBuffer, StaticOhlcDataset } from "./core/OhlcDataset.js";
-export type { OhlcRingBufferOptions } from "./core/OhlcDataset.js";
+export type { OhlcRingBufferOptions, StaticOhlcDatasetOptions, StaticOhlcDatasetSortedOptions } from "./core/OhlcDataset.js";
 export { ServerSampledDataset } from "./core/ServerSampledDataset.js";
 export type { ServerSampledBuckets, ServerSampledData, ServerSampledPoints } from "./core/ServerSampledDataset.js";
 export { HistogramDataset, histogram } from "./core/Histogram.js";

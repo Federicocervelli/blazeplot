@@ -243,6 +243,38 @@ export type LODStrategy = "minmax" | "none" | "server";
 export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
 
 /**
+ * Why a sample broke the dataset X rule (X finite and non-decreasing):
+ * `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the
+ * previous accepted X (or, for `update`, outside its neighbors).
+ */
+export type InvalidSampleReason = "non-finite-x" | "decreasing-x";
+
+/** A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. */
+export interface InvalidSample {
+  readonly reason: InvalidSampleReason;
+  /** Buffer method that received the sample. */
+  readonly operation: "push" | "append" | "update";
+  /** Position in the arrays passed to `append`, the logical index for `update`, or `0` for `push`. */
+  readonly index: number;
+  readonly x: number;
+  /** Y value; the close for OHLC buffers. */
+  readonly y: number;
+  /**
+   * For `"decreasing-x"`, the accepted X the sample violated: the previous X it fell below, or for
+   * `update` the following X it exceeded. `NaN` for `"non-finite-x"`.
+   */
+  readonly neighborX: number;
+}
+
+/** An OHLC candle an `OhlcRingBuffer` skipped, passed to its `onInvalidSample` callback. */
+export interface InvalidOhlcSample extends InvalidSample {
+  readonly open: number;
+  readonly high: number;
+  readonly low: number;
+  readonly close: number;
+}
+
+/**
  * Storage for Y and OHLC price values. `"float32"` (the default) halves memory and keeps
  * about 7 significant digits; `"float64"` stores values exactly, for large prices,
  * counters, or timestamps where float32 rounding would show in tooltips and picks.
@@ -275,6 +307,12 @@ export interface SeriesConfig {
   readonly xStep?: number;
   readonly downsample?: LODStrategy;
   readonly overflow?: BufferOverflowStrategy;
+  /**
+   * Called for each sample the chart-owned `RingBuffer` skips because its X is non-finite or
+   * goes backwards. Only used when `dataset` is omitted and no `xStep`/`xStart` is given.
+   * See `RingBufferOptions.onInvalidSample`.
+   */
+  readonly onInvalidSample?: (sample: InvalidSample) => void;
   /** Value storage for the dataset BlazePlot creates when `dataset` is omitted. Defaults to `"float32"`. */
   readonly valuePrecision?: ValuePrecision;
   readonly dataset?: Dataset;

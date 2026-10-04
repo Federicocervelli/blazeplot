@@ -803,16 +803,21 @@ export class SeriesStore<D extends Dataset = Dataset> {
     return written;
   }
 
-  /** @internal Copy `[x, open, high, low, close]` tuples for a logical index range. */
+  /** @internal Copy `[x, open, high, low, close]` tuples for a logical index range; gap candles are written as all-NaN tuples. */
   copyOhlcTuplesRange(start: number, end: number, target: Float32Array, maxCandles: number, xOrigin: number = 0): number {
     if (!isOhlcDataset(this.dataset) || maxCandles <= 0 || target.length < maxCandles * 5) return 0;
 
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.dataset.length, Math.ceil(end));
     const count = Math.min(maxCandles, Math.max(0, to - from));
+    const explicitGaps = hasExplicitGaps(this.dataset);
     for (let i = 0; i < count; i++) {
       const index = from + i;
       const offset = i * 5;
+      if (explicitGaps && this.dataset.isGap(index)) {
+        target.fill(NaN, offset, offset + 5);
+        continue;
+      }
       target[offset] = this.dataset.getX(index) - xOrigin;
       target[offset + 1] = this.dataset.getOpen(index);
       target[offset + 2] = this.dataset.getHigh(index);

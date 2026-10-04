@@ -417,7 +417,7 @@ describe("invalid input: documented current behavior", () => {
     expect(() => new MinMaxTree(new Float64Array(4), 4, 0)).toThrow(RangeError);
   });
 
-  it("RingBuffer accepts unsorted X with a one-time warning and keeps the sample", () => {
+  it("RingBuffer skips unsorted X with a one-time warning", () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       const ring = new RingBuffer(8);
@@ -425,19 +425,15 @@ describe("invalid input: documented current behavior", () => {
       ring.push(3, 2);
       ring.push(1, 3);
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(ring.length).toBe(3);
-      expect([ring.getX(0), ring.getX(1), ring.getX(2)]).toEqual([5, 3, 1]);
-      // Bounds are binary searches over unsorted data: results are unspecified but stay in [0, length].
-      for (const x of [0, 2, 4, 6]) {
-        expect(ring.lowerBoundX(x)).toBeGreaterThanOrEqual(0);
-        expect(ring.upperBoundX(x)).toBeLessThanOrEqual(3);
-      }
+      expect(ring.length).toBe(1);
+      expect(ring.rejectedSamples).toBe(2);
+      expect(ring.getX(0)).toBe(5);
     } finally {
       warn.mockRestore();
     }
   });
 
-  it("RingBuffer skips NaN X with a one-time warning, so the order check keeps working", () => {
+  it("RingBuffer skips NaN X and out-of-order X with a single warning per buffer", () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       const ring = new RingBuffer(8);
@@ -445,9 +441,10 @@ describe("invalid input: documented current behavior", () => {
       ring.push(NaN, 2);
       expect(ring.length).toBe(1);
       expect(warn).toHaveBeenCalledTimes(1);
-      ring.push(0, 3); // genuinely out of order: still detected because NaN was never stored
-      expect(warn).toHaveBeenCalledTimes(2);
-      expect(ring.length).toBe(2);
+      ring.push(0, 3); // out of order: compared with 1 because NaN was never stored
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(ring.length).toBe(1);
+      expect(ring.rejectedSamples).toBe(2);
       expect(ring.getX(0)).toBe(1);
     } finally {
       warn.mockRestore();
@@ -470,11 +467,12 @@ describe("invalid input: documented current behavior", () => {
     }
   });
 
-  it("StaticDataset does not validate X order; fromObjects rejects non-finite X", () => {
-    const stat = new StaticDataset([3, 1, 2], [1, 2, 3]);
-    expect(stat.length).toBe(3);
-    expect(stat.range).toEqual({ start: 3, end: 2 }); // first/last, not min/max
-    expect(() => StaticDataset.fromObjects([{ x: NaN, y: 1 }], { x: "x", y: "y" })).toThrow(TypeError);
+  it("StaticDataset rejects unsorted or non-finite X unless assumeSorted is set", () => {
+    expect(() => new StaticDataset([3, 1, 2], [1, 2, 3])).toThrow(RangeError);
+    const trusted = new StaticDataset([3, 1, 2], [1, 2, 3], { assumeSorted: true });
+    expect(trusted.length).toBe(3);
+    expect(trusted.range).toEqual({ start: 3, end: 2 }); // first/last, not min/max
+    expect(() => StaticDataset.fromObjects([{ x: NaN, y: 1 }], { x: "x", y: "y" })).toThrow(RangeError);
   });
 
   it("mismatched X/Y lengths use the shorter array", () => {

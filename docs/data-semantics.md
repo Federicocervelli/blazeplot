@@ -1,12 +1,13 @@
 # Data semantics
 
-BlazePlot expects finite, sorted X values. Y values are normally finite; non-finite Y values are treated as gaps by built-in datasets. The library does not sort or fully validate built-in datasets on every update; that would be too expensive for large live streams.
+BlazePlot expects finite, non-decreasing X values and treats non-finite Y values as gaps. Static datasets check X once when they are built and throw on bad input; streaming buffers skip bad samples and report them. See [The X rule](#the-x-rule).
 
 ## Pick the right dataset
 
 | Source shape | Dataset | Notes |
 |---|---|---|
 | Fixed X/Y arrays | `StaticDataset` | Already-loaded history or snapshots. Swap data with `series.replace({ y })`. |
+| Unsorted X/Y arrays | `StaticDataset.sorted(x, y)` | Copies, sorts stably by X, and drops non-finite X. |
 | Object rows | `StaticDataset.fromObjects(...)` | Copies row fields or accessor results into sorted X/Y arrays. |
 | Irregular live samples | `RingBuffer` | Stores explicit X/Y pairs and keeps a bounded history. |
 | Fixed-rate live samples | `UniformRingBuffer` | Stores Y values only and derives X from `xStart + index * xStep`. |
@@ -25,20 +26,64 @@ Empty datasets:
 - return no pick results,
 - are ignored by `chart.fitToData()` and auto-fit policies.
 
-## X ordering
+## The X rule
 
-- Built-in datasets expect logical X values sorted ascending.
-- Duplicate X values are allowed. Range searches include all samples on the viewport bounds.
-- Unsorted X values can break binary search, LOD extraction, picking, and exported visible data.
-- Ring buffers preserve logical order after wrapping, but appended X values still need to move forward in that logical order.
+Every built-in dataset follows one rule:
 
-If you need unsorted source data, sort it before passing it to a built-in dataset or implement a custom dataset that exposes sorted logical access.
+- **X is finite and non-decreasing.** Duplicate X values are allowed; `NaN`, `Infinity`, `-Infinity`, and an X below the previous one are not.
+- **A non-finite Y is a gap**, not an error (see [Gaps](#gaps)).
+
+Range searches, LOD extraction, culling, picking, and exports binary-search X, so a dataset that broke the rule would silently hide samples or draw them in the wrong place. Instead, each dataset enforces the rule where data enters:
+
+| Dataset | Bad X | Cost |
+|---|---|---|
+| `StaticDataset`, `StaticOhlcDataset` | Constructor throws `RangeError` naming the first bad index and reason. | One O(n) pass at construction; skip it with `{ assumeSorted: true }`. |
+| `StaticDataset.replace(...)` / `series.replace(...)` | Throws `RangeError`; the current data is kept. A Y-only replace re-checks only X values that come into use. | O(n) per new X array (skipped with `assumeSorted`). |
+| `StaticDataset.fromObjects(...)` | Throws `RangeError` naming the row for non-finite X, and for decreasing X unless `sort: true`. | Part of the copy. |
+| `ServerSampledDataset` | Constructor and `replace` throw `RangeError` for non-finite or decreasing point X, `xStart`, or `xEnd`, or a bucket with `xEnd < xStart` (`inverted-bucket`). Buckets may overlap. | Part of the copy. |
+| `RingBuffer`, `OhlcRingBuffer` | The sample is skipped, never thrown. It is counted in `rejectedSamples`, passed to `onInvalidSample`, and logged with one `console.warn` per buffer when no callback is set. | One comparison pair per sample; no allocation unless a batch contains a bad sample. |
+| `UniformRingBuffer` | Cannot happen: X is derived from `xStart + index * xStep`. A non-finite seed X is ignored (the Y sample is kept) with one warning; a non-finite `xStart` option throws `RangeError`. | None. |
+
+Static errors read like `StaticDataset: X at index 2 is 1, below 2 at index 1 (decreasing-x). X values must be finite and non-decreasing. ...` or `StaticDataset: X at index 1 is NaN (non-finite-x). ...`. Match them with `instanceof RangeError`, not by message text.
+
+To fix unsorted static input, copy it through `StaticDataset.sorted(x, y)` or `StaticOhlcDataset.sorted(x, open, high, low, close)`. They sort stably by X (equal X values keep their input order), carry Y or the OHLC columns along, and **drop** samples whose X is non-finite. For object rows, use `StaticDataset.fromObjects(rows, { x, y, sort: true })`. Pass `{ assumeSorted: true }` only for large data you already trust; if it is in fact unsorted, results are unreliable.
+
+Custom `Dataset` implementations must expose the same sorted logical order; BlazePlot does not check them.
+
+### Streaming: skip, count, report
+
+Streaming buffers skip bad samples instead of throwing, so one malformed packet cannot take down a live dashboard. A sample is invalid when its X is non-finite or lower than the newest accepted X. Skipped samples are not stored and do not count toward capacity or the `overflow` strategy, so `overflow: "error"` never throws because of them. In an `append` batch, the valid samples are still stored; the result is the same as calling `push` for each sample in order (except that `overflow: "error"` throws before storing anything). After `clear()`, any finite X is accepted again. `RingBuffer.update(index, x, y)` returns `false` and counts a rejection when `x` is non-finite or outside its neighbors' X values.
+
+```ts
+import { RingBuffer, type InvalidSample } from "blazeplot";
+
+const rejected: InvalidSample[] = [];
+const buffer = new RingBuffer(10_000, { onInvalidSample: (sample) => rejected.push(sample) });
+
+buffer.append([1, 2, Number.NaN, 1.5, 3], [10, 20, 30, 40, 50]);
+console.log(buffer.length); // 3: X 1, 2, 3
+console.log(buffer.rejectedSamples); // 2
+console.log(rejected.map(({ reason, index }) => `${index}: ${reason}`)); // ["2: non-finite-x", "3: decreasing-x"]
+```
+
+The callback receives an `InvalidSample`:
+
+| Field | Meaning |
+|---|---|
+| `reason` | `"non-finite-x"` or `"decreasing-x"`. |
+| `operation` | `"push"`, `"append"`, or `"update"`. |
+| `index` | Position in the arrays passed to `append`, the logical index for `update`, `0` for `push`. |
+| `x`, `y` | The rejected values (`y` is the close for OHLC). `OhlcRingBuffer` passes an `InvalidOhlcSample` that also has `open`, `high`, `low`, `close`. |
+| `neighborX` | For `"decreasing-x"`, the accepted X the sample violated (for `update` past its right neighbor, that neighbor's X). `NaN` for `"non-finite-x"`. |
+
+Setting `onInvalidSample` turns off the console warning for that buffer. `rejectedSamples` counts since creation and is not reset by `clear()`. For chart-owned series, pass the callback in the series config: `chart.addLine({ capacity, onInvalidSample })`.
 
 ## Invalid values
 
-- X values should be finite numbers. `RingBuffer` skips samples with non-finite X and warns once per buffer; `UniformRingBuffer` ignores a non-finite seed X (keeping the Y sample) and warns once. `OhlcRingBuffer` and `StaticDataset` store them as given, which makes X searches unreliable.
-- Non-finite Y values (`NaN`, `Infinity`, `-Infinity`) act as missing/gap samples for built-in extraction, picking, and data bounds.
-- Built-in datasets store numeric values as provided. They do not reorder data or scan everything for invalid values by default.
+- X values follow [the X rule](#the-x-rule): static datasets throw, streaming buffers skip.
+- Non-finite Y values (`NaN`, `Infinity`, `-Infinity`) act as missing/gap samples for built-in extraction, picking, and data bounds. They are stored as given.
+- An OHLC candle with any non-finite open, high, low, or close is a gap: it is stored, but not drawn, picked, or counted in bounds.
+- Built-in datasets do not re-check data you mutate in place (for example writing into a `StaticDataset` array and calling `series.markDirty()`); keep such edits sorted yourself.
 
 ## Gaps
 
@@ -57,7 +102,7 @@ For finite-to-finite session breaks, insert an explicit gap marker sample.
 
 `RingBuffer` stores explicit X/Y samples and supports three overflow modes: `"wrap"`, `"drop-new"`, and `"error"`. The default is `"wrap"`, which keeps the newest samples and preserves logical order after the physical buffer wraps.
 
-X values must be ascending. Range queries, culling, and picking binary-search X, so `RingBuffer` and `OhlcRingBuffer` log a one-time console warning when an append or update makes X go backwards.
+X values must be finite and non-decreasing; see [Streaming: skip, count, report](#streaming-skip-count-report) for what happens to samples that are not.
 
 `UniformRingBuffer` is for fixed-rate data. It stores Y values and derives X as `xStart + index * xStep`; `xStep` must be positive. Prefer it for telemetry or signal data where every sample is evenly spaced. For chart-owned series, `chart.addLine({ capacity, xStart, xStep })` creates this dataset for you. Once it holds data, `series.append({ x, y })` ignores the passed X values and keeps deriving X from `xStep`; use `RingBuffer` when spacing varies.
 
@@ -79,7 +124,7 @@ Variable-width explicit histogram thresholds are supported by the pure `histogra
 
 - Point data represents concrete X/Y samples. Use it with `downsample: "none"`.
 - Min/max bucket data represents `{ xStart, xEnd, minY, maxY }` envelopes. Use it with `downsample: "server"` so BlazePlot renders those envelopes directly.
-- Bucket ranges should be sorted by X and should describe the visible interval they cover. Viewport extraction includes buckets whose X range overlaps the viewport.
+- Bucket `xStart` and `xEnd` must each be finite and non-decreasing, with `xEnd >= xStart` per bucket; buckets may overlap. Anything else throws `RangeError`. Viewport extraction includes buckets whose X range overlaps the viewport.
 - Generic APIs expose a bucket midpoint for `getX()` and a midpoint between `minY`/`maxY` for `getY()`; rendering and bounds use the full bucket range.
 
 See [Performance recipes](./performance-recipes.md) for when to choose server-side sampling.
@@ -90,7 +135,7 @@ See [Performance recipes](./performance-recipes.md) for when to choose server-si
 
 ## OHLC datasets
 
-OHLC and candlestick datasets expose close through generic `getY()`. Bounds and fitting use high/low. Use `StaticOhlcDataset` for fixed history and `OhlcRingBuffer` for live OHLC data.
+OHLC and candlestick datasets expose close through generic `getY()`. Bounds and fitting use high/low. A candle with any non-finite price is a gap. Use `StaticOhlcDataset` for fixed history and `OhlcRingBuffer` for live OHLC data.
 
 ## Export and picking
 

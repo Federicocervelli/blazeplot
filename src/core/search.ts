@@ -39,16 +39,3 @@ export function nonFiniteXWarning(owner: string, action: string): (x: number) =>
     );
   };
 }
-
-/** @internal Return a check that warns once when a buffer's X values stop ascending. */
-export function unsortedXWarning(owner: string): (previous: number, next: number) => void {
-  let warned = false;
-  return (previous, next) => {
-    if (warned || !(next < previous)) return;
-    warned = true;
-    console.warn(
-      `${owner} received X ${next} after ${previous}. X values must be ascending: range queries, culling, and picking ` +
-        "binary-search X, so out-of-order samples can be hidden or drawn in the wrong place. Sort data before appending.",
-    );
-  };
-}
