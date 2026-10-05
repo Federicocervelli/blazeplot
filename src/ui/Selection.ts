@@ -1,6 +1,8 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { ChartPlugin, ChartPluginContext, ChartRect } from "./PluginHost.js";
-import { asElement, clamp, createOverlayLayer, dragModifierMatches, singleChartPlugin } from "./OverlayUtils.js";
+import { asElement, clamp, createOverlayLayer, dragModifierMatches, installPluginStyle, singleChartPlugin } from "./OverlayUtils.js";
+
+const SELECTION_CSS = "@media (forced-colors:active){.blazeplot-selection-brush{border-color:Highlight!important}}";
 
 /** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
@@ -206,6 +208,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
   return singleChartPlugin("selection", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
+      const releaseStyle = installPluginStyle(chart, "selection", SELECTION_CSS);
       // Pointer capture goes to the element that received the press (the plot surface).
       let captureTarget: Element | null = null;
       overlay = createOverlayLayer(chart.dom.document, options.className ?? "blazeplot-selection-brush", { zIndex: options.zIndex ?? 26 });
@@ -413,6 +416,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       return {
         onThemeChange: applyTheme,
         dispose() {
+          releaseStyle();
           chart.dom.view.removeEventListener("pointerdown", armEscape, { capture: true });
           chart.dom.view.removeEventListener("focusin", armEscape, { capture: true });
           chart.dom.view.removeEventListener("keydown", onKeyDown);

@@ -12,8 +12,8 @@ const SUMMARY_THROTTLE_MS = 1_000;
 const VISUALLY_HIDDEN_CLASS = "blazeplot-visually-hidden";
 /**
  * Shared chart stylesheet: theme-aware `:focus-visible` rings for the root and every focusable
- * plugin control inside it, the visually-hidden utility, and forced-colors (high-contrast) rules
- * for DOM overlays. Selectors are global so the body-mounted tooltip is covered too.
+ * plugin control inside it, the visually-hidden utility, and the forced-colors focus ring. Plugins
+ * inject their own forced-colors rules (`installPluginStyle`).
  */
 const CHART_STYLESHEET = [
   ".blazeplot-root:focus-visible{outline:2px solid var(--blazeplot-focus-ring,Highlight);outline-offset:-2px}",
@@ -21,12 +21,6 @@ const CHART_STYLESHEET = [
   `.${VISUALLY_HIDDEN_CLASS}{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;border:0!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;clip-path:inset(50%)!important;white-space:nowrap!important}`,
   "@media (forced-colors:active){",
   ".blazeplot-root:focus-visible,.blazeplot-root :focus-visible{outline-color:Highlight}",
-  ".blazeplot-tooltip,.blazeplot-legend{border:1px solid CanvasText}",
-  // Series swatches and markers carry series identity: keep their (already system) colors.
-  ".blazeplot-legend-swatch,.blazeplot-pick-swatch,.blazeplot-pick-marker{forced-color-adjust:none}",
-  ".blazeplot-selection-brush{border-color:Highlight!important}",
-  // The navigator window is outlined; a filled wash would tint the overview series.
-  ".blazeplot-navigator-window{fill:transparent}",
   "}",
 ].join("");
 

@@ -104,9 +104,9 @@ describe("chart summary", () => {
     const style = chart.rootElement.querySelector("style.blazeplot-style");
     expect(style?.textContent).toContain(".blazeplot-root:focus-visible");
     expect(style?.textContent).toContain("@media (forced-colors:active)");
-    // Series swatches and pick markers keep their colors; the navigator window loses its wash.
-    expect(style?.textContent).toContain(".blazeplot-legend-swatch,.blazeplot-pick-swatch,.blazeplot-pick-marker{forced-color-adjust:none}");
-    expect(style?.textContent).toContain(".blazeplot-navigator-window{fill:transparent}");
+    // Plugin-specific rules live in the plugins, not the core sheet.
+    expect(style?.textContent).not.toContain("blazeplot-legend");
+    expect(style?.textContent).not.toContain("blazeplot-navigator");
     expect(chart.rootElement.style.getPropertyValue("--blazeplot-focus-ring")).toBe("#ff00aa");
     chart.dispose();
 
