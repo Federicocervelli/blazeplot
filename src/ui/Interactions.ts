@@ -253,6 +253,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       let touchGesture: TouchGestureState | null = null;
       let touchSurface: GestureSurface = "plot";
       let tapCandidate = false;
+      /** True once a second finger joined since the last time all fingers were up (a real two-finger gesture). */
+      let sawSecondFinger = false;
       let tapStartX = 0;
       let tapStartY = 0;
       let resetViewport: Viewport | null = null;
@@ -590,6 +592,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           return;
         }
         tapCandidate = false;
+        sawSecondFinger = true;
         if (twoFingerEnabled()) startPinch(touchTargetConfig(touchSurface));
       }
 
@@ -652,7 +655,9 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         }
         touchGesture = null;
         // The browser took a one-finger drag on a cooperative chart for page scroll.
-        if (event.type === "pointercancel" && isCooperative(touchSurface)) showHint("touch");
+        // A pointercancel that ends a two-finger gesture (the browser tearing down the touch sequence) is not a scroll takeover.
+        if (event.type === "pointercancel" && isCooperative(touchSurface) && !sawSecondFinger) showHint("touch");
+        sawSecondFinger = false;
         const wasTap = tapCandidate && event.type === "pointerup";
         tapCandidate = false;
         if (touches.size > 0 || !wasTap) return;

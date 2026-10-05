@@ -1,6 +1,7 @@
 import { Chart, HistogramDataset, StaticDataset, StaticOhlcDataset } from "@/index.ts";
 import type { ChartFrameStats, ChartPlugin } from "@/index.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
+import type { AnnotationsPlugin } from "@/plugins/annotations.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { flameGraphPlugin } from "@/plugins/flamegraph.ts";
@@ -68,6 +69,10 @@ const CASES = [
   "scatter-markers-dpr2",
   "large-y-offset",
   "dense-area-spike",
+  "screenshot-overlays",
+  "screenshot-first",
+  "annotations-log-reversed",
+  "annotations-symlog",
 ] as const;
 
 type VisualCase = typeof CASES[number];
@@ -92,6 +97,8 @@ let state: VisualTestSnapshot["state"] = "booting";
 let stats: ChartFrameStats | null = null;
 let error: string | null = null;
 const assertions: string[] = [];
+let annotationsHandle: AnnotationsPlugin | null = null;
+let firstScreenshot: Promise<Blob> | null = null;
 
 if (caseName === "scatter-markers-dpr2") Object.defineProperty(window, "devicePixelRatio", { value: 2, configurable: true });
 // `?renderer=` selects the backend: webgl2 (default), canvas2d, or auto (WebGL2 with Canvas 2D fallback).
@@ -198,6 +205,33 @@ function optionsForCase(name: VisualCase): ConstructorParameters<typeof Chart>[1
     ]),
     search: "render",
   }));
+  if (name === "screenshot-overlays") {
+    return {
+      title: "Screenshot overlays",
+      subtitle: "legend and rotated axis titles",
+      axes: {
+        x: { position: "outside", title: "sample index" },
+        y: { position: "outside", title: "left value" },
+        y2: { visible: true, position: "outside", title: "right value" },
+      },
+      grid: true,
+      plugins: [legendPlugin()],
+    };
+  }
+  if (name === "screenshot-first") {
+    return { axes: { x: { position: "outside" }, y: { position: "outside", title: "value" } }, grid: true, plugins };
+  }
+  if (name === "annotations-log-reversed" || name === "annotations-symlog") {
+    annotationsHandle = annotationsPlugin({});
+    plugins.push(annotationsHandle);
+    return {
+      axes: name === "annotations-log-reversed"
+        ? { x: { position: "outside", reversed: true }, y: { position: "outside", scale: "log" } }
+        : { x: { position: "outside" }, y: { position: "outside", scale: "symlog", symlogConstant: 1 } },
+      grid: true,
+      plugins,
+    };
+  }
   if (name === "scale-options") {
     return {
       axes: {
@@ -281,6 +315,32 @@ function setupCase(name: VisualCase, chart: Chart): void {
     case "dense-area-spike":
       addDenseAreaSpike(chart);
       break;
+    case "screenshot-overlays": {
+      const { x, y } = wave(300);
+      chart.addLine({ dataset: new StaticDataset(x, y), name: "left series" }, { lineWidth: 2 });
+      chart.addLine({ dataset: new StaticDataset(x, Float32Array.from(y, (v) => 50 + v * 20)), yAxis: "right", name: "right series" }, { lineWidth: 2 });
+      chart.setViewport({ xMin: 0, xMax: 299, yMin: -1.6, yMax: 1.6 });
+      chart.setViewport({ yMin: 10, yMax: 90 }, "right");
+      break;
+    }
+    case "screenshot-first": {
+      addLine(chart);
+      // No frame has been rendered and the screenshot chunk has not been imported yet.
+      firstScreenshot = chart.screenshot();
+      break;
+    }
+    case "annotations-log-reversed": {
+      const x = Float64Array.from({ length: 200 }, (_, i) => i / 2);
+      chart.addLine({ dataset: new StaticDataset(x, Float32Array.from(x, (v) => 10 ** (1 + 2 * Math.abs(Math.sin(v * 0.06))))), name: "log line" }, { lineWidth: 2 });
+      chart.setViewport({ xMin: 0, xMax: 100, yMin: 1, yMax: 10_000 });
+      break;
+    }
+    case "annotations-symlog": {
+      const x = Float64Array.from({ length: 200 }, (_, i) => i / 2);
+      chart.addLine({ dataset: new StaticDataset(x, Float32Array.from(x, (v) => 800 * Math.sin(v * 0.1))), name: "symlog line" }, { lineWidth: 2 });
+      chart.setViewport({ xMin: 0, xMax: 100, yMin: -1000, yMax: 1000 });
+      break;
+    }
   }
 }
 
@@ -405,6 +465,201 @@ function addGaps(chart: Chart): void {
   chart.setViewport({ xMin: 0, xMax: 239, yMin: -3.6, yMax: 1.6 });
 }
 
+async function decodeBlob(blob: Blob): Promise<ImageData> {
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new Error("No 2D context to decode the screenshot");
+  ctx.drawImage(bitmap, 0, 0);
+  return ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+}
+
+interface InkBox { readonly count: number; readonly minX: number; readonly minY: number; readonly maxX: number; readonly maxY: number }
+
+/** Pixels in a region (image pixels) that differ from `bg` by more than `tolerance` on any channel. */
+function inkIn(image: ImageData, bg: Pixel, x0: number, y0: number, x1: number, y1: number, tolerance = 40): InkBox {
+  let count = 0;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const left = Math.max(0, Math.floor(x0));
+  const top = Math.max(0, Math.floor(y0));
+  const right = Math.min(image.width, Math.ceil(x1));
+  const bottom = Math.min(image.height, Math.ceil(y1));
+  for (let y = top; y < bottom; y++) {
+    for (let x = left; x < right; x++) {
+      const i = (y * image.width + x) * 4;
+      const d = image.data;
+      if (Math.max(Math.abs(d[i]! - bg.r), Math.abs(d[i + 1]! - bg.g), Math.abs(d[i + 2]! - bg.b)) > tolerance) {
+        count++;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  return { count, minX, minY, maxX, maxY };
+}
+
+function parseCssRgb(value: string): Pixel | null {
+  const match = /rgba?\(\s*(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)[,\s]+(\d+(?:\.\d+)?)(?:[,\s/]+([\d.]+%?))?/.exec(value);
+  if (!match) return null;
+  return { r: Number(match[1]), g: Number(match[2]), b: Number(match[3]), a: match[4] === undefined ? 255 : 255 * Number.parseFloat(match[4]) / (match[4].endsWith("%") ? 100 : 1) };
+}
+
+async function assertAsyncCase(name: VisualCase): Promise<void> {
+  if (name === "screenshot-first") {
+    if (!firstScreenshot) throw new Error("screenshot-first did not start a screenshot");
+    const image = await decodeBlob(await firstScreenshot);
+    const root = chart.rootElement.getBoundingClientRect();
+    const plot = chart.canvas.getBoundingClientRect();
+    const sx = image.width / root.width;
+    const sy = image.height / root.height;
+    const bg = { r: image.data[0]!, g: image.data[1]!, b: image.data[2]!, a: 255 };
+    const ink = inkIn(image, bg, (plot.left - root.left) * sx, (plot.top - root.top) * sy, (plot.right - root.left) * sx, (plot.bottom - root.top) * sy);
+    const area = (plot.width * sx) * (plot.height * sy);
+    assert(ink.count / area > 0.004, `first screenshot, taken before any frame, contains the plot (${(ink.count / area * 100).toFixed(2)}% ink)`);
+  }
+  if (name === "screenshot-overlays") await assertScreenshotOverlays();
+  if (name === "annotations-log-reversed" || name === "annotations-symlog") await assertAnnotationsOnTicks(name);
+}
+
+async function assertScreenshotOverlays(): Promise<void> {
+  const image = await decodeBlob(await chart.screenshot());
+  const root = chart.rootElement.getBoundingClientRect();
+  const sx = image.width / root.width;
+  const sy = image.height / root.height;
+  const bg = { r: image.data[0]!, g: image.data[1]!, b: image.data[2]!, a: 255 };
+  const rel = (rect: DOMRect): { x0: number; y0: number; x1: number; y1: number } => ({
+    x0: (rect.left - root.left) * sx,
+    y0: (rect.top - root.top) * sy,
+    x1: (rect.right - root.left) * sx,
+    y1: (rect.bottom - root.top) * sy,
+  });
+  const el = (selector: string): HTMLElement => {
+    const found = chart.rootElement.querySelector<HTMLElement>(selector);
+    if (!found) throw new Error(`Missing ${selector}`);
+    return found;
+  };
+
+  // Legend: swatches painted in their series color, and text ink next to each.
+  const swatches = [...chart.rootElement.querySelectorAll<HTMLElement>(".blazeplot-legend-swatch")];
+  assert(swatches.length === 2, "legend has a swatch per series");
+  for (const swatch of swatches) {
+    const style = getComputedStyle(swatch);
+    const expected = parseCssRgb(style.backgroundColor)?.a ? parseCssRgb(style.backgroundColor)! : parseCssRgb(style.color);
+    if (!expected) throw new Error("Could not resolve the legend swatch color");
+    const box = rel(swatch.getBoundingClientRect());
+    const cx = Math.round((box.x0 + box.x1) / 2);
+    const cy = Math.round((box.y0 + box.y1) / 2);
+    const i = (cy * image.width + cx) * 4;
+    const delta = Math.max(Math.abs(image.data[i]! - expected.r), Math.abs(image.data[i + 1]! - expected.g), Math.abs(image.data[i + 2]! - expected.b));
+    assert(delta <= 24, `legend swatch is drawn in the series color (delta ${delta})`);
+  }
+  const legend = rel(el(".blazeplot-legend").getBoundingClientRect());
+  const legendInk = inkIn(image, bg, legend.x0, legend.y0, legend.x1, legend.y1);
+  assert(legendInk.count > 60, `legend panel and text have ink (${legendInk.count} px)`);
+
+  // Rotated axis titles: ink is taller than wide, inside the rotated bounding box.
+  for (const selector of [".blazeplot-axis-title-y", ".blazeplot-axis-title-y2"]) {
+    const rect = el(selector).getBoundingClientRect();
+    assert(rect.height > rect.width * 2, `${selector} is rotated in the DOM (${rect.width.toFixed(0)}x${rect.height.toFixed(0)})`);
+    const box = rel(rect);
+    const ink = inkIn(image, bg, box.x0 - 2, box.y0 - 2, box.x1 + 2, box.y1 + 2);
+    assert(ink.count > 30, `${selector} has ink in the screenshot`);
+    assert((ink.maxY - ink.minY) > (ink.maxX - ink.minX) * 2, `${selector} is drawn rotated (ink ${ink.maxX - ink.minX + 1}x${ink.maxY - ink.minY + 1})`);
+  }
+  const xTitle = el(".blazeplot-axis-title-x").getBoundingClientRect();
+  const xBox = rel(xTitle);
+  const xInk = inkIn(image, bg, xBox.x0 - 2, xBox.y0 - 2, xBox.x1 + 2, xBox.y1 + 2);
+  assert(xInk.count > 30 && (xInk.maxX - xInk.minX) > (xInk.maxY - xInk.minY), "x axis title is drawn horizontally");
+
+  // Title row does not overlap the plot, and Y titles center on the plot, not the whole chart.
+  const plot = chart.canvas.getBoundingClientRect();
+  const title = el(".blazeplot-subtitle").getBoundingClientRect();
+  assert(title.bottom <= plot.top + 0.5, `subtitle (bottom ${title.bottom.toFixed(1)}) stays above the plot (top ${plot.top.toFixed(1)})`);
+  for (const selector of [".blazeplot-axis-title-y", ".blazeplot-axis-title-y2"]) {
+    const rect = el(selector).getBoundingClientRect();
+    const offset = Math.abs((rect.top + rect.bottom) / 2 - (plot.top + plot.bottom) / 2);
+    assert(offset <= 1.5, `${selector} is centered on the plot area (off by ${offset.toFixed(1)}px)`);
+  }
+}
+
+interface LabelTick { readonly value: number; readonly center: number }
+
+/** Numeric tick labels of an outside axis gutter with their center on the cross-axis, in client pixels. */
+function tickLabels(axis: "x" | "y"): LabelTick[] {
+  const gutter = axis === "x" ? chart.xAxisElement : chart.yAxisElement;
+  const ticks: LabelTick[] = [];
+  for (const label of gutter.querySelectorAll<HTMLElement>("div")) {
+    if (getComputedStyle(label).display === "none") continue;
+    const value = Number((label.textContent ?? "").replace(/,/g, "").replace("−", "-"));
+    if (!Number.isFinite(value) || label.textContent === "") continue;
+    const rect = label.getBoundingClientRect();
+    ticks.push({ value, center: axis === "x" ? (rect.left + rect.right) / 2 : (rect.top + rect.bottom) / 2 });
+  }
+  return ticks;
+}
+
+/** Annotations drawn, hit-tested, and focus-targeted at the same pixel as the axis tick label of their value. */
+async function assertAnnotationsOnTicks(name: VisualCase): Promise<void> {
+  if (!annotationsHandle) throw new Error("No annotations plugin");
+  const plot = chart.canvas.getBoundingClientRect();
+  const interior = (ticks: LabelTick[], lo: number, hi: number): LabelTick[] => ticks.filter((t) => t.center > lo + 18 && t.center < hi - 18);
+  const yTicks = interior(tickLabels("y"), plot.top, plot.bottom).filter((t) => t.value !== 0);
+  const xTicks = interior(tickLabels("x"), plot.left, plot.right).filter((t) => t.value !== 0);
+  if (name === "annotations-log-reversed") assert(yTicks.some((t) => t.value === 100), "log axis has a 100 tick label");
+  assert(yTicks.length >= 2 && xTicks.length >= 2, `interior tick labels found (${yTicks.length} y, ${xTicks.length} x)`);
+  const yPicks = name === "annotations-symlog"
+    ? [yTicks.find((t) => t.value > 0), yTicks.find((t) => t.value < 0)].filter((t): t is LabelTick => !!t)
+    : [yTicks.find((t) => t.value === 100) ?? yTicks[0]!];
+  const xPicks = [xTicks[0]!, xTicks[xTicks.length - 1]!];
+  assert(yPicks.length >= 1, "picked y ticks to annotate");
+
+  annotationsHandle.setAnnotations([
+    ...yPicks.map((t, i) => ({ type: "y-line", y: t.value, id: `y${i}`, label: `y ${t.value}` }) as const),
+    ...xPicks.map((t, i) => ({ type: "x-line", x: t.value, id: `x${i}`, label: `x ${t.value}` }) as const),
+  ]);
+  await new Promise((resolve) => window.setTimeout(resolve, 120));
+
+  const groups = [...chart.rootElement.querySelectorAll<SVGGElement>(".blazeplot-annotations > g")];
+  assert(groups.length === yPicks.length + xPicks.length, `drew ${groups.length} annotation groups`);
+  const lines = groups.map((group) => group.querySelector("line")!.getBoundingClientRect());
+  // Y labels are centered with a canvas-measured text height, so their DOM box can sit a few px off the tick; a linear
+  // projection on a log or reversed axis would be off by tens to hundreds of px.
+  const tolerance = 5;
+  yPicks.forEach((tick, i) => {
+    const line = lines[i]!;
+    const drawn = (line.top + line.bottom) / 2;
+    assert(Math.abs(drawn - tick.center) <= tolerance, `y-line at ${tick.value} lines up with its tick (drawn ${drawn.toFixed(1)}, label ${tick.center.toFixed(1)})`);
+    // Hit-testing at the tick position finds this annotation.
+    const hit = annotationsHandle!.pick(plot.left + plot.width * 0.5, drawn);
+    assert(hit?.annotation.id === `y${i}`, `hit-test at the ${tick.value} tick finds the y-line (${hit?.annotation.id ?? "none"})`);
+  });
+  xPicks.forEach((tick, i) => {
+    const line = lines[yPicks.length + i]!;
+    const drawn = (line.left + line.right) / 2;
+    assert(Math.abs(drawn - tick.center) <= tolerance, `x-line at ${tick.value} lines up with its tick (drawn ${drawn.toFixed(1)}, label ${tick.center.toFixed(1)})`);
+    const hit = annotationsHandle!.pick(drawn, plot.top + plot.height * 0.5);
+    assert(hit?.annotation.id === `x${i}`, `hit-test at the ${tick.value} tick finds the x-line (${hit?.annotation.id ?? "none"})`);
+  });
+  // Keyboard focus targets sit on the drawn lines.
+  const targets = [...chart.rootElement.querySelectorAll<HTMLElement>(".blazeplot-annotation-focus")];
+  assert(targets.length === groups.length, "one focus target per annotation");
+  yPicks.forEach((tick, i) => {
+    const rect = targets[i]!.getBoundingClientRect();
+    assert(tick.center >= rect.top - tolerance && tick.center <= rect.bottom + tolerance, `focus target of the y-line at ${tick.value} covers its tick`);
+  });
+  xPicks.forEach((tick, i) => {
+    const rect = targets[yPicks.length + i]!.getBoundingClientRect();
+    assert(tick.center >= rect.left - tolerance && tick.center <= rect.right + tolerance, `focus target of the x-line at ${tick.value} covers its tick`);
+  });
+}
+
 async function finalizeCase(): Promise<void> {
   try {
     if (caseName === "context-restore") await exerciseContextRestore(chart);
@@ -418,6 +673,7 @@ async function finalizeCase(): Promise<void> {
     assert(stats.renderMode !== "none", `renderMode=${stats.renderMode}`);
     assertCaseDom(caseName, chart);
     assertPixelCase(caseName);
+    await assertAsyncCase(caseName);
     state = "ready";
   } catch (caught) {
     error = caught instanceof Error ? caught.message : String(caught);

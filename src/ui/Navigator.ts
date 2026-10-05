@@ -1,7 +1,10 @@
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createSvgElement, singleChartPlugin } from "./OverlayUtils.js";
+import { createSvgElement, installPluginStyle, singleChartPlugin } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
+
+// The navigator window is outlined; a filled wash would tint the overview series.
+const NAVIGATOR_CSS = "@media (forced-colors:active){.blazeplot-navigator-window{fill:transparent}}";
 
 /** Options for the overview navigator plugin. */
 export interface NavigatorPluginOptions {
@@ -302,6 +305,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
   return singleChartPlugin("navigator", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
+      const releaseStyle = installPluginStyle(chart, "navigator", NAVIGATOR_CSS);
       root = chart.dom.document.createElement("div");
       root.className = options.className ?? "blazeplot-navigator";
       root.style.position = "absolute";
@@ -453,6 +457,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           render();
         },
         dispose() {
+          releaseStyle();
           root?.removeEventListener("pointerdown", onPointerDown);
           root?.removeEventListener("pointermove", onPointerMove);
           root?.removeEventListener("pointerup", onPointerUp);

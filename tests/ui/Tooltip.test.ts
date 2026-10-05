@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
+import { legendPlugin } from "../../src/plugins/legend.ts";
 import { tooltipPlugin } from "../../src/plugins/tooltip.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
 import { countNodes } from "./fakes.ts";
@@ -269,6 +271,29 @@ describe("tooltipPlugin", () => {
     expect(countNodes(chart.rootElement)).toBe(nodes);
     expect(countNodes(document.body)).toBe(bodyNodes);
     expect(h.raf.pending.size).toBe(0);
+    chart.dispose();
+  });
+});
+
+describe("plugin-owned styles", () => {
+  const sheets = (): string[] => [...document.head.querySelectorAll("style[data-blazeplot-plugin-style]")].map((el) => el.getAttribute("data-blazeplot-plugin-style")!).sort();
+
+  it("injects one stylesheet per plugin per document and removes it with the last user", () => {
+    const before = sheets();
+    const a = h.make({ plugins: [tooltipPlugin(), crosshairPlugin(), legendPlugin()] });
+    const b = h.make({ plugins: [tooltipPlugin(), crosshairPlugin()] });
+    // The pick rules are shared by the tooltip and crosshair.
+    expect(sheets()).toEqual([...before, "legend", "pick", "tooltip"].sort());
+    a.dispose();
+    expect(sheets()).toEqual([...before, "pick", "tooltip"].sort());
+    b.dispose();
+    expect(sheets()).toEqual(before);
+  });
+
+  it("keeps plugin rules out of charts without the plugin", () => {
+    const chart = h.make();
+    expect(sheets()).toEqual([]);
+    expect(chart.rootElement.querySelector("style.blazeplot-style")!.textContent).not.toContain("blazeplot-tooltip");
     chart.dispose();
   });
 });
