@@ -107,16 +107,22 @@ interface InteractionController {
   colors(): ColorSnapshot;
   resetViewport(): void;
   setViewport(viewport: Partial<Viewport>): void;
+  /** Viewport and canvas rectangle (page coordinates) of every chart, for multi-chart cases. */
+  panels(): Array<{ viewport: Viewport; canvasRect: RectSnapshot }>;
+  /** Fraction of plot pixels in a fresh `chart.screenshot()` that differ from the background. */
+  screenshotInk(): Promise<number>;
 }
 
 declare global {
   interface Window {
     __blazeplotInteractionTest: InteractionController;
     __blazeplotRobustness?: typeof runRobustnessProbes;
+    /** iframe case: calls made from `src/` into the parent window or document (there should be none). */
+    __blazeplotIframeProbe?: { hits(): string[] };
   }
 }
 
-type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow" | "robustness" | "a11y" | "arbitration" | "plain" | "cooperative";
+type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow" | "robustness" | "a11y" | "arbitration" | "plain" | "cooperative" | "iframe" | "site-linked";
 
 const params = new URLSearchParams(window.location.search);
 const rawCase = params.get("case");
@@ -133,6 +139,8 @@ const caseName: InteractionCase = rawCase === "selection"
   || rawCase === "arbitration"
   || rawCase === "plain"
   || rawCase === "cooperative"
+  || rawCase === "iframe"
+  || rawCase === "site-linked"
   ? rawCase
   : "interactions";
 const chartTarget = requireElement<HTMLElement>("chart");
@@ -181,6 +189,21 @@ if (caseName === "a11y") {
     axes: { x: { position: "outside" }, y: { position: "outside" } },
     plugins: [a11yPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }), selection, annotations, legendPlugin(), navigatorPlugin({ height: 48 })],
   }));
+} else if (caseName === "iframe") {
+  charts.push(createIframeChart());
+} else if (caseName === "site-linked") {
+  // The website feature preview: synced time/log panels with default box zoom, shift pan, and a shared crosshair.
+  const panelPlugins = (): ChartPlugin[] => [interactionsPlugin({ minDragDistancePx: 4, shiftDragPan: true }), crosshairPlugin({ syncGroup: "site-linked", snap: "nearest-x" })];
+  const linked = createLinkedCharts(chartTarget, {
+    rows: 2,
+    spacing: 8,
+    syncX: true,
+    panels: [
+      { options: { axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } }, plugins: panelPlugins() } },
+      { options: { axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside", scale: "log", logBase: 10 } }, plugins: panelPlugins() } },
+    ],
+  });
+  charts.push(...linked.charts);
 } else if (caseName === "linked") {
   const linked = createLinkedCharts(chartTarget, {
     rows: 2,
@@ -280,6 +303,21 @@ window.__blazeplotInteractionTest = {
     error,
   }),
   colors: colorSnapshot,
+  panels: () => charts.map((item) => ({ viewport: item.getViewport(), canvasRect: rectOf(item.canvas) })),
+  screenshotInk: async () => {
+    const bitmap = await createImageBitmap(await chart.screenshot());
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    ctx.drawImage(bitmap, 0, 0);
+    const { data } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    let ink = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (Math.max(Math.abs(data[i]! - data[0]!), Math.abs(data[i + 1]! - data[1]!), Math.abs(data[i + 2]! - data[2]!)) > 40) ink++;
+    }
+    return ink / (bitmap.width * bitmap.height);
+  },
   setViewport: (viewport) => chart.setViewport(viewport),
   resetViewport: () => {
     for (const item of charts) {
@@ -300,6 +338,14 @@ if (caseName === "selection") {
 
 try {
   for (const [chartIndex, item] of charts.entries()) {
+    if (caseName === "site-linked") {
+      const xs = Float64Array.from({ length: 1_000 }, (_, i) => i);
+      const ys = Float32Array.from(xs, (value) => 5 + 4 * Math.sin(value * 0.025 + chartIndex));
+      item.addLine({ dataset: new StaticDataset(xs, ys), name: `site line ${chartIndex + 1}` }, { lineWidth: 2 });
+      item.setViewport(chartIndex === 0 ? { xMin: 0, xMax: 999, yMin: 0, yMax: 10 } : { xMin: 0, xMax: 999, yMin: 1, yMax: 12 });
+      item.start();
+      continue;
+    }
     const x = Float64Array.from({ length: 1_000 }, (_, i) => i);
     const y = Float32Array.from({ length: 1_000 }, (_, i) => Math.sin(i * 0.025 + chartIndex * 0.8));
     if (caseName === "render-loop") {
@@ -348,19 +394,75 @@ function requireElement<T extends HTMLElement>(id: string): T {
 
 function rectOf(el: Element): RectSnapshot {
   const rect = el.getBoundingClientRect();
-  return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+  // Elements inside an iframe are measured in the frame; add the frame offset to get page coordinates.
+  const frame = el.ownerDocument.defaultView?.frameElement?.getBoundingClientRect();
+  return { left: rect.left + (frame?.left ?? 0), top: rect.top + (frame?.top ?? 0), width: rect.width, height: rect.height };
+}
+
+/** A chart that lives in an iframe, with traps on the parent window/document to catch global DOM access from `src/`. */
+function createIframeChart(): Chart {
+  const hits: string[] = [];
+  const record = (label: string): void => {
+    const stack = new Error().stack ?? "";
+    const frames = stack.split("\n").slice(2);
+    const origin = frames.find((frame) => frame.includes("/src/"));
+    if (origin) hits.push(`${label} <- ${origin.trim()}`);
+  };
+  const wrap = (target: object, name: string, label: string): void => {
+    const original = (target as Record<string, unknown>)[name];
+    if (typeof original !== "function") return;
+    (target as Record<string, unknown>)[name] = function (this: unknown, ...args: unknown[]): unknown {
+      record(label);
+      return (original as (...a: unknown[]) => unknown).apply(this, args);
+    };
+  };
+  for (const name of ["createElement", "createElementNS", "createTextNode", "querySelector", "querySelectorAll", "getElementById", "addEventListener", "removeEventListener", "createRange", "createTreeWalker", "elementFromPoint", "elementsFromPoint"]) {
+    wrap(Document.prototype, name, `document.${name}`);
+  }
+  for (const name of ["requestAnimationFrame", "cancelAnimationFrame", "getComputedStyle", "addEventListener", "removeEventListener", "matchMedia"]) {
+    wrap(window, name, `window.${name}`);
+  }
+  for (const name of ["devicePixelRatio", "innerWidth", "innerHeight"]) {
+    const value = (window as unknown as Record<string, number>)[name];
+    Object.defineProperty(window, name, { configurable: true, get: () => { record(`window.${name}`); return value; } });
+  }
+  const activeElement = Object.getOwnPropertyDescriptor(Document.prototype, "activeElement");
+  if (activeElement?.get) Object.defineProperty(Document.prototype, "activeElement", { configurable: true, get() { record("document.activeElement"); return activeElement.get!.call(this); } });
+  window.__blazeplotIframeProbe = { hits: () => [...hits] };
+
+  const frame = document.createElement("iframe");
+  frame.style.cssText = "display:block;width:100%;height:100%;border:0";
+  frame.title = "chart frame";
+  chartTarget.appendChild(frame);
+  const doc = frame.contentDocument;
+  if (!doc) throw new Error("iframe has no document");
+  doc.documentElement.style.cssText = "height:100%";
+  doc.body.style.cssText = "margin:0;height:100%;background:#000";
+  const host = doc.createElement("div");
+  host.style.cssText = "width:100%;height:100%";
+  doc.body.appendChild(host);
+  return new Chart(host, {
+    title: "Chart in an iframe",
+    axes: { x: { position: "outside" }, y: { position: "outside" } },
+    grid: true,
+    plugins: [interactionsPlugin({ minDragDistancePx: 4 }), legendPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "none", label: true, onMove: () => { crosshairMoves++; } })],
+  });
+}
+
+function chartDocument(): Document {
+  return charts[0]?.rootElement.ownerDocument ?? document;
 }
 
 function countVisible(selector: string): number {
   let total = 0;
-  for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+  for (const element of chartDocument().querySelectorAll<HTMLElement>(selector)) {
     if (getComputedStyle(element).display !== "none") total++;
   }
   return total;
 }
 
 function crosshairX(): number | null {
-  const crosshair = document.querySelector<HTMLElement>(".blazeplot-crosshair");
+  const crosshair = chartDocument().querySelector<HTMLElement>(".blazeplot-crosshair");
   const vertical = crosshair?.querySelector<HTMLElement>(".blazeplot-crosshair-lines > div");
   if (!crosshair || !vertical || getComputedStyle(crosshair).display === "none") return null;
   const value = Number.parseFloat(vertical.style.left);

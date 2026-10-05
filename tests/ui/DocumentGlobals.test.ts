@@ -10,7 +10,7 @@ const FORBIDDEN: readonly RegExp[] = [
   /(^|[^.\w])document\.(createElement|createElementNS|body|head|querySelector|getElementById|activeElement|addEventListener|removeEventListener)\b/,
   /(^|[^.\w])window\.\w/,
   /\bglobalThis\.(document|window|devicePixelRatio|requestAnimationFrame|cancelAnimationFrame|addEventListener|removeEventListener|innerWidth|innerHeight|matchMedia|getComputedStyle)\b/,
-  /(^|[^.\w])(requestAnimationFrame|cancelAnimationFrame)\(/,
+  /(^|[^.\w])(requestAnimationFrame|cancelAnimationFrame|getComputedStyle|matchMedia)\(/,
   /\binstanceof (HTML\w*Element|SVG\w*Element|Element|Node)\b/,
 ];
 

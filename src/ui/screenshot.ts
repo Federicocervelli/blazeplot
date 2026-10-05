@@ -70,7 +70,7 @@ function drawCanvasesForScreenshot(
   const canvases = Array.from(root.querySelectorAll<HTMLCanvasElement>("canvas"));
   const sources = canvases.length > 0 ? canvases : [fallbackCanvas];
   for (const canvas of sources) {
-    const style = getComputedStyle(canvas);
+    const style = computedStyle(canvas);
     if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
     const rect = canvas.isConnected ? canvas.getBoundingClientRect() : fallbackPlotRect;
     if (rect.width <= 0 || rect.height <= 0 || canvas.width <= 0 || canvas.height <= 0) continue;
@@ -97,7 +97,7 @@ async function drawSvgOverlaysForScreenshot(
   const svgs = root.querySelectorAll<SVGSVGElement>("svg");
   const serializer = new XMLSerializer();
   for (const source of svgs) {
-    const style = getComputedStyle(source);
+    const style = computedStyle(source);
     if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") continue;
     const rect = source.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) continue;
@@ -130,6 +130,11 @@ async function drawSvgOverlaysForScreenshot(
 /** Attribute that opts a DOM overlay element into background and border painting in screenshots. */
 const SCREENSHOT_BOX_ATTRIBUTE = "data-blazeplot-screenshot-box";
 
+/** Computed style through the element's own window, so charts in iframes and popups resolve correctly. */
+function computedStyle(el: Element): CSSStyleDeclaration {
+  return (el.ownerDocument.defaultView ?? globalThis).getComputedStyle(el);
+}
+
 function isRenderable(el: Element, style: CSSStyleDeclaration): boolean {
   return !(style.display === "none" || style.visibility === "hidden" || style.opacity === "0" || el.closest(".blazeplot-visually-hidden"));
 }
@@ -137,7 +142,7 @@ function isRenderable(el: Element, style: CSSStyleDeclaration): boolean {
 /** Closest element (starting at `el`) with a CSS transform, up to `root`. */
 function transformedAncestor(el: Element, root: Element): { element: Element; matrix: DOMMatrix } | null {
   for (let node: Element | null = el; node && node !== root.parentElement; node = node.parentElement) {
-    const transform = getComputedStyle(node).transform;
+    const transform = computedStyle(node).transform;
     if (transform && transform !== "none") {
       try {
         return { element: node, matrix: new DOMMatrix(transform) };
@@ -208,7 +213,7 @@ function drawBox(ctx: CanvasRenderingContext2D, el: HTMLElement, style: CSSStyle
 }
 
 function drawTextNode(ctx: CanvasRenderingContext2D, node: Text, parent: Element, rootRect: DOMRect, root: Element, scaleX: number, scaleY: number): void {
-  const style = getComputedStyle(parent);
+  const style = computedStyle(parent);
   if (!isRenderable(parent, style)) return;
   const raw = node.data;
   if (!raw.trim()) return;
@@ -267,7 +272,7 @@ function drawDomForScreenshot(
     if (node.nodeType === 1) {
       const el = node as HTMLElement;
       if (el.hasAttribute?.(SCREENSHOT_BOX_ATTRIBUTE)) {
-        const style = getComputedStyle(el);
+        const style = computedStyle(el);
         if (isRenderable(el, style) && !transformedAncestor(el, root)) drawBox(ctx, el, style, rootRect, scaleX, scaleY);
       }
     } else if (node.parentElement) {

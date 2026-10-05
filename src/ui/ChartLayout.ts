@@ -116,6 +116,9 @@ export class ChartLayout implements ChartLayoutElements {
 
   private lastConfig: ChartLayoutConfig | null = null;
   private titleInset = 0;
+  /** Bottom grid row height (px), used to center Y titles on the plot area. */
+  private bottomRow = 0;
+  private readonly yTitleOffsetY = { y: 0, y2: 0 };
   private readonly autoSizes: Record<"x" | "y" | "y2", number | null> = { x: null, y: null, y2: null };
   private readonly externalCanvas: boolean;
   private readonly originalCanvasCssText: string;
@@ -157,14 +160,14 @@ export class ChartLayout implements ChartLayoutElements {
     this.yAxisTitle = styledDiv(doc, "blazeplot-axis-title blazeplot-axis-title-y", titleOverlay({
       left: "4px",
       top: "50%",
-      transform: "translateY(-50%) rotate(-90deg)",
-      transformOrigin: "left center",
+      transform: "rotate(-90deg) translateX(-50%)",
+      transformOrigin: "0 0",
     }));
     this.y2AxisTitle = styledDiv(doc, "blazeplot-axis-title blazeplot-axis-title-y2", titleOverlay({
       right: "4px",
       top: "50%",
-      transform: "translateY(-50%) rotate(90deg)",
-      transformOrigin: "right center",
+      transform: "rotate(90deg) translateX(50%)",
+      transformOrigin: "100% 0",
     }));
 
     this.mount(target);
@@ -224,13 +227,21 @@ export class ChartLayout implements ChartLayoutElements {
       style.transform = "translateX(-50%)";
     } else if (axis === "y") {
       style.left = `${AXIS_TITLE_INSET_PX + offsetX}px`;
-      style.top = `calc(50% + ${offsetY}px)`;
-      style.transform = "translateY(-50%) rotate(-90deg)";
+      this.yTitleOffsetY.y = offsetY;
+      style.transform = "rotate(-90deg) translateX(-50%)";
     } else {
       style.right = `${AXIS_TITLE_INSET_PX - offsetX}px`;
-      style.top = `calc(50% + ${offsetY}px)`;
-      style.transform = "translateY(-50%) rotate(90deg)";
+      this.yTitleOffsetY.y2 = offsetY;
+      style.transform = "rotate(90deg) translateX(50%)";
     }
+    this.positionYTitles();
+  }
+
+  /** Center the Y/Y2 titles on the plot row (below the title row, above the X gutter), not on the whole chart. */
+  private positionYTitles(): void {
+    const center = (offset: number): string => `calc(${this.titleInset}px + (100% - ${this.titleInset + this.bottomRow}px) / 2 + ${offset}px)`;
+    this.yAxisTitle.style.top = center(this.yTitleOffsetY.y);
+    this.y2AxisTitle.style.top = center(this.yTitleOffsetY.y2);
   }
 
   /** Reserve a top row for the chart title and subtitle so they never cover the plot. */
@@ -262,6 +273,8 @@ export class ChartLayout implements ChartLayoutElements {
 
     this.root.style.gridTemplateColumns = `${hasOutsideY ? yGutter : 0}px minmax(0, 1fr) ${hasOutsideY2 ? y2Gutter : 0}px`;
     this.root.style.gridTemplateRows = `${this.titleInset}px minmax(0, 1fr) ${hasOutsideX ? xGutter : 0}px`;
+    this.bottomRow = hasOutsideX ? xGutter : 0;
+    this.positionYTitles();
     this.yAxis.style.display = hasOutsideY ? "block" : "none";
     this.y2Axis.style.display = hasOutsideY2 ? "block" : "none";
     this.xAxis.style.display = hasOutsideX ? "block" : "none";

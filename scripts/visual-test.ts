@@ -128,6 +128,10 @@ const DEFAULT_CASES = [
   "scatter-markers-dpr2",
   "large-y-offset",
   "dense-area-spike",
+  "screenshot-overlays",
+  "screenshot-first",
+  "annotations-log-reversed",
+  "annotations-symlog",
 ];
 
 /**
@@ -163,6 +167,10 @@ const CASE_CHECKS: Readonly<Record<string, CaseCheck>> = {
   "scatter-markers-dpr2": { minInkRatio: 0.00002 },
   "large-y-offset": { minInkRatio: 0.01 },
   "dense-area-spike": { minInkRatio: 0.01 },
+  "screenshot-overlays": { minInkRatio: 0.004 },
+  "screenshot-first": { minInkRatio: 0.004 },
+  "annotations-log-reversed": { minInkRatio: 0.004 },
+  "annotations-symlog": { minInkRatio: 0.004 },
 };
 const DEFAULT_CASE_CHECK: CaseCheck = { minInkRatio: 0.004 };
 

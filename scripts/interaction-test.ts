@@ -109,6 +109,8 @@ async function main(): Promise<void> {
       ["touch-action", runTouchActionCase],
       ["cooperative", runCooperativeCase],
       ["linked", runLinkedCase],
+      ["site-linked", runSiteLinkedCase],
+      ["iframe", runIframeCase],
       ["mobile", runMobileCase],
       ["mobile-longpress", runMobileLongPressCase],
       ["lifecycle", runLifecycleCase],
@@ -399,6 +401,101 @@ async function runLinkedCase(options: Options, serverUrl: string): Promise<void>
     assert(after.visibleCrosshairs >= 2, "linked crosshairs are visible on both charts");
     assert(after.visibleTooltips >= 2, "linked tooltips are visible on both charts");
     console.log("✓ linked: synchronized crosshair and tooltip");
+  } finally {
+    cdp.close();
+  }
+}
+
+interface PanelSnapshot {
+  viewport: ViewportSnapshot;
+  canvasRect: RectSnapshot;
+}
+
+async function getPanels(cdp: CdpClient): Promise<[PanelSnapshot, PanelSnapshot]> {
+  return await evaluate(cdp, "window.__blazeplotInteractionTest.panels()", true) as [PanelSnapshot, PanelSnapshot];
+}
+
+/**
+ * The website feature preview (synced time + log panels, default box zoom, shift pan, shared crosshair) no longer
+ * needs `boxZoom: false`: a plain drag box-zooms one panel, X stays synced, and hover/pan keep working.
+ */
+async function runSiteLinkedCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "site-linked");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    let [top, bottom] = await getPanels(cdp);
+    const initialSpan = spanX(top.viewport);
+    const initialBottomY = bottom.viewport;
+    // Plain drag on the top panel: box zoom (X synced to the bottom panel).
+    const rect = top.canvasRect;
+    await drag(cdp, rect.left + rect.width * 0.25, rect.top + rect.height * 0.25, rect.left + rect.width * 0.6, rect.top + rect.height * 0.7, 0);
+    await sleep(250);
+    [top, bottom] = await getPanels(cdp);
+    assert(spanX(top.viewport) < initialSpan * 0.5, "plain drag box-zooms the top panel");
+    assert(close(top.viewport.xMin, bottom.viewport.xMin, 1e-6) && close(top.viewport.xMax, bottom.viewport.xMax, 1e-6), "box zoom keeps the linked X range synced");
+    assert(spanY(top.viewport) < 10 * 0.9, "box zoom also narrows the top panel Y");
+    assert(close(spanY(bottom.viewport), spanY(initialBottomY), 1e-9), "box zoom on the top panel leaves the other panel's Y alone");
+
+    // Plain drag on the log panel: Y stays positive and finite.
+    const logRect = bottom.canvasRect;
+    await drag(cdp, logRect.left + logRect.width * 0.1, logRect.top + logRect.height * 0.2, logRect.left + logRect.width * 0.5, logRect.top + logRect.height * 0.8, 0);
+    await sleep(250);
+    [top, bottom] = await getPanels(cdp);
+    assert(bottom.viewport.yMin > 0 && Number.isFinite(bottom.viewport.yMax) && bottom.viewport.yMax > bottom.viewport.yMin, "box zoom on the log panel keeps a valid positive Y range");
+    assert(spanY(bottom.viewport) < spanY(initialBottomY), "box zoom narrows the log panel Y");
+    assert(close(top.viewport.xMin, bottom.viewport.xMin, 1e-6), "log-panel box zoom keeps X synced");
+
+    // Shift-drag still pans, and the shared crosshair shows on hover.
+    const before = top.viewport.xMin;
+    const center = centerOf(top.canvasRect);
+    await drag(cdp, center.x, center.y, center.x + 80, center.y, SHIFT);
+    await sleep(250);
+    [top, bottom] = await getPanels(cdp);
+    assert(Math.abs(top.viewport.xMin - before) > 0.5, "shift-drag pans the top panel");
+    assert(close(top.viewport.xMin, bottom.viewport.xMin, 1e-6), "shift pan keeps X synced");
+    await mouseMove(cdp, center.x, center.y);
+    await sleep(250);
+    const hovered = await getRequiredSnapshot(cdp);
+    assert(hovered.visibleCrosshairs >= 2, "linked crosshair shows on both panels with box zoom enabled");
+    console.log("✓ site-linked: default box zoom coexists with synced X, log Y, shift pan, and the shared crosshair");
+  } finally {
+    cdp.close();
+  }
+}
+
+/** A chart created in an iframe renders, hovers, zooms, pans, and screenshots without touching the parent window or document. */
+async function runIframeCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "iframe");
+  try {
+    let snapshot = await waitForReady(cdp, options.timeoutMs);
+    assert(snapshot.canvasRect.width > 100 && snapshot.canvasRect.height > 100, "iframe chart has a plot area");
+    assert(snapshot.renderEvents > 0, "iframe chart rendered");
+    const center = centerOf(snapshot.canvasRect);
+    await mouseMove(cdp, center.x, center.y);
+    await sleep(250);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.hoverEvents > 0, "hover works inside the iframe");
+    assert(snapshot.visibleCrosshairs >= 1, "crosshair is visible inside the iframe");
+
+    const span = spanX(snapshot.viewport);
+    await wheel(cdp, center.x, center.y, -400);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(spanX(snapshot.viewport) < span, "wheel zoom works inside the iframe");
+
+    const before = snapshot.viewport.xMin;
+    await drag(cdp, center.x, center.y, center.x + 100, center.y, SHIFT);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(Math.abs(snapshot.viewport.xMin - before) > 0.5, "shift-drag pan works inside the iframe");
+
+    const ink = await evaluate(cdp, "window.__blazeplotInteractionTest.screenshotInk()", true) as number;
+    assert(ink > 0.005, `screenshot of an iframe chart has content (${(ink * 100).toFixed(2)}% ink)`);
+
+    const hits = await evaluate(cdp, "window.__blazeplotIframeProbe?.hits() ?? null", false) as string[] | null;
+    assert(hits !== null, "iframe probe is installed");
+    assert(hits.length === 0, `no global document/window use from src/: ${hits.slice(0, 3).join(" | ")}`);
+    console.log("✓ iframe: render, hover, wheel zoom, pan, screenshot, and no global document/window use");
   } finally {
     cdp.close();
   }

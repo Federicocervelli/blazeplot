@@ -65,6 +65,19 @@ const MONTH = 30 * DAY;
 const YEAR = 365 * DAY;
 
 const TIME_INTERVALS: readonly TimeInterval[] = [
+  // Sub-millisecond steps (fractional ms): 100 ns up to 500 us.
+  ["millisecond", 0.0001, 0.0001],
+  ["millisecond", 0.0002, 0.0002],
+  ["millisecond", 0.0005, 0.0005],
+  ["millisecond", 0.001, 0.001],
+  ["millisecond", 0.002, 0.002],
+  ["millisecond", 0.005, 0.005],
+  ["millisecond", 0.01, 0.01],
+  ["millisecond", 0.02, 0.02],
+  ["millisecond", 0.05, 0.05],
+  ["millisecond", 0.1, 0.1],
+  ["millisecond", 0.2, 0.2],
+  ["millisecond", 0.5, 0.5],
   ["millisecond", 1, 1],
   ["millisecond", 5, 5],
   ["millisecond", 10, 10],
@@ -455,6 +468,18 @@ export class AxisController {
     const timezone = options.timezone ?? "local";
     this.lastTimeInterval = interval;
 
+    if (interval[1] < 1) {
+      // Sub-millisecond: derive each tick from its integer index so error does not accumulate.
+      const step = interval[1];
+      const first = Math.ceil(min / step);
+      const last = Math.floor(max / step);
+      for (let index = first, i = 0; index <= last && i < maxTicks + 2; index++, i++) {
+        target.push(Number((index * step).toFixed(6)));
+      }
+      if (target.length === 0) target.push(min, max);
+      return target;
+    }
+
     let tick = this.floorTime(min, interval, timezone);
     let guard = 0;
     while (tick < min && guard < 4) {
@@ -566,6 +591,17 @@ export class AxisController {
     const dayStart = hour === 0 && (utc ? date.getUTCMinutes() : date.getMinutes()) === 0 && (utc ? date.getUTCSeconds() : date.getSeconds()) === 0 && (utc ? date.getUTCMilliseconds() : date.getMilliseconds()) === 0;
     const yearStart = month === 0 && day === 1 && dayStart;
     // Two-level labels: the first tick and ticks crossing a larger boundary carry the larger unit.
+    if (approxMs > 0 && approxMs < 1) {
+      // Sub-millisecond: seconds with a fractional part, digits sized to the tick step.
+      const decimals = Math.max(1, -Math.floor(Math.log10(approxMs) + 1e-9));
+      const msInSecond = ((value % SECOND) + SECOND) % SECOND;
+      const [whole = "0", part = ""] = msInSecond.toFixed(decimals).split(".");
+      const carry = whole.length > 3; // rounded up to the next second
+      const fraction = carry ? `000${part.replace(/\d/g, "0")}` : `${whole.padStart(3, "0")}${part}`;
+      const wholeSecond = new Date(Math.floor(value / SECOND) * SECOND + (carry ? SECOND : 0));
+      const prefix = isFirst || (dayStart && Number.isInteger(value)) ? "%b %d %H:%M:%S" : "%H:%M:%S";
+      return `${this.formatTimePattern(wholeSecond, prefix, timezone)}.${fraction}`;
+    }
     if (approxMs > 0 && approxMs < SECOND) {
       return this.formatTimePattern(date, isFirst || dayStart ? "%b %d %H:%M:%S.%L" : "%H:%M:%S.%L", timezone);
     }
