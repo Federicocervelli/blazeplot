@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it } from "bun:test";
 import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import { selectionPlugin } from "../../src/plugins/selection.ts";
@@ -14,9 +15,9 @@ function setup(plugins: ChartPlugin[]): Chart {
 }
 
 function drag(chart: Chart, init: { shiftKey?: boolean; altKey?: boolean } = {}, pointerId = 1): void {
-  fire(chart.canvas, pointerEvent("pointerdown", 100, 50, { pointerId, ...init }));
-  fire(chart.canvas, pointerEvent("pointermove", 300, 150, { pointerId, ...init }));
-  fire(chart.canvas, pointerEvent("pointerup", 300, 150, { pointerId, ...init }));
+  fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50, { pointerId, ...init }));
+  fire(chartInternals(chart).canvas, pointerEvent("pointermove", 300, 150, { pointerId, ...init }));
+  fire(chartInternals(chart).canvas, pointerEvent("pointerup", 300, 150, { pointerId, ...init }));
 }
 
 const unchanged = (chart: Chart): boolean => {
@@ -125,10 +126,10 @@ describe("pointer gesture arbitration", () => {
       },
     };
     const chart = setup([first, other]);
-    fire(chart.canvas, pointerEvent("pointerdown", 10, 10));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 10, 10));
     expect(results).toEqual([true, true]);
     expect(second()).toBe(false);
-    fire(chart.canvas, pointerEvent("pointerup", 10, 10));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 10, 10));
     expect(second()).toBe(true);
     chart.dispose();
   });

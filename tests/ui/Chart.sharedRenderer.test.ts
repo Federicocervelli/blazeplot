@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { FakeResizeObserver, setupDom } from "./fakes.ts";
 import type { FakeRaf, TestEnv } from "./fakes.ts";
@@ -128,7 +129,7 @@ describe("shared render context", () => {
     expect(glContexts).toHaveLength(1);
     expect(context.chartCount).toBe(20);
     expect(charts.every((chart) => chart.renderer === "shared")).toBe(true);
-    expect(charts.every((chart) => chart.getWebGLContext() === null)).toBe(true);
+    expect(charts.every((chart) => chartInternals(chart).getWebGLContext() === null)).toBe(true);
 
     raf.flush();
     const sharedCanvas = glContexts[0]!.canvas;
@@ -142,10 +143,10 @@ describe("shared render context", () => {
   it("only resizes the shared canvas when consecutive charts differ in size", () => {
     const context = createChartRenderContext();
     const [a, b] = mountCharts(2, context) as [ChartType, ChartType];
-    a.canvas.width = 300;
-    a.canvas.height = 100;
-    b.canvas.width = 300;
-    b.canvas.height = 100;
+    chartInternals(a).canvas.width = 300;
+    chartInternals(a).canvas.height = 100;
+    chartInternals(b).canvas.width = 300;
+    chartInternals(b).canvas.height = 100;
     raf.flush();
     const shared = glContexts[0]!.canvas;
     expect([shared.width, shared.height]).toEqual([300, 100]);

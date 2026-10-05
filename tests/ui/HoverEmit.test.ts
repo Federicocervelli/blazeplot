@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it } from "bun:test";
 import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
 import { tooltipPlugin } from "../../src/plugins/tooltip.ts";
@@ -22,7 +23,7 @@ describe("hover emission", () => {
     let hovers = 0;
     chart.subscribe("hover", () => hovers++);
     chart.start();
-    fire(chart.canvas, pointerEvent("pointermove", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
     for (let frame = 0; frame < 10; frame++) h.raf.flush();
     expect(hovers).toBe(1);
     expect(chart.getHoverState()?.items[0]?.y).toBe(50);
@@ -35,16 +36,16 @@ describe("hover emission", () => {
     const states: Array<number | null> = [];
     chart.subscribe("hover", (state) => states.push(state?.items[0]?.y ?? null));
     chart.start();
-    fire(chart.canvas, pointerEvent("pointermove", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
     h.raf.flush();
     h.raf.flush();
     series.updateAt(5, { x: 5, y: 55 });
     h.raf.flush();
     h.raf.flush();
-    fire(chart.canvas, pointerEvent("pointermove", 240, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 240, 100));
     h.raf.flush();
     h.raf.flush();
-    fire(chart.canvas, pointerEvent("pointerleave", 240, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 240, 100));
     h.raf.flush();
     expect(states).toEqual([50, 55, 60, null]);
     chart.dispose();
@@ -54,7 +55,7 @@ describe("hover emission", () => {
     const chart = h.make({ renderLoop: "continuous", plugins: [tooltipPlugin()] });
     seeded(chart);
     chart.start();
-    fire(chart.canvas, pointerEvent("pointermove", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
     h.raf.flush();
     h.raf.flush();
     const content = tooltipOf().firstChild;
@@ -70,7 +71,7 @@ describe("hover emission", () => {
     for (let x = 0; x < 20; x++) series.append({ x, y: x });
     chart.start();
     h.raf.flush();
-    fire(chart.canvas, pointerEvent("pointermove", 400, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 400, 100));
     h.raf.flush();
     h.raf.flush();
     const before = tooltipOf().textContent;
@@ -89,7 +90,7 @@ describe("hover emission", () => {
     seeded(chart);
     let tooltipAtHover = "";
     chart.subscribe("hover", () => { tooltipAtHover = tooltipOf().textContent ?? ""; });
-    fire(chart.canvas, pointerEvent("pointermove", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
     h.raf.flush();
     expect(tooltipOf().style.display).toBe("block");
     expect(tooltipOf().textContent).toContain("(5, 50)");
@@ -101,12 +102,12 @@ describe("hover emission", () => {
   it("reuses crosshair marker nodes across updates", () => {
     const chart = h.make({ plugins: [crosshairPlugin({ snap: "nearest-x" })] });
     seeded(chart);
-    fire(chart.canvas, pointerEvent("pointermove", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
     h.raf.flush();
-    const layer = chart.plotElement.querySelector(".blazeplot-crosshair-markers") as HTMLElement;
+    const layer = chartInternals(chart).plotElement.querySelector(".blazeplot-crosshair-markers") as HTMLElement;
     const first = layer.querySelector(".blazeplot-pick-marker");
     expect(first).not.toBeNull();
-    fire(chart.canvas, pointerEvent("pointermove", 240, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 240, 100));
     h.raf.flush();
     expect(layer.querySelector(".blazeplot-pick-marker")).toBe(first);
     chart.dispose();

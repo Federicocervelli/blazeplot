@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it } from "bun:test";
 import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
 import { legendPlugin } from "../../src/plugins/legend.ts";
@@ -21,7 +22,7 @@ function tooltipOf(): HTMLElement {
 
 /** Move the pointer over the plot and run the chart's and the plugin's deferred hover frames. */
 function hover(chart: Chart, x: number, y: number): void {
-  fire(chart.canvas, pointerEvent("pointermove", x, y));
+  fire(chartInternals(chart).canvas, pointerEvent("pointermove", x, y));
   h.raf.flush();
   h.raf.flush();
 }
@@ -35,7 +36,7 @@ describe("tooltipPlugin", () => {
     expect(tip.getAttribute("aria-hidden")).toBe("true");
     expect(tip.style.display).toBe("none");
     expect(tip.style.pointerEvents).toBe("none");
-    expect(chart.plotElement.querySelector(".blazeplot-tooltip-markers")).not.toBeNull();
+    expect(chartInternals(chart).plotElement.querySelector(".blazeplot-tooltip-markers")).not.toBeNull();
     chart.dispose();
   });
 
@@ -49,7 +50,7 @@ describe("tooltipPlugin", () => {
     expect(tip.textContent).toContain("A");
     expect(tip.textContent).toContain("(5, 50)");
 
-    fire(chart.canvas, pointerEvent("pointerleave", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 200, 100));
     h.raf.flush();
     expect(tip.style.display).toBe("none");
     expect(tip.getAttribute("aria-hidden")).toBe("true");
@@ -96,9 +97,9 @@ describe("tooltipPlugin", () => {
     seed(chart, "A");
     seed(chart, "B", 5);
     hover(chart, 200, 100);
-    const layer = chart.plotElement.querySelector(".blazeplot-tooltip-markers") as HTMLElement;
+    const layer = chartInternals(chart).plotElement.querySelector(".blazeplot-tooltip-markers") as HTMLElement;
     expect([...layer.children].map((m) => (m as HTMLElement).style.display)).toEqual(["block", "block"]);
-    fire(chart.canvas, pointerEvent("pointerleave", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 200, 100));
     h.raf.flush();
     expect([...layer.children].map((m) => (m as HTMLElement).style.display)).toEqual(["none", "none"]);
     chart.dispose();
@@ -106,7 +107,7 @@ describe("tooltipPlugin", () => {
     const quiet = h.make({ plugins: [tooltipPlugin({ highlight: false })] });
     seed(quiet);
     hover(quiet, 200, 100);
-    expect(quiet.plotElement.querySelector(".blazeplot-tooltip-markers")!.children).toHaveLength(0);
+    expect(chartInternals(quiet).plotElement.querySelector(".blazeplot-tooltip-markers")!.children).toHaveLength(0);
     quiet.dispose();
   });
 
@@ -151,7 +152,7 @@ describe("tooltipPlugin", () => {
     width = 80;
     hover(chart, 210, 100);
     expect(tip.style.minWidth).toBe("120px");
-    fire(chart.canvas, pointerEvent("pointerleave", 210, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 210, 100));
     h.raf.flush();
     expect(tip.style.minWidth).toBe("");
     chart.dispose();
@@ -168,7 +169,7 @@ describe("tooltipPlugin", () => {
     expect(document.body.querySelector(".tt-b")!.getAttribute("aria-hidden")).toBe("false");
     expect(document.body.querySelector(".tt-solo")!.getAttribute("aria-hidden")).toBe("true");
 
-    fire(a.canvas, pointerEvent("pointerleave", 200, 100));
+    fire(chartInternals(a).canvas, pointerEvent("pointerleave", 200, 100));
     h.raf.flush();
     expect(document.body.querySelector(".tt-b")!.getAttribute("aria-hidden")).toBe("true");
     for (const chart of [a, b, solo]) chart.dispose();
@@ -177,25 +178,25 @@ describe("tooltipPlugin", () => {
   it("shows after a touch long press and cancels when the touch ends first", async () => {
     const chart = h.make({ plugins: [tooltipPlugin({ longPressMs: 1 })] });
     seed(chart);
-    fire(chart.canvas, pointerEvent("pointerdown", 200, 100, { pointerType: "touch" }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 200, 100, { pointerType: "touch" }));
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(tooltipOf().getAttribute("aria-hidden")).toBe("false");
-    fire(chart.canvas, pointerEvent("pointerup", 200, 100, { pointerType: "touch" }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 200, 100, { pointerType: "touch" }));
     // Lifting the finger ends the press and hides the tooltip again.
     expect(tooltipOf().getAttribute("aria-hidden")).toBe("true");
     chart.dispose();
 
     const cancelled = h.make({ plugins: [tooltipPlugin({ longPressMs: 1 })] });
     seed(cancelled);
-    fire(cancelled.canvas, pointerEvent("pointerdown", 200, 100, { pointerType: "touch" }));
-    fire(cancelled.canvas, pointerEvent("pointerup", 200, 100, { pointerType: "touch" }));
+    fire(chartInternals(cancelled).canvas, pointerEvent("pointerdown", 200, 100, { pointerType: "touch" }));
+    fire(chartInternals(cancelled).canvas, pointerEvent("pointerup", 200, 100, { pointerType: "touch" }));
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(tooltipOf().getAttribute("aria-hidden")).toBe("true");
     cancelled.dispose();
 
     const off = h.make({ plugins: [tooltipPlugin({ longPressMs: false })] });
     seed(off);
-    fire(off.canvas, pointerEvent("pointerdown", 200, 100, { pointerType: "touch" }));
+    fire(chartInternals(off).canvas, pointerEvent("pointerdown", 200, 100, { pointerType: "touch" }));
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(tooltipOf().getAttribute("aria-hidden")).toBe("true");
     off.dispose();
@@ -206,33 +207,33 @@ describe("tooltipPlugin", () => {
     const chart = h.make({ plugins: [tooltipPlugin({ longPressMs: 1 })] });
     seed(chart);
     const tip = tooltipOf();
-    fire(chart.canvas, touch("pointerdown", 200, 100));
+    fire(chartInternals(chart).canvas, touch("pointerdown", 200, 100));
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(tip.getAttribute("aria-hidden")).toBe("false");
     expect(tip.textContent).toContain("(5, 50)");
     // Once active, moves are claimed so other gesture handlers skip them, and the tooltip follows.
     const move = touch("pointermove", 240, 100);
-    fire(chart.canvas, move);
+    fire(chartInternals(chart).canvas, move);
     expect(move.defaultPrevented).toBe(true);
     expect(tip.textContent).toContain("(6, 60)");
-    fire(chart.canvas, touch("pointerup", 240, 100));
+    fire(chartInternals(chart).canvas, touch("pointerup", 240, 100));
     expect(tip.getAttribute("aria-hidden")).toBe("true");
     chart.dispose();
 
     const moved = h.make({ plugins: [tooltipPlugin({ longPressMs: 20 })] });
     seed(moved);
     const movedTip = tooltipOf();
-    fire(moved.canvas, touch("pointerdown", 200, 100));
+    fire(chartInternals(moved).canvas, touch("pointerdown", 200, 100));
     // Moving more than the threshold before the delay cancels the press.
-    fire(moved.canvas, touch("pointermove", 260, 100));
+    fire(chartInternals(moved).canvas, touch("pointermove", 260, 100));
     await new Promise((resolve) => setTimeout(resolve, 40));
     expect(movedTip.getAttribute("aria-hidden")).toBe("true");
     moved.dispose();
 
     const multi = h.make({ plugins: [tooltipPlugin({ longPressMs: 1 })] });
     seed(multi);
-    fire(multi.canvas, touch("pointerdown", 200, 100, 1));
-    fire(multi.canvas, touch("pointerdown", 220, 100, 2));
+    fire(chartInternals(multi).canvas, touch("pointerdown", 200, 100, 1));
+    fire(chartInternals(multi).canvas, touch("pointerdown", 220, 100, 2));
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(tooltipOf().getAttribute("aria-hidden")).toBe("true");
     multi.dispose();
@@ -240,20 +241,20 @@ describe("tooltipPlugin", () => {
     // A second finger arriving during an active press also ends it.
     const during = h.make({ plugins: [tooltipPlugin({ longPressMs: 1 })] });
     seed(during);
-    fire(during.canvas, touch("pointerdown", 200, 100, 1));
+    fire(chartInternals(during).canvas, touch("pointerdown", 200, 100, 1));
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(tooltipOf().getAttribute("aria-hidden")).toBe("false");
-    fire(during.canvas, touch("pointerdown", 220, 100, 2));
+    fire(chartInternals(during).canvas, touch("pointerdown", 220, 100, 2));
     expect(tooltipOf().getAttribute("aria-hidden")).toBe("true");
     during.dispose();
   });
 
   it("lets the page scroll vertically but keeps sideways long-press drags", () => {
     const chart = h.make({ plugins: [tooltipPlugin()] });
-    expect(chart.canvas.style.touchAction).toBe("pan-y");
+    expect(chartInternals(chart).canvas.style.touchAction).toBe("pan-y");
     chart.dispose();
     const off = h.make({ plugins: [tooltipPlugin({ longPressMs: false })] });
-    expect(off.canvas.style.touchAction).toBe("");
+    expect(chartInternals(off).canvas.style.touchAction).toBe("");
     off.dispose();
   });
 
@@ -261,7 +262,7 @@ describe("tooltipPlugin", () => {
     const baselineNodes = countNodes(document.body);
     const chart = h.make({ plugins: [tooltipPlugin()] });
     seed(chart);
-    fire(chart.canvas, pointerEvent("pointermove", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
     // A tooltip hover frame is pending until the chart frame runs; dispose must cancel both.
     chart.dispose();
     expect(h.raf.pending.size).toBe(0);

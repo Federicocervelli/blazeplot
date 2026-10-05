@@ -44,7 +44,7 @@ afterEach(() => {
 function fakeChart(blob: Blob): { chart: Chart; options: ChartScreenshotOptions[] } {
   const options: ChartScreenshotOptions[] = [];
   const chart = {
-    canvas: document.createElement("canvas"),
+    rootElement: document.createElement("div"),
     screenshot: async (opts: ChartScreenshotOptions = {}) => {
       options.push(opts);
       return blob;

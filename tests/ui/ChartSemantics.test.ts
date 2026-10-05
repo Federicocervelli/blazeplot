@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { afterEach, describe, expect, it, jest } from "bun:test";
 import type { Chart, ChartHoverState, ChartOptions } from "../../src/ui/Chart.ts";
 import { buildChartSummary } from "../../src/ui/ChartSummary.ts";
@@ -242,13 +243,13 @@ describe("inspection contract", () => {
     const a = addRamp(chart, "A", 10);
     const ctx = pluginContext(chart);
     ctx.state.inspect({ series: a, index: 2 });
-    fire(chart.canvas, pointerEvent("pointermove", 300, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 300, 50));
     expect(ctx.state.getInspection()).toBeNull();
     h.raf.flush();
     expect(chart.getHoverState()?.source).toBe("pointer");
 
     ctx.state.inspect({ series: a, index: 2 });
-    fire(chart.canvas, pointerEvent("pointerleave", 300, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 300, 50));
     expect(chart.getHoverState()?.source).toBe("inspection");
     chart.removeSeries(a);
     expect(ctx.state.getInspection()).toBeNull();

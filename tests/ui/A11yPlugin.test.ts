@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { afterEach, describe, expect, it, jest } from "bun:test";
 import { OhlcRingBuffer } from "../../src/index.ts";
 import { a11yPlugin } from "../../src/plugins/a11y.ts";
@@ -259,7 +260,7 @@ describe("a11yPlugin keyboard inspection", () => {
     const { chart, plugin } = make();
     const a = addRamp(chart, "A", 10);
     press(chart, "Enter");
-    fire(chart.canvas, pointerEvent("pointermove", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 100, 50));
     h.raf.flush();
     expect(plugin.isInspecting()).toBe(false);
 

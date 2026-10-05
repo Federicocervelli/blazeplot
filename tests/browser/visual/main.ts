@@ -1,3 +1,4 @@
+import { chartInternals } from "@/ui/ChartInternals.ts";
 import { Chart, HistogramDataset, StaticDataset, StaticOhlcDataset } from "@/index.ts";
 import type { ChartFrameStats, ChartPlugin } from "@/index.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
@@ -111,12 +112,12 @@ const chart = new Chart(chartTarget, {
 let lastFrame: ImageData | null = null;
 const captureCanvas = document.createElement("canvas");
 chart.subscribe("render", () => {
-  const { width, height } = chart.canvas;
+  const { width, height } = chartInternals(chart).canvas;
   captureCanvas.width = width;
   captureCanvas.height = height;
   const ctx = captureCanvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return;
-  ctx.drawImage(chart.canvas, 0, 0);
+  ctx.drawImage(chartInternals(chart).canvas, 0, 0);
   lastFrame = ctx.getImageData(0, 0, width, height);
 });
 window.__blazeplotVisualTest = {
@@ -128,7 +129,7 @@ window.__blazeplotVisualTest = {
   setGridVisible: (visible) => chart.setGridVisible(visible),
   rects: () => ({
     root: toRect(chart.rootElement),
-    plot: toRect(chart.canvas),
+    plot: toRect(chartInternals(chart).canvas),
     flamegraph: toRectOrNull(chart.rootElement.querySelector(".blazeplot-flamegraph-canvas")),
   }),
 };
@@ -383,7 +384,7 @@ interface Pixel { readonly r: number; readonly g: number; readonly b: number; re
 function pixelAt(dataX: number, dataY: number, dx = 0, dy = 0): Pixel {
   if (!lastFrame) throw new Error("No captured frame");
   const [px, py] = chart.dataToPlot(dataX, dataY);
-  const ratio = lastFrame.width / Math.max(1, chart.canvas.clientWidth);
+  const ratio = lastFrame.width / Math.max(1, chartInternals(chart).canvas.clientWidth);
   const x = Math.min(lastFrame.width - 1, Math.max(0, Math.round(px * ratio) + dx));
   const y = Math.min(lastFrame.height - 1, Math.max(0, Math.round(py * ratio) + dy));
   const i = (y * lastFrame.width + x) * 4;
@@ -413,7 +414,7 @@ function assertPixelCase(name: VisualCase): void {
   }
   if (name === "scatter-markers" || name === "scatter-markers-dpr2") {
     if (!lastFrame) throw new Error("No captured frame");
-    const ratio = lastFrame.width / Math.max(1, chart.canvas.clientWidth);
+    const ratio = lastFrame.width / Math.max(1, chartInternals(chart).canvas.clientWidth);
     assert(Math.abs(ratio - (name === "scatter-markers" ? 1 : 2)) < 0.01, `pixel ratio ${ratio}`);
     const [px, py] = chart.dataToPlot(MARKER_X, MARKER_Y);
     const cx = Math.round(px * ratio);
@@ -514,7 +515,7 @@ async function assertAsyncCase(name: VisualCase): Promise<void> {
     if (!firstScreenshot) throw new Error("screenshot-first did not start a screenshot");
     const image = await decodeBlob(await firstScreenshot);
     const root = chart.rootElement.getBoundingClientRect();
-    const plot = chart.canvas.getBoundingClientRect();
+    const plot = chartInternals(chart).canvas.getBoundingClientRect();
     const sx = image.width / root.width;
     const sy = image.height / root.height;
     const bg = { r: image.data[0]!, g: image.data[1]!, b: image.data[2]!, a: 255 };
@@ -577,7 +578,7 @@ async function assertScreenshotOverlays(): Promise<void> {
   assert(xInk.count > 30 && (xInk.maxX - xInk.minX) > (xInk.maxY - xInk.minY), "x axis title is drawn horizontally");
 
   // Title row does not overlap the plot, and Y titles center on the plot, not the whole chart.
-  const plot = chart.canvas.getBoundingClientRect();
+  const plot = chartInternals(chart).canvas.getBoundingClientRect();
   const title = el(".blazeplot-subtitle").getBoundingClientRect();
   assert(title.bottom <= plot.top + 0.5, `subtitle (bottom ${title.bottom.toFixed(1)}) stays above the plot (top ${plot.top.toFixed(1)})`);
   for (const selector of [".blazeplot-axis-title-y", ".blazeplot-axis-title-y2"]) {
@@ -591,7 +592,7 @@ interface LabelTick { readonly value: number; readonly center: number }
 
 /** Numeric tick labels of an outside axis gutter with their center on the cross-axis, in client pixels. */
 function tickLabels(axis: "x" | "y"): LabelTick[] {
-  const gutter = axis === "x" ? chart.xAxisElement : chart.yAxisElement;
+  const gutter = axis === "x" ? chartInternals(chart).xAxisElement : chartInternals(chart).yAxisElement;
   const ticks: LabelTick[] = [];
   for (const label of gutter.querySelectorAll<HTMLElement>("div")) {
     if (getComputedStyle(label).display === "none") continue;
@@ -606,7 +607,7 @@ function tickLabels(axis: "x" | "y"): LabelTick[] {
 /** Annotations drawn, hit-tested, and focus-targeted at the same pixel as the axis tick label of their value. */
 async function assertAnnotationsOnTicks(name: VisualCase): Promise<void> {
   if (!annotationsHandle) throw new Error("No annotations plugin");
-  const plot = chart.canvas.getBoundingClientRect();
+  const plot = chartInternals(chart).canvas.getBoundingClientRect();
   const interior = (ticks: LabelTick[], lo: number, hi: number): LabelTick[] => ticks.filter((t) => t.center > lo + 18 && t.center < hi - 18);
   const yTicks = interior(tickLabels("y"), plot.top, plot.bottom).filter((t) => t.value !== 0);
   const xTicks = interior(tickLabels("x"), plot.left, plot.right).filter((t) => t.value !== 0);
@@ -681,15 +682,15 @@ async function finalizeCase(): Promise<void> {
 }
 
 async function exerciseContextRestore(chart: Chart): Promise<void> {
-  const gl = chart.getWebGLContext();
+  const gl = chartInternals(chart).getWebGLContext();
   const extension = gl?.getExtension("WEBGL_lose_context");
   if (!extension) {
     assertions.push("WEBGL_lose_context unavailable; context restore smoke skipped");
     return;
   }
 
-  const lost = waitForCanvasEvent(chart.canvas, "webglcontextlost", 1_000);
-  const restored = waitForCanvasEvent(chart.canvas, "webglcontextrestored", 2_000);
+  const lost = waitForCanvasEvent(chartInternals(chart).canvas, "webglcontextlost", 1_000);
+  const restored = waitForCanvasEvent(chartInternals(chart).canvas, "webglcontextrestored", 2_000);
   extension.loseContext();
   await lost;
   await delay(50);
@@ -832,10 +833,10 @@ function assertCaseDom(name: VisualCase, chart: Chart): void {
     assert(Number(legend!.style.zIndex) > Number(crosshair!.style.zIndex), "legend above crosshair markers");
   }
   if (name === "scale-options") {
-    assert(chart.getCamera().xReversed, "x axis reversed");
-    assert(chart.getCamera().yReversed, "y axis reversed");
+    assert(chartInternals(chart).getCamera().xReversed, "x axis reversed");
+    assert(chartInternals(chart).getCamera().yReversed, "y axis reversed");
     const [plotX, plotY] = chart.dataToPlot(8, 3);
-    const rect = chart.canvas.getBoundingClientRect();
+    const rect = chartInternals(chart).canvas.getBoundingClientRect();
     const roundTrip = chart.clientToData(rect.left + plotX, rect.top + plotY);
     assert(!!roundTrip && Math.abs(roundTrip[0] - 8) < 1e-5 && Math.abs(roundTrip[1] - 3) < 1e-5, "scaled coordinates round-trip");
     const x1 = chart.dataToPlot(1, 0)[0];

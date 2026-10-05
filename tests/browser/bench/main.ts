@@ -1,3 +1,4 @@
+import { chartInternals } from "@/ui/ChartInternals.ts";
 import { Chart } from "@/index.ts";
 import type { ChartFrameStats, SeriesStore } from "@/index.ts";
 import { flameGraphPlugin } from "@/plugins/flamegraph.ts";
@@ -493,7 +494,7 @@ async function measure(): Promise<BenchmarkResult> {
     viewportSamples: config.viewportSamples,
     flameChartFrames: flameChartModel?.frames.length,
     flameChartStacks: config.flameChartStacks,
-    canvas: { width: chart.canvas.width, height: chart.canvas.height },
+    canvas: { width: chartInternals(chart).canvas.width, height: chartInternals(chart).canvas.height },
     raf: {
       frames: rafDeltas.length,
       fps: rafDeltas.length > 0 ? (rafDeltas.length * 1000) / sum(rafDeltas) : 0,
@@ -605,12 +606,12 @@ function updateViewport(elapsedMs = 0): void {
 }
 
 function dispatchHover(elapsedMs: number): void {
-  const rect = chart.canvas.getBoundingClientRect();
+  const rect = chartInternals(chart).canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return;
   const t = elapsedMs / Math.max(1, config.measureMs);
   const x = rect.left + rect.width * (0.08 + 0.84 * ((Math.sin(t * Math.PI * 2) + 1) * 0.5));
   const y = rect.top + rect.height * (0.2 + 0.6 * ((Math.cos(t * Math.PI * 4) + 1) * 0.5));
-  chart.canvas.dispatchEvent(new PointerEvent("pointermove", {
+  chartInternals(chart).canvas.dispatchEvent(new PointerEvent("pointermove", {
     bubbles: true,
     cancelable: true,
     clientX: x,
