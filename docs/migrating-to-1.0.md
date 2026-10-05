@@ -464,6 +464,19 @@ To keep the 0.5 behavior (fail instead of falling back, for example to show your
 
 See [Browser support](./browser-support.md#rendering-engines) and [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
 
+### 17. API consistency pass
+
+Late 1.0 release candidates removed a few leaky or inconsistent names. There are no deprecated aliases: the old names fail to compile.
+
+| rc / 0.5 | 1.0 |
+|---|---|
+| `AxisControllerAxisOptions` (experimental type of the axis scale options) | `AxisScaleOptions` (stable, and `AxisConfig` extends it). Only the `CustomAxisScale` hook shape stays experimental. |
+| `AxisRenderTarget` was experimental | Stable (it types the stable `AxisTickFormatter`). |
+| `rendererchange` in `ChartEventMap` (never emitted) | Removed. Read `chart.rendererInfo` for the engine in use. |
+| `ChartRendererKind` | `RendererName` |
+| `chart.screenshot({ dpr })` | `chart.screenshot({ pixelRatio })` |
+| `chart.resize(dpr)` | `chart.resize(pixelRatio)` (positional, so only the parameter name changes) |
+
 ## New in 1.0
 
 Additive features that need no migration work but are easy to miss:
@@ -564,4 +577,5 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 15. Check fixed-height containers and visual baselines for charts with a `title` or `subtitle` (the title row, change 15) and for the rendering differences in change 13 (translucent blending, round `pointSize` markers in CSS pixels, dense area peaks).
 16. Rendering engines (change 16): the default `renderer` is now `"auto"`, so code that relied on `new Chart(...)` throwing `WebGL2UnavailableError` needs `renderer: "webgl2"`. On a release candidate, replace imports from `blazeplot/renderers/canvas2d` and `blazeplot/renderers/shared` with root imports or renderer names, and `"webgl2-shared"` with `"shared"`. If you mount many charts on one page, consider `renderer: "shared"`.
 17. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-18. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
+18. Apply the renames in change 17 (search for `AxisControllerAxisOptions`, `rendererchange`, `ChartRendererKind`, and `dpr`).
+19. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.

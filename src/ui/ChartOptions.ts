@@ -5,7 +5,7 @@
 import type { SeriesConfig } from "../core/types.js";
 import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 import type { ChartRendererFactory, RendererChoice } from "../render/ChartRenderer.js";
-import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
+import type { AxisScaleOptions } from "../interaction/AxisController.js";
 import type { ViewportPolicy } from "../interaction/ViewportPolicy.js";
 import type { ChartTheme } from "./theme.js";
 import type { ChartPlugin } from "./PluginTypes.js";
@@ -30,7 +30,7 @@ export interface ChartTitleConfig extends TextOverlayConfig {
 }
 
 /** Axis visibility, placement, scale, tick formatting, and title options. */
-export interface AxisConfig extends AxisControllerAxisOptions {
+export interface AxisConfig extends AxisScaleOptions {
   /** Hide tick labels while keeping the scale. Pass `false` instead of a config to hide an axis with default scale. */
   readonly visible?: boolean;
   readonly position?: AxisPosition;
@@ -132,8 +132,8 @@ export interface ChartScreenshotOptions {
   readonly quality?: number;
   /** CSS background color, or `null` for transparent. Defaults to the theme background. */
   readonly background?: string | null;
-  /** Output pixel ratio. Defaults to `devicePixelRatio`. */
-  readonly dpr?: number;
+  /** Device pixels per CSS pixel of the output image. Defaults to `devicePixelRatio`. */
+  readonly pixelRatio?: number;
   readonly width?: number;
   readonly height?: number;
 }

@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-167 exports.
+166 exports.
 
 #### interface AcceleratedDataset
 
@@ -30,25 +30,11 @@ interface AppendableDataset extends Dataset {
 #### interface AxisConfig
 
 ```ts
-interface AxisConfig extends AxisControllerAxisOptions {
+interface AxisConfig extends AxisScaleOptions {
     readonly visible?: boolean;
     readonly position?: AxisPosition;
     readonly title?: string | TextOverlayConfig;
     readonly size?: number | "auto";
-}
-```
-
-#### interface AxisControllerAxisOptions
-
-```ts
-interface AxisControllerAxisOptions {
-    readonly scale?: AxisScale;
-    readonly tickFormat?: AxisTickFormat;
-    readonly timezone?: AxisTimeZone;
-    readonly logBase?: number;
-    readonly symlogConstant?: number;
-    readonly categories?: readonly string[];
-    readonly reversed?: boolean;
 }
 ```
 
@@ -68,6 +54,20 @@ type AxisRenderTarget = "x" | "y";
 
 ```ts
 type AxisScale = BuiltInAxisScale | CustomAxisScale;
+```
+
+#### interface AxisScaleOptions
+
+```ts
+interface AxisScaleOptions {
+    readonly scale?: AxisScale;
+    readonly tickFormat?: AxisTickFormat;
+    readonly timezone?: AxisTimeZone;
+    readonly logBase?: number;
+    readonly symlogConstant?: number;
+    readonly categories?: readonly string[];
+    readonly reversed?: boolean;
+}
 ```
 
 #### type AxisTickFormat
@@ -201,7 +201,7 @@ class Chart {
     setFollowXPaused(paused: boolean): void;
     getFollowXState(): ChartFollowXState;
     fitToData(options?: ChartFitToDataOptions): boolean;
-    resize(dpr?: number): boolean;
+    resize(pixelRatio?: number): boolean;
     getFrameStats(target?: ChartFrameStats): ChartFrameStats;
     getHoverState(): ChartHoverState | null;
     subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
@@ -254,7 +254,6 @@ interface ChartEventMap extends ChartPluginEventMap {
     themechange: void;
     render: void;
     viewportchange: ChartViewportChangeEvent;
-    rendererchange: ChartRendererInfo;
     followxchange: ChartFollowXChangeEvent;
     seriesclick: ChartSeriesClickEvent;
     click: ChartPointerEvent;
@@ -702,7 +701,7 @@ interface ChartRendererFactoryContext {
 
 ```ts
 interface ChartRendererHandle {
-    readonly kind: ChartRendererKind;
+    readonly kind: RendererName;
 }
 ```
 
@@ -717,12 +716,6 @@ interface ChartRendererInfo {
 }
 ```
 
-#### type ChartRendererKind
-
-```ts
-type ChartRendererKind = RendererName;
-```
-
 #### interface ChartScreenshotOptions
 
 ```ts
@@ -730,7 +723,7 @@ interface ChartScreenshotOptions {
     readonly type?: string;
     readonly quality?: number;
     readonly background?: string | null;
-    readonly dpr?: number;
+    readonly pixelRatio?: number;
     readonly width?: number;
     readonly height?: number;
 }
