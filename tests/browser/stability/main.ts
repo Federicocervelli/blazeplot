@@ -250,6 +250,7 @@ function newChart(host: HTMLElement, plugins: boolean, extra: ChartPlugin[] = []
   return new Chart(host, {
     axes: { x: true, y: true, y2: true },
     title: "stability",
+    renderer: "webgl2",
     plugins: [...(plugins ? fullPlugins() : []), ...extra],
   });
 }
@@ -375,7 +376,7 @@ async function mountOnce(): Promise<number> {
   const flame = ++mountCounter % 4 === 0;
   const host = createHost(480, 280);
   const chart = flame
-    ? new Chart(host, { axes: { x: true, y: false }, plugins: [flameGraphPlugin({ foldedStacks: FLAME_STACKS })] })
+    ? new Chart(host, { renderer: "webgl2", axes: { x: true, y: false }, plugins: [flameGraphPlugin({ foldedStacks: FLAME_STACKS })] })
     : newChart(host, true);
   const renders = countRenders(chart);
   if (!flame) {
@@ -530,6 +531,7 @@ async function startStreaming(config: StreamingConfig): Promise<StreamingStats> 
   if (stream) stopStreaming();
   const host = createHost(640, 360);
   const chart = new Chart(host, {
+    renderer: "webgl2",
     axes: { x: true, y: true },
     followX: { window: 20_000 },
     autoFitY: true,

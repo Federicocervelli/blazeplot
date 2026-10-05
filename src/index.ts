@@ -136,8 +136,11 @@ export type { Camera2D } from "./interaction/Camera2D.js";
 export type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "./interaction/types.js";
 export type { AxisControllerAxisOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
 
-// Renderer selection (factories live in blazeplot/renderers/canvas2d)
-export type { ChartRendererFactory, ChartRendererFactoryContext, ChartRendererHandle, ChartRendererKind } from "./render/ChartRenderer.js";
+// Rendering engines: the `renderer` option takes a name or one of these factories
+export type { ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererHandle, ChartRendererInfo, ChartRendererKind, RendererChoice, RendererName } from "./render/ChartRenderer.js";
+export { autoRenderer, canvas2dRenderer, createChartRenderContext, sharedRenderer, webgl2Renderer } from "./render/engines.js";
+export type { ChartRenderContext } from "./render/engines.js";
+export { Canvas2DUnavailableError } from "./render/canvas2d/Canvas2DRenderer.js";
 
-// WebGL2 support detection
+// Engine support detection
 export { isWebGL2Available, WebGL2UnavailableError } from "./render/webgl2/availability.js";
