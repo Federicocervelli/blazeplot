@@ -160,6 +160,19 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return this.yData[this.logicalToPhysical(index)]!;
   }
 
+  /** @internal Bulk-read logical samples `[start, end)` into Float64 scratch arrays (indices must be valid). */
+  readXYRange(start: number, end: number, xOut: Float64Array, yOut: Float64Array): void {
+    const count = end - start;
+    if (count <= 0) return;
+    const firstX = this.firstX();
+    const step = this.xStep;
+    for (let i = 0; i < count; i++) xOut[i] = firstX + (start + i) * step;
+    const physical = this.logicalToPhysical(start);
+    const first = Math.min(count, this.capacity - physical);
+    yOut.set(this.yData.subarray(physical, physical + first), 0);
+    if (first < count) yOut.set(this.yData.subarray(0, count - first), first);
+  }
+
   /** Return whether the sample should be rendered as a gap. */
   isGap(index: number): boolean {
     return !Number.isFinite(this.getY(index));
