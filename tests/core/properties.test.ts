@@ -1,6 +1,7 @@
 import { describe, it, expect, spyOn } from "bun:test";
 import { testStyle } from "../helpers.ts";
 import { MinMaxTree } from "../../src/core/MinMaxTree.ts";
+import { query, queryRing } from "./minMaxQuery.ts";
 import { RingBuffer } from "../../src/core/RingBuffer.ts";
 import { UniformRingBuffer } from "../../src/core/UniformRingBuffer.ts";
 import { StaticDataset } from "../../src/core/StaticDataset.ts";
@@ -86,7 +87,7 @@ describe("MinMaxTree vs brute force", () => {
         const op = r();
         if (op < 0.4 && filled < capacity) {
           values[filled] = randomY(r);
-          tree.include(filled, values[filled]!);
+          tree.update(filled, filled + 1, filled + 1);
           filled++;
         } else if (filled > 0) {
           const a = int(r, 0, filled - 1);
@@ -99,7 +100,7 @@ describe("MinMaxTree vs brute force", () => {
           const to = int(r, from - 2, filled + 10);
           const expected = bruteMinMax(values.subarray(0, filled), from, to);
           // Unfilled slots are not summarized; callers only query the filled prefix.
-          expect(tree.query(Math.max(0, from), Math.min(filled, to))).toEqual(expected);
+          expect(query(tree, Math.max(0, from), Math.min(filled, to))).toEqual(expected);
         }
       }
     });
@@ -117,7 +118,7 @@ describe("MinMaxTree vs brute force", () => {
       const count = int(r, 1, capacity);
       const idx: number[] = [];
       for (let i = 0; i < count; i++) idx.push(values[(start + i) % capacity]!);
-      expect(tree.queryRing(start, count)).toEqual(bruteMinMax(idx, 0, idx.length));
+      expect(queryRing(tree, start, count)).toEqual(bruteMinMax(idx, 0, idx.length));
     }
   });
 });

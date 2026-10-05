@@ -2,6 +2,7 @@
  * Optional dataset abilities (append, update, gaps, bulk copy, min/max, Y origin), detected once when a
  * series is created, plus the small helpers that apply them. Internal to the series modules.
  */
+import type { MinMaxOut } from "./MinMaxTree.js";
 import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, Viewport } from "./types.js";
 
 export function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
@@ -47,6 +48,11 @@ export interface XYRangeReader extends Dataset {
 /** Dataset with an explicit per-index gap predicate. */
 export type GapDataset = Dataset & { isGap(index: number): boolean };
 
+/** Built-in datasets: `rangeMinMaxY` that writes into `out` and returns whether the range holds a finite value. */
+export interface RangeMinMaxIntoDataset extends RangeMinMaxDataset {
+  rangeMinMaxInto(start: number, end: number, out: MinMaxOut): boolean;
+}
+
 /**
  * Optional dataset abilities, detected once when the series is created. A dataset's capabilities are
  * fixed for its lifetime: methods added to a dataset after construction are not picked up.
@@ -57,6 +63,8 @@ export interface DatasetCaps {
   readonly ohlc: OhlcDataset | null;
   readonly xRange: XRangeDataset | null;
   readonly rangeMinMax: RangeMinMaxDataset | null;
+  /** Built-in datasets also answer `rangeMinMax` into a caller-owned slot, so bucket loops allocate nothing. */
+  readonly rangeMinMaxInto: RangeMinMaxIntoDataset | null;
   readonly minMaxSegments: MinMaxSegmentCopyDataset | null;
   readonly copyVisibleSamples: VisibleSampleCopyDataset | null;
   readonly copySamplesRange: RangeSampleCopyDataset | null;
@@ -98,6 +106,7 @@ export function resolveCaps(dataset: Dataset): DatasetCaps {
     ohlc: isOhlcDataset(dataset) ? dataset : null,
     xRange: "getXRange" in dataset ? (dataset as XRangeDataset) : null,
     rangeMinMax: "rangeMinMaxY" in dataset ? (dataset as RangeMinMaxDataset) : null,
+    rangeMinMaxInto: "rangeMinMaxInto" in dataset ? (dataset as RangeMinMaxIntoDataset) : null,
     minMaxSegments: "copyMinMaxSegments" in dataset ? (dataset as MinMaxSegmentCopyDataset) : null,
     copyVisibleSamples: "copyVisibleSamples" in dataset ? (dataset as VisibleSampleCopyDataset) : null,
     copySamplesRange: "copySamplesRange" in dataset ? (dataset as RangeSampleCopyDataset) : null,
