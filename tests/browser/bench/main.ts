@@ -325,11 +325,10 @@ if (burnMs > 0) {
   });
 }
 
-const lineDataset = config.proceduralLine ? new ProceduralLineDataset(config.capacity) : undefined;
-const lineSeries = chart.addSeries(
-  { mode: "line", capacity: config.capacity, dataset: lineDataset, downsample: "minmax", name: "Benchmark wave" },
-  { color: [0.3, 0.6, 1.0, 1.0], lineWidth: 1 },
-);
+const lineStyle = { color: [0.3, 0.6, 1.0, 1.0] as [number, number, number, number], lineWidth: 1 };
+const lineSeries: SeriesStore = config.proceduralLine
+  ? chart.addSeries({ mode: "line", dataset: new ProceduralLineDataset(config.capacity), downsample: "minmax", name: "Benchmark wave" }, lineStyle)
+  : chart.addSeries({ mode: "line", capacity: config.capacity, downsample: "minmax", name: "Benchmark wave" }, lineStyle);
 
 const extraLines: SeriesStore[] = [];
 for (let i = 0; i < (config.extraLineSeries ?? 0); i++) {
