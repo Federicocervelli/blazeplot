@@ -577,7 +577,7 @@ function appendText(group: SVGGElement, textValue: string, x: number, y: number,
   text.setAttribute("x", String(x));
   text.setAttribute("y", String(y));
   text.setAttribute("fill", color);
-  text.setAttribute("font", font);
+  text.style.font = font;
   text.setAttribute("text-anchor", anchor);
   text.setAttribute("dominant-baseline", "hanging");
   text.setAttribute("paint-order", "stroke");

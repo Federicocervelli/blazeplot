@@ -103,6 +103,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.style.font = options.font ?? chart.theme.legendFont;
       container.style.whiteSpace = "pre";
       container.style.userSelect = "none";
+      container.setAttribute("data-blazeplot-screenshot-box", "");
       container.setAttribute("role", "group");
       container.setAttribute("aria-label", "Chart series legend");
       applyPosition(container, options.position ?? "top-right");
