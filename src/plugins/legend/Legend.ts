@@ -1,7 +1,7 @@
-import type { ChartSeriesState } from "./ChartEvents.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginTypes.js";
-import { installPluginStyle } from "./OverlayUtils.js";
-import { rgbaCss } from "./theme.js";
+import type { ChartSeriesState } from "../../ui/ChartEvents.js";
+import type { ChartPlugin, ChartPluginContext } from "../../ui/PluginTypes.js";
+import { installPluginStyle } from "../common/OverlayUtils.js";
+import { rgbaCss } from "../../ui/theme.js";
 
 const LEGEND_CSS = "@media (forced-colors:active){.blazeplot-legend{border:1px solid CanvasText}.blazeplot-legend-swatch{forced-color-adjust:none}}";
 

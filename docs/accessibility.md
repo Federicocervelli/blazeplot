@@ -6,7 +6,7 @@ This page states what BlazePlot does for keyboard and assistive-technology users
 2. **`blazeplot/plugins/a11y`** (opt in): a visually hidden data table of the visible data, a keyboard inspection cursor that drives the tooltip and crosshair, and an optional live summary for streaming charts.
 3. **Keyboard support in the built-in plugins**: arrow-key pan and zoom (`interactionsPlugin`), legend buttons, the navigator slider, keyboard range selection, and focusable annotations.
 
-Everything below is checked against the source in `src/ui/` and verified by unit tests in `tests/ui/`, keyboard-only browser tests (`bun run test:interaction`), automated axe-core checks of every built-in plugin (`bun run test:a11y`, which fails on serious or critical violations), and an automated forced-colors check in headless Chrome (`bun run test:forced-colors`, part of `bun run test:interaction`). BlazePlot has not been tested manually with screen readers. Nothing here is a claim of conformance with WCAG or any other standard: BlazePlot has not been audited against one.
+Everything below is checked against the source in `src/ui/` and `src/plugins/` and verified by unit tests in `tests/ui/`, keyboard-only browser tests (`bun run test:interaction`), automated axe-core checks of every built-in plugin (`bun run test:a11y`, which fails on serious or critical violations), and an automated forced-colors check in headless Chrome (`bun run test:forced-colors`, part of `bun run test:interaction`). BlazePlot has not been tested manually with screen readers. Nothing here is a claim of conformance with WCAG or any other standard: BlazePlot has not been audited against one.
 
 ## What the chart provides
 

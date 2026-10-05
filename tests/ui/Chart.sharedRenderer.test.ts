@@ -215,7 +215,7 @@ describe("shared render context", () => {
   });
 
   it("linked charts put every panel on one WebGL context when given a shared renderer", async () => {
-    const { createLinkedCharts } = await import("../../src/ui/LinkedCharts.ts");
+    const { createLinkedCharts } = await import("../../src/linked/LinkedCharts.ts");
     const context = createChartRenderContext();
     const linked = createLinkedCharts(target, { panels: Array.from({ length: 6 }, () => ({})), rows: 3, columns: 2, renderer: sharedRenderer(context) });
     expect(glContexts).toHaveLength(1);

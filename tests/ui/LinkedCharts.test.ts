@@ -3,7 +3,7 @@ import { createLinkedCharts } from "../../src/linked.ts";
 import type { LinkedChartsOptions, LinkedChartsHandle } from "../../src/linked.ts";
 import type { ChartOptions } from "../../src/ui/Chart.ts";
 import type { ChartPlugin } from "../../src/ui/PluginTypes.ts";
-import type { SelectionState } from "../../src/ui/Selection.ts";
+import type { SelectionState } from "../../src/plugins/selection/Selection.ts";
 import { countNodes, RecordingRenderer, recordingRenderer } from "./fakes.ts";
 import { pluginContext, useChartHarness } from "./harness.ts";
 

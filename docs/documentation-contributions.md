@@ -90,5 +90,5 @@ Use this checklist in PR descriptions for docs changes.
 | `docs/stability.md` | Stable, experimental, and internal tiers per export; update when exports or subpaths change |
 | `docs/migrating-to-1.0.md` | 0.x to 1.0 upgrade guide; update it for every breaking change or new 1.0 feature, checked against the `changelogs/v1.0.0-rc.*.md` files and `api/public-api.md` |
 | `docs/error-handling.md` | Thrown errors, console output, and invalid-input behavior; update when source throws or warns differently |
-| `docs/accessibility.md` | ARIA, keyboard, and plugin accessibility behavior, grounded in `src/ui/` |
+| `docs/accessibility.md` | ARIA, keyboard, and plugin accessibility behavior, grounded in `src/ui/` and `src/plugins/a11y/` |
 | `docs/api-reference.md` | Generated import paths and public symbols |

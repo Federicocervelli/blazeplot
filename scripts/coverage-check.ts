@@ -21,26 +21,13 @@ const browserOnly = new Set(["src/ui/theme.ts"]);
 // Built-in plugin implementations plus linked charts. These run under happy-dom with the fake GPU
 // backend (tests/ui). Drawing that needs a real WebGL2/2D canvas (FlameGraph rendering, screenshot
 // compositing, WebGL2Backend) is covered by `bun run test:browser`, not here.
-const pluginFiles = new Set([
-  "src/ui/A11y.ts",
-  "src/ui/Annotations.ts",
-  "src/ui/Crosshair.ts",
-  "src/ui/FlameGraph.ts",
-  "src/ui/Interactions.ts",
-  "src/ui/Legend.ts",
-  "src/ui/LinkedCharts.ts",
-  "src/ui/Navigator.ts",
-  "src/ui/OverlayUtils.ts",
-  "src/ui/PickOverlay.ts",
-  "src/ui/Selection.ts",
-  "src/ui/Tooltip.ts",
-]);
+const isPluginImplementation = (file: string): boolean => /^src\/plugins\/[^/]+\//.test(file) || file.startsWith("src/linked/");
 
 const scopes: Scope[] = [
   { name: "src/core", match: (f) => f.startsWith("src/core/"), minLines: 92, minFuncs: 94 },
   // Everything under src/ that unit tests load (browser-only UI helpers are ignored in bunfig.toml).
   { name: "src (all)", match: (f) => f.startsWith("src/") && !browserOnly.has(f), minLines: 87, minFuncs: 88 },
-  { name: "src/ui plugins", match: (f) => pluginFiles.has(f), minLines: 95, minFuncs: 95 },
+  { name: "plugins + linked", match: isPluginImplementation, minLines: 95, minFuncs: 95 },
   // The package entry barrels (src/index.ts, src/linked.ts, src/plugins/*): everything users import.
   { name: "public API", match: (f) => f === "src/index.ts" || f === "src/linked.ts" || /^src\/plugins\/[^/]+\.ts$/.test(f), minLines: 99, minFuncs: 99 },
 ];
