@@ -239,6 +239,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       chartRef = chart;
       root = document.createElement("div");
       root.className = options.className ?? "blazeplot-navigator";
+      root.setAttribute("data-blazeplot-screenshot-box", "");
       root.style.position = "absolute";
       root.style.left = "0";
       root.style.width = "100%";
