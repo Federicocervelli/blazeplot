@@ -357,6 +357,8 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
   let tooltip: HTMLDivElement | null = null;
   let hoverHighlightElement: HTMLDivElement | null = null;
   let glState: WebGLState | null = null;
+  /** Canvas 2D fallback for the rectangle layer when WebGL2 is unavailable. */
+  let rectContext2d: CanvasRenderingContext2D | null = null;
   let rafId = 0;
   let disposed = false;
   const subscriptionDisposers: Array<() => void> = [];
@@ -375,6 +377,10 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       rectCanvas = createOverlayCanvas("blazeplot-flamegraph-canvas", options.zIndex ?? 6);
       labelCanvas = createOverlayCanvas("blazeplot-flamegraph-labels", (options.zIndex ?? 6) + 1);
       glState = createWebGLState(rectCanvas);
+      if (!glState) {
+        rectContext2d = rectCanvas.getContext("2d");
+        if (!rectContext2d) throw new Error("Flame graph plugin requires WebGL2 or Canvas 2D.");
+      }
       subscriptionDisposers.push(nextChart.dom.mount("plot", rectCanvas), nextChart.dom.mount("plot", labelCanvas));
       if (options.hoverHighlight !== false) {
         hoverHighlightElement = document.createElement("div");
@@ -485,6 +491,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       const releasedContext = glState?.gl;
       disposeWebGLState(glState);
       glState = null;
+      rectContext2d = null;
       releaseWebGLContext(releasedContext);
       rectCanvas = null;
       labelCanvas = null;
@@ -503,10 +510,10 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
   }
 
   function render(): void {
-    if (!chart || !rectCanvas || !labelCanvas || !glState) return;
+    if (!chart || !rectCanvas || !labelCanvas || (!glState && !rectContext2d)) return;
     const viewport = chart.viewport.get();
     const resized = resizeCanvases(rectCanvas, labelCanvas);
-    if (resized) glState.gl.viewport(0, 0, rectCanvas.width, rectCanvas.height);
+    if (resized) glState?.gl.viewport(0, 0, rectCanvas.width, rectCanvas.height);
     const signature = [
       modelVersion,
       viewport.xMin,
@@ -523,7 +530,8 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
     if (signature === lastRenderSignature) return;
     lastRenderSignature = signature;
     const visible = collectVisibleFrames(model, viewport.xMin, viewport.xMax, viewport.yMin, viewport.yMax, rectCanvas.clientWidth, rectCanvas.clientHeight, options, tinyBucketCache, `${modelVersion}|${options.minFrameWidthPx ?? DEFAULT_MIN_FRAME_WIDTH_PX}|${viewport.xMax - viewport.xMin}`, visibleFrameScratch);
-    drawRectangles(glState, visible, viewport.xMin, viewport.xMax, viewport.yMin, viewport.yMax, options, search);
+    if (glState) drawRectangles(glState, visible, viewport.xMin, viewport.xMax, viewport.yMin, viewport.yMax, options, search);
+    else if (rectContext2d) drawRectangles2d(rectContext2d, visible, viewport.xMin, viewport.xMax, viewport.yMin, viewport.yMax, options, search);
     drawLabels(labelCanvas, visible, model, options, search);
     updateHoverHighlight(lastHover);
   }
@@ -764,9 +772,10 @@ function createOverlayCanvas(className: string, zIndex: number): HTMLCanvasEleme
   return canvas;
 }
 
-function createWebGLState(canvas: HTMLCanvasElement): WebGLState {
+/** Create the WebGL2 rectangle renderer, or `null` when the canvas cannot provide a WebGL2 context. */
+function createWebGLState(canvas: HTMLCanvasElement): WebGLState | null {
   const gl = canvas.getContext("webgl2", { alpha: true, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false });
-  if (!gl) throw new Error("Flame graph plugin requires WebGL2.");
+  if (!gl) return null;
   const program = createProgram(gl, VERT_SHADER, FRAG_SHADER);
   const vao = requireGlObject(gl.createVertexArray(), "vertex array");
   const cornerBuffer = requireGlObject(gl.createBuffer(), "corner buffer");
@@ -982,6 +991,35 @@ function collectVisibleFrames<T>(
   return visible;
 }
 
+function drawRectangles2d<T>(
+  ctx: CanvasRenderingContext2D,
+  visible: readonly VisibleFrame<T>[],
+  xMin: number,
+  xMax: number,
+  yMin: number,
+  yMax: number,
+  options: FlameGraphPluginOptions<T>,
+  search: string | RegExp | null,
+): void {
+  const { width, height } = ctx.canvas;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  if (visible.length === 0) return;
+  const { bounds, colors } = layoutRectangles(width, height, visible, xMin, xMax, yMin, yMax, options, search);
+  const sx = width / Math.max(1e-30, xMax - xMin);
+  const sy = height / Math.max(1e-30, yMax - yMin);
+  for (let i = 0; i < visible.length; i++) {
+    const o = i * FLOATS_PER_FRAME;
+    const left = (bounds[o]! - xMin) * sx;
+    const right = (bounds[o + 1]! - xMin) * sx;
+    const top = height - (bounds[o + 3]! - yMin) * sy;
+    const bottom = height - (bounds[o + 2]! - yMin) * sy;
+    if (right < 0 || left > width || bottom < 0 || top > height) continue;
+    ctx.fillStyle = rgbaCss([colors[o]!, colors[o + 1]!, colors[o + 2]!, colors[o + 3]!]);
+    ctx.fillRect(left, top, right - left, bottom - top);
+  }
+}
+
 function drawRectangles<T>(
   state: WebGLState,
   visible: readonly VisibleFrame<T>[],
@@ -996,9 +1034,34 @@ function drawRectangles<T>(
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT);
   if (visible.length === 0) return;
-  const cssHeight = Math.max(1, gl.canvas.height / Math.max(1, globalThis.devicePixelRatio || 1));
+  const { bounds, colors } = layoutRectangles(gl.canvas.width, gl.canvas.height, visible, xMin, xMax, yMin, yMax, options, search);
+  gl.useProgram(state.program);
+  gl.bindVertexArray(state.vao);
+  gl.uniform4f(state.viewportLocation, xMin, xMax, yMin, yMax);
+  gl.bindBuffer(gl.ARRAY_BUFFER, state.boundsBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, bounds, gl.STREAM_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, state.colorBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STREAM_DRAW);
+  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, visible.length);
+  gl.bindVertexArray(null);
+}
+
+/** Data-space `[x0, x1, y0, y1]` bounds and RGBA colors for each visible frame, with gaps and minimum widths applied. */
+function layoutRectangles<T>(
+  canvasWidth: number,
+  canvasHeight: number,
+  visible: readonly VisibleFrame<T>[],
+  xMin: number,
+  xMax: number,
+  yMin: number,
+  yMax: number,
+  options: FlameGraphPluginOptions<T>,
+  search: string | RegExp | null,
+): { bounds: Float32Array; colors: Float32Array } {
+  const dpr = Math.max(1, globalThis.devicePixelRatio || 1);
+  const cssHeight = Math.max(1, canvasHeight / dpr);
   const gapPx = options.frameGapPx ?? DEFAULT_FRAME_GAP_PX;
-  const minWidthData = ((options.minFrameWidthPx ?? DEFAULT_MIN_FRAME_WIDTH_PX) * (xMax - xMin)) / Math.max(1, gl.canvas.width / Math.max(1, globalThis.devicePixelRatio || 1));
+  const minWidthData = ((options.minFrameWidthPx ?? DEFAULT_MIN_FRAME_WIDTH_PX) * (xMax - xMin)) / Math.max(1, canvasWidth / dpr);
   const bounds = new Float32Array(visible.length * FLOATS_PER_FRAME);
   const colors = new Float32Array(visible.length * FLOATS_PER_FRAME);
   for (let i = 0; i < visible.length; i++) {
@@ -1019,15 +1082,7 @@ function drawRectangles<T>(
       : frame.color ?? colorForName(frame.name);
     colors.set(color, offset);
   }
-  gl.useProgram(state.program);
-  gl.bindVertexArray(state.vao);
-  gl.uniform4f(state.viewportLocation, xMin, xMax, yMin, yMax);
-  gl.bindBuffer(gl.ARRAY_BUFFER, state.boundsBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, bounds, gl.STREAM_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER, state.colorBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STREAM_DRAW);
-  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, visible.length);
-  gl.bindVertexArray(null);
+  return { bounds, colors };
 }
 
 function drawLabels<T>(

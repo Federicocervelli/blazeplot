@@ -305,12 +305,15 @@ describe("flameGraphPlugin WebGL context handling", () => {
     chart.dispose();
   });
 
-  it("fails installation cleanly when WebGL2 is unavailable", () => {
+  it("falls back to a Canvas 2D rectangle layer when WebGL2 is unavailable", () => {
     webgl2 = false;
-    const nodes = countNodes(document.body);
-    expect(() => make()).toThrow("Flame graph plugin requires WebGL2.");
+    const { chart } = make();
+    expect(chart.plotElement.querySelector(".blazeplot-flamegraph-canvas")).not.toBeNull();
+    expect(() => frame(chart)).not.toThrow();
+    expect(labels).toEqual(expect.arrayContaining(["root", "a", "b"]));
+    expect(gls.has(rectCanvas(chart))).toBe(false);
+    chart.dispose();
     expect(h.target().children).toHaveLength(0);
-    expect(countNodes(document.body)).toBe(nodes);
     expect(h.ledger().reachable()).toBe(0);
   });
 });

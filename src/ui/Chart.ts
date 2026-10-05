@@ -5,10 +5,11 @@ import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import { HistogramDataset, histogram } from "../core/Histogram.js";
 import type { HistogramOptions, HistogramResult } from "../core/Histogram.js";
+import type { ChartRenderer, ChartRendererFactory, ChartRendererKind } from "../render/ChartRenderer.js";
 import { Renderer } from "../render/Renderer.js";
 import type { RenderProjection } from "../render/Renderer.js";
 import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
-import { WebGL2Backend } from "../render/WebGL2Backend.js";
+import { webgl2Renderer } from "../render/webgl2Renderer.js";
 import type { GpuBackend } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
@@ -170,7 +171,13 @@ export interface ChartOptions {
   /** Installed in this order when the chart is constructed; disposed in reverse order by `dispose()`. */
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
-  /** @internal Hook for supplying a custom GPU backend (test fakes). Defaults to `WebGL2Backend`. */
+  /**
+   * Rendering backend. Defaults to `"webgl2"`. Pass a factory from `blazeplot/renderers/canvas2d`
+   * (`canvas2dRenderer()`, or `autoRenderer()` to fall back to Canvas 2D when WebGL2 is
+   * unavailable) to render without WebGL2. Read the chosen backend from `chart.renderer`.
+   */
+  readonly renderer?: "webgl2" | ChartRendererFactory;
+  /** @internal Hook for supplying a custom GPU backend (test fakes). Takes precedence over `renderer`. */
   readonly backendFactory?: ChartBackendFactory;
 }
 
@@ -407,7 +414,7 @@ interface PlotRect {
 }
 
 interface ChartGpuResources {
-  readonly renderer: Renderer;
+  readonly renderer: ChartRenderer;
 }
 
 function normalizeAxisConfig(config: boolean | AxisConfig | undefined, defaultVisible: boolean): ResolvedAxisConfig {
@@ -483,7 +490,7 @@ export class Chart {
   private rightCamera: Camera2D;
   private axis: AxisController;
   private rightAxis: AxisController;
-  private renderer!: Renderer;
+  private rendererImpl!: ChartRenderer;
   private readonly rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
   private readonly minMaxBucketData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_MINMAX_BUCKET);
   private readonly barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLES);
@@ -602,7 +609,7 @@ export class Chart {
     this.plugins.notify("onContextLost");
   };
   private readonly handleWebGLContextRestored = (): void => {
-    const oldRenderer = this.renderer;
+    const oldRenderer = this.rendererImpl;
     let nextResources: ChartGpuResources;
     try {
       nextResources = this.createGpuResources();
@@ -684,6 +691,11 @@ export class Chart {
     return this.plugins.install(plugin);
   }
 
+  /** Rendering backend in use: `"webgl2"` or `"canvas2d"`. */
+  get renderer(): ChartRendererKind {
+    return this.rendererImpl.kind;
+  }
+
   /** @internal WebGL canvas. Plugins use `ctx.dom`, `ctx.layout`, or `ctx.unstable.canvas`. */
   get canvas(): HTMLCanvasElement {
     return this.layout.canvas;
@@ -721,7 +733,7 @@ export class Chart {
 
   /** @internal WebGL2 context when the default backend is used. Plugins use `ctx.unstable.getWebGLContext()`. */
   getWebGLContext(): WebGL2RenderingContext | null {
-    return this.renderer.getWebGLContext();
+    return this.rendererImpl.getWebGLContext();
   }
 
   /** @internal Camera for the requested Y axis. Plugins use `ctx.unstable.getCamera()`. */
@@ -1190,8 +1202,8 @@ export class Chart {
     // Reverse registration order; plugin cleanup errors never block chart-owned cleanup.
     this.plugins?.disposeAll();
     this.axisOverlay?.dispose();
-    const gl = this.renderer.getWebGLContext();
-    this.disposeRenderer(this.renderer);
+    const gl = this.rendererImpl.getWebGLContext();
+    this.disposeRenderer(this.rendererImpl);
     releaseWebGLContext(gl);
     this.layout.dispose();
   }
@@ -1204,7 +1216,7 @@ export class Chart {
     this.lastFrameAt = frameStartedAt;
     this.resetFrameStats();
 
-    if (this.webglContextLost || this.renderer.getWebGLContext()?.isContextLost() === true) {
+    if (this.webglContextLost || this.rendererImpl.getWebGLContext()?.isContextLost() === true) {
       this.webglContextLost = true;
       return;
     }
@@ -1227,7 +1239,7 @@ export class Chart {
 
     try {
       const pixelRatio = this.canvas.width / Math.max(1, this.canvas.clientWidth);
-      this.renderer.beginFrame(this.canvas.width, this.canvas.height, pixelRatio);
+      this.rendererImpl.beginFrame(this.canvas.width, this.canvas.height, pixelRatio);
       this.currentXOrigin = this.camera.xMin;
       this.updateTicks();
       if (this.gridVisible) this.drawGrid();
@@ -1237,12 +1249,12 @@ export class Chart {
         series.rebuildPyramid();
         this.drawSeries(series);
       }
-      this.renderer.endFrame();
+      this.rendererImpl.endFrame();
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
       this.emit("render", undefined);
     } catch (error) {
-      if (this.renderer.getWebGLContext()?.isContextLost() === true) {
+      if (this.rendererImpl.getWebGLContext()?.isContextLost() === true) {
         this.webglContextLost = true;
         this.resetFrameStats();
         return;
@@ -1529,15 +1541,20 @@ export class Chart {
   }
 
   private createGpuResources(): ChartGpuResources {
-    const backend = this.options.backendFactory?.({ canvas: this.canvas }) ?? new WebGL2Backend(this.canvas);
-    return { renderer: new Renderer(backend) };
+    const { backendFactory } = this.options;
+    const option = this.options.renderer;
+    if (option !== undefined && option !== "webgl2" && typeof option !== "function") {
+      throw new TypeError('ChartOptions.renderer must be "webgl2" or a factory such as canvas2dRenderer() from "blazeplot/renderers/canvas2d".');
+    }
+    const factory = typeof option === "function" ? option : webgl2Renderer();
+    return { renderer: backendFactory ? new Renderer(backendFactory({ canvas: this.canvas })) : factory({ canvas: this.canvas }) };
   }
 
   private installGpuResources(resources: ChartGpuResources): void {
-    this.renderer = resources.renderer;
+    this.rendererImpl = resources.renderer;
   }
 
-  private disposeRenderer(renderer: Renderer): void {
+  private disposeRenderer(renderer: ChartRenderer): void {
     try {
       renderer.dispose();
     } catch {
@@ -1834,7 +1851,7 @@ export class Chart {
     if (vertexCount === 0) return;
 
     this.stats.uploadBytes += vertexCount * BYTES_PER_VERTEX;
-    this.renderer.drawClipLines(this.gridData, vertexCount, this.resolvedTheme.gridColor);
+    this.rendererImpl.drawClipLines(this.gridData, vertexCount, this.resolvedTheme.gridColor);
     this.stats.drawCalls++;
   }
 
@@ -1940,7 +1957,7 @@ export class Chart {
         this.barTriangleData[dst + 3] = this.rawLineData[src + 2]!;
       }
       this.uploadBarTriangleData(candleCount * 2, projection);
-      this.renderer.drawLines(this.barTriangleData, candleCount * 2, style.wickColor, style.lineWidth, projection, "lines");
+      this.rendererImpl.drawLines(this.barTriangleData, candleCount * 2, style.wickColor, style.lineWidth, projection, "lines");
       this.recordDraw("raw", candleCount * 2);
 
       this.drawCandlestickBodies(candleCount, style.barWidth, true, style.upColor, projection);
@@ -1991,7 +2008,7 @@ export class Chart {
 
       if (instanced) {
         this.uploadRawLineData(count, projection);
-        this.renderer.drawBarsInstanced(this.rawLineData, count, style, projection);
+        this.rendererImpl.drawBarsInstanced(this.rawLineData, count, style, projection);
         this.recordDraw("bars", count);
         continue;
       }
@@ -2011,21 +2028,21 @@ export class Chart {
   private drawRawLine(vertexCount: number, style: SeriesStyle, projection: RenderProjection, mode: DrawMode): void {
     if (vertexCount < 2) return;
     this.uploadRawLineData(vertexCount, projection);
-    this.renderer.drawLines(this.rawLineData, vertexCount, style.color, style.lineWidth, projection);
+    this.rendererImpl.drawLines(this.rawLineData, vertexCount, style.color, style.lineWidth, projection);
     this.recordDraw(mode, vertexCount);
   }
 
   private drawAreaFill(vertexCount: number, style: SeriesStyle, projection: RenderProjection): void {
     if (vertexCount < 4) return;
     this.uploadRawLineData(vertexCount, projection);
-    this.renderer.drawTriangles(this.rawLineData, vertexCount, style.fillColor, projection, "triangle_strip");
+    this.rendererImpl.drawTriangles(this.rawLineData, vertexCount, style.fillColor, projection, "triangle_strip");
     this.recordDraw("area", vertexCount);
   }
 
   private drawPointBatch(count: number, style: SeriesStyle, projection: RenderProjection): void {
     if (count <= 0) return;
     this.uploadRawLineData(count, projection);
-    this.renderer.drawPoints(this.rawLineData, count, style.color, style.pointSize, projection);
+    this.rendererImpl.drawPoints(this.rawLineData, count, style.color, style.pointSize, projection);
     this.recordDraw("points", count);
   }
 
@@ -2108,7 +2125,7 @@ export class Chart {
 
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount, projection);
-    this.renderer.drawLines(this.barTriangleData, vertexCount, color, lineWidth, projection, "lines");
+    this.rendererImpl.drawLines(this.barTriangleData, vertexCount, color, lineWidth, projection, "lines");
     this.recordDraw("raw", vertexCount);
   }
 
@@ -2150,7 +2167,7 @@ export class Chart {
   private drawTriangleBatch(vertexCount: number, color: RgbaColor, projection: RenderProjection, mode: DrawMode): void {
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount, projection);
-    this.renderer.drawTriangles(this.barTriangleData, vertexCount, color, projection, "triangles");
+    this.rendererImpl.drawTriangles(this.barTriangleData, vertexCount, color, projection, "triangles");
     this.recordDraw(mode, vertexCount);
   }
 

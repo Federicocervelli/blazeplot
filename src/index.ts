@@ -134,5 +134,8 @@ export type { Camera2D } from "./interaction/Camera2D.js";
 export type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "./interaction/types.js";
 export type { AxisControllerAxisOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
 
+// Renderer selection (factories live in blazeplot/renderers/canvas2d)
+export type { ChartRendererFactory, ChartRendererFactoryContext, ChartRendererKind } from "./render/ChartRenderer.js";
+
 // WebGL2 support detection
 export { isWebGL2Available, WebGL2UnavailableError } from "./render/WebGL2Backend.js";
