@@ -182,24 +182,16 @@ export class AxisOverlay {
   }
 
   /**
-   * Create a label with every constant style property set once. Placement across the axis is fixed
-   * by the axis config (an X label always sits 4px from the top or bottom of its gutter), so only
-   * the position along the axis and visibility are written per frame.
+   * Create a label with its constant style set once. Its placement across the axis follows from the
+   * axis config (an X label sits 4px from the top or bottom of its gutter, a Y label 4px from the
+   * left or right), so only the position along the axis and its visibility change per frame.
    */
   private createLabel(axis: RenderAxis, parent: HTMLElement): AxisLabel {
     const el = this.layout.doc.createElement("div");
-    let placement: string;
-    if (axis === "x") {
-      placement = this.config.x.position === "outside" ? "top:4px;bottom:auto" : "top:auto;bottom:4px";
-      placement += ";right:auto";
-    } else {
-      const isRight = axis === "y2";
-      const outside = (isRight ? this.config.y2 : this.config.y).position === "outside";
-      // Outside labels hug the plot-facing edge of their gutter; inside labels hug the plot edge itself.
-      const alignLeft = outside ? isRight : !isRight;
-      placement = `bottom:auto;${alignLeft ? "left:4px;right:auto" : "left:auto;right:4px"}`;
-    }
-    el.style.cssText = `position:absolute;pointer-events:none;white-space:nowrap;user-select:none;transform:none;${placement}`;
+    const outside = this.config[axis].position === "outside";
+    // Outside Y labels hug the plot-facing edge of their gutter, inside ones the plot edge itself.
+    const side = axis === "x" ? (outside ? "top" : "bottom") : (outside === (axis === "y2") ? "left" : "right");
+    el.style.cssText = `position:absolute;pointer-events:none;white-space:nowrap;user-select:none;${side}:4px`;
     this.styleLabel(el);
     parent.appendChild(el);
     return { el, text: "", shown: true, pos: NaN, start: 0, end: 0, edge: false, wanted: false };
