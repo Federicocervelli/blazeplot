@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { MinMaxTree } from "../../src/core/MinMaxTree.ts";
+import { query, queryRing } from "./minMaxQuery.ts";
 
 function brute(values: ArrayLike<number>, start: number, end: number): { minY: number; maxY: number } | null {
   let minY = Infinity;
@@ -30,7 +31,7 @@ describe("MinMaxTree", () => {
 
     for (let start = 0; start < values.length; start++) {
       for (let end = start; end <= values.length; end++) {
-        expect(tree.query(start, end)).toEqual(brute(values, start, end));
+        expect(query(tree, start, end)).toEqual(brute(values, start, end));
       }
     }
   });
@@ -40,8 +41,8 @@ describe("MinMaxTree", () => {
     const tree = new MinMaxTree(values, values.length, 2);
     tree.update(0, values.length);
 
-    expect(tree.query(0, 6)).toEqual({ minY: -2, maxY: 3 });
-    expect(tree.query(1, 4)).toBeNull();
+    expect(query(tree, 0, 6)).toEqual({ minY: -2, maxY: 3 });
+    expect(query(tree, 1, 4)).toBeNull();
   });
 
   it("tracks point updates, incremental includes, and reset", () => {
@@ -49,18 +50,18 @@ describe("MinMaxTree", () => {
     const tree = new MinMaxTree(values, 16, 4);
     values.set([1, 2, 3, 4, 5, 6]);
     tree.update(0, 6, 6);
-    expect(tree.query(0, 16)).toEqual({ minY: 1, maxY: 6 });
+    expect(query(tree, 0, 16)).toEqual({ minY: 1, maxY: 6 });
 
     values[6] = -10;
-    tree.include(6, -10);
-    expect(tree.query(0, 7)).toEqual({ minY: -10, maxY: 6 });
+    tree.update(6, 7, 7);
+    expect(query(tree, 0, 7)).toEqual({ minY: -10, maxY: 6 });
 
     values[5] = 50;
     tree.update(5, 6, 7);
-    expect(tree.query(4, 8)).toEqual({ minY: -10, maxY: 50 });
+    expect(query(tree, 4, 8)).toEqual({ minY: -10, maxY: 50 });
 
-    tree.reset();
-    expect(tree.query(0, 16)).toBeNull();
+    tree.update(0, 16, 0);
+    expect(query(tree, 0, 16)).toBeNull();
   });
 
   it("only summarizes indexes below validEnd", () => {
@@ -69,9 +70,9 @@ describe("MinMaxTree", () => {
     values[0] = 1;
     tree.update(0, 1, 1);
 
-    expect(tree.query(0, 1)).toEqual({ minY: 1, maxY: 1 });
+    expect(query(tree, 0, 1)).toEqual({ minY: 1, maxY: 1 });
     // Stale physical samples past validEnd never leak into full-block summaries.
-    expect(tree.query(0, 4)).toEqual({ minY: 1, maxY: 1 });
+    expect(query(tree, 0, 4)).toEqual({ minY: 1, maxY: 1 });
   });
 
   it("queries ring ranges that wrap past capacity", () => {
@@ -79,7 +80,7 @@ describe("MinMaxTree", () => {
     const tree = new MinMaxTree(values, 8, 2);
     tree.update(0, 8);
 
-    expect(tree.queryRing(6, 4)).toEqual({ minY: 3, maxY: 6 });
-    expect(tree.queryRing(3, 0)).toBeNull();
+    expect(queryRing(tree, 6, 4)).toEqual({ minY: 3, maxY: 6 });
+    expect(queryRing(tree, 3, 0)).toBeNull();
   });
 });

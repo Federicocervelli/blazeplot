@@ -110,6 +110,7 @@ const RENDER_SETTLE_MS = 250;
 const DEFAULT_CASES = [
   "line",
   "exact-line-long",
+  "exact-line-thin-dense",
   "area",
   "scatter",
   "bar",
@@ -148,6 +149,7 @@ const DEFAULT_CASES = [
 const CASE_CHECKS: Readonly<Record<string, CaseCheck>> = {
   line: { minInkRatio: 0.004, baseline: { region: "plot" } },
   "exact-line-long": { minInkRatio: 0.004 },
+  "exact-line-thin-dense": { minInkRatio: 0.004 },
   area: { minInkRatio: 0.1, baseline: { region: "plot" } },
   scatter: { minInkRatio: 0.01, baseline: { region: "plot" } },
   bar: { minInkRatio: 0.15, baseline: { region: "plot" } },
@@ -188,6 +190,7 @@ const CROSS_ENGINE_KINDS: Readonly<Record<string, CrossEngineKind | null>> = {
   histogram: "fill",
   "translucent-overlap": "fill",
   "exact-line-long": "dense-stroke",
+  "exact-line-thin-dense": "dense-stroke",
   "dense-area-spike": "fill",
   // Needs a real WebGL context that Canvas 2D cannot offer.
   "context-restore": null,

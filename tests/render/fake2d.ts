@@ -9,6 +9,9 @@ export class FakePath {
   lineTo(x: number, y: number): void {
     this.calls.push(["lineTo", x, y]);
   }
+  rect(...args: number[]): void {
+    this.calls.push(["rect", ...args]);
+  }
   arc(...args: number[]): void {
     this.calls.push(["arc", ...args]);
   }

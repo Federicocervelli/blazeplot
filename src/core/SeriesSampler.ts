@@ -1,4 +1,4 @@
-import type { MinMaxY } from "./MinMaxTree.js";
+import type { MinMaxOut } from "./MinMaxTree.js";
 import { honorsYOrigin, shiftY, AREA_Y_OFFSETS, MINMAX_Y_OFFSETS, POINT_Y_OFFSETS } from "./datasetCaps.js";
 import type { DatasetCaps } from "./datasetCaps.js";
 import type { SeriesLod } from "./SeriesLod.js";
@@ -178,19 +178,19 @@ export class SeriesSampler extends SeriesSource {
     const bucketWidth = this.stableSampleBucketWidthForViewport(viewport, maxSegments);
     const alignedStart = this.alignBucketStart(start, bucketWidth);
     let written = 0;
+    const extent = { minY: 0, maxY: 0 };
     for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += bucketWidth) {
       const bucketEnd = Math.min(this.dataset.length, bucketStart + bucketWidth);
       const segmentStart = Math.max(0, bucketStart);
       if (bucketEnd <= start || segmentStart >= end) continue;
 
-      const range = this.minMaxForRange(segmentStart, bucketEnd);
-      if (!range) continue;
+      if (!this.minMaxForRangeInto(segmentStart, bucketEnd, extent)) continue;
 
       const representative = Math.max(segmentStart, Math.min(bucketEnd - 1, bucketStart + (bucketWidth >> 1)));
       const offset = written * 3;
       target[offset] = this.dataset.getX(representative) - xOrigin;
-      target[offset + 1] = range.minY - yOrigin;
-      target[offset + 2] = range.maxY - yOrigin;
+      target[offset + 1] = extent.minY - yOrigin;
+      target[offset + 2] = extent.maxY - yOrigin;
       written++;
     }
 
@@ -338,10 +338,24 @@ export class SeriesSampler extends SeriesSource {
     return count;
   }
 
-  private minMaxForRange(start: number, end: number): MinMaxY | null {
-    const rangeMinMax = this.caps.rangeMinMax;
-    if (rangeMinMax) return rangeMinMax.rangeMinMaxY(start, end);
-    if (this.lod.pyramid && !this.lod.useRawScan) return this.lod.pyramid.rangeMinMax(this.dataset, start, end);
+  /**
+   * Y extent of a logical range, written into a caller-owned slot so the bucket loop allocates
+   * nothing: the dataset's own query, else the LOD pyramid, else a raw scan.
+   */
+  private minMaxForRangeInto(start: number, end: number, out: MinMaxOut): boolean {
+    const into = this.caps.rangeMinMaxInto;
+    if (into) return into.rangeMinMaxInto(start, end, out);
+    const range = this.caps.rangeMinMax
+      ? this.caps.rangeMinMax.rangeMinMaxY(start, end)
+      : this.lod.pyramid && !this.lod.useRawScan
+        ? this.lod.pyramid.rangeMinMax(this.dataset, start, end)
+        : undefined;
+    if (range !== undefined) {
+      if (!range) return false;
+      out.minY = range.minY;
+      out.maxY = range.maxY;
+      return true;
+    }
 
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.dataset.length, Math.ceil(end));
@@ -353,6 +367,8 @@ export class SeriesSampler extends SeriesSource {
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     }
-    return minY <= maxY ? { minY, maxY } : null;
+    out.minY = minY;
+    out.maxY = maxY;
+    return minY <= maxY;
   }
 }

@@ -1,5 +1,5 @@
 import { MinMaxTree } from "./MinMaxTree.js";
-import type { MinMaxY } from "./MinMaxTree.js";
+import type { MinMaxOut, MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
 import { createValueArray } from "./valueArray.js";
 import type { BufferOverflowStrategy, InvalidSample, TimeRange, ValuePrecision } from "./types.js";
@@ -98,12 +98,8 @@ export class RingBuffer {
     this.yData[physical] = y;
     this._head = (physical + 1) % this.capacity;
     this._written++;
-    if (this._length < this.capacity) {
-      this._length++;
-      this.tree.include(physical, this.yData[physical]!);
-    } else {
-      this.tree.update(physical, physical + 1);
-    }
+    if (this._length < this.capacity) this._length++;
+    this.tree.update(physical, physical + 1, this.validEnd());
   }
 
   /**
@@ -240,17 +236,23 @@ export class RingBuffer {
 
   /** Return min/max Y values for a logical index range. */
   rangeMinMaxY(start: number, end: number): MinMaxY | null {
+    const out = { minY: 0, maxY: 0 };
+    return this.rangeMinMaxInto(start, end, out) ? out : null;
+  }
+
+  /** @internal Allocation-free `rangeMinMaxY`: writes into `out` and returns whether the range holds a finite value. */
+  rangeMinMaxInto(start: number, end: number, out: MinMaxOut): boolean {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this._length, Math.ceil(end));
-    if (to <= from) return null;
-    return this.tree.queryRing(this.logicalToPhysical(from), to - from);
+    if (to <= from) return false;
+    return this.tree.queryRingInto(this.logicalToPhysical(from), to - from, out);
   }
 
   /** Remove all retained samples. The next sample may start at any finite X. */
   clear(): void {
     this._length = 0;
     this._head = 0;
-    this.tree.reset();
+    this.tree.update(0, this.capacity, 0);
   }
 
   /** Store already-validated samples. */
