@@ -13,11 +13,11 @@ Those rules are what keep a chart from leaking a WebGL context. Browsers cap liv
 A framework wrapper is a thin shell around this function. It returns a cleanup function, which maps directly onto React's effect cleanup, Vue's `onBeforeUnmount`, and Svelte's action `destroy`.
 
 ```ts
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 export function mountChart(host: HTMLElement, x: number[], y: number[]): () => void {
   const chart = new Chart(host);
-  chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+  chart.addLine({ x, y, name: "series" });
   chart.fitToData({ padding: 0.05 });
   chart.start();
   return () => chart.dispose();
@@ -30,7 +30,7 @@ Create the chart in an effect and dispose it in that effect's cleanup. Keep the 
 
 ```tsx
 import { useEffect, useRef } from "react";
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 export function LineChart({ x, y }: { x: number[]; y: number[] }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -40,7 +40,7 @@ export function LineChart({ x, y }: { x: number[]; y: number[] }) {
     if (!host) return;
 
     const chart = new Chart(host);
-    chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+    chart.addLine({ x, y, name: "series" });
     chart.fitToData({ padding: 0.05 });
     chart.start();
 
@@ -66,7 +66,7 @@ Plugins are fixed when the chart is constructed, and most built-in plugin instan
 
 ```tsx
 import { useEffect, useRef } from "react";
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 import { crosshairPlugin } from "blazeplot/plugins/crosshair";
 import { interactionsPlugin } from "blazeplot/plugins/interactions";
 import { tooltipPlugin } from "blazeplot/plugins/tooltip";
@@ -82,7 +82,7 @@ export function InteractiveChart({ x, y }: { x: number[]; y: number[] }) {
       // A chart inside a scrolling page should not trap the wheel or one-finger touch.
       plugins: [interactionsPlugin({ wheelZoom: "modifier" }), crosshairPlugin(), tooltipPlugin()],
     });
-    chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+    chart.addLine({ x, y, name: "series" });
     chart.fitToData({ padding: 0.05 });
     chart.start();
 
@@ -142,7 +142,7 @@ When several components create charts, move the lifecycle into a hook. The hook 
 
 ```tsx
 import { useEffect, useRef, type DependencyList, type RefObject } from "react";
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 export function useChart<T extends HTMLElement>(
   setup: (host: T) => Chart,
@@ -165,7 +165,7 @@ export function Telemetry({ x, y }: { x: number[]; y: number[] }) {
   const hostRef = useChart<HTMLDivElement>(
     (host) => {
       const chart = new Chart(host);
-      chart.addLine({ dataset: new StaticDataset(x, y), name: "telemetry" });
+      chart.addLine({ x, y, name: "telemetry" });
       chart.fitToData();
       chart.start();
       return chart;
@@ -186,7 +186,7 @@ Use a template ref, create the chart in `onMounted`, and dispose it in `onBefore
 // ChartPanel.vue
 // <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 const props = defineProps<{ x: number[]; y: number[] }>();
 const host = ref<HTMLDivElement | null>(null);
@@ -197,7 +197,7 @@ function build() {
   chart = null;
   if (!host.value) return;
   chart = new Chart(host.value);
-  chart.addLine({ dataset: new StaticDataset(props.x, props.y), name: "series" });
+  chart.addLine({ x: props.x, y: props.y, name: "series" });
   chart.fitToData({ padding: 0.05 });
   chart.start();
 }
@@ -225,7 +225,7 @@ An action runs when its element is mounted and calls `destroy` when it is remove
 ```ts
 // chart.ts
 import type { Action } from "svelte/action";
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 export const lineChart: Action<HTMLElement, { x: number[]; y: number[] }> = (host, data) => {
   let chart: Chart | null = null;
@@ -233,7 +233,7 @@ export const lineChart: Action<HTMLElement, { x: number[]; y: number[] }> = (hos
   function build(next: { x: number[]; y: number[] }) {
     chart?.dispose();
     chart = new Chart(host);
-    chart.addLine({ dataset: new StaticDataset(next.x, next.y), name: "series" });
+    chart.addLine({ x: next.x, y: next.y, name: "series" });
     chart.fitToData({ padding: 0.05 });
     chart.start();
   }
@@ -263,7 +263,7 @@ When the component owns the data and should react to runes, use `$effect`. Its r
 ```ts
 // Chart.svelte
 // <script lang="ts">
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 let { x, y }: { x: number[]; y: number[] } = $props();
 let host: HTMLDivElement | undefined = $state();
@@ -271,7 +271,7 @@ let host: HTMLDivElement | undefined = $state();
 $effect(() => {
   if (!host) return;
   const chart = new Chart(host);
-  chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+  chart.addLine({ x, y, name: "series" });
   chart.fitToData({ padding: 0.05 });
   chart.start();
   return () => chart.dispose();
@@ -378,10 +378,10 @@ let host: HTMLDivElement | undefined = $state();
 
 onMount(() => {
   let dispose = () => {};
-  void import("blazeplot").then(({ Chart, StaticDataset }) => {
+  void import("blazeplot").then(({ Chart }) => {
     if (!host) return;
     const chart = new Chart(host);
-    chart.addLine({ dataset: new StaticDataset([0, 1, 2], [3, 6, 4]), name: "series" });
+    chart.addLine({ x: [0, 1, 2], y: [3, 6, 4], name: "series" });
     chart.fitToData();
     chart.start();
     dispose = () => chart.dispose();
@@ -410,7 +410,7 @@ In React, track the outcome in state so React renders the fallback instead of yo
 
 ```tsx
 import { useEffect, useRef, useState } from "react";
-import { Chart, StaticDataset, WebGL2UnavailableError, isWebGL2Available } from "blazeplot";
+import { Chart, WebGL2UnavailableError, isWebGL2Available } from "blazeplot";
 
 export function SafeChart({ x, y }: { x: number[]; y: number[] }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -436,7 +436,7 @@ export function SafeChart({ x, y }: { x: number[]; y: number[] }) {
     }
 
     setUnsupported(false);
-    chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+    chart.addLine({ x, y, name: "series" });
     chart.fitToData({ padding: 0.05 });
     chart.start();
     return () => chart.dispose();

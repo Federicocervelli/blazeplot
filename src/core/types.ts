@@ -25,13 +25,13 @@ export interface SeriesStyleOptions {
   readonly lineWidth?: number;
   /** Scatter point diameter in CSS pixels. Defaults to 4. */
   readonly pointSize?: number;
-  /** Bar and candlestick body width in data X units. Defaults to 0.8. */
+  /** Bar and candlestick body width in data X units (not pixels: it scales with zoom; milliseconds on a time axis). Defaults to 0.8, or the bin width for a histogram. */
   readonly barWidth?: number;
-  /** Y value bars and areas grow from. Defaults to 0. */
+  /** Y value, in data Y units, that bars and areas grow from. Defaults to 0. */
   readonly baseline?: number;
   /** Area fill color. Defaults to `color` at 25% opacity. */
   readonly fillColor?: ThemeColor;
-  /** OHLC open/close tick width in data X units. Defaults to `barWidth`. */
+  /** OHLC open/close tick length in data X units (not pixels; milliseconds on a time axis). Defaults to `barWidth`. */
   readonly tickWidth?: number;
   /** Color for rising OHLC/candlestick samples. Defaults to `color`. */
   readonly upColor?: ThemeColor;
@@ -294,13 +294,13 @@ export interface SeriesConfig {
   readonly mode: SeriesMode;
   readonly capacity?: number;
   /**
-   * Optional X value for the first sample when BlazePlot creates an implicit-X
+   * Optional X value (in X data units) for the first sample when BlazePlot creates an implicit-X
    * dataset for this series. Only used when `dataset` is omitted and `xStep` is
    * provided.
    */
   readonly xStart?: number;
   /**
-   * Optional fixed X spacing for live streams. When `dataset` is omitted,
+   * Optional fixed X spacing for live streams, in X data units (milliseconds on a time axis). When `dataset` is omitted,
    * `{ capacity, xStep }` creates a `UniformRingBuffer`, so callers can append
    * with `series.append({ y })` without manually constructing a dataset.
    */

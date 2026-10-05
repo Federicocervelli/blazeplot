@@ -1,7 +1,7 @@
 import { chartInternals } from "@/ui/ChartInternals.ts";
 import { Chart, StaticDataset } from "@/index.ts";
 import { createLinkedCharts } from "@/linked.ts";
-import type { ChartHoverState, ChartPlugin, Viewport } from "@/index.ts";
+import type { ChartHoverState, ChartPlugin, SeriesStore, Viewport } from "@/index.ts";
 import { a11yPlugin } from "@/plugins/a11y.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import type { AnnotationsPlugin } from "@/plugins/annotations.ts";
@@ -166,7 +166,7 @@ let selectionCommits = 0;
 let selectionBounds: InteractionSnapshot["selectionBounds"] = null;
 
 const charts: Chart[] = [];
-const seriesHandles: Array<ReturnType<Chart["addLine"]>> = [];
+const seriesHandles: SeriesStore[] = [];
 let themeChanges = 0;
 let selection: SelectionPlugin | null = null;
 let annotations: AnnotationsPlugin | null = null;
@@ -193,7 +193,7 @@ if (caseName === "a11y") {
     renderer: pageRenderer,
     title: "Accessible interaction chart",
     axes: { x: { position: "outside" }, y: { position: "outside" } },
-    plugins: [a11yPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }), selection, annotations, legendPlugin(), navigatorPlugin({ height: 48 })],
+    plugins: [a11yPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }), selection, annotations, legendPlugin(), navigatorPlugin({ heightPx: 48 })],
   }));
 } else if (caseName === "iframe") {
   charts.push(createIframeChart());

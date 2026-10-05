@@ -213,6 +213,46 @@ describe("Chart resize", () => {
     chart.dispose();
   });
 
+  it("rejects buffer options next to a dataset, and an OHLC series without one", async () => {
+    const { StaticDataset } = await import("../../src/core/StaticDataset.ts");
+    const chart = make();
+    const dataset = new StaticDataset([0, 1], [1, 2]);
+    const loose = chart as unknown as { addLine(config: object): unknown; addCandlestick(config: object): unknown };
+    expect(() => loose.addLine({ dataset, capacity: 10 })).toThrow('"capacity" configure a buffer the chart creates');
+    expect(() => loose.addLine({ dataset, xStep: 1, overflow: "wrap" })).toThrow('"xStep", "overflow"');
+    expect(() => loose.addLine({ capacity: 4, xStep: 1, onInvalidSample: () => {} })).toThrow("onInvalidSample does not apply");
+    expect(() => loose.addCandlestick({ capacity: 10 })).toThrow("require an OhlcDataset");
+    expect(chart.getSeriesState()).toHaveLength(0);
+    chart.dispose();
+  });
+
+  it("builds a StaticDataset from { x, y } and a HistogramDataset from { values }", async () => {
+    const { StaticDataset } = await import("../../src/core/StaticDataset.ts");
+    const { HistogramDataset } = await import("../../src/core/Histogram.ts");
+    const chart = make();
+    const line = chart.addLine({ x: [0, 1, 2], y: [5, 6, 7], name: "arrays" });
+    expect(line.length).toBe(3);
+    expect(line.config.name).toBe("arrays");
+    expect(line.sampleAt(1)).toMatchObject({ x: 1, y: 6 });
+    line.replace({ y: [1, 2, 3] });
+    expect(line.sampleAt(2)).toMatchObject({ y: 3 });
+    expect(new StaticDataset([0], [0]).length).toBe(1);
+
+    const bars = chart.addBar({ values: [1, 2, 2, 3, 9], binSize: 4, name: "hist" });
+    expect(bars.length).toBeGreaterThan(0);
+    expect(bars.style.barWidth).toBe(4);
+    expect(HistogramDataset.from([1], { binSize: 1 }).length).toBe(1);
+
+    expect(() => chart.addLine({ x: [3, 1], y: [1, 2] })).toThrow(RangeError);
+    const loose = chart as unknown as { addLine(config: object): unknown; addBar(config: object): unknown; addCandlestick(config: object): unknown };
+    expect(() => loose.addLine({ x: [0, 1] })).toThrow("needs both x and y");
+    expect(() => loose.addLine({ x: [0], y: [0], capacity: 4 })).toThrow("exactly one data source");
+    expect(() => loose.addLine({ values: [1, 2] })).toThrow("only available on bar series");
+    expect(() => loose.addCandlestick({ x: [0], y: [0] })).toThrow("require an OhlcDataset");
+    expect(() => loose.addBar({ binCount: 3, capacity: 4 })).toThrow("need { values }");
+    chart.dispose();
+  });
+
   it("resizes when the ResizeObserver fires on the plot element and requests a render", () => {
     const chart = make();
     chart.start();

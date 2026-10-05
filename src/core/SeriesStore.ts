@@ -2,7 +2,7 @@ import type { Dataset, XRange, Viewport, TimeRange, SeriesConfig, SeriesStyle, S
 import { hasAppendXY, hasAppendY, hasOhlcAppend, hasUpdate, hasUpdateY, resolveCaps, unsupported } from "./datasetCaps.js";
 import type { DatasetCaps } from "./datasetCaps.js";
 import { isOhlcAppendData, isOhlcUpdateData, toArrayLike } from "./SeriesInput.js";
-import type { SeriesAppendData, SeriesAppendRow, SeriesObjectAppendData, SeriesOhlcUpdateData, SeriesReplaceData, SeriesUpdateData, SeriesXYUpdateData } from "./SeriesInput.js";
+import type { SeriesAppendData, SeriesAppendFor, SeriesUpdateFor, SeriesAppendRow, SeriesObjectAppendData, SeriesOhlcUpdateData, SeriesReplaceData, SeriesUpdateData, SeriesXYUpdateData } from "./SeriesInput.js";
 import { ScatterSampler } from "./ScatterSampler.js";
 import { SeriesLod } from "./SeriesLod.js";
 import { SeriesPicker, identity } from "./SeriesPicker.js";
@@ -36,7 +36,8 @@ export type SeriesChange = "data" | "visibility";
  * for rendering and picking is delegated to the `SeriesSampler`, `ScatterSampler`, and
  * `SeriesPicker` helpers, which share one `SeriesSource` view of the dataset.
  */
-export class SeriesStore<D extends Dataset = Dataset> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- `any` makes a bare `SeriesStore` accept every append/update form; concrete datasets narrow it.
+export class SeriesStore<D extends Dataset = any> {
   readonly config: SeriesConfig;
   readonly style: SeriesStyle;
   private readonly dataset: D;
@@ -137,7 +138,11 @@ export class SeriesStore<D extends Dataset = Dataset> {
    * `{ y }` for implicit-X series, `{ x, open, high, low, close }` for OHLC
    * series, or an array of row objects.
    */
-  append(data: SeriesAppendData): void {
+  append(data: SeriesAppendFor<D>): void {
+    this.appendData(data as SeriesAppendData);
+  }
+
+  private appendData(data: SeriesAppendData): void {
     if (Array.isArray(data)) {
       this.appendRows(data as readonly SeriesAppendRow[]);
       return;
@@ -232,12 +237,13 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   /** Update the latest XY/OHLC sample and schedule a render. */
-  updateLast(data: SeriesUpdateData): boolean {
+  updateLast(data: SeriesUpdateFor<D>): boolean {
     return this.updateAt(this.dataset.length - 1, data);
   }
 
   /** Update an existing XY/OHLC sample by logical index and schedule a render. */
-  updateAt(index: number, data: SeriesUpdateData): boolean {
+  updateAt(index: number, rawData: SeriesUpdateFor<D>): boolean {
+    const data = rawData as SeriesUpdateData;
     if (index < 0 || index >= this.dataset.length) return false;
     const updated = isOhlcUpdateData(data) ? this.updateOhlcAt(index, data) : this.updateXYAt(index, data);
     if (updated) this.markDataMutated(true);
@@ -262,8 +268,6 @@ export class SeriesStore<D extends Dataset = Dataset> {
     }
     return this.dataset.updateAt(index, data.open, data.high, data.low, data.close);
   }
-
-  /** Replace all data in datasets that support wholesale replacement, such as `StaticDataset` or `ServerSampledDataset`. */
 
   /** Replace all data in datasets that support wholesale replacement, such as `StaticDataset` or `ServerSampledDataset`. */
   replace(data: SeriesReplaceData<D>): void {

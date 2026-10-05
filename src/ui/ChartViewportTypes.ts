@@ -25,7 +25,9 @@ export interface ChartSetViewportOptions extends ChartViewportGestureOptions {
 
 /** Fractional padding applied when fitting domains to data. */
 export interface ChartFitToDataPadding {
+  /** Fraction of the X span added on each side (0.05 is 5%). */
   readonly x?: number;
+  /** Fraction of the Y span added on each side (0.05 is 5%). */
   readonly y?: number;
 }
 
@@ -39,6 +41,7 @@ export interface ChartFitToDataOptions {
   /** Fit Y. Defaults to true. */
   readonly y?: boolean;
   readonly yAxis?: SeriesYAxis | "both";
+  /** Fraction of the data span added on each side (0.05 is 5%): one number for both axes, or per axis. */
   readonly padding?: number | ChartFitToDataPadding;
   readonly includeZero?: boolean;
   /** Only consider samples at or after this X. */
@@ -54,14 +57,15 @@ export type ChartAutoFitYOptions = Pick<ChartFitToDataOptions, "series" | "inclu
 
 /** Options for keeping the X viewport anchored to the latest data. */
 export interface ChartFollowXOptions {
-  /** Visible X span. Defaults to the current span. */
+  /** Visible X span, in X data units (milliseconds on a time axis). Defaults to the current span. */
   readonly window?: number;
   /** Pause following while the user pans or zooms. Defaults to true. */
   readonly pauseOnInteraction?: boolean;
-  /** Resume automatically this many milliseconds after a pan/zoom interaction. */
+  /** Resume automatically this many milliseconds (wall-clock) after a pan/zoom interaction. */
   readonly resumeAfterMs?: number;
   /**
-   * Optional live X clock for smooth scrolling streams. The follow window uses
+   * Optional live X clock for smooth scrolling streams; returns X in data units (epoch milliseconds for
+   * a time axis, so `Date.now`). The follow window uses
    * the larger of the latest data X and `currentX()`, so time axes advance
    * continuously between batched updates.
    */
