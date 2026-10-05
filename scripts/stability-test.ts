@@ -233,18 +233,33 @@ function probe(session: Session): Promise<PageProbe> {
   return page<PageProbe>(session, "probe()", 10_000);
 }
 
-/** Force GC until counters stop changing, then read heap and DOM counters. */
+/**
+ * Force GC and read heap and DOM counters, reporting the floor over several rounds.
+ *
+ * Workloads that keep running while sampled (streaming with hover) allocate short-lived garbage
+ * between a collection and the read that follows it, and Blink only drops dead DOM nodes from its
+ * counters once they are swept, so any single reading can include a transient batch (a hover that
+ * rebuilds the tooltip leaves ~60 dead nodes) that is unrelated to leaks. Garbage can only add to a
+ * reading, while a real leak stays in every reading, so the minimum over a few collect-then-read
+ * rounds is the retained size. Rounds stop once the minimum has not improved for two rounds.
+ */
 async function settle(cdp: CdpClient): Promise<Sample> {
-  let previous: Sample | null = null;
-  let current = await readSample(cdp);
-  for (let attempt = 0; attempt < 6; attempt++) {
+  let best: Sample | null = null;
+  let minNodes = Infinity;
+  let minListeners = Infinity;
+  let stable = 0;
+  for (let round = 0; round < 12 && stable < 2; round++) {
     await cdp.send("HeapProfiler.collectGarbage");
+    // Read right after the collection, before the page has time to allocate more garbage.
+    const current = await readSample(cdp);
+    const improved = !best || current.nodes < minNodes || current.listeners < minListeners || current.heapBytes < best.heapBytes - 64 * KiB;
+    stable = improved ? 0 : stable + 1;
+    minNodes = Math.min(minNodes, current.nodes);
+    minListeners = Math.min(minListeners, current.listeners);
+    if (!best || current.heapBytes < best.heapBytes) best = current;
     await sleep(40);
-    current = await readSample(cdp);
-    if (previous && current.nodes === previous.nodes && Math.abs(current.heapBytes - previous.heapBytes) < 64 * KiB) return current;
-    previous = current;
   }
-  return current;
+  return { ...best!, nodes: minNodes, listeners: minListeners };
 }
 
 async function readSample(cdp: CdpClient): Promise<Sample> {
