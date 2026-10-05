@@ -1,7 +1,7 @@
 import type { Dataset, RgbaColor, SeriesConfig, SeriesStyle, SeriesStyleOptions } from "../core/types.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
-import type { AxisController, AxisControllerAxisOptions } from "../interaction/AxisController.js";
+import type { AxisController, AxisScaleOptions } from "../interaction/AxisController.js";
 import type { NormalizedAxisConfig } from "./ChartLayout.js";
 import { resolveThemeColor } from "./theme.js";
 import type { AxisConfig, ChartOptions, TextOverlayConfig } from "./ChartOptions.js";
@@ -12,7 +12,7 @@ export function withAlpha(color: RgbaColor, factor: number): RgbaColor {
   return [color[0], color[1], color[2], color[3] * factor];
 }
 
-export type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | TextOverlayConfig };
+export type ResolvedAxisConfig = NormalizedAxisConfig & AxisScaleOptions & { readonly title?: string | TextOverlayConfig };
 
 export type ResolvedAxesConfig = { x: ResolvedAxisConfig; y: ResolvedAxisConfig; y2: ResolvedAxisConfig };
 

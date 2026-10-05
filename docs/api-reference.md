@@ -46,7 +46,7 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 21 KiB |
+| root entry | `dist/index.js` | 15 KiB |
 | linked entry | `dist/linked.js` | 2 KiB |
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
@@ -59,7 +59,7 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 17 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 170 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 169 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
@@ -76,10 +76,10 @@ Generated from `dist/index.d.ts` after the package build.
 | `AppendableDataset` | interface | `./core/types` | Dataset that accepts appended X/Y samples; implementations may store X values explicitly or use them to seed implicit X spacing. |
 | `autoRenderer` | function | `./render/engines` | Renderer factory that uses WebGL2 and falls back to Canvas 2D when WebGL2 is unavailable or its context cannot be created. `chart.rendererInfo.fallbackFrom` says when the fallback happened. Same as `renderer: "auto"`, the default. |
 | `AxisConfig` | type | `./ui/Chart` | — |
-| `AxisControllerAxisOptions` | interface | `./interaction/AxisController` | Scale and formatting options for one axis. |
 | `AxisPosition` | type | `./ui/ChartOptions` | Whether an axis draws its tick labels inside the plot or in a gutter outside it. |
 | `AxisRenderTarget` | type | `./interaction/AxisController` | Axis dimension targeted by axis helpers. |
 | `AxisScale` | type | `./interaction/AxisController` | Built-in scale name or custom scale implementation. |
+| `AxisScaleOptions` | interface | `./interaction/AxisController` | Scale and formatting options for one axis. |
 | `AxisTickFormat` | type | `./interaction/AxisController` | Built-in format string or custom tick formatter. |
 | `AxisTickFormatter` | type | `./interaction/AxisController` | Function form for formatting axis tick values. |
 | `AxisTimeZone` | type | `./interaction/timeAxis` | Time axis math: the tick interval ladder, flooring and advancing dates in local or UTC time, and tick label formatting (patterns and the automatic two-level labels). Pure functions, no camera. Time zone used for built-in time tick formatting. |
@@ -103,7 +103,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartHoverState` | type | `./ui/Chart` | — |
 | `ChartInspectionTarget` | type | `./ui/Chart` | — |
 | `ChartLayoutReservation` | interface | `./ui/PluginTypes` | Extra CSS-pixel space reserved around the plot by a plugin, e.g. for a navigator or toolbar. Reservations from every plugin add up. |
-| `ChartMountSlot` | type | `./ui/PluginTypes` | Where a plugin can attach its own DOM with `ctx.dom.mount(slot, element)`. - `"plot"`: the plot area, above the WebGL canvas. Coordinates match `ctx.coords` plot coordinates (CSS pixels from the plot's top-left). Overlays here should keep `pointer-events: none` unless they handle their own input. - `"root"`: the whole chart box, including axis gutters and space reserved with `ctx.layout.reserve(...)`. Use it for legends, toolbars, and navigators. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters (bottom, left, right). - `"body"`: the owning document's `<body>`, for `position: fixed` UI such as tooltips that must escape the chart's `overflow: hidden`. |
+| `ChartMountSlot` | type | `./ui/PluginTypes` | Where a plugin can attach its own DOM with `ctx.dom.mount(slot, element)`. - `"plot"`: the plot area, above the plot canvas. Coordinates match `ctx.coords` plot coordinates (CSS pixels from the plot's top-left). Overlays here should keep `pointer-events: none` unless they handle their own input. - `"root"`: the whole chart box, including axis gutters and space reserved with `ctx.layout.reserve(...)`. Use it for legends, toolbars, and navigators. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters (bottom, left, right). - `"body"`: the owning document's `<body>`, for `position: fixed` UI such as tooltips that must escape the chart's `overflow: hidden`. |
 | `ChartOptions` | type | `./ui/Chart` | — |
 | `ChartPickGroup` | type | `./ui/Chart` | — |
 | `ChartPickItem` | type | `./ui/Chart` | — |
@@ -131,7 +131,6 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartRendererFactoryContext` | interface | `./render/ChartRenderer` | Context passed to a renderer factory when a chart (re)creates its renderer. |
 | `ChartRendererHandle` | interface | `./render/ChartRenderer` | Opaque renderer instance returned by a renderer factory. Only the built-in renderers implement it. |
 | `ChartRendererInfo` | interface | `./render/ChartRenderer` | Which engine a chart ended up with, what was asked for, and what that engine can do. |
-| `ChartRendererKind` | type | `./render/ChartRenderer` | Rendering backend a chart is drawn with. |
 | `ChartRenderLoop` | type | `./ui/Chart` | — |
 | `ChartRenderSurface` | interface | `./render/ChartRenderer` | A drawing surface a plugin owns, drawn with the chart's rendering engine: WebGL2, Canvas 2D, or the shared WebGL2 context. Get one from `ctx.unstable.createRenderSurface(canvas)`. A frame is `beginFrame`, any number of `fillRects`, then `endFrame`. Everything is in device pixels with the origin at the canvas's top-left corner, so size the canvas in device pixels first. |
 | `ChartScreenshotOptions` | type | `./ui/Chart` | — |
@@ -156,12 +155,11 @@ Generated from `dist/index.d.ts` after the package build.
 | `Dataset` | interface | `./core/types` | Sorted XY data source consumed by chart series. |
 | `DEFAULT_CHART_THEME` | const | `./ui/theme` | Default dark chart theme. |
 | `DownsampleStrategy` | type | `./core/types` | Downsampling strategy used when a series is denser than the plot. |
-| `histogram` | function | `./core/Histogram` | Convert one-dimensional finite values into histogram bins. |
-| `HistogramBin` | interface | `./core/Histogram` | One histogram bucket, suitable for rendering as a bar centered at `x`. |
+| `HistogramBin` | interface | `./core/histogramBins` | One histogram bucket, suitable for rendering as a bar centered at `x`. |
 | `HistogramDataset` | class | `./core/Histogram` | Static histogram dataset that preserves each bucket's X interval for picks and tooltips. |
-| `HistogramNormalization` | type | `./core/Histogram` | Histogram value normalization modes. |
-| `HistogramOptions` | interface | `./core/Histogram` | Options for converting one-dimensional values into histogram bins. |
-| `HistogramResult` | interface | `./core/Histogram` | Result of a histogram transform. |
+| `HistogramNormalization` | type | `./core/histogramBins` | Histogram value normalization modes. |
+| `HistogramOptions` | interface | `./core/histogramBins` | Options for converting one-dimensional values into histogram bins. |
+| `HistogramResult` | interface | `./core/histogramBins` | Result of a histogram transform. |
 | `InvalidOhlcSample` | interface | `./core/types` | An OHLC candle an `OhlcRingBuffer` skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSample` | interface | `./core/types` | A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSampleReason` | type | `./core/types` | Why a sample broke the dataset X rule (X finite and non-decreasing): `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the previous accepted X (or, for `update`, outside its neighbors). |

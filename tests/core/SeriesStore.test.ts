@@ -5,7 +5,8 @@ import { RingBuffer } from "../../src/core/RingBuffer.ts";
 import { StaticDataset } from "../../src/core/StaticDataset.ts";
 import { OhlcRingBuffer } from "../../src/core/OhlcDataset.ts";
 import { UniformRingBuffer } from "../../src/core/UniformRingBuffer.ts";
-import { HistogramDataset, histogram } from "../../src/core/Histogram.ts";
+import { HistogramDataset } from "../../src/core/Histogram.ts";
+import { histogramBins } from "../../src/core/histogramBins.ts";
 import type { Dataset, RangeMinMaxDataset, TimeRange } from "../../src/core/types.ts";
 
 function makeSeries(): SeriesStore {
@@ -167,7 +168,7 @@ describe("SeriesStore", () => {
   });
 
   it("includes interval-backed sample ranges in data bounds", () => {
-    const dataset = new HistogramDataset(histogram([0.2, 0.8, 1.2], { binSize: 1, min: 0, max: 2 }));
+    const dataset = new HistogramDataset(histogramBins([0.2, 0.8, 1.2], { binSize: 1, min: 0, max: 2 }));
     const series = new SeriesStore(
       dataset,
       { mode: "bar", dataset, downsample: "none" },
