@@ -27,7 +27,7 @@ const runtimeHelpers: Record<string, readonly string[]> = {
 };
 
 /** Shared plugin-side helper modules that are not themselves package entries. */
-const pluginHelpers = ["src/ui/OverlayUtils.ts"];
+const pluginHelpers = ["src/ui/OverlayUtils.ts", "src/ui/PickOverlay.ts"];
 
 interface ImportRecord {
   readonly specifier: string;

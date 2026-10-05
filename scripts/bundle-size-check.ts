@@ -30,6 +30,7 @@ interface BundleSizeReport {
 
 // Budgets are the built size plus about 1.5% (at least 100 bytes), rounded up to 100 bytes.
 // Tighten them when a change shrinks a chunk; raise one only with a reason in the PR.
+// Legend, navigator, and selection grew a little (+130 to +220 bytes) because each now ships its own forced-colors CSS; the core chunk shrank by the same rules.
 const budgets: Budget[] = [
   { label: "root entry", path: "dist/index.js", maxBytes: 21_100 },
   { label: "linked entry", path: "dist/linked.js", maxBytes: 2_500 },
@@ -37,11 +38,11 @@ const budgets: Budget[] = [
   { label: "export entry", path: "dist/export.js", maxBytes: 3_900 },
   { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 15_100 },
   { label: "annotations plugin", path: "dist/plugins/annotations.js", maxBytes: 15_200 },
-  { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 9_900 },
-  { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 8_600 },
-  { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 4_600 },
-  { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_600 },
-  { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 10_100 },
+  { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 10_200 },
+  { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 8_800 },
+  { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 4_800 },
+  { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 3_900 },
+  { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 9_400 },
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 22_100 },
   { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 11_900 },
   { label: "canvas2d renderer entry", path: "dist/renderers/canvas2d.js", maxBytes: 5_700 },
@@ -50,7 +51,7 @@ const budgets: Budget[] = [
 
 const sharedBudgets: SharedChunkBudget[] = [
   // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152; 140_448 after the Chart split and histogram tree-shaking (#172).
-  { label: "shared Chart chunk", pattern: /^Chart-.*.js$/, maxBytes: 142_600 },
+  { label: "shared Chart chunk", pattern: /^Chart-.*.js$/, maxBytes: 142_300 },
   // WebGL2 renderer, backend, and shaders: the default renderer, shared by the core and the auto fallback entry.
   { label: "shared WebGL2 backend chunk", pattern: /^WebGL2Backend-.*.js$/, maxBytes: 12_000 },
   { label: "shared WebGL2 renderer chunk", pattern: /^webgl2Renderer-.*.js$/, maxBytes: 300 },
@@ -58,7 +59,9 @@ const sharedBudgets: SharedChunkBudget[] = [
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 6_400 },
-  { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 5_600 },
+  { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 2_600 },
+  // Tooltip and crosshair helpers (pick markers, sync groups, long press), kept out of OverlayUtils so other plugins skip them.
+  { label: "shared PickOverlay chunk", pattern: /^PickOverlay-.*.js$/, maxBytes: 5_000 },
 ];
 
 export async function collectBundleSizeReport(): Promise<BundleSizeReport> {
