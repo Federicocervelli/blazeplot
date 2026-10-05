@@ -16,7 +16,7 @@ Use this table before reaching for a generic chart example. The dataset choice d
 | Server-reduced min/max buckets | `ServerSampledDataset` with `downsample: "server"` |
 | React ownership of the DOM | Create and dispose `Chart` in an effect |
 | Multiple charts sharing an X range | `createLinkedCharts` from `blazeplot/linked` |
-| Browsers that may lack WebGL2 | `renderer: "auto"` |
+| Browsers that may lack WebGL2 | The default `renderer: "auto"` falls back to Canvas 2D; use `"webgl2"` to require it |
 | Dozens of charts on one page | `renderer: "shared"` |
 
 All built-in datasets require finite, non-decreasing X values: static datasets throw a `RangeError` for unsorted input and streaming buffers skip out-of-order samples. If source data arrives out of order, build the dataset with `StaticDataset.sorted(x, y)` or write a custom dataset that exposes sorted logical access. See [Data semantics](./data-semantics.md#the-x-rule).
@@ -347,7 +347,7 @@ chart.dispose();
 
 ## Renderers
 
-The default renderer needs WebGL2. `autoRenderer()` falls back to Canvas 2D when it is missing, and `sharedRenderer()` draws many charts through one WebGL context.
+The default renderer, `"auto"`, uses WebGL2 and falls back to Canvas 2D when it is missing; `"webgl2"` and `"canvas2d"` ask for one engine strictly, and `"shared"` draws many charts through one WebGL context.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -361,7 +361,7 @@ fallbackChart.dispose();
 dashboardChart.dispose();
 ```
 
-See [Browser support](./browser-support.md#canvas-2d-renderer) for the differences between renderers and [Performance recipes](./performance-recipes.md#many-charts-on-one-page) for when to share a context. `createLinkedCharts(element, { renderer: "shared", panels })` applies one renderer to every panel.
+See [Browser support](./browser-support.md#rendering-engines) for the differences between renderers and [Performance recipes](./performance-recipes.md#many-charts-on-one-page) for when to share a context. `createLinkedCharts(element, { renderer: "shared", panels })` applies one renderer to every panel.
 
 ## Annotations
 

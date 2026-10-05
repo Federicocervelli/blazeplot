@@ -23,7 +23,7 @@ Use this page when a chart renders blank, feels slow, or behaves differently fro
 Check these first:
 
 1. **The host element has size.** BlazePlot fills its container; a `0px`-tall parent produces a `0px` plot.
-2. **The browser supports WebGL2.** Charts use WebGL2 by default. Pass `renderer: "auto"` to fall back to the built-in Canvas 2D renderer, or use `isWebGL2Available()` to show your own fallback UI.
+2. **A rendering engine started.** Charts use WebGL2 when it is available and Canvas 2D otherwise (`renderer: "auto"`, the default). Check `chart.rendererInfo` to see which engine you got and whether it fell back. With a strict engine (`"webgl2"`, `"shared"`, `"canvas2d"`) the constructor throws instead of falling back; use `isWebGL2Available()` to show your own fallback UI.
 3. **The chart has a viewport.** Call `chart.fitToData()` after adding initial series, or set a viewport explicitly with `chart.setViewport(...)`.
 4. **Render scheduling is active.** Call `chart.start()` after setup. The default mode renders when chart-owned state changes and then idles; append through series APIs or call `series.markDirty()` after direct dataset mutation. Use the `renderLoop: "continuous"` chart option only for custom animations.
 5. **The data is finite and sorted.** Built-in datasets expect ascending X values. Non-finite Y values create gaps.
@@ -43,7 +43,7 @@ function showUnsupportedBrowserMessage() {
 if (!isWebGL2Available()) {
   showUnsupportedBrowserMessage();
 } else {
-  const chart = new Chart(element);
+  const chart = new Chart(element, { renderer: "webgl2" });
   chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
   chart.fitToData({ padding: 0.05 });
   chart.start();

@@ -257,7 +257,8 @@ export default class Preview extends PreviewResources {
       }
       overlayText.textContent = [
         `status: ${streaming ? workerPending ? "worker pending" : "streaming" : "paused"}`,
-        `renderer: ${chartStats.renderMode}`,
+        `engine: ${chart.renderer}${chart.rendererInfo.fallbackFrom ? ` (fell back from ${chart.rendererInfo.fallbackFrom})` : ""}`,
+        `render mode: ${chartStats.renderMode}`,
         `samples: ${t.toLocaleString()}`,
         `sample rate: ${appendRate.toLocaleString()}/sec target, ${actualAppendRate.toFixed(0)}/sec actual`,
         `view samples: ${viewSamples.toLocaleString()}`,

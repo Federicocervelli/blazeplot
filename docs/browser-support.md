@@ -1,70 +1,97 @@
 # Browser support
 
-BlazePlot targets modern browsers with WebGL2 and ships an opt-in Canvas 2D renderer for environments where WebGL2 is unavailable or unreliable.
+BlazePlot targets modern browsers with WebGL2 and draws with Canvas 2D where WebGL2 is unavailable or unreliable. Both engines ship in the core package and are fully supported; the default `renderer: "auto"` picks between them.
 
 ## Requirements
 
 | Feature | Used for | Notes |
 |---|---|---|
-| WebGL2 | Plot rendering | Required by the default renderer. BlazePlot throws `WebGL2UnavailableError` when a chart cannot create a WebGL2 context, unless you pass the [Canvas 2D renderer](#canvas-2d-renderer). |
-| Canvas 2D | Fallback plot rendering | Used by `renderer: "canvas2d"` and by `"auto"` when WebGL2 fails. Available in every browser that can draw a `<canvas>`. |
+| WebGL2 | Plot rendering | Preferred by the default renderer. With `renderer: "webgl2"` or `"shared"` BlazePlot throws `WebGL2UnavailableError` when a chart cannot create a WebGL2 context; the default `"auto"` falls back to Canvas 2D instead. See [Rendering engines](#rendering-engines). |
+| Canvas 2D | Plot rendering without WebGL2 | Used by `renderer: "canvas2d"` and by `"auto"` when WebGL2 fails. Available in every browser that can draw a `<canvas>`. |
 | Pointer Events | Built-in interactions | Used for pan, zoom, box selection, touch gestures, and plugin hit testing. |
 | `ResizeObserver` | Automatic layout updates | Optional. Without it, call `chart.resize()` after container size changes. |
 | Async Clipboard API + `ClipboardItem` | Clipboard export helpers | Optional. Browsers usually require HTTPS and a user gesture. Download helpers still work without clipboard support. |
 
-Use the [Canvas 2D renderer](#canvas-2d-renderer) to keep drawing without WebGL2, or `isWebGL2Available()` before creating a chart if your app needs to show its own fallback UI.
+A chart keeps drawing without WebGL2 by default. If your app would rather show its own fallback UI, check `isWebGL2Available()` before creating a chart and ask for the strict `"webgl2"` engine.
 
 ```ts
 import { Chart, isWebGL2Available } from "blazeplot";
 
 if (isWebGL2Available()) {
-  const chart = new Chart(element);
+  const chart = new Chart(element, { renderer: "webgl2" });
   chart.start();
 } else {
   element.textContent = "This chart needs WebGL2.";
 }
 ```
 
-## Canvas 2D renderer
+## Rendering engines
 
-The Canvas 2D engine ships in the core `blazeplot` package, so there is nothing extra to import. Pick an engine with `ChartOptions.renderer`, by name or with the matching factory exported from `blazeplot`:
+A chart draws through one of three engines, chosen with `ChartOptions.renderer`. All three ship in the core `blazeplot` package (nothing extra to import), and all three are stable: every series type (line, area, bar, scatter, OHLC, candlestick, histogram), gaps, log/symlog and reversed axes, dual Y axes, wide lines, `chart.screenshot()`, every built-in plugin, and the flame graph plugin work on each.
 
-- `"auto"` (the default, `autoRenderer()`) uses WebGL2 and falls back to Canvas 2D when WebGL2 is unavailable or its context cannot be created (browsers with hardware acceleration off, GPU blocklists, privacy-hardened browsers, headless screenshot pipelines, pages that used up the WebGL context cap).
-- `"canvas2d"` (`canvas2dRenderer()`) always uses Canvas 2D.
-- `"webgl2"` (`webgl2Renderer()`) requires WebGL2 and throws `WebGL2UnavailableError` instead of falling back.
+| `renderer` | Factory | Draws with | If it cannot start |
+|---|---|---|---|
+| `"auto"` (default) | `autoRenderer()` | WebGL2, otherwise Canvas 2D | Falls back quietly (browsers with hardware acceleration off, GPU blocklists, privacy-hardened browsers, headless screenshot pipelines, pages that used up the WebGL context cap). Throws `WebGL2UnavailableError` only when neither engine can start. |
+| `"webgl2"` | `webgl2Renderer()` | WebGL2, one context per chart | Throws `WebGL2UnavailableError`. |
+| `"canvas2d"` | `canvas2dRenderer()` | Canvas 2D (CPU-projected) | Throws `Canvas2DUnavailableError` (rare: the canvas cannot create a 2D context). |
+| `"shared"` | `sharedRenderer(context?)` | One WebGL2 context shared by every chart on the document, or by the charts of one `createChartRenderContext()` | Throws `WebGL2UnavailableError`. See [Many charts on one page](./performance-recipes.md#many-charts-on-one-page). |
+
+A name is shorthand for its factory, and an unknown value throws a `TypeError` that lists the valid names. `createLinkedCharts` takes the same `renderer` option for every panel. Read the outcome from the chart:
 
 ```ts
 import { Chart, StaticDataset } from "blazeplot";
 
-const chart = new Chart(element, { renderer: "auto" });
+const chart = new Chart(element); // renderer: "auto"
 chart.addLine({ dataset: new StaticDataset(new Float64Array([0, 1, 2]), new Float32Array([0, 1, 0])) });
 chart.fitToData();
 chart.start();
 
-console.log(chart.renderer); // "webgl2" or "canvas2d"
+console.log(chart.renderer); // "webgl2", "canvas2d", or "shared"
+console.log(chart.rendererInfo);
+// On a machine without WebGL2:
+// { name: "canvas2d", requested: "auto", fallbackFrom: "webgl2", capabilities: { gpu: false, ... } }
 // Later: chart.dispose();
 ```
 
-`chart.renderer` is `"webgl2"`, `"canvas2d"`, or `"shared"` (see [shared context](./performance-recipes.md#many-charts-on-one-page)). `"canvas2d"` throws `Canvas2DUnavailableError` when the canvas cannot create a 2D context, which is rare; `"auto"` only falls back when WebGL2 fails.
+`chart.rendererInfo` (also `ctx.renderer` inside a plugin) has `name` (the engine in use), `requested` (what the option asked for: a name or `"auto"`; a factory reports the name it stands for), `fallbackFrom` (set when `"auto"` had to skip WebGL2), and `capabilities`:
 
-Every series type (line, area, bar, scatter, OHLC, candlestick, histogram), gaps, log/symlog and reversed axes, dual Y axes, wide lines, `chart.screenshot()`, every built-in plugin, and the flame graph plugin work on both renderers. `ctx.unstable.getWebGLContext()` returns `null` on Canvas 2D (and on the shared WebGL renderer); plugin layers that need to draw can use `ctx.unstable.createRenderSurface()`, which follows the chart's engine.
+| Capability | `webgl2` | `canvas2d` | `shared` |
+|---|---|---|---|
+| `gpu` (draws on the GPU) | yes | no | yes |
+| `contextLoss` (reports loss and restore) | yes | yes | yes |
+| `shared` (the context belongs to several charts) | no | no | yes |
+| `maxDrawingBufferPixels` | the context's maximum viewport area | 16,384 x 16,384 (a typical desktop limit; browsers do not expose theirs) | the shared context's maximum viewport area |
 
-WebGL context loss and restore (see [Error handling](./error-handling.md)) only applies to WebGL charts; Canvas 2D charts have nothing to lose.
+The `rendererchange` event is reserved for a chart that switches engine while it runs; nothing emits it yet.
 
-The renderers draw the same data with the same level-of-detail pipeline, so Canvas 2D stays interactive at typical chart sizes, but it is CPU-bound and slower than WebGL2 for very large visible point counts and many simultaneous charts. Expected visual differences:
+### Context loss
 
-- Lines are antialiased (WebGL lines are not), so strokes look slightly softer.
-- Rectangles (bars, histogram bins, dense min/max columns, candle bodies) snap to whole device pixels and are at least one pixel wide and tall, so adjacent columns never show seams.
-- Scatter markers are round and the same size in both renderers; Canvas 2D antialiases their edges.
+Every engine reports context loss and restore the same way. The chart stops drawing while its context is lost, plugins' `onContextLost` and `onContextRestored` hooks run, and the engine rebuilds what it needs before drawing resumes (see [Error handling](./error-handling.md)). WebGL engines handle `webglcontextlost` and `webglcontextrestored`, the shared engine reports its one context to every attached chart, and Canvas 2D handles the canvas `contextlost` and `contextrestored` events in browsers that fire them.
+
+### What the engines share, and what they do not
+
+The engines run the same data pipeline: the same level-of-detail extraction, the same cameras and axes, and the same series painter. They differ in how primitives reach pixels, so the semantic contract is shared and the pixels are not identical. The contract is tested per engine (one behavior suite runs against WebGL2, Canvas 2D, and the shared engine) and by comparing renders of the same chart across engines in the visual suite.
+
+| Behavior | WebGL2 and shared | Canvas 2D |
+|---|---|---|
+| Gaps (non-finite Y) | Break lines and area fills | Same |
+| Line width | CSS pixels times the device pixel ratio; at most one device pixel wide is drawn as a one-pixel line | Same, with a one-pixel minimum |
+| Point size | Round marker, `pointSize` CSS pixels across | Same |
+| Bars and candle bodies | Rasterized rectangles from the baseline | Same extent, edges snapped to whole device pixels |
+| Throughput on very large visible point counts and many simultaneous charts | Highest | CPU-bound and slower |
+
+Pixel-level output between engines, and between releases, is not covered by semver; the feature set is. Expected visual differences on Canvas 2D:
+
+- Lines are antialiased (WebGL lines are not), so strokes look slightly softer, and the joins of very long, tightly curved lines are a little thinner.
+- Rectangles (bars, histogram bins, dense min/max columns, candle bodies) snap to whole device pixels and are at least one pixel wide and tall, so adjacent columns never show seams. A rectangle edge that falls exactly on a half pixel may land one pixel away from where the GPU puts it.
+- Scatter markers are round and the same size in every engine; Canvas 2D antialiases their edges.
 - Lines narrower than one device pixel are drawn one device pixel wide.
 
-The visual test suite (`bun run test:visual`) renders every case with WebGL2, with the shared WebGL context, with Canvas 2D, and with WebGL disabled in Chrome through `autoRenderer()`; the Canvas 2D render has to stay within a documented pixel tolerance of the WebGL baselines (see [Local development](./internal/local-development.md)).
-
-The default `renderer: "webgl2"` is unchanged, and a chart created without the option still throws `WebGL2UnavailableError` when WebGL2 is unavailable.
+The visual suite (`bun run test:visual`) renders every case with each engine and with WebGL disabled in Chrome through the default renderer, and compares the Canvas 2D and shared renders with the WebGL2 render of the same case within documented tolerances (see [Local development](./internal/local-development.md#cross-engine-parity)). Firefox and WebKit run the smoke tests on both WebGL2 and Canvas 2D.
 
 ## Unsupported-browser fallback
 
-If you would rather show your own UI than a Canvas 2D chart, keep the fallback outside the chart constructor so users without WebGL2 still get a useful page.
+If you would rather show your own UI than a Canvas 2D chart, keep the fallback outside the chart constructor and ask for the strict engine, so users without WebGL2 get a useful page instead of a slower chart.
 
 ```ts
 import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
@@ -82,7 +109,7 @@ function renderTelemetryChart(element: HTMLElement, x: number[], y: number[]) {
     return null;
   }
 
-  const chart = new Chart(element);
+  const chart = new Chart(element, { renderer: "webgl2" });
   chart.addLine({ dataset: new StaticDataset(x, y), name: "telemetry" });
   chart.fitToData({ padding: 0.05 });
   chart.start();
