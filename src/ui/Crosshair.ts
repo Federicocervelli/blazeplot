@@ -3,6 +3,7 @@ import type { ChartPickItem, ChartPickMode } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, singleChartPlugin, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
 import type { SyncMembership } from "./OverlayUtils.js";
+import { rgbaCss } from "./theme.js";
 
 /** Axis drawn by the crosshair overlay. */
 export type CrosshairAxis = "x" | "y" | "xy";
@@ -236,28 +237,49 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     placeAbsoluteWithinBox(label, position.plotX, position.plotY, plot.width, plot.height, { offsetX, offsetY });
   };
 
+  // Plain point markers are reused across updates; custom or interval highlights rebuild the layer.
+  const markerPool: HTMLDivElement[] = [];
+
   const renderMarkers = (position: CrosshairPosition | null): void => {
     if (!markerLayer) return;
-    markerLayer.replaceChildren();
-    if (options.highlight === false || !position) return;
-    if (options.renderHighlight && chartRef) {
-      options.renderHighlight(position, markerLayer, chartRef);
+    const items = options.highlight === false || !position || options.renderHighlight ? [] : position.items;
+    if (options.renderHighlight || items.some((item) => item.xRange)) {
+      markerLayer.replaceChildren();
+      markerPool.length = 0;
+      if (!position || options.highlight === false) return;
+      if (options.renderHighlight && chartRef) {
+        options.renderHighlight(position, markerLayer, chartRef);
+        return;
+      }
+      const stroke = options.markerStrokeColor ?? chartRef?.theme.markerStrokeColor ?? "";
+      for (const item of items) {
+        if (item.xRange && chartRef) markerLayer.appendChild(createXRangeHighlight(item, chartRef, stroke));
+        else markerLayer.appendChild(createPickMarker(item, { sizePx: Math.max(2, options.markerSize ?? 10), strokeColor: stroke, strokeWidthPx: Math.max(0, options.markerStrokeWidth ?? 2) }));
+      }
       return;
     }
+    // Leftovers from a previous interval highlight are not in the pool.
+    if (markerPool.length === 0 && markerLayer.firstChild) markerLayer.replaceChildren();
 
     const size = Math.max(2, options.markerSize ?? 10);
     const strokeWidth = Math.max(0, options.markerStrokeWidth ?? 2);
-    for (const item of position.items) {
-      if (item.xRange && chartRef) {
-        markerLayer.appendChild(createXRangeHighlight(item, chartRef, options.markerStrokeColor ?? chartRef.theme.markerStrokeColor));
+    const strokeColor = options.markerStrokeColor ?? chartRef?.theme.markerStrokeColor ?? "";
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      let marker = markerPool[i];
+      if (!marker) {
+        marker = createPickMarker(item, { sizePx: size, strokeColor, strokeWidthPx: strokeWidth });
+        markerPool[i] = marker;
+        markerLayer.appendChild(marker);
       } else {
-        markerLayer.appendChild(createPickMarker(item, {
-          sizePx: size,
-          strokeColor: options.markerStrokeColor ?? chartRef?.theme.markerStrokeColor ?? "",
-          strokeWidthPx: strokeWidth,
-        }));
+        marker.style.display = "block";
+        marker.style.left = `${item.plotX}px`;
+        marker.style.top = `${item.plotY}px`;
+        marker.style.background = rgbaCss(item.series.style.color);
+        marker.style.borderColor = strokeColor;
       }
     }
+    for (let i = items.length; i < markerPool.length; i++) markerPool[i]!.style.display = "none";
   };
 
   const renderPosition = (position: CrosshairPosition | null): void => {

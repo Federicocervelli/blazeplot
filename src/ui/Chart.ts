@@ -2270,7 +2270,9 @@ export class Chart {
     };
   }
 
+  /** Emit `hover` only when the picked items or the anchor actually changed. */
   private setHover(state: ChartHoverState | null): void {
+    if (hoverStatesEqual(this.currentHover, state)) return;
     this.currentHover = state;
     this.emit("hover", state);
   }
@@ -2335,4 +2337,27 @@ export class Chart {
       }
     }
   }
+}
+
+/** Coordinates closer than this many CSS pixels count as unchanged. */
+const HOVER_EPSILON_PX = 1e-3;
+
+const near = (a: number, b: number): boolean => a === b || Math.abs(a - b) <= HOVER_EPSILON_PX;
+
+/** Whether two hover states show the same items at the same anchor (series, index, x, y, and position). */
+function hoverStatesEqual(a: ChartHoverState | null, b: ChartHoverState | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.source !== b.source || a.mode !== b.mode || a.group !== b.group || a.maxDistancePx !== b.maxDistancePx) return false;
+  if (a.items.length !== b.items.length) return false;
+  if (!near(a.plotX, b.plotX) || !near(a.plotY, b.plotY) || !near(a.clientX, b.clientX) || !near(a.clientY, b.clientY)) return false;
+  if (!Object.is(a.anchorX, b.anchorX) || !Object.is(a.dataX, b.dataX) || !Object.is(a.dataY, b.dataY)) return false;
+  for (let i = 0; i < a.items.length; i++) {
+    const p = a.items[i]!;
+    const q = b.items[i]!;
+    if (p.series !== q.series || p.index !== q.index || !Object.is(p.x, q.x) || !Object.is(p.y, q.y)) return false;
+    if (!near(p.plotX, q.plotX) || !near(p.plotY, q.plotY)) return false;
+    if (p.xRange?.xStart !== q.xRange?.xStart || p.xRange?.xEnd !== q.xRange?.xEnd) return false;
+  }
+  return true;
 }

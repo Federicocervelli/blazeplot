@@ -82,6 +82,8 @@ The app that owns the chart controls `chart.start()` and `chart.stop()`. Plugin 
 
 ## Plugin events
 
+The `hover` event fires after a frame and only when the picked items, their values, or the pointer position changed, not every frame; a still pointer over unchanged data is silent, while a live chart fires again as the hovered values change. Render from the `hover` callback directly instead of deferring to another animation frame.
+
 Plugins can emit typed events that chart users receive through `chart.subscribe(...)`. The built-in `select` event (emitted by `selectionPlugin` and linked layouts) is declared on `ChartPluginEventMap`. Add your own events with declaration merging, prefixed with your plugin name:
 
 ```ts

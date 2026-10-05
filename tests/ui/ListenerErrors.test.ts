@@ -42,6 +42,8 @@ describe("chart event listener isolation", () => {
       const hovers: unknown[] = [];
       chart.subscribe("render", () => { throw new Error("bad render"); });
       chart.subscribe("hover", (state) => hovers.push(state));
+      // Hover only fires when the picked values change, so move the hovered sample.
+      chart.getSeriesState()[0]!.series.updateAt(5, { x: 5, y: 55 });
       chart.requestRender();
       expect(() => h.raf.flush()).not.toThrow();
       expect(hovers.length).toBeGreaterThan(0);

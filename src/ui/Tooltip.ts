@@ -175,7 +175,14 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         showAt: renderSharedAtX,
         hide: () => render(null),
       });
-      const notifyPeers = (state: ChartHoverState | null): void => sync.broadcast(state ? state.anchorX : null);
+      // Peers re-pick and rebuild their DOM, so only tell them when the anchor actually moved.
+      let lastBroadcastX: number | null | undefined;
+      const notifyPeers = (state: ChartHoverState | null): void => {
+        const anchorX = state ? state.anchorX : null;
+        if (anchorX === lastBroadcastX) return;
+        lastBroadcastX = anchorX;
+        sync.broadcast(anchorX);
+      };
 
       const showAtClientPoint = (clientX: number, clientY: number): void => {
         const state = chart.state.pick(clientX, clientY, {
@@ -203,18 +210,10 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         chart.dom.listen("plot", "touchcancel", longPress.clear),
       ];
 
-      let hoverRaf = 0;
-      let pendingHoverState: ChartHoverState | null = null;
-      const flushHover = (): void => {
-        hoverRaf = 0;
-        const state = pendingHoverState;
-        pendingHoverState = null;
+      // `hover` runs after the frame it describes, so render synchronously: no extra frame of lag.
+      const unsubscribeHover = chart.events.subscribe("hover", (state) => {
         render(state);
         notifyPeers(state);
-      };
-      const unsubscribeHover = chart.events.subscribe("hover", (state) => {
-        pendingHoverState = state;
-        if (hoverRaf === 0) hoverRaf = requestAnimationFrame(flushHover);
       });
       applyTheme();
       return {
@@ -225,7 +224,6 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         dispose() {
           longPress.clear();
           for (const off of unlisten) off();
-          if (hoverRaf !== 0) cancelAnimationFrame(hoverRaf);
           unsubscribeHover();
           sync.leave();
           tooltipResizeObserver?.disconnect();
