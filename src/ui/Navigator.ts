@@ -8,6 +8,7 @@ export interface NavigatorPluginOptions {
   readonly height?: number;
   readonly placement?: "bottom" | "top";
   readonly series?: SeriesStore | readonly SeriesStore[];
+  /** Series up to this many samples (default 512) draw as an exact polyline; denser series draw a min/max envelope. */
   readonly maxSamplesPerSeries?: number;
   readonly followLive?: boolean;
   readonly className?: string;

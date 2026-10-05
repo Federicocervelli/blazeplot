@@ -46,20 +46,20 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 11 KiB |
+| root entry | `dist/index.js` | 12 KiB |
 | linked entry | `dist/linked.js` | 2 KiB |
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
 | interactions plugin | `dist/plugins/interactions.js` | 11 KiB |
 | annotations plugin | `dist/plugins/annotations.js` | 13 KiB |
-| navigator plugin | `dist/plugins/navigator.js` | 8 KiB |
+| navigator plugin | `dist/plugins/navigator.js` | 9 KiB |
 | selection plugin | `dist/plugins/selection.js` | 8 KiB |
 | legend plugin | `dist/plugins/legend.js` | 3 KiB |
 | tooltip plugin | `dist/plugins/tooltip.js` | 5 KiB |
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 10 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 148 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 152 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 3 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 4 KiB |

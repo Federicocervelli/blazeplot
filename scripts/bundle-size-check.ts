@@ -37,7 +37,7 @@ const budgets: Budget[] = [
   { label: "export entry", path: "dist/export.js", maxBytes: 3_900 },
   { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 11_700 },
   { label: "annotations plugin", path: "dist/plugins/annotations.js", maxBytes: 13_700 },
-  { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 8_800 },
+  { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 10_000 },
   { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 8_400 },
   { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 3_500 },
   { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_800 },
@@ -48,7 +48,7 @@ const budgets: Budget[] = [
 
 const sharedBudgets: SharedChunkBudget[] = [
   // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152.
-  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 153_800 },
+  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 157_000 },
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 3_600 },

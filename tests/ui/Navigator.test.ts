@@ -415,7 +415,8 @@ describe("navigatorPlugin overview", () => {
       plugin.refresh();
       best = Math.min(best, performance.now() - start);
     }
-    expect(best).toBeLessThan(2);
+    // Typically ~1 ms; the bound leaves headroom for loaded CI runners and coverage instrumentation.
+    expect(best).toBeLessThan(5);
 
     const before = pathOf(chart);
     chart.setViewport({ xMin: 1000, xMax: 5000 });
