@@ -40,8 +40,45 @@ function hideOverlappingLabels(labels: readonly AxisLabelInterval[]): void {
   }
 }
 
+/**
+ * @internal Smooths an auto-sized gutter: it grows at once and shrinks only after the smaller
+ * size has held for `SHRINK_AFTER_FRAMES` frames, so live charts with changing label lengths do
+ * not jitter the plot width.
+ */
+export class GutterTracker {
+  private current: number | null = null;
+  private shrinkFrames = 0;
+  private shrinkTarget = 0;
+
+  /** Feed the size needed this frame; returns the new gutter size when it should change, else `null`. */
+  next(desired: number): number | null {
+    if (this.current === null || desired > this.current) {
+      this.shrinkFrames = 0;
+      this.current = desired;
+      return desired;
+    }
+    if (desired >= this.current - GUTTER_SHRINK_SLACK_PX) {
+      this.shrinkFrames = 0;
+      return null;
+    }
+    this.shrinkTarget = this.shrinkFrames === 0 ? desired : Math.max(this.shrinkTarget, desired);
+    this.shrinkFrames++;
+    if (this.shrinkFrames < GUTTER_SHRINK_AFTER_FRAMES) return null;
+    this.shrinkFrames = 0;
+    this.current = this.shrinkTarget;
+    return this.current;
+  }
+}
+
+/** Frames a smaller auto gutter must hold before the gutter shrinks. */
+export const GUTTER_SHRINK_AFTER_FRAMES = 60;
+const GUTTER_SHRINK_SLACK_PX = 6;
+/** Pixels added around the widest label (4px inset on each side). */
+export const AUTO_GUTTER_PADDING_PX = 10;
+
 /** @internal DOM overlay that renders axis tick labels. */
 export class AxisOverlay {
+  private measured = { x: 0, y: 0, y2: 0 };
   private xPool: HTMLDivElement[] = [];
   private yPool: HTMLDivElement[] = [];
   private y2Pool: HTMLDivElement[] = [];
@@ -73,9 +110,15 @@ export class AxisOverlay {
   ): void {
     const plotW = Math.max(1, this.layout.plot.clientWidth);
     const plotH = Math.max(1, this.layout.plot.clientHeight);
+    this.measured = { x: 0, y: 0, y2: 0 };
     this.updateAxis(this.xPool, this.config.x.visible ? xTicks : NO_TICKS, "x", plotW, plotH, axis);
     this.updateAxis(this.yPool, this.config.y.visible ? yTicks : NO_TICKS, "y", plotW, plotH, axis);
     this.updateAxis(this.y2Pool, this.config.y2.visible ? y2Ticks : NO_TICKS, "y2", plotW, plotH, rightAxis);
+  }
+
+  /** Widest (Y, Y2) or tallest (X) tick label of the last update, in CSS pixels. */
+  measuredExtent(axis: RenderAxis): number {
+    return this.measured[axis];
   }
 
   /** Remove all axis overlay DOM nodes. */
@@ -142,6 +185,7 @@ export class AxisOverlay {
         }
         el.style.display = "block";
         const labelWidth = this.measureLabel(text, "width");
+        this.measured.x = Math.max(this.measured.x, this.measureLabel(text, "height"));
         const centeredLeft = screenX - labelWidth * 0.5;
         const maxLeft = Math.max(0, plotW - labelWidth);
         const labelLeft = Math.min(Math.max(0, centeredLeft), maxLeft);
@@ -178,6 +222,7 @@ export class AxisOverlay {
       }
       el.style.display = "block";
       const labelHeight = this.measureLabel(text, "height");
+      this.measured[axis] = Math.max(this.measured[axis], this.measureLabel(text, "width"));
       const centeredTop = screenY - labelHeight * 0.5;
       const maxTop = Math.max(0, plotH - labelHeight);
       const labelTop = Math.min(Math.max(0, centeredTop), maxTop);

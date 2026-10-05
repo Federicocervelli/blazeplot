@@ -14,7 +14,7 @@ import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { PanIntent, ViewportPolicy, ZoomIntent } from "../interaction/types.js";
-import { AxisOverlay, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
+import { AUTO_GUTTER_PADDING_PX, AxisOverlay, GutterTracker, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
 import { forcedColorsTheme, resolveChartTheme, resolveThemeColor } from "./theme.js";
@@ -37,6 +37,10 @@ const FLOATS_PER_OHLC_TUPLE = 5;
 const GRID_LINE_VERTEX_CAPACITY = (X_TICK_LIMIT + 2 + Y_TICK_LIMIT + 2) * 2;
 const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
 const TITLE_TOP_PX = 6;
+/** Height of the subtitle line, reserved below the title. */
+const SUBTITLE_ROW_PX = 20;
+/** Smallest auto-sized gutter, so a short-label axis still leaves room for ticks. */
+const MIN_AUTO_GUTTER_PX = 16;
 const SUBTITLE_TOP_PX = 26;
 const TITLE_SIDE_INSET_PX = 8;
 const AXIS_TITLE_INSET_PX = 4;
@@ -85,6 +89,13 @@ export interface AxisConfig extends AxisControllerAxisOptions {
   readonly visible?: boolean;
   readonly position?: AxisPosition;
   readonly title?: string | TextOverlayConfig;
+  /**
+   * Gutter size in CSS pixels for an `"outside"` axis, not counting room for the axis title.
+   * Pass `"auto"` to size it from the widest (Y, Y2) or tallest (X) measured tick label; it
+   * grows at once and shrinks only after the smaller size holds for about a second.
+   * Defaults to 52 for Y and Y2 and 28 for X.
+   */
+  readonly size?: number | "auto";
 }
 
 /** Strategy used to find data points near a pointer location. */
@@ -508,6 +519,7 @@ export class Chart {
   private readonly yTicks: number[] = [];
   private readonly y2Ticks: number[] = [];
   private axisOverlay: AxisOverlay | null = null;
+  private gutterTrackers = { x: new GutterTracker(), y: new GutterTracker(), y2: new GutterTracker() };
   private normalizedAxes: ResolvedAxesConfig;
   private resolvedTheme: ResolvedChartTheme;
   private gridVisible: boolean;
@@ -1255,6 +1267,7 @@ export class Chart {
       }
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
+      this.updateAutoGutters();
       this.emit("render", undefined);
     } catch (error) {
       if (this.renderer.getWebGLContext()?.isContextLost() === true) {
@@ -1659,8 +1672,29 @@ export class Chart {
     if (handled) event.preventDefault();
   }
 
+  /** Resize `size: "auto"` gutters from the labels measured this frame. */
+  private updateAutoGutters(): void {
+    const overlay = this.axisOverlay;
+    if (!overlay) return;
+    let changed = false;
+    for (const axis of ["x", "y", "y2"] as const) {
+      const config = this.normalizedAxes[axis];
+      if (config.size !== "auto" || !config.visible || config.position !== "outside") continue;
+      const extent = overlay.measuredExtent(axis);
+      if (extent <= 0) continue;
+      const next = this.gutterTrackers[axis].next(Math.max(MIN_AUTO_GUTTER_PX, extent + AUTO_GUTTER_PADDING_PX));
+      if (next !== null && this.layout.setAutoSize(axis, next)) changed = true;
+    }
+    if (changed) {
+      this.resize();
+      this.requestRender();
+    }
+  }
+
   private rebuildAxisOverlay(): void {
     this.axisOverlay?.dispose();
+    this.gutterTrackers = { x: new GutterTracker(), y: new GutterTracker(), y2: new GutterTracker() };
+    for (const axis of ["x", "y", "y2"] as const) this.layout.setAutoSize(axis, null);
     const axes = this.normalizedAxes;
     this.axisOverlay = axes.x.visible || axes.y.visible || axes.y2.visible
       ? new AxisOverlay(this.layout, axes, { color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont })
@@ -1669,8 +1703,12 @@ export class Chart {
 
   private updateTextOverlays(): void {
     const theme = this.resolvedTheme;
+    const hasTitle = titleText(this.options.title) !== "";
+    const hasSubtitle = titleText(this.options.subtitle) !== "";
     this.applyChartTitle(this.layout.title, this.options.title, theme.titleColor, theme.titleFont, TITLE_TOP_PX);
-    this.applyChartTitle(this.layout.subtitle, this.options.subtitle, theme.subtitleColor, theme.subtitleFont, SUBTITLE_TOP_PX);
+    this.applyChartTitle(this.layout.subtitle, this.options.subtitle, theme.subtitleColor, theme.subtitleFont, hasTitle ? SUBTITLE_TOP_PX : TITLE_TOP_PX);
+    // Title and subtitle get their own grid row, so they never sit on top of the plot.
+    this.layout.setTitleInset((hasTitle ? SUBTITLE_TOP_PX : 0) + (hasSubtitle ? SUBTITLE_ROW_PX : 0));
     this.applyAxisTitle(this.layout.xAxisTitle, this.normalizedAxes.x.title, "x");
     this.applyAxisTitle(this.layout.yAxisTitle, this.normalizedAxes.y.title, "y");
     this.applyAxisTitle(this.layout.y2AxisTitle, this.normalizedAxes.y2.title, "y2");

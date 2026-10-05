@@ -6,6 +6,12 @@ export interface NormalizedAxisConfig {
   readonly visible: boolean;
   readonly position: AxisPosition;
   readonly title?: unknown;
+  /**
+   * Gutter size for an outside axis, in CSS pixels, not counting the title allowance.
+   * `"auto"` sizes it from the widest (Y) or tallest (X) measured tick label.
+   * Defaults to 52 (Y, Y2) and 28 (X).
+   */
+  readonly size?: number | "auto";
 }
 
 /** Layout configuration for chart axes. */
@@ -93,6 +99,9 @@ export class ChartLayout implements ChartLayoutElements {
   readonly yAxisTitle: HTMLDivElement;
   readonly y2AxisTitle: HTMLDivElement;
 
+  private lastConfig: ChartLayoutConfig | null = null;
+  private titleInset = 0;
+  private readonly autoSizes: Record<"x" | "y" | "y2", number | null> = { x: null, y: null, y2: null };
   private readonly externalCanvas: boolean;
   private readonly originalCanvasCssText: string;
   private readonly originalCanvasParent: HTMLElement | null;
@@ -118,15 +127,15 @@ export class ChartLayout implements ChartLayoutElements {
       boxSizing: "border-box",
       outlineOffset: "-2px",
     });
-    this.plot = styledDiv(doc, "blazeplot-plot", { ...gridCell(2, 1), position: "relative", overflow: "hidden" });
+    this.plot = styledDiv(doc, "blazeplot-plot", { ...gridCell(2, 2), position: "relative", overflow: "hidden" });
     this.canvas = canvasTarget ?? doc.createElement("canvas");
     this.canvas.classList.add("blazeplot-canvas");
     Object.assign(this.canvas.style, { position: "absolute", inset: "0", zIndex: "1", display: "block", width: "100%", height: "100%", touchAction: "none" });
-    this.yAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y", axisCell(1, 1));
-    this.y2Axis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y2", axisCell(3, 1));
-    this.xAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-x", axisCell(2, 2));
-    this.corner = styledDiv(doc, "blazeplot-axis-corner", { ...gridCell(1, 2), pointerEvents: "none" });
-    this.cornerRight = styledDiv(doc, "blazeplot-axis-corner blazeplot-axis-corner-right", { ...gridCell(3, 2), pointerEvents: "none" });
+    this.yAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y", axisCell(1, 2));
+    this.y2Axis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y2", axisCell(3, 2));
+    this.xAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-x", axisCell(2, 3));
+    this.corner = styledDiv(doc, "blazeplot-axis-corner", { ...gridCell(1, 3), pointerEvents: "none" });
+    this.cornerRight = styledDiv(doc, "blazeplot-axis-corner blazeplot-axis-corner-right", { ...gridCell(3, 3), pointerEvents: "none" });
     this.title = styledDiv(doc, "blazeplot-title", titleOverlay({ top: "6px", left: "50%", transform: "translateX(-50%)", textAlign: "center" }));
     this.subtitle = styledDiv(doc, "blazeplot-subtitle", titleOverlay({ top: "26px", left: "50%", transform: "translateX(-50%)", textAlign: "center" }));
     this.xAxisTitle = styledDiv(doc, "blazeplot-axis-title blazeplot-axis-title-x", titleOverlay({ left: "50%", bottom: "4px", transform: "translateX(-50%)", textAlign: "center" }));
@@ -147,22 +156,48 @@ export class ChartLayout implements ChartLayoutElements {
     this.update(config);
   }
 
+  /** Reserve a top row for the chart title and subtitle so they never cover the plot. */
+  setTitleInset(px: number): void {
+    const next = Math.max(0, Math.round(px));
+    if (next === this.titleInset) return;
+    this.titleInset = next;
+    if (this.lastConfig) this.update(this.lastConfig);
+  }
+
+  /** Set the measured gutter for an `size: "auto"` axis, or `null` to fall back to the default. Returns whether it changed. */
+  setAutoSize(axis: "x" | "y" | "y2", px: number | null): boolean {
+    const next = px === null ? null : Math.max(0, Math.ceil(px));
+    if (this.autoSizes[axis] === next) return false;
+    this.autoSizes[axis] = next;
+    if (this.lastConfig) this.update(this.lastConfig);
+    return true;
+  }
+
   /** Update axis visibility and layout placement. */
   update(config: ChartLayoutConfig): void {
+    this.lastConfig = config;
     const hasOutsideY = config.y.visible && config.y.position === "outside";
     const hasOutsideY2 = config.y2.visible && config.y2.position === "outside";
     const hasOutsideX = config.x.visible && config.x.position === "outside";
-    const yGutter = config.y.title ? LEFT_AXIS_TITLE_GUTTER_CSS : LEFT_AXIS_GUTTER_CSS;
-    const y2Gutter = config.y2.title ? RIGHT_AXIS_TITLE_GUTTER_CSS : RIGHT_AXIS_GUTTER_CSS;
-    const xGutter = config.x.title ? BOTTOM_AXIS_TITLE_GUTTER_CSS : BOTTOM_AXIS_GUTTER_CSS;
+    const yGutter = this.gutter("y", config.y, LEFT_AXIS_GUTTER_CSS, LEFT_AXIS_TITLE_GUTTER_CSS);
+    const y2Gutter = this.gutter("y2", config.y2, RIGHT_AXIS_GUTTER_CSS, RIGHT_AXIS_TITLE_GUTTER_CSS);
+    const xGutter = this.gutter("x", config.x, BOTTOM_AXIS_GUTTER_CSS, BOTTOM_AXIS_TITLE_GUTTER_CSS);
 
     this.root.style.gridTemplateColumns = `${hasOutsideY ? yGutter : 0}px minmax(0, 1fr) ${hasOutsideY2 ? y2Gutter : 0}px`;
-    this.root.style.gridTemplateRows = `minmax(0, 1fr) ${hasOutsideX ? xGutter : 0}px`;
+    this.root.style.gridTemplateRows = `${this.titleInset}px minmax(0, 1fr) ${hasOutsideX ? xGutter : 0}px`;
     this.yAxis.style.display = hasOutsideY ? "block" : "none";
     this.y2Axis.style.display = hasOutsideY2 ? "block" : "none";
     this.xAxis.style.display = hasOutsideX ? "block" : "none";
     this.corner.style.display = hasOutsideX && hasOutsideY ? "block" : "none";
     this.cornerRight.style.display = hasOutsideX && hasOutsideY2 ? "block" : "none";
+  }
+
+  /** Gutter in CSS pixels: the tick-label size plus the title allowance when the axis has a title. */
+  private gutter(axis: "x" | "y" | "y2", config: NormalizedAxisConfig, base: number, withTitle: number): number {
+    const size = typeof config.size === "number" && Number.isFinite(config.size)
+      ? Math.max(0, config.size)
+      : config.size === "auto" ? (this.autoSizes[axis] ?? base) : base;
+    return size + (config.title ? withTitle - base : 0);
   }
 
   /** Restore external canvas state and remove layout DOM. */
