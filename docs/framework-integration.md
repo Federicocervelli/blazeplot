@@ -1,12 +1,12 @@
 # Framework integration
 
-This page is for developers embedding BlazePlot in React, Vue 3, Svelte 5, or a server-rendering framework such as Next.js, Nuxt, or SvelteKit. BlazePlot is framework-agnostic: a `Chart` owns one DOM subtree and one WebGL2 context, so every integration follows the same three rules.
+This page is for developers embedding BlazePlot in React, Vue 3, Svelte 5, or a server-rendering framework such as Next.js, Nuxt, or SvelteKit. BlazePlot is framework-agnostic: a `Chart` owns one DOM subtree and, by default, one WebGL2 context (or none with the Canvas 2D renderer, or a shared one with `sharedRenderer()`), so every integration follows the same three rules.
 
 1. Create the chart after the host element exists in the browser, never during render or on the server.
 2. Dispose the chart when the owner unmounts. `chart.dispose()` is idempotent, so calling it twice is safe.
 3. Give the host element an explicit size. The chart observes its plot area with a `ResizeObserver` and resizes itself; you do not call `resize()` from your framework.
 
-Those rules are what keep a chart from leaking a WebGL context. Browsers cap live contexts, and a chart that is created on every re-render without disposal eventually loses older contexts. See [Troubleshooting](./troubleshooting.md#react-chart-is-duplicated-or-leaks) for the symptoms.
+Those rules are what keep a chart from leaking a WebGL context. Browsers cap live contexts, and a chart that is created on every re-render without disposal eventually loses older contexts. See [Troubleshooting](./troubleshooting.md#react-chart-is-duplicated-or-leaks) for the symptoms. A component library that mounts dozens of charts at once can avoid the cap with one shared context; see [Many charts](#many-charts-in-one-page).
 
 ## The lifecycle in plain TypeScript
 
@@ -59,6 +59,41 @@ In development, React `StrictMode` mounts every component, runs its cleanup, and
 - Constructing the chart in the component body or in `useMemo`. Render can run more than once without a matching cleanup.
 
 Dispose removes the DOM BlazePlot created inside the host, so the same `<div>` can be reused by the second mount without clearing it yourself.
+
+### Plugins and options
+
+Plugins are fixed when the chart is constructed, and most built-in plugin instances are stateful: `a11yPlugin`, `annotationsPlugin`, `crosshairPlugin`, `flameGraphPlugin`, `navigatorPlugin`, and `selectionPlugin` throw if one instance is installed on a second chart while the first is alive. Create plugin instances inside the effect, one set per chart, never at module scope or in a shared constant.
+
+```tsx
+import { useEffect, useRef } from "react";
+import { Chart, StaticDataset } from "blazeplot";
+import { crosshairPlugin } from "blazeplot/plugins/crosshair";
+import { interactionsPlugin } from "blazeplot/plugins/interactions";
+import { tooltipPlugin } from "blazeplot/plugins/tooltip";
+
+export function InteractiveChart({ x, y }: { x: number[]; y: number[] }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
+    const chart = new Chart(host, {
+      // A chart inside a scrolling page should not trap the wheel or one-finger touch.
+      plugins: [interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger" }), crosshairPlugin(), tooltipPlugin()],
+    });
+    chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+    chart.fitToData({ padding: 0.05 });
+    chart.start();
+
+    return () => chart.dispose();
+  }, [x, y]);
+
+  return <div ref={hostRef} style={{ width: "100%", height: 320 }} />;
+}
+```
+
+`chart.dispose()` disposes the plugins too, in reverse order, so a StrictMode remount gets a fresh set. Changing plugin options means rebuilding the chart, so keep them out of props that change often; use `chart.setTheme(...)`, `chart.setAxes(...)`, and `series.setStyle(...)` for runtime restyling instead of rebuilding.
 
 ### Streaming data without rebuilding the chart
 
@@ -245,6 +280,40 @@ $effect(() => {
 //
 // <div bind:this={host} style="width: 100%; height: 320px"></div>
 ```
+
+## Many charts in one page
+
+Each chart opens its own WebGL context by default, and browsers keep only about 16 per page, evicting the oldest. A list, grid, or table with a chart per row should draw through one shared context. `sharedRenderer()` needs no extra wiring in the component: pass it as the `renderer` option, and the hidden context is created with the first chart and released when the last one is disposed.
+
+```tsx
+import { useEffect, useRef } from "react";
+import { Chart, StaticDataset } from "blazeplot";
+import { sharedRenderer } from "blazeplot/renderers/shared";
+
+export function Sparkline({ y }: { y: number[] }) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
+    const chart = new Chart(host, { renderer: sharedRenderer(), axes: false, grid: false });
+    chart.addLine({ dataset: new StaticDataset(y.map((_, index) => index), y) });
+    chart.fitToData({ padding: 0.1 });
+    chart.start();
+
+    return () => chart.dispose();
+  }, [y]);
+
+  return <div ref={hostRef} style={{ width: 160, height: 40 }} />;
+}
+```
+
+If WebGL2 may be missing, choose the factory yourself with `isWebGL2Available() ? sharedRenderer() : canvas2dRenderer()` (from `blazeplot/renderers/canvas2d`). Details and measurements are in [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
+
+## Iframes, portals, and popups
+
+A chart uses the document and window of its host element. To render into an iframe or a popup window, create the chart from code that runs in the parent but passes a host element that belongs to the other document; the chart then observes size, schedules frames, and creates its overlays in that document. In React, mount the host with a portal into the iframe's `contentDocument.body`, and create the chart in the effect once that element exists. See [Browser support](./browser-support.md#iframes-popups-and-multiple-documents).
 
 ## Server-side rendering
 

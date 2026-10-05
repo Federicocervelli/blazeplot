@@ -45,16 +45,20 @@ console.log(chart.renderer); // "webgl2" or "canvas2d"
 // Later: chart.dispose();
 ```
 
-Every series type (line, area, bar, scatter, OHLC, candlestick, histogram), gaps, log/symlog and reversed axes, dual Y axes, wide lines, `chart.screenshot()`, every built-in plugin, and the flame graph plugin work on both renderers. `ctx.unstable.getWebGLContext()` returns `null` on Canvas 2D.
+`chart.renderer` is `"webgl2"`, `"canvas2d"`, or `"webgl2-shared"` (see [shared context](./performance-recipes.md#many-charts-on-one-page)). `canvas2dRenderer()` throws `Canvas2DUnavailableError` when the canvas cannot create a 2D context, which is rare; `autoRenderer()` only falls back when WebGL2 fails.
+
+Every series type (line, area, bar, scatter, OHLC, candlestick, histogram), gaps, log/symlog and reversed axes, dual Y axes, wide lines, `chart.screenshot()`, every built-in plugin, and the flame graph plugin work on both renderers. `ctx.unstable.getWebGLContext()` returns `null` on Canvas 2D (and on the shared WebGL renderer).
+
+WebGL context loss and restore (see [Error handling](./error-handling.md)) only applies to WebGL charts; Canvas 2D charts have nothing to lose.
 
 The renderers draw the same data with the same level-of-detail pipeline, so Canvas 2D stays interactive at typical chart sizes, but it is CPU-bound and slower than WebGL2 for very large visible point counts and many simultaneous charts. Expected visual differences:
 
 - Lines are antialiased (WebGL lines are not), so strokes look slightly softer.
 - Rectangles (bars, histogram bins, dense min/max columns, candle bodies) snap to whole device pixels and are at least one pixel wide and tall, so adjacent columns never show seams.
-- Scatter points are pixel-snapped squares of the same size.
-- Thin lines (1 CSS pixel or less) are 1 device pixel wide.
+- Scatter markers are round and the same size in both renderers; Canvas 2D antialiases their edges.
+- Lines narrower than one device pixel are drawn one device pixel wide.
 
-The visual test suite (`bun run test:visual`) renders every case with WebGL2, with Canvas 2D, and with WebGL disabled in Chrome through `autoRenderer()`; the Canvas 2D render has to stay within a documented pixel tolerance of the WebGL baselines (see [Local development](./internal/local-development.md)).
+The visual test suite (`bun run test:visual`) renders every case with WebGL2, with the shared WebGL context, with Canvas 2D, and with WebGL disabled in Chrome through `autoRenderer()`; the Canvas 2D render has to stay within a documented pixel tolerance of the WebGL baselines (see [Local development](./internal/local-development.md)).
 
 The default `renderer: "webgl2"` is unchanged, and a chart created without the option still throws `WebGL2UnavailableError` when WebGL2 is unavailable.
 
@@ -124,7 +128,7 @@ Automated coverage runs on every pull request in GitHub Actions (Ubuntu runners,
 
 | Engine | Browser | Coverage | Where |
 |---|---|---|---|
-| Chromium | Headless Chrome (current stable on the runner) | Full suite: benchmark smoke, every visual case, all interaction cases, website UX. | `browser` CI job (`bun run test:browser`) |
+| Chromium | Headless Chrome (current stable on the runner) | Full suite: benchmark smoke and performance gate, every visual case (WebGL2, shared context, Canvas 2D, and WebGL disabled), all interaction cases, axe accessibility and forced-colors checks, the leak and stability suite, website UX. | `browser` CI job (`bun run test:browser`) |
 | Gecko | Playwright Firefox | Smoke: WebGL2 context, non-blank chart pixels, `chart.screenshot()` readback, WebGL context loss/restore, hover, crosshair, wheel zoom, shift-drag pan, box zoom, double-click reset. | `cross-browser` CI job (`bun run test:cross-browser`) |
 | WebKit | Playwright WebKit (the engine behind Safari) | Same smoke as Firefox. | `cross-browser` CI job (`bun run test:cross-browser`) |
 
@@ -141,7 +145,11 @@ For each release candidate and the final 1.0 release, the release checklist reco
 
 Mobile WebGL2 verification is manual and not yet automated.
 
-Mobile browsers should use touch-friendly interaction options and compact axis/layout settings. See [Theming and layout](./theming-and-layout.md#mobile-layouts).
+Mobile browsers should use touch-friendly interaction options and compact axis/layout settings. Touch input uses Pointer Events only (there are no separate touch-event handlers). Charts on scrolling pages can use `interactionsPlugin({ touchPan: "two-finger", wheelZoom: "modifier" })` so they do not trap page scrolling; one-finger page scrolling in that mode is verified through touch emulation, not yet on a physical phone. See [Theming and layout](./theming-and-layout.md#mobile-layouts) and [Troubleshooting](./troubleshooting.md#page-scrolling-and-chart-gestures).
+
+## Iframes, popups, and multiple documents
+
+A chart uses the document and window that own its host element, so it works inside an iframe, a popup window, or a Document Picture-in-Picture window: create it with a host element from that document. Resize observation, animation frames, theme color resolution, `matchMedia` (forced colors), overlays, and plugin DOM use the host's window rather than the global one. Two helpers still use the global `document`: `isWebGL2Available()` probes with a throwaway canvas from it, and `downloadBlob` attaches its download link to it. Call them from the document you want them to act on, or pass your own check and download code.
 
 ## Clipboard and downloads
 
