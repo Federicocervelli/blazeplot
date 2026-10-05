@@ -3,7 +3,7 @@ import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
-import type { ChartRenderer, ChartRendererKind, RendererLossState } from "../render/ChartRenderer.js";
+import type { ChartRenderer, ChartRendererInfo, RendererLossState, RendererName } from "../render/ChartRenderer.js";
 import { createEngine } from "../render/engines.js";
 import { SeriesPainter } from "../render/SeriesPainter.js";
 import { Camera2D } from "../interaction/Camera2D.js";
@@ -196,9 +196,14 @@ export class Chart {
     return this.plugins.install(plugin);
   }
 
-  /** Rendering backend in use: `"webgl2"`, `"webgl2-shared"` (via `sharedRenderer()`), or `"canvas2d"`. */
-  get renderer(): ChartRendererKind {
-    return this.engine.kind;
+  /** Rendering engine in use: `"webgl2"`, `"canvas2d"`, or `"shared"` (a WebGL2 context shared with other charts). */
+  get renderer(): RendererName {
+    return this.engine.info.name;
+  }
+
+  /** The engine in use, what was requested, whether `"auto"` fell back, and the engine's capabilities. */
+  get rendererInfo(): ChartRendererInfo {
+    return this.engine.info;
   }
 
   /** @internal WebGL canvas. Plugins use `ctx.dom`, `ctx.layout`, or `ctx.unstable.canvas`. */

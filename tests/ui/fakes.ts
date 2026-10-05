@@ -1,5 +1,6 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import type { ChartRenderer, ChartRendererCapabilities, FrameReport, RendererLossState } from "../../src/render/ChartRenderer.ts";
+import { describeRenderer } from "../../src/render/ChartRenderer.ts";
+import type { ChartRenderer, ChartRendererInfo, FrameReport, RendererLossState } from "../../src/render/ChartRenderer.ts";
 
 /** One draw call a chart made on a {@link RecordingRenderer}. */
 export interface RecordedDraw {
@@ -10,7 +11,7 @@ export interface RecordedDraw {
 /** Fake engine that records what a chart asks it to draw and lets tests simulate context loss. */
 export class RecordingRenderer implements ChartRenderer {
   readonly kind = "webgl2" as const;
-  readonly capabilities: ChartRendererCapabilities = { gpu: true, contextLoss: true, shared: false, maxDrawingBufferPixels: 1 << 24 };
+  readonly info: ChartRendererInfo = describeRenderer("webgl2", { gpu: true, contextLoss: true, shared: false, maxDrawingBufferPixels: 1 << 24 });
   /** Every draw call since the last reset, in order. */
   draws: RecordedDraw[] = [];
   /** Number of `endFrame` calls, i.e. frames the chart finished. */

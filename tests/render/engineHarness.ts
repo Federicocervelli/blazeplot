@@ -1,5 +1,5 @@
 import { Canvas2DRenderer } from "../../src/render/canvas2d/Canvas2DRenderer.ts";
-import type { ChartRenderer } from "../../src/render/ChartRenderer.ts";
+import type { ChartRenderer, RendererName } from "../../src/render/ChartRenderer.ts";
 import { SharedWebGLContext } from "../../src/render/webgl2/SharedWebGL.ts";
 import type { DrawCommand, GpuBackend } from "../../src/render/webgl2/types.ts";
 import { WebGL2Renderer } from "../../src/render/webgl2/WebGL2Renderer.ts";
@@ -26,7 +26,7 @@ export interface EngineHarness {
   restore(): void;
   /** How many times the engine (re)built its GPU resources, or `null` for engines that have none. */
   rebuilds(): number | null;
-  readonly expected: { readonly gpu: boolean; readonly shared: boolean };
+  readonly expected: { readonly name: RendererName; readonly gpu: boolean; readonly shared: boolean };
 }
 
 export interface EngineFixture {
@@ -223,7 +223,7 @@ export const webgl2Fixture: EngineFixture = {
   create() {
     const log = new GlRecorder();
     const canvas = new EventTarget() as unknown as HTMLCanvasElement;
-    const renderer = new WebGL2Renderer(canvas, () => log.backend());
+    const renderer = new WebGL2Renderer(canvas, { createBackend: () => log.backend() });
     return {
       name: "webgl2",
       renderer,
@@ -235,7 +235,7 @@ export const webgl2Fixture: EngineFixture = {
       lose: () => loseEvent(canvas, "webglcontextlost"),
       restore: () => void canvas.dispatchEvent(new Event("webglcontextrestored")),
       rebuilds: () => log.builds,
-      expected: { gpu: true, shared: false },
+      expected: { name: "webgl2", gpu: true, shared: false },
     };
   },
 };
@@ -268,7 +268,7 @@ export const canvas2dFixture: EngineFixture = {
         canvas.dispatchEvent(new Event("contextrestored"));
       },
       rebuilds: () => null,
-      expected: { gpu: false, shared: false },
+      expected: { name: "canvas2d", gpu: false, shared: false },
     };
   },
 };
@@ -293,7 +293,7 @@ export const sharedFixture: EngineFixture = {
       lose: () => loseEvent(hidden, "webglcontextlost"),
       restore: () => void hidden.dispatchEvent(new Event("webglcontextrestored")),
       rebuilds: () => log.builds,
-      expected: { gpu: true, shared: true },
+      expected: { name: "shared", gpu: true, shared: true },
     };
   },
 };

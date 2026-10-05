@@ -240,7 +240,7 @@ async function runMode(mode: RendererMode, index: number, base: Options, serverU
       url.searchParams.set("case", caseName);
       if (mode === "shared") {
         url.searchParams.set("renderer", "shared");
-        url.searchParams.set("expectRenderer", "webgl2-shared");
+        url.searchParams.set("expectRenderer", "shared");
       } else if (mode === "canvas2d") {
         url.searchParams.set("renderer", "canvas2d");
         url.searchParams.set("expectRenderer", "canvas2d");

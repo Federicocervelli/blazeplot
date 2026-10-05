@@ -19,7 +19,7 @@ export interface FrameReport {
 /** Context state transitions an engine reports to the chart that owns it. */
 export type RendererLossState = "lost" | "restored";
 
-/** @internal Static facts about an engine instance. */
+/** Static facts about the engine a chart draws with. */
 export interface ChartRendererCapabilities {
   /** Draws on the GPU. */
   readonly gpu: boolean;
@@ -31,8 +31,37 @@ export interface ChartRendererCapabilities {
   readonly maxDrawingBufferPixels: number;
 }
 
+/** A built-in rendering engine: WebGL2, Canvas 2D, or WebGL2 through a context shared with other charts. */
+export type RendererName = "webgl2" | "canvas2d" | "shared";
+
+/** What `ChartOptions.renderer` can ask for: an engine by name, or `"auto"` (WebGL2, else Canvas 2D). */
+export type RendererChoice = RendererName | "auto";
+
 /** Rendering backend a chart is drawn with. */
-export type ChartRendererKind = "webgl2" | "webgl2-shared" | "canvas2d";
+export type ChartRendererKind = RendererName;
+
+/** Which engine a chart ended up with, what was asked for, and what that engine can do. */
+export interface ChartRendererInfo {
+  /** The engine in use. */
+  readonly name: RendererName;
+  /** What was requested: the `renderer` option's name, or `"auto"`. A factory reports the name it stands for. */
+  readonly requested: RendererChoice;
+  /** Set when `"auto"` could not start this engine's preferred one: the engine that was skipped. */
+  readonly fallbackFrom?: RendererName;
+  readonly capabilities: ChartRendererCapabilities;
+}
+
+/** @internal How an engine came to be chosen; engines turn it into their {@link ChartRendererInfo}. */
+export interface RendererOrigin {
+  readonly requested?: RendererChoice;
+  readonly fallbackFrom?: RendererName;
+}
+
+/** @internal Build the frozen {@link ChartRendererInfo} an engine reports. */
+export function describeRenderer(name: RendererName, capabilities: ChartRendererCapabilities, origin: RendererOrigin = {}): ChartRendererInfo {
+  const info: ChartRendererInfo = { name, requested: origin.requested ?? name, ...(origin.fallbackFrom ? { fallbackFrom: origin.fallbackFrom } : {}), capabilities: Object.freeze({ ...capabilities }) };
+  return Object.freeze(info);
+}
 
 /** Opaque renderer instance returned by a renderer factory. Only the built-in renderers implement it. */
 export interface ChartRendererHandle {
@@ -51,8 +80,8 @@ export interface ChartRenderer extends ChartRendererHandle {
   beginFrame(width: number, height: number, pixelRatio: number): void;
   /** Finish the frame: submit anything recorded since `beginFrame`, present it, and report what it cost. */
   endFrame(): FrameReport;
-  /** Static facts about this engine instance. */
-  readonly capabilities: ChartRendererCapabilities;
+  /** What this engine is, why it was chosen, and what it can do. Stable for the engine's lifetime. */
+  readonly info: ChartRendererInfo;
   /** Whether the engine's context is currently lost, so drawing is pointless until it is restored. */
   readonly isLost: boolean;
   /**

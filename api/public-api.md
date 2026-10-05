@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-154 exports.
+165 exports.
 
 #### interface AcceleratedDataset
 
@@ -143,12 +143,21 @@ class Camera2D {
 }
 ```
 
+#### class Canvas2DUnavailableError
+
+```ts
+class Canvas2DUnavailableError extends Error {
+    constructor(message?: string);
+}
+```
+
 #### class Chart
 
 ```ts
 class Chart {
     constructor(target: HTMLElement, options?: ChartOptions);
-    get renderer(): ChartRendererKind;
+    get renderer(): RendererName;
+    get rendererInfo(): ChartRendererInfo;
     get rootElement(): HTMLElement;
     get theme(): ResolvedChartTheme;
     dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [
@@ -245,6 +254,7 @@ interface ChartEventMap extends ChartPluginEventMap {
     themechange: void;
     render: void;
     viewportchange: ChartViewportChangeEvent;
+    rendererchange: ChartRendererInfo;
     followxchange: ChartFollowXChangeEvent;
     seriesclick: ChartSeriesClickEvent;
     click: ChartPointerEvent;
@@ -392,7 +402,7 @@ interface ChartOptions {
     readonly renderLoop?: ChartRenderLoop;
     readonly plugins?: readonly ChartPlugin[];
     readonly theme?: ChartTheme;
-    readonly renderer?: "webgl2" | ChartRendererFactory;
+    readonly renderer?: RendererChoice | ChartRendererFactory;
 }
 ```
 
@@ -632,10 +642,31 @@ interface ChartRect {
 }
 ```
 
+#### interface ChartRenderContext
+
+```ts
+interface ChartRenderContext {
+    renderer(): ChartRendererFactory;
+    readonly chartCount: number;
+    dispose(): void;
+}
+```
+
 #### type ChartRenderLoop
 
 ```ts
 type ChartRenderLoop = "auto" | "continuous";
+```
+
+#### interface ChartRendererCapabilities
+
+```ts
+interface ChartRendererCapabilities {
+    readonly gpu: boolean;
+    readonly contextLoss: boolean;
+    readonly shared: boolean;
+    readonly maxDrawingBufferPixels: number;
+}
 ```
 
 #### type ChartRendererFactory
@@ -660,10 +691,21 @@ interface ChartRendererHandle {
 }
 ```
 
+#### interface ChartRendererInfo
+
+```ts
+interface ChartRendererInfo {
+    readonly name: RendererName;
+    readonly requested: RendererChoice;
+    readonly fallbackFrom?: RendererName;
+    readonly capabilities: ChartRendererCapabilities;
+}
+```
+
 #### type ChartRendererKind
 
 ```ts
-type ChartRendererKind = "webgl2" | "webgl2-shared" | "canvas2d";
+type ChartRendererKind = RendererName;
 ```
 
 #### interface ChartScreenshotOptions
@@ -1094,6 +1136,18 @@ interface RangeMinMaxDataset extends Dataset {
 interface RangeSampleCopyDataset extends Dataset {
     copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number): number;
 }
+```
+
+#### type RendererChoice
+
+```ts
+type RendererChoice = RendererName | "auto";
+```
+
+#### type RendererName
+
+```ts
+type RendererName = "webgl2" | "canvas2d" | "shared";
 ```
 
 #### interface ResolvedChartTheme
@@ -1736,6 +1790,24 @@ interface ZoomIntent {
 }
 ```
 
+#### function autoRenderer
+
+```ts
+function autoRenderer(): ChartRendererFactory;
+```
+
+#### function canvas2dRenderer
+
+```ts
+function canvas2dRenderer(): ChartRendererFactory;
+```
+
+#### function createChartRenderContext
+
+```ts
+function createChartRenderContext(doc?: Document): ChartRenderContext;
+```
+
 #### function histogram
 
 ```ts
@@ -1746,6 +1818,18 @@ function histogram(values: ArrayLike<number>, options?: HistogramOptions): Histo
 
 ```ts
 function isWebGL2Available(doc?: Document | undefined): boolean;
+```
+
+#### function sharedRenderer
+
+```ts
+function sharedRenderer(context?: ChartRenderContext): ChartRendererFactory;
+```
+
+#### function webgl2Renderer
+
+```ts
+function webgl2Renderer(): ChartRendererFactory;
 ```
 
 ### `blazeplot/linked`

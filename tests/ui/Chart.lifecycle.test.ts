@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { countNodes, RecordingRenderer, recordingRenderer, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
+import { countNodes, RecordingRenderer, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
+import { chartRenderer, describeRecorded, installEngineDoubles, itRecorded } from "./engines.ts";
 import type { FakeRaf, ListenerLedger, TestEnv } from "./fakes.ts";
 import type { Chart as ChartType, ChartOptions } from "../../src/ui/Chart.ts";
 import type { ChartPlugin, ChartPluginContext, ChartPluginHandle } from "../../src/ui/PluginHost.ts";
@@ -9,14 +10,19 @@ let env: TestEnv;
 let raf: FakeRaf;
 let Chart: typeof ChartType;
 let WebGL2UnavailableError: typeof UnavailableErrorType;
+let restoreEngineDoubles: () => void;
 
 beforeAll(async () => {
   env = setupDom();
+  restoreEngineDoubles = installEngineDoubles();
   raf = env.raf;
   ({ Chart } = await import("../../src/ui/Chart.ts"));
   ({ WebGL2UnavailableError } = await import("../../src/render/webgl2/availability.ts"));
 });
-afterAll(() => env.teardown());
+afterAll(() => {
+  restoreEngineDoubles();
+  env.teardown();
+});
 
 let target: HTMLDivElement;
 let backends: RecordingRenderer[];
@@ -25,7 +31,7 @@ let ledger: ListenerLedger;
 function make(options: ChartOptions = {}): ChartType {
   return new Chart(target, {
     ...options,
-    renderer: recordingRenderer(backends),
+    renderer: chartRenderer(backends),
   });
 }
 
@@ -57,7 +63,7 @@ afterEach(() => {
 });
 
 describe("Chart construct / dispose", () => {
-  it("mounts DOM under the target and creates one engine", () => {
+  itRecorded("mounts DOM under the target and creates one engine", () => {
     const chart = make({ title: "Hello" });
     expect(target.children).toHaveLength(1);
     expect(target.firstElementChild).toBe(chart.rootElement);
@@ -67,7 +73,7 @@ describe("Chart construct / dispose", () => {
     chart.dispose();
   });
 
-  it("removes DOM, listeners, observers, rAF callbacks, and backend resources on dispose", () => {
+  itRecorded("removes DOM, listeners, observers, rAF callbacks, and backend resources on dispose", () => {
     const chart = make({ title: "T", axes: { x: true, y: true, y2: true } });
     chart.addLine({ capacity: 16 }).append({ x: 1, y: 2 });
     chart.start();
@@ -92,7 +98,7 @@ describe("Chart construct / dispose", () => {
     expect(raf.pending.size).toBe(0);
   });
 
-  it("is idempotent", () => {
+  itRecorded("is idempotent", () => {
     const chart = make();
     chart.start();
     chart.dispose();
@@ -104,7 +110,7 @@ describe("Chart construct / dispose", () => {
     expect(backends[0]!.disposeCount).toBe(1);
   });
 
-  it("hands the engine its own release: dispose reaches it exactly once", () => {
+  itRecorded("hands the engine its own release: dispose reaches it exactly once", () => {
     const chart = make();
     chart.start();
     expect(backends[0]!.disposeCount).toBe(0);
@@ -113,7 +119,7 @@ describe("Chart construct / dispose", () => {
     expect(backends[0]!.disposeCount).toBe(1);
   });
 
-  it("still disposes cleanly when the engine throws on cleanup", () => {
+  itRecorded("still disposes cleanly when the engine throws on cleanup", () => {
     const chart = make();
     backends[0]!.dispose = () => {
       throw new Error("context is gone");
@@ -130,7 +136,7 @@ describe("Chart construct / dispose", () => {
     expect(raf.pending.size).toBe(0);
   });
 
-  it("repeated construct/dispose cycles leave no DOM, listeners, or backend resources behind", () => {
+  itRecorded("repeated construct/dispose cycles leave no DOM, listeners, or backend resources behind", () => {
     const baselineNodes = countNodes(document.body);
     for (let i = 0; i < 25; i++) {
       const chart = make({ title: "x", axes: { x: true, y: true, y2: true } });
@@ -221,7 +227,7 @@ describe("Chart resize", () => {
 });
 
 describe("Chart frames", () => {
-  it("finishes one engine frame per render regardless of series and chunk count", () => {
+  itRecorded("finishes one engine frame per render regardless of series and chunk count", () => {
     const render = (seriesCount: number): { frames: number; draws: number } => {
       const chart = make({ grid: true });
       for (let i = 0; i < seriesCount; i++) {
@@ -291,7 +297,7 @@ describe("Chart series churn", () => {
     chart.dispose();
   });
 
-  it("does not draw removed series", () => {
+  itRecorded("does not draw removed series", () => {
     const chart = make({ grid: false });
     const series = chart.addLine({ capacity: 8 });
     series.append({ x: 0, y: 0 });
@@ -417,7 +423,7 @@ describe("Chart plugins", () => {
     expect(log).toEqual(["dispose c", "dispose b", "dispose a"]);
   });
 
-  it("runs lifecycle hooks in registration order, onThemeChange before the themechange event", () => {
+  itRecorded("runs lifecycle hooks in registration order, onThemeChange before the themechange event", () => {
     const log: string[] = [];
     const chart = make({ plugins: [recorder("a", log), recorder("b", log)] });
     chart.subscribe("themechange", () => log.push("event themechange"));
@@ -466,7 +472,7 @@ describe("Chart plugins", () => {
     expect(log).toEqual(["install a", "dispose a"]);
   });
 
-  it("a throwing plugin disposer does not stop later disposers or chart cleanup", () => {
+  itRecorded("a throwing plugin disposer does not stop later disposers or chart cleanup", () => {
     const log: string[] = [];
     const chart = make({
       plugins: [
@@ -483,7 +489,7 @@ describe("Chart plugins", () => {
     expect(backends[0]!.disposeCount).toBe(1);
   });
 
-  it("a plugin that throws during install tears down the already-built chart", () => {
+  itRecorded("a plugin that throws during install tears down the already-built chart", () => {
     const log: string[] = [];
     expect(() =>
       make({
@@ -615,7 +621,7 @@ describe("Chart plugins", () => {
   });
 });
 
-describe("Chart WebGL2 availability", () => {
+describeRecorded("Chart WebGL2 availability", () => {
   it("throws WebGL2UnavailableError with the default backend when no context exists", () => {
     expect(() => new Chart(target)).toThrow(WebGL2UnavailableError);
   });
@@ -627,7 +633,7 @@ describe("Chart WebGL2 availability", () => {
     expect(FakeResizeObserver.instances).toHaveLength(0);
   });
 
-  it("restores a caller-supplied canvas when construction fails", () => {
+  itRecorded("restores a caller-supplied canvas when construction fails", () => {
     const canvas = document.createElement("canvas");
     canvas.style.cssText = "width: 10px;";
     target.appendChild(canvas);
@@ -639,7 +645,7 @@ describe("Chart WebGL2 availability", () => {
 
 });
 
-describe("Chart context loss", () => {
+describeRecorded("Chart context loss", () => {
   function lose(): void {
     backends.at(-1)!.lose();
   }
@@ -653,7 +659,7 @@ describe("Chart context loss", () => {
     chart.fitToData();
   }
 
-  it("stops drawing when the engine reports loss, tells plugins, and skips frames until restoration", () => {
+  itRecorded("stops drawing when the engine reports loss, tells plugins, and skips frames until restoration", () => {
     const log: string[] = [];
     const chart = make({ grid: false, plugins: [{ install: () => ({ onContextLost: () => log.push("lost"), onContextRestored: () => log.push("restored") }) }] });
     withData(chart);
@@ -672,7 +678,7 @@ describe("Chart context loss", () => {
     chart.dispose();
   });
 
-  it("renders again after the engine reports restoration, on the same engine", () => {
+  itRecorded("renders again after the engine reports restoration, on the same engine", () => {
     const log: string[] = [];
     const chart = make({ grid: false, plugins: [{ install: () => ({ onContextLost: () => log.push("lost"), onContextRestored: () => log.push("restored") }) }] });
     withData(chart);
@@ -695,7 +701,7 @@ describe("Chart context loss", () => {
     expect(raf.pending.size).toBe(0);
   });
 
-  it("detects a lost engine during render and does not emit render", () => {
+  itRecorded("detects a lost engine during render and does not emit render", () => {
     const chart = make();
     chart.start();
     backends[0]!.lost = true;
@@ -706,7 +712,7 @@ describe("Chart context loss", () => {
     chart.dispose();
   });
 
-  it("ignores engine notifications after dispose", () => {
+  itRecorded("ignores engine notifications after dispose", () => {
     const log: string[] = [];
     const chart = make({ plugins: [{ install: () => ({ onContextLost: () => log.push("lost") }) }] });
     chart.dispose();
@@ -714,7 +720,7 @@ describe("Chart context loss", () => {
     expect(log).toEqual([]);
   });
 
-  it("cancels the post-restore render if the context is lost again or the chart is disposed", () => {
+  itRecorded("cancels the post-restore render if the context is lost again or the chart is disposed", () => {
     const chart = make();
     lose();
     restore();

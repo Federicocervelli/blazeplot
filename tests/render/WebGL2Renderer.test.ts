@@ -54,7 +54,7 @@ class MockBackend implements GpuBackend {
 function makeRenderer(): { renderer: WebGL2Renderer; backend: MockBackend } {
   const backend = new MockBackend();
   const canvas = new EventTarget() as unknown as HTMLCanvasElement;
-  return { renderer: new WebGL2Renderer(canvas, () => backend), backend };
+  return { renderer: new WebGL2Renderer(canvas, { createBackend: () => backend }), backend };
 }
 
 const positions = new Float32Array([0, 0, 1, 1, 2, 0, 3, 1, 4, 0, 5, 1, 6, 0, 7, 1]);
@@ -190,11 +190,13 @@ describe("WebGL2Renderer context ownership", () => {
     const backends: MockBackend[] = [];
     const canvas = new EventTarget() as unknown as HTMLCanvasElement;
     let failRebuild = false;
-    const renderer = new WebGL2Renderer(canvas, () => {
-      if (failRebuild) throw new Error("no WebGL2");
-      const backend = new MockBackend();
-      backends.push(backend);
-      return backend;
+    const renderer = new WebGL2Renderer(canvas, {
+      createBackend: () => {
+        if (failRebuild) throw new Error("no WebGL2");
+        const backend = new MockBackend();
+        backends.push(backend);
+        return backend;
+      },
     });
     return {
       renderer,

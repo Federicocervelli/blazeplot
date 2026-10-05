@@ -1,4 +1,5 @@
-import type { ChartRenderer, ChartRendererCapabilities, FrameReport, RenderProjection, RendererLossState } from "../ChartRenderer.js";
+import { describeRenderer } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererInfo, FrameReport, RenderProjection, RendererLossState, RendererOrigin } from "../ChartRenderer.js";
 import type { RgbaColor, SeriesStyle } from "../../core/types.js";
 
 /** Error thrown when a Canvas 2D renderer cannot be created. */
@@ -24,7 +25,7 @@ interface PixelMap {
 /** @internal CPU-projected Canvas 2D implementation of `ChartRenderer`, used without WebGL2. */
 export class Canvas2DRenderer implements ChartRenderer {
   readonly kind = "canvas2d" as const;
-  readonly capabilities: ChartRendererCapabilities = { gpu: false, contextLoss: true, shared: false, maxDrawingBufferPixels: MAX_CANVAS_PIXELS };
+  readonly info: ChartRendererInfo;
   private readonly ctx: CanvasRenderingContext2D;
   private lossListener: ((state: RendererLossState) => void) | null = null;
   private lost = false;
@@ -34,10 +35,11 @@ export class Canvas2DRenderer implements ChartRenderer {
   private pixelRatio = 1;
   private readonly map: PixelMap = { sx: 0, ox: 0, sy: 0, oy: 0 };
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
+  constructor(private readonly canvas: HTMLCanvasElement, origin?: RendererOrigin) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Canvas2DUnavailableError();
     this.ctx = ctx;
+    this.info = describeRenderer("canvas2d", { gpu: false, contextLoss: true, shared: false, maxDrawingBufferPixels: MAX_CANVAS_PIXELS }, origin);
     canvas.addEventListener("contextlost", this.handleContextLost);
     canvas.addEventListener("contextrestored", this.handleContextRestored);
   }

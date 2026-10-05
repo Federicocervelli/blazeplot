@@ -36,10 +36,13 @@ export function defineEngineContract(fixture: EngineFixture): void {
   describe(`engine contract: ${fixture.name}`, () => {
     it("reports what it is", () => {
       const { renderer, expected } = fixture.create();
-      expect(renderer.capabilities.gpu).toBe(expected.gpu);
-      expect(renderer.capabilities.shared).toBe(expected.shared);
-      expect(renderer.capabilities.contextLoss).toBe(true);
-      expect(renderer.capabilities.maxDrawingBufferPixels).toBeGreaterThan(0);
+      expect(renderer.kind).toBe(expected.name);
+      expect(renderer.info).toMatchObject({ name: expected.name, requested: expected.name });
+      expect(renderer.info.fallbackFrom).toBeUndefined();
+      expect(renderer.info.capabilities.gpu).toBe(expected.gpu);
+      expect(renderer.info.capabilities.shared).toBe(expected.shared);
+      expect(renderer.info.capabilities.contextLoss).toBe(true);
+      expect(renderer.info.capabilities.maxDrawingBufferPixels).toBeGreaterThan(0);
       expect(renderer.isLost).toBe(false);
     });
 

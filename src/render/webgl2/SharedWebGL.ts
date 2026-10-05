@@ -1,4 +1,5 @@
-import type { ChartRenderer, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, FrameReport, RenderProjection, RendererLossState } from "../ChartRenderer.js";
+import { describeRenderer } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererInfo, FrameReport, RenderProjection, RendererLossState } from "../ChartRenderer.js";
 import { WebGL2Renderer } from "./WebGL2Renderer.js";
 import type { GpuBackend } from "./types.js";
 import type { RgbaColor, SeriesStyle } from "../../core/types.js";
@@ -52,7 +53,7 @@ export class SharedWebGLContext implements ChartRenderContext {
       const canvas = doc.createElement("canvas");
       // Rendering happens in the shared canvas; it only needs a size, never to be attached to the page.
       // The engine owns the hidden canvas's loss/restore events and rebuilds itself; the context just fans them out.
-      const renderer = new WebGL2Renderer(canvas, this.createBackend);
+      const renderer = new WebGL2Renderer(canvas, { createBackend: this.createBackend });
       renderer.setLossListener(this.handleLoss);
       this.canvas = canvas;
       this.renderer_ = renderer;
@@ -90,8 +91,7 @@ export class SharedWebGLContext implements ChartRenderContext {
 
   /** @internal Capabilities of the shared engine. */
   get capabilities(): ChartRendererCapabilities {
-    const base = this.renderer_?.capabilities;
-    return { gpu: true, contextLoss: true, shared: true, maxDrawingBufferPixels: base?.maxDrawingBufferPixels ?? 0 };
+    return { gpu: true, contextLoss: true, shared: true, maxDrawingBufferPixels: this.renderer_?.info.capabilities.maxDrawingBufferPixels ?? 0 };
   }
 
   /** @internal The shared renderer; draw calls from the active chart go straight to it. */
@@ -124,7 +124,8 @@ export class SharedWebGLContext implements ChartRenderContext {
 
 /** @internal Per-chart renderer that draws into a `SharedWebGLContext` and blits into the chart canvas. */
 class SharedWebGLRenderer implements ChartRenderer {
-  readonly kind = "webgl2-shared" as const;
+  readonly kind = "shared" as const;
+  readonly info: ChartRendererInfo;
   private lossListener: ((state: RendererLossState) => void) | null = null;
   private readonly target: CanvasRenderingContext2D;
   private readonly chartCanvas: HTMLCanvasElement;
@@ -143,16 +144,13 @@ class SharedWebGLRenderer implements ChartRenderer {
     this.target = target;
     this.chartCanvas = context.canvas;
     shared.attach(this);
+    this.info = describeRenderer("shared", shared.capabilities);
   }
 
   beginFrame(width: number, height: number, pixelRatio: number): void {
     this.width = Math.max(1, width);
     this.height = Math.max(1, height);
     this.shared.beginFrame(this.width, this.height, pixelRatio);
-  }
-
-  get capabilities(): ChartRendererCapabilities {
-    return this.shared.capabilities;
   }
 
   get isLost(): boolean {

@@ -2,7 +2,7 @@ import type { SeriesConfig, SeriesMode, SeriesSample, SeriesYAxis, Viewport, XRa
 import type { AxisPosition } from "./ChartLayout.js";
 import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 import type { SeriesStore } from "../core/SeriesStore.js";
-import type { ChartRendererFactory } from "../render/ChartRenderer.js";
+import type { ChartRendererFactory, ChartRendererInfo, RendererChoice } from "../render/ChartRenderer.js";
 import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { ViewportPolicy } from "../interaction/types.js";
 import type { ChartTheme } from "./theme.js";
@@ -114,11 +114,15 @@ export interface ChartOptions {
   readonly plugins?: readonly ChartPlugin[];
   readonly theme?: ChartTheme;
   /**
-   * Rendering backend. Defaults to `"webgl2"`. Pass a factory from `blazeplot/renderers/canvas2d`
-   * (`canvas2dRenderer()`, or `autoRenderer()` to fall back to Canvas 2D when WebGL2 is
-   * unavailable) to render without WebGL2. Read the chosen backend from `chart.renderer`.
+   * Rendering engine. Defaults to `"auto"`: WebGL2, falling back to Canvas 2D when WebGL2 is
+   * unavailable. `"webgl2"` and `"canvas2d"` are strict and throw `WebGL2UnavailableError` /
+   * `Canvas2DUnavailableError` when the engine cannot start; `"shared"` draws through one
+   * WebGL2 context shared by every chart on the document. A name is shorthand for its factory
+   * (`webgl2Renderer()`, `canvas2dRenderer()`, `sharedRenderer()`, `autoRenderer()`), which also
+   * accepts a render context from `createChartRenderContext()`. Read the outcome from
+   * `chart.renderer` and `chart.rendererInfo`.
    */
-  readonly renderer?: "webgl2" | ChartRendererFactory;
+  readonly renderer?: RendererChoice | ChartRendererFactory;
 }
 
 /** Series configuration used by typed helpers such as `addLine`. */
@@ -258,6 +262,8 @@ export interface ChartEventMap extends ChartPluginEventMap {
   /** A frame finished drawing. */
   render: void;
   viewportchange: ChartViewportChangeEvent;
+  /** Reserved for a chart that switches engine while running. Nothing emits it yet; read `chart.rendererInfo` for the current engine. */
+  rendererchange: ChartRendererInfo;
   /** Latest-X following started, stopped, paused, or resumed. */
   followxchange: ChartFollowXChangeEvent;
   seriesclick: ChartSeriesClickEvent;

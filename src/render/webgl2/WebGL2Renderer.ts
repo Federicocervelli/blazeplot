@@ -1,4 +1,5 @@
-import type { ChartRenderer, ChartRendererCapabilities, ChartRendererFactory, FrameReport, RenderProjection, RendererLossState } from "../ChartRenderer.js";
+import { describeRenderer } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererInfo, FrameReport, RenderProjection, RendererLossState, RendererOrigin } from "../ChartRenderer.js";
 import type { DrawCommand, GpuBackend, SolidPrimitive } from "./types.js";
 import type { RgbaColor, SeriesStyle } from "../../core/types.js";
 import { WebGL2Backend } from "./WebGL2Backend.js";
@@ -25,18 +26,20 @@ export class WebGL2Renderer implements ChartRenderer {
   private lost = false;
   private disposed = false;
 
+  readonly info: ChartRendererInfo;
+  private readonly createBackend: (canvas: HTMLCanvasElement) => GpuBackend;
+
   /**
    * @param canvas Canvas that owns the WebGL2 context; the renderer listens for its loss and restore events.
-   * @param createBackend Builds a backend on `canvas`; called again after a context restore.
+   * @param options `createBackend` builds a backend on `canvas` and is called again after a context restore;
+   * `origin` records how this engine was chosen for `info`.
    */
-  constructor(private readonly canvas: HTMLCanvasElement, private readonly createBackend: (canvas: HTMLCanvasElement) => GpuBackend = (target) => new WebGL2Backend(target)) {
-    this.backend = createBackend(canvas);
+  constructor(private readonly canvas: HTMLCanvasElement, options: { readonly createBackend?: (canvas: HTMLCanvasElement) => GpuBackend; readonly origin?: RendererOrigin } = {}) {
+    this.createBackend = options.createBackend ?? ((target) => new WebGL2Backend(target));
+    this.backend = this.createBackend(canvas);
+    this.info = describeRenderer("webgl2", { gpu: true, contextLoss: true, shared: false, maxDrawingBufferPixels: this.backend.maxDrawingBufferPixels ?? DEFAULT_MAX_DRAWING_BUFFER_PIXELS }, options.origin);
     canvas.addEventListener("webglcontextlost", this.handleContextLost);
     canvas.addEventListener("webglcontextrestored", this.handleContextRestored);
-  }
-
-  get capabilities(): ChartRendererCapabilities {
-    return { gpu: true, contextLoss: true, shared: false, maxDrawingBufferPixels: this.backend.maxDrawingBufferPixels ?? DEFAULT_MAX_DRAWING_BUFFER_PIXELS };
   }
 
   get isLost(): boolean {
@@ -212,9 +215,4 @@ export class WebGL2Renderer implements ChartRenderer {
     this.streamFloats = end;
     return start >> 1;
   }
-}
-
-/** The default renderer factory: WebGL2, throwing `WebGL2UnavailableError` when it is unavailable. */
-export function webgl2Renderer(): ChartRendererFactory {
-  return ({ canvas }) => new WebGL2Renderer(canvas);
 }
