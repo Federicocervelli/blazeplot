@@ -13,6 +13,7 @@ import { AxisController } from "../interaction/AxisController.js";
 import type { PanIntent, ZoomIntent } from "../interaction/types.js";
 import { AUTO_GUTTER_PADDING_PX, AxisOverlay, GutterTracker, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
+import { ChartEmitter } from "./ChartEmitter.js";
 import { ChartHover } from "./ChartHover.js";
 import { ChartPicker, insidePlot, plotToData } from "./ChartPicker.js";
 import { forcedColorsTheme, resolveChartTheme } from "./theme.js";
@@ -34,8 +35,6 @@ const MIN_AUTO_GUTTER_PX = 16;
 export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartPickMode, ChartPickGroup, ChartPickOptions, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartBackendFactoryContext, ChartBackendFactory, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeSource, ChartViewportChangeEvent, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartScreenshotOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState, ChartFrameStats };
 import type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartPickMode, ChartPickGroup, ChartPickOptions, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartBackendFactoryContext, ChartBackendFactory, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeSource, ChartViewportChangeEvent, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartScreenshotOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState, ChartFrameStats } from "./ChartTypes.js";
 
-
-type Listener<K extends ChartEventName> = (payload: ChartEventMap[K]) => void;
 
 interface ChartGpuResources {
   readonly renderer: ChartRenderer;
@@ -68,8 +67,7 @@ export class Chart {
   private readonly painter = new SeriesPainter(this.stats, GRID_LINE_VERTEX_CAPACITY);
   private resizeObserver: ResizeObserver | null = null;
   private readonly plugins: PluginHost;
-  /** Listener sets keyed by event; `never` payloads let every typed listener share one map. */
-  private readonly listeners = new Map<ChartEventName, Set<(payload: never) => void>>();
+  private readonly events = new ChartEmitter();
   private readonly layoutReservations = new Map<string, ChartLayoutReservation>();
   private readonly hover: ChartHover = new ChartHover({
     picker: this.picker,
@@ -78,8 +76,8 @@ export class Chart {
     series: () => this.series,
     hoverOptions: () => this.options.hover,
     axis: () => this.axis,
-    emit: (event, payload) => this.emit(event, payload),
-    hasListeners: (event) => this.hasListeners(event),
+    emit: (event, payload) => this.events.emit(event, payload),
+    hasListeners: (event) => this.events.has(event),
   });
   private lastFrameAt: number = 0;
   private readonly followXPolicy: FollowXController = new FollowXController({
@@ -191,7 +189,7 @@ export class Chart {
     }
 
     this.plugins = new PluginHost(this, {
-      emit: (event, payload) => this.emit(event, payload),
+      emit: (event, payload) => this.events.emit(event, payload),
       setLayoutReservation: (id, reservation) => this.setLayoutReservation(id, reservation),
       inspect: (inspectTarget) => this.hover.inspect(inspectTarget),
       getInspection: () => this.hover.inspection,
@@ -581,15 +579,7 @@ export class Chart {
 
   /** Subscribe to a chart event; returns an unsubscribe function. */
   subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void {
-    let listeners = this.listeners.get(event);
-    if (!listeners) {
-      listeners = new Set();
-      this.listeners.set(event, listeners);
-    }
-    listeners.add(callback);
-    return () => {
-      listeners.delete(callback);
-    };
+    return this.events.subscribe(event, callback);
   }
 
   /** Replace the chart theme and re-render. Plugin `onThemeChange` hooks run before the `themechange` event. */
@@ -611,7 +601,7 @@ export class Chart {
     this.axisOverlay?.setOptions({ color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont });
     this.updateTitles();
     this.plugins.notify("onThemeChange", this.resolvedTheme);
-    this.emit("themechange", undefined);
+    this.events.emit("themechange", undefined);
     this.requestRender();
     this.hover.refresh();
   }
@@ -750,7 +740,7 @@ export class Chart {
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
       this.updateAutoGutters();
-      this.emit("render", undefined);
+      this.events.emit("render", undefined);
     } catch (error) {
       if (this.rendererImpl.getWebGLContext()?.isContextLost() === true) {
         this.webglContextLost = true;
@@ -1008,36 +998,18 @@ export class Chart {
   }
 
   private emitViewportChange(source: ChartViewportChangeSource): void {
-    this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source });
+    this.events.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source });
     this.requestRender();
   }
 
   private emitFollowXChange(): void {
-    if (this.hasListeners("followxchange")) this.emit("followxchange", { state: this.getFollowXState() });
+    if (this.events.has("followxchange")) this.events.emit("followxchange", { state: this.getFollowXState() });
   }
 
   private emitSeriesChange(): void {
     this.a11y.markSummaryDirty();
-    this.emit("serieschange", undefined);
+    this.events.emit("serieschange", undefined);
     this.hover.refresh();
     this.requestRender();
   }
-
-  private hasListeners(event: ChartEventName): boolean {
-    return (this.listeners.get(event)?.size ?? 0) > 0;
-  }
-
-  private emit<K extends ChartEventName>(event: K, payload: ChartEventMap[K]): void {
-    const listeners = this.listeners.get(event);
-    if (!listeners) return;
-    // One throwing listener never stops the rest.
-    for (const listener of listeners) {
-      try {
-        (listener as Listener<K>)(payload);
-      } catch (error) {
-        console.error(`BlazePlot ${event} listener failed:`, error);
-      }
-    }
-  }
 }
-
