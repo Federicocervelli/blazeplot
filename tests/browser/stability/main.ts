@@ -408,7 +408,7 @@ async function sharedContextChurn(count: number): Promise<WorkloadResult> {
     for (let j = 0; j < SHARED_BATCH; j++) {
       const host = createHost(240, 140);
       host.style.left = `${(j % 5) * 20}px`;
-      const chart = new Chart(host, { axes: { x: true, y: true }, plugins: j % 5 === 0 ? fullPlugins() : [], renderer: "shared" });
+      const chart = new Chart(host, { axes: { x: true, y: true }, plugins: j % 5 === 0 ? fullPlugins() : j === 1 ? [flameGraphPlugin({ foldedStacks: FLAME_STACKS })] : [], renderer: "shared" });
       const counter = countRenders(chart);
       addSampleSeries(chart);
       chart.fitToData({ padding: 0.05 });

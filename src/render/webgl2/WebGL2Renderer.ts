@@ -144,6 +144,17 @@ export class WebGL2Renderer implements ChartRenderer {
     });
   }
 
+  /** Fill `count` device-pixel rectangles with per-rectangle colors: eight floats each, see `ChartRenderSurface.fillRects`. */
+  fillRects(rects: Float32Array, count: number): void {
+    if (count <= 0) return;
+    this.commands.push({ kind: "rects", first: this.stage(rects, count * 4), instances: count, canvasWidth: this.canvasWidth, canvasHeight: this.canvasHeight });
+  }
+
+  /** A second WebGL2 surface on `canvas`, with its own context. */
+  createSurface(canvas: HTMLCanvasElement): ChartRenderer {
+    return new WebGL2Renderer(canvas, { createBackend: this.createBackend });
+  }
+
   /** Draw data-space triangles (bars, candle bodies, buckets) or a triangle strip (area fills) in a solid color. */
   drawTriangles(data: Float32Array, vertexCount: number, color: RgbaColor, projection: RenderProjection, primitive: "triangles" | "triangle_strip" = "triangles"): void {
     this.drawSolid(data, vertexCount, color, projection, primitive);

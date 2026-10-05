@@ -47,7 +47,7 @@ console.log(chart.renderer); // "webgl2" or "canvas2d"
 
 `chart.renderer` is `"webgl2"`, `"canvas2d"`, or `"shared"` (see [shared context](./performance-recipes.md#many-charts-on-one-page)). `"canvas2d"` throws `Canvas2DUnavailableError` when the canvas cannot create a 2D context, which is rare; `"auto"` only falls back when WebGL2 fails.
 
-Every series type (line, area, bar, scatter, OHLC, candlestick, histogram), gaps, log/symlog and reversed axes, dual Y axes, wide lines, `chart.screenshot()`, every built-in plugin, and the flame graph plugin work on both renderers. `ctx.unstable.getWebGLContext()` returns `null` on Canvas 2D (and on the shared WebGL renderer).
+Every series type (line, area, bar, scatter, OHLC, candlestick, histogram), gaps, log/symlog and reversed axes, dual Y axes, wide lines, `chart.screenshot()`, every built-in plugin, and the flame graph plugin work on both renderers. `ctx.unstable.getWebGLContext()` returns `null` on Canvas 2D (and on the shared WebGL renderer); plugin layers that need to draw can use `ctx.unstable.createRenderSurface()`, which follows the chart's engine.
 
 WebGL context loss and restore (see [Error handling](./error-handling.md)) only applies to WebGL charts; Canvas 2D charts have nothing to lose.
 

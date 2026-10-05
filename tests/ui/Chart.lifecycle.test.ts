@@ -734,6 +734,47 @@ describeRecorded("Chart context loss", () => {
   });
 });
 
+describe("Plugin access to the rendering engine", () => {
+  /** Install a no-op plugin and return its context. */
+  function contextOf(chart: ChartType): ChartPluginContext {
+    let captured: ChartPluginContext | null = null;
+    chart.installPlugin({ install: (ctx) => void (captured = ctx) });
+    return captured!;
+  }
+
+  it("shows the engine in use through the stable ctx.renderer", () => {
+    const chart = make();
+    const ctx = contextOf(chart);
+    expect(ctx.renderer).toBe(chart.rendererInfo);
+    expect(ctx.renderer.name).toBe(chart.renderer);
+    expect(Object.isFrozen(ctx.renderer)).toBe(true);
+    chart.dispose();
+  });
+
+  it("hands out render surfaces on the chart's engine and releases them with the plugin and the chart", () => {
+    const chart = make();
+    const ctx = contextOf(chart);
+    const surface = ctx.unstable.createRenderSurface(document.createElement("canvas"));
+    expect(() => {
+      surface.beginFrame(10, 10, 1);
+      surface.fillRects(new Float32Array([0, 0, 5, 5, 1, 1, 1, 1]), 1);
+      surface.endFrame();
+    }).not.toThrow();
+    expect(surface.isLost).toBe(false);
+    chart.dispose();
+    expect(() => surface.dispose()).not.toThrow();
+  });
+
+  itRecorded("disposes a surface exactly once however many times it is released", () => {
+    const chart = make();
+    const ctx = contextOf(chart);
+    const surface = ctx.unstable.createRenderSurface(document.createElement("canvas"));
+    surface.dispose();
+    chart.dispose();
+    expect(backends[0]!.surfaces[0]!.disposeCount).toBe(1);
+  });
+});
+
 describe("Chart overlays and screenshot", () => {
   it("renders title and axis title text into chart-root DOM overlays", () => {
     const chart = make({ title: "My Title", subtitle: "Sub", axes: { x: { title: "Time" }, y: { title: "Value" } } });

@@ -8,6 +8,7 @@ const commands: DrawCommand[] = [
   { ...base, kind: "thickLine", segments: 3, layout: "strip", lineWidth: 3, canvasWidth: 100, canvasHeight: 100 },
   { ...base, kind: "point", instances: 2, pointSize: 4, canvasWidth: 100, canvasHeight: 100 },
   { ...base, kind: "bar", instances: 2, barWidth: 1, baseline: 0 },
+  { kind: "rects", first: 0, instances: 2, canvasWidth: 100, canvasHeight: 100 },
 ];
 const stream = new Float32Array(64);
 

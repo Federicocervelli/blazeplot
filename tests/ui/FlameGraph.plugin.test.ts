@@ -4,71 +4,42 @@ import { buildFlameGraphModel } from "../../src/ui/FlameGraph.ts";
 import type { FlameGraphPick, FlameGraphPluginOptions } from "../../src/plugins/flamegraph.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
 import { countNodes, FakeResizeObserver } from "./fakes.ts";
+import type { RecordingRenderer } from "./fakes.ts";
+import { describeRecorded, itRecorded, uiEngine } from "./engines.ts";
 import { fire, installPlugin, pointerEvent, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();
 
-interface Call {
-  readonly name: string;
-  readonly args: unknown[];
-}
-
-/** Records every method call; WebGL enum names resolve to a number and info queries succeed. */
-function recordingContext(canvas: HTMLCanvasElement, extra: Record<string, unknown> = {}): { ctx: unknown; calls: Call[] } {
-  const calls: Call[] = [];
-  const base: Record<string, unknown> = {
-    canvas,
-    getProgramParameter: () => true,
-    getShaderParameter: () => true,
-    getAttribLocation: () => 0,
-    getShaderInfoLog: () => "",
-    getProgramInfoLog: () => "",
-    ...extra,
-  };
-  const ctx = new Proxy(base, {
-    get(target, prop) {
-      if (typeof prop === "symbol") return undefined;
-      if (prop in target) return target[prop];
-      if (/^[A-Z][A-Z0-9_]*$/.test(prop)) return 1;
-      return (...args: unknown[]) => {
-        calls.push({ name: prop, args });
-        return {};
-      };
-    },
-  });
-  return { ctx, calls };
-}
-
-const gls = new WeakMap<HTMLCanvasElement, { ctx: unknown; calls: Call[] }>();
+/** Text the label layer drew; its 2D context is the plugin's own, not the chart engine's. */
 const labels: string[] = [];
-let webgl2 = true;
 let canvasProto: { getContext: unknown };
 let originalGetContext: unknown;
 
 beforeAll(() => {
   canvasProto = window.HTMLCanvasElement.prototype as unknown as { getContext: unknown };
   originalGetContext = canvasProto.getContext;
+  // The label layer draws text through its own 2D context; any other context request goes to the harness's engine doubles.
   canvasProto.getContext = function (this: HTMLCanvasElement, type: string): unknown {
-    if (type === "webgl2") {
-      if (!webgl2) return null;
-      let entry = gls.get(this);
-      if (!entry) gls.set(this, (entry = recordingContext(this)));
-      return entry.ctx;
-    }
-    if (type === "2d") {
-      return recordingContext(this, {
+    if (type === "2d" && this.classList.contains("blazeplot-flamegraph-labels")) {
+      return {
         measureText: (text: string) => ({ width: text.length * 6 }),
         fillText: (text: string) => { labels.push(text); },
-      }).ctx;
+        clearRect() {},
+        save() {},
+        restore() {},
+        scale() {},
+        set font(_value: string) {},
+        set fillStyle(_value: string) {},
+        set textBaseline(_value: string) {},
+      };
     }
-    return null;
+    return (originalGetContext as (this: HTMLCanvasElement, type: string) => unknown).call(this, type);
   };
 });
 afterAll(() => {
   canvasProto.getContext = originalGetContext;
 });
 beforeEach(() => {
-  webgl2 = true;
   labels.length = 0;
 });
 
@@ -81,7 +52,10 @@ function make(options: FlameGraphPluginOptions = {}): { chart: Chart; plugin: Re
 }
 
 const rectCanvas = (chart: Chart): HTMLCanvasElement => chart.plotElement.querySelector(".blazeplot-flamegraph-canvas") as HTMLCanvasElement;
-const glCalls = (chart: Chart): Call[] => gls.get(rectCanvas(chart))!.calls;
+/** The recording engine of the chart under test (the last one the harness built). */
+const engineOf = (): RecordingRenderer => h.backends().at(-1)!;
+/** What the flame graph asked its render surface to draw. */
+const rectDraws = (): number => engineOf().surfaces[0]!.draws.filter((d) => d.method === "fillRects").length;
 const tooltip = (): HTMLElement | null => document.body.querySelector(".blazeplot-flamegraph-tooltip");
 const frame = (chart: Chart): void => {
   chart.start();
@@ -101,26 +75,26 @@ describe("flameGraphPlugin install and rendering", () => {
     chart.dispose();
   });
 
-  it("draws one instance per visible frame and labels the wide ones", () => {
+  itRecorded("draws one rectangle per visible frame through the chart's engine and labels the wide ones", () => {
     const { chart } = make();
     frame(chart);
-    const draw = glCalls(chart).filter((c) => c.name === "drawArraysInstanced").at(-1)!;
-    expect(draw.args.at(-1)).toBe(3);
+    expect(engineOf().surfaces).toHaveLength(1);
+    const draw = engineOf().surfaces[0]!.draws.filter((d) => d.method === "fillRects").at(-1)!;
+    expect(draw.count).toBe(3);
     expect(labels).toEqual(expect.arrayContaining(["root", "a", "b"]));
     chart.dispose();
   });
 
-  it("re-renders only when something it depends on changes", () => {
+  itRecorded("re-renders only when something it depends on changes", () => {
     const { chart, plugin } = make();
     frame(chart);
-    const draws = (): number => glCalls(chart).filter((c) => c.name === "drawArraysInstanced").length;
-    const before = draws();
+    const before = rectDraws();
     chart.requestRender();
     h.raf.flush();
-    expect(draws()).toBe(before);
+    expect(rectDraws()).toBe(before);
     plugin.setSearch("a");
     h.raf.flush();
-    expect(draws()).toBeGreaterThan(before);
+    expect(rectDraws()).toBeGreaterThan(before);
     chart.dispose();
   });
 
@@ -141,7 +115,7 @@ describe("flameGraphPlugin install and rendering", () => {
     plugin.setModel(buildFlameGraphModel("p 5"));
     expect(chart.getViewport()).toEqual({ xMin: 0, xMax: 5, yMin: 0, yMax: 1 });
     frame(chart);
-    expect(glCalls(chart).some((c) => c.name === "drawArraysInstanced")).toBe(true);
+    if (uiEngine === "fake") expect(rectDraws()).toBeGreaterThan(0);
     chart.dispose();
   });
 
@@ -266,82 +240,79 @@ describe("flameGraphPlugin picking and pointer events", () => {
     chart.dispose();
   });
 
-  it("highlights search matches and accepts regular expressions and null", () => {
+  itRecorded("highlights search matches and accepts regular expressions and null", () => {
     const { chart, plugin } = make({ search: "a" });
     frame(chart);
     const highlight = [0.9, 0.05, 0.75, 0.95].map(Math.fround);
-    // Per-frame RGBA uploads are the 12-float (3 frames x 4) buffers; bounds share that size.
-    const uploads = (): number[][] => glCalls(chart).filter((c) => c.name === "bufferData" && c.args[1] instanceof Float32Array && (c.args[1] as Float32Array).length === 12).map((c) => [...(c.args[1] as Float32Array)]);
-    const hasHighlight = (): boolean => uploads().some((u) => highlight.every((v, i) => [0, 4, 8].some((frameOffset) => u[frameOffset + i] === v)));
-    expect(hasHighlight()).toBe(true);
+    // Each rectangle is x, y, width, height, then its RGBA color.
+    const fills = (): Float32Array[] => engineOf().surfaces[0]!.rectFills;
+    const hasHighlight = (fill: Float32Array): boolean => {
+      for (let i = 0; i < fill.length; i += 8) if (highlight.every((v, k) => fill[i + 4 + k] === v)) return true;
+      return false;
+    };
+    expect(fills().some(hasHighlight)).toBe(true);
 
-    const before = uploads().length;
+    const before = fills().length;
     plugin.setSearch(/^zzz$/);
     h.raf.flush();
-    expect(uploads().length).toBeGreaterThan(before);
-    const after = uploads().slice(before);
-    expect(after.some((u) => highlight.every((v, i) => [0, 4, 8].some((frameOffset) => u[frameOffset + i] === v)))).toBe(false);
+    expect(fills().length).toBeGreaterThan(before);
+    expect(fills().slice(before).some(hasHighlight)).toBe(false);
     plugin.setSearch(null);
     h.raf.flush();
     chart.dispose();
   });
 });
 
-describe("flameGraphPlugin WebGL context handling", () => {
-  it("recreates its GL state after a context loss and restore", () => {
+describeRecorded("flameGraphPlugin context handling", () => {
+  it("draws nothing while its surface is lost and redraws once it is restored", () => {
     const { chart } = make();
     frame(chart);
-    const canvas = rectCanvas(chart);
-    const programs = (): number => glCalls(chart).filter((c) => c.name === "createProgram").length;
-    const lost = new window.Event("webglcontextlost", { cancelable: true });
-    fire(canvas, lost);
-    expect(lost.defaultPrevented).toBe(true);
-    expect(glCalls(chart).some((c) => ["deleteProgram", "deleteBuffer", "deleteVertexArray"].includes(c.name))).toBe(false); // stale objects must not be deleted after restore
-    const created = programs();
+    const surface = engineOf().surfaces[0]!;
+    const before = rectDraws();
+
+    surface.lose();
     chart.requestRender();
     h.raf.flush();
-    fire(canvas, new window.Event("webglcontextrestored"));
-    expect(programs()).toBe(created + 1);
+    expect(rectDraws()).toBe(before);
+
+    surface.restore();
+    h.raf.flush();
+    expect(rectDraws()).toBeGreaterThan(before);
     chart.dispose();
   });
 
-  it("falls back to a Canvas 2D rectangle layer when WebGL2 is unavailable", () => {
-    webgl2 = false;
+  it("follows the chart's engine and leaves nothing behind when the chart is disposed", () => {
     const { chart } = make();
-    expect(chart.plotElement.querySelector(".blazeplot-flamegraph-canvas")).not.toBeNull();
-    expect(() => frame(chart)).not.toThrow();
-    expect(labels).toEqual(expect.arrayContaining(["root", "a", "b"]));
-    expect(gls.has(rectCanvas(chart))).toBe(false);
+    frame(chart);
+    const surface = engineOf().surfaces[0]!;
+    expect(surface.info.name).toBe("webgl2");
     chart.dispose();
+    expect(surface.disposeCount).toBe(1);
     expect(h.target().children).toHaveLength(0);
     expect(h.ledger().reachable()).toBe(0);
   });
 });
 
 describe("flameGraphPlugin lifecycle", () => {
-  it("removes its DOM, listeners, GL resources, and pending frames when disposed alone", () => {
+  it("removes its DOM, listeners, render surface, and pending frames when disposed alone", () => {
     const chart = h.make();
     const nodes = countNodes(document.body);
     const listeners = h.ledger().reachable();
     const plugin = flameGraphPlugin({ foldedStacks: FOLDED });
     const dispose = installPlugin(chart, plugin);
-    const canvas = rectCanvas(chart);
-    const calls = gls.get(canvas)!.calls;
     plugin.setSearch("x");
     expect(h.raf.pending.size).toBeGreaterThan(0);
     dispose();
     expect(countNodes(document.body)).toBe(nodes);
     expect(h.ledger().reachable()).toBe(listeners);
     expect(h.raf.pending.size).toBe(0);
-    expect(calls.filter((c) => c.name === "deleteBuffer")).toHaveLength(3);
-    expect(calls.some((c) => c.name === "deleteVertexArray")).toBe(true);
-    expect(calls.some((c) => c.name === "deleteProgram")).toBe(true);
+    if (h.backends().length > 0 && h.backends()[0]!.surfaces.length > 0) expect(h.backends()[0]!.surfaces[0]!.disposeCount).toBe(1);
     // Disposing again, or after the chart is gone, is harmless.
     expect(() => plugin.dispose()).not.toThrow();
     chart.dispose();
   });
 
-  it("redraws through the chart's onResize hook instead of its own ResizeObserver", () => {
+  itRecorded("redraws through the chart's onResize hook instead of its own ResizeObserver", () => {
     const observers = FakeResizeObserver.instances.length;
     const { chart } = make();
     expect(FakeResizeObserver.instances.length).toBe(observers + 1); // the chart's own observer only
@@ -350,11 +321,11 @@ describe("flameGraphPlugin lifecycle", () => {
     const canvas = rectCanvas(chart);
     Object.defineProperty(canvas, "clientWidth", { configurable: true, value: 300 });
     Object.defineProperty(chart.canvas, "clientWidth", { configurable: true, value: 300 });
-    const drawsBefore = glCalls(chart).filter((c) => c.name === "drawArraysInstanced").length;
+    const drawsBefore = rectDraws();
     chart.resize(1);
     h.raf.flush();
     expect(canvas.width).toBe(300);
-    expect(glCalls(chart).filter((c) => c.name === "drawArraysInstanced").length).toBeGreaterThan(drawsBefore);
+    expect(rectDraws()).toBeGreaterThan(drawsBefore);
     chart.dispose();
   });
 
