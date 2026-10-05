@@ -17,9 +17,42 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Decides whether the engine-level browser suites are needed. Pull requests that only touch
+  # markdown docs or changelogs skip them (`checks` and `website` still run, so doc snippets,
+  # generated docs, and the docs site are always verified). Everything else runs the full suite.
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      engine: ${{ steps.diff.outputs.engine }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "engine=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          FILES=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --paginate --jq '.[].filename') || FILES=""
+          # An empty or failed listing must never skip tests.
+          if [ -z "$FILES" ] || [ "$(printf '%s\n' "$FILES" | wc -l)" -ge 3000 ] || printf '%s\n' "$FILES" | grep -qvE '^(docs/|changelogs/)|\.md$'; then
+            echo "engine=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "engine=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Docs-only change: skipping engine browser suites."
+          fi
+
   checks:
     name: Typecheck, tests, build, docs, package
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
@@ -30,34 +63,68 @@ jobs:
   typescript-floor:
     name: TypeScript 5.0 floor (packed consumer)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - run: bun run build
       - run: bun run test:typescript-floor
 
+  # The Chrome suites, sharded so they run in parallel on separate runners. Together the shards
+  # run exactly what `bun run test:browser` runs locally. `perf` and `stability` get a runner to
+  # themselves because they are timing sensitive.
   browser:
-    name: Browser benchmark, visual, interaction, website
+    name: Browser (${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - shard: perf
+            command: bun run test:browser:perf
+          - shard: visual-gl
+            command: bun run test:browser:visual-gl
+          - shard: visual-fallback
+            command: bun run test:browser:visual-fallback
+          - shard: interaction-a11y
+            command: bun run test:browser:ui
+          - shard: stability
+            command: bun run test:stability
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - run: bun run test:browser
+      - run: ${{ matrix.command }}
       # Always uploaded: `actual/` holds the candidate baselines rendered in this CI environment and
       # `diff/` the red-highlight diffs for failing cases. See docs/internal/local-development.md.
       - name: Upload visual test screenshots and baseline candidates
-        if: always()
+        if: always() && startsWith(matrix.shard, 'visual')
         uses: actions/upload-artifact@v7
         with:
-          name: visual-tests
+          name: visual-tests-${{ matrix.shard }}
           path: build/visual-tests
           if-no-files-found: ignore
           retention-days: 14
+
+  # Website UX tests against the dev server and the production build. Always runs: the site renders
+  # the markdown docs, so docs-only changes still need it.
+  website:
+    name: Website UX (dev and production build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: bun run test:website
 
   # Engine coverage beyond Chromium: WebGL2, non-blank rendering, and basic interaction in
   # Firefox and WebKit through Playwright. Not a replacement for the Chrome `browser` job.
   cross-browser:
     name: Cross-browser smoke (Firefox, WebKit)
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -85,12 +152,29 @@ jobs:
           if-no-files-found: ignore
 
   # Single required status check for branch protection; stays stable as jobs are added.
+  # A job skipped by `changes` counts as passing; failed, cancelled, or never-run required jobs do not.
   validate:
     if: always()
-    needs: [checks, typescript-floor, browser, cross-browser]
+    needs: [changes, checks, typescript-floor, browser, website, cross-browser]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Require all CI jobs to pass
-        if: needs.checks.result != 'success' || needs.typescript-floor.result != 'success' || needs.browser.result != 'success' || needs.cross-browser.result != 'success'
-        run: exit 1
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+          CHANGES: ${{ needs.changes.result }}
+          ENGINE: ${{ needs.changes.outputs.engine }}
+          BROWSER: ${{ needs.browser.result }}
+          CROSS: ${{ needs.cross-browser.result }}
+        run: |
+          echo "results: $RESULTS (engine=$ENGINE)"
+          for r in $RESULTS; do
+            case "$r" in success|skipped) ;; *) echo "::error::A CI job finished as '$r'."; exit 1 ;; esac
+          done
+          # Skipping is only legitimate when `changes` succeeded and said the engine suites are not needed.
+          if [ "$BROWSER" = skipped ] || [ "$CROSS" = skipped ]; then
+            if [ "$CHANGES" != success ] || [ "$ENGINE" != false ]; then
+              echo "::error::Browser suites were skipped without a docs-only change."; exit 1
+            fi
+          fi
       - run: echo "All CI jobs passed."
