@@ -211,7 +211,7 @@ export class Chart {
     return this.plugins.install(plugin);
   }
 
-  /** Rendering backend in use: `"webgl2"` or `"canvas2d"`. */
+  /** Rendering backend in use: `"webgl2"`, `"webgl2-shared"` (via `sharedRenderer()`), or `"canvas2d"`. */
   get renderer(): ChartRendererKind {
     return this.rendererImpl.kind;
   }

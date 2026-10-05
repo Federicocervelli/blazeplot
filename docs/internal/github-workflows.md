@@ -27,9 +27,23 @@ Runs on pull requests targeting `main` or `v1`, when the release workflow is abo
 |---|---|---|
 | `checks` | `bun run check` | Typecheck, Oxlint, unit tests with coverage floors, library build, generated-docs freshness, doc snippet types, package exports, package contents, public API snapshot (`api/public-api.md`), bundle budgets. |
 | `typescript-floor` | `bun run build && bun run test:typescript-floor` | Packs the built package, installs the tarball into a temp consumer project with TypeScript 5.0.4 (the documented minimum) and the latest 5.x, and typechecks a file importing every `package.json#exports` entry with `skipLibCheck: false` under `bundler` and `node16` resolution. Separate from `checks` because it installs TypeScript from npm and needs network. |
-| `browser` | `bun run test:browser` | Benchmark smoke, performance regression gate, visual tests (WebGL2, shared, Canvas 2D, and no-WebGL renderers), interaction tests (including forced colors), axe-core accessibility checks, real-browser stability (leak) tests, and website UX tests in headless Chrome. Always uploads `build/visual-tests` as the `visual-tests` artifact (screenshots, `actual/` baseline candidates rendered on the runner, `diff/` for failing baselines; kept 14 days). See [Visual pixel baselines](./local-development.md#visual-pixel-baselines). |
+| `changes` | — | Pull requests whose changed files are all under `docs/` or `changelogs/`, or are `.md` files, set `engine=false`, which skips the `browser` shards and `cross-browser`. Any other change, a failed or oversized file listing, `workflow_call`, and manual dispatch run everything. |
+| `browser` (matrix) | see below | The Chrome suites as five parallel shards on separate runners, so wall time is the slowest shard rather than the sum. `fail-fast` is off so one failing shard does not hide another. The visual shards always upload `build/visual-tests` (screenshots, `actual/` baseline candidates rendered on the runner, `diff/` for failing baselines; kept 14 days). See [Visual pixel baselines](./local-development.md#visual-pixel-baselines). |
+| `website` | `bun run test:website` | Website UX tests against the dev server and the production build. Always runs, including for docs-only changes, because the site renders the markdown docs. |
 | `cross-browser` | `bun run test:cross-browser` | Firefox and WebKit (Playwright) smoke: WebGL2, non-blank render, hover/wheel/pan/box-zoom/reset. Browsers are installed with `bunx playwright install --with-deps firefox webkit` and cached in `~/.cache/ms-playwright`; Firefox runs headed under `xvfb-run` to get software WebGL2. Uploads `build/cross-browser` when it fails. Unlike the other checks it is not part of `bun run ci` because it needs the Playwright browsers. |
-| `validate` | — | Passes only when every job above passed. This is the single required status check for branch protection, so adding or splitting jobs does not require settings changes. |
+| `validate` | — | Passes only when every job above passed. Jobs skipped by `changes` count as passing, but a skip without a docs-only `changes` result, and any failed or cancelled shard, fails it. This is the single required status check for branch protection, so adding or splitting jobs does not require settings changes. |
+
+Browser shards (the `matrix.shard` values in `ci.yml`). Together they run exactly what `bun run test:browser` runs serially:
+
+| Shard | Command | Notes |
+|---|---|---|
+| `perf` | `bun run test:browser:perf` | Benchmark smoke plus the performance gate. Alone on its runner because it is timing sensitive. |
+| `visual-gl` | `bun run test:browser:visual-gl` | Visual cases in the `webgl2` and `shared` renderer modes. Uploads `visual-tests-visual-gl` (the pixel baselines come from this shard). |
+| `visual-fallback` | `bun run test:browser:visual-fallback` | Visual cases in the `canvas2d` and `auto-no-webgl` modes. Uploads `visual-tests-visual-fallback`. |
+| `interaction-a11y` | `bun run test:browser:ui` | Interaction (CDP input events) and axe accessibility tests. |
+| `stability` | `bun run test:stability` | Leak and stability suite. Alone on its runner because it is timing and memory sensitive. |
+
+Every job has a `timeout-minutes` cap so a hung browser fails in minutes instead of the 6-hour default. When you add a check, add it to `test:browser` and to one shard script (or a new matrix shard) so CI runs it; keep them in sync.
 
 `bun run ci` runs the `checks` and `browser` groups locally; run `bun run test:cross-browser` for the `cross-browser` job and `bun run test:typescript-floor` (after `bun run build`) for the `typescript-floor` job. Add new checks to the `check` or `test:browser` scripts in `package.json`, not to the workflow, so local and CI runs stay identical.
 
