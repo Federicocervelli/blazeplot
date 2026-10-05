@@ -1,4 +1,5 @@
 import type { RgbaColor } from "../../core/types.js";
+import type { ProgramName } from "./ShaderPrograms.js";
 
 /** Primitive topology for solid-color draws. */
 export type SolidPrimitive = "lines" | "line_strip" | "triangles" | "triangle_strip";
@@ -77,6 +78,8 @@ export interface GpuBackend {
   clear(r: number, g: number, b: number, a: number): void;
   /** Upload the first `floatCount` floats of `stream` once, then issue every command against it in order. */
   submit(stream: Float32Array, floatCount: number, commands: readonly DrawCommand[]): void;
+  /** Start building `programs` ahead of the first draw that needs them (a hint; drawing builds whatever is still missing). */
+  prepare?(programs: readonly ProgramName[]): void;
   getContext?(): WebGL2RenderingContext | null;
   /** Pixels in the largest drawing buffer the context supports, when known. */
   readonly maxDrawingBufferPixels?: number;

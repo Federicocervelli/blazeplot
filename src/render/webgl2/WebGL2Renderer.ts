@@ -1,13 +1,27 @@
 import { describeRenderer } from "../ChartRenderer.js";
 import type { ChartRenderer, ChartRendererInfo, FrameReport, RenderProjection, RendererLossState, RendererOrigin } from "../ChartRenderer.js";
 import type { DrawCommand, GpuBackend, SolidPrimitive } from "./types.js";
-import type { RgbaColor, SeriesStyle } from "../../core/types.js";
+import type { RgbaColor, SeriesMode, SeriesStyle } from "../../core/types.js";
 import { WebGL2Backend } from "./WebGL2Backend.js";
+import type { ProgramName } from "./ShaderPrograms.js";
 import { releaseWebGLContext } from "./releaseWebGLContext.js";
 
 /** The frame stream starts small and doubles on demand, so a sparse chart does not hold the 256 KiB a dense one needs. */
 const INITIAL_STREAM_FLOATS = 1 << 10;
 const DEFAULT_MAX_DRAWING_BUFFER_PIXELS = 16_384 * 16_384;
+
+/**
+ * The programs a series of `mode` draws with. Every chart draws solid lines (grid, hairlines, fills, bar
+ * triangles); the rest depends on the mode, and on whether lines are wide enough (more than one device
+ * pixel) to take the instanced quad path.
+ */
+function programsForSeries(mode: SeriesMode, lineWidthPx: number): ProgramName[] {
+  const programs: ProgramName[] = ["line"];
+  if (lineWidthPx > 1) programs.push("thickLine");
+  if (mode === "scatter") programs.push("point");
+  if (mode === "bar") programs.push("bar");
+  return programs;
+}
 
 /**
  * @internal Records a frame's draws against one CPU-side vertex stream and submits it to a
@@ -26,6 +40,8 @@ export class WebGL2Renderer implements ChartRenderer {
   private lossListener: ((state: RendererLossState) => void) | null = null;
   private lost = false;
   private disposed = false;
+  /** Programs hinted so far, started again on a new backend after a context restore. */
+  private readonly prepared = new Set<ProgramName>();
 
   readonly info: ChartRendererInfo;
   private readonly createBackend: (canvas: HTMLCanvasElement) => GpuBackend;
@@ -69,6 +85,14 @@ export class WebGL2Renderer implements ChartRenderer {
     this.commands = [];
     this.backend.submit(this.stream, this.streamFloats, commands);
     return { uploadBytes: this.streamFloats * Float32Array.BYTES_PER_ELEMENT, drawCalls: commands.length };
+  }
+
+  /** Start building the programs a series of `mode` will need (see `ChartRenderer.prepare`). */
+  prepare(mode: SeriesMode, lineWidth: number): void {
+    const pixelRatio = this.canvas.ownerDocument?.defaultView?.devicePixelRatio ?? 1;
+    const programs = programsForSeries(mode, lineWidth * Math.max(1, pixelRatio));
+    for (const name of programs) this.prepared.add(name);
+    this.backend.prepare?.(programs);
   }
 
   /** @internal The WebGL2 context behind the backend, when it has one. */
@@ -196,6 +220,7 @@ export class WebGL2Renderer implements ChartRenderer {
       console.error("BlazePlot failed to restore WebGL resources after context restoration.", error);
       return;
     }
+    next.prepare?.([...this.prepared]);
     this.backend = next;
     try {
       previous.destroy();
