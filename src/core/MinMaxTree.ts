@@ -67,8 +67,8 @@ export class MinMaxTree {
   update(start: number, end: number, validEnd: number = this.capacity): void {
     this.validEnd = validEnd;
     if (end <= start) return;
-    let left = this.base + Math.floor(start / this.blockSize);
-    let right = this.base + Math.floor((end - 1) / this.blockSize);
+    let left = this.base + ((start / this.blockSize) | 0);
+    let right = this.base + (((end - 1) / this.blockSize) | 0);
     while (left >= 1) {
       for (let node = left; node <= right; node++) this.valid[node] = 0;
       left >>= 1;
@@ -128,18 +128,19 @@ export class MinMaxTree {
     if (firstFullBlock < lastFullBlock) {
       const minTree = this.minTree;
       const maxTree = this.maxTree;
+      const valid = this.valid;
       let left = this.base + firstFullBlock;
       let right = this.base + lastFullBlock;
       while (left < right) {
         if (left & 1) {
-          this.refresh(left);
+          if (valid[left] === 0) this.refresh(left);
           if (minTree[left]! < minY) minY = minTree[left]!;
           if (maxTree[left]! > maxY) maxY = maxTree[left]!;
           left++;
         }
         if (right & 1) {
           right--;
-          this.refresh(right);
+          if (valid[right] === 0) this.refresh(right);
           if (minTree[right]! < minY) minY = minTree[right]!;
           if (maxTree[right]! > maxY) maxY = maxTree[right]!;
         }
