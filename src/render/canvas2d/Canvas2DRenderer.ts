@@ -1,6 +1,5 @@
-import type { ChartRenderer } from "./ChartRenderer.js";
-import type { RenderProjection } from "./Renderer.js";
-import type { RgbaColor, SeriesStyle } from "../core/types.js";
+import type { ChartRenderer, RenderProjection } from "../ChartRenderer.js";
+import type { RgbaColor, SeriesStyle } from "../../core/types.js";
 
 /** Error thrown when a Canvas 2D renderer cannot be created. */
 export class Canvas2DUnavailableError extends Error {

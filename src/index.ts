@@ -140,4 +140,4 @@ export type { AxisControllerAxisOptions, AxisRenderTarget, AxisScale, AxisTickFo
 export type { ChartRendererFactory, ChartRendererFactoryContext, ChartRendererHandle, ChartRendererKind } from "./render/ChartRenderer.js";
 
 // WebGL2 support detection
-export { isWebGL2Available, WebGL2UnavailableError } from "./render/WebGL2Backend.js";
+export { isWebGL2Available, WebGL2UnavailableError } from "./render/webgl2/availability.js";

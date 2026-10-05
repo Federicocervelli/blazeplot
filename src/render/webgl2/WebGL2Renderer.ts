@@ -1,22 +1,15 @@
-import type { ChartRenderer } from "./ChartRenderer.js";
+import type { ChartRenderer, ChartRendererFactory, RenderProjection } from "../ChartRenderer.js";
 import type { DrawCommand, GpuBackend, SolidPrimitive } from "./types.js";
-import type { RgbaColor, SeriesStyle } from "../core/types.js";
+import type { RgbaColor, SeriesStyle } from "../../core/types.js";
+import { WebGL2Backend } from "./WebGL2Backend.js";
 
 const INITIAL_STREAM_FLOATS = 1 << 16;
-
-/** Linear projection uniforms used by renderer draw calls. */
-export interface RenderProjection {
-  readonly scaleX: number;
-  readonly scaleY: number;
-  readonly offsetX: number;
-  readonly offsetY: number;
-}
 
 /**
  * @internal Records a frame's draws against one CPU-side vertex stream and submits it to a
  * `GpuBackend` in `endFrame`, so buffer uploads per frame stay constant.
  */
-export class Renderer implements ChartRenderer {
+export class WebGL2Renderer implements ChartRenderer {
   readonly kind = "webgl2" as const;
   private stream = new Float32Array(INITIAL_STREAM_FLOATS);
   private streamFloats = 0;
@@ -152,4 +145,9 @@ export class Renderer implements ChartRenderer {
     this.streamFloats = end;
     return start >> 1;
   }
+}
+
+/** The default renderer factory: WebGL2, throwing `WebGL2UnavailableError` when it is unavailable. */
+export function webgl2Renderer(): ChartRendererFactory {
+  return ({ canvas }) => new WebGL2Renderer(new WebGL2Backend(canvas));
 }

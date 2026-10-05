@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { Renderer } from "../../src/render/Renderer.ts";
+import { WebGL2Renderer } from "../../src/render/webgl2/WebGL2Renderer.ts";
 import { testStyle } from "../helpers.ts";
-import type { DrawCommand, GpuBackend } from "../../src/render/types.ts";
+import type { DrawCommand, GpuBackend } from "../../src/render/webgl2/types.ts";
 
 class MockBackend implements GpuBackend {
   readonly submits: Array<{ stream: Float32Array; floatCount: number; commands: readonly DrawCommand[] }> = [];
@@ -30,14 +30,14 @@ class MockBackend implements GpuBackend {
   }
 }
 
-function makeRenderer(): { renderer: Renderer; backend: MockBackend } {
+function makeRenderer(): { renderer: WebGL2Renderer; backend: MockBackend } {
   const backend = new MockBackend();
-  return { renderer: new Renderer(backend), backend };
+  return { renderer: new WebGL2Renderer(backend), backend };
 }
 
 const positions = new Float32Array([0, 0, 1, 1, 2, 0, 3, 1, 4, 0, 5, 1, 6, 0, 7, 1]);
 
-describe("Renderer", () => {
+describe("WebGL2Renderer", () => {
   const projection = { scaleX: 2, scaleY: 3, offsetX: -1, offsetY: 1 };
 
   it("begins frames with a viewport and transparent clear, and destroys the backend on dispose", () => {

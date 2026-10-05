@@ -1,4 +1,4 @@
-import type { RgbaColor } from "../core/types.js";
+import type { RgbaColor } from "../../core/types.js";
 
 /** Primitive topology for solid-color draws. */
 export type SolidPrimitive = "lines" | "line_strip" | "triangles" | "triangle_strip";

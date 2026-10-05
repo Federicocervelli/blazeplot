@@ -1,8 +1,8 @@
-import type { ChartRenderContext } from "../render/SharedWebGL.js";
-import { SharedWebGLContext } from "../render/SharedWebGL.js";
+import type { ChartRenderContext } from "../render/webgl2/SharedWebGL.js";
+import { SharedWebGLContext } from "../render/webgl2/SharedWebGL.js";
 import type { ChartRendererFactory } from "../render/ChartRenderer.js";
 
-export type { ChartRenderContext } from "../render/SharedWebGL.js";
+export type { ChartRenderContext } from "../render/webgl2/SharedWebGL.js";
 
 /**
  * Create a render context: one hidden WebGL2 context shared by every chart that uses

@@ -1,5 +1,12 @@
-import type { RenderProjection } from "./Renderer.js";
 import type { RgbaColor, SeriesStyle } from "../core/types.js";
+
+/** Linear projection uniforms used by renderer draw calls. */
+export interface RenderProjection {
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+}
 
 /** Rendering backend a chart is drawn with. */
 export type ChartRendererKind = "webgl2" | "webgl2-shared" | "canvas2d";

@@ -1,4 +1,4 @@
-import { WebGL2Backend } from "../../src/render/WebGL2Backend.ts";
+import { WebGL2Backend } from "../../src/render/webgl2/WebGL2Backend.ts";
 
 type Tagged = { gen: number };
 

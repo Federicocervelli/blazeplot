@@ -52,9 +52,8 @@ const budgets: Budget[] = [
 const sharedBudgets: SharedChunkBudget[] = [
   // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152; 140_448 after the Chart split and histogram tree-shaking (#172).
   { label: "shared Chart chunk", pattern: /^Chart-.*.js$/, maxBytes: 143_500 },
-  // WebGL2 renderer, backend, and shaders: the default renderer, shared by the core and the auto fallback entry.
-  { label: "shared WebGL2 backend chunk", pattern: /^WebGL2Backend-.*.js$/, maxBytes: 12_000 },
-  { label: "shared WebGL2 renderer chunk", pattern: /^webgl2Renderer-.*.js$/, maxBytes: 300 },
+  // WebGL2 renderer, backend, factory, and shaders (one chunk since the engine folder split): shared by the core and the auto fallback entry.
+  { label: "shared WebGL2 engine chunk", pattern: /^WebGL2Renderer-.*.js$/, maxBytes: 12_100 },
   { label: "shared WebGL context release chunk", pattern: /^releaseWebGLContext-.*.js$/, maxBytes: 300 },
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },

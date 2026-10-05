@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { Canvas2DRenderer, Canvas2DUnavailableError } from "../../src/render/Canvas2DRenderer.ts";
+import { Canvas2DRenderer, Canvas2DUnavailableError } from "../../src/render/canvas2d/Canvas2DRenderer.ts";
 import { testStyle } from "../helpers.ts";
-import type { RenderProjection } from "../../src/render/Renderer.ts";
+import type { RenderProjection } from "../../src/render/ChartRenderer.ts";
 
 type Call = readonly [string, ...unknown[]];
 

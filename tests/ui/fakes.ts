@@ -1,5 +1,5 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import type { DrawCommand, GpuBackend } from "../../src/render/types.ts";
+import type { DrawCommand, GpuBackend } from "../../src/render/webgl2/types.ts";
 
 /** GPU backend that records submitted frames so tests can assert on draw and upload counts. */
 export class FakeBackend implements GpuBackend {
