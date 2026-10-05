@@ -1,6 +1,7 @@
 import type { ChartPointerEvent } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import type { SeriesYAxis } from "../core/types.js";
+import { asElement } from "./OverlayUtils.js";
 
 /** Label styling for annotation overlays. */
 export interface AnnotationLabelOptions {
@@ -173,8 +174,8 @@ export interface AnnotationsPlugin extends ChartPlugin {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-function createSvgElement<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
-  return document.createElementNS(SVG_NS, tag);
+function createSvgElement<K extends keyof SVGElementTagNameMap>(doc: Document, tag: K): SVGElementTagNameMap[K] {
+  return doc.createElementNS(SVG_NS, tag);
 }
 
 function labelText(label: string | AnnotationLabelOptions | undefined): string | null {
@@ -397,7 +398,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
       live.add(annotation);
       let target = focusTargets.get(annotation);
       if (!target) {
-        target = document.createElement("div");
+        target = chart.dom.document.createElement("div");
         target.className = "blazeplot-annotation-focus";
         target.tabIndex = 0;
         target.setAttribute("role", "button");
@@ -461,7 +462,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
   return {
     install(chart: ChartPluginContext) {
       chartRef = chart;
-      overlay = createSvgElement("svg");
+      overlay = createSvgElement(chart.dom.document, "svg");
       overlay.classList.add(options.className ?? "blazeplot-annotations");
       overlay.style.position = "absolute";
       overlay.style.inset = "0";
@@ -473,12 +474,12 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
       overlay.setAttribute("aria-hidden", "true");
       const unmount = chart.dom.mount("plot", overlay);
 
-      focusLayer = document.createElement("div");
+      focusLayer = chart.dom.document.createElement("div");
       focusLayer.className = "blazeplot-annotation-focus-layer";
       Object.assign(focusLayer.style, { position: "absolute", inset: "0", pointerEvents: "none", zIndex: String(options.zIndex ?? 12) });
       chart.dom.mount("plot", focusLayer);
       const onFocusKeyDown = (event: KeyboardEvent): void => {
-        const target = event.target instanceof Element ? event.target : null;
+        const target = asElement(event.target);
         const annotation = target ? focusedAnnotation.get(target) : undefined;
         if (!target || !annotation || event.altKey || event.ctrlKey || event.metaKey) return;
         if (event.key === "Enter" || event.key === " ") {
@@ -634,14 +635,14 @@ function drawAnnotation(
   defaultFont: string,
 ): SVGGElement | null {
   const { xToPx, yToPx } = annotationProjectors(chart, annotation);
-  const group = createSvgElement("g");
+  const group = createSvgElement(chart.dom.document, "g");
   if (annotation.className) group.classList.add(annotation.className);
 
   switch (annotation.type) {
     case "x-line": {
       const x = xToPx(annotation.x);
       if (x < 0 || x > width) return null;
-      const line = createSvgElement("line");
+      const line = createSvgElement(group.ownerDocument, "line");
       line.setAttribute("x1", String(x));
       line.setAttribute("x2", String(x));
       line.setAttribute("y1", "0");
@@ -654,7 +655,7 @@ function drawAnnotation(
     case "y-line": {
       const y = yToPx(annotation.y);
       if (y < 0 || y > height) return null;
-      const line = createSvgElement("line");
+      const line = createSvgElement(group.ownerDocument, "line");
       line.setAttribute("x1", "0");
       line.setAttribute("x2", String(width));
       line.setAttribute("y1", String(y));
@@ -714,7 +715,7 @@ function styleStroke(el: SVGElement, color: string, width: number = 1, dash?: st
 }
 
 function appendRect(group: SVGGElement, rect: { x: number; y: number; w: number; h: number }, fill: string, stroke?: string, strokeWidth: number = 0): void {
-  const el = createSvgElement("rect");
+  const el = createSvgElement(group.ownerDocument, "rect");
   el.setAttribute("x", String(rect.x));
   el.setAttribute("y", String(rect.y));
   el.setAttribute("width", String(rect.w));
@@ -732,7 +733,7 @@ function appendMarker(group: SVGGElement, x: number, y: number, radius: number, 
   const stroke = annotation.strokeColor ?? "rgba(0,0,0,0.35)";
   const strokeWidth = annotation.strokeWidth ?? 1;
   if (annotation.shape === "diamond") {
-    const polygon = createSvgElement("polygon");
+    const polygon = createSvgElement(group.ownerDocument, "polygon");
     polygon.setAttribute("points", `${x},${y - radius} ${x + radius},${y} ${x},${y + radius} ${x - radius},${y}`);
     polygon.setAttribute("fill", fill);
     polygon.setAttribute("stroke", stroke);
@@ -743,7 +744,7 @@ function appendMarker(group: SVGGElement, x: number, y: number, radius: number, 
 
   if (annotation.shape === "cross") {
     for (const [x1, y1, x2, y2] of [[x - radius, y, x + radius, y], [x, y - radius, x, y + radius]] as const) {
-      const line = createSvgElement("line");
+      const line = createSvgElement(group.ownerDocument, "line");
       line.setAttribute("x1", String(x1));
       line.setAttribute("y1", String(y1));
       line.setAttribute("x2", String(x2));
@@ -754,7 +755,7 @@ function appendMarker(group: SVGGElement, x: number, y: number, radius: number, 
     return;
   }
 
-  const circle = createSvgElement("circle");
+  const circle = createSvgElement(group.ownerDocument, "circle");
   circle.setAttribute("cx", String(x));
   circle.setAttribute("cy", String(y));
   circle.setAttribute("r", String(radius));
@@ -767,7 +768,7 @@ function appendMarker(group: SVGGElement, x: number, y: number, radius: number, 
 function appendStandaloneLabel(group: SVGGElement, annotation: LabelAnnotation, x: number, y: number, defaultColor: string, defaultFont: string): void {
   const text = appendText(group, annotation.text, x, y, "start", annotation.color ?? defaultColor, annotation.font ?? defaultFont);
   if (annotation.backgroundColor) {
-    const rect = createSvgElement("rect");
+    const rect = createSvgElement(group.ownerDocument, "rect");
     rect.setAttribute("x", String(x - 4));
     rect.setAttribute("y", String(y - 14));
     rect.setAttribute("width", String(Math.max(16, annotation.text.length * 7 + 8)));
@@ -786,7 +787,7 @@ function appendLabel(group: SVGGElement, label: string | AnnotationLabelOptions 
 }
 
 function appendText(group: SVGGElement, textValue: string, x: number, y: number, anchor: "start" | "middle" | "end", color: string, font: string): SVGTextElement {
-  const text = createSvgElement("text");
+  const text = createSvgElement(group.ownerDocument, "text");
   text.textContent = textValue;
   text.setAttribute("x", String(x));
   text.setAttribute("y", String(y));

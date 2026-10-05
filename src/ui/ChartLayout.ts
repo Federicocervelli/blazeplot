@@ -17,6 +17,10 @@ export interface ChartLayoutConfig {
 
 /** DOM elements created or managed by `ChartLayout`. */
 export interface ChartLayoutElements {
+  /** Document that owns the chart (an iframe or popup document when embedded there). */
+  readonly doc: Document;
+  /** Window that owns the chart; falls back to the global when the document has no view. */
+  readonly view: Window & typeof globalThis;
   readonly root: HTMLDivElement;
   readonly plot: HTMLDivElement;
   readonly canvas: HTMLCanvasElement;
@@ -47,8 +51,8 @@ export const BOTTOM_AXIS_TITLE_GUTTER_CSS = 48;
 
 type InlineStyle = Partial<CSSStyleDeclaration>;
 
-function styledDiv(className: string, style: InlineStyle): HTMLDivElement {
-  const element = document.createElement("div");
+function styledDiv(doc: Document, className: string, style: InlineStyle): HTMLDivElement {
+  const element = doc.createElement("div");
   element.className = className;
   Object.assign(element.style, style);
   return element;
@@ -71,6 +75,10 @@ function titleOverlay(placement: InlineStyle): InlineStyle {
 
 /** DOM layout manager for chart chrome, axes, titles, and canvas. */
 export class ChartLayout implements ChartLayoutElements {
+  /** Document that owns the chart (an iframe or popup document when embedded there). */
+  readonly doc: Document;
+  /** Window that owns the chart; falls back to the global when the document has no view. */
+  readonly view: Window & typeof globalThis;
   readonly root: HTMLDivElement;
   readonly plot: HTMLDivElement;
   readonly canvas: HTMLCanvasElement;
@@ -91,12 +99,15 @@ export class ChartLayout implements ChartLayoutElements {
 
   /** Create chart layout DOM around a target element or canvas. */
   constructor(target: HTMLElement, config: ChartLayoutConfig) {
-    const canvasTarget = target instanceof HTMLCanvasElement ? target : null;
+    const doc = target.ownerDocument;
+    this.doc = doc;
+    this.view = doc.defaultView ?? (globalThis as Window & typeof globalThis);
+    const canvasTarget = target.tagName === "CANVAS" ? (target as HTMLCanvasElement) : null;
     this.externalCanvas = canvasTarget !== null;
     this.originalCanvasCssText = canvasTarget?.style.cssText ?? "";
     this.originalCanvasParent = canvasTarget?.parentElement ?? null;
 
-    this.root = styledDiv("blazeplot-root", {
+    this.root = styledDiv(doc, "blazeplot-root", {
       position: "relative",
       display: "grid",
       width: "100%",
@@ -107,25 +118,25 @@ export class ChartLayout implements ChartLayoutElements {
       boxSizing: "border-box",
       outlineOffset: "-2px",
     });
-    this.plot = styledDiv("blazeplot-plot", { ...gridCell(2, 1), position: "relative", overflow: "hidden" });
-    this.canvas = canvasTarget ?? document.createElement("canvas");
+    this.plot = styledDiv(doc, "blazeplot-plot", { ...gridCell(2, 1), position: "relative", overflow: "hidden" });
+    this.canvas = canvasTarget ?? doc.createElement("canvas");
     this.canvas.classList.add("blazeplot-canvas");
     Object.assign(this.canvas.style, { position: "absolute", inset: "0", zIndex: "1", display: "block", width: "100%", height: "100%", touchAction: "none" });
-    this.yAxis = styledDiv("blazeplot-axis blazeplot-axis-y", axisCell(1, 1));
-    this.y2Axis = styledDiv("blazeplot-axis blazeplot-axis-y2", axisCell(3, 1));
-    this.xAxis = styledDiv("blazeplot-axis blazeplot-axis-x", axisCell(2, 2));
-    this.corner = styledDiv("blazeplot-axis-corner", { ...gridCell(1, 2), pointerEvents: "none" });
-    this.cornerRight = styledDiv("blazeplot-axis-corner blazeplot-axis-corner-right", { ...gridCell(3, 2), pointerEvents: "none" });
-    this.title = styledDiv("blazeplot-title", titleOverlay({ top: "6px", left: "50%", transform: "translateX(-50%)", textAlign: "center" }));
-    this.subtitle = styledDiv("blazeplot-subtitle", titleOverlay({ top: "26px", left: "50%", transform: "translateX(-50%)", textAlign: "center" }));
-    this.xAxisTitle = styledDiv("blazeplot-axis-title blazeplot-axis-title-x", titleOverlay({ left: "50%", bottom: "4px", transform: "translateX(-50%)", textAlign: "center" }));
-    this.yAxisTitle = styledDiv("blazeplot-axis-title blazeplot-axis-title-y", titleOverlay({
+    this.yAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y", axisCell(1, 1));
+    this.y2Axis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y2", axisCell(3, 1));
+    this.xAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-x", axisCell(2, 2));
+    this.corner = styledDiv(doc, "blazeplot-axis-corner", { ...gridCell(1, 2), pointerEvents: "none" });
+    this.cornerRight = styledDiv(doc, "blazeplot-axis-corner blazeplot-axis-corner-right", { ...gridCell(3, 2), pointerEvents: "none" });
+    this.title = styledDiv(doc, "blazeplot-title", titleOverlay({ top: "6px", left: "50%", transform: "translateX(-50%)", textAlign: "center" }));
+    this.subtitle = styledDiv(doc, "blazeplot-subtitle", titleOverlay({ top: "26px", left: "50%", transform: "translateX(-50%)", textAlign: "center" }));
+    this.xAxisTitle = styledDiv(doc, "blazeplot-axis-title blazeplot-axis-title-x", titleOverlay({ left: "50%", bottom: "4px", transform: "translateX(-50%)", textAlign: "center" }));
+    this.yAxisTitle = styledDiv(doc, "blazeplot-axis-title blazeplot-axis-title-y", titleOverlay({
       left: "4px",
       top: "50%",
       transform: "translateY(-50%) rotate(-90deg)",
       transformOrigin: "left center",
     }));
-    this.y2AxisTitle = styledDiv("blazeplot-axis-title blazeplot-axis-title-y2", titleOverlay({
+    this.y2AxisTitle = styledDiv(doc, "blazeplot-axis-title blazeplot-axis-title-y2", titleOverlay({
       right: "4px",
       top: "50%",
       transform: "translateY(-50%) rotate(90deg)",

@@ -1,6 +1,6 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { ChartPlugin, ChartPluginContext, ChartRect } from "./PluginHost.js";
-import { clamp, createOverlayLayer } from "./OverlayUtils.js";
+import { asElement, clamp, createOverlayLayer } from "./OverlayUtils.js";
 
 /** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
@@ -171,7 +171,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       chartRef = chart;
       // Pointer capture goes to the element that received the press (the plot surface).
       let captureTarget: Element | null = null;
-      overlay = createOverlayLayer(options.className ?? "blazeplot-selection-brush", { zIndex: options.zIndex ?? 26 });
+      overlay = createOverlayLayer(chart.dom.document, options.className ?? "blazeplot-selection-brush", { zIndex: options.zIndex ?? 26 });
       const applyTheme = (): void => {
         if (!overlay) return;
         overlay.style.border = `1px solid ${options.strokeColor ?? chart.theme.selectionStrokeColor}`;
@@ -183,7 +183,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       const onPointerDown = (event: PointerEvent): void => {
         if (drag || event.button !== 0) return;
         event.preventDefault();
-        captureTarget = event.currentTarget instanceof Element ? event.currentTarget : null;
+        captureTarget = asElement(event.currentTarget);
         captureTarget?.setPointerCapture(event.pointerId);
         drag = {
           pointerId: event.pointerId,
@@ -248,7 +248,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       const keyStep = typeof keyboard?.step === "number" && Number.isFinite(keyboard.step) && keyboard.step > 0 ? Math.min(1, keyboard.step) : 0.05;
       let liveRegion: HTMLDivElement | null = null;
       if (keyboard) {
-        liveRegion = document.createElement("div");
+        liveRegion = chart.dom.document.createElement("div");
         liveRegion.className = "blazeplot-visually-hidden blazeplot-selection-status";
         liveRegion.setAttribute("role", "status");
         liveRegion.setAttribute("aria-live", "polite");
@@ -367,18 +367,18 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         // Capture runs before the chart's own Shift+Arrow pan on the same root element.
         chart.dom.listen("root", "keydown", onRootKeyDown, { capture: true }),
       ];
-      globalThis.addEventListener("pointerdown", armEscape, { capture: true });
-      globalThis.addEventListener("focusin", armEscape, { capture: true });
-      globalThis.addEventListener("keydown", onKeyDown);
+      chart.dom.view.addEventListener("pointerdown", armEscape, { capture: true });
+      chart.dom.view.addEventListener("focusin", armEscape, { capture: true });
+      chart.dom.view.addEventListener("keydown", onKeyDown);
       const unsubscribeRender = chart.events.subscribe("render", onRender);
 
       return {
         onThemeChange: applyTheme,
         dispose() {
           for (const off of unlisten) off();
-          globalThis.removeEventListener("pointerdown", armEscape, { capture: true });
-          globalThis.removeEventListener("focusin", armEscape, { capture: true });
-          globalThis.removeEventListener("keydown", onKeyDown);
+          chart.dom.view.removeEventListener("pointerdown", armEscape, { capture: true });
+          chart.dom.view.removeEventListener("focusin", armEscape, { capture: true });
+          chart.dom.view.removeEventListener("keydown", onKeyDown);
           unsubscribeRender();
           unmount();
           overlay = null;

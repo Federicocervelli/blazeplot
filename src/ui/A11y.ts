@@ -140,7 +140,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
     install(chart: ChartPluginContext) {
       const formatX = options.formatX ?? ((value: number) => chart.coords.format(value, "x"));
       const formatY = options.formatY ?? ((value: number, state: ChartSeriesState) => chart.coords.format(value, "y", state.yAxis));
-      const doc = document;
+      const doc = chart.dom.document;
 
       const container = doc.createElement("div");
       container.className = "blazeplot-a11y";

@@ -45,7 +45,7 @@ export class AxisOverlay {
   private xPool: HTMLDivElement[] = [];
   private yPool: HTMLDivElement[] = [];
   private y2Pool: HTMLDivElement[] = [];
-  private readonly measureContext = document.createElement("canvas").getContext("2d");
+  private measureContextCache: CanvasRenderingContext2D | null | undefined;
 
   /** Create an axis overlay attached to a chart layout. */
   constructor(
@@ -109,7 +109,7 @@ export class AxisOverlay {
     const parent = this.parentForAxis(axis);
 
     while (pool.length < values.length) {
-      const el = document.createElement("div");
+      const el = this.layout.root.ownerDocument.createElement("div");
       el.style.position = "absolute";
       el.style.pointerEvents = "none";
       el.style.whiteSpace = "nowrap";
@@ -199,7 +199,8 @@ export class AxisOverlay {
   }
 
   private measureLabel(text: string, dimension: "width" | "height"): number {
-    const context = this.measureContext;
+    this.measureContextCache ??= this.layout.root.ownerDocument.createElement("canvas").getContext("2d");
+    const context = this.measureContextCache;
     if (!context) return 12;
     context.font = this.options.font ?? DEFAULT_CHART_THEME.axisFont;
     const metrics = context.measureText(text);

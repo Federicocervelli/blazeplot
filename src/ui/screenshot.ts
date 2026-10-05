@@ -18,12 +18,12 @@ export async function composeChartScreenshot(
   const { layout, canvas: sourceCanvas, theme } = context;
   const rootRect = layout.root.getBoundingClientRect();
   const plotRect = layout.plot.getBoundingClientRect();
-  const dpr = Number.isFinite(options.dpr) ? Math.max(1, options.dpr!) : Math.max(1, globalThis.devicePixelRatio || 1);
+  const dpr = Number.isFinite(options.dpr) ? Math.max(1, options.dpr!) : Math.max(1, layout.view.devicePixelRatio || 1);
   const width = Number.isFinite(options.width) ? Math.max(1, Math.round(options.width!)) : Math.max(1, Math.round(rootRect.width * dpr));
   const height = Number.isFinite(options.height) ? Math.max(1, Math.round(options.height!)) : Math.max(1, Math.round(rootRect.height * dpr));
   const scaleX = width / Math.max(1, rootRect.width);
   const scaleY = height / Math.max(1, rootRect.height);
-  const canvas = document.createElement("canvas");
+  const canvas = layout.doc.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
 
@@ -49,9 +49,9 @@ export async function composeChartScreenshot(
   });
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(doc: Document, src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const image = new Image();
+    const image = doc.createElement("img");
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("Unable to load SVG overlay for screenshot export."));
     image.src = src;
@@ -110,7 +110,7 @@ async function drawSvgOverlaysForScreenshot(
     const blob = new Blob([serializer.serializeToString(clone)], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     try {
-      const image = await loadImage(url);
+      const image = await loadImage(root.ownerDocument, url);
       ctx.save();
       ctx.globalAlpha = Number.isFinite(Number(style.opacity)) ? Number(style.opacity) : 1;
       ctx.drawImage(

@@ -62,7 +62,7 @@ function placeTooltip(container: HTMLElement, state: ChartHoverState, options: T
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {
-      const container = document.createElement("div");
+      const container = chart.dom.document.createElement("div");
       container.className = options.className ?? "blazeplot-tooltip";
       container.style.position = "fixed";
       container.style.left = "0";
@@ -79,14 +79,15 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       container.setAttribute("aria-hidden", "true");
       const unmountContainer = chart.dom.mount("body", container);
 
-      const markerLayer = createOverlayLayer("blazeplot-tooltip-markers", { inset: "0", display: "block", zIndex: 25 });
+      const markerLayer = createOverlayLayer(chart.dom.document, "blazeplot-tooltip-markers", { inset: "0", display: "block", zIndex: 25 });
       const unmountMarkers = chart.dom.mount("plot", markerLayer);
 
       let lockedTooltipWidth = 0;
       let tooltipSize = { width: 0, height: 0 };
       const markers: HTMLDivElement[] = [];
-      const tooltipResizeObserver = typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(() => {
+      const ResizeObserverCtor = chart.dom.view.ResizeObserver ?? globalThis.ResizeObserver;
+      const tooltipResizeObserver = typeof ResizeObserverCtor !== "undefined"
+        ? new ResizeObserverCtor(() => {
             tooltipSize = { width: container.offsetWidth, height: container.offsetHeight };
           })
         : null;
@@ -117,7 +118,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
           const item = items[i]!;
           let marker = markers[i];
           if (!marker) {
-            marker = createPickMarker(item, { strokeColor: chart.theme.markerStrokeColor });
+            marker = createPickMarker(chart.dom.document, item, { strokeColor: chart.theme.markerStrokeColor });
             markers[i] = marker;
             markerLayer.appendChild(marker);
           }
@@ -188,6 +189,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       };
 
       const longPress = createLongPressTouchTracker({
+        view: chart.dom.view,
         delayMs: () => options.longPressMs,
         onPoint: showAtClientPoint,
       });
@@ -214,7 +216,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       };
       const unsubscribeHover = chart.events.subscribe("hover", (state) => {
         pendingHoverState = state;
-        if (hoverRaf === 0) hoverRaf = requestAnimationFrame(flushHover);
+        if (hoverRaf === 0) hoverRaf = chart.dom.view.requestAnimationFrame(flushHover);
       });
       applyTheme();
       return {
@@ -225,7 +227,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         dispose() {
           longPress.clear();
           for (const off of unlisten) off();
-          if (hoverRaf !== 0) cancelAnimationFrame(hoverRaf);
+          if (hoverRaf !== 0) chart.dom.view.cancelAnimationFrame(hoverRaf);
           unsubscribeHover();
           sync.leave();
           tooltipResizeObserver?.disconnect();

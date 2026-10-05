@@ -51,9 +51,10 @@ function renderDefaultLegend(
   for (const [index, item] of state.entries()) {
     let entry = rows.get(item.series);
     if (!entry) {
-      const row = document.createElement(toggleOnClick ? "button" : "span");
-      if (row instanceof HTMLButtonElement) {
-        row.type = "button";
+      const row = chart.dom.document.createElement(toggleOnClick ? "button" : "span");
+      if (toggleOnClick) {
+        const button = row as HTMLButtonElement;
+        button.type = "button";
         row.addEventListener("click", () => item.series.setVisible(!item.series.visible));
       }
       Object.assign(row.style, {
@@ -61,12 +62,12 @@ function renderDefaultLegend(
         appearance: "none", background: "transparent", font: "inherit", textAlign: "left",
         cursor: toggleOnClick ? "pointer" : "default", outlineOffset: "2px",
       });
-      const swatch = document.createElement("span");
+      const swatch = chart.dom.document.createElement("span");
       swatch.textContent = "\u2588";
       swatch.className = "blazeplot-legend-swatch";
       swatch.setAttribute("aria-hidden", "true");
       swatch.style.flex = "0 0 auto";
-      const label = document.createElement("span");
+      const label = chart.dom.document.createElement("span");
       row.append(swatch, label);
       entry = { element: row, swatch, label };
       rows.set(item.series, entry);
@@ -96,7 +97,7 @@ function renderDefaultLegend(
 export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {
-      const container = document.createElement("div");
+      const container = chart.dom.document.createElement("div");
       container.className = options.className ?? "blazeplot-legend";
       container.style.position = "absolute";
       container.style.zIndex = String(options.zIndex ?? 40);

@@ -1,6 +1,7 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { PanIntent, ZoomAxis, ZoomIntent } from "../interaction/types.js";
 import type { ChartPlugin, ChartPluginContext, ChartRect, ChartSurface } from "./PluginHost.js";
+import { asElement } from "./OverlayUtils.js";
 
 /** Static or dynamic axis choice for wheel and drag interactions. */
 export type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
@@ -46,7 +47,7 @@ function axisGestureConfig(surface: AxisSurface): { axis: ZoomAxis; yAxis?: Seri
 
 /** Capture the pointer on the surface that received the press. */
 function capturePointer(event: PointerEvent): Element | null {
-  const target = event.currentTarget instanceof Element ? event.currentTarget : null;
+  const target = asElement(event.currentTarget);
   target?.setPointerCapture(event.pointerId);
   return target;
 }
@@ -178,9 +179,9 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
     install(chart: ChartPluginContext) {
       const minDragDistancePx = options.minDragDistancePx ?? 6;
       const axisInteractions = options.axisInteractions !== false;
-      const selection = document.createElement("div");
+      const selection = chart.dom.document.createElement("div");
       const axisHoverClass = `blazeplot-axis-hover-${nextInteractionsPluginId++}`;
-      const axisHoverStyle = document.createElement("style");
+      const axisHoverStyle = chart.dom.document.createElement("style");
       const cleanups: Array<() => void> = [];
       const hoverUndo = new Map<AxisSurface, () => void>();
       let drag: DragState | null = null;

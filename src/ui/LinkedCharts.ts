@@ -44,7 +44,7 @@ let linkedChartsId = 0;
 export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOptions): LinkedChartsHandle {
   const rows = Math.max(1, Math.floor(options.rows ?? options.panels.length));
   const columns = Math.max(1, Math.floor(options.columns ?? Math.ceil(options.panels.length / rows)));
-  const root = document.createElement("div");
+  const root = target.ownerDocument.createElement("div");
   const charts: Chart[] = [];
   const disposers: Array<() => void> = [];
   const syncGroup = `blazeplot-linked-${linkedChartsId++}`;
@@ -67,7 +67,7 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
   const selectRelays = new Map<Chart, (selection: ChartSelectEvent["selection"]) => void>();
 
   for (const panel of options.panels) {
-    const cell = document.createElement("div");
+    const cell = target.ownerDocument.createElement("div");
     cell.className = panel.className ?? "blazeplot-linked-panel";
     Object.assign(cell.style, { position: "relative", minWidth: "0", minHeight: "0" });
     root.appendChild(cell);

@@ -597,7 +597,7 @@ export class Chart {
     event.preventDefault();
     this.webglContextLost = true;
     if (this.restoreRenderRafId !== 0) {
-      cancelAnimationFrame(this.restoreRenderRafId);
+      this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
       this.restoreRenderRafId = 0;
     }
     this.resetFrameStats();
@@ -658,8 +658,9 @@ export class Chart {
 
     this.toggleDomListeners("addEventListener");
 
-    if (typeof ResizeObserver !== "undefined") {
-      this.resizeObserver = new ResizeObserver(() => this.resize());
+    const ResizeObserverCtor = this.layout.view.ResizeObserver ?? globalThis.ResizeObserver;
+    if (typeof ResizeObserverCtor !== "undefined") {
+      this.resizeObserver = new ResizeObserverCtor(() => this.resize());
       this.resizeObserver.observe(this.layout.plot);
     }
 
@@ -1022,7 +1023,7 @@ export class Chart {
   }
 
   /** Resize the canvas to match its layout size and device pixel ratio. */
-  resize(dpr: number = globalThis.devicePixelRatio): boolean {
+  resize(dpr: number = this.layout.view.devicePixelRatio): boolean {
     const resized = this.applyCanvasSize(dpr);
     if (resized) {
       // `plugins` is unset while the constructor sizes the canvas, before any plugin exists.
@@ -1148,7 +1149,7 @@ export class Chart {
   stop(): void {
     this.running = false;
     if (this.rafId !== 0) {
-      cancelAnimationFrame(this.rafId);
+      this.layout.view.cancelAnimationFrame(this.rafId);
       this.rafId = 0;
     }
   }
@@ -1156,7 +1157,7 @@ export class Chart {
   /** Schedule a frame. Chart-owned changes call this automatically. */
   requestRender(): void {
     if (!this.running || this.rafId !== 0) return;
-    this.rafId = requestAnimationFrame(() => {
+    this.rafId = this.layout.view.requestAnimationFrame(() => {
       this.rafId = 0;
       if (!this.running) return;
       try {
@@ -1175,9 +1176,9 @@ export class Chart {
     this.stop();
     this.clearXFollowResumeTimer();
     this.resizeObserver?.disconnect();
-    if (this.hoverRafId !== 0) cancelAnimationFrame(this.hoverRafId);
+    if (this.hoverRafId !== 0) this.layout.view.cancelAnimationFrame(this.hoverRafId);
     this.hoverRafId = 0;
-    if (this.restoreRenderRafId !== 0) cancelAnimationFrame(this.restoreRenderRafId);
+    if (this.restoreRenderRafId !== 0) this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
     this.restoreRenderRafId = 0;
     this.toggleDomListeners("removeEventListener");
     this.unwatchForcedColors();
@@ -1248,7 +1249,7 @@ export class Chart {
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     if (this.hoverRafId !== 0) {
-      cancelAnimationFrame(this.hoverRafId);
+      this.layout.view.cancelAnimationFrame(this.hoverRafId);
       this.hoverRafId = 0;
     }
     this.refreshHover();
@@ -1305,7 +1306,7 @@ export class Chart {
   private watchForcedColors(): void {
     const option = this.options.accessibility;
     if (option === false || (typeof option === "object" && option.forcedColors === false)) return;
-    const view = this.layout.root.ownerDocument.defaultView ?? globalThis;
+    const view = this.layout.view;
     if (typeof view.matchMedia !== "function") return;
     const query = view.matchMedia("(forced-colors: active)");
     this.forcedColorsQuery = query;
@@ -1541,7 +1542,7 @@ export class Chart {
 
   private scheduleRenderAfterRestore(): void {
     if (this.restoreRenderRafId !== 0) return;
-    this.restoreRenderRafId = requestAnimationFrame(() => {
+    this.restoreRenderRafId = this.layout.view.requestAnimationFrame(() => {
       this.restoreRenderRafId = 0;
       this.render();
     });
@@ -1595,7 +1596,7 @@ export class Chart {
     const keyboard = this.keyboardOptions();
     if (!keyboard || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
     const target = event.target;
-    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+    if (isTextEntryTarget(target)) return;
 
     const panStep = keyboard.panFraction * (event.shiftKey ? 2.5 : 1);
     const zoomAtCenter = (factor: number, axis: ZoomIntent["axis"]): void => this.zoom({ factor, cx: 0.5, cy: 0.5, axis });
@@ -1705,7 +1706,7 @@ export class Chart {
     }
   }
 
-  private applyCanvasSize(dpr: number = globalThis.devicePixelRatio): boolean {
+  private applyCanvasSize(dpr: number = this.layout.view.devicePixelRatio): boolean {
     const scale = Number.isFinite(dpr) ? Math.max(1, dpr) : 1;
     const width = Math.max(1, Math.floor(this.canvas.clientWidth * scale));
     const height = Math.max(1, Math.floor(this.canvas.clientHeight * scale));
@@ -2269,7 +2270,7 @@ export class Chart {
 
   private scheduleHoverRefresh(): void {
     if (this.hoverRafId !== 0) return;
-    this.hoverRafId = requestAnimationFrame(() => {
+    this.hoverRafId = this.layout.view.requestAnimationFrame(() => {
       this.hoverRafId = 0;
       this.refreshHover();
     });
@@ -2368,4 +2369,15 @@ export class Chart {
     if (!listeners) return;
     for (const listener of listeners) (listener as Listener<K>)(payload);
   }
+}
+
+/**
+ * Whether a key event came from a text-entry control. Uses tag names rather than `instanceof`
+ * so elements from another realm (iframe, popup, Document Picture-in-Picture) are recognized.
+ */
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  const element = target as { tagName?: unknown; isContentEditable?: unknown } | null;
+  if (!element || typeof element.tagName !== "string") return false;
+  const tag = element.tagName.toUpperCase();
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || element.isContentEditable === true;
 }
