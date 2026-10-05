@@ -153,6 +153,7 @@ Strings that BlazePlot generates are overridable, and unset keys keep their Engl
 - `accessibility: { locale, messages }` on the chart sets the default accessible name and the wording of the generated summary; `locale` (a BCP 47 tag, default `"en-US"`) formats the counts in it.
 - `legendPlugin({ messages })` overrides the legend's group label, hide/show tooltips, and fallback series names.
 - `a11yPlugin({ locale, messages })` covers the hidden data table, announcements, and inspection text.
+- `selectionPlugin`, `navigatorPlugin`, `annotationsPlugin`, and `interactionsPlugin` take `messages` too; the full list is in [Accessibility](./accessibility.md#localization).
 - `interactionsPlugin({ gestureHint: { wheelText, touchText, durationMs } })` rewords the cooperative-gesture hint.
 
 Axis tick text comes from your `tickFormat`; time ticks use English month and weekday names unless you format them yourself. See [Accessibility](./accessibility.md) for the full message lists.
