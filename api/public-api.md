@@ -205,14 +205,14 @@ class Chart {
     addCandlestick<D extends OhlcDataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
     removeSeries(series: SeriesStore): boolean;
     getSummary(): ChartSummary;
-    getSeriesState(): ChartSeriesState[];
+    getSeriesState(): readonly ChartSeriesState[];
     followX(options?: ChartFollowXOptions): void;
     stopFollowX(): void;
     setFollowXPaused(paused: boolean): void;
     getFollowXState(): ChartFollowXState;
     fitToData(options?: ChartFitToDataOptions): boolean;
     resize(pixelRatio?: number): boolean;
-    getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+    getFrameStats(target?: ChartFrameStats): Readonly<ChartFrameStats>;
     getHoverState(): ChartHoverState | null;
     subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
     setTheme(theme?: ChartTheme): void;
@@ -577,10 +577,10 @@ interface ChartPluginLayout {
 
 ```ts
 interface ChartPluginState {
-    getSeries(): ChartSeriesState[];
+    getSeries(): readonly ChartSeriesState[];
     getHover(): ChartHoverState | null;
     pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
-    getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+    getFrameStats(target?: ChartFrameStats): Readonly<ChartFrameStats>;
     inspect(target: ChartInspectionTarget | null): ChartHoverState | null;
     getInspection(): ChartInspectionTarget | null;
 }
@@ -867,28 +867,28 @@ interface ChartSurfaceStyle {
 interface ChartTheme {
     readonly backgroundColor?: ThemeColor;
     readonly gridColor?: ThemeColor;
-    readonly axisColor?: string;
+    readonly axisColor?: ThemeColor;
     readonly axisFont?: string;
     readonly seriesColors?: readonly ThemeColor[];
-    readonly tooltipBackgroundColor?: string;
-    readonly tooltipTextColor?: string;
+    readonly tooltipBackgroundColor?: ThemeColor;
+    readonly tooltipTextColor?: ThemeColor;
     readonly tooltipFont?: string;
-    readonly legendBackgroundColor?: string;
-    readonly legendBorderColor?: string;
-    readonly legendTextColor?: string;
-    readonly legendMutedTextColor?: string;
+    readonly legendBackgroundColor?: ThemeColor;
+    readonly legendBorderColor?: ThemeColor;
+    readonly legendTextColor?: ThemeColor;
+    readonly legendMutedTextColor?: ThemeColor;
     readonly legendFont?: string;
-    readonly titleColor?: string;
+    readonly titleColor?: ThemeColor;
     readonly titleFont?: string;
-    readonly subtitleColor?: string;
+    readonly subtitleColor?: ThemeColor;
     readonly subtitleFont?: string;
-    readonly axisTitleColor?: string;
+    readonly axisTitleColor?: ThemeColor;
     readonly axisTitleFont?: string;
-    readonly selectionFillColor?: string;
-    readonly selectionStrokeColor?: string;
-    readonly crosshairColor?: string;
-    readonly markerStrokeColor?: string;
-    readonly focusRingColor?: string;
+    readonly selectionFillColor?: ThemeColor;
+    readonly selectionStrokeColor?: ThemeColor;
+    readonly crosshairColor?: ThemeColor;
+    readonly markerStrokeColor?: ThemeColor;
+    readonly focusRingColor?: ThemeColor;
 }
 ```
 
@@ -1749,8 +1749,8 @@ interface TextOverlayConfig {
     readonly text: string;
     readonly color?: string;
     readonly font?: string;
-    readonly offsetX?: number;
-    readonly offsetY?: number;
+    readonly offsetXPx?: number;
+    readonly offsetYPx?: number;
 }
 ```
 
@@ -2272,8 +2272,8 @@ interface TooltipPluginOptions {
     readonly group?: ChartPickGroup;
     readonly syncGroup?: string;
     readonly maxDistancePx?: number;
-    readonly offsetX?: number;
-    readonly offsetY?: number;
+    readonly offsetXPx?: number;
+    readonly offsetYPx?: number;
     readonly highlight?: boolean;
     readonly longPressMs?: number | false;
     readonly backgroundColor?: string;
@@ -2428,8 +2428,8 @@ interface AnnotationLabelOptions {
     readonly position?: "start" | "center" | "end" | "top" | "bottom" | "left" | "right";
     readonly color?: string;
     readonly font?: string;
-    readonly offsetX?: number;
-    readonly offsetY?: number;
+    readonly offsetXPx?: number;
+    readonly offsetYPx?: number;
 }
 ```
 
@@ -2478,7 +2478,7 @@ interface BoxAnnotation extends AnnotationBase {
     readonly yMax: number;
     readonly fillColor?: string;
     readonly borderColor?: string;
-    readonly borderWidth?: number;
+    readonly borderWidthPx?: number;
 }
 ```
 
@@ -2503,10 +2503,10 @@ interface PointAnnotation extends AnnotationBase {
     readonly type: "point";
     readonly x: number;
     readonly y: number;
-    readonly radius?: number;
+    readonly radiusPx?: number;
     readonly color?: string;
     readonly strokeColor?: string;
-    readonly strokeWidth?: number;
+    readonly strokeWidthPx?: number;
     readonly shape?: "circle" | "diamond" | "cross";
 }
 ```
@@ -2518,7 +2518,7 @@ interface XLineAnnotation extends AnnotationBase {
     readonly type: "x-line";
     readonly x: number;
     readonly color?: string;
-    readonly width?: number;
+    readonly widthPx?: number;
     readonly dash?: string;
 }
 ```
@@ -2532,7 +2532,7 @@ interface XRangeAnnotation extends AnnotationBase {
     readonly xMax: number;
     readonly fillColor?: string;
     readonly borderColor?: string;
-    readonly borderWidth?: number;
+    readonly borderWidthPx?: number;
 }
 ```
 
@@ -2543,7 +2543,7 @@ interface YLineAnnotation extends AnnotationBase {
     readonly type: "y-line";
     readonly y: number;
     readonly color?: string;
-    readonly width?: number;
+    readonly widthPx?: number;
     readonly dash?: string;
 }
 ```
@@ -2557,7 +2557,7 @@ interface YRangeAnnotation extends AnnotationBase {
     readonly yMax: number;
     readonly fillColor?: string;
     readonly borderColor?: string;
-    readonly borderWidth?: number;
+    readonly borderWidthPx?: number;
 }
 ```
 
@@ -2719,7 +2719,7 @@ interface CrosshairPluginOptions {
     readonly snap?: CrosshairSnapMode;
     readonly syncGroup?: string;
     readonly color?: string;
-    readonly width?: number;
+    readonly widthPx?: number;
     readonly dash?: string;
     readonly label?: boolean;
     readonly labelBackgroundColor?: string;
@@ -2728,9 +2728,9 @@ interface CrosshairPluginOptions {
     readonly labelPlacement?: CrosshairLabelPlacement;
     readonly zIndex?: number;
     readonly highlight?: boolean;
-    readonly markerSize?: number;
+    readonly markerSizePx?: number;
     readonly markerStrokeColor?: string;
-    readonly markerStrokeWidth?: number;
+    readonly markerStrokeWidthPx?: number;
     readonly renderHighlight?: CrosshairHighlightRenderer;
     readonly longPressMs?: number | false;
     readonly rulerModifier?: "none" | "ctrl" | "shift" | "alt" | "meta";
@@ -2798,7 +2798,7 @@ interface NavigatorPlugin extends ChartPlugin {
 
 ```ts
 interface NavigatorPluginOptions {
-    readonly height?: number;
+    readonly heightPx?: number;
     readonly placement?: "bottom" | "top";
     readonly series?: SeriesStore | readonly SeriesStore[];
     readonly maxSamplesPerSeries?: number;
@@ -2807,15 +2807,15 @@ interface NavigatorPluginOptions {
     readonly backgroundColor?: string;
     readonly borderColor?: string;
     readonly strokeColor?: string;
-    readonly strokeWidth?: number;
+    readonly strokeWidthPx?: number;
     readonly fillColor?: string;
     readonly windowFillColor?: string;
     readonly windowStrokeColor?: string;
-    readonly handleWidth?: number;
-    readonly handleHitWidth?: number;
+    readonly handleWidthPx?: number;
+    readonly handleHitWidthPx?: number;
     readonly zIndex?: number;
     readonly reserveSpace?: boolean;
-    readonly margin?: number;
+    readonly marginPx?: number;
     readonly align?: "plot" | "chart";
     readonly onRangeChange?: (range: {
         readonly xMin: number;

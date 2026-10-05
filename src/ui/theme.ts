@@ -196,13 +196,6 @@ export function forcedColorsTheme(base: ResolvedChartTheme, context?: Element): 
   };
 }
 
-/** Theme fields that DOM overlays consume as CSS color strings. */
-const CSS_COLOR_KEYS = [
-  "axisColor", "tooltipBackgroundColor", "tooltipTextColor", "legendBackgroundColor", "legendBorderColor", "legendTextColor", "legendMutedTextColor",
-  "titleColor", "subtitleColor", "axisTitleColor", "selectionFillColor", "selectionStrokeColor", "crosshairColor", "markerStrokeColor", "focusRingColor",
-] as const;
-type CssColorKey = (typeof CSS_COLOR_KEYS)[number];
-
 /** Merge a partial theme with defaults and resolve CSS colors. */
 export function resolveChartTheme(theme: ChartTheme | undefined, context?: Element): ResolvedChartTheme {
   if (!theme) return DEFAULT_CHART_THEME;
@@ -216,16 +209,11 @@ export function resolveChartTheme(theme: ChartTheme | undefined, context?: Eleme
     ))
     : DEFAULT_CHART_THEME.seriesColors;
 
-  const overrides = Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined));
-  const cssColors: { -readonly [K in CssColorKey]?: string } = {};
-  for (const key of CSS_COLOR_KEYS) {
-    const value = theme[key];
-    if (value !== undefined) cssColors[key] = themeColorToCss(value, DEFAULT_CHART_THEME[key]);
-  }
+  // RGBA tuples become CSS strings for DOM tokens; background, grid, and series colors are resolved below.
+  const overrides = Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined).map(([key, value]) => [key, Array.isArray(value) ? rgbaCss(value as unknown as RgbaColor) : value]));
   return {
     ...DEFAULT_CHART_THEME,
     ...overrides,
-    ...cssColors,
     backgroundColor,
     backgroundCssColor: themeColorToCss(theme.backgroundColor, DEFAULT_CHART_THEME.backgroundCssColor),
     gridColor: resolveThemeColor(theme.gridColor, DEFAULT_CHART_THEME.gridColor, context),
