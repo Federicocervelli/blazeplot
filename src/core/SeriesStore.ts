@@ -270,8 +270,6 @@ export class SeriesStore<D extends Dataset = any> {
   }
 
   /** Replace all data in datasets that support wholesale replacement, such as `StaticDataset` or `ServerSampledDataset`. */
-
-  /** Replace all data in datasets that support wholesale replacement, such as `StaticDataset` or `ServerSampledDataset`. */
   replace(data: SeriesReplaceData<D>): void {
     const dataset = this.dataset as Dataset & { replace?: (data: unknown) => void };
     if (typeof dataset.replace !== "function") {

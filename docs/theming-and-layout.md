@@ -43,14 +43,24 @@ Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(confi
 | `color` | all | Stroke or marker color. Defaults to the next theme series color. |
 | `lineWidth` | line, area outline, OHLC, candlestick wick | Width in CSS pixels. Defaults to 1. |
 | `pointSize` | scatter | Round marker diameter in CSS pixels. Defaults to 4. |
-| `barWidth` | bar, candlestick body | Width in data X units. Defaults to 0.8 (the bin width for a `HistogramDataset`). |
+| `barWidth` | bar, candlestick body | Width in data X units (not pixels: it scales with zoom, and is milliseconds on a time axis). Defaults to 0.8 (the bin width for a `HistogramDataset`). |
 | `baseline` | bar, area | Y value bars and the area fill grow from. Defaults to 0. |
 | `fillColor` | area | Fill color. Defaults to `color` at 25% opacity. |
-| `tickWidth` | OHLC | Open/close tick width in data X units. Defaults to `barWidth`. |
+| `tickWidth` | OHLC | Open/close tick length in data X units (not pixels). Defaults to `barWidth`. |
 | `upColor`, `downColor` | OHLC, candlestick | Rising and falling colors. `upColor` defaults to `color`, `downColor` to `fillColor` when set, otherwise `color` at 45% opacity. |
 | `wickColor` | candlestick | Wick color. Defaults to `color`. |
 
 Translucent colors blend with what is already drawn.
+
+### Units
+
+Every numeric option states its unit in its name or its JSDoc. The conventions:
+
+- **`*Px` names are CSS pixels** (`offsetXPx`, `widthPx`, `radiusPx`, `heightPx`, `maxDistancePx`, `minDragDistancePx`, `hitTolerancePx`, `strokeWidthPx`). Series style `lineWidth` and `pointSize` are CSS pixels too (documented, unsuffixed). The renderer multiplies by the pixel ratio.
+- **`barWidth` and `tickWidth` are data X units**, not pixels, so bars keep their width relative to the data when you zoom. On a time axis X is epoch milliseconds, so a one-minute bar is `60_000`.
+- **`*Ms` names are milliseconds** of wall-clock time (`resumeAfterMs`, `longPressMs`, `updateMs`). Everything else about X (`window`, `xStep`, `xStart`, `binSize`) is in X data units.
+- **Screenshot `width` and `height` are device pixels** of the output image; `pixelRatio` is device pixels per CSS pixel.
+- Padding options such as `fitToData({ padding })` are fractions of the data span (0.05 is 5%).
 
 Series without an explicit `color` take the first theme palette color no other attached series uses, so removing a series and adding another never repeats a color that is still on screen. Those palette-colored series follow `chart.setTheme(...)`; series with an explicit `color` keep it.
 

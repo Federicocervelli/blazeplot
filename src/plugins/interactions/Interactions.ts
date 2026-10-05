@@ -8,7 +8,11 @@ import type { InteractionsPluginOptions } from "./types.js";
 
 let nextInteractionsPluginId = 1;
 
-/** Create a plugin that enables pan, zoom, and touch interactions. */
+/**
+ * Create a plugin that enables pan, zoom, and touch interactions.
+ *
+ * One instance may be passed to several charts: it keeps no per-chart state outside each install.
+ */
 export function interactionsPlugin(options: InteractionsPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {

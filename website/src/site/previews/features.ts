@@ -47,7 +47,7 @@ export default class Preview extends PreviewResources {
           onMeasureChange: (measurement) => this.featureLog(`ruler Δx ${this.featureFormatDuration(measurement.deltaX)}  Δy ${formatValue(measurement.deltaY)}`),
           onMeasureEnd: (measurement) => this.featureLog(`ruler end: Δx ${this.featureFormatDuration(measurement.deltaX)}  Δy ${formatValue(measurement.deltaY)}  samples ${measurement.sampleCount.toLocaleString()}`),
         }),
-        navigatorPlugin({ height: 58, placement: "bottom", followLive: false }),
+        navigatorPlugin({ heightPx: 58, placement: "bottom", followLive: false }),
         legendPlugin({ toggleOnClick: true }),
         tooltipPlugin({ mode: "nearest-x", group: "x", maxDistancePx: 48, formatter: (item) => `(${formatDate(item.x)}, ${formatValue(item.y)})` }),
         // Hidden data table plus keyboard inspection: focus the chart, press Enter, then use the arrow keys.

@@ -87,7 +87,7 @@ export function drawAnnotation(
       line.setAttribute("x2", String(x));
       line.setAttribute("y1", "0");
       line.setAttribute("y2", String(height));
-      styleStroke(line, annotation.color ?? defaultColor, annotation.width, annotation.dash);
+      styleStroke(line, annotation.color ?? defaultColor, annotation.widthPx, annotation.dash);
       group.appendChild(line);
       appendLabel(group, annotation.label, x + 4, 6, "start", defaultColor, defaultFont);
       break;
@@ -100,7 +100,7 @@ export function drawAnnotation(
       line.setAttribute("x2", String(width));
       line.setAttribute("y1", String(y));
       line.setAttribute("y2", String(y));
-      styleStroke(line, annotation.color ?? defaultColor, annotation.width, annotation.dash);
+      styleStroke(line, annotation.color ?? defaultColor, annotation.widthPx, annotation.dash);
       group.appendChild(line);
       appendLabel(group, annotation.label, width - 4, y - 4, "end", defaultColor, defaultFont);
       break;
@@ -108,28 +108,28 @@ export function drawAnnotation(
     case "x-range": {
       const rect = clampRect(xToPx(annotation.xMin), 0, xToPx(annotation.xMax), height, width, height);
       if (!rect) return null;
-      appendRect(group, rect, annotation.fillColor ?? defaultFillColor, annotation.borderColor, annotation.borderWidth);
+      appendRect(group, rect, annotation.fillColor ?? defaultFillColor, annotation.borderColor, annotation.borderWidthPx);
       appendLabel(group, annotation.label, rect.x + rect.w * 0.5, 6, "middle", defaultColor, defaultFont);
       break;
     }
     case "y-range": {
       const rect = clampRect(0, yToPx(annotation.yMax), width, yToPx(annotation.yMin), width, height);
       if (!rect) return null;
-      appendRect(group, rect, annotation.fillColor ?? defaultFillColor, annotation.borderColor, annotation.borderWidth);
+      appendRect(group, rect, annotation.fillColor ?? defaultFillColor, annotation.borderColor, annotation.borderWidthPx);
       appendLabel(group, annotation.label, width - 4, rect.y + rect.h * 0.5, "end", defaultColor, defaultFont);
       break;
     }
     case "box": {
       const rect = clampRect(xToPx(annotation.xMin), yToPx(annotation.yMax), xToPx(annotation.xMax), yToPx(annotation.yMin), width, height);
       if (!rect) return null;
-      appendRect(group, rect, annotation.fillColor ?? defaultFillColor, annotation.borderColor, annotation.borderWidth);
+      appendRect(group, rect, annotation.fillColor ?? defaultFillColor, annotation.borderColor, annotation.borderWidthPx);
       appendLabel(group, annotation.label, rect.x + rect.w * 0.5, rect.y + 6, "middle", defaultColor, defaultFont);
       break;
     }
     case "point": {
       const x = xToPx(annotation.x);
       const y = yToPx(annotation.y);
-      const radius = annotation.radius ?? 5;
+      const radius = annotation.radiusPx ?? 5;
       if (!isInsidePlot(x, y, width, height)) return null;
       appendMarker(group, x, y, radius, annotation);
       appendLabel(group, annotation.label, x + radius + 4, y - radius - 2, "start", defaultColor, defaultFont);
@@ -171,7 +171,7 @@ export function appendRect(group: SVGGElement, rect: { x: number; y: number; w: 
 export function appendMarker(group: SVGGElement, x: number, y: number, radius: number, annotation: PointAnnotation): void {
   const fill = annotation.color ?? "rgba(255,255,255,0.95)";
   const stroke = annotation.strokeColor ?? "rgba(0,0,0,0.35)";
-  const strokeWidth = annotation.strokeWidth ?? 1;
+  const strokeWidth = annotation.strokeWidthPx ?? 1;
   if (annotation.shape === "diamond") {
     const polygon = createSvgElement(group.ownerDocument, "polygon");
     polygon.setAttribute("points", `${x},${y - radius} ${x + radius},${y} ${x},${y + radius} ${x - radius},${y}`);
@@ -223,7 +223,7 @@ export function appendLabel(group: SVGGElement, label: string | AnnotationLabelO
   const textValue = labelText(label);
   if (!textValue) return;
   const opts = labelOptions(label);
-  appendText(group, textValue, x + (opts.offsetX ?? 0), y + (opts.offsetY ?? 0), anchor, opts.color ?? defaultColor, opts.font ?? defaultFont);
+  appendText(group, textValue, x + (opts.offsetXPx ?? 0), y + (opts.offsetYPx ?? 0), anchor, opts.color ?? defaultColor, opts.font ?? defaultFont);
 }
 
 export function appendText(group: SVGGElement, textValue: string, x: number, y: number, anchor: "start" | "middle" | "end", color: string, font: string): SVGTextElement {

@@ -211,9 +211,9 @@ export class ChartLayout implements ChartLayoutElements {
     const custom = applied.custom as ChartTitleConfig;
 
     const align = custom.align ?? "center";
-    const offsetX = custom.offsetX ?? 0;
+    const offsetX = custom.offsetXPx ?? 0;
     const style = applied.el.style;
-    style.top = `${top + (custom.offsetY ?? 0)}px`;
+    style.top = `${top + (custom.offsetYPx ?? 0)}px`;
     style.left = align === "left" ? `${TITLE_SIDE_INSET_PX + offsetX}px` : align === "right" ? "auto" : `calc(50% + ${offsetX}px)`;
     style.right = align === "right" ? `${TITLE_SIDE_INSET_PX - offsetX}px` : "auto";
     style.transform = align === "center" ? "translateX(-50%)" : "none";
@@ -224,8 +224,8 @@ export class ChartLayout implements ChartLayoutElements {
     const applied = this.applyTitleText(slot, config, theme.axisTitleColor, theme.axisTitleFont);
     if (!applied) return;
 
-    const offsetX = applied.custom.offsetX ?? 0;
-    const offsetY = applied.custom.offsetY ?? 0;
+    const offsetX = applied.custom.offsetXPx ?? 0;
+    const offsetY = applied.custom.offsetYPx ?? 0;
     const style = applied.el.style;
     if (axis === "x") {
       style.left = `calc(50% + ${offsetX}px)`;
