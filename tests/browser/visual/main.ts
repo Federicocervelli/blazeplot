@@ -737,11 +737,11 @@ function addExactLineLong(chart: Chart): void {
   chart.setViewport({ xMin: 0, xMax: count - 1, yMin: -1.4, yMax: 1.4 });
 }
 
-/** 1px line with about 48 samples per pixel column and a +-0.05 alternation: Canvas 2D reduces such lines to pixel columns. */
+/** 1px line with about 48 samples per pixel column and a +-0.025 alternation and a spike every 997 samples: Canvas 2D reduces such lines to pixel columns. */
 function addExactLineThinDense(chart: Chart): void {
   const count = 40_000;
   const x = Float64Array.from({ length: count }, (_, i) => i);
-  const y = Float32Array.from({ length: count }, (_, i) => Math.sin(i * 0.002) + (i % 2 === 0 ? 0.05 : -0.05) + (i % 997 === 0 ? 0.3 : 0));
+  const y = Float32Array.from({ length: count }, (_, i) => Math.sin(i * 0.002) + (i % 2 === 0 ? 0.025 : -0.025) + (i % 997 === 0 ? 0.3 : 0));
   chart.addLine({ dataset: new StaticDataset(x, y), downsample: "none", name: "thin dense line" }, { lineWidth: 1 });
   chart.setViewport({ xMin: 0, xMax: count - 1, yMin: -1.4, yMax: 1.4 });
 }
