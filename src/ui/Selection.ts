@@ -1,6 +1,6 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { ChartPlugin, ChartPluginContext, ChartRect } from "./PluginHost.js";
-import { asElement, clamp, createOverlayLayer, singleChartPlugin } from "./OverlayUtils.js";
+import { asElement, clamp, createOverlayLayer, dragModifierMatches, singleChartPlugin } from "./OverlayUtils.js";
 
 /** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
@@ -71,6 +71,13 @@ export interface SelectionPluginOptions {
   readonly yAxis?: SeriesYAxis;
   /** Drags shorter than this are ignored. Defaults to 4. */
   readonly minDragDistancePx?: number;
+  /**
+   * Modifier that starts a selection drag. Defaults to `"none"`: a plain drag with no Shift,
+   * Alt, or Ctrl/Cmd held. Pick another key when a plain drag belongs to another plugin.
+   * The plugin claims the pointer through `ctx.dom.claimPointer`, so another plugin's drag on
+   * the same pointer never runs twice.
+   */
+  readonly modifier?: "none" | "shift" | "alt" | "ctrl";
   readonly className?: string;
   /** Rectangle fill. Defaults to `theme.selectionFillColor`. */
   readonly fillColor?: string;
@@ -209,9 +216,11 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       };
       applyTheme();
       chart.dom.mount("plot", overlay);
+      // A touch drag selects instead of scrolling the page.
+      chart.dom.decorate("plot", { style: { touchAction: "none" } });
 
       const onPointerDown = (event: PointerEvent): void => {
-        if (drag || event.button !== 0) return;
+        if (drag || event.button !== 0 || !dragModifierMatches(event, options.modifier) || !chart.dom.claimPointer(event)) return;
         event.preventDefault();
         captureTarget = asElement(event.currentTarget);
         captureTarget?.setPointerCapture(event.pointerId);
@@ -389,7 +398,9 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         setOverlay(committedSelection.plotBounds);
       };
 
-      chart.dom.listen("plot", "pointerdown", onPointerDown);
+      // Capture phase: with default options a plain drag selects instead of box-zooming,
+      // whichever plugin was installed first.
+      chart.dom.listen("plot", "pointerdown", onPointerDown, { capture: true });
       chart.dom.listen("plot", "pointermove", onPointerMove);
       chart.dom.listen("plot", "pointerup", onPointerUp);
       chart.dom.listen("plot", "pointercancel", onPointerCancel);

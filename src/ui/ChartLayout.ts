@@ -130,7 +130,7 @@ export class ChartLayout implements ChartLayoutElements {
     this.plot = styledDiv(doc, "blazeplot-plot", { ...gridCell(2, 2), position: "relative", overflow: "hidden" });
     this.canvas = canvasTarget ?? doc.createElement("canvas");
     this.canvas.classList.add("blazeplot-canvas");
-    Object.assign(this.canvas.style, { position: "absolute", inset: "0", zIndex: "1", display: "block", width: "100%", height: "100%", touchAction: "none" });
+    Object.assign(this.canvas.style, { position: "absolute", inset: "0", zIndex: "1", display: "block", width: "100%", height: "100%" });
     this.yAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y", axisCell(1, 2));
     this.y2Axis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y2", axisCell(3, 2));
     this.xAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-x", axisCell(2, 3));

@@ -50,7 +50,7 @@ Generated from `dist/` after the package build.
 | linked entry | `dist/linked.js` | 2 KiB |
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
-| interactions plugin | `dist/plugins/interactions.js` | 13 KiB |
+| interactions plugin | `dist/plugins/interactions.js` | 15 KiB |
 | annotations plugin | `dist/plugins/annotations.js` | 15 KiB |
 | navigator plugin | `dist/plugins/navigator.js` | 10 KiB |
 | selection plugin | `dist/plugins/selection.js` | 8 KiB |
@@ -59,7 +59,7 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 10 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 149 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 151 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 5 KiB |

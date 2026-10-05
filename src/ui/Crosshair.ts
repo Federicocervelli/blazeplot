@@ -1,7 +1,7 @@
 import type { SeriesYAxis } from "../core/types.js";
 import type { ChartPickItem, ChartPickMode } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, singleChartPlugin, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
+import { createLongPressTouchTracker, requestLongPressTouchAction, createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, singleChartPlugin, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
 import type { SyncMembership } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 
@@ -422,6 +422,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         updateAtClientPoint(clientX, clientY);
       };
 
+      requestLongPressTouchAction(chart, options.longPressMs);
       const longPress = createLongPressTouchTracker({
         view: chart.dom.view,
         delayMs: () => options.longPressMs,
@@ -443,8 +444,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
 
       const onPointerDown = (event: PointerEvent): void => {
         longPress.onPointerDown(event);
-        if (mode !== "ruler" || event.button !== 0 || !hasModifier(event, rulerModifier)) return;
-        rulerStart = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
+        if (mode !== "ruler" || event.button !== 0 || !hasModifier(event, rulerModifier) || !chart.dom.claimPointer(event)) return;
+        rulerStart =resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         if (rulerStart) {
           emitMeasureStart(rulerStart);
           event.preventDefault();
@@ -463,12 +464,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         rulerStart = null;
       };
 
-      chart.dom.listen("plot", "pointermove", onPointerMove);
-      chart.dom.listen("plot", "pointercancel", longPress.clear);
-      chart.dom.listen("plot", "touchstart", longPress.onTouchStart, { capture: true, passive: true });
-      chart.dom.listen("plot", "touchmove", longPress.onTouchMove, { capture: true, passive: false });
-      chart.dom.listen("plot", "touchend", longPress.clear);
-      chart.dom.listen("plot", "touchcancel", longPress.clear);
+      chart.dom.listen("plot", "pointermove", onPointerMove, { capture: true });
+      chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer);
       chart.dom.listen("plot", "pointerleave", onPointerLeave);
       chart.dom.listen("plot", "pointerdown", onPointerDown, { capture: true });
       chart.dom.listen("plot", "pointerup", onPointerUp, { capture: true });

@@ -1,6 +1,6 @@
 import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSyncRegistry, formatCompactNumber, pickAtDataX, placeFixedWithinViewport, renderPickItems } from "./OverlayUtils.js";
+import { createLongPressTouchTracker, requestLongPressTouchAction,createOverlayLayer, createPickMarker, createSyncRegistry, formatCompactNumber, pickAtDataX, placeFixedWithinViewport, renderPickItems } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 
 /** Options for the built-in hover tooltip plugin. */
@@ -195,6 +195,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         notifyPeers(state);
       };
 
+      requestLongPressTouchAction(chart, options.longPressMs);
       const longPress = createLongPressTouchTracker({
         view: chart.dom.view,
         delayMs: () => options.longPressMs,
@@ -205,10 +206,6 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       chart.dom.listen("plot", "pointermove", longPress.onPointerMove, { capture: true });
       chart.dom.listen("plot", "pointerup", longPress.clearIfTouchPointer, { capture: true });
       chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer, { capture: true });
-      chart.dom.listen("plot", "touchstart", longPress.onTouchStart, { capture: true, passive: true });
-      chart.dom.listen("plot", "touchmove", longPress.onTouchMove, { capture: true, passive: false });
-      chart.dom.listen("plot", "touchend", longPress.clear);
-      chart.dom.listen("plot", "touchcancel", longPress.clear);
 
       // `hover` runs after the frame it describes, so render synchronously: no extra frame of lag.
       chart.events.subscribe("hover", (state) => {
