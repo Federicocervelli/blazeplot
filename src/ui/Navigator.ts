@@ -184,7 +184,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     const viewport = chart.viewport.get();
     if (follow && options.followLive !== false && wasAtRightEdge && domain.xMax > viewport.xMax) {
       const span = viewport.xMax - viewport.xMin;
-      chart.viewport.set({ xMin: domain.xMax - span, xMax: domain.xMax });
+      chart.viewport.set({ xMin: domain.xMax - span, xMax: domain.xMax }, undefined, { source: "follow", pauseFollow: false });
     }
 
     const current = chart.viewport.get();
@@ -229,7 +229,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       xMax = domain.xMax;
       xMin = xMax - span;
     }
-    chart.viewport.set({ xMin, xMax });
+    chart.viewport.set({ xMin, xMax }, undefined, { source: "user" });
     options.onRangeChange?.({ xMin, xMax });
     render(false);
   };

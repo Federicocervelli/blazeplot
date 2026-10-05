@@ -38,6 +38,8 @@ type AxisSurface = Exclude<ChartSurface, "plot" | "root">;
 type GestureSurface = "plot" | AxisSurface;
 
 const AXIS_SURFACES: readonly AxisSurface[] = ["axis-x", "axis-y", "axis-y2"];
+/** Gestures from this plugin report `viewportchange.source === "user"`. */
+const USER_VIEWPORT = { source: "user" } as const;
 
 function axisGestureConfig(surface: AxisSurface): { axis: ZoomAxis; yAxis?: SeriesYAxis } {
   if (surface === "axis-x") return { axis: "x" };
@@ -326,7 +328,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           const rect = chart.layout.plotRect();
           const dx = rect.width > 0 ? (drag.lastX - event.clientX) / rect.width : 0;
           const dy = rect.height > 0 ? (event.clientY - drag.lastY) / rect.height : 0;
-          chart.viewport.pan(directPan({ dx, dy }, drag.axis, drag.yAxis ?? "left"), drag.yAxis);
+          chart.viewport.pan(directPan({ dx, dy }, drag.axis, drag.yAxis ?? "left"), drag.yAxis, USER_VIEWPORT);
           drag.lastX = event.clientX;
           drag.lastY = event.clientY;
           return;
@@ -368,7 +370,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         if (!rightStart || !rightEnd) return;
         const rightYMin = Math.min(rightStart[1], rightEnd[1]);
         const rightYMax = Math.max(rightStart[1], rightEnd[1]);
-        if (rightYMax > rightYMin) chart.viewport.set({ yMin: rightYMin, yMax: rightYMax }, "right");
+        if (rightYMax > rightYMin) chart.viewport.set({ yMin: rightYMin, yMax: rightYMax }, "right", USER_VIEWPORT);
       };
 
       const onPointerCancel = (event: PointerEvent): void => {
@@ -392,7 +394,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
             dy: rect.height > 0 && zoomAxis !== "x" ? (-event.deltaY * sensitivity) / rect.height : 0,
           }, zoomAxis, targetYAxis ?? "left");
           if ((Math.abs(panIntent.dx) < 1e-6 && Math.abs(panIntent.dy) < 1e-6)) return;
-          chart.viewport.pan(panIntent, targetYAxis);
+          chart.viewport.pan(panIntent, targetYAxis, USER_VIEWPORT);
           return;
         }
 
@@ -405,13 +407,13 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         const cx = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
         const cy = rect.height > 0 ? 1 - (event.clientY - rect.top) / rect.height : 0.5;
         if (Math.abs(1 - factor) < 1e-4) return;
-        chart.viewport.zoom(directZoom({ factor, cx, cy, axis: zoomAxis }, targetYAxis ?? "left"), targetYAxis);
+        chart.viewport.zoom(directZoom({ factor, cx, cy, axis: zoomAxis }, targetYAxis ?? "left"), targetYAxis, USER_VIEWPORT);
       };
 
       const resetToCapturedViewport = (): void => {
         const target = options.resetViewport?.() ?? resetViewport ?? normalizeViewport(chart.viewport.get());
-        chart.viewport.set(target);
-        if (resetRightViewport) chart.viewport.set({ yMin: resetRightViewport.yMin, yMax: resetRightViewport.yMax }, "right");
+        chart.viewport.set(target, undefined, USER_VIEWPORT);
+        if (resetRightViewport) chart.viewport.set({ yMin: resetRightViewport.yMin, yMax: resetRightViewport.yMax }, "right", USER_VIEWPORT);
         if (options.resumeFollowOnReset !== false) chart.viewport.setFollowXPaused(false);
       };
 
@@ -456,7 +458,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           const factor = distance / touchGesture.lastDistance;
           const cx = rect.width > 0 ? (center.x - rect.left) / rect.width : 0.5;
           const cy = rect.height > 0 ? 1 - (center.y - rect.top) / rect.height : 0.5;
-          chart.viewport.zoom(directZoom({ factor, cx, cy, axis: touchGesture.axis }, touchGesture.yAxis ?? "left"), touchGesture.yAxis);
+          chart.viewport.zoom(directZoom({ factor, cx, cy, axis: touchGesture.axis }, touchGesture.yAxis ?? "left"), touchGesture.yAxis, USER_VIEWPORT);
           touchGesture = { mode: "pinch", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastDistance: distance };
           return;
         }
@@ -466,7 +468,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         event.preventDefault();
         const dx = rect.width > 0 ? (touchGesture.lastX - touch.clientX) / rect.width : 0;
         const dy = rect.height > 0 ? (touch.clientY - touchGesture.lastY) / rect.height : 0;
-        chart.viewport.pan(directPan({ dx, dy }, touchGesture.axis, touchGesture.yAxis ?? "left"), touchGesture.yAxis);
+        chart.viewport.pan(directPan({ dx, dy }, touchGesture.axis, touchGesture.yAxis ?? "left"), touchGesture.yAxis, USER_VIEWPORT);
         touchGesture = { mode: "pan", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastX: touch.clientX, lastY: touch.clientY };
       };
 

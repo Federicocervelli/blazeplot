@@ -242,10 +242,36 @@ export interface ChartSeriesClickEvent extends ChartPointerEvent {
   readonly item: ChartPickItem;
 }
 
+/**
+ * What changed the viewport: a user gesture (`"user"`, passed by the interaction, navigator, and
+ * keyboard plugins), latest-X following (`"follow"`), `fitToData`/`autoFitY` (`"fit"`), a linked
+ * chart mirroring another panel (`"linked"`), or app code (`"api"`, the default).
+ */
+export type ChartViewportChangeSource = "user" | "follow" | "fit" | "api" | "linked";
+
 /** Emitted after the visible domain changes. */
 export interface ChartViewportChangeEvent {
   readonly viewport: Viewport;
   readonly rightViewport: Viewport;
+  /** What changed the viewport. */
+  readonly source: ChartViewportChangeSource;
+}
+
+/** Options for `chart.pan` and `chart.zoom`. */
+export interface ChartViewportGestureOptions {
+  /** Reported as `viewportchange.source`. Defaults to `"api"`. */
+  readonly source?: ChartViewportChangeSource;
+}
+
+/** Options for `chart.setViewport`. */
+export interface ChartSetViewportOptions extends ChartViewportGestureOptions {
+  /** Pause latest-X following when X changes. Defaults to true. Linked charts pass false for mirrored updates. */
+  readonly pauseFollow?: boolean;
+}
+
+/** Latest-X follow state change, emitted when following starts, stops, pauses, or resumes. */
+export interface ChartFollowXChangeEvent {
+  readonly state: ChartFollowXState;
 }
 
 /** Selection event payload emitted by selection plugins or custom code. `null` means the selection was cleared. */
@@ -294,6 +320,8 @@ export interface ChartEventMap extends ChartPluginEventMap {
   /** A frame finished drawing. */
   render: void;
   viewportchange: ChartViewportChangeEvent;
+  /** Latest-X following started, stopped, paused, or resumed. */
+  followxchange: ChartFollowXChangeEvent;
   seriesclick: ChartSeriesClickEvent;
   click: ChartPointerEvent;
   dblclick: ChartPointerEvent;
@@ -340,6 +368,8 @@ export interface ChartFitToDataOptions {
   readonly xMin?: number;
   /** Only consider samples at or before this X. */
   readonly xMax?: number;
+  /** Reported as `viewportchange.source`. Defaults to `"fit"`. */
+  readonly source?: ChartViewportChangeSource;
 }
 
 /** Options for automatically refitting Y as the X viewport changes. */
@@ -762,16 +792,16 @@ export class Chart {
    * Set any viewport edges. X is shared by both Y axes; Y edges apply to `yAxis`.
    * Changing X pauses latest-X following like a user pan would.
    */
-  setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left"): void {
+  setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left", options: ChartSetViewportOptions = {}): void {
     if (viewport.xMin !== undefined || viewport.xMax !== undefined) {
-      this.pauseXFollowForInteraction();
+      if (options.pauseFollow !== false) this.pauseXFollowForInteraction();
       this.camera.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax });
       this.syncRightCameraX();
     }
     if (viewport.yMin !== undefined || viewport.yMax !== undefined) {
       this.getCamera(yAxis).setViewport({ yMin: viewport.yMin, yMax: viewport.yMax });
     }
-    this.emitViewportChange();
+    this.emitViewportChange(options.source ?? "api");
     this.refreshHover();
   }
 
@@ -780,11 +810,11 @@ export class Chart {
    * Y pans only `yAxis` when given; omitted, Y pans both axes like a plot-area gesture.
    * The intent is normalized to the left axis domain (or `yAxis` when given).
    */
-  pan(intent: PanIntent, yAxis?: SeriesYAxis): void {
+  pan(intent: PanIntent, yAxis?: SeriesYAxis, options: ChartViewportGestureOptions = {}): void {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.applyGesture(() => {
+    this.applyGesture(options.source ?? "api", () => {
       if (yAxis === "right") {
         return (next.dx === 0 || this.axis.pan({ dx: next.dx, dy: 0 })) && (next.dy === 0 || this.rightAxis.pan({ dx: 0, dy: next.dy }));
       }
@@ -798,11 +828,11 @@ export class Chart {
    * Y zooms only `yAxis` when given; omitted, Y zooms both axes like a plot-area gesture.
    * The anchor is normalized to the left axis domain (or `yAxis` when given).
    */
-  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void {
+  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options: ChartViewportGestureOptions = {}): void {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.applyGesture(() => {
+    this.applyGesture(options.source ?? "api", () => {
       if (yAxis === "right") {
         return (next.axis === "y" || this.axis.zoom({ ...next, axis: "x" })) && (next.axis === "x" || this.rightAxis.zoom({ ...next, axis: "y" }));
       }
@@ -815,7 +845,7 @@ export class Chart {
    * Run a pan/zoom that moves one or both cameras. If any step is rejected (invalid scale
    * domain or a span beyond float precision), restore both so the axes never drift apart.
    */
-  private applyGesture(move: () => boolean): void {
+  private applyGesture(source: ChartViewportChangeSource, move: () => boolean): void {
     const left = this.camera.viewport;
     const right = this.rightCamera.viewport;
     if (!move()) {
@@ -825,7 +855,7 @@ export class Chart {
     }
     this.pauseXFollowForInteraction();
     this.syncRightCameraX();
-    this.emitViewportChange();
+    this.emitViewportChange(source);
     this.scheduleHoverRefresh();
   }
 
@@ -934,6 +964,7 @@ export class Chart {
     this.followXConfig = options;
     this.clearXFollowResumeTimer();
     this.xFollowPaused = false;
+    this.emitFollowXChange();
     this.applyFollowXPolicy();
     this.requestRender();
   }
@@ -944,6 +975,7 @@ export class Chart {
     this.followXConfig = null;
     this.xFollowPaused = false;
     this.clearXFollowResumeTimer();
+    this.emitFollowXChange();
     this.requestRender();
   }
 
@@ -952,6 +984,7 @@ export class Chart {
     this.clearXFollowResumeTimer();
     if (this.xFollowPaused === paused) return;
     this.xFollowPaused = paused;
+    this.emitFollowXChange();
     if (!paused) this.applyFollowXPolicy();
     this.requestRender();
   }
@@ -1015,7 +1048,7 @@ export class Chart {
 
     if (changed) {
       this.syncRightCameraX();
-      this.emitViewportChange();
+      this.emitViewportChange(options.source ?? "fit");
       this.refreshHover();
     }
     return changed;
@@ -1433,8 +1466,10 @@ export class Chart {
   private pauseXFollowForInteraction(): void {
     const config = this.followXConfig;
     if (!config || config.pauseOnInteraction === false) return;
+    const wasPaused = this.xFollowPaused;
     this.xFollowPaused = true;
     this.clearXFollowResumeTimer();
+    if (!wasPaused) this.emitFollowXChange();
     const resumeAfterMs = config.resumeAfterMs;
     if (typeof resumeAfterMs !== "number" || !Number.isFinite(resumeAfterMs) || resumeAfterMs <= 0) return;
     this.xFollowResumeTimer = setTimeout(() => {
@@ -1469,7 +1504,7 @@ export class Chart {
     if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax) || !this.axis.isValidDomain("x", xMin, xMax)) return;
     this.camera.setViewport({ xMin, xMax });
     this.syncRightCameraX();
-    this.emitViewportChange();
+    this.emitViewportChange("follow");
   }
 
   private applyAutoFitYPolicy(): void {
@@ -2345,9 +2380,13 @@ export class Chart {
     return event;
   }
 
-  private emitViewportChange(): void {
-    this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport });
+  private emitViewportChange(source: ChartViewportChangeSource): void {
+    this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source });
     this.requestRender();
+  }
+
+  private emitFollowXChange(): void {
+    if (this.hasListeners("followxchange")) this.emit("followxchange", { state: this.getFollowXState() });
   }
 
   private emitSeriesChange(): void {

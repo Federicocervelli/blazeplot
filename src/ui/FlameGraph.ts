@@ -447,7 +447,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       if (!chart) return;
       const xMin = model.minX;
       const xMax = model.maxX > model.minX ? model.maxX : model.minX + 1;
-      chart.viewport.set({ xMin, xMax, yMin: 0, yMax: Math.max(1, model.maxDepth + 1) });
+      chart.viewport.set({ xMin, xMax, yMin: 0, yMax: Math.max(1, model.maxDepth + 1) }, undefined, { source: "fit" });
     },
     pick(clientX, clientY) {
       if (!chart) return null;

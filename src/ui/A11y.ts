@@ -63,6 +63,8 @@ export interface A11yPlugin extends ChartPlugin {
 }
 
 const DEFAULT_MAX_ROWS = 100;
+/** Keyboard inspection panning reports `viewportchange.source === "user"`. */
+const USER_VIEWPORT = { source: "user" } as const;
 const DEFAULT_TABLE_UPDATE_MS = 500;
 const DEFAULT_LIVE_INTERVAL_MS = 10_000;
 const MIN_LIVE_INTERVAL_MS = 1_000;
@@ -293,7 +295,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
         const shift = (fraction: number): number => (fraction < 0 ? fraction - 0.1 : fraction > 1 ? fraction - 0.9 : 0);
         const dx = Number.isFinite(dataFx) ? shift(dataFx) : 0;
         const dy = Number.isFinite(dataFy) ? shift(dataFy) : 0;
-        if (dx !== 0 || dy !== 0) chart.viewport.pan({ dx, dy }, state.yAxis);
+        if (dx !== 0 || dy !== 0) chart.viewport.pan({ dx, dy }, state.yAxis, USER_VIEWPORT);
       };
 
       const setActive = (state: ChartSeriesState, index: number): void => {
