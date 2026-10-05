@@ -32,8 +32,6 @@ export type {
   ChartViewportChangeEvent,
   ChartViewportChangeSource,
   ChartViewportGestureOptions,
-  HistogramSeriesConfig,
-  PrecomputedHistogramSeriesConfig,
   SeriesIdentityConfig,
   TextOverlayConfig,
   TypedSeriesConfig,

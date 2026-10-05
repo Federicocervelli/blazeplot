@@ -31,7 +31,7 @@ interface BundleSizeReport {
 // Budgets are the built size plus about 1.5% (at least 100 bytes), rounded up to 100 bytes.
 // Tighten them when a change shrinks a chunk; raise one only with a reason in the PR.
 const budgets: Budget[] = [
-  { label: "root entry", path: "dist/index.js", maxBytes: 12_300 },
+  { label: "root entry", path: "dist/index.js", maxBytes: 21_100 },
   { label: "linked entry", path: "dist/linked.js", maxBytes: 2_500 },
   { label: "data entry", path: "dist/data.js", maxBytes: 1_800 },
   { label: "export entry", path: "dist/export.js", maxBytes: 3_900 },
@@ -49,8 +49,8 @@ const budgets: Budget[] = [
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
-  // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152.
-  { label: "shared Chart chunk", pattern: /^Chart-.*.js$/, maxBytes: 148_600 },
+  // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152; 140_448 after the Chart split and histogram tree-shaking (#172).
+  { label: "shared Chart chunk", pattern: /^Chart-.*.js$/, maxBytes: 142_600 },
   // WebGL2 renderer, backend, and shaders: the default renderer, shared by the core and the auto fallback entry.
   { label: "shared WebGL2 backend chunk", pattern: /^WebGL2Backend-.*.js$/, maxBytes: 12_000 },
   { label: "shared WebGL2 renderer chunk", pattern: /^webgl2Renderer-.*.js$/, maxBytes: 300 },

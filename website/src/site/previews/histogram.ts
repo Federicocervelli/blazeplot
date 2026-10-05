@@ -1,4 +1,4 @@
-import { Chart, type HistogramBin, type HistogramResult } from "../../../../src/index.ts";
+import { Chart, HistogramDataset, type HistogramBin, type HistogramResult } from "../../../../src/index.ts";
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
 import { legendPlugin } from "../../../../src/plugins/legend.ts";
@@ -53,7 +53,7 @@ export default class Preview extends PreviewResources {
     }));
     this.previewCharts.push(chart);
 
-    chart.addHistogram({ histogram, name: "1M bins" }, {
+    chart.addBar({ name: "1M bins", dataset: new HistogramDataset(histogram) }, {
       color: [0.988, 0.29, 0.02, 0.95],
       baseline: 0,
     });

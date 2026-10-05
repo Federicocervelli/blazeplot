@@ -54,7 +54,7 @@ export function mountChart(element: HTMLElement): Chart | null {
 | `chart.addLine({ capacity })` and other chart-owned series | `TypeError` when `capacity` is not a positive integer and no `dataset` is given. `TypeError` when `xStep`/`xStart` is combined with an overflow strategy other than `"wrap"`. |
 | `chart.addSeries({ mode })` | `TypeError` when `mode` is not one of `line`, `area`, `scatter`, `bar`, `ohlc`, `candlestick` (JavaScript callers, or a removed mode such as `"envelope"`). |
 | `chart.addOhlc(...)` / `addCandlestick(...)` | `TypeError` without an `OhlcDataset`. |
-| `chart.addHistogram(...)` | `TypeError` when variable-width bins have no `style.barWidth`; histogram option errors below. |
+| `chart.addBar({ dataset: HistogramDataset.from(...) })` | `TypeError` when variable-width bins have no `style.barWidth`; histogram option errors below. |
 | `series.append({ x, y })` | `TypeError` when the dataset is not appendable XY (for example `StaticDataset`). `RangeError("... capacity exceeded.")` for `overflow: "error"` buffers that are full. |
 | `series.append({ y })` | `TypeError` unless the dataset has implicit X (`UniformRingBuffer`). |
 | `series.append([...rows])` | `TypeError` when rows mix XY and OHLC, or mix explicit and implicit X. |

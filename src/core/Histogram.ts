@@ -159,6 +159,16 @@ export class HistogramDataset extends StaticDataset implements XRangeDataset {
     super(result.x, result.y);
   }
 
+  /** Bin one-dimensional `values` and wrap the result: `chart.addBar({ dataset: HistogramDataset.from(values, options) })`. */
+  static from(values: ArrayLike<number>, options: HistogramOptions = {}): HistogramDataset {
+    return new HistogramDataset(histogram(values, options));
+  }
+
+  /** Bar width `addBar` uses when `style.barWidth` is omitted: the bin width, or `null` for variable-width bins. */
+  get defaultBarWidth(): number | null {
+    return this.result.binWidth;
+  }
+
   /** Return the value interval represented by a histogram bucket. */
   getXRange(index: number): XRange | null {
     const bin = this.result.bins[index];

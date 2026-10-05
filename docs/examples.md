@@ -9,7 +9,7 @@ Use this table before reaching for a generic chart example. The dataset choice d
 | If you have | Use |
 |---|---|
 | Fixed X/Y arrays or object rows | `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` |
-| One-dimensional values that need a frequency distribution | `histogram(...)` or `chart.addHistogram(...)` |
+| One-dimensional values that need a frequency distribution | `histogram(...)` or `HistogramDataset.from(...)` with `chart.addBar(...)` |
 | Irregular live samples | `RingBuffer` with `overflow: "wrap"` for a rolling window |
 | Fixed-rate telemetry | `UniformRingBuffer` with `series.append({ y })` so repeated X values are derived, not stored |
 | Historical OHLC data | `StaticOhlcDataset` with `chart.addOhlc(...)` or `chart.addCandlestick(...)` |
@@ -76,13 +76,13 @@ chart.start();
 Use histograms when you have one-dimensional measurements and want a frequency distribution. BlazePlot computes bucket centers/counts and renders them through the existing bar renderer.
 
 ```ts
-import { Chart } from "blazeplot";
+import { Chart, HistogramDataset } from "blazeplot";
 
 const values = new Float64Array([12, 18, 19, 20, 21, 28, 33, 35, 36, 42]);
 const chart = new Chart(element, {
   axes: { x: { title: "Latency ms" }, y: { title: "Count" } },
 });
-chart.addHistogram({ values, binSize: 10, name: "latency" });
+chart.addBar({ name: "latency", dataset: HistogramDataset.from(values, { binSize: 10 }) });
 chart.fitToData({ includeZero: true });
 chart.start();
 ```
@@ -92,13 +92,13 @@ chart.start();
 Precompute or inspect bins with the pure helper:
 
 ```ts
-import { Chart, histogram } from "blazeplot";
+import { Chart, HistogramDataset, histogram } from "blazeplot";
 
 const values = [12, 15, 15, 18, 22, 22, 22, 30, 41];
 const bins = histogram(values, { binCount: 20, normalize: "density" });
 
 const chart = new Chart(element);
-chart.addHistogram({ histogram: bins, name: "latency density" });
+chart.addBar({ name: "latency density", dataset: new HistogramDataset(bins) });
 chart.fitToData({ includeZero: true });
 chart.start();
 ```

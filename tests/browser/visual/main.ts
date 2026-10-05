@@ -1,4 +1,4 @@
-import { Chart, StaticDataset, StaticOhlcDataset } from "@/index.ts";
+import { Chart, HistogramDataset, StaticDataset, StaticOhlcDataset } from "@/index.ts";
 import type { ChartFrameStats, ChartPlugin } from "@/index.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
@@ -500,7 +500,7 @@ function addBar(chart: Chart): void {
 
 function addHistogram(chart: Chart): void {
   const values = Float64Array.from({ length: 256 }, (_, i) => 50 + Math.sin(i * 0.41) * 18 + Math.cos(i * 0.13) * 8);
-  chart.addHistogram({ values, binSize: 4, name: "histogram" }, { baseline: 0 });
+  chart.addBar({ name: "histogram", dataset: HistogramDataset.from(values, { binSize: 4 }) }, { baseline: 0 });
   chart.fitToData({ includeZero: true, padding: { x: 0.02, y: 0.08 } });
 }
 
