@@ -98,6 +98,23 @@ describe("SeriesPainter", () => {
     expect(stats.renderMode).toBe("mixed");
   });
 
+  it("stages vertices in scratch arrays shared by every painter, so many charts do not each hold their own", () => {
+    const arrays: Float32Array[] = [];
+    const renderer = { kind: "webgl2", drawLines: (data: Float32Array) => void arrays.push(data) } as unknown as ChartRenderer;
+    const paintOnce = (): void => {
+      const camera = new Camera2D();
+      camera.setViewport({ xMin: 100, xMax: 110, yMin: 0, yMax: 10 });
+      const rightCamera = new Camera2D();
+      const painter = new SeriesPainter({ pointsRendered: 0, renderMode: "none" }, 64);
+      painter.beginFrame({ renderer, canvas: { width: 400, height: 200, clientWidth: 400, clientHeight: 200 }, camera, rightCamera, axis: new AxisController(camera), rightAxis: new AxisController(rightCamera) });
+      painter.drawSeries(lineSeries("line", [[100, 0], [110, 10]]));
+    };
+    paintOnce();
+    paintOnce();
+    expect(arrays).toHaveLength(2);
+    expect(arrays[1]).toBe(arrays[0]!);
+  });
+
   it("draws exact bars as instances on linear axes", () => {
     const { painter, calls, stats } = setup();
     painter.drawSeries(lineSeries("bar", [[102, 3], [104, 6]]));

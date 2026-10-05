@@ -1,8 +1,7 @@
 import { describeRenderer } from "../ChartRenderer.js";
-import type { ChartRenderer, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererInfo, FrameReport, RenderProjection, RendererLossState } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererInfo, FrameReport, RendererLossState } from "../ChartRenderer.js";
 import { WebGL2Renderer } from "./WebGL2Renderer.js";
 import type { GpuBackend } from "./types.js";
-import type { RgbaColor, SeriesStyle } from "../../core/types.js";
 
 /**
  * One hidden WebGL2 canvas that renders every attached chart's plot area in turn and copies the
@@ -122,7 +121,15 @@ export class SharedWebGLContext implements ChartRenderContext {
   }
 }
 
+/** The drawing calls a chart makes between `beginFrame` and `endFrame`: the shared context's renderer records them as they are. */
+const FORWARDED_CALLS = ["prepare", "drawLines", "drawClipLines", "drawPoints", "drawBarsInstanced", "drawTriangles", "fillRects"] as const;
+
+// The forwarding methods are installed below from FORWARDED_CALLS; this merges their types into the class.
+// oxlint-disable-next-line typescript/no-unsafe-declaration-merging
+interface SharedWebGLRenderer extends Pick<ChartRenderer, (typeof FORWARDED_CALLS)[number]> {}
+
 /** @internal Per-chart renderer that draws into a `SharedWebGLContext` and blits into the chart canvas. */
+// oxlint-disable-next-line typescript/no-unsafe-declaration-merging
 class SharedWebGLRenderer implements ChartRenderer {
   readonly kind = "shared" as const;
   readonly info: ChartRendererInfo;
@@ -138,7 +145,7 @@ class SharedWebGLRenderer implements ChartRenderer {
     return this.chartCanvas.ownerDocument ?? undefined;
   }
 
-  constructor(private readonly shared: SharedWebGLContext, context: ChartRendererFactoryContext) {
+  constructor(readonly shared: SharedWebGLContext, context: ChartRendererFactoryContext) {
     const target = context.canvas.getContext("2d");
     if (!target) throw new Error("BlazePlot could not create a 2D context on the chart canvas.");
     this.target = target;
@@ -171,30 +178,6 @@ class SharedWebGLRenderer implements ChartRenderer {
     return report;
   }
 
-  drawLines(data: Float32Array, vertexCount: number, color: RgbaColor, lineWidth: number, projection: RenderProjection, primitive?: "line_strip" | "lines"): void {
-    this.shared.active.drawLines(data, vertexCount, color, lineWidth, projection, primitive);
-  }
-
-  drawClipLines(data: Float32Array, vertexCount: number, color: RgbaColor): void {
-    this.shared.active.drawClipLines(data, vertexCount, color);
-  }
-
-  drawPoints(data: Float32Array, pointCount: number, color: RgbaColor, pointSize: number, projection: RenderProjection): void {
-    this.shared.active.drawPoints(data, pointCount, color, pointSize, projection);
-  }
-
-  drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection, yOrigin: number = 0): void {
-    this.shared.active.drawBarsInstanced(data, barCount, style, projection, yOrigin);
-  }
-
-  drawTriangles(data: Float32Array, vertexCount: number, color: RgbaColor, projection: RenderProjection, primitive?: "triangles" | "triangle_strip"): void {
-    this.shared.active.drawTriangles(data, vertexCount, color, projection, primitive);
-  }
-
-  fillRects(rects: Float32Array, count: number): void {
-    this.shared.active.fillRects(rects, count);
-  }
-
   /** A surface on `canvas` that draws through the same shared context. */
   createSurface(canvas: HTMLCanvasElement): ChartRenderer {
     return new SharedWebGLRenderer(this.shared, { canvas });
@@ -211,4 +194,10 @@ class SharedWebGLRenderer implements ChartRenderer {
   notifyLoss(state: RendererLossState): void {
     this.lossListener?.(state);
   }
+}
+
+for (const name of FORWARDED_CALLS) {
+  SharedWebGLRenderer.prototype[name] = function (this: SharedWebGLRenderer, ...args: unknown[]): void {
+    (this.shared.active[name] as (...forwarded: unknown[]) => void)(...args);
+  } as never;
 }

@@ -1,3 +1,4 @@
+import { releaseWarm } from "@/render/webgl2/warm.ts";
 import { chartInternals } from "@/ui/ChartInternals.ts";
 import { Chart } from "@/index.ts";
 import type { ChartPlugin, SeriesStore } from "@/index.ts";
@@ -218,6 +219,9 @@ function countLiveContexts(): number {
 }
 
 function probe(): PageProbe {
+  // A disposed WebGL chart parks its canvas, context and programs for a couple of seconds so the next chart starts warm.
+  // Counters must see what a chart itself leaves behind, so release anything still parked first.
+  releaseWarm();
   return {
     elements: document.getElementsByTagName("*").length,
     canvases: document.getElementsByTagName("canvas").length,

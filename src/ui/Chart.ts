@@ -3,7 +3,7 @@ import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { toRenderSurface } from "../render/ChartRenderer.js";
 import type { ChartRenderSurface, ChartRenderer, ChartRendererInfo, RendererLossState, RendererName } from "../render/ChartRenderer.js";
-import { createEngine } from "../render/engines.js";
+import { createEngine, createPlotCanvas } from "../render/engines.js";
 import { SeriesPainter } from "../render/SeriesPainter.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
@@ -161,7 +161,7 @@ export class Chart {
     this.normalizedAxes = normalizeAxesConfig(options.axes);
     this.gridVisible = options.grid !== false;
 
-    this.layout = new ChartLayout(target, this.normalizedAxes);
+    this.layout = new ChartLayout(target, this.normalizedAxes, (doc) => createPlotCanvas(options.renderer, doc));
     this.a11y.watchForcedColors();
     if (this.a11y.forcedColorsActive) this.resolvedTheme = forcedColorsTheme(this.baseTheme, this.layout.root);
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
@@ -380,6 +380,7 @@ export class Chart {
     this.seriesStyles.track(series, style, slot);
     series.bindStyleHandler((target, options) => this.seriesStyles.set(target, options));
     this.series.push(series);
+    this.engine.prepare?.(config.mode, series.style.lineWidth);
     if (this.a11y.forcedColorsActive) this.a11y.applyForcedSeriesStyles();
     this.emitSeriesChange();
     return series;

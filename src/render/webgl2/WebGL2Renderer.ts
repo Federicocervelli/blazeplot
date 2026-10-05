@@ -1,12 +1,28 @@
 import { describeRenderer } from "../ChartRenderer.js";
 import type { ChartRenderer, ChartRendererInfo, FrameReport, RenderProjection, RendererLossState, RendererOrigin } from "../ChartRenderer.js";
 import type { DrawCommand, GpuBackend, SolidPrimitive } from "./types.js";
-import type { RgbaColor, SeriesStyle } from "../../core/types.js";
+import type { RgbaColor, SeriesMode, SeriesStyle } from "../../core/types.js";
 import { WebGL2Backend } from "./WebGL2Backend.js";
-import { releaseWebGLContext } from "./releaseWebGLContext.js";
+import type { ProgramName } from "./ShaderPrograms.js";
+import { destroyBackend } from "./releaseWebGLContext.js";
+import { adoptWarmBackend, parkPlotCanvas } from "./WarmCanvasPool.js";
 
-const INITIAL_STREAM_FLOATS = 1 << 16;
+/** The frame stream starts small and doubles on demand, so a sparse chart does not hold the 256 KiB a dense one needs. */
+const INITIAL_STREAM_FLOATS = 1 << 10;
 const DEFAULT_MAX_DRAWING_BUFFER_PIXELS = 16_384 * 16_384;
+
+/**
+ * The programs a series of `mode` draws with. Every chart draws solid lines (grid, hairlines, fills, bar
+ * triangles); the rest depends on the mode, and on whether lines are wide enough (more than one device
+ * pixel) to take the instanced quad path.
+ */
+function programsForSeries(mode: SeriesMode, lineWidthPx: number): ProgramName[] {
+  const programs: ProgramName[] = ["line"];
+  if (lineWidthPx > 1) programs.push("thickLine");
+  if (mode === "scatter") programs.push("point");
+  if (mode === "bar") programs.push("bar");
+  return programs;
+}
 
 /**
  * @internal Records a frame's draws against one CPU-side vertex stream and submits it to a
@@ -25,18 +41,24 @@ export class WebGL2Renderer implements ChartRenderer {
   private lossListener: ((state: RendererLossState) => void) | null = null;
   private lost = false;
   private disposed = false;
+  /** Programs hinted so far, started again on a new backend after a context restore. */
+  private readonly prepared = new Set<ProgramName>();
 
   readonly info: ChartRendererInfo;
   private readonly createBackend: (canvas: HTMLCanvasElement) => GpuBackend;
+  /** Whether disposal may hand the canvas and backend to the warm pool: only for a chart's own backend, never an injected one. */
+  private readonly poolable: boolean;
 
   /**
    * @param canvas Canvas that owns the WebGL2 context; the renderer listens for its loss and restore events.
    * @param options `createBackend` builds a backend on `canvas` and is called again after a context restore;
-   * `origin` records how this engine was chosen for `info`.
+   * `origin` records how this engine was chosen for `info`. Without `createBackend` the renderer builds the native
+   * WebGL2 backend, adopting the warm one when `canvas` came from the warm pool.
    */
   constructor(private readonly canvas: HTMLCanvasElement, options: { readonly createBackend?: (canvas: HTMLCanvasElement) => GpuBackend; readonly origin?: RendererOrigin } = {}) {
+    this.poolable = !options.createBackend;
     this.createBackend = options.createBackend ?? ((target) => new WebGL2Backend(target));
-    this.backend = this.createBackend(canvas);
+    this.backend = (this.poolable ? adoptWarmBackend(canvas) : undefined) ?? this.createBackend(canvas);
     this.info = describeRenderer("webgl2", { gpu: true, contextLoss: true, shared: false, maxDrawingBufferPixels: this.backend.maxDrawingBufferPixels ?? DEFAULT_MAX_DRAWING_BUFFER_PIXELS }, options.origin);
     canvas.addEventListener("webglcontextlost", this.handleContextLost);
     canvas.addEventListener("webglcontextrestored", this.handleContextRestored);
@@ -68,6 +90,14 @@ export class WebGL2Renderer implements ChartRenderer {
     this.commands = [];
     this.backend.submit(this.stream, this.streamFloats, commands);
     return { uploadBytes: this.streamFloats * Float32Array.BYTES_PER_ELEMENT, drawCalls: commands.length };
+  }
+
+  /** Start building the programs a series of `mode` will need (see `ChartRenderer.prepare`). */
+  prepare(mode: SeriesMode, lineWidth: number): void {
+    const pixelRatio = this.canvas.ownerDocument?.defaultView?.devicePixelRatio ?? 1;
+    const programs = programsForSeries(mode, lineWidth * Math.max(1, pixelRatio));
+    for (const name of programs) this.prepared.add(name);
+    this.backend.prepare?.(programs);
   }
 
   /** @internal The WebGL2 context behind the backend, when it has one. */
@@ -168,13 +198,9 @@ export class WebGL2Renderer implements ChartRenderer {
     this.canvas.removeEventListener("webglcontextrestored", this.handleContextRestored);
     this.lossListener = null;
     this.commands = [];
-    const gl = this.backend.getContext?.();
-    try {
-      this.backend.destroy();
-    } finally {
-      // Browsers cap live contexts (~16) and evict the oldest, so release now instead of waiting for GC.
-      releaseWebGLContext(gl);
-    }
+    // A healthy chart canvas stays warm for the next chart instead of paying for a context release now and a new context later.
+    if (this.poolable && !this.lost && parkPlotCanvas(this.canvas, this.backend)) return;
+    destroyBackend(this.backend);
   }
 
   private readonly handleContextLost = (event: Event): void => {
@@ -195,6 +221,7 @@ export class WebGL2Renderer implements ChartRenderer {
       console.error("BlazePlot failed to restore WebGL resources after context restoration.", error);
       return;
     }
+    next.prepare?.([...this.prepared]);
     this.backend = next;
     try {
       previous.destroy();
