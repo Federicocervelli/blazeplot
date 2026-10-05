@@ -4,7 +4,7 @@ import type { FakeRaf, TestEnv } from "./fakes.ts";
 import { stubPlot } from "./harness.ts";
 import type { Chart as ChartType } from "../../src/ui/Chart.ts";
 import type { autoRenderer as AutoRenderer, canvas2dRenderer as Canvas2dRenderer } from "../../src/renderers/canvas2d.ts";
-import type { WebGL2UnavailableError as UnavailableErrorType } from "../../src/render/WebGL2Backend.ts";
+import type { WebGL2UnavailableError as UnavailableErrorType } from "../../src/render/webgl2/availability.ts";
 
 let env: TestEnv;
 let raf: FakeRaf;
@@ -18,7 +18,7 @@ beforeAll(async () => {
   raf = env.raf;
   ({ Chart } = await import("../../src/ui/Chart.ts"));
   ({ canvas2dRenderer, autoRenderer } = await import("../../src/renderers/canvas2d.ts"));
-  ({ WebGL2UnavailableError } = await import("../../src/render/WebGL2Backend.ts"));
+  ({ WebGL2UnavailableError } = await import("../../src/render/webgl2/availability.ts"));
 });
 afterAll(() => env.teardown());
 

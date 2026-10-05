@@ -1,8 +1,8 @@
 import type { ChartRendererFactory } from "../render/ChartRenderer.js";
-import { Canvas2DRenderer } from "../render/Canvas2DRenderer.js";
-import { webgl2Renderer } from "../render/webgl2Renderer.js";
+import { Canvas2DRenderer } from "../render/canvas2d/Canvas2DRenderer.js";
+import { webgl2Renderer } from "../render/webgl2/WebGL2Renderer.js";
 
-export { Canvas2DUnavailableError } from "../render/Canvas2DRenderer.js";
+export { Canvas2DUnavailableError } from "../render/canvas2d/Canvas2DRenderer.js";
 
 /**
  * Renderer factory that draws with Canvas 2D: no WebGL2 needed, lower throughput. Pass it as

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { DrawCommand } from "../../src/render/types.ts";
+import type { DrawCommand } from "../../src/render/webgl2/types.ts";
 import { setupFakeGl } from "./fakeGl.ts";
 
 const base = { first: 0, scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0, color: [1, 1, 1, 1] } as const;

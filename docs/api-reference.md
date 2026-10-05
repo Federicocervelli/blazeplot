@@ -63,14 +63,16 @@ Generated from `dist/` after the package build.
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
 | canvas2d renderer entry | `dist/renderers/canvas2d.js` | 5 KiB |
 | shared renderer entry | `dist/renderers/shared.js` | 4 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 140 KiB |
-| shared WebGL2 backend chunk | `dist/WebGL2Backend-*.js` | 12 KiB |
-| shared WebGL2 renderer chunk | `dist/webgl2Renderer-*.js` | 0 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 139 KiB |
 | shared WebGL context release chunk | `dist/releaseWebGLContext-*.js` | 0 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
 | shared PickOverlay chunk | `dist/PickOverlay-*.js` | 5 KiB |
+
+> Expected exactly one shared WebGL2 backend chunk, found 0.
+
+> Expected exactly one shared WebGL2 renderer chunk, found 0.
 
 ### All public exports
 
@@ -163,7 +165,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `InvalidOhlcSample` | interface | `./core/types` | An OHLC candle an `OhlcRingBuffer` skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSample` | interface | `./core/types` | A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSampleReason` | type | `./core/types` | Why a sample broke the dataset X rule (X finite and non-decreasing): `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the previous accepted X (or, for `update`, outside its neighbors). |
-| `isWebGL2Available` | function | `./render/WebGL2Backend` | Return whether the current environment can create a WebGL2 context. The probe canvas comes from `doc` (default: the global `document`); pass an iframe or popup document to probe that window. |
+| `isWebGL2Available` | function | `./render/webgl2/availability` | Return whether the current environment can create a WebGL2 context. The probe canvas comes from `doc` (default: the global `document`); pass an iframe or popup document to probe that window. |
 | `LIGHT_CHART_THEME` | const | `./ui/theme` | Light chart theme. Pass it as `theme`, or spread it and override a few tokens. Text tokens meet a 4.5:1 and series, selection, crosshair, and focus colors a 3:1 contrast ratio against its background. |
 | `MinMaxSegmentCopyDataset` | interface | `./core/types` | Optional high-performance min/max extraction capability for dense rendering. Implementations can use pyramids, segment trees, database aggregates, or analytic/procedural envelopes. Write up to `maxSegments` `[x - xOrigin, minY, maxY]` triples into `target` and return how many were written. |
 | `MinMaxY` | interface | `./core/MinMaxTree` | Inclusive Y extent of a sample range. |
@@ -225,7 +227,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ViewportPolicy` | interface | `./interaction/types` | Optional hooks that can constrain or react to viewport changes. |
 | `VisiblePointCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for point/scatter datasets. Implementations should cull against the full 2D viewport and may sample in screen space so dense point clouds respond to both X and Y zoom. |
 | `VisibleSampleCopyDataset` | interface | `./core/types` | Optional high-performance stable visible sampling capability. Unlike copySamplesRange, this method may stride/downsample, but should choose samples anchored to data coordinates so streamed appends do not make existing sampled points jitter. |
-| `WebGL2UnavailableError` | class | `./render/WebGL2Backend` | Error thrown when a WebGL2 backend cannot be created. |
+| `WebGL2UnavailableError` | class | `./render/webgl2/availability` | Error thrown when a WebGL2 backend cannot be created. |
 | `XRange` | interface | `./core/types` | Data-domain X interval represented by one dataset sample. |
 | `XRangeDataset` | interface | `./core/types` | Dataset whose sample X values represent intervals rather than points. |
 | `YAppendableDataset` | interface | `./core/types` | Dataset that accepts appended Y samples with implicit X values. |

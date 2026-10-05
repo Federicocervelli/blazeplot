@@ -4,10 +4,9 @@ import type { SeriesChange } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import type { ChartRenderer, ChartRendererKind } from "../render/ChartRenderer.js";
-import { Renderer } from "../render/Renderer.js";
+import { WebGL2Renderer, webgl2Renderer } from "../render/webgl2/WebGL2Renderer.js";
 import { SeriesPainter } from "../render/SeriesPainter.js";
-import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
-import { webgl2Renderer } from "../render/webgl2Renderer.js";
+import { releaseWebGLContext } from "../render/webgl2/releaseWebGLContext.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { PanIntent, ZoomIntent } from "../interaction/types.js";
@@ -871,7 +870,7 @@ export class Chart {
       throw new TypeError('ChartOptions.renderer must be "webgl2" or a factory such as canvas2dRenderer() from "blazeplot/renderers/canvas2d".');
     }
     const factory = typeof option === "function" ? option : webgl2Renderer();
-    return { renderer: backendFactory ? new Renderer(backendFactory({ canvas: this.canvas })) : (factory({ canvas: this.canvas }) as ChartRenderer) };
+    return { renderer: backendFactory ? new WebGL2Renderer(backendFactory({ canvas: this.canvas })) : (factory({ canvas: this.canvas }) as ChartRenderer) };
   }
 
   private installGpuResources(resources: ChartGpuResources): void {

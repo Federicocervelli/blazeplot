@@ -3,7 +3,7 @@ import { countNodes, FakeBackend, FakeResizeObserver, setupDom, trackListeners }
 import type { FakeRaf, ListenerLedger, TestEnv } from "./fakes.ts";
 import type { Chart as ChartType, ChartOptions } from "../../src/ui/Chart.ts";
 import type { ChartPlugin, ChartPluginContext, ChartPluginHandle } from "../../src/ui/PluginHost.ts";
-import type { WebGL2UnavailableError as UnavailableErrorType } from "../../src/render/WebGL2Backend.ts";
+import type { WebGL2UnavailableError as UnavailableErrorType } from "../../src/render/webgl2/availability.ts";
 
 let env: TestEnv;
 let raf: FakeRaf;
@@ -14,7 +14,7 @@ beforeAll(async () => {
   env = setupDom();
   raf = env.raf;
   ({ Chart } = await import("../../src/ui/Chart.ts"));
-  ({ WebGL2UnavailableError } = await import("../../src/render/WebGL2Backend.ts"));
+  ({ WebGL2UnavailableError } = await import("../../src/render/webgl2/availability.ts"));
 });
 afterAll(() => env.teardown());
 

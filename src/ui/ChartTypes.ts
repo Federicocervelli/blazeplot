@@ -3,7 +3,7 @@ import type { AxisPosition } from "./ChartLayout.js";
 import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartRendererFactory } from "../render/ChartRenderer.js";
-import type { GpuBackend } from "../render/types.js";
+import type { GpuBackend } from "../render/webgl2/types.js";
 import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { ViewportPolicy } from "../interaction/types.js";
 import type { ChartTheme } from "./theme.js";

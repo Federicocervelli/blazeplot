@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { isWebGL2Available } from "../../src/render/WebGL2Backend.ts";
+import { isWebGL2Available } from "../../src/render/webgl2/availability.ts";
 
 describe("isWebGL2Available", () => {
   it("probes the document it is given", () => {

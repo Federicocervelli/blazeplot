@@ -1,9 +1,8 @@
-import type { ChartRenderer, ChartRendererFactory, ChartRendererFactoryContext } from "./ChartRenderer.js";
-import { Renderer } from "./Renderer.js";
-import type { RenderProjection } from "./Renderer.js";
+import type { ChartRenderer, ChartRendererFactory, ChartRendererFactoryContext, RenderProjection } from "../ChartRenderer.js";
+import { WebGL2Renderer } from "./WebGL2Renderer.js";
 import { releaseWebGLContext } from "./releaseWebGLContext.js";
 import { WebGL2Backend } from "./WebGL2Backend.js";
-import type { RgbaColor, SeriesStyle } from "../core/types.js";
+import type { RgbaColor, SeriesStyle } from "../../core/types.js";
 
 /**
  * One hidden WebGL2 canvas that renders every attached chart's plot area in turn and copies the
@@ -23,7 +22,7 @@ export interface ChartRenderContext {
 /** @internal Shared state of one render context; reference counted by attached charts. */
 export class SharedWebGLContext implements ChartRenderContext {
   private canvas: HTMLCanvasElement | null = null;
-  private renderer_: Renderer | null = null;
+  private renderer_: WebGL2Renderer | null = null;
   /** @param doc Document that owns the hidden canvas; defaults to the first attached chart's document. */
   constructor(private readonly doc?: Document) {}
   private readonly clients = new Set<SharedWebGLRenderer>();
@@ -39,7 +38,7 @@ export class SharedWebGLContext implements ChartRenderContext {
     if (!canvas) return;
     const previous = this.renderer_;
     try {
-      this.renderer_ = new Renderer(new WebGL2Backend(canvas));
+      this.renderer_ = new WebGL2Renderer(new WebGL2Backend(canvas));
     } catch (error) {
       console.error("BlazePlot failed to restore the shared WebGL2 context.", error);
       return;
@@ -72,7 +71,7 @@ export class SharedWebGLContext implements ChartRenderContext {
       if (!doc) throw new Error("A shared render context needs a DOM.");
       const canvas = doc.createElement("canvas");
       // Rendering happens in the shared canvas; it only needs a size, never to be attached to the page.
-      const renderer = new Renderer(new WebGL2Backend(canvas));
+      const renderer = new WebGL2Renderer(new WebGL2Backend(canvas));
       canvas.addEventListener("webglcontextlost", this.handleLost);
       canvas.addEventListener("webglcontextrestored", this.handleRestored);
       this.canvas = canvas;
@@ -89,7 +88,7 @@ export class SharedWebGLContext implements ChartRenderContext {
   }
 
   /** @internal Prepare the shared canvas for a frame of `width` x `height` device pixels. */
-  beginFrame(width: number, height: number, pixelRatio: number): Renderer {
+  beginFrame(width: number, height: number, pixelRatio: number): WebGL2Renderer {
     const canvas = this.requireCanvas();
     // Resizing reallocates the drawing buffer, so only touch the size when the next chart differs.
     if (canvas.width !== width) canvas.width = width;
@@ -111,7 +110,7 @@ export class SharedWebGLContext implements ChartRenderContext {
   }
 
   /** @internal The shared renderer; draw calls from the active chart go straight to it. */
-  get active(): Renderer {
+  get active(): WebGL2Renderer {
     return this.renderer_!;
   }
 

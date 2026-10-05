@@ -2,8 +2,7 @@ import type { RgbaColor, SeriesStyle, SeriesYAxis, Viewport } from "../core/type
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { Camera2D } from "../interaction/Camera2D.js";
 import type { AxisController } from "../interaction/AxisController.js";
-import type { ChartRenderer } from "./ChartRenderer.js";
-import type { RenderProjection } from "./Renderer.js";
+import type { ChartRenderer, RenderProjection } from "./ChartRenderer.js";
 
 const BYTES_PER_VERTEX = 2 * Float32Array.BYTES_PER_ELEMENT;
 /** Vertices in the shared raw line/point/area upload buffer. */
