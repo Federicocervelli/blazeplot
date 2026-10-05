@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-166 exports.
+165 exports.
 
 #### interface AcceleratedDataset
 
@@ -1822,12 +1822,6 @@ function canvas2dRenderer(): ChartRendererFactory;
 function createChartRenderContext(doc?: Document): ChartRenderContext;
 ```
 
-#### function histogram
-
-```ts
-function histogram(values: ArrayLike<number>, options?: HistogramOptions): HistogramResult;
-```
-
 #### function isWebGL2Available
 
 ```ts
@@ -1894,7 +1888,7 @@ function createLinkedCharts(target: HTMLElement, options: LinkedChartsOptions): 
 
 ### `blazeplot/data`
 
-8 exports.
+9 exports.
 
 #### interface BinnedSample
 
@@ -1951,6 +1945,12 @@ interface XYSample {
 
 ```ts
 function binSamples(samples: readonly XYSample[], binSize: number, options?: ResampleOptions): BinnedSample[];
+```
+
+#### function histogramBins
+
+```ts
+function histogramBins(values: ArrayLike<number>, options?: HistogramOptions): HistogramResult;
 ```
 
 #### function rollingMean

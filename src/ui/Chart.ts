@@ -414,7 +414,7 @@ export class Chart {
     return this.addSeries({ ...config, mode: "scatter" }, style);
   }
 
-  /** Add a bar series growing from `style.baseline`. */
+  /** Add a bar series growing from `style.baseline`. For a histogram of raw values, pass `dataset: HistogramDataset.from(values, { binSize | binCount })`. */
   addBar<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
     return this.addSeries({ ...config, mode: "bar" }, style);
   }
