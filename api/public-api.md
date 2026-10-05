@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-167 exports.
+169 exports.
 
 #### interface AcceleratedDataset
 
@@ -24,6 +24,14 @@ interface AppendableDataset extends Dataset {
     push(x: number, y: number): void;
     append(x: ArrayLike<number>, y: ArrayLike<number>): void;
     clear(): void;
+}
+```
+
+#### interface AutoRendererOptions
+
+```ts
+interface AutoRendererOptions {
+    readonly shared?: boolean | ChartRenderContext;
 }
 ```
 
@@ -252,6 +260,8 @@ interface ChartEventMap extends ChartPluginEventMap {
     hover: ChartHoverState | null;
     serieschange: void;
     themechange: void;
+    contextlost: void;
+    contextrestored: void;
     render: void;
     viewportchange: ChartViewportChangeEvent;
     rendererchange: ChartRendererInfo;
@@ -1814,7 +1824,7 @@ interface ZoomIntent {
 #### function autoRenderer
 
 ```ts
-function autoRenderer(): ChartRendererFactory;
+function autoRenderer(options?: AutoRendererOptions): ChartRendererFactory;
 ```
 
 #### function canvas2dRenderer
@@ -1839,6 +1849,12 @@ function histogram(values: ArrayLike<number>, options?: HistogramOptions): Histo
 
 ```ts
 function isWebGL2Available(doc?: Document | undefined): boolean;
+```
+
+#### function preloadWebGL
+
+```ts
+function preloadWebGL(doc?: Document | undefined): void;
 ```
 
 #### function sharedRenderer

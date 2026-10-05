@@ -5,19 +5,20 @@ import type { FakeRaf, TestEnv } from "./fakes.ts";
 import { stubPlot } from "./harness.ts";
 import { releaseWarm } from "../../src/render/webgl2/warm.ts";
 import type { Chart as ChartType } from "../../src/ui/Chart.ts";
-import type { createChartRenderContext as CreateContext, sharedRenderer as SharedRenderer } from "../../src/render/engines.ts";
+import type { autoRenderer as AutoRenderer, createChartRenderContext as CreateContext, sharedRenderer as SharedRenderer } from "../../src/render/engines.ts";
 
 let env: TestEnv;
 let raf: FakeRaf;
 let Chart: typeof ChartType;
 let createChartRenderContext: typeof CreateContext;
 let sharedRenderer: typeof SharedRenderer;
+let autoRenderer: typeof AutoRenderer;
 
 beforeAll(async () => {
   env = setupDom();
   raf = env.raf;
   ({ Chart } = await import("../../src/ui/Chart.ts"));
-  ({ createChartRenderContext, sharedRenderer } = await import("../../src/render/engines.ts"));
+  ({ createChartRenderContext, sharedRenderer, autoRenderer } = await import("../../src/render/engines.ts"));
 });
 afterAll(() => env.teardown());
 
@@ -125,6 +126,34 @@ describe("shared render context", () => {
     for (const chart of charts) chart.dispose();
     releaseWarm();
     expect(glContexts[0]!.releases).toBe(1);
+  });
+
+  it("autoRenderer({ shared }) uses the shared context and reports the request as auto", () => {
+    const charts = [true, createChartRenderContext()].map((shared) => {
+      const host = document.createElement("div");
+      target.appendChild(host);
+      return new Chart(host, { renderer: autoRenderer({ shared }) });
+    });
+    expect(glContexts).toHaveLength(2);
+    for (const chart of charts) {
+      expect(chart.rendererInfo).toMatchObject({ name: "shared", requested: "auto" });
+      expect(chart.rendererInfo.fallbackFrom).toBeUndefined();
+      expect(chart.rendererInfo.capabilities).toMatchObject({ gpu: true, shared: true });
+      chart.dispose();
+    }
+  });
+
+  it("autoRenderer({ shared }) falls back to Canvas 2D when WebGL2 is unavailable, while the shared name stays strict", () => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (this: HTMLCanvasElement, kind: string) {
+      return kind === "webgl2" ? null : (getContext as (kind: string) => unknown).call(this, kind);
+    } as typeof HTMLCanvasElement.prototype.getContext;
+    const host = document.createElement("div");
+    target.appendChild(host);
+    const chart = new Chart(host, { renderer: autoRenderer({ shared: true }) });
+    expect(chart.rendererInfo).toMatchObject({ name: "canvas2d", requested: "auto", fallbackFrom: "shared" });
+    chart.dispose();
+    expect(() => new Chart(host, { renderer: "shared" })).toThrow();
   });
 
   it("serves many charts from a single WebGL2 context and blits into each chart canvas", () => {

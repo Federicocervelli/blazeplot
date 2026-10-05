@@ -30,6 +30,7 @@ const expectedExports: Record<string, readonly string[]> = {
     "createChartRenderContext",
     "histogram",
     "isWebGL2Available",
+    "preloadWebGL",
     "sharedRenderer",
     "webgl2Renderer",
   ],

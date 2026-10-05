@@ -470,6 +470,7 @@ Additive features that need no migration work but are easy to miss:
 
 - **Accessibility:** `blazeplot/plugins/a11y` (data table, keyboard inspection, live summary), `chart.getSummary()`, `LIGHT_CHART_THEME` (change 9, [Accessibility](./accessibility.md)).
 - **Localization:** `accessibility.locale` and `messages`, `a11yPlugin({ locale, messages })`, `legendPlugin({ messages })`, `selectionPlugin({ messages })`.
+- **Runtime checks and events:** an actionable `TypeError` for a bad `Chart`/`createLinkedCharts` target, one-time development warnings for a zero-size host and for a chart that was never started, chart `contextlost`/`contextrestored` events, `autoRenderer({ shared })`, and the optional `preloadWebGL()` (see [Error handling](./error-handling.md)). A chart whose `accessibility.description` is `""` and that has no plugins is no longer a tab stop.
 - **Rendering engines:** Canvas 2D (also the `"auto"` fallback) and shared-context rendering through `ChartOptions.renderer`, `chart.rendererInfo`, and `ctx.renderer` (change 16).
 - **Gestures:** `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger", gestureHint, boxZoomModifier })`, `selectionPlugin({ modifier })`, `ctx.dom.claimPointer` (change 12), and the long-press tooltip and crosshair on touch.
 - **Layout:** `axes.*.size` (a number, or `"auto"` to size gutters from the measured tick labels), outside legend positions, the title row (change 15).

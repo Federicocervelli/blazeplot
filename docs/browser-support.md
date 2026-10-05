@@ -36,6 +36,8 @@ A chart draws through one of three engines, chosen with `ChartOptions.renderer`.
 | `"canvas2d"` | `canvas2dRenderer()` | Canvas 2D (CPU-projected) | Throws `Canvas2DUnavailableError` (rare: the canvas cannot create a 2D context). |
 | `"shared"` | `sharedRenderer(context?)` | One WebGL2 context shared by every chart on the document, or by the charts of one `createChartRenderContext()` | Throws `WebGL2UnavailableError`. See [Many charts on one page](./performance-recipes.md#many-charts-on-one-page). |
 
+Dashboards that want one shared context where it is available, and Canvas 2D elsewhere, use `autoRenderer({ shared: true })` (or `autoRenderer({ shared: context })` with a `createChartRenderContext()` result): it uses the shared WebGL2 context and falls back to Canvas 2D without WebGL2, with `rendererInfo.fallbackFrom` set to `"shared"`. The `"shared"` name itself stays strict. To warm WebGL2 before the first chart mounts, call `preloadWebGL()` (optional; it creates and releases a context at idle time and does nothing without WebGL2 or on the server).
+
 A name is shorthand for its factory, and an unknown value throws a `TypeError` that lists the valid names. `createLinkedCharts` takes the same `renderer` option for every panel. Read the outcome from the chart:
 
 ```ts

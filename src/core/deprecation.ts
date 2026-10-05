@@ -22,6 +22,14 @@ export function warnDeprecated(id: string, message: string): void {
   console.warn(`BlazePlot: ${message}`);
 }
 
+/**
+ * @internal Log a development-only warning (silent when `process.env.NODE_ENV === "production"`). The caller
+ * owns the once-only logic, for example one warning per chart. Never call from per-frame or per-append code.
+ */
+export function devWarn(message: string): void {
+  if (!isProduction()) console.warn(`BlazePlot: ${message}`);
+}
+
 /** @internal Test hook: forget which deprecation ids have already warned. */
 export function resetDeprecationWarnings(): void {
   warned.clear();

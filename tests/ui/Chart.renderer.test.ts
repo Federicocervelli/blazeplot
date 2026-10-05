@@ -102,6 +102,30 @@ describe("Chart renderer option", () => {
     chart.dispose();
   });
 
+  it("preloadWebGL is a quiet no-op without WebGL2 and never throws", async () => {
+    const { preloadWebGL } = await import("../../src/render/engines.ts");
+    contexts.length = 0;
+    expect(() => preloadWebGL()).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    // It tried WebGL2 once, found none, and left nothing behind.
+    expect(contexts.every((kind) => kind === "webgl2")).toBe(true);
+    expect(target.children).toHaveLength(0);
+    const chart = new Chart(target, {});
+    expect(chart.rendererInfo).toMatchObject({ name: "canvas2d", requested: "auto" });
+    chart.dispose();
+  });
+
+  it("preloadWebGL is safe without a document (server rendering)", async () => {
+    const { preloadWebGL } = await import("../../src/render/engines.ts");
+    const saved = globalThis.document;
+    Object.defineProperty(globalThis, "document", { configurable: true, value: undefined });
+    try {
+      expect(() => preloadWebGL()).not.toThrow();
+    } finally {
+      Object.defineProperty(globalThis, "document", { configurable: true, value: saved });
+    }
+  });
+
   it("auto and its factory agree", () => {
     const chart = new Chart(target, { renderer: autoRenderer() });
     expect(chart.rendererInfo).toMatchObject({ name: "canvas2d", requested: "auto", fallbackFrom: "webgl2" });

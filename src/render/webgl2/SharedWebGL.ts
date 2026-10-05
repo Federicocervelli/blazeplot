@@ -1,5 +1,5 @@
 import { describeRenderer } from "../ChartRenderer.js";
-import type { ChartRenderer, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererInfo, FrameReport, RendererLossState } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererInfo, FrameReport, RendererLossState, RendererOrigin } from "../ChartRenderer.js";
 import { WebGL2Renderer } from "./WebGL2Renderer.js";
 import type { GpuBackend } from "./types.js";
 import { keepWarm } from "./warm.js";
@@ -39,8 +39,9 @@ export class SharedWebGLContext implements ChartRenderContext {
     return this.clients.size;
   }
 
-  renderer(): ChartRendererFactory {
-    return (context) => new SharedWebGLRenderer(this, context);
+  /** @param origin How the engine was chosen, recorded in `rendererInfo` (an `autoRenderer` records `requested: "auto"`). */
+  renderer(origin?: RendererOrigin): ChartRendererFactory {
+    return (context) => new SharedWebGLRenderer(this, context, origin);
   }
 
   dispose(): void {
@@ -154,13 +155,13 @@ class SharedWebGLRenderer implements ChartRenderer {
     return this.chartCanvas.ownerDocument ?? undefined;
   }
 
-  constructor(readonly shared: SharedWebGLContext, context: ChartRendererFactoryContext) {
+  constructor(readonly shared: SharedWebGLContext, context: ChartRendererFactoryContext, origin?: RendererOrigin) {
     const target = context.canvas.getContext("2d");
     if (!target) throw new Error("BlazePlot could not create a 2D context on the chart canvas.");
     this.target = target;
     this.chartCanvas = context.canvas;
     shared.attach(this);
-    this.info = describeRenderer("shared", shared.capabilities);
+    this.info = describeRenderer("shared", shared.capabilities, origin);
   }
 
   beginFrame(width: number, height: number, pixelRatio: number): void {
