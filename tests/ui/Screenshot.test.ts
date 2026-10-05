@@ -138,9 +138,9 @@ describe("composeChartScreenshot output", () => {
     expect(f.outputCanvas.encoded).toEqual({ type: "image/jpeg", quality: 0.8 });
   });
 
-  it("lets dpr, width, and height options override the measured size, with a one pixel floor", async () => {
+  it("lets pixelRatio, width, and height options override the measured size, with a one pixel floor", async () => {
     const dpr = fixture({ dpr: 2 });
-    await compose(dpr, { dpr: 3 });
+    await compose(dpr, { pixelRatio: 3 });
     expect([dpr.outputCanvas.width, dpr.outputCanvas.height]).toEqual([600, 300]);
 
     const sized = fixture();
