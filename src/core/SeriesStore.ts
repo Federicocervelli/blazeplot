@@ -2,14 +2,6 @@ import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, 
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 import type { MinMaxY } from "./MinMaxTree.js";
 
-function hasRangeMinMaxY(dataset: Dataset): dataset is RangeMinMaxDataset {
-  return "rangeMinMaxY" in dataset;
-}
-
-function hasXRange(dataset: Dataset): dataset is XRangeDataset {
-  return "getXRange" in dataset;
-}
-
 function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
   return "getOpen" in dataset && "getHigh" in dataset && "getLow" in dataset && "getClose" in dataset;
 }
@@ -45,24 +37,35 @@ function hasUpdateY(dataset: Dataset): dataset is YUpdatableDataset {
   return typeof (dataset as Partial<YUpdatableDataset>).updateY === "function";
 }
 
-function hasCopySamplesRange(dataset: Dataset): dataset is RangeSampleCopyDataset {
-  return "copySamplesRange" in dataset;
+/** Dataset with an explicit per-index gap predicate. */
+type GapDataset = Dataset & { isGap(index: number): boolean };
+
+/**
+ * Optional dataset abilities, detected once when the series is created. A dataset's capabilities are
+ * fixed for its lifetime: methods added to a dataset after construction are not picked up.
+ */
+interface DatasetCaps {
+  readonly gaps: GapDataset | null;
+  readonly ohlc: OhlcDataset | null;
+  readonly xRange: XRangeDataset | null;
+  readonly rangeMinMax: RangeMinMaxDataset | null;
+  readonly minMaxSegments: MinMaxSegmentCopyDataset | null;
+  readonly copyVisibleSamples: VisibleSampleCopyDataset | null;
+  readonly copySamplesRange: RangeSampleCopyDataset | null;
+  readonly copyVisiblePoints: VisiblePointCopyDataset | null;
 }
 
-function hasCopyMinMaxSegments(dataset: Dataset): dataset is MinMaxSegmentCopyDataset {
-  return "copyMinMaxSegments" in dataset;
-}
-
-function hasCopyVisibleSamples(dataset: Dataset): dataset is VisibleSampleCopyDataset {
-  return "copyVisibleSamples" in dataset;
-}
-
-function hasCopyVisiblePoints(dataset: Dataset): dataset is VisiblePointCopyDataset {
-  return "copyVisiblePoints" in dataset;
-}
-
-function hasExplicitGaps(dataset: Dataset): dataset is Dataset & { isGap(index: number): boolean } {
-  return typeof dataset.isGap === "function";
+function resolveCaps(dataset: Dataset): DatasetCaps {
+  return Object.freeze({
+    gaps: typeof dataset.isGap === "function" ? (dataset as GapDataset) : null,
+    ohlc: isOhlcDataset(dataset) ? dataset : null,
+    xRange: "getXRange" in dataset ? (dataset as XRangeDataset) : null,
+    rangeMinMax: "rangeMinMaxY" in dataset ? (dataset as RangeMinMaxDataset) : null,
+    minMaxSegments: "copyMinMaxSegments" in dataset ? (dataset as MinMaxSegmentCopyDataset) : null,
+    copyVisibleSamples: "copyVisibleSamples" in dataset ? (dataset as VisibleSampleCopyDataset) : null,
+    copySamplesRange: "copySamplesRange" in dataset ? (dataset as RangeSampleCopyDataset) : null,
+    copyVisiblePoints: "copyVisiblePoints" in dataset ? (dataset as VisiblePointCopyDataset) : null,
+  });
 }
 
 /** Error for a series call the backing dataset does not support: `"<call> requires <requirement>."`. */
@@ -184,7 +187,10 @@ export class SeriesStore<D extends Dataset = Dataset> {
   readonly config: SeriesConfig;
   readonly style: SeriesStyle;
   private readonly dataset: D;
-  private readonly rangeMinMax: RangeMinMaxDataset | null;
+  /** Capabilities resolved once at construction; no duck typing runs per frame or per sample. */
+  private readonly caps: DatasetCaps;
+  private readonly isDownsampled: boolean;
+  private readonly isServerMinMax: boolean;
   /** Only allocated for downsampled custom datasets that cannot answer `rangeMinMaxY` themselves. */
   private readonly pyramid: MinMaxPyramid | null;
   private readonly onChange?: (change: SeriesChange) => void;
@@ -202,8 +208,12 @@ export class SeriesStore<D extends Dataset = Dataset> {
     this.config = config;
     this.style = style;
     this.onChange = onChange;
-    this.rangeMinMax = hasRangeMinMaxY(dataset) ? dataset : null;
-    this.pyramid = this.downsampled && !this.rangeMinMax ? new MinMaxPyramid() : null;
+    const caps = resolveCaps(dataset);
+    this.caps = caps;
+    const mode = config.mode;
+    this.isDownsampled = (mode === "line" || mode === "bar" || mode === "scatter") && config.downsample !== "none";
+    this.isServerMinMax = config.downsample === "server" && caps.minMaxSegments !== null;
+    this.pyramid = this.isDownsampled && !caps.rangeMinMax ? new MinMaxPyramid() : null;
     if (this.pyramid && dataset.length > 0) this.pyramid.build(dataset);
     this._lastBuildLength = dataset.length;
     this._lastBuildRangeStart = dataset.range?.start ?? NaN;
@@ -211,13 +221,12 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /** @internal Whether dense views of this series are reduced to min/max buckets. */
   get downsampled(): boolean {
-    const mode = this.config.mode;
-    return (mode === "line" || mode === "bar" || mode === "scatter") && this.config.downsample !== "none";
+    return this.isDownsampled;
   }
 
   /** @internal Whether the dataset supplies its own pre-sampled min/max buckets. */
   get hasServerMinMax(): boolean {
-    return this.config.downsample === "server" && hasCopyMinMaxSegments(this.dataset);
+    return this.isServerMinMax;
   }
 
   /** Number of samples in the backing dataset. */
@@ -450,7 +459,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /** @internal Return the represented X interval for a logical index when the dataset exposes interval metadata. */
   xRangeAt(index: number): XRange | null {
-    return hasXRange(this.dataset) ? this.dataset.getXRange(index) : null;
+    return this.caps.xRange ? this.caps.xRange.getXRange(index) : null;
   }
 
   /** Return the XY sample at a logical index, or `null` for gaps and out-of-range indexes. */
@@ -463,15 +472,16 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /** Return the OHLC sample at a logical index, or `null` when out of range or not an OHLC series. */
   ohlcAt(index: number): SeriesOhlcSample | null {
-    if (index < 0 || index >= this.dataset.length || !isOhlcDataset(this.dataset)) return null;
-    const close = this.dataset.getClose(index);
+    const ohlc = this.caps.ohlc;
+    if (index < 0 || index >= this.dataset.length || !ohlc) return null;
+    const close = ohlc.getClose(index);
     return {
       index,
-      x: this.dataset.getX(index),
+      x: ohlc.getX(index),
       y: close,
-      open: this.dataset.getOpen(index),
-      high: this.dataset.getHigh(index),
-      low: this.dataset.getLow(index),
+      open: ohlc.getOpen(index),
+      high: ohlc.getHigh(index),
+      low: ohlc.getLow(index),
       close,
     };
   }
@@ -488,10 +498,10 @@ export class SeriesStore<D extends Dataset = Dataset> {
     let xMax = -Infinity;
     let yMin = Infinity;
     let yMax = -Infinity;
-    const ohlc = isOhlcDataset(this.dataset) ? this.dataset : null;
-    const rangeMinMax = ohlc ? null : this.rangeMinMax;
+    const ohlc = this.caps.ohlc;
+    const rangeMinMax = ohlc ? null : this.caps.rangeMinMax;
 
-    if (rangeMinMax && !hasXRange(this.dataset) && (!hasExplicitGaps(this.dataset) || rangeMinMax.rangeMinMaxExcludesGaps === true)) {
+    if (rangeMinMax && !this.caps.xRange && (!this.caps.gaps || rangeMinMax.rangeMinMaxExcludesGaps === true)) {
       let first = start;
       let last = end - 1;
       while (first < end && this.isGap(first)) first++;
@@ -782,8 +792,8 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /** @internal Copy visible `[x, minY, maxY]` bucket triples into a render buffer. */
   copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number = 0): number {
-    if (hasCopyMinMaxSegments(this.dataset)) {
-      return this.dataset.copyMinMaxSegments(viewport, target, maxSegments, xOrigin);
+    if (this.caps.minMaxSegments) {
+      return this.caps.minMaxSegments.copyMinMaxSegments(viewport, target, maxSegments, xOrigin);
     }
     if (!this.downsampled || maxSegments <= 0 || target.length < maxSegments * 3) return 0;
 
@@ -815,24 +825,25 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /** @internal Copy `[x, open, high, low, close]` tuples for a logical index range; gap candles are written as all-NaN tuples. */
   copyOhlcTuplesRange(start: number, end: number, target: Float32Array, maxCandles: number, xOrigin: number = 0): number {
-    if (!isOhlcDataset(this.dataset) || maxCandles <= 0 || target.length < maxCandles * 5) return 0;
+    const ohlc = this.caps.ohlc;
+    if (!ohlc || maxCandles <= 0 || target.length < maxCandles * 5) return 0;
 
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.dataset.length, Math.ceil(end));
     const count = Math.min(maxCandles, Math.max(0, to - from));
-    const explicitGaps = hasExplicitGaps(this.dataset);
+    const gaps = this.caps.gaps;
     for (let i = 0; i < count; i++) {
       const index = from + i;
       const offset = i * 5;
-      if (explicitGaps && this.dataset.isGap(index)) {
+      if (gaps && gaps.isGap(index)) {
         target.fill(NaN, offset, offset + 5);
         continue;
       }
-      target[offset] = this.dataset.getX(index) - xOrigin;
-      target[offset + 1] = this.dataset.getOpen(index);
-      target[offset + 2] = this.dataset.getHigh(index);
-      target[offset + 3] = this.dataset.getLow(index);
-      target[offset + 4] = this.dataset.getClose(index);
+      target[offset] = ohlc.getX(index) - xOrigin;
+      target[offset + 1] = ohlc.getOpen(index);
+      target[offset + 2] = ohlc.getHigh(index);
+      target[offset + 3] = ohlc.getLow(index);
+      target[offset + 4] = ohlc.getClose(index);
     }
 
     return count;
@@ -850,7 +861,9 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   private isGap(index: number, y?: number): boolean {
     const value = y ?? this.dataset.getY(index);
-    return !Number.isFinite(value) || (hasExplicitGaps(this.dataset) && this.dataset.isGap(index));
+    if (!Number.isFinite(value)) return true;
+    const gaps = this.caps.gaps;
+    return gaps !== null && gaps.isGap(index);
   }
 
   private pointXDistanceSq(index: number, x: number, xScale: number, xTransform: (value: number) => number): number {
@@ -884,11 +897,12 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /** Whether `pointIntervalMinMaxY` can answer without scanning raw samples. */
   private hasPointIntervalBounds(): boolean {
-    return this.rangeMinMax !== null || (this.pyramid !== null && !this._dirty && !this._useRawMinMaxScan);
+    return this.caps.rangeMinMax !== null || (this.pyramid !== null && !this._dirty && !this._useRawMinMaxScan);
   }
 
   private pointIntervalMinMaxY(start: number, end: number): MinMaxY | null {
-    if (this.rangeMinMax) return this.rangeMinMax.rangeMinMaxY(start, end);
+    const rangeMinMax = this.caps.rangeMinMax;
+    if (rangeMinMax) return rangeMinMax.rangeMinMaxY(start, end);
     if (this.pyramid && !this._dirty && !this._useRawMinMaxScan) return this.pyramid.rangeMinMax(this.dataset, start, end);
     return null;
   }
@@ -902,8 +916,8 @@ export class SeriesStore<D extends Dataset = Dataset> {
     pointSize: number,
     xOrigin: number,
   ): number {
-    if (hasCopyVisiblePoints(this.dataset)) {
-      return this.dataset.copyVisiblePoints(viewport, target, maxPoints, xOrigin, pixelWidth, pixelHeight, pointSize);
+    if (this.caps.copyVisiblePoints) {
+      return this.caps.copyVisiblePoints.copyVisiblePoints(viewport, target, maxPoints, xOrigin, pixelWidth, pixelHeight, pointSize);
     }
 
     if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
@@ -1115,8 +1129,8 @@ export class SeriesStore<D extends Dataset = Dataset> {
     baseline: number,
     xOrigin: number,
   ): number {
-    if (hasCopyVisibleSamples(this.dataset)) {
-      return this.dataset.copyVisibleSamples(viewport, target, maxPoints, layout, baseline, xOrigin);
+    if (this.caps.copyVisibleSamples) {
+      return this.caps.copyVisibleSamples.copyVisibleSamples(viewport, target, maxPoints, layout, baseline, xOrigin);
     }
 
     const floatsPerSample = layout === "points" ? 2 : 4;
@@ -1190,8 +1204,8 @@ export class SeriesStore<D extends Dataset = Dataset> {
     baseline: number,
     xOrigin: number,
   ): number {
-    if (hasCopySamplesRange(this.dataset)) {
-      return this.dataset.copySamplesRange(start, end, target, maxPoints, layout, baseline, xOrigin);
+    if (this.caps.copySamplesRange) {
+      return this.caps.copySamplesRange.copySamplesRange(start, end, target, maxPoints, layout, baseline, xOrigin);
     }
 
     const floatsPerSample = layout === "points" ? 2 : 4;
@@ -1222,7 +1236,8 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   private minMaxForRange(start: number, end: number): MinMaxY | null {
-    if (this.rangeMinMax) return this.rangeMinMax.rangeMinMaxY(start, end);
+    const rangeMinMax = this.caps.rangeMinMax;
+    if (rangeMinMax) return rangeMinMax.rangeMinMaxY(start, end);
     if (this.pyramid && !this._useRawMinMaxScan) return this.pyramid.rangeMinMax(this.dataset, start, end);
 
     const from = Math.max(0, Math.floor(start));
