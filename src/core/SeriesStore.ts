@@ -196,6 +196,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   private _lastBuildLength: number = 0;
   private _lastBuildRangeStart: number = NaN;
   private _visible: boolean = true;
+  private _dataVersion: number = 0;
 
   /** @internal Charts create series; use `chart.addSeries(...)` or a typed `chart.add*` helper. */
   constructor(dataset: D, config: SeriesConfig, style: SeriesStyle, onChange?: (change: SeriesChange) => void) {
@@ -219,6 +220,11 @@ export class SeriesStore<D extends Dataset = Dataset> {
   /** @internal Whether the dataset supplies its own pre-sampled min/max buckets. */
   get hasServerMinMax(): boolean {
     return this.config.downsample === "server" && hasCopyMinMaxSegments(this.dataset);
+  }
+
+  /** @internal Counter that changes whenever the series reports a data change; lets overlays cache derived geometry. */
+  get dataVersion(): number {
+    return this._dataVersion;
   }
 
   /** Number of samples in the backing dataset. */
@@ -413,6 +419,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   private markDataMutated(forceFullPyramidRebuild: boolean): void {
+    this._dataVersion++;
     this._dirty = true;
     this._forceFullPyramidRebuild ||= forceFullPyramidRebuild;
     this.onChange?.("data");
@@ -430,6 +437,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     this.pyramid?.build(this.dataset);
     this._lastBuildLength = this.dataset.length;
     this._lastBuildRangeStart = this.dataset.range?.start ?? NaN;
+    this._dataVersion++;
     this._dirty = false;
     this.onChange?.("data");
   }
@@ -547,6 +555,56 @@ export class SeriesStore<D extends Dataset = Dataset> {
       yMax = Math.max(yMax, this.style.baseline);
     }
     return { xMin, xMax, yMin, yMax };
+  }
+
+  /**
+   * @internal Write `[minY, maxY]` for each of `bucketCount` equal-width X buckets spanning
+   * `[xMin, xMax]` into `target` (`NaN` pair when a bucket holds no non-gap sample). Bucket edges
+   * are found by binary search and extremes come from the shared min/max tree, so the cost is
+   * O(buckets * log n) for the built-in datasets. Bars and areas include their baseline.
+   */
+  copyXBucketBounds(xMin: number, xMax: number, bucketCount: number, target: Float64Array): void {
+    const count = Math.min(Math.max(0, Math.floor(bucketCount)), target.length >> 1);
+    target.fill(NaN, 0, count * 2);
+    if (count === 0 || this.dataset.length <= 0 || !(xMax > xMin)) return;
+
+    const includeBaseline = (this.config.mode === "area" || this.config.mode === "bar") && Number.isFinite(this.style.baseline);
+    const rangeMinMax = isOhlcDataset(this.dataset) ? null : this.rangeMinMax;
+    const fast = rangeMinMax !== null && !hasXRange(this.dataset) && (!hasExplicitGaps(this.dataset) || rangeMinMax.rangeMinMaxExcludesGaps === true);
+    const span = xMax - xMin;
+    let start = this.dataset.lowerBoundX(xMin);
+    for (let b = 0; b < count; b++) {
+      const isLast = b === count - 1;
+      const bucketMin = xMin + (span * b) / count;
+      const bucketMax = xMin + (span * (b + 1)) / count;
+      const end = isLast ? this.dataset.upperBoundX(xMax) : this.dataset.lowerBoundX(bucketMax);
+      let minY = NaN;
+      let maxY = NaN;
+      if (end > start) {
+        if (fast) {
+          const range = rangeMinMax.rangeMinMaxY(start, end);
+          if (range) {
+            minY = range.minY;
+            maxY = range.maxY;
+          }
+        } else {
+          const bounds = this.dataBounds({ xMin: bucketMin, xMax: isLast ? xMax : bucketMax });
+          if (bounds) {
+            minY = bounds.yMin;
+            maxY = bounds.yMax;
+          }
+        }
+      }
+      if (Number.isFinite(minY) && Number.isFinite(maxY)) {
+        if (includeBaseline && fast) {
+          minY = Math.min(minY, this.style.baseline);
+          maxY = Math.max(maxY, this.style.baseline);
+        }
+        target[b * 2] = minY;
+        target[b * 2 + 1] = maxY;
+      }
+      start = Math.max(start, end);
+    }
   }
 
   /** @internal Find the nearest non-gap sample by X value, optionally constrained to a viewport. */
