@@ -59,12 +59,12 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 17 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 176 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 178 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
 | shared PickOverlay chunk | `dist/PickOverlay-*.js` | 5 KiB |
-| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 200 KiB |
+| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 202 KiB |
 
 ### All public exports
 
@@ -75,6 +75,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `AcceleratedDataset` | interface | `./core/types` | Convenience contract for maximum-performance custom datasets. Implement this when a dataset can provide fast exact sample copies, stable viewport sampling, range min/max queries, and renderer-ready min/max buckets. |
 | `AppendableDataset` | interface | `./core/types` | Dataset that accepts appended X/Y samples; implementations may store X values explicitly or use them to seed implicit X spacing. |
 | `autoRenderer` | function | `./render/engines` | Renderer factory that uses WebGL2 and falls back to Canvas 2D when WebGL2 is unavailable or its context cannot be created. `chart.rendererInfo.fallbackFrom` says when the fallback happened. Same as `renderer: "auto"`, the default. |
+| `AutoRendererOptions` | interface | `./render/engines` | — |
 | `AxisConfig` | type | `./ui/Chart` | — |
 | `AxisPosition` | type | `./ui/ChartOptions` | Whether an axis draws its tick labels inside the plot or in a gutter outside it. |
 | `AxisRenderTarget` | type | `./interaction/AxisController` | Axis dimension targeted by axis helpers. |
@@ -173,6 +174,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `OhlcRingBuffer` | class | `./core/OhlcDataset` | Fixed-capacity streaming buffer for OHLC/candlestick data. X must be finite and non-decreasing. A candle that breaks that rule is skipped (never thrown), counted in `rejectedSamples`, reported to `onInvalidSample`, and logged with one console warning per buffer when no callback is set. A candle with a non-finite price is stored and treated as a gap. |
 | `OhlcRingBufferOptions` | interface | `./core/OhlcDataset` | Options for `OhlcRingBuffer`. |
 | `PanIntent` | interface | `./interaction/types` | Pan request expressed in data units or screen pixels. |
+| `preloadWebGL` | function | `./render/engines` | Optionally warm up WebGL2 before the first chart: at idle time it creates a context on a throwaway canvas, compiles the chart programs, and releases it, so the GPU process is already running when a chart mounts. Nothing needs it; charts work without it. The warm context is kept for about two seconds, so call it shortly before charts mount (for example when a page that will show charts loads). It does nothing on the server, in a browser without WebGL2, or when the browser refuses a context, and it never throws. |
 | `RangeMinMaxDataset` | interface | `./core/types` | Dataset that can answer min/max Y queries for index ranges. |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
 | `RendererChoice` | type | `./render/ChartRenderer` | What `ChartOptions.renderer` can ask for: an engine by name, or `"auto"` (WebGL2, else Canvas 2D). |

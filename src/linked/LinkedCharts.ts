@@ -1,5 +1,6 @@
 import { Chart } from "../ui/Chart.js";
 import type { ChartOptions } from "../ui/ChartOptions.js";
+import { assertChartTarget } from "../ui/target.js";
 import type { ChartSelectEvent } from "../ui/ChartEvents.js";
 import type { ChartPlugin } from "../ui/PluginTypes.js";
 
@@ -48,6 +49,7 @@ let linkedChartsId = 0;
 
 /** Create a grid of charts that share X pans/zooms and, optionally, plugins and selections. */
 export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOptions): LinkedChartsHandle {
+  assertChartTarget("createLinkedCharts", target);
   const rows = Math.max(1, Math.floor(options.rows ?? options.panels.length));
   const columns = Math.max(1, Math.floor(options.columns ?? Math.ceil(options.panels.length / rows)));
   const root = target.ownerDocument.createElement("div");
