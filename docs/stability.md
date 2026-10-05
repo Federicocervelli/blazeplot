@@ -29,7 +29,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 |---|---|---|
 | `blazeplot` | Stable, with the exceptions listed in the tables below | Chart, datasets, data contracts, theming, rendering-engine selection (names, factories, `rendererInfo`), `isWebGL2Available`, `WebGL2UnavailableError`, `Canvas2DUnavailableError`. |
 | `blazeplot/linked` | Stable | `createLinkedCharts` and its option/handle types. |
-| `blazeplot/data` | Stable | `binSamples`, `rollingMean`, and their types (pure, chart-agnostic transforms). |
+| `blazeplot/data` | Stable | `binSamples`, `histogramBins`, `rollingMean`, and their types (pure, chart-agnostic transforms). |
 | `blazeplot/export` | Stable | `exportChartData`, `chartDataToCsv`, `downloadBlob`, `downloadChartScreenshot`, `copyChartScreenshotToClipboard`, and their types. |
 | `blazeplot/plugins/legend` | Stable | Options may grow; existing option names are kept. |
 | `blazeplot/plugins/tooltip` | Stable | Same. |
@@ -48,7 +48,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 | Area | Exports | Tier |
 |---|---|---|
 | Chart | `Chart` (constructor, `add*` helpers, `addSeries`, viewport/pan/zoom/fit methods, latest-X follow methods (`followX`, `stopFollowX`, `setFollowXPaused`, `getFollowXState`), `pick`, `subscribe` for the events in `ChartEventMap` (including `viewportchange` with its `source` and `followxchange`), `screenshot`, `start`, `stop`, `dispose`, `resize`, `setTheme`, `setAxes`, `setGridVisible`, and the `rootElement`, `theme`, and `renderer` getters) and the option/result types it uses (`ChartOptions`, `AxisConfig`, `ChartPickItem`, `ChartHoverState`, and friends). `ChartOptions.renderer` (see Rendering engines below) | Stable |
-| Series handles | `SeriesStore` public methods (`append`, `updateAt`, `updateLast`, `replace`, `clear`, `setVisible`, `setStyle`, `sampleAt`, `markDirty`, and so on) | Stable |
+| Series handles | `SeriesStore` public methods (`append`, `updateAt`, `updateLast`, `replace`, `clear`, `setVisible`, `setStyle`, `sampleAt`, `markDirty`, and so on), the series config types `TypedSeriesConfig`, `DatasetSeriesConfig`, `RingSeriesConfig`, `UniformRingSeriesConfig`, `SeriesIdentityConfig`, and the payload types `SeriesAppendFor`, `SeriesUpdateFor` | Stable. `append` and `update*` are typed by the backing dataset, so a call the dataset cannot serve does not compile. |
 | Datasets | `RingBuffer`, `UniformRingBuffer`, `StaticDataset`, `OhlcRingBuffer`, `StaticOhlcDataset`, `ServerSampledDataset`, `HistogramDataset`, `histogram` | Stable |
 | Dataset contract | `Dataset`, `AppendableDataset`, `YAppendableDataset`, `UpdatableDataset`, `YUpdatableDataset`, `OhlcDataset`, `SeriesConfig`, `SeriesStyle`, `Viewport`, `TimeRange`, `XRange`, `BufferOverflowStrategy`, `ValuePrecision`, `DownsampleStrategy`, `SeriesMode` | Stable. See [Data semantics](./data-semantics.md). |
 | Theming | `DEFAULT_CHART_THEME`, `LIGHT_CHART_THEME`, `ChartTheme`, `ResolvedChartTheme`, `ThemeColor`, `RgbaColor` | Stable. New theme tokens may be added; existing token names are kept. |

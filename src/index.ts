@@ -32,7 +32,12 @@ export type {
   ChartViewportChangeEvent,
   ChartViewportChangeSource,
   ChartViewportGestureOptions,
+  DatasetSeriesConfig,
+  HistogramSeriesConfig,
+  StaticSeriesConfig,
+  RingSeriesConfig,
   SeriesIdentityConfig,
+  UniformRingSeriesConfig,
   TextOverlayConfig,
   TypedSeriesConfig,
 } from "./ui/Chart.js";
@@ -68,6 +73,7 @@ export type { SeriesStore } from "./core/SeriesStore.js";
 export type { SeriesDataBoundsOptions, SeriesOhlcSample } from "./core/SeriesStore.js";
 export type {
   SeriesAppendData,
+  SeriesAppendFor,
   SeriesAppendRow,
   SeriesObjectAppendData,
   SeriesOhlcAppendData,
@@ -76,6 +82,10 @@ export type {
   SeriesReplaceData,
   SeriesScalarOrArray,
   SeriesUpdateData,
+  SeriesUpdateFor,
+  SeriesXYExplicitAppendData,
+  SeriesYAppendData,
+  SeriesYUpdateData,
   SeriesXYAppendData,
   SeriesXYAppendRow,
   SeriesXYUpdateData,
@@ -126,8 +136,8 @@ export { OhlcRingBuffer, StaticOhlcDataset } from "./core/OhlcDataset.js";
 export type { OhlcRingBufferOptions, StaticOhlcDatasetOptions, StaticOhlcDatasetSortedOptions } from "./core/OhlcDataset.js";
 export { ServerSampledDataset } from "./core/ServerSampledDataset.js";
 export type { ServerSampledBuckets, ServerSampledData, ServerSampledPoints } from "./core/ServerSampledDataset.js";
-export { HistogramDataset, histogram } from "./core/Histogram.js";
-export type { HistogramBin, HistogramNormalization, HistogramOptions, HistogramResult } from "./core/Histogram.js";
+export { HistogramDataset } from "./core/Histogram.js";
+export type { HistogramBin, HistogramNormalization, HistogramOptions, HistogramResult } from "./core/histogramBins.js";
 
 // Viewport and axes
 export type { Camera2D } from "./interaction/Camera2D.js";

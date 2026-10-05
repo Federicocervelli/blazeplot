@@ -17,7 +17,7 @@ BlazePlot is for datasets that outgrow general-purpose charting libraries: milli
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **197 KiB raw**. Plugins and helpers ship as separate subpath entries.
+The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **199 KiB raw**. Plugins and helpers ship as separate subpath entries.
 
 Headline numbers from the manual headed comparison against uPlot and Chart.js, one primary metric per scenario (median of fresh-page runs; bold marks the winner among BlazePlot WebGL, uPlot and Chart.js):
 
@@ -62,7 +62,7 @@ Requires a browser with WebGL2, or opt into the Canvas 2D renderer for browsers 
 A chart needs a sized host element and the `Chart` constructor. Add the optional plugins you want from `blazeplot/plugins/*`.
 
 ```ts
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 import { interactionsPlugin } from "blazeplot/plugins/interactions";
 import { tooltipPlugin } from "blazeplot/plugins/tooltip";
 
@@ -73,7 +73,7 @@ const x = Array.from({ length: 1000 }, (_, i) => i);
 const y = x.map((value) => Math.sin(value * 0.02));
 
 const chart = new Chart(el, { plugins: [interactionsPlugin(), tooltipPlugin()] });
-chart.addLine({ dataset: new StaticDataset(x, y), name: "sine" });
+chart.addLine({ x, y, name: "sine" });
 chart.fitToData();
 chart.start();
 
