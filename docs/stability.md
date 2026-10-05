@@ -20,14 +20,14 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 
 - **ESM only.** `package.json` has `"type": "module"` and every export has only an `import` condition. `require("blazeplot")` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`; use `import` or a dynamic `import()` from CommonJS. There is no UMD or CommonJS build.
 - **Types** ship as `.d.ts` files next to each entry (`types` condition). See [TypeScript support](./versioning-and-migration.md#typescript-support) for the supported compiler versions.
-- **Tree shaking:** `"sideEffects": false`. Optional features live in subpath entries so chart-only apps do not pay for them.
-- **Browser only.** Charts need the DOM and, with the default renderer, WebGL2 (the Canvas 2D renderer needs only a 2D canvas). See [Browser support](./browser-support.md).
+- **Tree shaking:** `"sideEffects": false`. Optional features (plugins, linked charts, data helpers, export helpers) live in subpath entries so chart-only apps do not pay for them. The rendering engines (WebGL2, Canvas 2D, and the shared context) are part of the core graph, not subpaths.
+- **Browser only.** Charts need the DOM and a canvas: WebGL2 when available, Canvas 2D otherwise (the default `"auto"` renderer). See [Browser support](./browser-support.md).
 
 ## Stability by entry point
 
 | Entry point | Tier | Notes |
 |---|---|---|
-| `blazeplot` | Stable, with the exceptions listed in the tables below | Chart, datasets, data contracts, theming, renderer-selection types, `isWebGL2Available`, `WebGL2UnavailableError`. |
+| `blazeplot` | Stable, with the exceptions listed in the tables below | Chart, datasets, data contracts, theming, rendering-engine selection (names, factories, `rendererInfo`), `isWebGL2Available`, `WebGL2UnavailableError`, `Canvas2DUnavailableError`. |
 | `blazeplot/linked` | Stable | `createLinkedCharts` and its option/handle types. |
 | `blazeplot/data` | Stable | `binSamples`, `rollingMean`, and their types (pure, chart-agnostic transforms). |
 | `blazeplot/export` | Stable | `exportChartData`, `chartDataToCsv`, `downloadBlob`, `downloadChartScreenshot`, `copyChartScreenshotToClipboard`, and their types. |
@@ -47,7 +47,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 
 | Area | Exports | Tier |
 |---|---|---|
-| Chart | `Chart` (constructor, `add*` helpers, `addSeries`, viewport/pan/zoom/fit methods, latest-X follow methods (`followX`, `stopFollowX`, `setFollowXPaused`, `getFollowXState`), `pick`, `subscribe` for the events in `ChartEventMap` (including `viewportchange` with its `source` and `followxchange`), `screenshot`, `start`, `stop`, `dispose`, `resize`, `setTheme`, `setAxes`, `setGridVisible`, and the `rootElement`, `theme`, and `renderer` getters) and the option/result types it uses (`ChartOptions`, `AxisConfig`, `ChartPickItem`, `ChartHoverState`, and friends). `ChartOptions.renderer` takes a name (`"auto"`, `"webgl2"`, `"canvas2d"`, `"shared"`) or a factory from the `blazeplot` root | Stable |
+| Chart | `Chart` (constructor, `add*` helpers, `addSeries`, viewport/pan/zoom/fit methods, latest-X follow methods (`followX`, `stopFollowX`, `setFollowXPaused`, `getFollowXState`), `pick`, `subscribe` for the events in `ChartEventMap` (including `viewportchange` with its `source` and `followxchange`), `screenshot`, `start`, `stop`, `dispose`, `resize`, `setTheme`, `setAxes`, `setGridVisible`, and the `rootElement`, `theme`, and `renderer` getters) and the option/result types it uses (`ChartOptions`, `AxisConfig`, `ChartPickItem`, `ChartHoverState`, and friends). `ChartOptions.renderer` (see Rendering engines below) | Stable |
 | Series handles | `SeriesStore` public methods (`append`, `updateAt`, `updateLast`, `replace`, `clear`, `setVisible`, `setStyle`, `sampleAt`, `markDirty`, and so on) | Stable |
 | Datasets | `RingBuffer`, `UniformRingBuffer`, `StaticDataset`, `OhlcRingBuffer`, `StaticOhlcDataset`, `ServerSampledDataset`, `HistogramDataset`, `histogram` | Stable |
 | Dataset contract | `Dataset`, `AppendableDataset`, `YAppendableDataset`, `UpdatableDataset`, `YUpdatableDataset`, `OhlcDataset`, `SeriesConfig`, `SeriesStyle`, `Viewport`, `TimeRange`, `XRange`, `BufferOverflowStrategy`, `ValuePrecision`, `DownsampleStrategy`, `SeriesMode` | Stable. See [Data semantics](./data-semantics.md). |
@@ -55,7 +55,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 | Accessibility | `ChartAccessibilityOptions`, `chart.getSummary()` with `ChartSummary`, `ChartSeriesSummary`, `ChartSummaryRange`, the root role/ARIA attributes and the key map in [Accessibility](./accessibility.md) | Stable. The wording of the generated summary text may improve in a minor release; pass `accessibility.description` to control it. |
 | Viewport policy | `ViewportPolicy`, `PanIntent`, `ZoomIntent`, `ZoomAxis` | Stable |
 | Axes | `AxisScale`, `AxisTickFormat`, `AxisTickFormatter`, `AxisTimeZone`, `BuiltInAxisScale`, `AxisConfig` | Stable |
-| WebGL2 availability | `isWebGL2Available`, `WebGL2UnavailableError` | Stable. See [Error handling](./error-handling.md). |
+| Rendering engines | `ChartOptions.renderer` values `"auto"` (the default), `"webgl2"`, `"canvas2d"`, `"shared"`; the factories `autoRenderer`, `webgl2Renderer`, `canvas2dRenderer`, `sharedRenderer`, and `createChartRenderContext` with `ChartRenderContext`; `chart.renderer` (`RendererName`) and `chart.rendererInfo` (`ChartRendererInfo` with `name`, `requested`, `fallbackFrom`, and `ChartRendererCapabilities`: `gpu`, `contextLoss`, `shared`, `maxDrawingBufferPixels`); `ctx.renderer` in plugins; `RendererChoice`, `ChartRendererFactory`, `ChartRendererFactoryContext`, `ChartRendererHandle`, `ChartRendererKind`; `isWebGL2Available`, `WebGL2UnavailableError`, `Canvas2DUnavailableError`; the `renderer` option of `createLinkedCharts` | Stable, and Canvas 2D is a first-class engine, not an experiment. What is covered is the feature set: every series type, gap, axis scale, plugin, and screenshot works on every engine, with the error behavior in [Error handling](./error-handling.md). **Pixel-level output between engines, and between releases, is not covered by semver**: antialiasing, rasterization ties, and join shapes differ by engine and may change in a minor release (see [Browser support](./browser-support.md#rendering-engines) for the documented differences). The `rendererchange` event name exists in `ChartEventMap` but nothing emits it yet; it is reserved for a chart that switches engine at run time. |
 | Plugin contract | `ChartPlugin`, `ChartPluginHandle` (with its `dispose`, `onResize`, `onThemeChange`, `onContextLost`, `onContextRestored` hooks), `ChartPluginContext` and its groups (`ChartPluginCoords` including `format`, `ChartPluginViewport`, `ChartPluginState` including `inspect`/`getInspection` with `ChartInspectionTarget`, `ChartPluginLayout`, `ChartPluginDom` including `document`, `view`, and `claimPointer`, `ChartPluginEvents`), `ChartPluginEventMap`, `ChartPluginEventName`, `ChartMountSlot`, `ChartSurface`, `ChartSurfaceDecoration`, `ChartSurfaceStyle`, `ChartRect`, `ChartPlotSize`, `ChartLayoutReservation`, and the install/hook/dispose order | Stable, except `ctx.unstable` (below). New groups, members, slots, surfaces, hooks, and plugin events may be added in a minor release; existing ones keep their names and behavior. The built-in plugins are written against this surface only. See [Plugin authoring](./plugin-authoring.md). |
 
 ## Experimental
@@ -64,7 +64,7 @@ These are the low-level extension points. They are public and documented, but th
 
 | Item | Why experimental |
 |---|---|
-| Plugin escape hatches: `ChartPluginContext.unstable` (`ChartPluginUnstable`: `canvas`, `element(slot)`, `getWebGLContext()`, `createRenderSurface()`, `getCamera()`) | Raw canvas, DOM, GPU, and camera access bypass the guarantees of the stable context groups (viewport policy, cleanup tracking, layout ownership). The built-in plugins do not use them, except that the flame graph draws its rectangles on a `createRenderSurface()` surface. `ChartRenderSurface` is `@experimental` too. |
+| Plugin escape hatches: `ChartPluginContext.unstable` (`ChartPluginUnstable`: `canvas`, `element(slot)`, `getWebGLContext()`, `createRenderSurface(canvas)`, `getCamera()`) | Raw canvas, DOM, GPU, and camera access bypass the guarantees of the stable context groups (viewport policy, cleanup tracking, layout ownership). `getWebGLContext()` is `null` on engines that do not own a context (Canvas 2D, shared). `createRenderSurface` returns a `ChartRenderSurface` (`beginFrame`, `fillRects`, `endFrame`, `isLost`, `setLossListener`, `dispose`) on the chart's engine; its drawing primitives will grow, and `RendererLossState` is part of it. The built-in plugins do not use the escape hatches, except that the flame graph draws its rectangles on a render surface. |
 | Custom fast-path dataset interfaces: `AcceleratedDataset`, `RangeMinMaxDataset`, `RangeSampleCopyDataset`, `VisibleSampleCopyDataset`, `VisiblePointCopyDataset`, `MinMaxSegmentCopyDataset`, `XRangeDataset`, `SampleCopyLayout` | Their method signatures are renderer-ready fast paths and have changed before (see the 0.5 `copyMinMaxSegments` change). Implementing only the stable `Dataset` contract avoids this risk. Optional members such as `isGap` and `ordinalOffset` follow the `Dataset` tier. |
 | Camera access: `ctx.unstable.getCamera()` and the `Camera2D` type (also passed to `ViewportPolicy` hooks), `CustomAxisScale`, `AxisRenderTarget`, `AxisControllerAxisOptions` | Direct camera mutation bypasses `ViewportPolicy` and the chart's follow/auto-fit state. Prefer `chart.setViewport`, `pan`, and `zoom`. |
 | `blazeplot/plugins/flamegraph` | See the entry point table. |
@@ -75,12 +75,11 @@ Experimental does not mean unsupported: bugs are fixed the same way. It means a 
 
 ## Internal
 
-These are not an API for application code. The GPU backend types (`GpuBackend`, `WebGL2Backend`, the `Gpu*` types, `BufferSpec`, `AttributeSpec`, `DrawSpec`, `UniformValue`) are not exported from the `blazeplot` root. `WebGL2UnavailableError` and `isWebGL2Available` are public.
+These are not an API for application code. The engine and GPU backend types (`ChartRenderer`, `GpuBackend`, `WebGL2Backend`, the `Gpu*` types, `BufferSpec`, `AttributeSpec`, `DrawSpec`, `UniformValue`) are not exported from the `blazeplot` root. The engine selection surface above is public.
 
 | Item | Notes |
 |---|---|
-| `ChartPluginContext.unstable.getWebGLContext()` (`@experimental`) | Escape hatch to the raw `WebGL2RenderingContext`; `null` with the Canvas 2D and shared WebGL renderers. The chart may recreate GPU state after context loss. State you change on it can interfere with rendering. |
-| The `ChartRenderer` drawing interface and the renderer classes behind the factories | `ChartRenderer` is marked `@internal` and stripped from published declarations. Only the opaque `ChartRendererHandle` (`kind`), `ChartRendererFactory`, `ChartRendererFactoryContext`, and `ChartRendererKind` are public; custom renderers are not supported. |
+| The `ChartRenderer` drawing interface and the engine classes behind the factories | `ChartRenderer` is marked `@internal` and stripped from published declarations. The factories return the opaque `ChartRendererHandle` (`kind`); custom engines are not supported. |
 | `/** @internal */` members | Stripped from published declarations. If you reach them through casts, expect breakage in patch releases. |
 | Generated DOM structure and `blazeplot-*` class names | Styling hooks you pass through `className` options are stable; the markup the chart generates around them is not. The documented ARIA contract in [Accessibility](./accessibility.md) is stable. |
 | Bundle chunk names such as `dist/Chart-*.js` | Hashed output files. Import only the documented entry points. |
@@ -90,7 +89,8 @@ These are not an API for application code. The GPU backend types (`GpuBackend`, 
 - If you only use `Chart`, the built-in datasets, built-in plugins, `blazeplot/data`, and `blazeplot/export`, you are on the stable surface.
 - If you write a plugin against the stable context groups, a `^1` range is enough. If it uses `ctx.unstable`, test against the next minor in CI.
 - If you implement a custom `Dataset`, stay on the required `Dataset` methods unless you have measured a need for the fast paths.
-- If you need the raw GL context or a custom backend, pin an exact version.
+- If you need the raw GL context, pin an exact version. Custom engines are not supported.
+- If you depend on exact pixels (screenshot diffing, for example), pin the engine (`renderer: "webgl2"` or `"canvas2d"`) and the library version, and expect to regenerate baselines when either changes.
 
 ## Promotion
 

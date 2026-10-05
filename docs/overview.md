@@ -2,7 +2,7 @@
 
 BlazePlot is a WebGL2 charting library for large, interactive time-series plots in the browser. It is a good fit when SVG, Canvas2D, or general-purpose chart libraries start to struggle with live data, dense history, or many redraws per second.
 
-The core chart keeps rendering on the GPU and keeps DOM work limited to labels, overlays, and plugin UI. WebGL2 is the default renderer. The Canvas 2D renderer (`renderer: "canvas2d"`, or `"auto"` as a fallback) keeps charts working where WebGL2 is unavailable, at lower throughput, and a shared WebGL context (`renderer: "shared"`) lets a page mount many charts without hitting the browser's WebGL context cap; see [Browser support](./browser-support.md) and [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
+The core chart keeps rendering on the GPU and keeps DOM work limited to labels, overlays, and plugin UI. WebGL2 is preferred, and the default `renderer: "auto"` falls back to Canvas 2D where WebGL2 is unavailable (`renderer: "canvas2d"` asks for it directly, at lower throughput), while a shared WebGL context (`renderer: "shared"`) lets a page mount many charts without hitting the browser's WebGL context cap; see [Browser support](./browser-support.md) and [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
 
 ## Install
 
