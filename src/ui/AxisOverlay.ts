@@ -1,6 +1,7 @@
 import type { AxisController } from "../interaction/AxisController.js";
 import type { ChartLayoutElements, ChartLayoutConfig } from "./ChartLayout.js";
 import { DEFAULT_CHART_THEME } from "./theme.js";
+import { measureText } from "./TextMeasure.js";
 
 /** Maximum X-axis ticks per frame; tick spacing also respects a minimum pixel gap. */
 export const X_TICK_LIMIT = 12;
@@ -21,23 +22,29 @@ type RenderAxis = "x" | "y" | "y2";
 const AXIS_LABEL_COLLISION_GAP_PX = 2;
 const NO_TICKS: readonly number[] = [];
 
-interface AxisLabelInterval {
+/**
+ * One pooled tick label: its element plus what was last written to it. Every dynamic write is
+ * compared against this record first, so a frame that changes nothing (a repaint, a hover, a
+ * stream that does not move the ticks) touches no style or text and invalidates no layout.
+ */
+interface AxisLabel {
   readonly el: HTMLDivElement;
-  readonly start: number;
-  readonly end: number;
-  readonly edge: boolean;
+  text: string;
+  /** Whether the element is currently displayed. */
+  shown: boolean;
+  /** Last written left (X axis) or top (Y axes) in CSS pixels; `NaN` until the first write. */
+  pos: number;
+  /** This frame's collision interval along the axis, and whether it is pinned to a plot edge. */
+  start: number;
+  end: number;
+  edge: boolean;
+  /** Whether this frame's tick is inside the plot and shown unless it collides. */
+  wanted: boolean;
 }
 
-function hideOverlappingLabels(labels: readonly AxisLabelInterval[]): void {
-  const placed: Array<{ start: number; end: number }> = [];
-  for (const label of [...labels].sort((a, b) => Number(b.edge) - Number(a.edge) || a.start - b.start)) {
-    const overlaps = placed.some((used) => label.start < used.end + AXIS_LABEL_COLLISION_GAP_PX && label.end > used.start - AXIS_LABEL_COLLISION_GAP_PX);
-    if (overlaps) {
-      label.el.style.display = "none";
-    } else {
-      placed.push({ start: label.start, end: label.end });
-    }
-  }
+/** Edge labels win collisions, then the one closest to the axis origin. */
+function byCollisionPriority(a: AxisLabel, b: AxisLabel): number {
+  return Number(b.edge) - Number(a.edge) || a.start - b.start;
 }
 
 /**
@@ -76,13 +83,24 @@ const GUTTER_SHRINK_SLACK_PX = 6;
 /** Pixels added around the widest label (4px inset on each side). */
 export const AUTO_GUTTER_PADDING_PX = 10;
 
-/** @internal DOM overlay that renders axis tick labels. */
+/**
+ * @internal DOM overlay that renders axis tick labels.
+ *
+ * Per frame it does the minimum DOM work: label text is measured through a per-document memo
+ * (`measureText`), the constant part of each label's style is written once when the label is
+ * created, and the changing part (display, left/top) is written only when it differs from what the
+ * label already holds. Overlap resolution runs on reusable scratch arrays so a steady frame
+ * allocates nothing.
+ */
 export class AxisOverlay {
   private measured = { x: 0, y: 0, y2: 0 };
-  private xPool: HTMLDivElement[] = [];
-  private yPool: HTMLDivElement[] = [];
-  private y2Pool: HTMLDivElement[] = [];
-  private measureContextCache: CanvasRenderingContext2D | null | undefined;
+  private xPool: AxisLabel[] = [];
+  private yPool: AxisLabel[] = [];
+  private y2Pool: AxisLabel[] = [];
+  /** Labels competing for space this frame, sorted in place by collision priority. */
+  private readonly candidates: AxisLabel[] = [];
+  /** Occupied [start, end] intervals as a flat list, in placement order. */
+  private readonly placed: number[] = [];
 
   /** Create an axis overlay attached to a chart layout. */
   constructor(
@@ -94,23 +112,29 @@ export class AxisOverlay {
   /** Update axis overlay styling. */
   setOptions(options: AxisOverlayOptions): void {
     this.options = options;
-    for (const el of [...this.xPool, ...this.yPool, ...this.y2Pool]) {
-      el.style.font = this.options.font ?? DEFAULT_CHART_THEME.axisFont;
-      el.style.color = this.options.color ?? DEFAULT_CHART_THEME.axisColor;
+    for (const pool of [this.xPool, this.yPool, this.y2Pool]) {
+      for (const label of pool) this.styleLabel(label.el);
     }
   }
 
-  /** Position labels for tick values the chart computed this frame. */
+  /**
+   * Position labels for tick values the chart computed this frame. `plotWidth` and `plotHeight`
+   * are the plot size the chart already read for this frame; they default to reading the layout.
+   */
   update(
     axis: AxisController,
     rightAxis: AxisController,
     xTicks: readonly number[],
     yTicks: readonly number[],
     y2Ticks: readonly number[],
+    plotWidth: number = this.layout.plot.clientWidth,
+    plotHeight: number = this.layout.plot.clientHeight,
   ): void {
-    const plotW = Math.max(1, this.layout.plot.clientWidth);
-    const plotH = Math.max(1, this.layout.plot.clientHeight);
-    this.measured = { x: 0, y: 0, y2: 0 };
+    const plotW = Math.max(1, plotWidth);
+    const plotH = Math.max(1, plotHeight);
+    this.measured.x = 0;
+    this.measured.y = 0;
+    this.measured.y2 = 0;
     this.updateAxis(this.xPool, this.config.x.visible ? xTicks : NO_TICKS, "x", plotW, plotH, axis);
     this.updateAxis(this.yPool, this.config.y.visible ? yTicks : NO_TICKS, "y", plotW, plotH, axis);
     this.updateAxis(this.y2Pool, this.config.y2.visible ? y2Ticks : NO_TICKS, "y2", plotW, plotH, rightAxis);
@@ -123,12 +147,16 @@ export class AxisOverlay {
 
   /** Remove all axis overlay DOM nodes. */
   dispose(): void {
-    for (const el of this.xPool) el.remove();
-    for (const el of this.yPool) el.remove();
-    for (const el of this.y2Pool) el.remove();
+    for (const pool of [this.xPool, this.yPool, this.y2Pool]) {
+      for (const label of pool) label.el.remove();
+    }
     this.xPool = [];
     this.yPool = [];
     this.y2Pool = [];
+  }
+
+  private get font(): string {
+    return this.options.font ?? DEFAULT_CHART_THEME.axisFont;
   }
 
   private parentForAxis(axis: RenderAxis): HTMLElement {
@@ -141,8 +169,38 @@ export class AxisOverlay {
     return this.config.y.position === "outside" ? this.layout.yAxis : this.layout.plot;
   }
 
+  /** The theme-dependent part of a label's style (the rest never changes after creation). */
+  private styleLabel(el: HTMLElement): void {
+    el.style.font = this.font;
+    el.style.color = this.options.color ?? DEFAULT_CHART_THEME.axisColor;
+  }
+
+  /**
+   * Create a label with every constant style property set once. Placement across the axis is fixed
+   * by the axis config (an X label always sits 4px from the top or bottom of its gutter), so only
+   * the position along the axis and visibility are written per frame.
+   */
+  private createLabel(axis: RenderAxis, parent: HTMLElement): AxisLabel {
+    const el = this.layout.doc.createElement("div");
+    let placement: string;
+    if (axis === "x") {
+      placement = this.config.x.position === "outside" ? "top:4px;bottom:auto" : "top:auto;bottom:4px";
+      placement += ";right:auto";
+    } else {
+      const isRight = axis === "y2";
+      const outside = (isRight ? this.config.y2 : this.config.y).position === "outside";
+      // Outside labels hug the plot-facing edge of their gutter; inside labels hug the plot edge itself.
+      const alignLeft = outside ? isRight : !isRight;
+      placement = `bottom:auto;${alignLeft ? "left:4px;right:auto" : "left:auto;right:4px"}`;
+    }
+    el.style.cssText = `position:absolute;pointer-events:none;white-space:nowrap;user-select:none;transform:none;${placement}`;
+    this.styleLabel(el);
+    parent.appendChild(el);
+    return { el, text: "", shown: true, pos: NaN, start: 0, end: 0, edge: false, wanted: false };
+  }
+
   private updateAxis(
-    pool: HTMLDivElement[],
+    pool: AxisLabel[],
     values: readonly number[],
     axis: RenderAxis,
     plotW: number,
@@ -150,107 +208,75 @@ export class AxisOverlay {
     controller: AxisController,
   ): void {
     const parent = this.parentForAxis(axis);
+    const horizontal = axis === "x";
+    const doc = this.layout.doc;
+    const font = this.font;
+    const candidates = this.candidates;
+    candidates.length = 0;
 
-    while (pool.length < values.length) {
-      const el = this.layout.root.ownerDocument.createElement("div");
-      el.style.position = "absolute";
-      el.style.pointerEvents = "none";
-      el.style.whiteSpace = "nowrap";
-      el.style.font = this.options.font ?? DEFAULT_CHART_THEME.axisFont;
-      el.style.color = this.options.color ?? DEFAULT_CHART_THEME.axisColor;
-      el.style.userSelect = "none";
-      parent.appendChild(el);
-      pool.push(el);
-    }
+    while (pool.length < values.length) pool.push(this.createLabel(axis, parent));
 
-    for (const el of pool) {
-      if (el.parentElement !== parent) parent.appendChild(el);
-    }
+    for (let i = 0; i < pool.length; i++) {
+      const label = pool[i]!;
+      label.wanted = false;
+      if (i >= values.length) continue;
 
-    for (let i = values.length; i < pool.length; i++) {
-      pool[i]!.style.display = "none";
-    }
-
-    if (axis === "x") {
-      const labels: AxisLabelInterval[] = [];
-      for (let i = 0; i < values.length; i++) {
-        const el = pool[i]!;
-        const value = values[i]!;
-        const text = controller.formatValue(value, "x");
-        if (el.textContent !== text) el.textContent = text;
-        const screenX = (controller.valueToClip(value, "x") + 1) * 0.5 * plotW;
-        if (screenX < 0 || screenX > plotW) {
-          el.style.display = "none";
-          continue;
-        }
-        el.style.display = "block";
-        const labelWidth = this.measureLabel(text, "width");
-        this.measured.x = Math.max(this.measured.x, this.measureLabel(text, "height"));
-        const centeredLeft = screenX - labelWidth * 0.5;
-        const maxLeft = Math.max(0, plotW - labelWidth);
-        const labelLeft = Math.min(Math.max(0, centeredLeft), maxLeft);
-        const edge = labelLeft === 0 || labelLeft === maxLeft;
-        el.style.left = `${labelLeft}px`;
-        el.style.right = "auto";
-        el.style.transform = "none";
-        if (this.config.x.position === "outside") {
-          el.style.top = "4px";
-          el.style.bottom = "auto";
-        } else {
-          el.style.top = "auto";
-          el.style.bottom = "4px";
-        }
-        labels.push({ el, start: labelLeft, end: labelLeft + labelWidth, edge });
-      }
-
-      hideOverlappingLabels(labels);
-      return;
-    }
-
-    const isRight = axis === "y2";
-    const config = isRight ? this.config.y2 : this.config.y;
-    const labels: AxisLabelInterval[] = [];
-    for (let i = 0; i < values.length; i++) {
-      const el = pool[i]!;
       const value = values[i]!;
-      const text = controller.formatValue(value, "y");
-      if (el.textContent !== text) el.textContent = text;
-      const screenY = (1 - controller.valueToClip(value, "y")) * 0.5 * plotH;
-      if (screenY < 0 || screenY > plotH) {
-        el.style.display = "none";
-        continue;
+      const text = controller.formatValue(value, horizontal ? "x" : "y");
+      if (label.text !== text) {
+        label.text = text;
+        label.el.textContent = text;
       }
-      el.style.display = "block";
-      const labelHeight = this.measureLabel(text, "height");
-      this.measured[axis] = Math.max(this.measured[axis], this.measureLabel(text, "width"));
-      const centeredTop = screenY - labelHeight * 0.5;
-      const maxTop = Math.max(0, plotH - labelHeight);
-      const labelTop = Math.min(Math.max(0, centeredTop), maxTop);
-      const edge = labelTop === 0 || labelTop === maxTop;
-      el.style.top = `${labelTop}px`;
-      el.style.bottom = "auto";
-      el.style.transform = "none";
-      if (config.position === "outside") {
-        el.style.left = isRight ? "4px" : "auto";
-        el.style.right = isRight ? "auto" : "4px";
-      } else {
-        el.style.left = isRight ? "auto" : "4px";
-        el.style.right = isRight ? "4px" : "auto";
-      }
-      labels.push({ el, start: labelTop, end: labelTop + labelHeight, edge });
+      // X ticks map clip -1..1 left to right, Y ticks bottom to top, so Y is flipped to screen space.
+      const clip = controller.valueToClip(value, horizontal ? "x" : "y");
+      const screen = horizontal ? (clip + 1) * 0.5 * plotW : (1 - clip) * 0.5 * plotH;
+      if (screen < 0 || screen > (horizontal ? plotW : plotH)) continue;
+
+      const extent = measureText(doc, font, text);
+      // Length along the axis decides collisions and clamping; the other dimension feeds auto gutters.
+      const length = horizontal ? extent.width : extent.height;
+      const across = horizontal ? extent.height : extent.width;
+      if (across > this.measured[axis]) this.measured[axis] = across;
+      const room = Math.max(0, (horizontal ? plotW : plotH) - length);
+      const start = Math.min(Math.max(0, screen - length * 0.5), room);
+      label.start = start;
+      label.end = start + length;
+      label.edge = start === 0 || start === room;
+      label.wanted = true;
+      candidates.push(label);
     }
 
-    hideOverlappingLabels(labels);
+    this.resolveCollisions(candidates);
+
+    for (const label of pool) {
+      const show = label.wanted;
+      if (label.shown !== show) {
+        label.shown = show;
+        label.el.style.display = show ? "block" : "none";
+      }
+      if (show && label.pos !== label.start) {
+        label.pos = label.start;
+        if (horizontal) label.el.style.left = `${label.start}px`;
+        else label.el.style.top = `${label.start}px`;
+      }
+    }
   }
 
-  private measureLabel(text: string, dimension: "width" | "height"): number {
-    this.measureContextCache ??= this.layout.root.ownerDocument.createElement("canvas").getContext("2d");
-    const context = this.measureContextCache;
-    if (!context) return 12;
-    context.font = this.options.font ?? DEFAULT_CHART_THEME.axisFont;
-    const metrics = context.measureText(text);
-    return Math.max(1, dimension === "width"
-      ? Math.ceil(metrics.width)
-      : Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent));
+  /** Clear `wanted` on every label that overlaps one with higher priority. */
+  private resolveCollisions(labels: AxisLabel[]): void {
+    labels.sort(byCollisionPriority);
+    const placed = this.placed;
+    placed.length = 0;
+    for (const label of labels) {
+      let overlaps = false;
+      for (let i = 0; i < placed.length; i += 2) {
+        if (label.start < placed[i + 1]! + AXIS_LABEL_COLLISION_GAP_PX && label.end > placed[i]! - AXIS_LABEL_COLLISION_GAP_PX) {
+          overlaps = true;
+          break;
+        }
+      }
+      if (overlaps) label.wanted = false;
+      else placed.push(label.start, label.end);
+    }
   }
 }
