@@ -11,7 +11,7 @@ chart.setTheme({
 });
 ```
 
-Theme values are merged with the default theme, so you can override only the tokens you need. Colors accept CSS color strings; renderer-facing colors also accept RGBA arrays in 0-1 range.
+Theme values are merged with the default theme, so you can override only the tokens you need. Colors accept CSS color strings, including `var(--accent)` references; `backgroundColor`, `gridColor`, and `seriesColors` (the renderer-facing colors) also accept RGBA arrays in 0-1 range. CSS values are resolved against the chart root when the theme is applied, so call `chart.setTheme(...)` again after your CSS variables or color scheme change. `chart.theme` returns the resolved theme, and a `themechange` event fires after each update.
 
 ## Quick decisions
 
@@ -36,7 +36,21 @@ Theme values are merged with the default theme, so you can override only the tok
 
 `DEFAULT_CHART_THEME` (dark) and `LIGHT_CHART_THEME` are the built-in themes; a unit test checks both for WCAG contrast (4.5:1 for text, 3:1 for graphics). Use the light one with `theme: LIGHT_CHART_THEME`, or spread it and override a few tokens. In the operating system's forced-colors (high-contrast) mode the chart switches to system colors on its own; see [Accessibility](./accessibility.md#contrast-and-high-contrast).
 
-Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(config, { color: "#f97316", lineWidth: 2 })`.
+Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(config, { color: "#f97316", lineWidth: 2 })`. The second argument of every `add*` helper is a `SeriesStyleOptions` object:
+
+| Option | Applies to | Meaning |
+|---|---|---|
+| `color` | all | Stroke or marker color. Defaults to the next theme series color. |
+| `lineWidth` | line, area outline, OHLC, candlestick wick | Width in CSS pixels. Defaults to 1. |
+| `pointSize` | scatter | Round marker diameter in CSS pixels. Defaults to 4. |
+| `barWidth` | bar, candlestick body | Width in data X units. Defaults to 0.8 (the bin width for a `HistogramDataset`). |
+| `baseline` | bar, area | Y value bars and the area fill grow from. Defaults to 0. |
+| `fillColor` | area | Fill color. Defaults to `color` at 25% opacity. |
+| `tickWidth` | OHLC | Open/close tick width in data X units. Defaults to `barWidth`. |
+| `upColor`, `downColor` | OHLC, candlestick | Rising and falling colors. `upColor` defaults to `color`, `downColor` to `fillColor` when set, otherwise `color` at 45% opacity. |
+| `wickColor` | candlestick | Wick color. Defaults to `color`. |
+
+Translucent colors blend with what is already drawn.
 
 Series without an explicit `color` take the first theme palette color no other attached series uses, so removing a series and adding another never repeats a color that is still on screen. Those palette-colored series follow `chart.setTheme(...)`; series with an explicit `color` keep it.
 
@@ -54,8 +68,10 @@ chart.dispose();
 ## Sizing
 
 - The chart root fills its host element. Give the host an explicit width and height.
-- The WebGL canvas is sized to the plot area, not the full outer chart, when outside axes reserve gutters.
-- `ResizeObserver` is used when available so charts follow container size changes.
+- The plot canvas is sized to the plot area, not the full outer chart: outside axes, titles, and plugin layout reservations take their space from the chart root first.
+- `ResizeObserver` is used when available so charts follow container size changes; without it, call `chart.resize()` after the host changes size.
+- The chart belongs to the document and window of its host element, so it works in iframes and popup windows without extra setup: observers, animation frames, `matchMedia`, computed colors, and elements the chart or its plugins create use the host's own window and document instead of the globals. Plugins read them from `ctx.dom.document` and `ctx.dom.view`.
+- The chart injects one `<style class="blazeplot-style">` inside its root. The legend, tooltip, crosshair, selection, and navigator plugins each add a small deduplicated `<style data-blazeplot-plugin-style>` with forced-colors rules to the host document (removed when the last chart using it is disposed), and `interactionsPlugin` adds an axis-hover `<style>` inside the chart root. A strict `style-src` Content Security Policy has to allow these elements.
 - Call `chart.dispose()` when removing the host element.
 
 ## Axes and gutters
@@ -87,7 +103,20 @@ chart.addLine({ dataset: latencyDataset, name: "p95 latency" });
 chart.addBar({ dataset: requestDataset, name: "requests", yAxis: "right" });
 ```
 
-Use `scale: "log"` only for positive domains. Use `scale: "symlog"` when values can cross zero. For categorical axes, pass numeric category indexes as data and provide labels with `categories`.
+Use `scale: "log"` only for positive domains (`logBase` defaults to 10 and must be greater than 1). Use `scale: "symlog"` when values can cross zero. For categorical axes, pass numeric category indexes as data and provide labels with `categories`. Set `reversed: true` to flip an axis.
+
+`scale: "time"` expects X values in epoch milliseconds and picks calendar-aware ticks from sub-millisecond steps up to years. Labels carry date context where the tick crosses a day or year boundary, and zoomed-in views show fractional seconds. `timezone` is `"local"` (default) or `"utc"`. A string `tickFormat` is a time pattern with the tokens `%Y %y %m %d %b %B %a %A %H %M %S %L` and `%%`; for any other scale use a function, `tickFormat: (value, axis) => string`. Change the axis configuration of a live chart with `chart.setAxes(...)`, and toggle grid lines with `chart.setGridVisible(...)`.
+
+```ts
+import { Chart } from "blazeplot";
+
+const chart = new Chart(element, {
+  axes: { x: { scale: "time", timezone: "utc", tickFormat: "%H:%M:%S.%L" } },
+});
+chart.setAxes({ x: { scale: "time" }, y: { tickFormat: (value) => `${value.toFixed(1)} ms` } });
+
+chart.dispose();
+```
 
 ## Plugin layout
 
@@ -103,8 +132,20 @@ For small screens, prefer:
 
 - inside axes or fewer visible axes,
 - fewer ticks through axis scale/tick options,
-- touch-first interaction options such as `interactionsPlugin({ touchPan: true, pinchZoom: true })`,
-- legends outside the plot when space allows.
+- touch-first interaction options. `interactionsPlugin()` already pans with one finger and pinch-zooms (`touchPan: true`, `pinchZoom: true` are the defaults), which blocks page scrolling over the plot; on a scrolling page use `interactionsPlugin({ touchPan: "two-finger", wheelZoom: "modifier" })` so one finger scrolls the page and two fingers pan and zoom the chart, with a short hint (`gestureHint`) explaining it,
+- legends outside the plot when space allows (`legendPlugin({ position: "bottom" })`),
+- `axes: { y: { size: "auto" } }` so gutters fit the actual tick labels instead of a fixed width.
+
+## Localizing built-in text
+
+Strings that BlazePlot generates are overridable, and unset keys keep their English defaults:
+
+- `accessibility: { locale, messages }` on the chart sets the default accessible name and the wording of the generated summary; `locale` (a BCP 47 tag, default `"en-US"`) formats the counts in it.
+- `legendPlugin({ messages })` overrides the legend's group label, hide/show tooltips, and fallback series names.
+- `a11yPlugin({ locale, messages })` covers the hidden data table, announcements, and inspection text.
+- `interactionsPlugin({ gestureHint: { wheelText, touchText, durationMs } })` rewords the cooperative-gesture hint.
+
+Axis tick text comes from your `tickFormat`; time ticks use English month and weekday names unless you format them yourself. See [Accessibility](./accessibility.md) for the full message lists.
 
 ## Accessibility and contrast
 

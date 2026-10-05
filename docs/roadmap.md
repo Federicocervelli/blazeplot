@@ -5,10 +5,10 @@ BlazePlot is a fast WebGL2 plotting engine for dense browser time-series charts.
 ## Current status (1.0 release candidates)
 
 - **Charts and data:** core chart API, typed datasets, ring buffers, OHLC datasets, server-sampled datasets, histograms, min/max LOD, gaps, picking, and data export. Every dataset follows one input rule (finite, non-decreasing X); static data is validated at construction and streaming buffers skip and count invalid samples.
-- **Rendering:** a native WebGL2 backend covers line, area, scatter, bar, OHLC, candlestick, dense min/max paths, screenshots, and context loss/restore, with DOM/SVG overlays for axes and plugins.
-- **Plugins:** pan, zoom, box zoom, touch gestures, crosshair, tooltip, legend, annotations, selection, navigator, flamegraph, and accessibility, all built on a stable, documented plugin contract that third-party plugins can use too.
+- **Rendering:** a native WebGL2 backend (one stream upload per frame) covers line, area, scatter, bar, OHLC, candlestick, dense min/max paths, screenshots, and context loss/restore, with DOM/SVG overlays for axes and plugins. An opt-in Canvas 2D renderer works without WebGL2, and an opt-in shared WebGL context lets many charts share one context. Charts work in iframes and popup windows.
+- **Plugins:** pan, zoom, box zoom, keyboard and touch gestures (with cooperative modes for scrolling pages), crosshair, tooltip, legend, annotations, selection, navigator, flamegraph, and accessibility, all built on a stable, documented plugin contract that third-party plugins can use too.
 - **Accessibility:** chart semantics with a generated summary, a hidden data table, a keyboard inspection cursor, keyboard selection and annotations, focus rings, and forced-colors support.
-- **Packaging:** tree-shakable entry points (`blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, `blazeplot/plugins/*`), ESM only, with bundle-size budgets and a public API snapshot.
+- **Packaging:** tree-shakable entry points (`blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, `blazeplot/renderers/*`, `blazeplot/plugins/*`), ESM only, with bundle-size budgets and a public API snapshot.
 - **Quality gates in CI:** typecheck, lint, unit and property tests with coverage floors, the TypeScript 5.0 floor, export and package checks, typechecked docs snippets, a performance regression gate, pixel-baseline visual tests, browser interaction and keyboard tests, axe-core and forced-colors checks, a leak/stability suite, and a Firefox/WebKit smoke job.
 
 ## After 1.0
@@ -22,7 +22,7 @@ These are additive and can ship in 1.x minor releases.
 2. **Mobile and responsive UX**
    - [ ] Better hover-free workflows for selection, navigator, legend, tooltip, and annotations on touch screens.
    - [ ] Responsive presets for axes, tick density, gutters, legends, and compact dashboard panels.
-   - [ ] Mobile WebGL2 coverage in the browser test suite.
+   - [ ] Mobile WebGL2 coverage in the browser test suite, including real-device checks of one-finger page scrolling with `touchPan: "two-finger"` (verified through touch emulation only so far).
 
 3. **Data pipeline helpers**
    - [ ] Optional ingestion helpers for CSV, JSON, typed arrays, and worker-fed batches.
@@ -49,4 +49,5 @@ These are additive and can ship in 1.x minor releases.
 - Large chart-type expansion that bloats the time-series core.
 - Bundling timezone databases or heavyweight data-processing libraries.
 - Breaking synchronous chart construction for optional feature splitting.
+- Third-party renderers: the `ChartRenderer` drawing interface is internal, and only the built-in renderers implement it.
 - Adding or removing plugins on a live chart; plugins are fixed at construction so layout, ordering, and cleanup stay predictable.

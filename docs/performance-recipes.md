@@ -38,8 +38,9 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 ## Choosing downsampling
 
 - Line, area, and bar series use min/max LOD by default in dense views.
-- Use `downsample: "none"` only when the number of visible samples is bounded and exact raw rendering matters.
-- Scatter series first extract exact visible points, then sample when the visible set is too large.
+- Use `downsample: "none"` only when the number of visible samples is bounded and exact raw rendering matters. Line and bar series with `"none"` draw every visible sample, in chunks, so cost grows linearly with the visible count and nothing is truncated at the upload buffer size.
+- Scatter series first extract exact visible points, then sample when the visible set is too large. With `downsample: "none"`, scatter draws every visible point up to about 65,000 and falls back to the sampler beyond that.
+- Dense line views are drawn as min/max buckets that are at least `lineWidth` tall, so flat stretches stay visible.
 - Area series draw an exact triangle strip while the visible samples fit in the buffer. Denser views render min/max buckets as full-width columns (fill from the baseline to each bucket's extreme, plus a min/max envelope outline), so spikes are kept. With `downsample: "none"` area series fall back to stable stride decimation, which can drop peaks.
 - Server-sampled min/max data should use `downsample: "server"`.
 
@@ -49,6 +50,8 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 - Call `chart.start()` once for an active chart lifecycle, or after a matching `chart.stop()`. Do not call it repeatedly from reactive render paths.
 - Use `chart.stop()` when a chart is hidden or inactive, then `chart.start()` again when it should resume rendering.
 - The default render loop is on demand: static charts render after chart-owned state changes and then idle. Appends through series APIs wake the chart automatically. Use `new Chart(element, { renderLoop: "continuous" })` only for custom animation loops; direct dataset mutation still needs `series.markDirty()` so LOD state is rebuilt.
+- Inspect what a frame costs with `chart.getFrameStats()`: `frameMs`, `pointsRendered`, `drawCalls`, `uploadBytes`, and `renderMode` (`"raw"`, `"minmax"`, `"points"`, `"bars"`, `"area"`, or `"mixed"`).
+- Prefer the default WebGL2 renderer for large visible point counts. The Canvas 2D renderer (`blazeplot/renderers/canvas2d`) uses the same LOD pipeline but is CPU-bound; see [Browser support](./browser-support.md#canvas-2d-renderer).
 - Remove unused series with `chart.removeSeries(series)`.
 - Dispose charts on unmount with `chart.dispose()`.
 - Keep optional features in subpath imports, for example `blazeplot/plugins/tooltip`, so chart-only bundles stay smaller.
@@ -71,7 +74,7 @@ const charts = Array.from(document.querySelectorAll<HTMLElement>(".sparkline"), 
 for (const chart of charts) chart.dispose();
 ```
 
-Every chart that uses `sharedRenderer()` draws into one hidden WebGL2 canvas and copies the result into its own canvas, so the page holds a single context for any number of charts. Keep charts in a group the same size where you can: the shared canvas only reallocates when consecutive charts differ in size. `createLinkedCharts(el, { renderer: sharedRenderer(), panels })` puts every linked panel on the shared context. The design and trade-offs are in [Shared render context](./internal/shared-render-context.md); measure your page with `bun run bench:multi`.
+Every chart that uses `sharedRenderer()` draws into one hidden WebGL2 canvas and copies the result into its own canvas, so the page holds a single context for any number of charts. Without an argument the context is shared by every chart on the page; to group charts (for example per dashboard), create one with `createChartRenderContext()` and pass `context.renderer()` (or `sharedRenderer(context)`) to each chart. `context.chartCount` reports how many charts are attached, and the hidden context is released when the last one is disposed. `chart.renderer` reads `"webgl2-shared"` for these charts, and `ctx.unstable.getWebGLContext()` returns `null` because no chart owns the context. `sharedRenderer()` throws `WebGL2UnavailableError` without WebGL2; to fall back to Canvas 2D, pick the factory yourself (`isWebGL2Available() ? sharedRenderer() : canvas2dRenderer()`). Keep charts in a group the same size where you can: the shared canvas only reallocates when consecutive charts differ in size. `createLinkedCharts(el, { renderer: sharedRenderer(), panels })` puts every linked panel on the shared context. The design and trade-offs are in [Shared render context](./internal/shared-render-context.md); measure your page with `bun run bench:multi`.
 
 Measured with `bun run bench:multi` on a real GPU (AMD Radeon RX 9070, Chrome 153, Windows/ANGLE D3D11, 1700x1100 window, every chart redrawing every frame):
 
