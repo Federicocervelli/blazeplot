@@ -24,6 +24,10 @@ export interface RingBufferOptions {
  * X must be finite and non-decreasing. A sample that breaks that rule is skipped (never
  * thrown), counted in `rejectedSamples`, reported to `onInvalidSample`, and logged with one
  * console warning per buffer when no callback is set. Non-finite Y is stored and drawn as a gap.
+ *
+ * This differs from `StaticDataset`, `StaticOhlcDataset`, and `ServerSampledDataset`, which throw a
+ * `RangeError` on a non-finite or decreasing X: a live feed should not crash on one bad packet, but
+ * data you hand over in one piece should be fixed at the source. See "Data semantics" in the docs.
  */
 export class RingBuffer {
   /** Maximum number of retained samples. */

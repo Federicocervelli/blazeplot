@@ -21,8 +21,10 @@ export interface TextOverlayConfig {
   readonly text: string;
   readonly color?: string;
   readonly font?: string;
-  readonly offsetX?: number;
-  readonly offsetY?: number;
+  /** Horizontal shift from the default position, in CSS pixels (positive moves right). */
+  readonly offsetXPx?: number;
+  /** Vertical shift from the default position, in CSS pixels (positive moves down). */
+  readonly offsetYPx?: number;
 }
 
 /** Chart title or subtitle text and alignment. */
@@ -32,7 +34,12 @@ export interface ChartTitleConfig extends TextOverlayConfig {
 
 /** Axis visibility, placement, scale, tick formatting, and title options. */
 export interface AxisConfig extends AxisScaleOptions {
-  /** Hide tick labels while keeping the scale. Pass `false` instead of a config to hide an axis with default scale. */
+  /**
+   * Whether the axis draws tick labels and its title. `{ visible: false }` hides them but keeps the
+   * axis' scale, `tickFormat`, and range behavior (and still reserves no gutter). Passing `axes: { x: false }`
+   * is the same as `{ x: { visible: false } }` with every other option at its default; use the object form
+   * when the hidden axis still needs a scale such as `"time"` or `"log"`. Defaults to true.
+   */
   readonly visible?: boolean;
   readonly position?: AxisPosition;
   readonly title?: string | TextOverlayConfig;
@@ -237,11 +244,14 @@ export type TypedSeriesConfig<D extends Dataset = Dataset> = DatasetSeriesConfig
 export interface ChartScreenshotOptions {
   /** Image MIME type. Defaults to `"image/png"`. */
   readonly type?: string;
+  /** Encoder quality from 0 to 1 for lossy types such as `"image/jpeg"`. */
   readonly quality?: number;
   /** CSS background color, or `null` for transparent. Defaults to the theme background. */
   readonly background?: string | null;
   /** Device pixels per CSS pixel of the output image. Defaults to `devicePixelRatio`. */
   readonly pixelRatio?: number;
+  /** Output width in device pixels. Defaults to the chart's CSS width times `pixelRatio`. */
   readonly width?: number;
+  /** Output height in device pixels. Defaults to the chart's CSS height times `pixelRatio`. */
   readonly height?: number;
 }
