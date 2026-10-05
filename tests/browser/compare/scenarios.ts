@@ -33,6 +33,7 @@ export const SCENARIOS: Record<string, ScenarioImpl> = {
   "bar-100k-pan": { kind: "pan", ...PAN, spec: { kind: "bar", seriesCount: 1, points: 100_000, visible: 10_000, ...Y } },
   "dual-axis-1m-pan": { kind: "pan", ...PAN, spec: { kind: "line", seriesCount: 2, points: 500_000, visible: 100_000, dualAxis: true, ...Y } },
   "hover-1m": { kind: "hover", measureMs: 0, warmupMs: 0, spec: { kind: "line", seriesCount: 1, points: 1_000_000, visible: 1_000_000, hover: true, ...Y } },
+  "hover-1m-rich": { kind: "hover", measureMs: 0, warmupMs: 0, spec: { kind: "line", seriesCount: 1, points: 1_000_000, visible: 1_000_000, hover: true, hoverRich: true, ...Y } },
   "resize-1m": { kind: "resize", measureMs: 0, warmupMs: 0, spec: { kind: "line", seriesCount: 1, points: 1_000_000, visible: 1_000_000, responsive: true, ...Y } },
   "many-charts-50": { kind: "many", ...NONE, count: 50, cell: { width: 400, height: 180 }, spec: { kind: "line", seriesCount: 1, points: 10_000, visible: 10_000, sharedContext: true, ...Y } },
   "mount-destroy-cycle": { kind: "cycle", ...NONE, count: 40, spec: { kind: "line", seriesCount: 1, points: 100_000, visible: 100_000, ...Y } },

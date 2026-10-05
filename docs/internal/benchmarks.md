@@ -68,7 +68,7 @@ The benchmark page exposes `window.__blazeplotBench` for automation. It does not
 | Size and DPR | Same CSS-pixel size, DPR 1, and the same axis gutters (52 px left and right, 28 px bottom) forced on all libraries with uPlot and Chart.js auto padding removed, so every library plots into the same rectangle. The plot size each library reports is stored in the JSON `details` and compared on every run. |
 | Look | 1 CSS px lines, same color per series, no grid, same axes (numeric, no title), same 3 px point diameter, same 0.8 bar width, same 25 percent area fill, light theme. Antialiasing is whatever each library does by default (BlazePlot's WebGL context uses no MSAA; the canvas libraries use browser antialiasing). |
 | Updates | The same viewport function drives pan scenarios and the same time-based append schedule drives streaming. BlazePlot applies `append` plus `setViewport`, uPlot `setData` plus `setScale` in one batch, Chart.js mutates the dataset and scale options and calls `update("none")`. |
-| Features | Static scenarios run with cursor, legend and tooltip off in every library. The hover scenario turns on each library's pointer feedback: BlazePlot crosshair plus tooltip plugins, uPlot cursor plus live legend, Chart.js nearest-point tooltip (Chart.js has no crosshair). |
+| Features | Static scenarios run with cursor, legend and tooltip off in every library. The hover scenarios turn on each library's pointer feedback; see [Hover fairness](#hover-fairness). |
 
 ### What each metric means
 
@@ -104,6 +104,25 @@ bun run bench:compare -- --aggregate-only benchmarks/latest-runs.jsonl
 ```
 
 `benchmarks/latest-runs.jsonl` keeps every raw run. `benchmarks/baseline-before-perf-pass.json` is the frozen "before" result; when it exists, every report gets a "Change since the baseline" section comparing BlazePlot's medians against it.
+
+### Hover fairness
+
+The measured thing is the same for every library: a synthetic `pointermove` plus `mousemove` on the element under the point, until the end of the next produced frame. What each library must show in that frame differs, so the scenario states a feature set and every library is configured to exactly that, no more:
+
+- **`hover-1m` (feature-equivalent, the published hover number).** Cursor lines, one point marker on the nearest sample, and one value readout. BlazePlot: `crosshairPlugin({ label: false })` (free-following lines) plus `tooltipPlugin()` (marker and readout). uPlot: the default cursor (lines and per-series point) plus the live legend (value readout). Chart.js: the nearest-point tooltip with a 3 px hover point. Chart.js has no cursor lines, so it does less work than the others and a Chart.js win here is partly that.
+- **`hover-1m-rich` (BlazePlot heavier, clearly labelled).** The earlier configuration: BlazePlot also shows the crosshair's own coordinate label next to the tooltip's readout, a second readout that neither uPlot nor Chart.js draws. uPlot and Chart.js are identical to `hover-1m`. It exists to show what the extra label costs; do not read it as a like for like comparison.
+
+Before this split `hover-1m` used the rich configuration, so the baseline's `hover-1m` numbers are for the heavier BlazePlot setup and the "Change since the baseline" row mixes a configuration change with the performance change; `hover-1m-rich` is the like for like comparison with the baseline.
+
+### Lifecycle and setup fairness
+
+Checked in both directions; things that are not apples to apples:
+
+- **Warm WebGL pool (favours BlazePlot, only where intended).** A disposed BlazePlot WebGL chart parks its canvas, context and compiled programs for 2 s so the next chart can reuse them. In `mount-destroy-cycle` and `many-charts-50` that is the behaviour under test (a page that mounts and unmounts charts), the 40 cycles run well inside the hold window, so after the first cycle BlazePlot never creates a context while uPlot and Chart.js create a canvas each cycle (cheap for them). Every other scenario releases the pool (`releaseWarm()`, after the discarded setup runs) before the measured chart so context creation and program compilation are in BlazePlot's "ready" like canvas creation is in the others; `cold-first-chart` is the no-pool, no-JIT-warmup case. The 2 s hold itself is outside every timed region: the release timer fires after the cycle loop (or the page) has ended, so its cost (and the `WEBGL_lose_context` call) is not counted, in BlazePlot's favour. A real page pays it on the main thread once, 2 s after the last chart is disposed.
+- **Destroy is not equivalent.** BlazePlot `dispose()` deletes GPU buffers and programs (or parks them) and detaches listeners and overlays; uPlot `destroy()` removes listeners and its root element; Chart.js `destroy()` removes listeners and resets the canvas. The canvas libraries leave their backing store to the garbage collector, which is not timed, so `destroyMs` and the cycle time exclude that for them. GPU and canvas backing memory is in no library's heap number.
+- **Constructor time is not "time to drawn".** uPlot and Chart.js draw inside their constructors, BlazePlot draws in its first animation frame. `constructMs` therefore favours BlazePlot and is not a comparison of work; `readyMs` (construct through the produced frame) is the like for like number.
+- **`many-charts-50` uses `sharedRenderer()` for BlazePlot WebGL.** One context for all 50 charts is BlazePlot's documented configuration for this case; uPlot and Chart.js have one canvas per chart. Chart creation is sequential on the main thread for every library.
+- **Dense data.** The cursor, legend and tooltip read from data each library holds in its own format (typed arrays or `{x, y}` objects, see the data row above); Chart.js's object points cost it memory and cache locality.
 
 ### Fairness fixes over the earlier single-page harness
 

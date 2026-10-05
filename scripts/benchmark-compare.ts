@@ -441,7 +441,7 @@ function collectWarnings(options: Options, scenarios: ScenarioResult[], records:
   const partial = scenarios.flatMap((scenario) => scenario.results.filter((result) => result.ok && result.runsFailed > 0).map((result) => `${scenario.name}/${result.library}`));
   if (partial.length > 0) warnings.push(`Some runs failed and were excluded from the median: ${partial.join(", ")}.`);
 
-  const hoverInactive = records.filter((record) => record.ok && record.scenario === "hover-1m" && record.details.hoverActive === false).map((record) => record.library);
+  const hoverInactive = records.filter((record) => record.ok && record.scenario.startsWith("hover-1m") && record.details.hoverActive === false).map((record) => record.library);
   if (hoverInactive.length > 0) warnings.push(`Hover feedback was not active at the end of the hover scenario for: ${[...new Set(hoverInactive)].join(", ")}.`);
 
   // All libraries must plot into (nearly) the same rectangle or the comparison is not like for like.

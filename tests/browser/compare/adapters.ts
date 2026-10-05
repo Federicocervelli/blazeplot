@@ -62,7 +62,10 @@ function createBlazePlot(host: HTMLElement, spec: ChartSpec, data: LibraryData, 
     grid: false,
     renderLoop: "auto",
     renderer: backend === "canvas2d" ? "canvas2d" : backend === "shared" ? sharedRenderer() : "webgl2",
-    plugins: spec.hover ? [crosshairPlugin(), tooltipPlugin()] : [],
+    // Feature-equivalent pointer feedback (see docs/internal/benchmarks.md): crosshair lines, one point marker
+    // and one value readout, like uPlot's cursor plus live legend. The rich variant adds the crosshair's
+    // coordinate label on top of the tooltip's readout.
+    plugins: spec.hover ? [spec.hoverRich ? crosshairPlugin() : crosshairPlugin({ label: false }), tooltipPlugin()] : [],
   });
   let draws = 0;
   chart.subscribe("render", () => {

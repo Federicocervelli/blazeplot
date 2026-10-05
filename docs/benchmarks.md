@@ -3,8 +3,8 @@
 
 This page is generated from `benchmarks/latest.json`; do not edit benchmark numbers by hand. To update it, run `bun run bench:compare` and then `bun run docs:readme`.
 
-Generated: 2026-10-05T14:28:26.350Z
-Command: `bun run bench:compare --no-baseline --port 41841 --debug-port 9421`
+Generated: 2026-10-05T18:43:13.011Z
+Command: `bun run bench:compare`
 Publishable: yes
 
 ## Environment
@@ -23,24 +23,25 @@ Primary metric of each scenario (median over runs). Advantage columns are > 1.00
 
 | Scenario | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---|---:|---:|---:|---:|---|---:|---:|
-| line-100k-static | Ready (ms) | 6.71 | 4.38 | 3.13 | 3.79 | tie (uPlot, Chart.js) | 0.47× | 0.56× |
-| line-1m-static | Ready (ms) | 9.93 | 8.12 | 10.90 | 15.69 | tie (BlazePlot, uPlot, Chart.js) | 1.10× | 1.58× |
-| cold-first-chart | Ready (ms) | 16.29 | 13.81 | **10.82** | 19.32 | uPlot | 0.66× | 1.19× |
-| line-1m-pan | FPS (fps, higher is better) | **993** | 622 | 680 | 514 | BlazePlot | 1.46× | 1.93× |
-| line-1m-stream | FPS (fps, higher is better) | **1000** | 623 | 691 | 497 | BlazePlot | 1.45× | 2.01× |
-| line-10m-accelerated-pan | FPS (fps, higher is better) | **1809** | 904 | 26.5 | 23.9 | BlazePlot | 68.2× | 75.6× |
-| multi-10x100k-pan | FPS (fps, higher is better) | **236** | 97.2 | 136 | 108 | BlazePlot | 1.73× | 2.18× |
-| multi-100x20k-pan | FPS (fps, higher is better) | **134** | 12.1 | 29.7 | 17.9 | BlazePlot | 4.51× | 7.48× |
-| area-1m-pan | FPS (fps, higher is better) | **1246** | 861 | 669 | 459 | BlazePlot | 1.86× | 2.71× |
-| scatter-1m-pan | FPS (fps, higher is better) | **1493** | 286 | 33.0 | 3.3 | BlazePlot | 45.3× | 459.2× |
-| bar-100k-pan | FPS (fps, higher is better) | **1774** | 475 | 755 | 3.8 | BlazePlot | 2.35× | 468.1× |
-| dual-axis-1m-pan | FPS (fps, higher is better) | **594** | 350 | 365 | 251 | BlazePlot | 1.63× | 2.36× |
-| hover-1m | Hover p50 (ms) | 0.47 | 0.47 | **0.23** | 0.35 | uPlot | 0.48× | 0.76× |
-| resize-1m | Resize p50 (ms) | **37.58** | 37.55 | 43.40 | 44.05 | BlazePlot | 1.16× | 1.17× |
-| many-charts-50 | Ready (ms) | 42.16 | 49.19 | **21.80** | 51.01 | uPlot | 0.52× | 1.21× |
-| mount-destroy-cycle | Cycle p50 (ms) | 4.83 | 2.62 | **1.76** | 2.33 | uPlot | 0.36× | 0.48× |
-| heap-soak-1m-pan | Heap growth (MiB) | 0.4 | 0.3 | 0.2 | 0.4 | tie (uPlot, BlazePlot) | 0.46× | 1.12× |
-| stream-throughput | Max rate (k samples/s, higher is better) | 102400 | 102400 | 51200 | 3200 | tie (BlazePlot, uPlot) | 2.00× | 32.0× |
+| line-100k-static | Ready (ms) | 4.54 | 2.75 | **3.05** | 3.67 | uPlot | 0.67× | 0.81× |
+| line-1m-static | Ready (ms) | **8.76** | 6.97 | 11.65 | 14.15 | BlazePlot | 1.33× | 1.62× |
+| cold-first-chart | Ready (ms) | 14.14 | 11.60 | **10.14** | 18.36 | uPlot | 0.72× | 1.30× |
+| line-1m-pan | FPS (fps, higher is better) | **1090** | 831 | 721 | 546 | BlazePlot | 1.51× | 2.00× |
+| line-1m-stream | FPS (fps, higher is better) | **1117** | 856 | 737 | 534 | BlazePlot | 1.52× | 2.09× |
+| line-10m-accelerated-pan | FPS (fps, higher is better) | **2081** | 1464 | 32.8 | 30.9 | BlazePlot | 63.4× | 67.4× |
+| multi-10x100k-pan | FPS (fps, higher is better) | **248** | 154 | 148 | 124 | BlazePlot | 1.67× | 2.00× |
+| multi-100x20k-pan | FPS (fps, higher is better) | **161** | 57.6 | 34.8 | 21.7 | BlazePlot | 4.63× | 7.41× |
+| area-1m-pan | FPS (fps, higher is better) | **1430** | 1133 | 707 | 498 | BlazePlot | 2.02× | 2.87× |
+| scatter-1m-pan | FPS (fps, higher is better) | **1704** | 319 | 39.8 | 4.2 | BlazePlot | 42.8× | 410.6× |
+| bar-100k-pan | FPS (fps, higher is better) | **2039** | 930 | 816 | 5.0 | BlazePlot | 2.50× | 409.4× |
+| dual-axis-1m-pan | FPS (fps, higher is better) | **664** | 490 | 397 | 317 | BlazePlot | 1.67× | 2.09× |
+| hover-1m | Hover p50 (ms) | 0.47 | 0.47 | **0.24** | 0.34 | uPlot | 0.52× | 0.73× |
+| hover-1m-rich | Hover p50 (ms) | 0.51 | 0.52 | **0.24** | 0.34 | uPlot | 0.49× | 0.68× |
+| resize-1m | Resize p50 (ms) | **37.52** | 37.12 | 43.02 | 43.50 | BlazePlot | 1.15× | 1.16× |
+| many-charts-50 | Ready (ms) | 20.93 | 20.26 | 20.16 | 48.45 | tie (uPlot, BlazePlot) | 0.96× | 2.32× |
+| mount-destroy-cycle | Cycle p50 (ms) | 3.46 | 1.63 | **1.69** | 2.21 | uPlot | 0.49× | 0.64× |
+| heap-soak-1m-pan | Heap growth (MiB) | 0.3 | 0.4 | 0.2 | 0.5 | tie (uPlot, BlazePlot) | 0.55× | 1.42× |
+| stream-throughput | Max rate (k samples/s, higher is better) | 102400 | 102400 | 102400 | 6400 | tie (BlazePlot, uPlot) | 1.00× | 16.0× |
 
 ## Where BlazePlot does not win
 
@@ -48,47 +49,43 @@ Every metric of every scenario where BlazePlot (WebGL) is not clearly ahead of u
 
 | Scenario | Metric | BlazePlot | Competitor | Competitor value | Advantage | Verdict |
 |---|---|---:|---|---:|---:|---|
-| line-100k-static | Ready (ms) | 6.71 | uPlot | 3.13 | 0.47× | LOSS |
-| line-100k-static | Ready (ms) | 6.71 | Chart.js | 3.79 | 0.56× | LOSS |
-| line-100k-static | Construct (ms) | 2.51 | uPlot | 0.23 | 0.09× | LOSS |
-| line-100k-static | Heap (MiB) | 1.9 | uPlot | 1.6 | 0.83× | LOSS |
-| line-1m-static | Construct (ms) | 2.88 | uPlot | 0.26 | 0.09× | LOSS |
-| cold-first-chart | Ready (ms) | 16.29 | uPlot | 10.82 | 0.66× | LOSS |
-| cold-first-chart | Construct (ms) | 6.83 | uPlot | 2.15 | 0.32× | LOSS |
-| line-1m-pan | Ready (ms) | 9.78 | uPlot | 3.14 | 0.32× | LOSS |
-| line-1m-pan | Ready (ms) | 9.78 | Chart.js | 6.20 | 0.63× | LOSS |
-| line-1m-stream | Ready (ms) | 10.48 | uPlot | 2.90 | 0.28× | LOSS |
-| line-1m-stream | Ready (ms) | 10.48 | Chart.js | 6.09 | 0.58× | LOSS |
-| multi-10x100k-pan | Ready (ms) | 13.54 | uPlot | 8.14 | 0.60× | LOSS |
-| multi-10x100k-pan | Ready (ms) | 13.54 | Chart.js | 12.61 | 0.93× | LOSS |
-| area-1m-pan | Ready (ms) | 9.61 | uPlot | 3.13 | 0.33× | LOSS |
-| bar-100k-pan | Ready (ms) | 4.93 | uPlot | 3.02 | 0.61× | LOSS |
-| dual-axis-1m-pan | Ready (ms) | 11.49 | uPlot | 4.04 | 0.35× | LOSS |
-| dual-axis-1m-pan | Ready (ms) | 11.49 | Chart.js | 6.42 | 0.56× | LOSS |
-| hover-1m | Hover p50 (ms) | 0.47 | uPlot | 0.23 | 0.48× | LOSS |
-| hover-1m | Hover p50 (ms) | 0.47 | Chart.js | 0.35 | 0.76× | LOSS |
-| hover-1m | Hover p95 (ms) | 0.62 | uPlot | 0.29 | 0.48× | LOSS |
-| many-charts-50 | Ready (ms) | 42.16 | uPlot | 21.80 | 0.52× | LOSS |
-| many-charts-50 | Heap (MiB) | 42.9 | uPlot | 9.5 | 0.22× | LOSS |
-| many-charts-50 | Heap (MiB) | 42.9 | Chart.js | 37.5 | 0.87× | LOSS |
-| many-charts-50 | Destroy (ms) | 1.33 | uPlot | 0.20 | 0.15× | LOSS |
-| many-charts-50 | Destroy (ms) | 1.33 | Chart.js | 0.49 | 0.37× | LOSS |
-| mount-destroy-cycle | Cycle p50 (ms) | 4.83 | uPlot | 1.76 | 0.36× | LOSS |
-| mount-destroy-cycle | Cycle p50 (ms) | 4.83 | Chart.js | 2.33 | 0.48× | LOSS |
-| mount-destroy-cycle | Cycle p95 (ms) | 6.17 | uPlot | 2.33 | 0.38× | LOSS |
-| mount-destroy-cycle | Cycle p95 (ms) | 6.17 | Chart.js | 4.71 | 0.76× | LOSS |
-| mount-destroy-cycle | Retained (MiB) | 1.0 | uPlot | 0.3 | 0.26× | LOSS |
-| line-1m-static | Ready (ms) | 9.93 | uPlot | 10.90 | 1.10× | within noise (leans BlazePlot) |
-| line-1m-static | Ready (ms) | 9.93 | Chart.js | 15.69 | 1.58× | within noise (leans BlazePlot) |
-| line-1m-stream | Heap (MiB) | 14.8 | uPlot | 15.5 | 1.04× | within noise (leans BlazePlot) |
-| multi-100x20k-pan | Heap (MiB) | 16.3 | uPlot | 15.6 | 0.95× | within noise (leans uPlot) |
-| area-1m-pan | Ready (ms) | 9.61 | Chart.js | 7.38 | 0.77× | within noise (leans Chart.js) |
-| bar-100k-pan | Heap (MiB) | 1.8 | uPlot | 1.6 | 0.87× | within noise (leans uPlot) |
-| hover-1m | Hover p95 (ms) | 0.62 | Chart.js | 0.55 | 0.88× | within noise (leans Chart.js) |
-| mount-destroy-cycle | Retained (MiB) | 1.0 | Chart.js | 0.8 | 0.86× | within noise (leans Chart.js) |
-| heap-soak-1m-pan | Heap growth (MiB) | 0.4 | uPlot | 0.2 | 0.46× | within noise (leans uPlot) |
-| heap-soak-1m-pan | Heap growth (MiB) | 0.4 | Chart.js | 0.4 | 1.12× | within noise (leans BlazePlot) |
-| stream-throughput | Max rate (k samples/s) | 102400 | uPlot | 51200 | 2.00× | within noise (leans BlazePlot) |
+| line-100k-static | Ready (ms) | 4.54 | uPlot | 3.05 | 0.67× | LOSS |
+| line-100k-static | Ready (ms) | 4.54 | Chart.js | 3.67 | 0.81× | LOSS |
+| line-100k-static | Construct (ms) | 2.24 | uPlot | 0.23 | 0.10× | LOSS |
+| line-1m-static | Construct (ms) | 2.86 | uPlot | 0.26 | 0.09× | LOSS |
+| cold-first-chart | Ready (ms) | 14.14 | uPlot | 10.14 | 0.72× | LOSS |
+| cold-first-chart | Construct (ms) | 6.59 | uPlot | 1.82 | 0.28× | LOSS |
+| line-1m-pan | Ready (ms) | 5.19 | uPlot | 3.08 | 0.59× | LOSS |
+| line-1m-stream | Ready (ms) | 6.04 | uPlot | 2.94 | 0.49× | LOSS |
+| area-1m-pan | Ready (ms) | 5.13 | uPlot | 3.06 | 0.60× | LOSS |
+| bar-100k-pan | Ready (ms) | 3.85 | uPlot | 3.00 | 0.78× | LOSS |
+| dual-axis-1m-pan | Ready (ms) | 5.46 | uPlot | 3.60 | 0.66× | LOSS |
+| hover-1m | Hover p50 (ms) | 0.47 | uPlot | 0.24 | 0.52× | LOSS |
+| hover-1m | Hover p50 (ms) | 0.47 | Chart.js | 0.34 | 0.73× | LOSS |
+| hover-1m | Hover p95 (ms) | 0.66 | uPlot | 0.40 | 0.60× | LOSS |
+| hover-1m | Hover p95 (ms) | 0.66 | Chart.js | 0.56 | 0.85× | LOSS |
+| hover-1m-rich | Hover p50 (ms) | 0.51 | uPlot | 0.24 | 0.49× | LOSS |
+| hover-1m-rich | Hover p50 (ms) | 0.51 | Chart.js | 0.34 | 0.68× | LOSS |
+| hover-1m-rich | Hover p95 (ms) | 0.69 | uPlot | 0.41 | 0.60× | LOSS |
+| hover-1m-rich | Hover p95 (ms) | 0.69 | Chart.js | 0.57 | 0.83× | LOSS |
+| many-charts-50 | Destroy (ms) | 0.49 | uPlot | 0.19 | 0.39× | LOSS |
+| mount-destroy-cycle | Cycle p50 (ms) | 3.46 | uPlot | 1.69 | 0.49× | LOSS |
+| mount-destroy-cycle | Cycle p50 (ms) | 3.46 | Chart.js | 2.21 | 0.64× | LOSS |
+| mount-destroy-cycle | Cycle p95 (ms) | 3.94 | uPlot | 2.48 | 0.63× | LOSS |
+| mount-destroy-cycle | Retained (MiB) | 0.6 | uPlot | 0.3 | 0.42× | LOSS |
+| line-100k-static | Heap (MiB) | 1.5 | uPlot | 1.6 | 1.04× | within noise (leans BlazePlot) |
+| line-1m-pan | Ready (ms) | 5.19 | Chart.js | 6.77 | 1.30× | within noise (leans BlazePlot) |
+| line-1m-stream | Ready (ms) | 6.04 | Chart.js | 5.90 | 0.98× | within noise (leans Chart.js) |
+| multi-10x100k-pan | Ready (ms) | 8.30 | uPlot | 7.97 | 0.96× | within noise (leans uPlot) |
+| multi-100x20k-pan | Heap (MiB) | 16.0 | uPlot | 15.6 | 0.97× | within noise (leans uPlot) |
+| dual-axis-1m-pan | Ready (ms) | 5.46 | Chart.js | 5.69 | 1.04× | within noise (leans BlazePlot) |
+| many-charts-50 | Ready (ms) | 20.93 | uPlot | 20.16 | 0.96× | within noise (leans uPlot) |
+| many-charts-50 | Destroy (ms) | 0.49 | Chart.js | 0.46 | 0.94× | within noise (leans Chart.js) |
+| mount-destroy-cycle | Cycle p95 (ms) | 3.94 | Chart.js | 3.63 | 0.92× | within noise (leans Chart.js) |
+| mount-destroy-cycle | Retained (MiB) | 0.6 | Chart.js | 0.9 | 1.45× | within noise (leans BlazePlot) |
+| heap-soak-1m-pan | Heap growth (MiB) | 0.3 | uPlot | 0.2 | 0.55× | within noise (leans uPlot) |
+| heap-soak-1m-pan | Heap growth (MiB) | 0.3 | Chart.js | 0.5 | 1.42× | within noise (leans BlazePlot) |
+| stream-throughput | Max rate (k samples/s) | 102400 | uPlot | 102400 | 1.00× | within noise (leans even) |
 
 ### Canvas 2D backend versus uPlot
 
@@ -96,49 +93,28 @@ The Canvas 2D backend is the fallback renderer; the same rule applied against uP
 
 | Scenario | Metric | BlazePlot (Canvas 2D) | Competitor | Competitor value | Advantage | Verdict |
 |---|---|---:|---|---:|---:|---|
-| line-100k-static | Ready (ms) | 4.38 | uPlot | 3.13 | 0.71× | LOSS |
-| line-100k-static | Construct (ms) | 0.59 | uPlot | 0.23 | 0.39× | LOSS |
-| line-1m-static | Construct (ms) | 1.34 | uPlot | 0.26 | 0.19× | LOSS |
-| cold-first-chart | Ready (ms) | 13.81 | uPlot | 10.82 | 0.78× | LOSS |
-| cold-first-chart | Construct (ms) | 3.69 | uPlot | 2.15 | 0.58× | LOSS |
-| line-1m-pan | FPS (fps) | 622 | uPlot | 680 | 0.91× | LOSS |
-| line-1m-pan | Frame p95 (ms) | 1.92 | uPlot | 1.81 | 0.95× | LOSS |
-| line-1m-pan | Ready (ms) | 8.04 | uPlot | 3.14 | 0.39× | LOSS |
-| line-1m-stream | FPS (fps) | 623 | uPlot | 691 | 0.90× | LOSS |
-| line-1m-stream | Ready (ms) | 8.61 | uPlot | 2.90 | 0.34× | LOSS |
-| multi-10x100k-pan | FPS (fps) | 97.2 | uPlot | 136 | 0.71× | LOSS |
-| multi-10x100k-pan | Frame p95 (ms) | 12.13 | uPlot | 8.87 | 0.73× | LOSS |
-| multi-10x100k-pan | Work p50 (ms) | 8.02 | uPlot | 6.88 | 0.86× | LOSS |
-| multi-10x100k-pan | Work p95 (ms) | 9.95 | uPlot | 8.54 | 0.86× | LOSS |
-| multi-10x100k-pan | Ready (ms) | 17.36 | uPlot | 8.14 | 0.47× | LOSS |
-| multi-100x20k-pan | FPS (fps) | 12.1 | uPlot | 29.7 | 0.41× | LOSS |
-| multi-100x20k-pan | Frame p95 (ms) | 148.1 | uPlot | 49.58 | 0.33× | LOSS |
-| area-1m-pan | Ready (ms) | 7.08 | uPlot | 3.13 | 0.44× | LOSS |
-| bar-100k-pan | FPS (fps) | 475 | uPlot | 755 | 0.63× | LOSS |
-| bar-100k-pan | Frame p95 (ms) | 2.77 | uPlot | 1.71 | 0.62× | LOSS |
-| bar-100k-pan | Work p50 (ms) | 1.29 | uPlot | 1.08 | 0.84× | LOSS |
-| bar-100k-pan | Work p95 (ms) | 1.72 | uPlot | 1.48 | 0.86× | LOSS |
-| bar-100k-pan | Ready (ms) | 4.25 | uPlot | 3.02 | 0.71× | LOSS |
-| dual-axis-1m-pan | Ready (ms) | 9.88 | uPlot | 4.04 | 0.41× | LOSS |
-| hover-1m | Hover p50 (ms) | 0.47 | uPlot | 0.23 | 0.48× | LOSS |
-| hover-1m | Hover p95 (ms) | 0.59 | uPlot | 0.29 | 0.50× | LOSS |
-| many-charts-50 | Ready (ms) | 49.19 | uPlot | 21.80 | 0.44× | LOSS |
-| many-charts-50 | Heap (MiB) | 42.7 | uPlot | 9.5 | 0.22× | LOSS |
-| many-charts-50 | Destroy (ms) | 0.78 | uPlot | 0.20 | 0.26× | LOSS |
-| mount-destroy-cycle | Cycle p50 (ms) | 2.62 | uPlot | 1.76 | 0.67× | LOSS |
-| mount-destroy-cycle | Cycle p95 (ms) | 3.88 | uPlot | 2.33 | 0.60× | LOSS |
-| mount-destroy-cycle | Retained (MiB) | 0.7 | uPlot | 0.3 | 0.35× | LOSS |
-| heap-soak-1m-pan | FPS (fps) | 601 | uPlot | 653 | 0.92× | LOSS |
-| line-100k-static | Heap (MiB) | 1.7 | uPlot | 1.6 | 0.95× | within noise (leans uPlot) |
-| line-1m-static | Ready (ms) | 8.12 | uPlot | 10.90 | 1.34× | within noise (leans BlazePlot (Canvas 2D)) |
-| line-1m-stream | Frame p95 (ms) | 1.91 | uPlot | 1.81 | 0.95× | within noise (leans uPlot) |
-| bar-100k-pan | Heap (MiB) | 1.6 | uPlot | 1.6 | 1.00× | within noise (leans even) |
-| dual-axis-1m-pan | FPS (fps) | 350 | uPlot | 365 | 0.96× | within noise (leans uPlot) |
-| dual-axis-1m-pan | Frame p95 (ms) | 3.42 | uPlot | 3.38 | 0.99× | within noise (leans uPlot) |
-| dual-axis-1m-pan | Work p50 (ms) | 2.19 | uPlot | 2.48 | 1.13× | within noise (leans BlazePlot (Canvas 2D)) |
-| dual-axis-1m-pan | Work p95 (ms) | 2.63 | uPlot | 3.11 | 1.18× | within noise (leans BlazePlot (Canvas 2D)) |
-| heap-soak-1m-pan | Heap growth (MiB) | 0.3 | uPlot | 0.2 | 0.60× | within noise (leans uPlot) |
-| stream-throughput | Max rate (k samples/s) | 102400 | uPlot | 51200 | 2.00× | within noise (leans BlazePlot (Canvas 2D)) |
+| line-100k-static | Construct (ms) | 0.32 | uPlot | 0.23 | 0.73× | LOSS |
+| line-1m-static | Construct (ms) | 1.01 | uPlot | 0.26 | 0.25× | LOSS |
+| cold-first-chart | Ready (ms) | 11.60 | uPlot | 10.14 | 0.87× | LOSS |
+| cold-first-chart | Construct (ms) | 3.03 | uPlot | 1.82 | 0.60× | LOSS |
+| line-1m-stream | Ready (ms) | 4.22 | uPlot | 2.94 | 0.69× | LOSS |
+| hover-1m | Hover p50 (ms) | 0.47 | uPlot | 0.24 | 0.51× | LOSS |
+| hover-1m | Hover p95 (ms) | 0.64 | uPlot | 0.40 | 0.62× | LOSS |
+| hover-1m-rich | Hover p50 (ms) | 0.52 | uPlot | 0.24 | 0.48× | LOSS |
+| hover-1m-rich | Hover p95 (ms) | 0.70 | uPlot | 0.41 | 0.59× | LOSS |
+| many-charts-50 | Destroy (ms) | 0.54 | uPlot | 0.19 | 0.36× | LOSS |
+| line-1m-pan | Ready (ms) | 3.37 | uPlot | 3.08 | 0.92× | within noise (leans uPlot) |
+| multi-10x100k-pan | FPS (fps) | 154 | uPlot | 148 | 1.04× | within noise (leans BlazePlot (Canvas 2D)) |
+| multi-10x100k-pan | Ready (ms) | 8.19 | uPlot | 7.97 | 0.97× | within noise (leans uPlot) |
+| multi-100x20k-pan | Frame p95 (ms) | 34.01 | uPlot | 30.02 | 0.88× | within noise (leans uPlot) |
+| area-1m-pan | Ready (ms) | 3.12 | uPlot | 3.06 | 0.98× | within noise (leans uPlot) |
+| dual-axis-1m-pan | Ready (ms) | 3.66 | uPlot | 3.60 | 0.98× | within noise (leans uPlot) |
+| many-charts-50 | Ready (ms) | 20.26 | uPlot | 20.16 | 0.99× | within noise (leans uPlot) |
+| mount-destroy-cycle | Cycle p50 (ms) | 1.63 | uPlot | 1.69 | 1.04× | within noise (leans BlazePlot (Canvas 2D)) |
+| mount-destroy-cycle | Cycle p95 (ms) | 2.31 | uPlot | 2.48 | 1.08× | within noise (leans BlazePlot (Canvas 2D)) |
+| mount-destroy-cycle | Retained (MiB) | 0.3 | uPlot | 0.3 | 0.73× | within noise (leans uPlot) |
+| heap-soak-1m-pan | Heap growth (MiB) | 0.4 | uPlot | 0.2 | 0.47× | within noise (leans uPlot) |
+| stream-throughput | Max rate (k samples/s) | 102400 | uPlot | 102400 | 1.00× | within noise (leans even) |
 
 ## Results by scenario
 
@@ -152,9 +128,9 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| Ready (ms) | 6.71 · p95 7.00 · ±4% | 4.38 · p95 4.87 · ±8% | 3.13 · p95 3.60 · ±9% | 3.79 · p95 4.16 · ±8% | tie (uPlot, Chart.js) | 0.47× | 0.56× |
-| Construct (ms) | 2.51 · p95 2.94 · ±10% | 0.59 · p95 0.68 · ±17% | **0.23** · p95 0.24 · ±17% | 3.35 · p95 3.71 · ±9% | uPlot | 0.09× | 1.33× |
-| Heap (MiB) | 1.9 · p95 1.9 · ±0% | 1.7 · p95 1.7 · ±0% | **1.6** · p95 1.6 · ±0% | 4.1 · p95 4.1 · ±0% | uPlot | 0.83× | 2.13× |
+| Ready (ms) | 4.54 · p95 4.67 · ±3% | 2.75 · p95 2.88 · ±4% | **3.05** · p95 3.25 · ±6% | 3.67 · p95 3.92 · ±5% | uPlot | 0.67× | 0.81× |
+| Construct (ms) | 2.24 · p95 2.42 · ±5% | 0.32 · p95 0.36 · ±10% | **0.23** · p95 0.27 · ±21% | 3.19 · p95 3.46 · ±7% | uPlot | 0.10× | 1.42× |
+| Heap (MiB) | 1.5 · p95 1.5 · ±0% | 1.3 · p95 1.3 · ±0% | 1.6 · p95 1.6 · ±0% | 4.1 · p95 4.1 · ±0% | tie (BlazePlot, uPlot) | 1.04× | 2.68× |
 
 #### line-1m-static
 
@@ -162,9 +138,9 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| Ready (ms) | 9.93 · p95 15.27 · ±29% | 8.12 · p95 15.29 · ±47% | 10.90 · p95 11.19 · ±4% | 15.69 · p95 16.55 · ±5% | tie (BlazePlot, uPlot, Chart.js) | 1.10× | 1.58× |
-| Construct (ms) | 2.88 · p95 3.19 · ±6% | 1.34 · p95 1.84 · ±26% | **0.26** · p95 0.28 · ±13% | 15.15 · p95 15.96 · ±6% | uPlot | 0.09× | 5.26× |
-| Heap (MiB) | **12.7** · p95 12.7 · ±0% | 12.4 · p95 12.4 · ±0% | 15.3 · p95 15.3 · ±0% | 35.0 · p95 35.0 · ±0% | BlazePlot | 1.21× | 2.77× |
+| Ready (ms) | **8.76** · p95 8.91 · ±1% | 6.97 · p95 8.54 · ±12% | 11.65 · p95 12.41 · ±7% | 14.15 · p95 16.41 · ±10% | BlazePlot | 1.33× | 1.62× |
+| Construct (ms) | 2.86 · p95 3.00 · ±3% | 1.01 · p95 1.57 · ±29% | **0.26** · p95 0.29 · ±16% | 13.67 · p95 15.85 · ±10% | uPlot | 0.09× | 4.78× |
+| Heap (MiB) | **12.1** · p95 12.1 · ±0% | 11.8 · p95 11.8 · ±0% | 15.3 · p95 15.3 · ±0% | 35.0 · p95 35.0 · ±0% | BlazePlot | 1.27× | 2.90× |
 
 #### cold-first-chart
 
@@ -172,8 +148,8 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| Ready (ms) | 16.29 · p95 16.48 · ±2% | 13.81 · p95 14.77 · ±5% | **10.82** · p95 11.20 · ±3% | 19.32 · p95 19.77 · ±3% | uPlot | 0.66× | 1.19× |
-| Construct (ms) | 6.83 · p95 6.97 · ±3% | 3.69 · p95 4.34 · ±12% | **2.15** · p95 2.23 · ±9% | 18.01 · p95 18.39 · ±3% | uPlot | 0.32× | 2.64× |
+| Ready (ms) | 14.14 · p95 14.20 · ±2% | 11.60 · p95 12.04 · ±3% | **10.14** · p95 10.76 · ±5% | 18.36 · p95 18.64 · ±3% | uPlot | 0.72× | 1.30× |
+| Construct (ms) | 6.59 · p95 6.83 · ±4% | 3.03 · p95 3.30 · ±10% | **1.82** · p95 2.21 · ±12% | 17.26 · p95 17.49 · ±3% | uPlot | 0.28× | 2.62× |
 
 ### Line
 
@@ -183,12 +159,12 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| FPS (fps) | **993** · p95 996 · ±1% | 622 · p95 630 · ±1% | 680 · p95 688 · ±2% | 514 · p95 519 · ±1% | BlazePlot | 1.46× | 1.93× |
-| Frame p95 (ms) | **1.20** · p95 1.22 · ±1% | 1.92 · p95 1.93 · ±1% | 1.81 · p95 1.85 · ±2% | 2.40 · p95 2.46 · ±1% | BlazePlot | 1.51× | 2.00× |
-| Work p50 (ms) | **0.61** · p95 0.61 · ±0% | 1.07 · p95 1.09 · ±2% | 1.25 · p95 1.28 · ±2% | 1.74 · p95 1.76 · ±1% | BlazePlot | 2.05× | 2.85× |
-| Work p95 (ms) | **0.76** · p95 0.77 · ±0% | 1.33 · p95 1.35 · ±1% | 1.58 · p95 1.63 · ±2% | 2.19 · p95 2.25 · ±2% | BlazePlot | 2.08× | 2.88× |
-| Ready (ms) | 9.78 · p95 15.29 · ±30% | 8.04 · p95 8.41 · ±5% | **3.14** · p95 3.51 · ±10% | 6.20 · p95 7.46 · ±15% | uPlot | 0.32× | 0.63× |
-| Heap (MiB) | **12.6** · p95 12.6 · ±0% | 12.4 · p95 12.4 · ±0% | 15.3 · p95 15.3 · ±0% | 35.0 · p95 35.0 · ±0% | BlazePlot | 1.21× | 2.77× |
+| FPS (fps) | **1090** · p95 1098 · ±1% | 831 · p95 835 · ±0% | 721 · p95 725 · ±2% | 546 · p95 547 · ±0% | BlazePlot | 1.51× | 2.00× |
+| Frame p95 (ms) | **1.05** · p95 1.06 · ±1% | 1.36 · p95 1.36 · ±1% | 1.63 · p95 1.67 · ±2% | 2.14 · p95 2.15 · ±1% | BlazePlot | 1.55× | 2.04× |
+| Work p50 (ms) | **0.54** · p95 0.55 · ±1% | 0.82 · p95 0.84 · ±2% | 1.20 · p95 1.25 · ±3% | 1.66 · p95 1.68 · ±1% | BlazePlot | 2.22× | 3.07× |
+| Work p95 (ms) | **0.68** · p95 0.69 · ±0% | 0.96 · p95 0.97 · ±1% | 1.43 · p95 1.47 · ±2% | 1.93 · p95 1.94 · ±0% | BlazePlot | 2.10× | 2.84× |
+| Ready (ms) | 5.19 · p95 5.42 · ±3% | 3.37 · p95 3.79 · ±9% | **3.08** · p95 3.60 · ±12% | 6.77 · p95 7.30 · ±16% | uPlot | 0.59× | 1.30× |
+| Heap (MiB) | **12.1** · p95 12.1 · ±0% | 11.8 · p95 11.8 · ±0% | 15.3 · p95 15.3 · ±0% | 35.0 · p95 35.0 · ±0% | BlazePlot | 1.27× | 2.90× |
 
 #### line-1m-stream
 
@@ -196,12 +172,12 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| FPS (fps) | **1000** · p95 1006 · ±2% | 623 · p95 626 · ±2% | 691 · p95 695 · ±1% | 497 · p95 502 · ±2% | BlazePlot | 1.45× | 2.01× |
-| Frame p95 (ms) | **1.18** · p95 1.24 · ±3% | 1.91 · p95 1.97 · ±2% | 1.81 · p95 1.90 · ±3% | 2.48 · p95 2.55 · ±2% | BlazePlot | 1.54× | 2.11× |
-| Work p50 (ms) | **0.60** · p95 0.63 · ±2% | 1.07 · p95 1.10 · ±2% | 1.21 · p95 1.22 · ±1% | 1.79 · p95 1.83 · ±1% | BlazePlot | 2.00× | 2.97× |
-| Work p95 (ms) | **0.76** · p95 0.78 · ±2% | 1.34 · p95 1.36 · ±2% | 1.59 · p95 1.67 · ±3% | 2.25 · p95 2.33 · ±2% | BlazePlot | 2.11× | 2.97× |
-| Ready (ms) | 10.48 · p95 17.02 · ±34% | 8.61 · p95 8.71 · ±4% | **2.90** · p95 3.21 · ±7% | 6.09 · p95 6.39 · ±20% | uPlot | 0.28× | 0.58× |
-| Heap (MiB) | 14.8 · p95 14.8 · ±0% | 14.6 · p95 14.6 · ±0% | 15.5 · p95 15.5 · ±0% | 39.0 · p95 39.0 · ±0% | tie (BlazePlot, uPlot) | 1.04× | 2.63× |
+| FPS (fps) | **1117** · p95 1133 · ±1% | 856 · p95 859 · ±1% | 737 · p95 740 · ±1% | 534 · p95 536 · ±1% | BlazePlot | 1.52× | 2.09× |
+| Frame p95 (ms) | **1.01** · p95 1.02 · ±1% | 1.30 · p95 1.31 · ±1% | 1.59 · p95 1.60 · ±1% | 2.17 · p95 2.20 · ±1% | BlazePlot | 1.57× | 2.15× |
+| Work p50 (ms) | **0.52** · p95 0.52 · ±1% | 0.79 · p95 0.80 · ±1% | 1.16 · p95 1.17 · ±1% | 1.69 · p95 1.71 · ±1% | BlazePlot | 2.24× | 3.28× |
+| Work p95 (ms) | **0.66** · p95 0.66 · ±0% | 0.93 · p95 0.94 · ±1% | 1.40 · p95 1.41 · ±1% | 1.96 · p95 2.00 · ±1% | BlazePlot | 2.13× | 2.99× |
+| Ready (ms) | 6.04 · p95 6.29 · ±3% | 4.22 · p95 4.52 · ±8% | **2.94** · p95 3.17 · ±5% | 5.90 · p95 7.29 · ±15% | uPlot | 0.49× | 0.98× |
+| Heap (MiB) | **14.0** · p95 14.0 · ±0% | 13.8 · p95 13.8 · ±0% | 15.5 · p95 15.5 · ±0% | 39.0 · p95 39.0 · ±0% | BlazePlot | 1.11× | 2.78× |
 
 #### line-10m-accelerated-pan
 
@@ -209,12 +185,12 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| FPS (fps) | **1809** · p95 1851 · ±1% | 904 · p95 927 · ±3% | 26.5 · p95 28.4 · ±5% | 23.9 · p95 25.6 · ±5% | BlazePlot | 68.2× | 75.6× |
-| Frame p95 (ms) | **0.70** · p95 0.71 · ±2% | 1.44 · p95 1.50 · ±4% | 50.05 · p95 50.88 · ±3% | 50.05 · p95 50.47 · ±2% | BlazePlot | 71.0× | 71.0× |
-| Work p50 (ms) | **0.17** · p95 0.17 · ±2% | 0.56 · p95 0.59 · ±4% | 37.95 · p95 39.38 · ±7% | 41.93 · p95 43.19 · ±5% | BlazePlot | 230.0× | 254.1× |
-| Work p95 (ms) | **0.26** · p95 0.27 · ±2% | 0.84 · p95 0.88 · ±3% | 45.64 · p95 51.12 · ±10% | 48.05 · p95 48.56 · ±4% | BlazePlot | 175.5× | 184.8× |
-| Ready (ms) | **5.33** · p95 5.65 · ±14% | 2.75 · p95 2.93 · ±16% | 32.00 · p95 37.44 · ±10% | 43.55 · p95 45.31 · ±3% | BlazePlot | 6.00× | 8.17× |
-| Heap (MiB) | **0.7** · p95 0.7 · ±0% | 0.4 · p95 0.4 · ±0% | 152.6 · p95 152.6 · ±0% | 344.0 · p95 344.0 · ±0% | BlazePlot | 223.8× | 504.4× |
+| FPS (fps) | **2081** · p95 2114 · ±1% | 1464 · p95 1475 · ±4% | 32.8 · p95 33.0 · ±1% | 30.9 · p95 31.3 · ±2% | BlazePlot | 63.4× | 67.4× |
+| Frame p95 (ms) | **0.59** · p95 0.63 · ±4% | 0.80 · p95 0.93 · ±8% | 32.02 · p95 32.38 · ±1% | 33.51 · p95 36.51 · ±5% | BlazePlot | 54.3× | 56.8× |
+| Work p50 (ms) | **0.12** · p95 0.12 · ±0% | 0.30 · p95 0.34 · ±7% | 30.46 · p95 30.96 · ±1% | 32.42 · p95 32.51 · ±1% | BlazePlot | 264.9× | 282.0× |
+| Work p95 (ms) | **0.14** · p95 0.14 · ±2% | 0.45 · p95 0.49 · ±5% | 31.52 · p95 31.66 · ±1% | 32.84 · p95 35.35 · ±4% | BlazePlot | 217.4× | 226.5× |
+| Ready (ms) | **3.62** · p95 3.83 · ±6% | 1.80 · p95 1.91 · ±8% | 30.27 · p95 30.97 · ±2% | 41.85 · p95 44.69 · ±4% | BlazePlot | 8.36× | 11.6× |
+| Heap (MiB) | **0.3** · p95 0.3 · ±0% | 0.1 · p95 0.1 · ±1% | 152.6 · p95 152.6 · ±0% | 344.0 · p95 344.0 · ±0% | BlazePlot | 478.5× | 1078.4× |
 
 ### Series types
 
@@ -224,12 +200,12 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| FPS (fps) | **236** · p95 237 · ±1% | 97.2 · p95 98.4 · ±2% | 136 · p95 140 · ±2% | 108 · p95 110 · ±2% | BlazePlot | 1.73× | 2.18× |
-| Frame p95 (ms) | **4.79** · p95 4.92 · ±3% | 12.13 · p95 12.69 · ±4% | 8.87 · p95 9.23 · ±6% | 11.72 · p95 11.86 · ±2% | BlazePlot | 1.85× | 2.44× |
-| Work p50 (ms) | **3.76** · p95 3.79 · ±1% | 8.02 · p95 8.14 · ±1% | 6.88 · p95 6.94 · ±1% | 8.36 · p95 8.62 · ±2% | BlazePlot | 1.83× | 2.22× |
-| Work p95 (ms) | **4.31** · p95 4.39 · ±2% | 9.95 · p95 10.14 · ±4% | 8.54 · p95 8.89 · ±6% | 11.29 · p95 11.51 · ±2% | BlazePlot | 1.98× | 2.62× |
-| Ready (ms) | 13.54 · p95 14.25 · ±4% | 17.36 · p95 18.96 · ±6% | **8.14** · p95 8.74 · ±5% | 12.61 · p95 12.96 · ±3% | uPlot | 0.60× | 0.93× |
-| Heap (MiB) | **7.7** · p95 7.7 · ±0% | 5.7 · p95 5.7 · ±0% | 8.5 · p95 8.5 · ±1% | 38.9 · p95 38.9 · ±0% | BlazePlot | 1.10× | 5.04× |
+| FPS (fps) | **248** · p95 250 · ±1% | 154 · p95 155 · ±0% | 148 · p95 149 · ±0% | 124 · p95 124 · ±0% | BlazePlot | 1.67× | 2.00× |
+| Frame p95 (ms) | **4.28** · p95 4.29 · ±1% | 6.91 · p95 6.96 · ±1% | 7.33 · p95 7.38 · ±1% | 8.43 · p95 8.54 · ±1% | BlazePlot | 1.72× | 1.97× |
+| Work p50 (ms) | **3.60** · p95 3.62 · ±1% | 6.00 · p95 6.02 · ±1% | 6.48 · p95 6.50 · ±0% | 7.80 · p95 7.83 · ±0% | BlazePlot | 1.80× | 2.17× |
+| Work p95 (ms) | **3.84** · p95 3.86 · ±0% | 6.43 · p95 6.50 · ±1% | 7.07 · p95 7.11 · ±1% | 8.13 · p95 8.18 · ±1% | BlazePlot | 1.84× | 2.12× |
+| Ready (ms) | 8.30 · p95 8.76 · ±3% | 8.19 · p95 9.27 · ±7% | 7.97 · p95 8.40 · ±4% | 11.70 · p95 12.00 · ±2% | tie (uPlot, BlazePlot) | 0.96× | 1.41× |
+| Heap (MiB) | **7.1** · p95 7.1 · ±0% | 5.1 · p95 5.1 · ±0% | 8.5 · p95 8.5 · ±0% | 38.9 · p95 38.9 · ±0% | BlazePlot | 1.20× | 5.49× |
 
 #### multi-100x20k-pan
 
@@ -237,12 +213,12 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| FPS (fps) | **134** · p95 140 · ±5% | 12.1 · p95 14.8 · ±15% | 29.7 · p95 30.4 · ±3% | 17.9 · p95 18.2 · ±3% | BlazePlot | 4.51× | 7.48× |
-| Frame p95 (ms) | **10.70** · p95 11.18 · ±9% | 148.1 · p95 169.6 · ±19% | 49.58 · p95 51.05 · ±11% | 75.17 · p95 81.85 · ±10% | BlazePlot | 4.63× | 7.03× |
-| Work p50 (ms) | **6.59** · p95 7.09 · ±5% | 20.42 · p95 23.35 · ±9% | 31.36 · p95 34.19 · ±6% | 53.22 · p95 56.27 · ±5% | BlazePlot | 4.76× | 8.08× |
-| Work p95 (ms) | **10.24** · p95 10.63 · ±9% | 28.74 · p95 29.83 · ±4% | 38.86 · p95 39.20 · ±3% | 68.73 · p95 71.10 · ±5% | BlazePlot | 3.79× | 6.71× |
-| Ready (ms) | **18.52** · p95 19.09 · ±3% | 28.52 · p95 29.51 · ±4% | 36.35 · p95 39.02 · ±8% | 70.94 · p95 76.17 · ±6% | BlazePlot | 1.96× | 3.83× |
-| Heap (MiB) | 16.3 · p95 16.3 · ±0% | 8.4 · p95 8.4 · ±0% | 15.6 · p95 15.6 · ±0% | 107.4 · p95 107.4 · ±0% | tie (uPlot, BlazePlot) | 0.95× | 6.57× |
+| FPS (fps) | **161** · p95 162 · ±1% | 57.6 · p95 58.0 · ±1% | 34.8 · p95 34.9 · ±0% | 21.7 · p95 21.9 · ±1% | BlazePlot | 4.63× | 7.41× |
+| Frame p95 (ms) | **6.68** · p95 6.75 · ±1% | 34.01 · p95 34.24 · ±23% | 30.02 · p95 30.53 · ±1% | 52.03 · p95 56.98 · ±7% | BlazePlot | 4.49× | 7.79× |
+| Work p50 (ms) | **5.92** · p95 6.06 · ±2% | 16.79 · p95 17.25 · ±2% | 28.40 · p95 28.48 · ±0% | 43.60 · p95 44.02 · ±1% | BlazePlot | 4.79× | 7.36× |
+| Work p95 (ms) | **6.25** · p95 6.37 · ±1% | 17.28 · p95 19.36 · ±7% | 29.57 · p95 29.78 · ±1% | 47.73 · p95 48.68 · ±2% | BlazePlot | 4.73× | 7.63× |
+| Ready (ms) | **16.84** · p95 17.25 · ±2% | 21.65 · p95 22.78 · ±3% | 34.95 · p95 35.23 · ±1% | 65.39 · p95 66.52 · ±2% | BlazePlot | 2.08× | 3.88× |
+| Heap (MiB) | 16.0 · p95 16.0 · ±0% | 8.0 · p95 8.0 · ±0% | 15.6 · p95 15.6 · ±0% | 107.4 · p95 107.4 · ±0% | tie (uPlot, BlazePlot) | 0.97× | 6.70× |
 
 #### area-1m-pan
 
@@ -250,12 +226,12 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| FPS (fps) | **1246** · p95 1270 · ±2% | 861 · p95 877 · ±2% | 669 · p95 671 · ±1% | 459 · p95 466 · ±1% | BlazePlot | 1.86× | 2.71× |
-| Frame p95 (ms) | **0.98** · p95 1.00 · ±2% | 1.42 · p95 1.46 · ±3% | 1.86 · p95 1.91 · ±2% | 2.71 · p95 2.77 · ±2% | BlazePlot | 1.90× | 2.77× |
-| Work p50 (ms) | **0.42** · p95 0.43 · ±2% | 0.67 · p95 0.69 · ±3% | 1.27 · p95 1.28 · ±1% | 1.95 · p95 1.96 · ±1% | BlazePlot | 2.99× | 4.59× |
-| Work p95 (ms) | **0.53** · p95 0.55 · ±2% | 0.88 · p95 0.89 · ±1% | 1.61 · p95 1.66 · ±2% | 2.48 · p95 2.54 · ±2% | BlazePlot | 3.05× | 4.69× |
-| Ready (ms) | 9.61 · p95 14.94 · ±30% | 7.08 · p95 7.51 · ±5% | **3.13** · p95 3.48 · ±9% | 7.38 · p95 9.16 · ±17% | uPlot | 0.33× | 0.77× |
-| Heap (MiB) | **12.6** · p95 12.6 · ±0% | 12.4 · p95 12.4 · ±0% | 15.3 · p95 15.3 · ±0% | 35.0 · p95 35.0 · ±0% | BlazePlot | 1.21× | 2.77× |
+| FPS (fps) | **1430** · p95 1441 · ±1% | 1133 · p95 1154 · ±1% | 707 · p95 710 · ±5% | 498 · p95 503 · ±1% | BlazePlot | 2.02× | 2.87× |
+| Frame p95 (ms) | **0.83** · p95 0.84 · ±0% | 0.98 · p95 0.99 · ±1% | 1.66 · p95 1.83 · ±6% | 2.33 · p95 2.35 · ±1% | BlazePlot | 1.99× | 2.78× |
+| Work p50 (ms) | **0.34** · p95 0.35 · ±3% | 0.51 · p95 0.52 · ±3% | 1.23 · p95 1.35 · ±6% | 1.86 · p95 1.88 · ±1% | BlazePlot | 3.60× | 5.47× |
+| Work p95 (ms) | **0.49** · p95 0.50 · ±1% | 0.63 · p95 0.63 · ±0% | 1.46 · p95 1.63 · ±6% | 2.13 · p95 2.13 · ±1% | BlazePlot | 2.95× | 4.29× |
+| Ready (ms) | 5.13 · p95 5.50 · ±4% | 3.12 · p95 3.23 · ±3% | **3.06** · p95 3.19 · ±6% | 7.59 · p95 8.01 · ±14% | uPlot | 0.60× | 1.48× |
+| Heap (MiB) | **12.0** · p95 12.0 · ±0% | 11.8 · p95 11.8 · ±0% | 15.3 · p95 15.3 · ±0% | 35.0 · p95 35.0 · ±0% | BlazePlot | 1.28× | 2.93× |
 
 #### scatter-1m-pan
 
@@ -263,12 +239,12 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| FPS (fps) | **1493** · p95 1520 · ±17% | 286 · p95 296 · ±20% | 33.0 · p95 37.6 · ±30% | 3.3 · p95 3.3 · ±21% | BlazePlot | 45.3× | 459.2× |
-| Frame p95 (ms) | **0.85** · p95 1.53 · ±41% | 4.55 · p95 7.62 · ±38% | 48.56 · p95 71.63 · ±41% | 378.2 · p95 614.5 · ±33% | BlazePlot | 56.8× | 442.3× |
-| Work p50 (ms) | **0.27** · p95 0.42 · ±31% | 2.90 · p95 4.40 · ±27% | 27.80 · p95 52.95 · ±47% | 316.8 · p95 536.5 · ±36% | BlazePlot | 103.0× | 1173.2× |
-| Work p95 (ms) | **0.42** · p95 0.63 · ±26% | 3.98 · p95 6.24 · ±33% | 36.49 · p95 69.33 · ±52% | 378.9 · p95 599.0 · ±31% | BlazePlot | 86.9× | 902.1× |
-| Ready (ms) | **8.75** · p95 11.13 · ±16% | 9.54 · p95 17.45 · ±44% | 31.20 · p95 71.56 · ±67% | 321.6 · p95 618.3 · ±47% | BlazePlot | 3.57× | 36.8× |
-| Heap (MiB) | **12.6** · p95 12.6 · ±0% | 12.4 · p95 12.4 · ±0% | 15.3 · p95 15.3 · ±0% | 171.9 · p95 172.0 · ±0% | BlazePlot | 1.21× | 13.6× |
+| FPS (fps) | **1704** · p95 1719 · ±1% | 319 · p95 321 · ±1% | 39.8 · p95 40.8 · ±2% | 4.2 · p95 4.2 · ±0% | BlazePlot | 42.8× | 410.6× |
+| Frame p95 (ms) | **0.70** · p95 0.71 · ±1% | 3.52 · p95 3.57 · ±1% | 27.50 · p95 27.52 · ±1% | 280.1 · p95 292.7 · ±6% | BlazePlot | 39.3× | 400.1× |
+| Work p50 (ms) | **0.20** · p95 0.20 · ±0% | 2.69 · p95 2.73 · ±1% | 25.36 · p95 25.74 · ±4% | 235.1 · p95 236.8 · ±1% | BlazePlot | 123.7× | 1147.0× |
+| Work p95 (ms) | **0.26** · p95 0.26 · ±1% | 3.10 · p95 3.13 · ±1% | 26.47 · p95 26.70 · ±1% | 273.4 · p95 274.2 · ±1% | BlazePlot | 103.8× | 1072.3× |
+| Ready (ms) | **4.89** · p95 5.03 · ±2% | 5.47 · p95 5.57 · ±2% | 30.27 · p95 30.61 · ±3% | 299.8 · p95 310.7 · ±2% | BlazePlot | 6.19× | 61.3× |
+| Heap (MiB) | **11.9** · p95 11.9 · ±0% | 11.8 · p95 11.8 · ±0% | 15.3 · p95 15.3 · ±0% | 172.0 · p95 172.0 · ±0% | BlazePlot | 1.29× | 14.4× |
 
 #### bar-100k-pan
 
@@ -276,12 +252,12 @@ Each cell is median · p95 across runs · half-range spread as a percentage of t
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| FPS (fps) | **1774** · p95 1794 · ±6% | 475 · p95 488 · ±6% | 755 · p95 767 · ±3% | 3.8 · p95 4.0 · ±12% | BlazePlot | 2.35× | 468.1× |
-| Frame p95 (ms) | **0.72** · p95 0.82 · ±8% | 2.77 · p95 3.56 · ±17% | 1.71 · p95 1.86 · ±7% | 320.5 · p95 545.5 · ±41% | BlazePlot | 2.35× | 442.1× |
-| Work p50 (ms) | **0.17** · p95 0.21 · ±10% | 1.29 · p95 1.44 · ±7% | 1.08 · p95 1.14 · ±3% | 270.7 · p95 287.0 · ±8% | BlazePlot | 6.17× | 1546.7× |
-| Work p95 (ms) | **0.29** · p95 0.32 · ±6% | 1.72 · p95 1.85 · ±4% | 1.48 · p95 1.58 · ±7% | 297.0 · p95 512.3 · ±40% | BlazePlot | 5.09× | 1024.3× |
-| Ready (ms) | 4.93 · p95 5.81 · ±12% | 4.25 · p95 5.67 · ±21% | **3.02** · p95 3.86 · ±16% | 245.9 · p95 281.3 · ±9% | uPlot | 0.61× | 49.8× |
-| Heap (MiB) | 1.8 · p95 1.8 · ±0% | 1.6 · p95 1.6 · ±0% | 1.6 · p95 1.6 · ±0% | 19.8 · p95 19.8 · ±0% | tie (uPlot, BlazePlot) | 0.87× | 10.8× |
+| FPS (fps) | **2039** · p95 2075 · ±3% | 930 · p95 936 · ±1% | 816 · p95 820 · ±1% | 5.0 · p95 5.0 · ±4% | BlazePlot | 2.50× | 409.4× |
+| Frame p95 (ms) | **0.59** · p95 0.63 · ±4% | 1.25 · p95 1.28 · ±2% | 1.44 · p95 1.46 · ±1% | 220.3 · p95 298.2 · ±19% | BlazePlot | 2.42× | 370.3× |
+| Work p50 (ms) | **0.13** · p95 0.13 · ±0% | 0.66 · p95 0.67 · ±2% | 1.00 · p95 1.02 · ±1% | 186.6 · p95 191.8 · ±2% | BlazePlot | 8.04× | 1492.7× |
+| Work p95 (ms) | **0.15** · p95 0.15 · ±0% | 0.80 · p95 0.81 · ±2% | 1.25 · p95 1.26 · ±1% | 199.5 · p95 279.4 · ±21% | BlazePlot | 8.10× | 1287.3× |
+| Ready (ms) | 3.85 · p95 3.92 · ±4% | 2.35 · p95 2.73 · ±9% | **3.00** · p95 3.48 · ±11% | 224.4 · p95 229.2 · ±1% | uPlot | 0.78× | 58.4× |
+| Heap (MiB) | **1.3** · p95 1.3 · ±0% | 1.2 · p95 1.2 · ±0% | 1.6 · p95 1.6 · ±0% | 19.8 · p95 19.8 · ±0% | BlazePlot | 1.19× | 14.8× |
 
 #### dual-axis-1m-pan
 
@@ -289,23 +265,32 @@ Two 500k point lines on left and right Y axes, pan over 100k visible samples
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| FPS (fps) | **594** · p95 616 · ±11% | 350 · p95 357 · ±16% | 365 · p95 374 · ±15% | 251 · p95 292 · ±18% | BlazePlot | 1.63× | 2.36× |
-| Frame p95 (ms) | **2.00** · p95 2.86 · ±25% | 3.42 · p95 5.98 · ±40% | 3.38 · p95 5.98 · ±41% | 5.44 · p95 7.18 · ±27% | BlazePlot | 1.69× | 2.71× |
-| Work p50 (ms) | **1.23** · p95 1.38 · ±7% | 2.19 · p95 2.69 · ±12% | 2.48 · p95 3.32 · ±18% | 3.62 · p95 4.33 · ±17% | BlazePlot | 2.03× | 2.95× |
-| Work p95 (ms) | **1.48** · p95 1.79 · ±12% | 2.63 · p95 3.79 · ±24% | 3.11 · p95 5.33 · ±38% | 4.83 · p95 6.71 · ±28% | BlazePlot | 2.10× | 3.26× |
-| Ready (ms) | 11.49 · p95 13.70 · ±15% | 9.88 · p95 20.91 · ±59% | 4.04 · p95 6.19 · ±35% | 6.42 · p95 10.04 · ±33% | tie (uPlot, Chart.js) | 0.35× | 0.56× |
-| Heap (MiB) | **9.1** · p95 9.1 · ±0% | 8.6 · p95 8.6 · ±0% | 11.5 · p95 11.5 · ±0% | 35.4 · p95 35.4 · ±0% | BlazePlot | 1.27× | 3.90× |
+| FPS (fps) | **664** · p95 670 · ±1% | 490 · p95 492 · ±0% | 397 · p95 400 · ±1% | 317 · p95 319 · ±0% | BlazePlot | 1.67× | 2.09× |
+| Frame p95 (ms) | **1.73** · p95 1.78 · ±2% | 2.31 · p95 2.32 · ±1% | 2.87 · p95 2.89 · ±1% | 3.46 · p95 3.48 · ±1% | BlazePlot | 1.66× | 2.00× |
+| Work p50 (ms) | **1.13** · p95 1.14 · ±1% | 1.65 · p95 1.66 · ±1% | 2.33 · p95 2.35 · ±1% | 2.96 · p95 2.97 · ±0% | BlazePlot | 2.07× | 2.63× |
+| Work p95 (ms) | **1.35** · p95 1.39 · ±2% | 1.92 · p95 1.93 · ±1% | 2.65 · p95 2.67 · ±1% | 3.26 · p95 3.29 · ±1% | BlazePlot | 1.96× | 2.41× |
+| Ready (ms) | 5.46 · p95 5.95 · ±6% | 3.66 · p95 3.95 · ±11% | **3.60** · p95 4.08 · ±11% | 5.69 · p95 5.95 · ±3% | uPlot | 0.66× | 1.04× |
+| Heap (MiB) | **8.5** · p95 8.5 · ±0% | 8.0 · p95 8.0 · ±0% | 11.5 · p95 11.5 · ±0% | 35.4 · p95 35.4 · ±0% | BlazePlot | 1.36× | 4.16× |
 
 ### Interaction
 
 #### hover-1m
 
-Pointer move over a 1M point line with crosshair, snapping marker and readout
+Pointer move over a 1M point line with cursor lines, a point marker and a value readout
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| Hover p50 (ms) | 0.47 · p95 0.56 · ±11% | 0.47 · p95 0.51 · ±5% | **0.23** · p95 0.24 · ±4% | 0.35 · p95 0.37 · ±4% | uPlot | 0.48× | 0.76× |
-| Hover p95 (ms) | 0.62 · p95 1.33 · ±60% | 0.59 · p95 0.78 · ±19% | **0.29** · p95 0.35 · ±12% | 0.55 · p95 0.70 · ±21% | uPlot | 0.48× | 0.88× |
+| Hover p50 (ms) | 0.47 · p95 0.47 · ±1% | 0.47 · p95 0.49 · ±3% | **0.24** · p95 0.24 · ±2% | 0.34 · p95 0.34 · ±1% | uPlot | 0.52× | 0.73× |
+| Hover p95 (ms) | 0.66 · p95 0.69 · ±4% | 0.64 · p95 0.66 · ±9% | **0.40** · p95 0.42 · ±9% | 0.56 · p95 0.59 · ±6% | uPlot | 0.60× | 0.85× |
+
+#### hover-1m-rich
+
+Same, with BlazePlot's heavier crosshair (adds a coordinate label); other libraries unchanged
+
+| Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
+|---|---:|---:|---:|---:|---|---:|---:|
+| Hover p50 (ms) | 0.51 · p95 0.52 · ±2% | 0.52 · p95 0.53 · ±3% | **0.24** · p95 0.25 · ±2% | 0.34 · p95 0.35 · ±1% | uPlot | 0.49× | 0.68× |
+| Hover p95 (ms) | 0.69 · p95 0.71 · ±2% | 0.70 · p95 0.71 · ±1% | **0.41** · p95 0.50 · ±13% | 0.57 · p95 0.63 · ±11% | uPlot | 0.60× | 0.83× |
 
 #### resize-1m
 
@@ -313,8 +298,8 @@ Container resize of a 1M point line
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| Resize p50 (ms) | **37.58** · p95 38.03 · ±1% | 37.55 · p95 38.03 · ±1% | 43.40 · p95 43.56 · ±1% | 44.05 · p95 44.08 · ±0% | BlazePlot | 1.16× | 1.17× |
-| Resize p95 (ms) | **38.49** · p95 38.80 · ±1% | 38.55 · p95 38.89 · ±1% | 46.34 · p95 47.03 · ±2% | 47.05 · p95 47.19 · ±1% | BlazePlot | 1.20× | 1.22× |
+| Resize p50 (ms) | **37.52** · p95 37.55 · ±0% | 37.12 · p95 37.25 · ±0% | 43.02 · p95 43.03 · ±0% | 43.50 · p95 43.52 · ±0% | BlazePlot | 1.15× | 1.16× |
+| Resize p95 (ms) | **38.51** · p95 38.57 · ±1% | 38.02 · p95 38.03 · ±0% | 43.73 · p95 44.02 · ±0% | 44.08 · p95 44.22 · ±0% | BlazePlot | 1.14× | 1.14× |
 
 ### Lifecycle
 
@@ -324,9 +309,9 @@ Container resize of a 1M point line
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| Ready (ms) | 42.16 · p95 43.30 · ±2% | 49.19 · p95 49.52 · ±2% | **21.80** · p95 22.07 · ±2% | 51.01 · p95 52.84 · ±3% | uPlot | 0.52× | 1.21× |
-| Heap (MiB) | 42.9 · p95 42.9 · ±0% | 42.7 · p95 42.7 · ±0% | **9.5** · p95 9.5 · ±0% | 37.5 · p95 37.5 · ±0% | uPlot | 0.22× | 0.87× |
-| Destroy (ms) | 1.33 · p95 1.60 · ±16% | 0.78 · p95 1.00 · ±23% | **0.20** · p95 0.23 · ±15% | 0.49 · p95 0.58 · ±13% | uPlot | 0.15× | 0.37× |
+| Ready (ms) | 20.93 · p95 23.96 · ±9% | 20.26 · p95 20.70 · ±2% | 20.16 · p95 20.78 · ±3% | 48.45 · p95 48.81 · ±2% | tie (uPlot, BlazePlot) | 0.96× | 2.32× |
+| Heap (MiB) | **6.9** · p95 6.9 · ±0% | 6.8 · p95 6.8 · ±0% | 9.5 · p95 9.5 · ±0% | 37.5 · p95 37.5 · ±0% | BlazePlot | 1.37× | 5.42× |
+| Destroy (ms) | 0.49 · p95 1.33 · ±95% | 0.54 · p95 0.56 · ±11% | **0.19** · p95 0.21 · ±16% | 0.46 · p95 0.55 · ±17% | uPlot | 0.39× | 0.94× |
 
 #### mount-destroy-cycle
 
@@ -334,9 +319,9 @@ Mount, first frame and destroy of a 100k point chart, repeated 40 times
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| Cycle p50 (ms) | 4.83 · p95 4.88 · ±1% | 2.62 · p95 2.67 · ±3% | **1.76** · p95 1.82 · ±5% | 2.33 · p95 2.46 · ±5% | uPlot | 0.36× | 0.48× |
-| Cycle p95 (ms) | 6.17 · p95 6.34 · ±2% | 3.88 · p95 4.24 · ±5% | **2.33** · p95 2.83 · ±14% | 4.71 · p95 5.59 · ±22% | uPlot | 0.38× | 0.76× |
-| Retained (MiB) | 1.0 · p95 1.0 · ±0% | 0.7 · p95 0.7 · ±0% | **0.3** · p95 0.3 · ±0% | 0.8 · p95 0.9 · ±13% | uPlot | 0.26× | 0.86× |
+| Cycle p50 (ms) | 3.46 · p95 3.50 · ±1% | 1.63 · p95 1.63 · ±1% | **1.69** · p95 1.73 · ±4% | 2.21 · p95 2.27 · ±2% | uPlot | 0.49× | 0.64× |
+| Cycle p95 (ms) | 3.94 · p95 4.04 · ±3% | 2.31 · p95 2.54 · ±8% | **2.48** · p95 2.85 · ±15% | 3.63 · p95 4.56 · ±17% | uPlot | 0.63× | 0.92× |
+| Retained (MiB) | 0.6 · p95 0.9 · ±25% | 0.3 · p95 0.4 · ±36% | **0.3** · p95 0.3 · ±0% | 0.9 · p95 0.9 · ±4% | uPlot | 0.42× | 1.45× |
 
 #### heap-soak-1m-pan
 
@@ -344,8 +329,8 @@ Mount, first frame and destroy of a 100k point chart, repeated 40 times
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| Heap growth (MiB) | 0.4 · p95 0.4 · ±2% | 0.3 · p95 0.3 · ±3% | 0.2 · p95 0.2 · ±65% | 0.4 · p95 0.5 · ±7% | tie (uPlot, BlazePlot) | 0.46× | 1.12× |
-| FPS (fps) | **961** · p95 971 · ±3% | 601 · p95 606 · ±2% | 653 · p95 662 · ±4% | 491 · p95 498 · ±4% | BlazePlot | 1.47× | 1.96× |
+| Heap growth (MiB) | 0.3 · p95 0.4 · ±33% | 0.4 · p95 0.4 · ±3% | 0.2 · p95 0.2 · ±1% | 0.5 · p95 0.5 · ±2% | tie (uPlot, BlazePlot) | 0.55× | 1.42× |
+| FPS (fps) | **1133** · p95 1138 · ±0% | 866 · p95 870 · ±1% | 733 · p95 736 · ±1% | 557 · p95 558 · ±0% | BlazePlot | 1.55× | 2.03× |
 
 #### stream-throughput
 
@@ -353,8 +338,90 @@ Highest live append rate that keeps 60 fps into a 100k-sample sliding window
 
 | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---:|---:|---:|---:|---|---:|---:|
-| Max rate (k samples/s) | 102400 · p95 102400 · ±0% | 102400 · p95 102400 · ±0% | 51200 · p95 102400 · ±50% | 3200 · p95 3200 · ±0% | tie (BlazePlot, uPlot) | 2.00× | 32.0× |
+| Max rate (k samples/s) | 102400 · p95 102400 · ±0% | 102400 · p95 102400 · ±0% | 102400 · p95 102400 · ±0% | 6400 · p95 6400 · ±0% | tie (BlazePlot, uPlot) | 1.00× | 16.0× |
 
+
+## Change since the baseline
+
+Baseline: `bun run bench:compare --no-baseline --port 41841 --debug-port 9421` generated 2026-10-05T14:28:26.350Z with BlazePlot 1.0.0-rc.8. Change is the BlazePlot (WebGL) median now versus then; "better" and "worse" follow each metric's direction, and changes inside the noise floor are shown as "same".
+
+| Scenario | Metric | Baseline | Now | Change | Result |
+|---|---|---:|---:|---:|---|
+| line-100k-static | Ready (ms) | 6.71 | 4.54 | -32.4% | better |
+| line-100k-static | Construct (ms) | 2.51 | 2.24 | -10.8% | same |
+| line-100k-static | Heap (MiB) | 1.9 | 1.5 | -20.5% | better |
+| line-1m-static | Ready (ms) | 9.93 | 8.76 | -11.8% | better |
+| line-1m-static | Construct (ms) | 2.88 | 2.86 | -0.7% | same |
+| line-1m-static | Heap (MiB) | 12.7 | 12.1 | -4.5% | same |
+| cold-first-chart | Ready (ms) | 16.29 | 14.14 | -13.2% | better |
+| cold-first-chart | Construct (ms) | 6.83 | 6.59 | -3.4% | same |
+| line-1m-pan | FPS (fps) | 993 | 1090 | +9.8% | better |
+| line-1m-pan | Frame p95 (ms) | 1.20 | 1.05 | -12.5% | better |
+| line-1m-pan | Work p50 (ms) | 0.61 | 0.54 | -11.5% | better |
+| line-1m-pan | Work p95 (ms) | 0.76 | 0.68 | -10.5% | better |
+| line-1m-pan | Ready (ms) | 9.78 | 5.19 | -46.9% | better |
+| line-1m-pan | Heap (MiB) | 12.6 | 12.1 | -4.6% | same |
+| line-1m-stream | FPS (fps) | 1000 | 1117 | +11.7% | better |
+| line-1m-stream | Frame p95 (ms) | 1.18 | 1.01 | -14.4% | better |
+| line-1m-stream | Work p50 (ms) | 0.60 | 0.52 | -14.9% | better |
+| line-1m-stream | Work p95 (ms) | 0.76 | 0.66 | -13.2% | better |
+| line-1m-stream | Ready (ms) | 10.48 | 6.04 | -42.4% | better |
+| line-1m-stream | Heap (MiB) | 14.8 | 14.0 | -5.5% | better |
+| line-10m-accelerated-pan | FPS (fps) | 1809 | 2081 | +15.0% | better |
+| line-10m-accelerated-pan | Frame p95 (ms) | 0.70 | 0.59 | -16.3% | better |
+| line-10m-accelerated-pan | Work p50 (ms) | 0.17 | 0.12 | -30.3% | same |
+| line-10m-accelerated-pan | Work p95 (ms) | 0.26 | 0.14 | -44.2% | better |
+| line-10m-accelerated-pan | Ready (ms) | 5.33 | 3.62 | -32.1% | better |
+| line-10m-accelerated-pan | Heap (MiB) | 0.7 | 0.3 | -53.2% | better |
+| multi-10x100k-pan | FPS (fps) | 236 | 248 | +5.2% | same |
+| multi-10x100k-pan | Frame p95 (ms) | 4.79 | 4.28 | -10.8% | better |
+| multi-10x100k-pan | Work p50 (ms) | 3.76 | 3.60 | -4.4% | same |
+| multi-10x100k-pan | Work p95 (ms) | 4.31 | 3.84 | -10.9% | better |
+| multi-10x100k-pan | Ready (ms) | 13.54 | 8.30 | -38.7% | better |
+| multi-10x100k-pan | Heap (MiB) | 7.7 | 7.1 | -8.1% | better |
+| multi-100x20k-pan | FPS (fps) | 134 | 161 | +20.1% | better |
+| multi-100x20k-pan | Frame p95 (ms) | 10.70 | 6.68 | -37.6% | better |
+| multi-100x20k-pan | Work p50 (ms) | 6.59 | 5.92 | -10.1% | better |
+| multi-100x20k-pan | Work p95 (ms) | 10.24 | 6.25 | -38.9% | better |
+| multi-100x20k-pan | Ready (ms) | 18.52 | 16.84 | -9.1% | better |
+| multi-100x20k-pan | Heap (MiB) | 16.3 | 16.0 | -2.0% | same |
+| area-1m-pan | FPS (fps) | 1246 | 1430 | +14.8% | better |
+| area-1m-pan | Frame p95 (ms) | 0.98 | 0.83 | -14.8% | better |
+| area-1m-pan | Work p50 (ms) | 0.42 | 0.34 | -20.0% | better |
+| area-1m-pan | Work p95 (ms) | 0.53 | 0.49 | -6.6% | same |
+| area-1m-pan | Ready (ms) | 9.61 | 5.13 | -46.6% | better |
+| area-1m-pan | Heap (MiB) | 12.6 | 12.0 | -5.4% | better |
+| scatter-1m-pan | FPS (fps) | 1493 | 1704 | +14.1% | better |
+| scatter-1m-pan | Frame p95 (ms) | 0.85 | 0.70 | -18.1% | better |
+| scatter-1m-pan | Work p50 (ms) | 0.27 | 0.20 | -24.1% | better |
+| scatter-1m-pan | Work p95 (ms) | 0.42 | 0.26 | -39.3% | better |
+| scatter-1m-pan | Ready (ms) | 8.75 | 4.89 | -44.1% | better |
+| scatter-1m-pan | Heap (MiB) | 12.6 | 11.9 | -5.7% | better |
+| bar-100k-pan | FPS (fps) | 1774 | 2039 | +14.9% | better |
+| bar-100k-pan | Frame p95 (ms) | 0.72 | 0.59 | -17.9% | better |
+| bar-100k-pan | Work p50 (ms) | 0.17 | 0.13 | -28.6% | same |
+| bar-100k-pan | Work p95 (ms) | 0.29 | 0.15 | -46.6% | better |
+| bar-100k-pan | Ready (ms) | 4.93 | 3.85 | -22.1% | better |
+| bar-100k-pan | Heap (MiB) | 1.8 | 1.3 | -27.1% | better |
+| dual-axis-1m-pan | FPS (fps) | 594 | 664 | +11.8% | better |
+| dual-axis-1m-pan | Frame p95 (ms) | 2.00 | 1.73 | -13.7% | better |
+| dual-axis-1m-pan | Work p50 (ms) | 1.23 | 1.13 | -8.2% | better |
+| dual-axis-1m-pan | Work p95 (ms) | 1.48 | 1.35 | -8.8% | better |
+| dual-axis-1m-pan | Ready (ms) | 11.49 | 5.46 | -52.5% | better |
+| dual-axis-1m-pan | Heap (MiB) | 9.1 | 8.5 | -6.3% | better |
+| hover-1m | Hover p50 (ms) | 0.47 | 0.47 | -1.1% | same |
+| hover-1m | Hover p95 (ms) | 0.62 | 0.66 | +6.5% | same |
+| resize-1m | Resize p50 (ms) | 37.58 | 37.52 | -0.2% | same |
+| resize-1m | Resize p95 (ms) | 38.49 | 38.51 | +0.0% | same |
+| many-charts-50 | Ready (ms) | 42.16 | 20.93 | -50.4% | better |
+| many-charts-50 | Heap (MiB) | 42.9 | 6.9 | -83.9% | better |
+| many-charts-50 | Destroy (ms) | 1.33 | 0.49 | -63.2% | same |
+| mount-destroy-cycle | Cycle p50 (ms) | 4.83 | 3.46 | -28.3% | better |
+| mount-destroy-cycle | Cycle p95 (ms) | 6.17 | 3.94 | -36.2% | better |
+| mount-destroy-cycle | Retained (MiB) | 1.0 | 0.6 | -38.1% | better |
+| heap-soak-1m-pan | Heap growth (MiB) | 0.4 | 0.3 | -14.0% | same |
+| heap-soak-1m-pan | FPS (fps) | 961 | 1133 | +17.9% | better |
+| stream-throughput | Max rate (k samples/s) | 102400 | 102400 | +0.0% | same |
 
 ## Failures and skipped runs
 
