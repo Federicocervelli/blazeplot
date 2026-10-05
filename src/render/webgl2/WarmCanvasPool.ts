@@ -66,8 +66,10 @@ export function acquirePlotCanvas(doc: Document): HTMLCanvasElement {
     }
     unpark(entry);
     const { canvas } = entry;
-    // Drop what the last chart's layout and plugins put on the element (class, style, ARIA); size is set by the next chart.
-    for (const name of canvas.getAttributeNames()) canvas.removeAttribute(name);
+    // Drop what the last chart's layout and plugins put on the element (class, style, ARIA). The width and
+    // height attributes stay: they are the drawing buffer, and removing them resets (reallocates) it. The
+    // next chart resizes the canvas only if its plot area differs.
+    for (const name of canvas.getAttributeNames()) if (name !== "width" && name !== "height") canvas.removeAttribute(name);
     owned.set(canvas, entry.backend);
     return canvas;
   }
@@ -89,10 +91,10 @@ export function adoptWarmBackend(canvas: HTMLCanvasElement): GpuBackend | undefi
  */
 export function parkPlotCanvas(canvas: HTMLCanvasElement, backend: GpuBackend): boolean {
   if (!owned.has(canvas) || !usable(backend)) return false;
-  // Leave the old chart's DOM and give the drawing buffer back; the next chart sizes the canvas again.
+  // Leave the old chart's DOM. The drawing buffer keeps its size: shrinking it reallocates it twice per
+  // mount/destroy cycle, and a parked canvas holds it for at most WARM_IDLE_MS, after which the context
+  // (and the buffer with it) is released.
   canvas.remove();
-  canvas.width = 1;
-  canvas.height = 1;
   while (parked.length >= MAX_PARKED) release(parked[0]!);
   const entry: Parked = { canvas, backend, cancel: keepWarm(() => release(entry)) };
   parked.push(entry);
