@@ -514,7 +514,7 @@ Additive features that need no migration work but are easy to miss:
 
 ### ESM only
 
-The package declares `"type": "module"` and exposes only an `import` condition. `require("blazeplot")` throws `ERR_PACKAGE_PATH_NOT_EXPORTED`. There is no CommonJS or UMD build, and none is planned.
+The package declares `"type": "module"` and every export has `import` and `default` conditions. Use `import` or `await import("blazeplot")`; `require("blazeplot")` works only on Node.js 22.12+, which can `require()` ES modules. There is no CommonJS or UMD build, and none is planned.
 
 Before:
 
@@ -540,7 +540,7 @@ In a CommonJS project, use dynamic `import()` or move the chart code into an ES 
 
 ### TypeScript 5.0 or newer
 
-The declarations are checked against TypeScript 5.0 and newer. Your `moduleResolution` must understand package `exports` (`bundler`, `node16`, or `nodenext`); the legacy `node`/`node10` setting cannot resolve subpaths such as `blazeplot/plugins/tooltip`. Include `"DOM"` in `lib`. Details: [TypeScript support](./versioning-and-migration.md#typescript-support).
+The declarations are checked against TypeScript 5.0 and newer. Your `moduleResolution` must understand package `exports` (`bundler`, `node16`, or `nodenext`); the legacy `node`/`node10` setting also resolves every subpath through `typesVersions`. Include `"DOM"` in `lib`. Details: [TypeScript support](./versioning-and-migration.md#typescript-support).
 
 ```json
 {

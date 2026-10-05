@@ -24,7 +24,7 @@ Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./example
 
 | Import | Contents |
 |---|---|
-| `blazeplot` | Chart, datasets, data contracts, theming, and the WebGL2 backend. |
+| `blazeplot` | Chart, datasets, data contracts, theming, and renderer selection. |
 | `blazeplot/linked` | Multi-panel layouts with shared X and per-panel plugins. |
 | `blazeplot/data` | Pure, chart-agnostic data transforms (binning, rolling mean). |
 | `blazeplot/export` | Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers. |
