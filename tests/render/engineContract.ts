@@ -131,6 +131,41 @@ export function defineEngineContract(fixture: EngineFixture): void {
       close(polygons[0]!.bbox, [0, 0, 120, 50]);
     });
 
+    it("fills device-pixel rectangles with their own colors and skips non-finite ones", () => {
+      const h = frame();
+      const rects = new Float32Array([
+        10, 5, 20, 10, 1, 0, 0, 1,
+        Number.NaN, 0, 5, 5, 0, 1, 0, 1,
+        0, 0, 100, 50, 0, 0, 1, 0.5,
+      ]);
+      h.renderer.fillRects(rects, 3);
+      h.renderer.endFrame();
+      const drawn = only(h.draws(), "rect").flatMap((r) => r.rects);
+      expect(drawn).toHaveLength(2);
+      close(drawn[0]!, [10, 5, 30, 15], 0.01);
+      close(drawn[1]!, [0, 0, 100, 50], 0.01);
+    });
+
+    it("draws a surface on another canvas with the same engine, independent of the chart's frame", () => {
+      const h = frame();
+      const { surface, draws } = h.createSurface();
+      expect(surface.kind).toBe(h.expected.name);
+      surface.beginFrame(60, 30, 2);
+      surface.fillRects(new Float32Array([6, 3, 12, 9, 1, 1, 1, 1]), 1);
+      surface.endFrame();
+      const rects = only(draws(), "rect").flatMap((r) => r.rects);
+      expect(rects).toHaveLength(1);
+      close(rects[0]!, [6, 3, 18, 12], 0.01);
+
+      surface.dispose();
+      expect(() => surface.dispose()).not.toThrow();
+      h.renderer.beginFrame(WIDTH, HEIGHT, 1);
+      h.resetDraws();
+      h.renderer.drawLines(new Float32Array([0, 0, 10, 5]), 2, white, 2, projection);
+      h.renderer.endFrame();
+      expect(only(h.draws(), "stroke")).toHaveLength(1);
+    });
+
     it("reports what a frame cost", () => {
       const h = fixture.create();
       h.renderer.beginFrame(WIDTH, HEIGHT, 1);
@@ -140,10 +175,11 @@ export function defineEngineContract(fixture: EngineFixture): void {
       h.renderer.drawLines(new Float32Array([0, 0, 1, 1, 2, 0, 3, 1]), 4, white, 2, projection);
       h.renderer.drawClipLines(new Float32Array([0, -1, 0, 1]), 2, white);
       h.renderer.drawPoints(new Float32Array([1, 1, 2, 2]), 2, white, 4, projection);
+      h.renderer.fillRects(new Float32Array([0, 0, 5, 5, 1, 1, 1, 1]), 1);
       const report = h.renderer.endFrame();
-      expect(report.drawCalls).toBe(3);
-      // Eight vertices of two floats each are staged for a GPU; Canvas 2D draws immediately.
-      expect(report.uploadBytes).toBe(h.expected.gpu ? 8 * 2 * 4 : 0);
+      expect(report.drawCalls).toBe(4);
+      // Eight vertices of two floats each and one eight-float rectangle are staged for a GPU; Canvas 2D draws immediately.
+      expect(report.uploadBytes).toBe(h.expected.gpu ? (8 * 2 + 8) * 4 : 0);
 
       h.renderer.beginFrame(WIDTH, HEIGHT, 1);
       expect(h.renderer.endFrame()).toEqual({ uploadBytes: 0, drawCalls: 0 });

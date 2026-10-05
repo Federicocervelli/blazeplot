@@ -52,8 +52,20 @@ export interface BarDraw extends DrawBase {
   readonly baseline: number;
 }
 
+/**
+ * Instanced rectangles with per-instance colors. Each rectangle is eight floats in the frame stream
+ * (`x, y, width, height` in device pixels, then `r, g, b, a`), so `first` counts four vertices per rectangle.
+ */
+export interface RectsDraw {
+  readonly kind: "rects";
+  readonly first: number;
+  readonly instances: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
 /** One recorded draw call. */
-export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw;
+export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw | RectsDraw;
 
 /**
  * Minimal GPU surface used by the renderer. A frame is recorded on the CPU and submitted in one

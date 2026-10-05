@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-165 exports.
+167 exports.
 
 #### interface AcceleratedDataset
 
@@ -467,6 +467,7 @@ interface ChartPlugin {
 ```ts
 interface ChartPluginContext {
     readonly theme: ResolvedChartTheme;
+    readonly renderer: ChartRendererInfo;
     readonly coords: ChartPluginCoords;
     readonly viewport: ChartPluginViewport;
     readonly state: ChartPluginState;
@@ -583,6 +584,7 @@ interface ChartPluginUnstable {
     readonly canvas: HTMLCanvasElement;
     element(slot: ChartMountSlot | ChartSurface): HTMLElement;
     getWebGLContext(): WebGL2RenderingContext | null;
+    createRenderSurface(canvas: HTMLCanvasElement): ChartRenderSurface;
     getCamera(yAxis?: SeriesYAxis): Camera2D;
 }
 ```
@@ -656,6 +658,19 @@ interface ChartRenderContext {
 
 ```ts
 type ChartRenderLoop = "auto" | "continuous";
+```
+
+#### interface ChartRenderSurface
+
+```ts
+interface ChartRenderSurface {
+    beginFrame(width: number, height: number, pixelRatio: number): void;
+    fillRects(rects: Float32Array, count: number): void;
+    endFrame(): void;
+    readonly isLost: boolean;
+    setLossListener(listener: ((state: RendererLossState) => void) | null): void;
+    dispose(): void;
+}
 ```
 
 #### interface ChartRendererCapabilities
@@ -1142,6 +1157,12 @@ interface RangeSampleCopyDataset extends Dataset {
 
 ```ts
 type RendererChoice = RendererName | "auto";
+```
+
+#### type RendererLossState
+
+```ts
+type RendererLossState = "lost" | "restored";
 ```
 
 #### type RendererName

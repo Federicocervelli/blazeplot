@@ -13,7 +13,7 @@ import type { RgbaColor, SeriesStyle } from "../../core/types.js";
 export interface ChartRenderContext {
   /** Renderer factory for `new Chart(el, { renderer: context.renderer() })`. */
   renderer(): ChartRendererFactory;
-  /** Number of charts currently attached. */
+  /** Number of charts (and plugin render surfaces) currently attached. */
   readonly chartCount: number;
   /** Detach nothing, but release the WebGL context now if no chart is attached. Charts release it themselves on dispose. */
   dispose(): void;
@@ -189,6 +189,15 @@ class SharedWebGLRenderer implements ChartRenderer {
 
   drawTriangles(data: Float32Array, vertexCount: number, color: RgbaColor, projection: RenderProjection, primitive?: "triangles" | "triangle_strip"): void {
     this.shared.active.drawTriangles(data, vertexCount, color, projection, primitive);
+  }
+
+  fillRects(rects: Float32Array, count: number): void {
+    this.shared.active.fillRects(rects, count);
+  }
+
+  /** A surface on `canvas` that draws through the same shared context. */
+  createSurface(canvas: HTMLCanvasElement): ChartRenderer {
+    return new SharedWebGLRenderer(this.shared, { canvas });
   }
 
   dispose(): void {

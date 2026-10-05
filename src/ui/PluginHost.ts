@@ -16,6 +16,7 @@ import type {
   ChartSeriesState,
   ChartFollowXState,
 } from "./Chart.js";
+import type { ChartRenderSurface, ChartRendererInfo } from "../render/ChartRenderer.js";
 import type { ResolvedChartTheme } from "./theme.js";
 
 /**
@@ -235,8 +236,19 @@ export interface ChartPluginUnstable {
   readonly canvas: HTMLCanvasElement;
   /** Raw element behind a mount slot or surface. Prefer `ctx.dom.mount`, `listen`, and `decorate`. */
   element(slot: ChartMountSlot | ChartSurface): HTMLElement;
-  /** The chart's WebGL2 context. The chart may recreate GPU state after context loss. */
+  /**
+   * The chart's WebGL2 context, or `null` when its engine does not own one (Canvas 2D, and the shared
+   * WebGL2 engine, whose context belongs to every chart that uses it). The chart may recreate GPU state
+   * after context loss.
+   */
   getWebGLContext(): WebGL2RenderingContext | null;
+  /**
+   * A drawing surface on `canvas` that uses the chart's rendering engine, so a plugin's own layer
+   * follows the chart's engine (including the shared WebGL2 context) without writing WebGL or Canvas 2D.
+   * Size `canvas` in device pixels. The surface is released when the plugin is disposed, or earlier
+   * through its own `dispose()`. Throws when the engine cannot create another surface.
+   */
+  createRenderSurface(canvas: HTMLCanvasElement): ChartRenderSurface;
   /** The camera for a Y axis. Mutating it bypasses `ViewportPolicy`; prefer `ctx.viewport`. */
   getCamera(yAxis?: SeriesYAxis): Camera2D;
 }
@@ -249,6 +261,8 @@ export interface ChartPluginUnstable {
 export interface ChartPluginContext {
   /** The resolved theme currently used by the chart. Re-read it in `onThemeChange`. */
   readonly theme: ResolvedChartTheme;
+  /** Which rendering engine the chart uses and what it can do. Read-only; stable for the chart's lifetime. */
+  readonly renderer: ChartRendererInfo;
   readonly coords: ChartPluginCoords;
   readonly viewport: ChartPluginViewport;
   readonly state: ChartPluginState;
@@ -273,9 +287,9 @@ export interface ChartPluginHandle {
   onResize?(size: ChartPlotSize): void;
   /** `chart.setTheme(...)` replaced the theme. Runs before the `themechange` event. */
   onThemeChange?(theme: ResolvedChartTheme): void;
-  /** The chart's WebGL context was lost. The chart stops drawing until it is restored. */
+  /** The chart's rendering context was lost (WebGL2, shared WebGL2, or Canvas 2D). The chart stops drawing until it is restored. */
   onContextLost?(): void;
-  /** The chart's WebGL context was restored and its GPU resources rebuilt. */
+  /** The chart's rendering context was restored and the engine rebuilt what it needed. */
   onContextRestored?(): void;
 }
 
@@ -297,7 +311,9 @@ export interface PluginHostChart {
   readonly xAxisElement: HTMLElement;
   readonly yAxisElement: HTMLElement;
   readonly y2AxisElement: HTMLElement;
+  readonly rendererInfo: ChartRendererInfo;
   getWebGLContext(): WebGL2RenderingContext | null;
+  createRenderSurface(canvas: HTMLCanvasElement): ChartRenderSurface;
   getCamera(yAxis?: SeriesYAxis): Camera2D;
   dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
   clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
@@ -639,12 +655,20 @@ export class PluginHost {
       },
       element: (slot) => this.surfaceElement(slot),
       getWebGLContext: () => chart.getWebGLContext(),
+      createRenderSurface: (canvas) => {
+        const surface = chart.createRenderSurface(canvas);
+        track(() => surface.dispose());
+        return surface;
+      },
       getCamera: (yAxis) => chart.getCamera(yAxis),
     };
 
     return {
       get theme() {
         return chart.theme;
+      },
+      get renderer() {
+        return chart.rendererInfo;
       },
       coords,
       viewport,

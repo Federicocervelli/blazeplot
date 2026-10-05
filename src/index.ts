@@ -137,7 +137,7 @@ export type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "./interact
 export type { AxisControllerAxisOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
 
 // Rendering engines: the `renderer` option takes a name or one of these factories
-export type { ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererHandle, ChartRendererInfo, ChartRendererKind, RendererChoice, RendererName } from "./render/ChartRenderer.js";
+export type { ChartRenderSurface, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererHandle, ChartRendererInfo, ChartRendererKind, RendererChoice, RendererLossState, RendererName } from "./render/ChartRenderer.js";
 export { autoRenderer, canvas2dRenderer, createChartRenderContext, sharedRenderer, webgl2Renderer } from "./render/engines.js";
 export type { ChartRenderContext } from "./render/engines.js";
 export { Canvas2DUnavailableError } from "./render/canvas2d/Canvas2DRenderer.js";

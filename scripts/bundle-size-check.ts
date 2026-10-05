@@ -44,15 +44,14 @@ const budgets: Budget[] = [
   { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 4_800 },
   { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_300 },
   { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 9_400 },
-  { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 22_100 },
+  { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 17_700 },
   { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 11_900 },
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
   // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152; 140_448 after the Chart split and histogram tree-shaking (#172).
-  // 166_315 bytes after the engines moved into the core graph: the default renderer is "auto", so the Chart always ships WebGL2 (the old 12 KB chunk, now inlined), Canvas 2D, and the shared WebGL2 context (about +15 KB over the 143_500 budget plus the separate WebGL2 chunk before).
-  { label: "shared Chart chunk (Chart + every engine)", pattern: /^Chart-.*.js$/, maxBytes: 168_900 },
-  { label: "shared WebGL context release chunk", pattern: /^releaseWebGLContext-.*.js$/, maxBytes: 300 },
+  // 169_000 bytes with render surfaces (the rect program, fillRects, createSurface; the flame graph no longer carries its own GLSL, so its entry shrank by about 4.7 KB). 166_315 bytes after the engines moved into the core graph: the default renderer is "auto", so the Chart always ships WebGL2 (the old 12 KB chunk, now inlined), Canvas 2D, and the shared WebGL2 context (about +15 KB over the 143_500 budget plus the separate WebGL2 chunk before).
+  { label: "shared Chart chunk (Chart + every engine)", pattern: /^Chart-.*.js$/, maxBytes: 171_600 },
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 6_400 },

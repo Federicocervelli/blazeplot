@@ -24,6 +24,8 @@ export interface EngineHarness {
   /** Simulate the browser losing the context; returns the dispatched event so tests can check `preventDefault`. */
   lose(): Event;
   restore(): void;
+  /** A second surface on this engine's own kind of canvas, plus what it drew since creation. */
+  createSurface(): { readonly surface: ChartRenderer; draws(): DrawObs[] };
   /** How many times the engine (re)built its GPU resources, or `null` for engines that have none. */
   rebuilds(): number | null;
   readonly expected: { readonly name: RendererName; readonly gpu: boolean; readonly shared: boolean };
@@ -101,6 +103,15 @@ class GlRecorder {
           const a = this.px(command, new Float32Array([x - command.barWidth / 2, command.baseline]), 0);
           const b = this.px(command, new Float32Array([x + command.barWidth / 2, y]), 0);
           rects.push([Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]);
+        }
+        return { kind: "rect", rects };
+      }
+      case "rects": {
+        const rects: Rect[] = [];
+        for (let i = 0; i < command.instances; i++) {
+          const o = (command.first + i * 4) * 2;
+          const [x, y, w, h] = [stream[o]!, stream[o + 1]!, stream[o + 2]!, stream[o + 3]!];
+          if (Number.isFinite(x + y + w + h)) rects.push([x, y, x + w, y + h]);
         }
         return { kind: "rect", rects };
       }
@@ -234,6 +245,10 @@ export const webgl2Fixture: EngineFixture = {
       clears: () => log.clearLog,
       lose: () => loseEvent(canvas, "webglcontextlost"),
       restore: () => void canvas.dispatchEvent(new Event("webglcontextrestored")),
+      createSurface: () => {
+        log.commands.length = 0;
+        return { surface: renderer.createSurface(new EventTarget() as unknown as HTMLCanvasElement), draws: () => log.observe() };
+      },
       rebuilds: () => log.builds,
       expected: { name: "webgl2", gpu: true, shared: false },
     };
@@ -267,6 +282,10 @@ export const canvas2dFixture: EngineFixture = {
         ctx.lost = false;
         canvas.dispatchEvent(new Event("contextrestored"));
       },
+      createSurface: () => {
+        const surfaceCtx = new FakeContext2D();
+        return { surface: renderer.createSurface(fakeCanvas2d(surfaceCtx)), draws: () => observe2d(surfaceCtx.calls) };
+      },
       rebuilds: () => null,
       expected: { name: "canvas2d", gpu: false, shared: false },
     };
@@ -292,6 +311,10 @@ export const sharedFixture: EngineFixture = {
       clears: () => log.clearLog,
       lose: () => loseEvent(hidden, "webglcontextlost"),
       restore: () => void hidden.dispatchEvent(new Event("webglcontextrestored")),
+      createSurface: () => {
+        log.commands.length = 0;
+        return { surface: renderer.createSurface(fakeCanvas2d(new FakeContext2D())), draws: () => log.observe() };
+      },
       rebuilds: () => log.builds,
       expected: { name: "shared", gpu: true, shared: true },
     };

@@ -10,8 +10,7 @@ import { resolve } from "node:path";
 const root = resolve(import.meta.dir, "..");
 const engines = ["canvas2d", "webgl2", "shared"] as const;
 /** Suites that choose their own engine or that are not about charts on an engine. */
-// FlameGraph still owns a private WebGL layer; it joins the engine matrix when it draws through the chart engine.
-const excluded = new Set(["Chart.renderer.test.ts", "Chart.sharedRenderer.test.ts", "FlameGraph.plugin.test.ts"]);
+const excluded = new Set(["Chart.renderer.test.ts", "Chart.sharedRenderer.test.ts"]);
 const suites = readdirSync(resolve(root, "tests/ui"))
   .filter((file) => file.endsWith(".test.ts") && !excluded.has(file))
   .map((file) => `tests/ui/${file}`);

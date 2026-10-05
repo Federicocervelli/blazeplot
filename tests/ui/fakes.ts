@@ -4,7 +4,7 @@ import type { ChartRenderer, ChartRendererInfo, FrameReport, RendererLossState }
 
 /** One draw call a chart made on a {@link RecordingRenderer}. */
 export interface RecordedDraw {
-  readonly method: "drawLines" | "drawClipLines" | "drawPoints" | "drawBarsInstanced" | "drawTriangles";
+  readonly method: "drawLines" | "drawClipLines" | "drawPoints" | "drawBarsInstanced" | "drawTriangles" | "fillRects";
   readonly count: number;
 }
 
@@ -59,6 +59,19 @@ export class RecordingRenderer implements ChartRenderer {
   }
   drawTriangles(_data: Float32Array, count: number): void {
     this.record("drawTriangles", count);
+  }
+  /** Copies of the rectangle data of every `fillRects` call: eight floats per rectangle. */
+  rectFills: Float32Array[] = [];
+  fillRects(rects: Float32Array, count: number): void {
+    this.rectFills.push(rects.slice(0, count * 8));
+    this.record("fillRects", count);
+  }
+  /** Surfaces created by plugins through this engine, in creation order. */
+  surfaces: RecordingRenderer[] = [];
+  createSurface(): ChartRenderer {
+    const surface = new RecordingRenderer();
+    this.surfaces.push(surface);
+    return surface;
   }
   dispose(): void {
     this.disposeCount++;

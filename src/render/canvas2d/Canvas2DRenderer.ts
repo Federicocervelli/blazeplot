@@ -235,6 +235,29 @@ export class Canvas2DRenderer implements ChartRenderer {
     if (generic) ctx.fill(generic);
   }
 
+  fillRects(rects: Float32Array, count: number): void {
+    this.drawCalls++;
+    const n = Math.min(count, rects.length >> 3);
+    const ctx = this.ctx;
+    let style = "";
+    for (let i = 0; i < n; i++) {
+      const o = i * 8;
+      const x = rects[o]!;
+      const y = rects[o + 1]!;
+      const w = rects[o + 2]!;
+      const h = rects[o + 3]!;
+      if (!Number.isFinite(x + y + w + h)) continue;
+      if (x + w < 0 || y + h < 0 || x > this.width || y > this.height) continue;
+      const next = css([rects[o + 4]!, rects[o + 5]!, rects[o + 6]!, rects[o + 7]!]);
+      if (next !== style) ctx.fillStyle = style = next;
+      ctx.fillRect(x, y, w, h);
+    }
+  }
+
+  createSurface(canvas: HTMLCanvasElement): ChartRenderer {
+    return new Canvas2DRenderer(canvas);
+  }
+
   dispose(): void {
     this.canvas.removeEventListener("contextlost", this.handleContextLost);
     this.canvas.removeEventListener("contextrestored", this.handleContextRestored);

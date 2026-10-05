@@ -203,7 +203,7 @@ The overview takes its X and Y domain from each series' `dataBounds()`, so gaps,
 
 ## Flame graphs and status spans
 
-`flameGraphPlugin` adds an optional overlay for FlameGraph-style stack traces and lane/status charts. It lives in its own subpath so the core XY renderer stays small. Its rectangle layer draws with its own WebGL2 context, separate from the chart's renderer (so `sharedRenderer()` does not cover it), and falls back to Canvas 2D when WebGL2 is unavailable. Labels use a 2D canvas.
+`flameGraphPlugin` adds an optional overlay for FlameGraph-style stack traces and lane/status charts. It lives in its own subpath so the core XY renderer stays small. Its rectangle layer draws through the chart's own rendering engine (WebGL2, Canvas 2D, or the shared WebGL2 context), so it follows `ChartOptions.renderer` and joins a shared context instead of opening another. Labels use a 2D canvas.
 
 > **Experimental.** `blazeplot/plugins/flamegraph` and its exports (`flameGraphPlugin`, `parseFoldedStacks`, `buildStatusChartModel`, and their types) are tagged `@experimental` and may change in a minor release. See [API stability](./stability.md#experimental).
 

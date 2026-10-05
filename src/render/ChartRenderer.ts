@@ -16,7 +16,11 @@ export interface FrameReport {
   readonly drawCalls: number;
 }
 
-/** Context state transitions an engine reports to the chart that owns it. */
+/**
+ * Context state transitions an engine reports to the chart that owns it.
+ *
+ * @experimental Reported to plugins through {@link ChartRenderSurface.setLossListener}.
+ */
 export type RendererLossState = "lost" | "restored";
 
 /** Static facts about the engine a chart draws with. */
@@ -29,6 +33,34 @@ export interface ChartRendererCapabilities {
   readonly shared: boolean;
   /** Largest drawing buffer, in pixels, the engine can render into. */
   readonly maxDrawingBufferPixels: number;
+}
+
+/**
+ * A drawing surface a plugin owns, drawn with the chart's rendering engine: WebGL2, Canvas 2D, or
+ * the shared WebGL2 context. Get one from `ctx.unstable.createRenderSurface(canvas)`.
+ *
+ * A frame is `beginFrame`, any number of `fillRects`, then `endFrame`. Everything is in device pixels
+ * with the origin at the canvas's top-left corner, so size the canvas in device pixels first.
+ *
+ * @experimental May change in a minor release. See docs/stability.md.
+ */
+export interface ChartRenderSurface {
+  /** Start a frame on a drawing buffer of `width` x `height` device pixels (`pixelRatio` device pixels per CSS pixel) and clear it. */
+  beginFrame(width: number, height: number, pixelRatio: number): void;
+  /**
+   * Fill `count` rectangles. `rects` holds eight floats per rectangle: `x`, `y`, `width`, `height` in
+   * device pixels, then straight (not premultiplied) `r`, `g`, `b`, `a` from 0 to 1. Rectangles with a
+   * non-finite coordinate are skipped. Edges are not snapped to whole pixels.
+   */
+  fillRects(rects: Float32Array, count: number): void;
+  /** Finish the frame and present it. */
+  endFrame(): void;
+  /** Whether the surface's context is lost; draw calls are skipped until it is restored. */
+  readonly isLost: boolean;
+  /** Register the one listener told when the surface's context is lost or restored (`null` clears it). */
+  setLossListener(listener: ((state: RendererLossState) => void) | null): void;
+  /** Release the surface. Safe to call more than once. */
+  dispose(): void;
 }
 
 /** A built-in rendering engine: WebGL2, Canvas 2D, or WebGL2 through a context shared with other charts. */
@@ -89,6 +121,10 @@ export interface ChartRenderer extends ChartRendererHandle {
    * engine owns the underlying DOM events and rebuilds its own resources before reporting `"restored"`.
    */
   setLossListener(listener: ((state: RendererLossState) => void) | null): void;
+  /** Filled rectangles with per-rectangle colors; see {@link ChartRenderSurface.fillRects}. */
+  fillRects(rects: Float32Array, count: number): void;
+  /** A second drawing surface on `canvas` that uses this same engine, for layers a plugin owns. Dispose it separately. */
+  createSurface(canvas: HTMLCanvasElement): ChartRenderer;
   /** @internal Escape hatch for plugins that draw with their own GL: the engine's exclusive WebGL2 context, if it owns one. */
   webglContext?(): WebGL2RenderingContext | null;
   /** Polyline (`"line_strip"`) or independent segments (`"lines"`); NaN vertices break the line. */
@@ -116,3 +152,22 @@ export interface ChartRendererFactoryContext {
  * The built-in factories are `webgl2Renderer()`, `canvas2dRenderer()`, `sharedRenderer()`, and `autoRenderer()`.
  */
 export type ChartRendererFactory = (context: ChartRendererFactoryContext) => ChartRendererHandle;
+
+/** @internal Narrow an engine instance to the surface contract plugins see. */
+export function toRenderSurface(engine: ChartRenderer): ChartRenderSurface {
+  let disposed = false;
+  return {
+    beginFrame: (width, height, pixelRatio) => engine.beginFrame(width, height, pixelRatio),
+    fillRects: (rects, count) => engine.fillRects(rects, count),
+    endFrame: () => void engine.endFrame(),
+    get isLost() {
+      return engine.isLost;
+    },
+    setLossListener: (listener) => engine.setLossListener(listener),
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      engine.dispose();
+    },
+  };
+}
