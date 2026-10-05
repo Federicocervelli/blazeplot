@@ -409,6 +409,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     const rangeMinMax = this.caps.ohlc ? null : this.caps.rangeMinMax;
     const fast = rangeMinMax !== null && !this.caps.xRange && (!this.caps.gaps || rangeMinMax.rangeMinMaxExcludesGaps === true);
     const span = xMax - xMin;
+    const extent = { minY: 0, maxY: 0 };
     let start = this.dataset.lowerBoundX(xMin);
     for (let b = 0; b < count; b++) {
       const isLast = b === count - 1;
@@ -419,7 +420,8 @@ export class SeriesStore<D extends Dataset = Dataset> {
       let maxY = NaN;
       if (end > start) {
         if (fast) {
-          const range = rangeMinMax.rangeMinMaxY(start, end);
+          const into = this.caps.rangeMinMaxInto;
+          const range = into ? (into.rangeMinMaxInto(start, end, extent) ? extent : null) : rangeMinMax.rangeMinMaxY(start, end);
           if (range) {
             minY = range.minY;
             maxY = range.maxY;

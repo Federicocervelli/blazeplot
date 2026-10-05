@@ -1,5 +1,5 @@
 import { MinMaxTree } from "./MinMaxTree.js";
-import type { MinMaxY } from "./MinMaxTree.js";
+import type { MinMaxOut, MinMaxY } from "./MinMaxTree.js";
 import { nonFiniteXWarning } from "./search.js";
 import { createValueArray } from "./valueArray.js";
 import { assertEqualLengths } from "./validation.js";
@@ -84,12 +84,8 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const physical = this._head;
     this.yData[physical] = y;
     this._head = (physical + 1) % this.capacity;
-    if (this._length < this.capacity) {
-      this._length++;
-      this.tree.include(physical, this.yData[physical]!);
-    } else {
-      this.tree.update(physical, physical + 1);
-    }
+    if (this._length < this.capacity) this._length++;
+    this.tree.update(physical, physical + 1, this.validEnd());
     this._nextX += this.xStep;
   }
 
@@ -136,7 +132,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
   clear(): void {
     this._length = 0;
     this._head = 0;
-    this.tree.reset();
+    this.tree.update(0, this.capacity, 0);
   }
 
   /** Replace the Y value at a logical index. */
@@ -192,10 +188,16 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
   /** Return min/max Y values for a logical index range. */
   rangeMinMaxY(start: number, end: number): MinMaxY | null {
+    const out = { minY: 0, maxY: 0 };
+    return this.rangeMinMaxInto(start, end, out) ? out : null;
+  }
+
+  /** @internal Allocation-free `rangeMinMaxY`: writes into `out` and returns whether the range holds a finite value. */
+  rangeMinMaxInto(start: number, end: number, out: MinMaxOut): boolean {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this._length, Math.ceil(end));
-    if (to <= from) return null;
-    return this.tree.queryRing(this.logicalToPhysical(from), to - from);
+    if (to <= from) return false;
+    return this.tree.queryRingInto(this.logicalToPhysical(from), to - from, out);
   }
 
   /** @internal Copy methods accept a trailing `yOrigin` that is subtracted in float64 before the render-buffer write. */
@@ -261,19 +263,19 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const alignedStart = start - positiveModulo(this.ordinalOffset + start, stride);
 
     let written = 0;
+    const extent = { minY: 0, maxY: 0 };
     for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += stride) {
       const segmentStart = Math.max(0, bucketStart);
       const segmentEnd = Math.min(this._length, bucketStart + stride);
       if (segmentEnd <= start || segmentStart >= end) continue;
 
-      const range = this.rangeMinMaxY(segmentStart, segmentEnd);
-      if (!range) continue;
+      if (!this.rangeMinMaxInto(segmentStart, segmentEnd, extent)) continue;
 
       const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
       const offset = written * 3;
       target[offset] = this.firstX() + representative * this.xStep - xOrigin;
-      target[offset + 1] = range.minY - yOrigin;
-      target[offset + 2] = range.maxY - yOrigin;
+      target[offset + 1] = extent.minY - yOrigin;
+      target[offset + 2] = extent.maxY - yOrigin;
       written++;
     }
 
