@@ -37,6 +37,11 @@ function hasUpdateY(dataset: Dataset): dataset is YUpdatableDataset {
   return typeof (dataset as Partial<YUpdatableDataset>).updateY === "function";
 }
 
+/** Built-in datasets that bulk-read raw X/Y (gap = non-finite Y) into Float64 arrays. */
+interface XYRangeReader extends Dataset {
+  readXYRange(start: number, end: number, xOut: Float64Array, yOut: Float64Array): void;
+}
+
 /** Dataset with an explicit per-index gap predicate. */
 type GapDataset = Dataset & { isGap(index: number): boolean };
 
@@ -46,6 +51,7 @@ type GapDataset = Dataset & { isGap(index: number): boolean };
  */
 interface DatasetCaps {
   readonly gaps: GapDataset | null;
+  readonly readXY: XYRangeReader | null;
   readonly ohlc: OhlcDataset | null;
   readonly xRange: XRangeDataset | null;
   readonly rangeMinMax: RangeMinMaxDataset | null;
@@ -85,6 +91,7 @@ function shiftY(target: Float32Array, count: number, floatsPerSample: number, of
 
 function resolveCaps(dataset: Dataset): DatasetCaps {
   return Object.freeze({
+    readXY: typeof (dataset as Partial<XYRangeReader>).readXYRange === "function" ? (dataset as XYRangeReader) : null,
     gaps: typeof dataset.isGap === "function" ? (dataset as GapDataset) : null,
     ohlc: isOhlcDataset(dataset) ? dataset : null,
     xRange: "getXRange" in dataset ? (dataset as XRangeDataset) : null,
@@ -199,6 +206,10 @@ type PointSearchInterval = {
   readonly end: number;
   readonly lowerBoundSq: number;
 };
+
+const RAW_SCRATCH_BLOCK = 2048;
+const RAW_SCRATCH_X = new Float64Array(RAW_SCRATCH_BLOCK + 1);
+const RAW_SCRATCH_Y = new Float64Array(RAW_SCRATCH_BLOCK + 1);
 
 function interpolateY(x0: number, y0: number, x1: number, y1: number, x: number): number {
   if (x1 === x0) return y0;
@@ -838,59 +849,91 @@ export class SeriesStore<D extends Dataset = Dataset> {
     const end = range.end;
     if (end - from <= 0) return { count: 0, next: end, done: true };
 
-    let count = 0;
-    let lastX = NaN;
-    let lastY = NaN;
-    let lastWasGap = false;
-    const addPoint = (x: number, y: number): void => {
-      const outX = x - xOrigin;
-      if (!lastWasGap && count > 0 && outX === lastX && y === lastY) return;
-      const offset = count * 2;
-      target[offset] = outX;
-      target[offset + 1] = y - yOrigin;
-      count++;
-      lastX = outX;
-      lastY = y;
-      lastWasGap = false;
-    };
-    const addGap = (): void => {
-      if (count === 0 || lastWasGap) return;
-      const offset = count * 2;
-      target[offset] = NaN;
-      target[offset + 1] = NaN;
-      count++;
-      lastX = NaN;
-      lastY = NaN;
-      lastWasGap = true;
-    };
-
     if (range.end - range.start === 1) {
       const x = this.dataset.getX(from);
       const y = this.dataset.getY(from);
       if (x < viewport.xMin || x > viewport.xMax || this.isGap(from, y)) return { count: 0, next: end, done: true };
-      addPoint(x, y);
-      return { count, next: end, done: true };
+      target[0] = x - xOrigin;
+      target[1] = y - yOrigin;
+      return { count: 1, next: end, done: true };
     }
 
+    // Segments are read in blocks into Float64 scratch arrays (bulk typed-array copies for built-in
+    // datasets) so the hot loop below makes no per-sample calls. Gap samples become NaN in the scratch.
+    const dataset = this.dataset;
+    const reader = this.caps.readXY;
+    const gaps = reader ? null : this.caps.gaps;
+    const xs = RAW_SCRATCH_X;
+    const ys = RAW_SCRATCH_Y;
+    const xMin = viewport.xMin;
+    const xMax = viewport.xMax;
+    let count = 0;
+    let lastX = NaN;
+    let lastY = NaN;
+    let lastWasGap = false;
+
     let i = from;
-    for (; i + 1 < end; i++) {
-      // A segment emits at most two points; stop before the buffer could overflow.
-      if (count + 2 > maxPoints) return { count, next: i, done: false };
-      const x0 = this.dataset.getX(i);
-      const y0 = this.dataset.getY(i);
-      const x1 = this.dataset.getX(i + 1);
-      const y1 = this.dataset.getY(i + 1);
-      if (x1 < viewport.xMin || x0 > viewport.xMax) continue;
-      if (this.isGap(i, y0) || this.isGap(i + 1, y1)) {
-        addGap();
-        continue;
+    while (i + 1 < end) {
+      const blockEnd = Math.min(end, i + RAW_SCRATCH_BLOCK + 1);
+      const n = blockEnd - i;
+      if (reader) {
+        reader.readXYRange(i, blockEnd, xs, ys);
+      } else {
+        for (let k = 0; k < n; k++) {
+          const index = i + k;
+          xs[k] = dataset.getX(index);
+          ys[k] = gaps !== null && gaps.isGap(index) ? NaN : dataset.getY(index);
+        }
       }
 
-      const clippedX0 = Math.max(x0, viewport.xMin);
-      const clippedX1 = Math.min(x1, viewport.xMax);
-      if (clippedX1 < clippedX0) continue;
-      addPoint(clippedX0, interpolateY(x0, y0, x1, y1, clippedX0));
-      addPoint(clippedX1, interpolateY(x0, y0, x1, y1, clippedX1));
+      let x0 = xs[0]!;
+      let y0 = ys[0]!;
+      for (let k = 0; k + 1 < n; k++, i++) {
+        // A segment emits at most two points; stop before the buffer could overflow.
+        if (count + 2 > maxPoints) return { count, next: i, done: false };
+        const x1 = xs[k + 1]!;
+        const y1 = ys[k + 1]!;
+        const sx0 = x0;
+        const sy0 = y0;
+        x0 = x1;
+        y0 = y1;
+        if (x1 < xMin || sx0 > xMax) continue;
+        if (!Number.isFinite(sy0) || !Number.isFinite(y1)) {
+          if (count !== 0 && !lastWasGap) {
+            const offset = count * 2;
+            target[offset] = NaN;
+            target[offset + 1] = NaN;
+            count++;
+            lastX = NaN;
+            lastY = NaN;
+            lastWasGap = true;
+          }
+          continue;
+        }
+
+        const clippedX0 = sx0 > xMin ? sx0 : xMin;
+        const clippedX1 = x1 < xMax ? x1 : xMax;
+        if (clippedX1 < clippedX0) continue;
+        const yA = interpolateY(sx0, sy0, x1, y1, clippedX0);
+        const yB = interpolateY(sx0, sy0, x1, y1, clippedX1);
+        const outX0 = clippedX0 - xOrigin;
+        if (lastWasGap || count === 0 || outX0 !== lastX || yA !== lastY) {
+          const offset = count * 2;
+          target[offset] = outX0;
+          target[offset + 1] = yA - yOrigin;
+          count++;
+          lastWasGap = false;
+        }
+        const outX1 = clippedX1 - xOrigin;
+        if (outX1 !== outX0 || yB !== yA) {
+          const offset = count * 2;
+          target[offset] = outX1;
+          target[offset + 1] = yB - yOrigin;
+          count++;
+        }
+        lastX = outX1;
+        lastY = yB;
+      }
     }
 
     return { count, next: i, done: true };
