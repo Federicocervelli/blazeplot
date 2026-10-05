@@ -1,7 +1,7 @@
 import type { MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
 import type { Dataset, MinMaxSegmentCopyDataset, RangeMinMaxDataset, SampleCopyLayout, TimeRange, Viewport, XRange, XRangeDataset } from "./types.js";
-import { assertSortedFiniteX } from "./validation.js";
+import { assertEqualLengths, assertSortedFiniteX } from "./validation.js";
 
 const SERVER_HINT = "Sort server samples by X and drop non-finite X before passing them.";
 
@@ -86,7 +86,8 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
   /** Replace all samples with point or bucket data. Throws a `RangeError` for non-finite or decreasing X. */
   replace(data: ServerSampledData): void {
     if (data.kind === "points") {
-      const length = Math.min(data.x.length, data.y.length);
+      assertEqualLengths("ServerSampledDataset.replace", { x: data.x, y: data.y });
+      const length = data.x.length;
       assertSortedFiniteX("ServerSampledDataset", data.x, length, SERVER_HINT);
       this._kind = data.kind;
       this.x = copyFloat64(data.x, length);
@@ -96,7 +97,8 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
       return;
     }
 
-    const length = Math.min(data.xStart.length, data.xEnd.length, data.minY.length, data.maxY.length);
+    assertEqualLengths("ServerSampledDataset.replace", { xStart: data.xStart, xEnd: data.xEnd, minY: data.minY, maxY: data.maxY });
+    const length = data.xStart.length;
     assertSortedFiniteX("ServerSampledDataset xStart", data.xStart, length, SERVER_HINT, "bucket");
     assertSortedFiniteX("ServerSampledDataset xEnd", data.xEnd, length, SERVER_HINT, "bucket");
     for (let i = 0; i < length; i++) {

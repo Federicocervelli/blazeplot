@@ -3,7 +3,7 @@ import type { MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
 import type { Dataset, TimeRange, ValuePrecision } from "./types.js";
 import { createValueArray } from "./valueArray.js";
-import { assertSortedFiniteX, invalidXError, stableFiniteXOrder } from "./validation.js";
+import { assertEqualLengths, assertSortedFiniteX, invalidXError, stableFiniteXOrder } from "./validation.js";
 
 const STATIC_HINT =
   "Use StaticDataset.sorted(x, y) to sort and drop non-finite X, or pass { assumeSorted: true } to skip this check for data you trust.";
@@ -111,7 +111,8 @@ export class StaticDataset implements Dataset {
    * samples with equal X keep their input order. Non-finite Y values are kept as gaps.
    */
   static sorted(x: ArrayLike<number>, y: ArrayLike<number>, options: StaticDatasetSortedOptions = {}): StaticDataset {
-    const order = stableFiniteXOrder(x, Math.min(x.length, y.length));
+    assertEqualLengths("StaticDataset.sorted", { x, y });
+    const order = stableFiniteXOrder(x, x.length);
     const xs = new Float64Array(order.length);
     const ys = createValueArray(order.length, options.valuePrecision);
     for (let i = 0; i < order.length; i++) {
@@ -131,7 +132,8 @@ export class StaticDataset implements Dataset {
     options: StaticDatasetOptions = {},
   ) {
     this.assumeSorted = options.assumeSorted === true;
-    this.count = Math.min(xData.length, yData.length);
+    assertEqualLengths("StaticDataset", { x: xData, y: yData });
+    this.count = xData.length;
     this.checkX(xData, this.count);
   }
 
@@ -146,7 +148,8 @@ export class StaticDataset implements Dataset {
    */
   replace(data: StaticDatasetData): void {
     const xData = data.x ?? this.xData;
-    const count = Math.min(xData.length, data.y.length);
+    assertEqualLengths("StaticDataset.replace", { x: xData, y: data.y });
+    const count = xData.length;
     if (data.x !== undefined) this.checkedLength = 0;
     this.checkX(xData, count);
     const sameY = data.y === this.yData;

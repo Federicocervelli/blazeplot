@@ -38,6 +38,24 @@ export function assertSortedFiniteX(owner: string, x: ArrayLike<number>, count: 
   throw invalidXError(owner, x[bad]!, bad, bad > 0 ? x[bad - 1]! : NaN, hint, label);
 }
 
+/**
+ * @internal Throw a `RangeError` when parallel input arrays differ in length. A mismatch is
+ * almost always a bug in the caller's data pipeline, so it is reported instead of truncating.
+ */
+export function assertEqualLengths(owner: string, arrays: Readonly<Record<string, ArrayLike<number>>>): void {
+  let firstName: string | undefined;
+  let firstLength = 0;
+  for (const name in arrays) {
+    const length = arrays[name]!.length;
+    if (firstName === undefined) {
+      firstName = name;
+      firstLength = length;
+    } else if (length !== firstLength) {
+      throw new RangeError(`${owner}: ${firstName} has ${firstLength} values but ${name} has ${length}.`);
+    }
+  }
+}
+
 /** @internal Build the `RangeError` thrown by static datasets for an invalid X. */
 export function invalidXError(owner: string, value: number, index: number, previous: number, hint: string, label: string = "index"): RangeError {
   const reason = invalidXReason(value);

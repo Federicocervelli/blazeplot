@@ -143,6 +143,8 @@ const chart = new Chart(element, { plugins: [navigator] });
 navigator.refresh();
 ```
 
+The overview takes its X and Y domain from each series' `dataBounds()`, so gaps, OHLC highs and lows, and bar or area baselines are included, and a series that starts or ends with a gap still appears. Series with up to `maxSamplesPerSeries` samples (default 512) draw as an exact polyline. Denser series draw a filled min/max envelope with one bucket per CSS pixel of navigator width, so isolated spikes stay visible. The overview is rebuilt only when the data or the navigator width changes, not on every viewport change.
+
 ## Flame graphs and status spans
 
 `flameGraphPlugin` adds an optional WebGL2 overlay for FlameGraph-style stack traces and lane/status charts. It lives in its own subpath so the core XY renderer stays small.

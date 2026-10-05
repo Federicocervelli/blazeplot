@@ -362,6 +362,14 @@ console.log(chart.getFollowXState(), chart.getViewport().xMin);
 chart.dispose();
 ```
 
+### 11. Data and series API corrections
+
+- **Mismatched array lengths throw.** In 0.5, `StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`, `RingBuffer.append`, `UniformRingBuffer.append`, and `OhlcRingBuffer.append` silently used the shortest array. 1.0 throws a `RangeError` such as `RingBuffer.append: x has 100 values but y has 99.` and leaves existing data unchanged. If you relied on the truncation, slice the arrays yourself before passing them.
+- **`"envelope"` is removed from `SeriesMode`.** It never rendered anything but a line. Use `"line"`, or `downsample: "server"` with `ServerSampledDataset` for a pre-reduced min/max band. `chart.addSeries` now throws a `TypeError` for any unknown `mode`.
+- **Default series colors no longer repeat after `removeSeries`.** A new series takes the first palette color that no attached palette-colored series uses (it used `series.length % palette.length`). Palette-colored series now follow `chart.setTheme(...)`; series with an explicit `color` do not. New: `series.setStyle(options)` merges style options after creation.
+- **The navigator overview uses `series.dataBounds()` and a min/max envelope for dense series.** Spikes between samples now show up in the overview and its Y domain, and series that start or end with a gap are no longer dropped. `maxSamplesPerSeries` now sets the size up to which a series draws as an exact polyline.
+- **`downsample: "none"` line and bar series draw every visible sample.** Past 16,384 visible samples (4,096 bars on the non-instanced path) they used to stop drawing partway across the plot. No code change is needed.
+
 ## Platform requirements
 
 ### ESM only

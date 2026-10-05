@@ -1180,7 +1180,7 @@ type SeriesIdentityConfig = Pick<SeriesConfig, "id" | "name" | "yAxis" | "downsa
 #### type SeriesMode
 
 ```ts
-type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar" | "ohlc" | "candlestick";
+type SeriesMode = "line" | "area" | "scatter" | "bar" | "ohlc" | "candlestick";
 ```
 
 #### type SeriesObjectAppendData
@@ -1269,6 +1269,7 @@ class SeriesStore<D extends Dataset = Dataset> {
     get length(): number;
     get visible(): boolean;
     get xRange(): TimeRange | null;
+    setStyle(options: SeriesStyleOptions): void;
     setVisible(visible: boolean): void;
     append(data: SeriesAppendData): void;
     updateLast(data: SeriesUpdateData): boolean;
