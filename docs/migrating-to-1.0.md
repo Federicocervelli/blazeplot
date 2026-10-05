@@ -271,7 +271,7 @@ import type { ChartPlugin } from "blazeplot";
 
 const footerPlugin: ChartPlugin = {
   install(ctx) {
-    const footer = document.createElement("div");
+    const footer = ctx.dom.create("div");
     ctx.dom.mount("root", footer);
     ctx.layout.reserve({ bottom: 28 });
     ctx.events.subscribe("render", () => {

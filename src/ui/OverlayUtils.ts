@@ -6,8 +6,13 @@ import { rgbaCss } from "./theme.js";
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** Create an SVG element in the SVG namespace. */
-export function createSvgElement<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
-  return document.createElementNS(SVG_NS, tag);
+export function createSvgElement<K extends keyof SVGElementTagNameMap>(doc: Document, tag: K): SVGElementTagNameMap[K] {
+  return doc.createElementNS(SVG_NS, tag);
+}
+
+/** Narrow an event target to an `Element` without `instanceof`, so nodes from another window (iframe, popup) pass. */
+export function asElement(target: EventTarget | null | undefined): Element | null {
+  return target && (target as Node).nodeType === 1 ? (target as Element) : null;
 }
 
 /** A plugin instance that mirrors the pointer X of other charts in its sync group. */
@@ -84,8 +89,8 @@ export interface OverlayLayerOptions {
 }
 
 /** Create a plot overlay layer with consistent positioning and pointer behavior. */
-export function createOverlayLayer(className: string, options: OverlayLayerOptions = {}): HTMLDivElement {
-  const layer = document.createElement("div");
+export function createOverlayLayer(doc: Document, className: string, options: OverlayLayerOptions = {}): HTMLDivElement {
+  const layer = doc.createElement("div");
   layer.className = className;
   layer.style.position = "absolute";
   if (options.inset !== undefined) layer.style.inset = options.inset;
@@ -105,8 +110,9 @@ export function placeFixedWithinViewport(
   const rect = options.size ?? element.getBoundingClientRect();
   const margin = options.margin ?? 4;
   const doc = element.ownerDocument;
-  const viewportWidth = Math.max(1, globalThis.innerWidth || doc.documentElement.clientWidth);
-  const viewportHeight = Math.max(1, globalThis.innerHeight || doc.documentElement.clientHeight);
+  const view = doc.defaultView;
+  const viewportWidth = Math.max(1, view?.innerWidth || doc.documentElement.clientWidth);
+  const viewportHeight = Math.max(1, view?.innerHeight || doc.documentElement.clientHeight);
   const x = clamp(clientX + options.offsetX, margin, Math.max(margin, viewportWidth - rect.width - margin));
   const y = clamp(clientY + options.offsetY, margin, Math.max(margin, viewportHeight - rect.height - margin));
   element.style.transform = `translate(${x}px, ${y}px)`;
@@ -140,8 +146,8 @@ export function renderPickItems<TContext>(
   const pad = Math.max(1, ...items.map((item) => labelOfPickItem(item).length));
   container.replaceChildren();
   items.forEach((item, index) => {
-    if (index > 0) container.append(document.createElement("br"));
-    const swatch = document.createElement("span");
+    if (index > 0) container.append(container.ownerDocument.createElement("br"));
+    const swatch = container.ownerDocument.createElement("span");
     swatch.className = "blazeplot-pick-swatch";
     swatch.style.color = rgbaCss(item.series.style.color);
     swatch.textContent = "\u2588";
@@ -182,8 +188,8 @@ export function pickAtDataX(chart: ChartPluginContext, dataX: number, options: P
 }
 
 /** Create a marker element for a picked series point. */
-export function createPickMarker(item: ChartPickItem, options: PickMarkerOptions): HTMLDivElement {
-  const marker = document.createElement("div");
+export function createPickMarker(doc: Document, item: ChartPickItem, options: PickMarkerOptions): HTMLDivElement {
+  const marker = doc.createElement("div");
   marker.className = "blazeplot-pick-marker";
   marker.style.position = "absolute";
   marker.style.left = `${item.plotX}px`;
@@ -200,6 +206,8 @@ export function createPickMarker(item: ChartPickItem, options: PickMarkerOptions
 
 /** Options for long-press touch tracking. */
 export interface LongPressTouchTrackerOptions {
+  /** Window that owns the chart, used for timers and animation frames. */
+  readonly view: Window;
   readonly delayMs: () => number | false | undefined;
   readonly onPoint: (clientX: number, clientY: number) => void;
   readonly movementThresholdPx?: number;
@@ -226,8 +234,8 @@ export function createLongPressTouchTracker(options: LongPressTouchTrackerOption
   let clientY = 0;
 
   const clear = (): void => {
-    if (timer !== null) window.clearTimeout(timer);
-    if (raf !== 0) window.cancelAnimationFrame(raf);
+    if (timer !== null) options.view.clearTimeout(timer);
+    if (raf !== 0) options.view.cancelAnimationFrame(raf);
     timer = null;
     raf = 0;
     active = false;
@@ -236,14 +244,14 @@ export function createLongPressTouchTracker(options: LongPressTouchTrackerOption
   const refresh = (): void => {
     if (!active) return;
     options.onPoint(clientX, clientY);
-    raf = window.requestAnimationFrame(refresh);
+    raf = options.view.requestAnimationFrame(refresh);
   };
 
   const activate = (): void => {
     timer = null;
     active = true;
     options.onPoint(clientX, clientY);
-    raf = window.requestAnimationFrame(refresh);
+    raf = options.view.requestAnimationFrame(refresh);
   };
 
   const schedule = (nextClientX: number, nextClientY: number): void => {
@@ -252,7 +260,7 @@ export function createLongPressTouchTracker(options: LongPressTouchTrackerOption
     clientX = nextClientX;
     clientY = nextClientY;
     clear();
-    timer = window.setTimeout(activate, delayMs ?? 450);
+    timer = options.view.setTimeout(activate, delayMs ?? 450);
   };
 
   const handleMove = (event: TouchEvent | PointerEvent, nextClientX: number, nextClientY: number): void => {

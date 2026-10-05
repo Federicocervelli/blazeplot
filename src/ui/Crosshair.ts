@@ -144,7 +144,7 @@ function createXRangeHighlight(item: ChartPickItem, chart: ChartPluginContext, c
   const [leftX, valueY] = chart.coords.dataToPlot(item.xRange!.xStart, item.y, yAxis);
   const [rightX, baselineY] = chart.coords.dataToPlot(item.xRange!.xEnd, baseline, yAxis);
   const width = Math.max(1, Math.abs(rightX - leftX));
-  const marker = document.createElement("div");
+  const marker = chart.dom.document.createElement("div");
   marker.style.position = "absolute";
   marker.style.left = `${(leftX + rightX) / 2 - width / 2}px`;
   marker.style.top = `${Math.min(valueY, baselineY)}px`;
@@ -254,7 +254,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       const stroke = options.markerStrokeColor ?? chartRef?.theme.markerStrokeColor ?? "";
       for (const item of items) {
         if (item.xRange && chartRef) markerLayer.appendChild(createXRangeHighlight(item, chartRef, stroke));
-        else markerLayer.appendChild(createPickMarker(item, { sizePx: Math.max(2, options.markerSize ?? 10), strokeColor: stroke, strokeWidthPx: Math.max(0, options.markerStrokeWidth ?? 2) }));
+        else markerLayer.appendChild(createPickMarker(markerLayer.ownerDocument, item, { sizePx: Math.max(2, options.markerSize ?? 10), strokeColor: stroke, strokeWidthPx: Math.max(0, options.markerStrokeWidth ?? 2) }));
       }
       return;
     }
@@ -268,7 +268,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       const item = items[i]!;
       let marker = markerPool[i];
       if (!marker) {
-        marker = createPickMarker(item, { sizePx: size, strokeColor, strokeWidthPx: strokeWidth });
+        marker = createPickMarker(markerLayer.ownerDocument, item, { sizePx: size, strokeColor, strokeWidthPx: strokeWidth });
         markerPool[i] = marker;
         markerLayer.appendChild(marker);
       } else {
@@ -337,17 +337,17 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       const width = `${options.width ?? 1}px`;
       const dash = options.dash;
 
-      root = document.createElement("div");
+      root = chart.dom.document.createElement("div");
       root.className = "blazeplot-crosshair";
       root.style.position = "absolute";
       root.style.inset = "0";
       root.style.display = "none";
       root.style.pointerEvents = "none";
 
-      lineLayer = createOverlayLayer("blazeplot-crosshair-lines", { inset: "0", zIndex: options.zIndex ?? 0 });
-      overlayLayer = createOverlayLayer("blazeplot-crosshair-overlay", { inset: "0", zIndex: options.zIndex ?? 22 });
+      lineLayer = createOverlayLayer(chart.dom.document, "blazeplot-crosshair-lines", { inset: "0", zIndex: options.zIndex ?? 0 });
+      overlayLayer = createOverlayLayer(chart.dom.document, "blazeplot-crosshair-overlay", { inset: "0", zIndex: options.zIndex ?? 22 });
 
-      vertical = document.createElement("div");
+      vertical = chart.dom.document.createElement("div");
       vertical.style.position = "absolute";
       vertical.style.top = "0";
       vertical.style.bottom = "0";
@@ -355,7 +355,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       vertical.style.borderLeft = `${width} solid ${color}`;
       if (dash) vertical.style.borderLeftStyle = "dashed";
 
-      horizontal = document.createElement("div");
+      horizontal = chart.dom.document.createElement("div");
       horizontal.style.position = "absolute";
       horizontal.style.left = "0";
       horizontal.style.right = "0";
@@ -363,9 +363,9 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       horizontal.style.borderTop = `${width} solid ${color}`;
       if (dash) horizontal.style.borderTopStyle = "dashed";
 
-      markerLayer = createOverlayLayer("blazeplot-crosshair-markers", { inset: "0", display: "block", zIndex: 2 });
+      markerLayer = createOverlayLayer(chart.dom.document, "blazeplot-crosshair-markers", { inset: "0", display: "block", zIndex: 2 });
 
-      label = document.createElement("div");
+      label = chart.dom.document.createElement("div");
       label.style.position = "absolute";
       label.style.zIndex = "3";
       label.style.padding = "4px 6px";
@@ -375,7 +375,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       label.style.font = options.labelFont ?? chart.theme.tooltipFont;
       label.style.whiteSpace = "nowrap";
 
-      rulerSvg = createSvgElement("svg");
+      rulerSvg = createSvgElement(chart.dom.document, "svg");
       rulerSvg.style.position = "absolute";
       rulerSvg.style.inset = "0";
       rulerSvg.style.width = "100%";
@@ -383,7 +383,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       rulerSvg.style.display = "none";
       rulerSvg.style.overflow = "hidden";
       rulerSvg.style.zIndex = "1";
-      rulerLine = createSvgElement("line");
+      rulerLine = createSvgElement(chart.dom.document, "line");
       rulerLine.setAttribute("stroke", color);
       rulerLine.setAttribute("stroke-width", String(options.width ?? 1));
       if (dash) rulerLine.setAttribute("stroke-dasharray", dash);
@@ -423,6 +423,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       };
 
       const longPress = createLongPressTouchTracker({
+        view: chart.dom.view,
         delayMs: () => options.longPressMs,
         onPoint: showAtClientPoint,
       });

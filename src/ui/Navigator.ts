@@ -222,7 +222,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     overlay.setAttribute("preserveAspectRatio", "none");
 
     while (paths.length < selectedSeries.length) {
-      const path = createSvgElement("path");
+      const path = createSvgElement(chart.dom.document, "path");
       path.setAttribute("fill", "none");
       path.setAttribute("vector-effect", "non-scaling-stroke");
       overlay.insertBefore(path, windowRect);
@@ -302,7 +302,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
   return singleChartPlugin("navigator", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
-      root = document.createElement("div");
+      root = chart.dom.document.createElement("div");
       root.className = options.className ?? "blazeplot-navigator";
       root.style.position = "absolute";
       root.style.left = "0";
@@ -322,17 +322,17 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         ? null
         : chart.layout.reserve(placement === "top" ? { top: height + margin * 2 } : { bottom: height + margin * 2 });
 
-      overlay = createSvgElement("svg");
+      overlay = createSvgElement(chart.dom.document, "svg");
       overlay.style.width = "100%";
       overlay.style.height = "100%";
       overlay.setAttribute("aria-hidden", "true");
       overlay.style.display = "block";
-      windowRect = createSvgElement("rect");
+      windowRect = createSvgElement(chart.dom.document, "rect");
       windowRect.setAttribute("class", "blazeplot-navigator-window");
-      leftHandle = createSvgElement("rect");
-      rightHandle = createSvgElement("rect");
-      leftHandleHit = createSvgElement("rect");
-      rightHandleHit = createSvgElement("rect");
+      leftHandle = createSvgElement(chart.dom.document, "rect");
+      rightHandle = createSvgElement(chart.dom.document, "rect");
+      leftHandleHit = createSvgElement(chart.dom.document, "rect");
+      rightHandleHit = createSvgElement(chart.dom.document, "rect");
       for (const handle of [leftHandle, rightHandle]) {
         handle.style.cursor = "ew-resize";
         handle.style.pointerEvents = "none";
@@ -353,6 +353,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       const applyTheme = (): void => {
         if (!root || !windowRect || !leftHandle || !rightHandle) return;
         const windowStroke = options.windowStrokeColor ?? chart.theme.axisColor;
+        root.setAttribute("data-blazeplot-screenshot-box", "");
         root.style.background = options.backgroundColor ?? chart.theme.legendBackgroundColor;
         root.style.outline = `1px solid ${options.borderColor ?? chart.theme.legendBorderColor}`;
         windowRect.setAttribute("fill", options.windowFillColor ?? rgbaCss(chart.theme.gridColor));

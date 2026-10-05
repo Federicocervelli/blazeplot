@@ -38,8 +38,64 @@ export interface A11yInspection {
   readonly y: string;
 }
 
+/**
+ * Every user-facing string of `a11yPlugin`. Override any subset through `A11yPluginOptions.messages`;
+ * unset keys keep their English defaults. Counts are pre-formatted with the plugin's `locale`.
+ */
+export interface A11yMessages {
+  /** Keyboard instructions placed before the data table. */
+  readonly instructions: string;
+  readonly noPointsInView: (name: string) => string;
+  /** Table caption. `sampled` is true when only some of the visible points are listed. */
+  readonly tableCaption: (name: string, shown: string, visible: string, sampled: boolean) => string;
+  /** Default header of the X column. */
+  readonly xHeader: string;
+  /** Default header of the value column for non-OHLC series. */
+  readonly yHeader: string;
+  /** Headers of the open, high, low, and close columns. */
+  readonly ohlcHeaders: readonly [open: string, high: string, low: string, close: string];
+  readonly noValue: (name: string) => string;
+  readonly ohlcValues: (open: string, high: string, low: string, close: string) => string;
+  /** Announcement for the inspected sample. `position` and `total` are locale-formatted. */
+  readonly inspection: (name: string, x: string, y: string, position: string, total: string) => string;
+  readonly noPointsToInspect: string;
+  readonly noVisibleSeries: string;
+  readonly stoppedInspecting: string;
+  /** One series entry of the live summary. */
+  readonly livePart: (name: string, y: string, x: string) => string;
+  /** The live summary from its series entries. */
+  readonly live: (parts: readonly string[]) => string;
+  /** Fallback series name when it has neither `name` nor `id`. */
+  readonly seriesName: (mode: string, index: number) => string;
+}
+
+/** English defaults for `A11yMessages`. */
+export const DEFAULT_A11Y_MESSAGES: A11yMessages = {
+  instructions: "Keyboard: with the chart focused, press Enter to inspect data points. "
+    + "Left and Right arrows move between points, Up and Down switch series, Page Up and Page Down jump, "
+    + "Home and End go to the first and last visible point, and Escape stops inspecting.",
+  noPointsInView: (name) => `${name}: no points in view.`,
+  tableCaption: (name, shown, visible, sampled) => `${name}: ${shown} points${sampled ? `, evenly sampled from ${visible} visible points` : " visible"}`,
+  xHeader: "X",
+  yHeader: "Y",
+  ohlcHeaders: ["Open", "High", "Low", "Close"],
+  noValue: (name) => `${name}: no value at this point.`,
+  ohlcValues: (open, high, low, close) => `open ${open}, high ${high}, low ${low}, close ${close}`,
+  inspection: (name, x, y, position, total) => `${name}: x ${x}, y ${y}. Point ${position} of ${total}.`,
+  noPointsToInspect: "No data points in view to inspect.",
+  noVisibleSeries: "No visible series to inspect.",
+  stoppedInspecting: "Stopped inspecting points.",
+  livePart: (name, y, x) => `${name} ${y} at ${x}`,
+  live: (parts) => `Latest: ${parts.join("; ")}.`,
+  seriesName: (mode, index) => `${mode} ${index + 1}`,
+};
+
 /** Options for `a11yPlugin`. */
 export interface A11yPluginOptions {
+  /** BCP 47 locale for counts in generated text. Defaults to `"en-US"`. */
+  readonly locale?: string;
+  /** Override any generated string, for localization. */
+  readonly messages?: Partial<A11yMessages>;
   /** Visually hidden data table of the visible data, one table per visible series. Defaults to true. */
   readonly table?: boolean | A11yTableOptions;
   /** Keyboard inspection cursor driven from the focused chart root. Defaults to true. */
@@ -70,9 +126,6 @@ const DEFAULT_LIVE_INTERVAL_MS = 10_000;
 const MIN_LIVE_INTERVAL_MS = 1_000;
 /** Samples scanned past gaps when stepping or looking for the latest value. */
 const GAP_SCAN_LIMIT = 4_096;
-const INSTRUCTIONS = "Keyboard: with the chart focused, press Enter to inspect data points. "
-  + "Left and Right arrows move between points, Up and Down switch series, Page Up and Page Down jump, "
-  + "Home and End go to the first and last visible point, and Escape stops inspecting.";
 
 /**
  * Logical indexes for at most `maxRows` table rows from `[start, end)`: every index when it fits,
@@ -101,8 +154,8 @@ function visuallyHide(element: HTMLElement): void {
   });
 }
 
-function seriesName(state: ChartSeriesState): string {
-  return state.name ?? state.id ?? `${state.mode} ${state.index + 1}`;
+function seriesName(state: ChartSeriesState, messages: A11yMessages): string {
+  return state.name ?? state.id ?? messages.seriesName(state.mode, state.index);
 }
 
 function isOhlc(state: ChartSeriesState): boolean {
@@ -136,6 +189,15 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
   const tableOptions = options.table === false ? null : (typeof options.table === "object" ? options.table : {});
   const liveOptions = options.live ? (options.live === true ? {} : options.live) : null;
   const inspectionEnabled = options.inspection !== false;
+  const messages: A11yMessages = { ...DEFAULT_A11Y_MESSAGES, ...options.messages };
+  const locale = options.locale ?? "en-US";
+  const formatCount = (value: number): string => {
+    try {
+      return value.toLocaleString(locale);
+    } catch {
+      return value.toLocaleString("en-US");
+    }
+  };
   let rebuildTable: (() => void) | null = null;
   let inspecting = false;
 
@@ -143,14 +205,14 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
     install(chart: ChartPluginContext) {
       const formatX = options.formatX ?? ((value: number) => chart.coords.format(value, "x"));
       const formatY = options.formatY ?? ((value: number, state: ChartSeriesState) => chart.coords.format(value, "y", state.yAxis));
-      const doc = document;
+      const doc = chart.dom.document;
 
       const container = doc.createElement("div");
       container.className = "blazeplot-a11y";
       visuallyHide(container);
       if (inspectionEnabled) {
         const instructions = doc.createElement("p");
-        instructions.textContent = INSTRUCTIONS;
+        instructions.textContent = messages.instructions;
         container.appendChild(instructions);
       }
       const announcer = doc.createElement("div");
@@ -207,7 +269,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
         const ranges = states.map((state) => state.series.visibleIndexRange(chart.viewport.get(state.yAxis)));
         const viewport = chart.viewport.get();
         const signature = [viewport.xMin, viewport.xMax, ...states.flatMap((state, i) => [
-          state.index, state.series.length, ranges[i]!.start, ranges[i]!.end, state.series.xRange?.end ?? "", seriesName(state),
+          state.index, state.series.length, ranges[i]!.start, ranges[i]!.end, state.series.xRange?.end ?? "", seriesName(state, messages),
         ])].join("|");
         if (signature === tableSignature) return;
         tableSignature = signature;
@@ -217,17 +279,17 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
         for (const [i, state] of states.entries()) {
           const range = ranges[i]!;
           const visibleCount = Math.max(0, range.end - range.start);
-          const name = seriesName(state);
+          const name = seriesName(state, messages);
           if (visibleCount === 0) {
             const empty = doc.createElement("p");
-            empty.textContent = `${name}: no points in view.`;
+            empty.textContent = messages.noPointsInView(name);
             nodes.push(empty);
             continue;
           }
           const indices = sampleTableIndices(range.start, range.end, maxRows);
-          const sampled = indices.length < visibleCount ? `, evenly sampled from ${visibleCount.toLocaleString("en-US")} visible points` : " visible";
-          const captionText = `${name}: ${indices.length.toLocaleString("en-US")} points${sampled}`;
-          const headers = [tableOptions.xLabel ?? "X", ...(isOhlc(state) ? ["Open", "High", "Low", "Close"] : [tableOptions.yLabel ?? "Y"])];
+
+          const captionText = messages.tableCaption(name, formatCount(indices.length), formatCount(visibleCount), indices.length < visibleCount);
+          const headers = [tableOptions.xLabel ?? messages.xHeader, ...(isOhlc(state) ? messages.ohlcHeaders : [tableOptions.yLabel ?? messages.yHeader])];
           const rows: Array<{ readonly index: number; readonly sample: SeriesSample; readonly values: string[] }> = [];
           for (const index of indices) {
             const sample = state.series.sampleAt(index);
@@ -314,12 +376,12 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
 
       const describe = (state: ChartSeriesState, index: number): string => {
         const sample = state.series.sampleAt(index);
-        if (!sample) return `${seriesName(state)}: no value at this point.`;
+        if (!sample) return messages.noValue(seriesName(state, messages));
         const values = formatValues(state, index, sample);
-        const y = isOhlc(state) ? `open ${values[0]}, high ${values[1]}, low ${values[2]}, close ${values[3]}` : values[0]!;
+        const y = isOhlc(state) ? messages.ohlcValues(values[0]!, values[1]!, values[2]!, values[3]!) : values[0]!;
         const inspection: A11yInspection = { series: state, sample, position: index + 1, total: state.series.length, x: formatX(sample.x), y };
         if (options.formatAnnouncement) return options.formatAnnouncement(inspection);
-        return `${seriesName(state)}: x ${inspection.x}, y ${inspection.y}. Point ${inspection.position.toLocaleString("en-US")} of ${inspection.total.toLocaleString("en-US")}.`;
+        return messages.inspection(seriesName(state, messages), inspection.x, inspection.y, formatCount(inspection.position), formatCount(inspection.total));
       };
 
       /** Pan just enough to bring the sample into view, so the tooltip and crosshair can show it. */
@@ -365,7 +427,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
           setActive(state, sample.index);
           return true;
         }
-        announce("No data points in view to inspect.");
+        announce(messages.noPointsToInspect);
         return false;
       };
 
@@ -423,7 +485,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
           case "ArrowUp": switchSeries(state, -1); break;
           case "Home": jump(state, false); break;
           case "End": jump(state, true); break;
-          case "Escape": stopInspection("Stopped inspecting points."); break;
+          case "Escape": stopInspection(messages.stoppedInspecting); break;
           default: return;
         }
         event.preventDefault();
@@ -464,7 +526,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
             return;
           }
         }
-        stopInspection("No visible series to inspect.");
+        stopInspection(messages.noVisibleSeries);
       });
       chart.events.subscribe("viewportchange", scheduleTable);
       chart.events.subscribe("render", scheduleTable);
@@ -479,7 +541,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
           const states = chart.state.getSeries().filter((state) => state.visible);
           const text = liveOptions.format
             ? liveOptions.format(states, chart)
-            : defaultLiveText(states, formatX, formatY);
+            : defaultLiveText(states, formatX, formatY, messages);
           if (!text || text === lastLive) return;
           lastLive = text;
           liveRegion.textContent = text;
@@ -513,11 +575,12 @@ function defaultLiveText(
   states: readonly ChartSeriesState[],
   formatX: (value: number) => string,
   formatY: (value: number, series: ChartSeriesState) => string,
+  messages: A11yMessages,
 ): string {
   const parts: string[] = [];
   for (const state of states) {
     const sample = latestSample(state.series);
-    if (sample) parts.push(`${seriesName(state)} ${formatY(sample.y, state)} at ${formatX(sample.x)}`);
+    if (sample) parts.push(messages.livePart(seriesName(state, messages), formatY(sample.y, state), formatX(sample.x)));
   }
-  return parts.length ? `Latest: ${parts.join("; ")}.` : "";
+  return parts.length ? messages.live(parts) : "";
 }

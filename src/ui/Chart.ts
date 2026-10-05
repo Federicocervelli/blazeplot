@@ -14,7 +14,7 @@ import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { PanIntent, ViewportPolicy, ZoomIntent } from "../interaction/types.js";
-import { AxisOverlay, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
+import { AUTO_GUTTER_PADDING_PX, AxisOverlay, GutterTracker, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
 import { forcedColorsTheme, resolveChartTheme, resolveThemeColor } from "./theme.js";
@@ -22,8 +22,8 @@ import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import type { SelectionState } from "./Selection.js";
 import { PluginHost } from "./PluginHost.js";
 import type { ChartLayoutReservation, ChartPlugin, ChartPluginEventMap } from "./PluginHost.js";
-import { buildChartSummary } from "./ChartSummary.js";
-import type { ChartSummary } from "./ChartSummary.js";
+import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
+import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 
 /** Vertices in the shared raw line/point/area upload buffer. */
 const BYTES_PER_VERTEX = 2 * Float32Array.BYTES_PER_ELEMENT;
@@ -39,6 +39,10 @@ const FLOATS_PER_OHLC_TUPLE = 5;
 const GRID_LINE_VERTEX_CAPACITY = (X_TICK_LIMIT + 2 + Y_TICK_LIMIT + 2) * 2;
 const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
 const TITLE_TOP_PX = 6;
+/** Height of the subtitle line, reserved below the title. */
+const SUBTITLE_ROW_PX = 20;
+/** Smallest auto-sized gutter, so a short-label axis still leaves room for ticks. */
+const MIN_AUTO_GUTTER_PX = 16;
 const SUBTITLE_TOP_PX = 26;
 const TITLE_SIDE_INSET_PX = 8;
 const AXIS_TITLE_INSET_PX = 4;
@@ -87,6 +91,13 @@ export interface AxisConfig extends AxisControllerAxisOptions {
   readonly visible?: boolean;
   readonly position?: AxisPosition;
   readonly title?: string | TextOverlayConfig;
+  /**
+   * Gutter size in CSS pixels for an `"outside"` axis, not counting room for the axis title.
+   * Pass `"auto"` to size it from the widest (Y, Y2) or tallest (X) measured tick label; it
+   * grows at once and shrinks only after the smaller size holds for about a second.
+   * Defaults to 52 for Y and Y2 and 28 for X.
+   */
+  readonly size?: number | "auto";
 }
 
 /** Strategy used to find data points near a pointer location. */
@@ -101,8 +112,20 @@ export interface ChartPickOptions {
   readonly maxDistancePx?: number;
 }
 
+/** Overridable core accessibility strings. Unset keys keep their English defaults. */
+export interface ChartAccessibilityMessages {
+  /** Accessible name when the chart has no title. Defaults to `"BlazePlot chart"`. */
+  readonly defaultLabel?: string;
+  /** Wording of the generated summary (`aria-describedby`). */
+  readonly summary?: Partial<ChartSummaryMessages>;
+}
+
 /** ARIA and high-contrast options for the chart root. Keyboard pan and zoom come from `interactionsPlugin`. */
 export interface ChartAccessibilityOptions {
+  /** BCP 47 locale for counts in generated text. Defaults to `"en-US"`. */
+  readonly locale?: string;
+  /** Override the generated core strings, for localization. */
+  readonly messages?: ChartAccessibilityMessages;
   /** Accessible name. Defaults to the chart title and subtitle, then `"BlazePlot chart"`. */
   readonly label?: string;
   /**
@@ -512,6 +535,7 @@ export class Chart {
   private readonly yTicks: number[] = [];
   private readonly y2Ticks: number[] = [];
   private axisOverlay: AxisOverlay | null = null;
+  private gutterTrackers = { x: new GutterTracker(), y: new GutterTracker(), y2: new GutterTracker() };
   private normalizedAxes: ResolvedAxesConfig;
   private resolvedTheme: ResolvedChartTheme;
   private gridVisible: boolean;
@@ -612,7 +636,7 @@ export class Chart {
     event.preventDefault();
     this.webglContextLost = true;
     if (this.restoreRenderRafId !== 0) {
-      cancelAnimationFrame(this.restoreRenderRafId);
+      this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
       this.restoreRenderRafId = 0;
     }
     this.resetFrameStats();
@@ -673,8 +697,9 @@ export class Chart {
 
     this.toggleDomListeners("addEventListener");
 
-    if (typeof ResizeObserver !== "undefined") {
-      this.resizeObserver = new ResizeObserver(() => this.resize());
+    const ResizeObserverCtor = this.layout.view.ResizeObserver ?? globalThis.ResizeObserver;
+    if (typeof ResizeObserverCtor !== "undefined") {
+      this.resizeObserver = new ResizeObserverCtor(() => this.resize());
       this.resizeObserver.observe(this.layout.plot);
     }
 
@@ -933,7 +958,13 @@ export class Chart {
    * most once a second from the same data.
    */
   getSummary(): ChartSummary {
-    return buildChartSummary(this.series, (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis));
+    const option = this.options.accessibility;
+    const config = typeof option === "object" ? option : undefined;
+    return buildChartSummary(
+      this.series,
+      (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis),
+      createSummaryMessages(config?.locale ?? "en-US", config?.messages?.summary),
+    );
   }
 
   /** Return metadata for all attached series. */
@@ -1046,7 +1077,7 @@ export class Chart {
   }
 
   /** Resize the canvas to match its layout size and device pixel ratio. */
-  resize(dpr: number = globalThis.devicePixelRatio): boolean {
+  resize(dpr: number = this.layout.view.devicePixelRatio): boolean {
     const resized = this.applyCanvasSize(dpr);
     if (resized) {
       // `plugins` is unset while the constructor sizes the canvas, before any plugin exists.
@@ -1153,8 +1184,10 @@ export class Chart {
 
   /** Render the chart, including DOM overlays under the chart root, to an image blob. */
   async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
-    this.render();
+    // Load the chunk first, then render synchronously right before the compose step reads the
+    // (non-preserved) drawing buffer, so a presented frame cannot clear it in between.
     const { composeChartScreenshot } = await import("./screenshot.js");
+    this.render();
     return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
@@ -1171,7 +1204,7 @@ export class Chart {
   stop(): void {
     this.running = false;
     if (this.rafId !== 0) {
-      cancelAnimationFrame(this.rafId);
+      this.layout.view.cancelAnimationFrame(this.rafId);
       this.rafId = 0;
     }
   }
@@ -1179,7 +1212,7 @@ export class Chart {
   /** Schedule a frame. Chart-owned changes call this automatically. */
   requestRender(): void {
     if (!this.running || this.rafId !== 0) return;
-    this.rafId = requestAnimationFrame(() => {
+    this.rafId = this.layout.view.requestAnimationFrame(() => {
       this.rafId = 0;
       if (!this.running) return;
       try {
@@ -1198,9 +1231,9 @@ export class Chart {
     this.stop();
     this.clearXFollowResumeTimer();
     this.resizeObserver?.disconnect();
-    if (this.hoverRafId !== 0) cancelAnimationFrame(this.hoverRafId);
+    if (this.hoverRafId !== 0) this.layout.view.cancelAnimationFrame(this.hoverRafId);
     this.hoverRafId = 0;
-    if (this.restoreRenderRafId !== 0) cancelAnimationFrame(this.restoreRenderRafId);
+    if (this.restoreRenderRafId !== 0) this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
     this.restoreRenderRafId = 0;
     this.toggleDomListeners("removeEventListener");
     this.unwatchForcedColors();
@@ -1260,6 +1293,7 @@ export class Chart {
       this.renderer.endFrame();
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
+      this.updateAutoGutters();
       this.emit("render", undefined);
     } catch (error) {
       if (this.renderer.getWebGLContext()?.isContextLost() === true) {
@@ -1272,7 +1306,7 @@ export class Chart {
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     if (this.hoverRafId !== 0) {
-      cancelAnimationFrame(this.hoverRafId);
+      this.layout.view.cancelAnimationFrame(this.hoverRafId);
       this.hoverRafId = 0;
     }
     this.refreshHover();
@@ -1373,7 +1407,7 @@ export class Chart {
   private watchForcedColors(): void {
     const option = this.options.accessibility;
     if (option === false || (typeof option === "object" && option.forcedColors === false)) return;
-    const view = this.layout.root.ownerDocument.defaultView ?? globalThis;
+    const view = this.layout.view;
     if (typeof view.matchMedia !== "function") return;
     const query = view.matchMedia("(forced-colors: active)");
     this.forcedColorsQuery = query;
@@ -1596,7 +1630,7 @@ export class Chart {
 
   private scheduleRenderAfterRestore(): void {
     if (this.restoreRenderRafId !== 0) return;
-    this.restoreRenderRafId = requestAnimationFrame(() => {
+    this.restoreRenderRafId = this.layout.view.requestAnimationFrame(() => {
       this.restoreRenderRafId = 0;
       this.render();
     });
@@ -1612,7 +1646,7 @@ export class Chart {
     const doc = root.ownerDocument;
     if (root.tabIndex < 0) root.tabIndex = 0;
     root.setAttribute("role", config?.role ?? "figure");
-    root.setAttribute("aria-label", config?.label ?? (title || "BlazePlot chart"));
+    root.setAttribute("aria-label", config?.label ?? (title || config?.messages?.defaultLabel || "BlazePlot chart"));
     this.layout.plot.setAttribute("role", "presentation");
     for (const element of [this.canvas, this.xAxisElement, this.yAxisElement, this.y2AxisElement]) {
       element.setAttribute("aria-hidden", "true");
@@ -1632,8 +1666,29 @@ export class Chart {
     this.summaryElement = summary;
   }
 
+  /** Resize `size: "auto"` gutters from the labels measured this frame. */
+  private updateAutoGutters(): void {
+    const overlay = this.axisOverlay;
+    if (!overlay) return;
+    let changed = false;
+    for (const axis of ["x", "y", "y2"] as const) {
+      const config = this.normalizedAxes[axis];
+      if (config.size !== "auto" || !config.visible || config.position !== "outside") continue;
+      const extent = overlay.measuredExtent(axis);
+      if (extent <= 0) continue;
+      const next = this.gutterTrackers[axis].next(Math.max(MIN_AUTO_GUTTER_PX, extent + AUTO_GUTTER_PADDING_PX));
+      if (next !== null && this.layout.setAutoSize(axis, next)) changed = true;
+    }
+    if (changed) {
+      this.resize();
+      this.requestRender();
+    }
+  }
+
   private rebuildAxisOverlay(): void {
     this.axisOverlay?.dispose();
+    this.gutterTrackers = { x: new GutterTracker(), y: new GutterTracker(), y2: new GutterTracker() };
+    for (const axis of ["x", "y", "y2"] as const) this.layout.setAutoSize(axis, null);
     const axes = this.normalizedAxes;
     this.axisOverlay = axes.x.visible || axes.y.visible || axes.y2.visible
       ? new AxisOverlay(this.layout, axes, { color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont })
@@ -1642,8 +1697,12 @@ export class Chart {
 
   private updateTextOverlays(): void {
     const theme = this.resolvedTheme;
+    const hasTitle = titleText(this.options.title) !== "";
+    const hasSubtitle = titleText(this.options.subtitle) !== "";
     this.applyChartTitle(this.layout.title, this.options.title, theme.titleColor, theme.titleFont, TITLE_TOP_PX);
-    this.applyChartTitle(this.layout.subtitle, this.options.subtitle, theme.subtitleColor, theme.subtitleFont, SUBTITLE_TOP_PX);
+    this.applyChartTitle(this.layout.subtitle, this.options.subtitle, theme.subtitleColor, theme.subtitleFont, hasTitle ? SUBTITLE_TOP_PX : TITLE_TOP_PX);
+    // Title and subtitle get their own grid row, so they never sit on top of the plot.
+    this.layout.setTitleInset((hasTitle ? SUBTITLE_TOP_PX : 0) + (hasSubtitle ? SUBTITLE_ROW_PX : 0));
     this.applyAxisTitle(this.layout.xAxisTitle, this.normalizedAxes.x.title, "x");
     this.applyAxisTitle(this.layout.yAxisTitle, this.normalizedAxes.y.title, "y");
     this.applyAxisTitle(this.layout.y2AxisTitle, this.normalizedAxes.y2.title, "y2");
@@ -1697,7 +1756,7 @@ export class Chart {
     }
   }
 
-  private applyCanvasSize(dpr: number = globalThis.devicePixelRatio): boolean {
+  private applyCanvasSize(dpr: number = this.layout.view.devicePixelRatio): boolean {
     const scale = Number.isFinite(dpr) ? Math.max(1, dpr) : 1;
     const width = Math.max(1, Math.floor(this.canvas.clientWidth * scale));
     const height = Math.max(1, Math.floor(this.canvas.clientHeight * scale));
@@ -2268,7 +2327,7 @@ export class Chart {
 
   private scheduleHoverRefresh(): void {
     if (this.hoverRafId !== 0) return;
-    this.hoverRafId = requestAnimationFrame(() => {
+    this.hoverRafId = this.layout.view.requestAnimationFrame(() => {
       this.hoverRafId = 0;
       this.refreshHover();
     });

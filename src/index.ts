@@ -2,6 +2,7 @@
 export { Chart } from "./ui/Chart.js";
 export type {
   AxisConfig,
+  ChartAccessibilityMessages,
   ChartAccessibilityOptions,
   ChartAutoFitYOptions,
   ChartEventMap,
@@ -38,7 +39,7 @@ export type {
   TypedSeriesConfig,
 } from "./ui/Chart.js";
 export type { AxisPosition } from "./ui/ChartLayout.js";
-export type { ChartSeriesSummary, ChartSummary, ChartSummaryRange } from "./ui/ChartSummary.js";
+export type { ChartSeriesSummary, ChartSummary, ChartSummaryMessages, ChartSummaryRange } from "./ui/ChartSummary.js";
 
 // Plugin contract
 export type {

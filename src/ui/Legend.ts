@@ -2,10 +2,37 @@ import type { ChartSeriesState } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { rgbaCss } from "./theme.js";
 
+/** Every user-facing string of `legendPlugin`. Unset keys keep their English defaults. */
+export interface LegendMessages {
+  /** Accessible name of the legend group. */
+  readonly ariaLabel: string;
+  /** Tooltip (`title`) of a visible series' toggle button. */
+  readonly hide: (name: string) => string;
+  /** Tooltip (`title`) of a hidden series' toggle button. */
+  readonly show: (name: string) => string;
+  /** Fallback series name when it has neither `name` nor `id`. */
+  readonly seriesName: (mode: string, index: number) => string;
+}
+
+/** English defaults for `LegendMessages`. */
+export const DEFAULT_LEGEND_MESSAGES: LegendMessages = {
+  ariaLabel: "Chart series legend",
+  hide: (name) => `Hide ${name}`,
+  show: (name) => `Show ${name}`,
+  seriesName: (mode, index) => `${mode} ${index + 1}`,
+};
+
 /** Options for the built-in series legend plugin. */
 export interface LegendPluginOptions {
+  /** Override legend strings, for localization. */
+  readonly messages?: Partial<LegendMessages>;
   readonly className?: string;
-  readonly position?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+  /**
+   * Corner placements overlay the plot. `"top"`, `"bottom"`, `"left"`, and `"right"` sit
+   * outside it: the legend reserves space through `ctx.layout.reserve` and the plot shrinks to fit.
+   * Defaults to `"top-right"`.
+   */
+  readonly position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "top" | "bottom" | "left" | "right";
   readonly toggleOnClick?: boolean;
   readonly backgroundColor?: string;
   readonly borderColor?: string;
@@ -17,11 +44,31 @@ export interface LegendPluginOptions {
   readonly render?: (state: readonly ChartSeriesState[], container: HTMLElement, chart: ChartPluginContext) => void;
 }
 
-function applyPosition(el: HTMLElement, position: NonNullable<LegendPluginOptions["position"]>): void {
+type LegendPosition = NonNullable<LegendPluginOptions["position"]>;
+
+const OUTSIDE_POSITIONS: ReadonlySet<LegendPosition> = new Set(["top", "bottom", "left", "right"]);
+/** Gap between an outside legend and the chart edge, and between the legend and the plot. */
+const OUTSIDE_LEGEND_GAP_PX = 8;
+
+function applyPosition(el: HTMLElement, position: LegendPosition): void {
+  if (OUTSIDE_POSITIONS.has(position)) {
+    // Outside legends sit in space reserved at the chart edge, centered along it.
+    const horizontal = position === "top" || position === "bottom";
+    el.style.top = position === "top" ? `${OUTSIDE_LEGEND_GAP_PX}px` : position === "bottom" ? "auto" : "50%";
+    el.style.bottom = position === "bottom" ? `${OUTSIDE_LEGEND_GAP_PX}px` : "auto";
+    el.style.left = position === "left" ? `${OUTSIDE_LEGEND_GAP_PX}px` : position === "right" ? "auto" : "50%";
+    el.style.right = position === "right" ? `${OUTSIDE_LEGEND_GAP_PX}px` : "auto";
+    el.style.transform = horizontal ? "translateX(-50%)" : "translateY(-50%)";
+    el.style.display = "flex";
+    el.style.flexDirection = horizontal ? "row" : "column";
+    el.style.gap = horizontal ? "14px" : "4px";
+    return;
+  }
   el.style.top = position.startsWith("top") ? "8px" : "auto";
   el.style.bottom = position.startsWith("bottom") ? "8px" : "auto";
   el.style.left = position.endsWith("left") ? "8px" : "auto";
   el.style.right = position.endsWith("right") ? "8px" : "auto";
+  el.style.transform = "";
 }
 
 function legendBorder(options: LegendPluginOptions, chart: ChartPluginContext): string {
@@ -43,6 +90,7 @@ function renderDefaultLegend(
   options: LegendPluginOptions,
   rows: Map<ChartSeriesState["series"], LegendRow>,
 ): void {
+  const messages: LegendMessages = { ...DEFAULT_LEGEND_MESSAGES, ...options.messages };
   const current = new Set(state.map((item) => item.series));
   for (const [series, row] of rows) {
     if (!current.has(series)) { row.element.remove(); rows.delete(series); }
@@ -51,9 +99,10 @@ function renderDefaultLegend(
   for (const [index, item] of state.entries()) {
     let entry = rows.get(item.series);
     if (!entry) {
-      const row = document.createElement(toggleOnClick ? "button" : "span");
-      if (row instanceof HTMLButtonElement) {
-        row.type = "button";
+      const row = chart.dom.document.createElement(toggleOnClick ? "button" : "span");
+      if (toggleOnClick) {
+        const button = row as HTMLButtonElement;
+        button.type = "button";
         row.addEventListener("click", () => item.series.setVisible(!item.series.visible));
       }
       Object.assign(row.style, {
@@ -61,22 +110,22 @@ function renderDefaultLegend(
         appearance: "none", background: "transparent", font: "inherit", textAlign: "left",
         cursor: toggleOnClick ? "pointer" : "default", outlineOffset: "2px",
       });
-      const swatch = document.createElement("span");
+      const swatch = chart.dom.document.createElement("span");
       swatch.textContent = "\u2588";
       swatch.className = "blazeplot-legend-swatch";
       swatch.setAttribute("aria-hidden", "true");
       swatch.style.flex = "0 0 auto";
-      const label = document.createElement("span");
+      const label = chart.dom.document.createElement("span");
       row.append(swatch, label);
       entry = { element: row, swatch, label };
       rows.set(item.series, entry);
     }
     const { element, swatch, label } = entry;
-    const name = item.name ?? item.id ?? `${item.mode} ${item.index + 1}`;
+    const name = item.name ?? item.id ?? messages.seriesName(item.mode, item.index);
     if (toggleOnClick) {
       element.setAttribute("aria-pressed", String(item.visible));
       element.setAttribute("aria-label", name);
-      element.title = `${item.visible ? "Hide" : "Show"} ${name}`;
+      element.title = item.visible ? messages.hide(name) : messages.show(name);
     }
     element.style.color = item.visible
       ? options.textColor ?? chart.theme.legendTextColor
@@ -96,7 +145,8 @@ function renderDefaultLegend(
 export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {
-      const container = document.createElement("div");
+      const messages: LegendMessages = { ...DEFAULT_LEGEND_MESSAGES, ...options.messages };
+      const container = chart.dom.document.createElement("div");
       container.className = options.className ?? "blazeplot-legend";
       container.style.position = "absolute";
       container.style.zIndex = String(options.zIndex ?? 40);
@@ -108,10 +158,26 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.style.font = options.font ?? chart.theme.legendFont;
       container.style.whiteSpace = "pre";
       container.style.userSelect = "none";
+      container.setAttribute("data-blazeplot-screenshot-box", "");
       container.setAttribute("role", "group");
-      container.setAttribute("aria-label", "Chart series legend");
-      applyPosition(container, options.position ?? "top-right");
+      container.setAttribute("aria-label", messages.ariaLabel);
+      const position = options.position ?? "top-right";
+      applyPosition(container, position);
       chart.dom.mount("root", container);
+
+      // Outside placements reserve the legend's measured size so the plot shrinks instead of being covered.
+      let releaseReservation: (() => void) | null = null;
+      let reserved = 0;
+      const syncReservation = (): void => {
+        if (!OUTSIDE_POSITIONS.has(position)) return;
+        const rect = container.getBoundingClientRect();
+        const size = position === "top" || position === "bottom" ? rect.height : rect.width;
+        const amount = size > 0 ? Math.ceil(size + OUTSIDE_LEGEND_GAP_PX * 2) : 0;
+        if (amount === reserved) return;
+        reserved = amount;
+        releaseReservation?.();
+        releaseReservation = amount > 0 ? chart.layout.reserve({ [position]: amount }) : null;
+      };
 
       const applyTheme = (): void => {
         container.style.border = legendBorder(options, chart);
@@ -129,6 +195,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
         } else {
           renderDefaultLegend(state, container, chart, options.toggleOnClick !== false, options, rows);
         }
+        syncReservation();
       };
 
       chart.events.subscribe("serieschange", render);
@@ -137,6 +204,8 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       return {
         onThemeChange: render,
         dispose() {
+          releaseReservation?.();
+          releaseReservation = null;
           rows.clear();
         },
       };

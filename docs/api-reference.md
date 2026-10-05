@@ -51,17 +51,17 @@ Generated from `dist/` after the package build.
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
 | interactions plugin | `dist/plugins/interactions.js` | 13 KiB |
-| annotations plugin | `dist/plugins/annotations.js` | 13 KiB |
-| navigator plugin | `dist/plugins/navigator.js` | 9 KiB |
+| annotations plugin | `dist/plugins/annotations.js` | 15 KiB |
+| navigator plugin | `dist/plugins/navigator.js` | 10 KiB |
 | selection plugin | `dist/plugins/selection.js` | 8 KiB |
-| legend plugin | `dist/plugins/legend.js` | 3 KiB |
+| legend plugin | `dist/plugins/legend.js` | 4 KiB |
 | tooltip plugin | `dist/plugins/tooltip.js` | 4 KiB |
 | crosshair plugin | `dist/plugins/crosshair.js` | 10 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 144 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 149 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
-| lazy screenshot chunk | `dist/screenshot-*.js` | 3 KiB |
+| lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 5 KiB |
 
 ### All public exports
@@ -84,6 +84,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | Built-in axis scale names. |
 | `Camera2D` | class | `./interaction/Camera2D` | Camera that maps data domains to clip, screen, and plot coordinates. |
 | `Chart` | class | `./ui/Chart` | Imperative WebGL chart instance for rendering, interaction, and plugins. |
+| `ChartAccessibilityMessages` | interface | `./ui/Chart` | Overridable core accessibility strings. Unset keys keep their English defaults. |
 | `ChartAccessibilityOptions` | interface | `./ui/Chart` | ARIA and high-contrast options for the chart root. Keyboard pan and zoom come from `interactionsPlugin`. |
 | `ChartAutoFitYOptions` | type | `./ui/Chart` | Options for automatically refitting Y as the X viewport changes. |
 | `ChartEventMap` | interface | `./ui/Chart` | Payload delivered to `chart.subscribe(event, callback)` for each chart event. Includes the plugin events declared on `ChartPluginEventMap` (such as `select`). |
@@ -127,6 +128,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartSeriesSummary` | interface | `./ui/ChartSummary` | Per-series facts in a `ChartSummary`. |
 | `ChartSetViewportOptions` | interface | `./ui/Chart` | Options for `chart.setViewport`. |
 | `ChartSummary` | interface | `./ui/ChartSummary` | Data summary the chart exposes to assistive technology through `aria-describedby`. Pass `accessibility.description` as a function to turn it into your own text. |
+| `ChartSummaryMessages` | interface | `./ui/ChartSummary` | Strings and formatters behind the generated chart summary. Override any key through `accessibility.messages.summary`; unset keys keep the English default. |
 | `ChartSummaryRange` | interface | `./ui/ChartSummary` | Inclusive numeric range used by `ChartSummary`. |
 | `ChartSurface` | type | `./ui/PluginHost` | Chart-owned element a plugin can listen on or decorate with `ctx.dom.listen` and `ctx.dom.decorate`. - `"plot"`: the interactive plot surface (it receives pointer, wheel, and touch input). - `"root"`: the chart root; it is focusable and receives keyboard input when accessibility is enabled. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters. They ignore pointer input until a plugin decorates them with `pointerEvents: "auto"`. |
 | `ChartSurfaceDecoration` | interface | `./ui/PluginHost` | Styles, classes, and attributes applied to a chart surface by `ctx.dom.decorate`. |
