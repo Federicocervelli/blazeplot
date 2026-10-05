@@ -156,8 +156,11 @@ Every user-facing string can be replaced, so a non-English app can ship a fully 
 - `a11yPlugin({ locale, messages })`: keyboard instructions, table captions and headers, inspection announcements, and the live summary (`A11yMessages`).
 - `legendPlugin({ messages })`: the group label and the hide/show titles (`LegendMessages`).
 - `selectionPlugin({ messages })`: selection announcements (`SelectionMessages`).
+- `navigatorPlugin({ messages, label, formatValueText })`: the slider label and the visible-range value text (`NavigatorMessages`); `label` and `formatValueText` are shorthands that override the messages. The value text formats the range with the X axis formatter, so a time axis reads as dates.
+- `annotationsPlugin({ messages })`: the `aria-roledescription` and the generated names of annotations without `ariaLabel` or label text (`AnnotationsMessages`).
+- `interactionsPlugin({ messages })`: the cooperative-gesture hints (`InteractionsMessages`); `gestureHint: { wheelText, touchText }` still wins when set.
 
-Counts use `Intl.NumberFormat` semantics for `locale` (default `"en-US"`). Axis tick text is formatted by your `tickFormat`. A few fixed strings are not localizable yet: the navigator's slider label and value text, the `aria-roledescription` of annotations (set `ariaLabel` per annotation for its name), and the cooperative-gesture hint, which has its own `interactionsPlugin({ gestureHint: { wheelText, touchText } })` options.
+Counts use `Intl.NumberFormat` semantics for `locale` (default `"en-US"`). Axis tick text is formatted by your `tickFormat`; time ticks use English month and weekday names unless you format them yourself. Text you supply (series names, titles, annotation labels and `ariaLabel`) is shown as given. The default crosshair readout (`x ... y ...` when no series is picked) and the tooltip rows are built from your formatters and series names; use `crosshairPlugin({ render, formatter })` and `tooltipPlugin({ formatter })` to control their wording. Every other string BlazePlot generates is listed above, so with those messages set no English remains in the chart.
 
 ```ts
 import { Chart } from "blazeplot";

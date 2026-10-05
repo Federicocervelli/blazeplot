@@ -4,7 +4,8 @@ import type { ChartPlugin, ChartPluginContext } from "../../ui/PluginTypes.js";
 import { dragModifierMatches } from "../common/OverlayUtils.js";
 import { AXIS_SURFACES, TAP_SLOP_PX, USER_VIEWPORT, applySelectionAxis, axisGestureConfig, capturePointer, clientToDataClamped, constrainPan, isApplePlatform, isLikelyTrackpadPan, normalizeViewport, pinchMetrics, releasePointer, resolveAxis, wheelZoomFactor } from "./gestures.js";
 import type { AxisSurface, DragState, GestureSurface, TouchGestureState, TouchPoint } from "./gestures.js";
-import type { InteractionsPluginOptions } from "./types.js";
+import { DEFAULT_INTERACTIONS_MESSAGES } from "./types.js";
+import type { InteractionsMessages, InteractionsPluginOptions } from "./types.js";
 
 let nextInteractionsPluginId = 1;
 
@@ -46,6 +47,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       selection.style.background = chart.theme.selectionFillColor;
       chart.dom.mount("plot", selection);
 
+      const messages: InteractionsMessages = { ...DEFAULT_INTERACTIONS_MESSAGES, ...options.messages };
+
       // Cooperative-gesture hint: created on first use, hidden again after a moment.
       const hintOptions = typeof options.gestureHint === "object" ? options.gestureHint : {};
       let hint: HTMLDivElement | null = null;
@@ -73,8 +76,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         }
         const label = hint.firstElementChild as HTMLElement;
         label.textContent = kind === "wheel"
-          ? hintOptions.wheelText ?? `Use ${isApplePlatform(chart.dom.view) ? "⌘" : "Ctrl"} + scroll to zoom`
-          : hintOptions.touchText ?? "Use two fingers to move the chart";
+          ? hintOptions.wheelText ?? messages.wheelHint(isApplePlatform(chart.dom.view) ? "⌘" : "Ctrl")
+          : hintOptions.touchText ?? messages.touchHint;
         label.style.background = hintOptions.backgroundColor ?? chart.theme.tooltipBackgroundColor;
         label.style.color = hintOptions.textColor ?? chart.theme.tooltipTextColor;
         label.style.font = hintOptions.font ?? chart.theme.tooltipFont;

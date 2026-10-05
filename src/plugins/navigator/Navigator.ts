@@ -6,8 +6,32 @@ import { rgbaCss } from "../../ui/theme.js";
 // The navigator window is outlined; a filled wash would tint the overview series.
 const NAVIGATOR_CSS = "@media (forced-colors:active){.blazeplot-navigator-window{fill:transparent}}";
 
+/** Overridable navigator strings, for localization. Unset keys keep their English defaults. */
+export interface NavigatorMessages {
+  /** Accessible name of the slider. */
+  readonly label: string;
+  /** Value text announced for the visible range. `from` and `to` are formatted with the X axis formatter (dates on a time axis). */
+  readonly visibleRange: (from: string, to: string) => string;
+}
+
+/** English defaults for `NavigatorMessages`. */
+export const DEFAULT_NAVIGATOR_MESSAGES: NavigatorMessages = {
+  label: "Chart navigator visible X range",
+  visibleRange: (from, to) => `Visible X range ${from} to ${to}`,
+};
+
 /** Options for the overview navigator plugin. */
 export interface NavigatorPluginOptions {
+  /** Override the slider label and value text wording, for localization. */
+  readonly messages?: Partial<NavigatorMessages>;
+  /** Accessible name of the slider; shorthand for `messages.label`. */
+  readonly label?: string;
+  /**
+   * Full control of the slider's `aria-valuetext`. Receives the visible X range in data units. Defaults to
+   * `messages.visibleRange` over the range formatted with the chart's X axis formatter, so a time axis
+   * reads as dates instead of epoch milliseconds.
+   */
+  readonly formatValueText?: (range: { readonly xMin: number; readonly xMax: number }) => string;
   /** Overview height in CSS pixels (at least 24). Defaults to 56. */
   readonly heightPx?: number;
   readonly placement?: "bottom" | "top";
@@ -164,6 +188,7 @@ interface OverviewCache {
  * alive throws; create one instance per chart (linked layouts: `panelPlugins`). Disposing the chart frees it.
  */
 export function navigatorPlugin(options: NavigatorPluginOptions = {}): NavigatorPlugin {
+  const messages: NavigatorMessages = { ...DEFAULT_NAVIGATOR_MESSAGES, ...options.messages };
   const height = Math.max(24, options.heightPx ?? 56);
   const margin = Math.max(0, options.marginPx ?? 8);
   const placement = options.placement ?? "bottom";
@@ -267,7 +292,11 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
 
     const current = chart.viewport.get();
     root.setAttribute("aria-valuenow", String((current.xMin + current.xMax) * 0.5));
-    root.setAttribute("aria-valuetext", `Visible X range ${current.xMin} to ${current.xMax}`);
+    root.setAttribute(
+      "aria-valuetext",
+      options.formatValueText?.({ xMin: current.xMin, xMax: current.xMax })
+        ?? messages.visibleRange(chart.coords.format(current.xMin, "x"), chart.coords.format(current.xMax, "x")),
+    );
     wasAtRightEdge = Math.abs(current.xMax - domain.xMax) <= (domain.xMax - domain.xMin) * 0.005;
     const left = dataToX(current.xMin, width - 1);
     const right = dataToX(current.xMax, width - 1);
@@ -330,7 +359,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       root.style.outlineOffset = "2px";
       root.tabIndex = 0;
       root.setAttribute("role", "slider");
-      root.setAttribute("aria-label", "Chart navigator visible X range");
+      root.setAttribute("aria-label", options.label ?? messages.label);
 
       const releaseSpace = options.reserveSpace === false
         ? null
