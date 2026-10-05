@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>two-finger test</title>
+<style>body{margin:0;font:16px system-ui;background:#111;color:#ddd}p{padding:0 16px;line-height:1.5}#c{height:300px;margin:0 16px;border:1px solid #444}#log{position:fixed;bottom:0;left:0;right:0;background:#000c;padding:6px 12px;font:12px monospace}</style></head>
+<body>
+<p>Scroll test. Put one finger on the chart and drag up/down: the PAGE should scroll. Use two fingers on the chart: it should pan and pinch-zoom. Double tap resets. Long press shows the tooltip, lifting hides it.</p>
+<p>Scroll down.</p><div style="height:350px"></div>
+<div id="c"></div>
+<div style="height:900px"><p>More page below. Keep scrolling; the chart should never trap your finger.</p></div>
+<div id="log">viewport: —</div>
+<script type="module">
+import { Chart, StaticDataset } from "@/index.ts";
+import { interactionsPlugin } from "@/plugins/interactions.ts";
+import { tooltipPlugin } from "@/plugins/tooltip.ts";
+const chart = new Chart(document.getElementById("c"), { axes: { x: { position: "outside" }, y: { position: "outside" } }, grid: true,
+  plugins: [interactionsPlugin({ touchPan: "two-finger", wheelZoom: "modifier" }), tooltipPlugin()] });
+const x = new Float64Array(2000), y = new Float64Array(2000);
+for (let i = 0; i < 2000; i++) { x[i] = i; y[i] = Math.sin(i / 60) + Math.sin(i / 7) * 0.2; }
+chart.addLine({ dataset: new StaticDataset(x, y), name: "wave" }, { lineWidth: 2 });
+chart.fitToData();
+chart.events.subscribe("viewportchange", (e) => { document.getElementById("log").textContent = "viewport x " + Math.round(e.viewport.xMin) + ".." + Math.round(e.viewport.xMax) + " (source " + e.source + ")"; });
+</script></body></html>
