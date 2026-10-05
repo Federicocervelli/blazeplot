@@ -125,7 +125,7 @@ async function main(): Promise<void> {
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
-    if (userDataDir && !options.keepBrowser) await rm(userDataDir, { recursive: true, force: true });
+    if (userDataDir && !options.keepBrowser) await rm(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
   }
 }
 

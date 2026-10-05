@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-04T11:49:53.195Z",
-  "command": "bun run bench:compare --chrome C:\\Program Files\\Thorium\\Application\\thorium.exe",
+  "generatedAt": "2026-10-05T10:17:49.928Z",
+  "command": "bun run bench:compare --libraries blazeplot,blazeplot-canvas2d,uplot,chartjs",
   "publishable": true,
   "warnings": [],
   "options": {
@@ -14,6 +14,7 @@
     ],
     "libraries": [
       "blazeplot",
+      "blazeplot-canvas2d",
       "uplot",
       "chartjs"
     ],
@@ -25,7 +26,7 @@
   },
   "environment": {
     "machine": {
-      "label": "Ryzen 7 7800X3D / RX 9070 / Windows 11",
+      "label": "local machine",
       "platform": "win32",
       "release": "10.0.26200",
       "arch": "x64",
@@ -35,18 +36,18 @@
     },
     "browser": {
       "protocolVersion": "1.3",
-      "product": "Chrome/138.0.7204.303",
-      "revision": "@536d2fef30d3315d25495afac6fc0320396827d1",
-      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
-      "jsVersion": "13.8.258.44"
+      "product": "Chrome/153.0.8010.12",
+      "revision": "@971a7443b0c9b0a9b2860529b33331b76077ec62",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+      "jsVersion": "15.3.76.4"
     },
-    "executable": "thorium.exe",
+    "executable": "chrome.exe",
     "page": {
-      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
       "language": "en-US",
       "devicePixelRatio": 1,
       "hardwareConcurrency": 16,
-      "deviceMemoryGb": 8,
+      "deviceMemoryGb": 16,
       "screen": {
         "width": 1920,
         "height": 1080,
@@ -58,11 +59,15 @@
       "headlessUserAgent": false
     }
   },
-  "prewarmMs": 87.5,
+  "prewarmMs": 164.1,
   "libraries": {
     "blazeplot": {
       "name": "BlazePlot",
-      "version": "1.0.0-rc.1"
+      "version": "1.0.0-rc.6"
+    },
+    "blazeplot-canvas2d": {
+      "name": "BlazePlot (Canvas 2D)",
+      "version": "1.0.0-rc.6"
     },
     "uplot": {
       "name": "uPlot",
@@ -82,21 +87,40 @@
       "viewportSamples": 100000,
       "measureMs": 0,
       "warmupMs": 100,
-      "dataPrepMs": 4.200000002980232,
+      "dataPrepMs": 7.699999988079071,
       "results": [
         {
           "library": "blazeplot",
           "ok": true,
-          "readyMs": 13.9,
+          "readyMs": 8.6,
           "setupWarmupReadyMs": [
-            9.9
+            8.6
           ],
-          "heapBeforeBytes": 17862352,
-          "heapAfterReadyBytes": 17862352,
-          "heapAfterMeasureBytes": 19894923,
+          "heapBeforeBytes": 17383728,
+          "heapAfterReadyBytes": 17383728,
+          "heapAfterMeasureBytes": 20248398,
           "firstFrame": {
             "fps": 0,
-            "frameMs": 6.6,
+            "frameMs": 5.2,
+            "pointsRendered": 24000,
+            "drawCalls": 1,
+            "uploadBytes": 192000,
+            "renderMode": "minmax"
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "readyMs": 5.1,
+          "setupWarmupReadyMs": [
+            3.9
+          ],
+          "heapBeforeBytes": 20248398,
+          "heapAfterReadyBytes": 20248398,
+          "heapAfterMeasureBytes": 18680422,
+          "firstFrame": {
+            "fps": 0,
+            "frameMs": 3.9,
             "pointsRendered": 24000,
             "drawCalls": 1,
             "uploadBytes": 192000,
@@ -106,24 +130,24 @@
         {
           "library": "uplot",
           "ok": true,
-          "readyMs": 7.8,
+          "readyMs": 3.2,
           "setupWarmupReadyMs": [
-            7.3
+            3.3
           ],
-          "heapBeforeBytes": 19894923,
-          "heapAfterReadyBytes": 19894923,
-          "heapAfterMeasureBytes": 15939894
+          "heapBeforeBytes": 18680422,
+          "heapAfterReadyBytes": 18680422,
+          "heapAfterMeasureBytes": 17436442
         },
         {
           "library": "chartjs",
           "ok": true,
-          "readyMs": 7.2,
+          "readyMs": 6.4,
           "setupWarmupReadyMs": [
-            8
+            5.9
           ],
-          "heapBeforeBytes": 15939894,
-          "heapAfterReadyBytes": 15939894,
-          "heapAfterMeasureBytes": 16530487
+          "heapBeforeBytes": 17436442,
+          "heapAfterReadyBytes": 17436442,
+          "heapAfterMeasureBytes": 21249175
         }
       ]
     },
@@ -135,21 +159,40 @@
       "viewportSamples": 1000000,
       "measureMs": 0,
       "warmupMs": 100,
-      "dataPrepMs": 52.29999999701977,
+      "dataPrepMs": 80,
       "results": [
         {
           "library": "blazeplot",
           "ok": true,
-          "readyMs": 17.4,
+          "readyMs": 13.5,
           "setupWarmupReadyMs": [
-            17.2
+            15.9
           ],
-          "heapBeforeBytes": 72148970,
-          "heapAfterReadyBytes": 72148970,
-          "heapAfterMeasureBytes": 75330557,
+          "heapBeforeBytes": 72155428,
+          "heapAfterReadyBytes": 72155428,
+          "heapAfterMeasureBytes": 74998546,
           "firstFrame": {
             "fps": 0,
-            "frameMs": 10.5,
+            "frameMs": 9.5,
+            "pointsRendered": 24492,
+            "drawCalls": 1,
+            "uploadBytes": 195936,
+            "renderMode": "minmax"
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "readyMs": 11.4,
+          "setupWarmupReadyMs": [
+            8.1
+          ],
+          "heapBeforeBytes": 74998546,
+          "heapAfterReadyBytes": 74998546,
+          "heapAfterMeasureBytes": 74736111,
+          "firstFrame": {
+            "fps": 0,
+            "frameMs": 9,
             "pointsRendered": 24492,
             "drawCalls": 1,
             "uploadBytes": 195936,
@@ -159,24 +202,24 @@
         {
           "library": "uplot",
           "ok": true,
-          "readyMs": 10.9,
+          "readyMs": 13.7,
           "setupWarmupReadyMs": [
-            11.3
+            11.4
           ],
-          "heapBeforeBytes": 75330557,
-          "heapAfterReadyBytes": 75330557,
-          "heapAfterMeasureBytes": 84482858
+          "heapBeforeBytes": 74736111,
+          "heapAfterReadyBytes": 74736111,
+          "heapAfterMeasureBytes": 84394314
         },
         {
           "library": "chartjs",
           "ok": true,
-          "readyMs": 14.1,
+          "readyMs": 12.3,
           "setupWarmupReadyMs": [
-            16
+            15.1
           ],
-          "heapBeforeBytes": 84482858,
-          "heapAfterReadyBytes": 84482858,
-          "heapAfterMeasureBytes": 70688584
+          "heapBeforeBytes": 84394314,
+          "heapAfterReadyBytes": 84394314,
+          "heapAfterMeasureBytes": 71617902
         }
       ]
     },
@@ -188,55 +231,55 @@
       "viewportSamples": 100000,
       "measureMs": 3000,
       "warmupMs": 250,
-      "dataPrepMs": 34.20000000298023,
+      "dataPrepMs": 87,
       "results": [
         {
           "library": "blazeplot",
           "ok": true,
-          "readyMs": 15.3,
+          "readyMs": 11.1,
           "setupWarmupReadyMs": [
-            17.1
+            13.9
           ],
-          "heapBeforeBytes": 71079016,
-          "heapAfterReadyBytes": 71079016,
-          "heapAfterMeasureBytes": 79447846,
+          "heapBeforeBytes": 83241653,
+          "heapAfterReadyBytes": 83241653,
+          "heapAfterMeasureBytes": 75716964,
           "firstFrame": {
             "fps": 0,
-            "frameMs": 8.6,
+            "frameMs": 7.8,
             "pointsRendered": 24000,
             "drawCalls": 1,
             "uploadBytes": 192000,
             "renderMode": "minmax"
           },
           "measurement": {
-            "durationMs": 3005,
-            "frames": 432,
-            "rafFps": 143.971,
+            "durationMs": 3000.4,
+            "frames": 3136,
+            "rafFps": 1045.473,
             "rafFrameMs": {
-              "min": 6.4,
-              "max": 7.6,
-              "avg": 6.946,
-              "p50": 6.9,
-              "p95": 7
+              "min": 0.7,
+              "max": 16.8,
+              "avg": 0.957,
+              "p50": 0.9,
+              "p95": 1.1
             },
             "updateMs": {
               "min": 0,
-              "max": 0.2,
-              "avg": 0.014,
+              "max": 0.1,
+              "avg": 0.007,
               "p50": 0,
               "p95": 0.1
             },
             "chartFrameMs": {
-              "min": 0.5,
+              "min": 0.4,
               "max": 2,
-              "avg": 0.769,
-              "p50": 0.8,
-              "p95": 1
+              "avg": 0.61,
+              "p50": 0.6,
+              "p95": 0.8
             },
             "pointsRendered": {
               "min": 24000,
               "max": 24006,
-              "avg": 24005.444,
+              "avg": 24005.428,
               "p50": 24006,
               "p95": 24006
             },
@@ -250,7 +293,74 @@
             "uploadBytes": {
               "min": 192000,
               "max": 192048,
-              "avg": 192043.556,
+              "avg": 192043.423,
+              "p50": 192048,
+              "p95": 192048
+            },
+            "samplesAppended": 0
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "readyMs": 8.7,
+          "setupWarmupReadyMs": [
+            7
+          ],
+          "heapBeforeBytes": 75716964,
+          "heapAfterReadyBytes": 75007067,
+          "heapAfterMeasureBytes": 83857435,
+          "firstFrame": {
+            "fps": 0,
+            "frameMs": 7.2,
+            "pointsRendered": 24000,
+            "drawCalls": 1,
+            "uploadBytes": 192000,
+            "renderMode": "minmax"
+          },
+          "measurement": {
+            "durationMs": 3001,
+            "frames": 2050,
+            "rafFps": 683.333,
+            "rafFrameMs": {
+              "min": 1.2,
+              "max": 16.9,
+              "avg": 1.463,
+              "p50": 1.4,
+              "p95": 1.7
+            },
+            "updateMs": {
+              "min": 0,
+              "max": 0.1,
+              "avg": 0.006,
+              "p50": 0,
+              "p95": 0.1
+            },
+            "chartFrameMs": {
+              "min": 0.8,
+              "max": 1.8,
+              "avg": 1.019,
+              "p50": 1,
+              "p95": 1.2
+            },
+            "pointsRendered": {
+              "min": 24000,
+              "max": 24006,
+              "avg": 24005.505,
+              "p50": 24006,
+              "p95": 24006
+            },
+            "drawCalls": {
+              "min": 1,
+              "max": 1,
+              "avg": 1,
+              "p50": 1,
+              "p95": 1
+            },
+            "uploadBytes": {
+              "min": 192000,
+              "max": 192048,
+              "avg": 192044.043,
               "p50": 192048,
               "p95": 192048
             },
@@ -260,30 +370,30 @@
         {
           "library": "uplot",
           "ok": true,
-          "readyMs": 4.9,
+          "readyMs": 2.9,
           "setupWarmupReadyMs": [
-            6.2
+            3.6
           ],
-          "heapBeforeBytes": 79447846,
-          "heapAfterReadyBytes": 79447846,
-          "heapAfterMeasureBytes": 74097919,
+          "heapBeforeBytes": 83857435,
+          "heapAfterReadyBytes": 83857435,
+          "heapAfterMeasureBytes": 96412918,
           "measurement": {
-            "durationMs": 3005.2,
-            "frames": 433,
-            "rafFps": 144.002,
+            "durationMs": 3001,
+            "frames": 2326,
+            "rafFps": 775.127,
             "rafFrameMs": {
-              "min": 6.1,
-              "max": 7.8,
-              "avg": 6.944,
-              "p50": 6.9,
-              "p95": 7.2
+              "min": 1,
+              "max": 4.2,
+              "avg": 1.29,
+              "p50": 1.3,
+              "p95": 1.5
             },
             "updateMs": {
-              "min": 1,
-              "max": 5.2,
-              "avg": 1.427,
-              "p50": 1.4,
-              "p95": 1.9
+              "min": 0.8,
+              "max": 3.9,
+              "avg": 1.102,
+              "p50": 1.1,
+              "p95": 1.3
             },
             "samplesAppended": 0
           }
@@ -291,30 +401,30 @@
         {
           "library": "chartjs",
           "ok": true,
-          "readyMs": 6.5,
+          "readyMs": 4.7,
           "setupWarmupReadyMs": [
-            6.2
+            5.4
           ],
-          "heapBeforeBytes": 74097919,
-          "heapAfterReadyBytes": 74097919,
-          "heapAfterMeasureBytes": 80310683,
+          "heapBeforeBytes": 70395044,
+          "heapAfterReadyBytes": 70395044,
+          "heapAfterMeasureBytes": 78768424,
           "measurement": {
             "durationMs": 3001.2,
-            "frames": 432,
-            "rafFps": 143.65,
+            "frames": 1542,
+            "rafFps": 513.794,
             "rafFrameMs": {
-              "min": 6.5,
-              "max": 14.2,
-              "avg": 6.961,
-              "p50": 6.9,
-              "p95": 7.3
+              "min": 1.5,
+              "max": 7.4,
+              "avg": 1.946,
+              "p50": 2,
+              "p95": 2.2
             },
             "updateMs": {
-              "min": 1.5,
-              "max": 4,
-              "avg": 1.958,
-              "p50": 2,
-              "p95": 2.3
+              "min": 1.4,
+              "max": 7.1,
+              "avg": 1.766,
+              "p50": 1.8,
+              "p95": 2.1
             },
             "samplesAppended": 0
           }
@@ -330,55 +440,55 @@
       "measureMs": 3000,
       "warmupMs": 250,
       "streamBatchSize": 1024,
-      "dataPrepMs": 33.8999999910593,
+      "dataPrepMs": 75.2999999821186,
       "results": [
         {
           "library": "blazeplot",
           "ok": true,
-          "readyMs": 14.6,
+          "readyMs": 13.4,
           "setupWarmupReadyMs": [
-            15.8
+            13.7
           ],
-          "heapBeforeBytes": 71945695,
-          "heapAfterReadyBytes": 71945695,
-          "heapAfterMeasureBytes": 88983922,
+          "heapBeforeBytes": 120791393,
+          "heapAfterReadyBytes": 120791393,
+          "heapAfterMeasureBytes": 142020590,
           "firstFrame": {
             "fps": 0,
-            "frameMs": 3.6,
+            "frameMs": 3.5,
             "pointsRendered": 24000,
             "drawCalls": 1,
             "uploadBytes": 192000,
             "renderMode": "minmax"
           },
           "measurement": {
-            "durationMs": 3003.4,
-            "frames": 433,
-            "rafFps": 144.007,
+            "durationMs": 3000.8,
+            "frames": 3263,
+            "rafFps": 1087.63,
             "rafFrameMs": {
-              "min": 6.5,
-              "max": 7.4,
-              "avg": 6.944,
-              "p50": 7,
-              "p95": 7.3
+              "min": 0.7,
+              "max": 17,
+              "avg": 0.919,
+              "p50": 0.9,
+              "p95": 1.1
             },
             "updateMs": {
               "min": 0,
               "max": 0.2,
-              "avg": 0.032,
+              "avg": 0.013,
               "p50": 0,
               "p95": 0.1
             },
             "chartFrameMs": {
-              "min": 0.5,
-              "max": 1.9,
-              "avg": 0.752,
-              "p50": 0.7,
-              "p95": 0.9
+              "min": 0.4,
+              "max": 3.5,
+              "avg": 0.572,
+              "p50": 0.6,
+              "p95": 0.7
             },
             "pointsRendered": {
               "min": 24000,
               "max": 24006,
-              "avg": 24005.681,
+              "avg": 24005.757,
               "p50": 24006,
               "p95": 24006
             },
@@ -392,73 +502,140 @@
             "uploadBytes": {
               "min": 192000,
               "max": 192048,
-              "avg": 192045.45,
+              "avg": 192046.058,
               "p50": 192048,
               "p95": 192048
             },
-            "samplesAppended": 184098
+            "samplesAppended": 184307
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "readyMs": 10.7,
+          "setupWarmupReadyMs": [
+            7.7
+          ],
+          "heapBeforeBytes": 115551115,
+          "heapAfterReadyBytes": 115551115,
+          "heapAfterMeasureBytes": 133742238,
+          "firstFrame": {
+            "fps": 0,
+            "frameMs": 3,
+            "pointsRendered": 24000,
+            "drawCalls": 1,
+            "uploadBytes": 192000,
+            "renderMode": "minmax"
+          },
+          "measurement": {
+            "durationMs": 3001.3,
+            "frames": 2070,
+            "rafFps": 689.954,
+            "rafFrameMs": {
+              "min": 1.2,
+              "max": 18.3,
+              "avg": 1.449,
+              "p50": 1.4,
+              "p95": 1.7
+            },
+            "updateMs": {
+              "min": 0,
+              "max": 0.2,
+              "avg": 0.016,
+              "p50": 0,
+              "p95": 0.1
+            },
+            "chartFrameMs": {
+              "min": 0.8,
+              "max": 2.1,
+              "avg": 0.997,
+              "p50": 1,
+              "p95": 1.2
+            },
+            "pointsRendered": {
+              "min": 24000,
+              "max": 24006,
+              "avg": 24005.73,
+              "p50": 24006,
+              "p95": 24006
+            },
+            "drawCalls": {
+              "min": 1,
+              "max": 1,
+              "avg": 1,
+              "p50": 1,
+              "p95": 1
+            },
+            "uploadBytes": {
+              "min": 192000,
+              "max": 192048,
+              "avg": 192045.843,
+              "p50": 192048,
+              "p95": 192048
+            },
+            "samplesAppended": 184313
           }
         },
         {
           "library": "uplot",
           "ok": true,
-          "readyMs": 5.6,
+          "readyMs": 3.3,
           "setupWarmupReadyMs": [
-            6.8
+            3.8
           ],
-          "heapBeforeBytes": 88983922,
-          "heapAfterReadyBytes": 88983922,
-          "heapAfterMeasureBytes": 94065303,
+          "heapBeforeBytes": 133742238,
+          "heapAfterReadyBytes": 133742238,
+          "heapAfterMeasureBytes": 91963712,
           "measurement": {
-            "durationMs": 3005.4,
-            "frames": 433,
-            "rafFps": 143.988,
+            "durationMs": 3000.4,
+            "frames": 2310,
+            "rafFps": 769.949,
             "rafFrameMs": {
-              "min": 6.5,
-              "max": 7.5,
-              "avg": 6.945,
-              "p50": 6.9,
-              "p95": 7.3
-            },
-            "updateMs": {
               "min": 1,
-              "max": 4.4,
-              "avg": 1.336,
+              "max": 4.8,
+              "avg": 1.299,
               "p50": 1.3,
               "p95": 1.5
             },
-            "samplesAppended": 184233
+            "updateMs": {
+              "min": 0.8,
+              "max": 4.4,
+              "avg": 1.105,
+              "p50": 1.1,
+              "p95": 1.3
+            },
+            "samplesAppended": 184264
           }
         },
         {
           "library": "chartjs",
           "ok": true,
-          "readyMs": 7,
+          "readyMs": 5.2,
           "setupWarmupReadyMs": [
-            6.6
+            5.4
           ],
-          "heapBeforeBytes": 94065303,
-          "heapAfterReadyBytes": 94065303,
-          "heapAfterMeasureBytes": 117839647,
+          "heapBeforeBytes": 71418525,
+          "heapAfterReadyBytes": 71418525,
+          "heapAfterMeasureBytes": 92552208,
           "measurement": {
-            "durationMs": 3001.8,
-            "frames": 433,
-            "rafFps": 143.993,
+            "durationMs": 3001.2,
+            "frames": 1544,
+            "rafFps": 514.461,
             "rafFrameMs": {
-              "min": 6.4,
-              "max": 7.5,
-              "avg": 6.945,
-              "p50": 7,
-              "p95": 7.3
-            },
-            "updateMs": {
-              "min": 1.6,
-              "max": 5.7,
-              "avg": 2.029,
+              "min": 1.5,
+              "max": 16.9,
+              "avg": 1.944,
               "p50": 2,
               "p95": 2.2
             },
-            "samplesAppended": 184012
+            "updateMs": {
+              "min": 0,
+              "max": 3.8,
+              "avg": 1.751,
+              "p50": 1.8,
+              "p95": 2
+            },
+            "samplesAppended": 184289
           }
         }
       ]
@@ -471,50 +648,117 @@
       "viewportSamples": 5000000,
       "measureMs": 3000,
       "warmupMs": 250,
-      "dataPrepMs": 385.90000000596046,
+      "dataPrepMs": 764.7000000178814,
       "results": [
         {
           "library": "blazeplot",
           "ok": true,
-          "readyMs": 7.7,
+          "readyMs": 7.8,
           "setupWarmupReadyMs": [
-            8.2
+            7.4
           ],
-          "heapBeforeBytes": 503567411,
-          "heapAfterReadyBytes": 503567411,
-          "heapAfterMeasureBytes": 502426449,
+          "heapBeforeBytes": 548445816,
+          "heapAfterReadyBytes": 548445816,
+          "heapAfterMeasureBytes": 563294383,
           "firstFrame": {
             "fps": 0,
-            "frameMs": 2.5,
+            "frameMs": 3.7,
             "pointsRendered": 24576,
             "drawCalls": 1,
             "uploadBytes": 196608,
             "renderMode": "minmax"
           },
           "measurement": {
-            "durationMs": 3002.3,
-            "frames": 433,
-            "rafFps": 144.007,
+            "durationMs": 3000,
+            "frames": 5961,
+            "rafFps": 1987.132,
             "rafFrameMs": {
-              "min": 6.3,
-              "max": 7.5,
-              "avg": 6.944,
-              "p50": 6.9,
-              "p95": 7.3
+              "min": 0.2,
+              "max": 16.9,
+              "avg": 0.503,
+              "p50": 0.5,
+              "p95": 0.6
             },
             "updateMs": {
               "min": 0,
-              "max": 0.2,
-              "avg": 0.012,
+              "max": 0.1,
+              "avg": 0.006,
               "p50": 0,
               "p95": 0.1
             },
             "chartFrameMs": {
-              "min": 0.1,
-              "max": 1.3,
-              "avg": 0.244,
+              "min": 0,
+              "max": 0.7,
+              "avg": 0.16,
               "p50": 0.2,
-              "p95": 0.4
+              "p95": 0.3
+            },
+            "pointsRendered": {
+              "min": 24576,
+              "max": 24576,
+              "avg": 24576,
+              "p50": 24576,
+              "p95": 24576
+            },
+            "drawCalls": {
+              "min": 1,
+              "max": 1,
+              "avg": 1,
+              "p50": 1,
+              "p95": 1
+            },
+            "uploadBytes": {
+              "min": 196608,
+              "max": 196608,
+              "avg": 196608,
+              "p50": 196608,
+              "p95": 196608
+            },
+            "samplesAppended": 0
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "readyMs": 3.4,
+          "setupWarmupReadyMs": [
+            2.6
+          ],
+          "heapBeforeBytes": 492514502,
+          "heapAfterReadyBytes": 492514502,
+          "heapAfterMeasureBytes": 518096691,
+          "firstFrame": {
+            "fps": 0,
+            "frameMs": 2.1,
+            "pointsRendered": 24576,
+            "drawCalls": 1,
+            "uploadBytes": 196608,
+            "renderMode": "minmax"
+          },
+          "measurement": {
+            "durationMs": 3000.8,
+            "frames": 2921,
+            "rafFps": 973.634,
+            "rafFrameMs": {
+              "min": 0.7,
+              "max": 17.7,
+              "avg": 1.027,
+              "p50": 1,
+              "p95": 1.4
+            },
+            "updateMs": {
+              "min": 0,
+              "max": 1.7,
+              "avg": 0.005,
+              "p50": 0,
+              "p95": 0
+            },
+            "chartFrameMs": {
+              "min": 0.4,
+              "max": 1,
+              "avg": 0.552,
+              "p50": 0.5,
+              "p95": 0.7
             },
             "pointsRendered": {
               "min": 24576,
@@ -543,30 +787,30 @@
         {
           "library": "uplot",
           "ok": true,
-          "readyMs": 37,
+          "readyMs": 36.9,
           "setupWarmupReadyMs": [
-            35.1
+            37.3
           ],
-          "heapBeforeBytes": 491481683,
-          "heapAfterReadyBytes": 491481683,
-          "heapAfterMeasureBytes": 496542615,
+          "heapBeforeBytes": 491555666,
+          "heapAfterReadyBytes": 491555666,
+          "heapAfterMeasureBytes": 500937694,
           "measurement": {
-            "durationMs": 3023,
-            "frames": 101,
-            "rafFps": 33.361,
+            "durationMs": 3024.7,
+            "frames": 95,
+            "rafFps": 31.555,
             "rafFrameMs": {
-              "min": 27.3,
-              "max": 35.4,
-              "avg": 29.975,
-              "p50": 27.9,
-              "p95": 34.9
+              "min": 21,
+              "max": 34.7,
+              "avg": 31.691,
+              "p50": 31.6,
+              "p95": 33.6
             },
             "updateMs": {
-              "min": 28.5,
-              "max": 32.3,
-              "avg": 29.811,
-              "p50": 29.8,
-              "p95": 30.6
+              "min": 29.8,
+              "max": 37.7,
+              "avg": 31.694,
+              "p50": 31.9,
+              "p95": 32.9
             },
             "samplesAppended": 0
           }
@@ -574,30 +818,30 @@
         {
           "library": "chartjs",
           "ok": true,
-          "readyMs": 48.6,
+          "readyMs": 38.2,
           "setupWarmupReadyMs": [
-            48.3
+            36.8
           ],
-          "heapBeforeBytes": 491062514,
-          "heapAfterReadyBytes": 491062514,
-          "heapAfterMeasureBytes": 513855845,
+          "heapBeforeBytes": 491584772,
+          "heapAfterReadyBytes": 491584772,
+          "heapAfterMeasureBytes": 519222081,
           "measurement": {
-            "durationMs": 3030.5,
-            "frames": 91,
-            "rafFps": 30.055,
+            "durationMs": 3021.2,
+            "frames": 89,
+            "rafFps": 29.613,
             "rafFrameMs": {
-              "min": 27.3,
-              "max": 48.9,
-              "avg": 33.273,
-              "p50": 34.6,
-              "p95": 35.1
+              "min": 16.8,
+              "max": 50.8,
+              "avg": 33.769,
+              "p50": 34,
+              "p95": 50.2
             },
             "updateMs": {
-              "min": 32.3,
-              "max": 47.3,
-              "avg": 33.202,
-              "p50": 32.8,
-              "p95": 33.4
+              "min": 33.1,
+              "max": 39.2,
+              "avg": 33.819,
+              "p50": 33.7,
+              "p95": 34.5
             },
             "samplesAppended": 0
           }

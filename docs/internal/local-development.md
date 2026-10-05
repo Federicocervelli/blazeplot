@@ -44,6 +44,8 @@ bun run bench:ci
 bun run bench:gate
 ```
 
+By default every script launches Chrome with software WebGL (SwiftShader) so results match CI. To exercise a real GPU, set `BLAZEPLOT_REAL_GPU=1`: the SwiftShader flags are dropped and `--disable-frame-rate-limit` is added (a headless GPU-backed page is otherwise throttled to about 10 rAF/s). `BLAZEPLOT_CHROME_FLAGS="--flag --other=1"` appends extra browser flags. On Windows, a Playwright-installed Chromium under a packaged-app profile can fail with "Sandbox cannot access executable"; copy the `chrome-win64` folder to an ordinary path and point `BLAZEPLOT_BENCH_CHROME` at it. Pixel baselines are only compared on Linux, so a real-GPU run checks behaviour, not pixels. Verify the renderer via `WEBGL_debug_renderer_info` (it should name your GPU, not SwiftShader); `bun run bench:compare` records it in `benchmarks/latest.md`.
+
 `bun run test:stability` is the real-browser leak and stability suite (`scripts/stability-test.ts`, fixture in `tests/browser/stability/`). It runs these cases, each on a fresh page:
 
 | Case | What it does | What must hold |
