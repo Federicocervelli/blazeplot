@@ -71,7 +71,7 @@ const sharedBudgets: SharedChunkBudget[] = [
 // It holds the root entry, the Chart chunk (Chart, every rendering engine, the data engine), and the theme module.
 // 196_943 bytes (rc.8: 182_613 = index 20_845 + Chart 142_844 + WebGL2 11_955 + release 176 + theme 6_793). The engines moved into the core graph (WebGL2, Canvas 2D, and the shared context ship in the
 // root because the default renderer is "auto"), which is the whole +14.3 KB (+7.8%): Canvas 2D, the shared context, render surfaces, and engine-owned context loss.
-const graphBudgets: GraphBudget[] = [{ label: "chart-only import graph (index + Chart + engines + theme)", entry: "dist/index.js", maxBytes: 201_900 }]; // +400 Canvas 2D polyline reducer; 199_900 before the warm canvas pool and the shared context idle release (+1_560: pool, idle-release helper, layout hook).
+const graphBudgets: GraphBudget[] = [{ label: "chart-only import graph (index + Chart + engines + theme)", entry: "dist/index.js", maxBytes: 202_100 }]; // +220 lazy canvas sizing (engine hook, first-frame sizing, cached plot size), after the axis label and layout PRs took 213 back (-31, -182); +400 Canvas 2D polyline reducer; 199_900 before the warm canvas pool and the shared context idle release (+1_560: pool, idle-release helper, layout hook).
 
 /** Files `entry` imports statically, transitively (dynamic `import()` is excluded: it is not downloaded up front). */
 function staticGraph(entry: string): string[] {

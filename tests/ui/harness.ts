@@ -33,6 +33,9 @@ export function stubPlot(chart: ChartType, { width = 400, height = 200, left = 0
     ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() {} }) as DOMRect;
   Object.defineProperty(chartInternals(chart).canvas, "clientWidth", { configurable: true, value: width });
   Object.defineProperty(chartInternals(chart).canvas, "clientHeight", { configurable: true, value: height });
+  // A browser reports a layout change through the ResizeObserver; the stub has to do it by hand,
+  // because the chart reads the plot size on resize and caches it.
+  chart.resize();
 }
 
 /** Give an arbitrary element a fixed layout box. */

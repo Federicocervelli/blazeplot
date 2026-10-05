@@ -13,8 +13,19 @@ export { Canvas2DUnavailableError } from "./canvas2d/Canvas2DRenderer.js";
  * factories, so `new Chart()` stays synchronous and nothing here is loaded lazily.
  */
 
+/**
+ * Factories of engines that do not bind a drawing buffer to the chart's own canvas when they are
+ * created: Canvas 2D (a 2D context takes whatever size the canvas has later) and the shared WebGL2
+ * context (the chart canvas is only a blit target). Every other factory, including the native
+ * WebGL2 engine and any custom one, wants the canvas at its final size first, because a WebGL
+ * drawing buffer created at the default 300x150 and then resized is reallocated.
+ */
+const sizesCanvasLater = new WeakSet<ChartRendererFactory>();
+
+const sizingLater = (factory: ChartRendererFactory): ChartRendererFactory => sizesCanvasLater.add(factory) && factory;
+
 const webgl2 = (origin: RendererOrigin): ChartRendererFactory => ({ canvas }) => new WebGL2Renderer(canvas, { origin });
-const canvas2d = (origin: RendererOrigin): ChartRendererFactory => ({ canvas }) => new Canvas2DRenderer(canvas, origin);
+const canvas2d = (origin: RendererOrigin): ChartRendererFactory => sizingLater(({ canvas }) => new Canvas2DRenderer(canvas, origin));
 
 // One default shared context per document, so charts in an iframe or popup get a canvas from their own document.
 const documentContexts = new WeakMap<Document, SharedWebGLContext>();
@@ -58,13 +69,12 @@ export function autoRenderer(): ChartRendererFactory {
  * charts. Throws `WebGL2UnavailableError` when WebGL2 is unavailable. Same as `renderer: "shared"`.
  */
 export function sharedRenderer(context?: ChartRenderContext): ChartRendererFactory {
-  if (context) return context.renderer();
-  return (factoryContext) => {
+  return sizingLater(context ? context.renderer() : (factoryContext) => {
     const doc = factoryContext.canvas.ownerDocument ?? globalThis.document;
     let target = documentContexts.get(doc);
     if (!target) documentContexts.set(doc, (target = new SharedWebGLContext(doc)));
     return target.renderer()(factoryContext);
-  };
+  });
 }
 
 /**
@@ -101,11 +111,15 @@ export function createPlotCanvas(option: RendererChoice | ChartRendererFactory |
  * `undefined` for `"auto"`. Synchronous. Throws what the chosen engine throws when it is unavailable,
  * and a `TypeError` for anything else.
  */
-export function createEngine(option: RendererChoice | ChartRendererFactory | undefined, canvas: HTMLCanvasElement): ChartRenderer {
+export function createEngine(option: RendererChoice | ChartRendererFactory | undefined, canvas: HTMLCanvasElement, sizeCanvas?: () => void): ChartRenderer {
   let factory: ChartRendererFactory;
   if (typeof option === "function") factory = option;
   else if (option === undefined) factory = namedRenderers.auto();
   else if (Object.hasOwn(namedRenderers, option)) factory = namedRenderers[option]();
   else throw new TypeError(`ChartOptions.renderer must be one of ${rendererChoices.map((name) => `"${name}"`).join(", ")} or a factory such as canvas2dRenderer(), got ${typeof option === "string" ? `"${option}"` : typeof option}.`);
+  // Sizing needs the plot's laid-out size, which forces a synchronous layout, so engines that can
+  // be sized later skip it and the chart sizes the canvas on its first frame (many charts mounted in
+  // one task then share one layout instead of each forcing their own).
+  if (!sizesCanvasLater.has(factory)) sizeCanvas?.();
   return factory({ canvas }) as ChartRenderer;
 }

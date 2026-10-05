@@ -83,10 +83,19 @@ export class Chart {
     series: () => this.series,
     hoverOptions: () => this.options.hover,
     axis: () => this.axis,
+    plotSize: () => this.plotSize,
     emit: (event, payload) => this.events.emit(event, payload),
     hasListeners: (event) => this.events.has(event),
   });
   private lastFrameAt: number = 0;
+  /**
+   * Plot size in CSS pixels, as of the last layout read, or -1 before the canvas was first sized.
+   * Layout is read when the canvas is sized (the first frame, `resize()`, and the ResizeObserver,
+   * which fires whenever the plot's size changes), never per frame: a read after another chart's or
+   * plugin's DOM writes forces a synchronous layout, and a page of many charts redrawing in one
+   * animation frame would pay one per chart per frame.
+   */
+  private readonly plotSize = { width: -1, height: -1 };
   private readonly followXPolicy: FollowXController = new FollowXController({
     camera: () => this.camera,
     axis: () => this.axis,
@@ -167,14 +176,18 @@ export class Chart {
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
     this.layout.root.style.setProperty("--blazeplot-focus-ring", this.resolvedTheme.focusRingColor);
     this.a11y.install();
-    this.applyCanvasSize();
+    // Sizing the drawing buffer needs the plot's laid-out size, and reading it right after mounting
+    // forces a synchronous layout of the whole page, so mounting many charts in one task would lay the
+    // page out once per chart. `createEngine` sizes the canvas only for engines that need it before
+    // they exist (a WebGL2 context on the plot canvas); for the others the first frame does it (see
+    // `render`), after the browser has batched every chart's DOM changes into a single layout.
     this.camera = new Camera2D();
     this.rightCamera = new Camera2D();
     this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     try {
-      this.engine = createEngine(options.renderer, this.canvas);
+      this.engine = createEngine(options.renderer, this.canvas, () => this.applyCanvasSize());
       this.engine.setLossListener(this.onRendererState);
     } catch (error) {
       // E.g. the chosen engine is unavailable: remove the half-built DOM and hand back a caller-supplied canvas.
@@ -674,10 +687,8 @@ export class Chart {
       return;
     }
 
-    // The one layout read of the frame, taken before any DOM write so it never forces a flush. Ticks,
-    // the pixel ratio, the axis overlay and the closing hover refresh all share it.
-    const plotWidth = this.canvas.clientWidth;
-    const plotHeight = this.canvas.clientHeight;
+    if (this.plotSize.width < 0) this.applyCanvasSize();
+    const { width: plotWidth, height: plotHeight } = this.plotSize;
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
@@ -695,7 +706,6 @@ export class Chart {
       return;
     }
 
-    let sizeChanged = false;
     try {
       const pixelRatio = this.canvas.width / Math.max(1, plotWidth);
       this.engine.beginFrame(this.canvas.width, this.canvas.height, pixelRatio);
@@ -713,7 +723,7 @@ export class Chart {
       this.stats.uploadBytes = report.uploadBytes;
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks, plotWidth, plotHeight);
-      sizeChanged = this.updateAutoGutters();
+      this.updateAutoGutters();
       this.events.emit("render", undefined);
     } catch (error) {
       if (this.engine.isLost) {
@@ -726,8 +736,7 @@ export class Chart {
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     this.hover.cancelScheduled();
-    if (sizeChanged) this.hover.refresh();
-    else this.hover.refresh(plotWidth, plotHeight);
+    this.hover.refresh();
     if (this.running && this.options.renderLoop !== "continuous" && this.followXPolicy.options?.currentX && !this.followXPolicy.isPaused) {
       this.requestRender();
     }
@@ -796,9 +805,9 @@ export class Chart {
   }
 
   /** Resize `size: "auto"` gutters from the labels measured this frame. */
-  private updateAutoGutters(): boolean {
+  private updateAutoGutters(): void {
     const overlay = this.axisOverlay;
-    if (!overlay) return false;
+    if (!overlay) return;
     let changed = false;
     for (const axis of ["x", "y", "y2"] as const) {
       const config = this.normalizedAxes[axis];
@@ -812,7 +821,6 @@ export class Chart {
       this.resize();
       this.requestRender();
     }
-    return changed;
   }
 
   private updateTitles(): void {
@@ -831,8 +839,11 @@ export class Chart {
 
   private applyCanvasSize(dpr: number = this.layout.view.devicePixelRatio): boolean {
     const scale = Number.isFinite(dpr) ? Math.max(1, dpr) : 1;
-    const width = Math.max(1, Math.floor(this.canvas.clientWidth * scale));
-    const height = Math.max(1, Math.floor(this.canvas.clientHeight * scale));
+    const size = this.plotSize;
+    size.width = this.canvas.clientWidth;
+    size.height = this.canvas.clientHeight;
+    const width = Math.max(1, Math.floor(size.width * scale));
+    const height = Math.max(1, Math.floor(size.height * scale));
     if (this.canvas.width === width && this.canvas.height === height) return false;
 
     this.canvas.width = width;
