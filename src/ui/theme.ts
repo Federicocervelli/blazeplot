@@ -222,9 +222,16 @@ export function resolveThemeColor(color: ThemeColor | undefined, fallback: RgbaC
   if (!color) return fallback;
   if (typeof color !== "string") return color;
 
+  // An opaque hex color means the same thing everywhere, so it needs no probe element, forced
+  // style recalculation or scratch canvas. Everything else (names, var(), color-mix(), system
+  // colors) is resolved by the browser, and the canvas normalization is only a last resort.
+  const hex = color.trim();
+  if (hex.length === 4 || hex.length === 7) {
+    const direct = parseHexColor(hex);
+    if (direct) return direct;
+  }
   const resolved = resolveCssColor(color, context);
-  const normalized = normalizeCanvasColor(resolved ?? color, context);
-  return parseCssColor(resolved ?? color) ?? parseCssColor(normalized ?? "") ?? fallback;
+  return parseCssColor(resolved ?? color) ?? parseCssColor(normalizeCanvasColor(resolved ?? color, context) ?? "") ?? fallback;
 }
 
 /** Convert a theme color to a CSS color string. */

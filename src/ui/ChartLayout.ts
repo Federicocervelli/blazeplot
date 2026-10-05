@@ -22,7 +22,7 @@ export interface NormalizedAxisConfig {
   readonly title?: unknown;
   /**
    * Gutter size for an outside axis, in CSS pixels, not counting the title allowance.
-   * `"auto"` sizes it from the widest (Y) or tallest (X) measured tick label.
+   * `"auto"` sizes it from the widest (Y, Y2) or tallest (X) measured tick label.
    * Defaults to 52 (Y, Y2) and 28 (X).
    */
   readonly size?: number | "auto";
@@ -47,13 +47,6 @@ export interface ChartLayoutElements {
   readonly xAxis: HTMLDivElement;
   readonly yAxis: HTMLDivElement;
   readonly y2Axis: HTMLDivElement;
-  readonly corner: HTMLDivElement;
-  readonly cornerRight: HTMLDivElement;
-  readonly title: HTMLDivElement;
-  readonly subtitle: HTMLDivElement;
-  readonly xAxisTitle: HTMLDivElement;
-  readonly yAxisTitle: HTMLDivElement;
-  readonly y2AxisTitle: HTMLDivElement;
 }
 
 /** Default left-axis gutter width in CSS pixels. */
@@ -69,29 +62,43 @@ export const RIGHT_AXIS_TITLE_GUTTER_CSS = 76;
 /** Default bottom-axis title gutter height in CSS pixels. */
 export const BOTTOM_AXIS_TITLE_GUTTER_CSS = 48;
 
-type InlineStyle = Partial<CSSStyleDeclaration>;
-
-function styledDiv(doc: Document, className: string, style: InlineStyle): HTMLDivElement {
+/**
+ * Elements are styled with one `cssText` write each: a single parse and a single style
+ * invalidation instead of one per property, which is where chart construction spends its time in
+ * layout code.
+ */
+function styledDiv(doc: Document, className: string, cssText: string): HTMLDivElement {
   const element = doc.createElement("div");
   element.className = className;
-  Object.assign(element.style, style);
+  element.style.cssText = cssText;
   return element;
 }
 
 /** A grid cell that may shrink below its content size. */
-function gridCell(column: number, row: number): InlineStyle {
-  return { gridColumn: String(column), gridRow: String(row), minWidth: "0", minHeight: "0" };
+function gridCell(column: number, row: number): string {
+  return `grid-column:${column};grid-row:${row};min-width:0;min-height:0;`;
 }
 
 /** An axis gutter: a clipped grid cell that lets pointer input through. */
-function axisCell(column: number, row: number): InlineStyle {
-  return { ...gridCell(column, row), position: "relative", overflow: "hidden", pointerEvents: "none" };
+function axisCell(column: number, row: number): string {
+  return `${gridCell(column, row)}position:relative;overflow:hidden;pointer-events:none;`;
 }
 
 /** A title overlay: hidden until it has text, never selectable or hit by the pointer. */
-function titleOverlay(placement: InlineStyle): InlineStyle {
-  return { position: "absolute", pointerEvents: "none", userSelect: "none", whiteSpace: "nowrap", zIndex: "18", display: "none", ...placement };
+function titleOverlay(placement: string): string {
+  return `position:absolute;pointer-events:none;user-select:none;white-space:nowrap;z-index:18;display:none;${placement}`;
 }
+
+type TitleSlot = "title" | "subtitle" | "xAxisTitle" | "yAxisTitle" | "y2AxisTitle";
+
+/** Class name and initial placement of each title element. */
+const TITLE_SLOTS: Record<TitleSlot, { readonly className: string; readonly css: string }> = {
+  title: { className: "blazeplot-title", css: titleOverlay("top:6px;left:50%;transform:translateX(-50%);text-align:center;") },
+  subtitle: { className: "blazeplot-subtitle", css: titleOverlay("top:26px;left:50%;transform:translateX(-50%);text-align:center;") },
+  xAxisTitle: { className: "blazeplot-axis-title blazeplot-axis-title-x", css: titleOverlay("left:50%;bottom:4px;transform:translateX(-50%);text-align:center;") },
+  yAxisTitle: { className: "blazeplot-axis-title blazeplot-axis-title-y", css: titleOverlay("left:4px;top:50%;transform:rotate(-90deg) translateX(-50%);transform-origin:0 0;") },
+  y2AxisTitle: { className: "blazeplot-axis-title blazeplot-axis-title-y2", css: titleOverlay("right:4px;top:50%;transform:rotate(90deg) translateX(50%);transform-origin:100% 0;") },
+};
 
 /** DOM layout manager for chart chrome, axes, titles, and canvas. */
 export class ChartLayout implements ChartLayoutElements {
@@ -105,14 +112,14 @@ export class ChartLayout implements ChartLayoutElements {
   readonly xAxis: HTMLDivElement;
   readonly yAxis: HTMLDivElement;
   readonly y2Axis: HTMLDivElement;
-  readonly corner: HTMLDivElement;
-  readonly cornerRight: HTMLDivElement;
-  readonly title: HTMLDivElement;
-  readonly subtitle: HTMLDivElement;
-  readonly xAxisTitle: HTMLDivElement;
-  readonly yAxisTitle: HTMLDivElement;
-  readonly y2AxisTitle: HTMLDivElement;
 
+  /**
+   * Title elements, created the first time they have text. Most charts have no title, subtitle or
+   * axis titles, so they carry none of these five elements (and their style and layout cost).
+   */
+  private readonly titles: Partial<Record<TitleSlot, HTMLDivElement>> = {};
+  /** Last values `update` wrote, so repeating an update (a gutter that did not change) writes nothing. */
+  private readonly written = { columns: "", rows: "", y: "", y2: "", x: "" };
   private lastConfig: ChartLayoutConfig | null = null;
   private titleInset = 0;
   /** Bottom grid row height (px), used to center Y titles on the plot area. */
@@ -136,41 +143,14 @@ export class ChartLayout implements ChartLayoutElements {
     this.originalCanvasCssText = canvasTarget?.style.cssText ?? "";
     this.originalCanvasParent = canvasTarget?.parentElement ?? null;
 
-    this.root = styledDiv(doc, "blazeplot-root", {
-      position: "relative",
-      display: "grid",
-      width: "100%",
-      height: "100%",
-      minWidth: "0",
-      minHeight: "0",
-      overflow: "hidden",
-      boxSizing: "border-box",
-      outlineOffset: "-2px",
-    });
-    this.plot = styledDiv(doc, "blazeplot-plot", { ...gridCell(2, 2), position: "relative", overflow: "hidden" });
+    this.root = styledDiv(doc, "blazeplot-root", "position:relative;display:grid;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden;box-sizing:border-box;outline-offset:-2px;");
+    this.plot = styledDiv(doc, "blazeplot-plot", `${gridCell(2, 2)}position:relative;overflow:hidden;`);
     this.canvas = canvasTarget ?? createCanvas?.(doc) ?? doc.createElement("canvas");
     this.canvas.classList.add("blazeplot-canvas");
-    Object.assign(this.canvas.style, { position: "absolute", inset: "0", zIndex: "1", display: "block", width: "100%", height: "100%" });
+    this.canvas.style.cssText += ";position:absolute;inset:0;z-index:1;display:block;width:100%;height:100%;";
     this.yAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y", axisCell(1, 2));
     this.y2Axis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y2", axisCell(3, 2));
     this.xAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-x", axisCell(2, 3));
-    this.corner = styledDiv(doc, "blazeplot-axis-corner", { ...gridCell(1, 3), pointerEvents: "none" });
-    this.cornerRight = styledDiv(doc, "blazeplot-axis-corner blazeplot-axis-corner-right", { ...gridCell(3, 3), pointerEvents: "none" });
-    this.title = styledDiv(doc, "blazeplot-title", titleOverlay({ top: "6px", left: "50%", transform: "translateX(-50%)", textAlign: "center" }));
-    this.subtitle = styledDiv(doc, "blazeplot-subtitle", titleOverlay({ top: "26px", left: "50%", transform: "translateX(-50%)", textAlign: "center" }));
-    this.xAxisTitle = styledDiv(doc, "blazeplot-axis-title blazeplot-axis-title-x", titleOverlay({ left: "50%", bottom: "4px", transform: "translateX(-50%)", textAlign: "center" }));
-    this.yAxisTitle = styledDiv(doc, "blazeplot-axis-title blazeplot-axis-title-y", titleOverlay({
-      left: "4px",
-      top: "50%",
-      transform: "rotate(-90deg) translateX(-50%)",
-      transformOrigin: "0 0",
-    }));
-    this.y2AxisTitle = styledDiv(doc, "blazeplot-axis-title blazeplot-axis-title-y2", titleOverlay({
-      right: "4px",
-      top: "50%",
-      transform: "rotate(90deg) translateX(50%)",
-      transformOrigin: "100% 0",
-    }));
 
     this.mount(target);
     this.update(config);
@@ -181,34 +161,58 @@ export class ChartLayout implements ChartLayoutElements {
     const { theme } = input;
     const hasTitle = titleText(input.title) !== "";
     const hasSubtitle = titleText(input.subtitle) !== "";
-    this.applyChartTitle(this.title, input.title, theme.titleColor, theme.titleFont, TITLE_TOP_PX);
-    this.applyChartTitle(this.subtitle, input.subtitle, theme.subtitleColor, theme.subtitleFont, hasTitle ? SUBTITLE_TOP_PX : TITLE_TOP_PX);
+    this.applyChartTitle("title", input.title, theme.titleColor, theme.titleFont, TITLE_TOP_PX);
+    this.applyChartTitle("subtitle", input.subtitle, theme.subtitleColor, theme.subtitleFont, hasTitle ? SUBTITLE_TOP_PX : TITLE_TOP_PX);
     // Title and subtitle get their own grid row, so they never sit on top of the plot.
     this.setTitleInset((hasTitle ? SUBTITLE_TOP_PX : 0) + (hasSubtitle ? SUBTITLE_ROW_PX : 0));
-    this.applyAxisTitle(this.xAxisTitle, input.axes.x.title as string | TextOverlayConfig | undefined, "x", theme);
-    this.applyAxisTitle(this.yAxisTitle, input.axes.y.title as string | TextOverlayConfig | undefined, "y", theme);
-    this.applyAxisTitle(this.y2AxisTitle, input.axes.y2.title as string | TextOverlayConfig | undefined, "y2", theme);
+    this.applyAxisTitle("xAxisTitle", input.axes.x.title as string | TextOverlayConfig | undefined, "x", theme);
+    this.applyAxisTitle("yAxisTitle", input.axes.y.title as string | TextOverlayConfig | undefined, "y", theme);
+    this.applyAxisTitle("y2AxisTitle", input.axes.y2.title as string | TextOverlayConfig | undefined, "y2", theme);
   }
 
-  /** Set text and theme styling on a title element; returns the custom config when visible. */
-  private applyTitleText(el: HTMLElement, config: string | TextOverlayConfig | undefined, color: string, font: string): TextOverlayConfig | null {
+  /** The element for a title slot, created and attached on first use. */
+  private titleElement(slot: TitleSlot): HTMLDivElement {
+    let element = this.titles[slot];
+    if (!element) {
+      const { className, css } = TITLE_SLOTS[slot];
+      element = styledDiv(this.doc, className, css);
+      this.titles[slot] = element;
+      this.root.appendChild(element);
+    }
+    return element;
+  }
+
+  /**
+   * Set text and theme styling on a title element; returns the custom config when visible. An
+   * empty title never creates its element, and hides (and empties) one that exists.
+   */
+  private applyTitleText(slot: TitleSlot, config: string | TextOverlayConfig | undefined, color: string, font: string): { readonly el: HTMLElement; readonly custom: TextOverlayConfig } | null {
     const text = titleText(config);
+    if (!text) {
+      const existing = this.titles[slot];
+      if (existing) {
+        existing.textContent = "";
+        existing.style.display = "none";
+      }
+      return null;
+    }
+    const el = this.titleElement(slot);
     el.textContent = text;
-    el.style.display = text ? "block" : "none";
-    if (!text) return null;
+    el.style.display = "block";
     const custom = typeof config === "string" ? { text } : config!;
     el.style.color = custom.color ?? color;
     el.style.font = custom.font ?? font;
-    return custom;
+    return { el, custom };
   }
 
-  private applyChartTitle(el: HTMLElement, config: string | ChartTitleConfig | undefined, color: string, font: string, top: number): void {
-    const custom = this.applyTitleText(el, config, color, font) as ChartTitleConfig | null;
-    if (!custom) return;
+  private applyChartTitle(slot: "title" | "subtitle", config: string | ChartTitleConfig | undefined, color: string, font: string, top: number): void {
+    const applied = this.applyTitleText(slot, config, color, font);
+    if (!applied) return;
+    const custom = applied.custom as ChartTitleConfig;
 
     const align = custom.align ?? "center";
     const offsetX = custom.offsetX ?? 0;
-    const style = el.style;
+    const style = applied.el.style;
     style.top = `${top + (custom.offsetY ?? 0)}px`;
     style.left = align === "left" ? `${TITLE_SIDE_INSET_PX + offsetX}px` : align === "right" ? "auto" : `calc(50% + ${offsetX}px)`;
     style.right = align === "right" ? `${TITLE_SIDE_INSET_PX - offsetX}px` : "auto";
@@ -216,13 +220,13 @@ export class ChartLayout implements ChartLayoutElements {
     style.textAlign = align;
   }
 
-  private applyAxisTitle(el: HTMLElement, config: string | TextOverlayConfig | undefined, axis: "x" | "y" | "y2", theme: ResolvedChartTheme): void {
-    const custom = this.applyTitleText(el, config, theme.axisTitleColor, theme.axisTitleFont);
-    if (!custom) return;
+  private applyAxisTitle(slot: "xAxisTitle" | "yAxisTitle" | "y2AxisTitle", config: string | TextOverlayConfig | undefined, axis: "x" | "y" | "y2", theme: ResolvedChartTheme): void {
+    const applied = this.applyTitleText(slot, config, theme.axisTitleColor, theme.axisTitleFont);
+    if (!applied) return;
 
-    const offsetX = custom.offsetX ?? 0;
-    const offsetY = custom.offsetY ?? 0;
-    const style = el.style;
+    const offsetX = applied.custom.offsetX ?? 0;
+    const offsetY = applied.custom.offsetY ?? 0;
+    const style = applied.el.style;
     if (axis === "x") {
       style.left = `calc(50% + ${offsetX}px)`;
       style.bottom = `${AXIS_TITLE_INSET_PX - offsetY}px`;
@@ -242,8 +246,9 @@ export class ChartLayout implements ChartLayoutElements {
   /** Center the Y/Y2 titles on the plot row (below the title row, above the X gutter), not on the whole chart. */
   private positionYTitles(): void {
     const center = (offset: number): string => `calc(${this.titleInset}px + (100% - ${this.titleInset + this.bottomRow}px) / 2 + ${offset}px)`;
-    this.yAxisTitle.style.top = center(this.yTitleOffsetY.y);
-    this.y2AxisTitle.style.top = center(this.yTitleOffsetY.y2);
+    const { yAxisTitle, y2AxisTitle } = this.titles;
+    if (yAxisTitle) yAxisTitle.style.top = center(this.yTitleOffsetY.y);
+    if (y2AxisTitle) y2AxisTitle.style.top = center(this.yTitleOffsetY.y2);
   }
 
   /** Reserve a top row for the chart title and subtitle so they never cover the plot. */
@@ -263,7 +268,7 @@ export class ChartLayout implements ChartLayoutElements {
     return true;
   }
 
-  /** Update axis visibility and layout placement. */
+  /** Update axis visibility and layout placement. Only values that differ from the last update are written. */
   update(config: ChartLayoutConfig): void {
     this.lastConfig = config;
     const hasOutsideY = config.y.visible && config.y.position === "outside";
@@ -272,16 +277,18 @@ export class ChartLayout implements ChartLayoutElements {
     const yGutter = this.gutter("y", config.y, LEFT_AXIS_GUTTER_CSS, LEFT_AXIS_TITLE_GUTTER_CSS);
     const y2Gutter = this.gutter("y2", config.y2, RIGHT_AXIS_GUTTER_CSS, RIGHT_AXIS_TITLE_GUTTER_CSS);
     const xGutter = this.gutter("x", config.x, BOTTOM_AXIS_GUTTER_CSS, BOTTOM_AXIS_TITLE_GUTTER_CSS);
+    const written = this.written;
 
-    this.root.style.gridTemplateColumns = `${hasOutsideY ? yGutter : 0}px minmax(0, 1fr) ${hasOutsideY2 ? y2Gutter : 0}px`;
-    this.root.style.gridTemplateRows = `${this.titleInset}px minmax(0, 1fr) ${hasOutsideX ? xGutter : 0}px`;
+    const columns = `${hasOutsideY ? yGutter : 0}px minmax(0, 1fr) ${hasOutsideY2 ? y2Gutter : 0}px`;
+    if (columns !== written.columns) this.root.style.gridTemplateColumns = written.columns = columns;
+    const rows = `${this.titleInset}px minmax(0, 1fr) ${hasOutsideX ? xGutter : 0}px`;
+    if (rows !== written.rows) this.root.style.gridTemplateRows = written.rows = rows;
     this.bottomRow = hasOutsideX ? xGutter : 0;
     this.positionYTitles();
-    this.yAxis.style.display = hasOutsideY ? "block" : "none";
-    this.y2Axis.style.display = hasOutsideY2 ? "block" : "none";
-    this.xAxis.style.display = hasOutsideX ? "block" : "none";
-    this.corner.style.display = hasOutsideX && hasOutsideY ? "block" : "none";
-    this.cornerRight.style.display = hasOutsideX && hasOutsideY2 ? "block" : "none";
+    const display = (shown: boolean): string => (shown ? "block" : "none");
+    if (display(hasOutsideY) !== written.y) this.yAxis.style.display = written.y = display(hasOutsideY);
+    if (display(hasOutsideY2) !== written.y2) this.y2Axis.style.display = written.y2 = display(hasOutsideY2);
+    if (display(hasOutsideX) !== written.x) this.xAxis.style.display = written.x = display(hasOutsideX);
   }
 
   /** Gutter in CSS pixels: the tick-label size plus the title allowance when the axis has a title. */
@@ -308,19 +315,7 @@ export class ChartLayout implements ChartLayoutElements {
       target.appendChild(this.root);
     }
 
-    this.root.append(
-      this.yAxis,
-      this.plot,
-      this.y2Axis,
-      this.corner,
-      this.xAxis,
-      this.cornerRight,
-      this.title,
-      this.subtitle,
-      this.xAxisTitle,
-      this.yAxisTitle,
-      this.y2AxisTitle,
-    );
+    this.root.append(this.yAxis, this.plot, this.y2Axis, this.xAxis);
     this.plot.appendChild(this.canvas);
   }
 }
