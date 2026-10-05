@@ -715,7 +715,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     maxPoints: number,
     xOrigin: number = 0,
   ): { count: number; next: number; done: boolean } {
-    if (maxPoints < 3 || target.length < maxPoints * 2) return { count: 0, next: start, done: true };
+    if (maxPoints < 2 || target.length < maxPoints * 2) return { count: 0, next: start, done: true };
 
     const range = this.visibleIndexRange(viewport, 1);
     const from = Math.max(range.start, start);
