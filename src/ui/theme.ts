@@ -241,7 +241,7 @@ export function rgbaCss(color: RgbaColor): string {
 /** Resolve a CSS color to a computed RGB(A) string. */
 export function resolveCssColor(color: string, context?: Element): string | null {
   const doc = context?.ownerDocument ?? globalThis.document;
-  if (!doc?.documentElement || typeof getComputedStyle === "undefined") return null;
+  if (!doc?.documentElement || typeof (doc.defaultView ?? globalThis).getComputedStyle === "undefined") return null;
 
   const parent = context?.nodeType === 1 ? (context as HTMLElement) : doc.documentElement;
   const el = doc.createElement("span");
@@ -251,7 +251,7 @@ export function resolveCssColor(color: string, context?: Element): string | null
   el.style.color = color;
   parent.appendChild(el);
 
-  const resolved = getComputedStyle(el).color;
+  const resolved = (doc.defaultView ?? globalThis).getComputedStyle(el).color;
   el.remove();
   return resolved || null;
 }
