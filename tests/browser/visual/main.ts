@@ -408,6 +408,8 @@ function addGaps(chart: Chart): void {
 async function finalizeCase(): Promise<void> {
   try {
     if (caseName === "context-restore") await exerciseContextRestore(chart);
+    // The first page load of a browser launch can be slow enough that no frame has run after the settle delay.
+    for (let waited = 0; waited < 3000 && chart.getFrameStats().drawCalls === 0; waited += 50) await new Promise((resolve) => window.setTimeout(resolve, 50));
     stats = chart.getFrameStats();
     // Checked without recording a label: the status line width feeds the page layout, which the pixel baselines depend on.
     if (expectedRenderer && chart.renderer !== expectedRenderer) throw new Error(`Expected renderer ${expectedRenderer}, got ${chart.renderer}`);
