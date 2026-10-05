@@ -5,6 +5,7 @@ import type { RgbaColor, SeriesMode, SeriesStyle } from "../../core/types.js";
 import { WebGL2Backend } from "./WebGL2Backend.js";
 import type { ProgramName } from "./ShaderPrograms.js";
 import { releaseWebGLContext } from "./releaseWebGLContext.js";
+import { adoptWarmBackend, parkPlotCanvas } from "./WarmCanvasPool.js";
 
 /** The frame stream starts small and doubles on demand, so a sparse chart does not hold the 256 KiB a dense one needs. */
 const INITIAL_STREAM_FLOATS = 1 << 10;
@@ -45,15 +46,19 @@ export class WebGL2Renderer implements ChartRenderer {
 
   readonly info: ChartRendererInfo;
   private readonly createBackend: (canvas: HTMLCanvasElement) => GpuBackend;
+  /** Whether disposal may hand the canvas and backend to the warm pool: only for a chart's own backend, never an injected one. */
+  private readonly poolable: boolean;
 
   /**
    * @param canvas Canvas that owns the WebGL2 context; the renderer listens for its loss and restore events.
    * @param options `createBackend` builds a backend on `canvas` and is called again after a context restore;
-   * `origin` records how this engine was chosen for `info`.
+   * `origin` records how this engine was chosen for `info`. Without `createBackend` the renderer builds the native
+   * WebGL2 backend, adopting the warm one when `canvas` came from the warm pool.
    */
   constructor(private readonly canvas: HTMLCanvasElement, options: { readonly createBackend?: (canvas: HTMLCanvasElement) => GpuBackend; readonly origin?: RendererOrigin } = {}) {
+    this.poolable = !options.createBackend;
     this.createBackend = options.createBackend ?? ((target) => new WebGL2Backend(target));
-    this.backend = this.createBackend(canvas);
+    this.backend = (this.poolable ? adoptWarmBackend(canvas) : undefined) ?? this.createBackend(canvas);
     this.info = describeRenderer("webgl2", { gpu: true, contextLoss: true, shared: false, maxDrawingBufferPixels: this.backend.maxDrawingBufferPixels ?? DEFAULT_MAX_DRAWING_BUFFER_PIXELS }, options.origin);
     canvas.addEventListener("webglcontextlost", this.handleContextLost);
     canvas.addEventListener("webglcontextrestored", this.handleContextRestored);
@@ -193,6 +198,8 @@ export class WebGL2Renderer implements ChartRenderer {
     this.canvas.removeEventListener("webglcontextrestored", this.handleContextRestored);
     this.lossListener = null;
     this.commands = [];
+    // A healthy chart canvas stays warm for the next chart instead of paying for a context release now and a new context later.
+    if (this.poolable && !this.lost && parkPlotCanvas(this.canvas, this.backend)) return;
     const gl = this.backend.getContext?.();
     try {
       this.backend.destroy();
