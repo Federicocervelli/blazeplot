@@ -66,7 +66,6 @@ export class MinMaxTree {
    */
   update(start: number, end: number, validEnd: number = this.capacity): void {
     this.validEnd = validEnd;
-    if (end <= start) return;
     let left = this.base + ((start / this.blockSize) | 0);
     let right = this.base + (((end - 1) / this.blockSize) | 0);
     while (left >= 1) {

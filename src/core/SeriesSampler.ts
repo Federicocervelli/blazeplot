@@ -343,10 +343,14 @@ export class SeriesSampler extends SeriesSource {
    * nothing: the dataset's own query, else the LOD pyramid, else a raw scan.
    */
   private minMaxForRangeInto(start: number, end: number, out: MinMaxOut): boolean {
-    const readExtent = this.caps.rangeExtent;
-    if (readExtent) return readExtent(start, end, out);
-    if (this.lod.pyramid && !this.lod.useRawScan) {
-      const range = this.lod.pyramid.rangeMinMax(this.dataset, start, end);
+    const into = this.caps.rangeMinMaxInto;
+    if (into) return into.rangeMinMaxInto(start, end, out);
+    const range = this.caps.rangeMinMax
+      ? this.caps.rangeMinMax.rangeMinMaxY(start, end)
+      : this.lod.pyramid && !this.lod.useRawScan
+        ? this.lod.pyramid.rangeMinMax(this.dataset, start, end)
+        : undefined;
+    if (range !== undefined) {
       if (!range) return false;
       out.minY = range.minY;
       out.maxY = range.maxY;

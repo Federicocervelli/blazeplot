@@ -48,24 +48,9 @@ export interface XYRangeReader extends Dataset {
 /** Dataset with an explicit per-index gap predicate. */
 export type GapDataset = Dataset & { isGap(index: number): boolean };
 
-/** Writes the Y extent of an index range into `out` and returns whether it holds a finite value; allocates nothing. */
-export type RangeExtentReader = (start: number, end: number, out: MinMaxOut) => boolean;
-
-/**
- * Built-in datasets expose `rangeMinMaxInto` directly; custom `rangeMinMaxY` datasets are adapted, so
- * bucket loops always read extents through one allocation-free call shape.
- */
-function rangeExtentReader(dataset: Dataset): RangeExtentReader | null {
-  const into = (dataset as Partial<{ rangeMinMaxInto: RangeExtentReader }>).rangeMinMaxInto;
-  if (into) return into.bind(dataset);
-  if (!("rangeMinMaxY" in dataset)) return null;
-  return (start, end, out) => {
-    const range = (dataset as RangeMinMaxDataset).rangeMinMaxY(start, end);
-    if (!range) return false;
-    out.minY = range.minY;
-    out.maxY = range.maxY;
-    return true;
-  };
+/** Built-in datasets: `rangeMinMaxY` that writes into `out` and returns whether the range holds a finite value. */
+export interface RangeMinMaxIntoDataset extends RangeMinMaxDataset {
+  rangeMinMaxInto(start: number, end: number, out: MinMaxOut): boolean;
 }
 
 /**
@@ -78,8 +63,8 @@ export interface DatasetCaps {
   readonly ohlc: OhlcDataset | null;
   readonly xRange: XRangeDataset | null;
   readonly rangeMinMax: RangeMinMaxDataset | null;
-  /** `rangeMinMax` into a caller-owned slot (see `RangeExtentReader`), so bucket loops allocate nothing. */
-  readonly rangeExtent: RangeExtentReader | null;
+  /** Built-in datasets also answer `rangeMinMax` into a caller-owned slot, so bucket loops allocate nothing. */
+  readonly rangeMinMaxInto: RangeMinMaxIntoDataset | null;
   readonly minMaxSegments: MinMaxSegmentCopyDataset | null;
   readonly copyVisibleSamples: VisibleSampleCopyDataset | null;
   readonly copySamplesRange: RangeSampleCopyDataset | null;
@@ -121,7 +106,7 @@ export function resolveCaps(dataset: Dataset): DatasetCaps {
     ohlc: isOhlcDataset(dataset) ? dataset : null,
     xRange: "getXRange" in dataset ? (dataset as XRangeDataset) : null,
     rangeMinMax: "rangeMinMaxY" in dataset ? (dataset as RangeMinMaxDataset) : null,
-    rangeExtent: rangeExtentReader(dataset),
+    rangeMinMaxInto: "rangeMinMaxInto" in dataset ? (dataset as RangeMinMaxIntoDataset) : null,
     minMaxSegments: "copyMinMaxSegments" in dataset ? (dataset as MinMaxSegmentCopyDataset) : null,
     copyVisibleSamples: "copyVisibleSamples" in dataset ? (dataset as VisibleSampleCopyDataset) : null,
     copySamplesRange: "copySamplesRange" in dataset ? (dataset as RangeSampleCopyDataset) : null,

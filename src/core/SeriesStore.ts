@@ -420,9 +420,11 @@ export class SeriesStore<D extends Dataset = Dataset> {
       let maxY = NaN;
       if (end > start) {
         if (fast) {
-          if (this.caps.rangeExtent!(start, end, extent)) {
-            minY = extent.minY;
-            maxY = extent.maxY;
+          const into = this.caps.rangeMinMaxInto;
+          const range = into ? (into.rangeMinMaxInto(start, end, extent) ? extent : null) : rangeMinMax.rangeMinMaxY(start, end);
+          if (range) {
+            minY = range.minY;
+            maxY = range.maxY;
           }
         } else {
           const bounds = this.dataBounds({ xMin: bucketMin, xMax: isLast ? xMax : bucketMax });
