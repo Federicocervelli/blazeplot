@@ -31,6 +31,7 @@ const pluginFiles = new Set([
   "src/ui/LinkedCharts.ts",
   "src/ui/Navigator.ts",
   "src/ui/OverlayUtils.ts",
+  "src/ui/PickOverlay.ts",
   "src/ui/Selection.ts",
   "src/ui/Tooltip.ts",
 ]);

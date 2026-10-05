@@ -1,6 +1,9 @@
 import type { ChartSeriesState } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
+import { installPluginStyle } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
+
+const LEGEND_CSS = "@media (forced-colors:active){.blazeplot-legend{border:1px solid CanvasText}.blazeplot-legend-swatch{forced-color-adjust:none}}";
 
 /** Every user-facing string of `legendPlugin`. Unset keys keep their English defaults. */
 export interface LegendMessages {
@@ -145,6 +148,7 @@ function renderDefaultLegend(
 export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {
+      const releaseStyle = installPluginStyle(chart, "legend", LEGEND_CSS);
       const messages: LegendMessages = { ...DEFAULT_LEGEND_MESSAGES, ...options.messages };
       const container = chart.dom.document.createElement("div");
       container.className = options.className ?? "blazeplot-legend";
@@ -204,6 +208,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       return {
         onThemeChange: render,
         dispose() {
+          releaseStyle();
           releaseReservation?.();
           releaseReservation = null;
           rows.clear();

@@ -1,7 +1,9 @@
 import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createLongPressTouchTracker, requestLongPressTouchAction,createOverlayLayer, createPickMarker, createSyncRegistry, formatCompactNumber, pickAtDataX, placeFixedWithinViewport, renderPickItems } from "./OverlayUtils.js";
-import { rgbaCss } from "./theme.js";
+import { createOverlayLayer, installPluginStyle, placeFixedWithinViewport } from "./OverlayUtils.js";
+import { PICK_FORCED_COLORS_CSS, createPickMarkerPool, createSyncRegistry, formatCompactNumber, installLongPress, pickAtDataX, renderPickItems } from "./PickOverlay.js";
+
+const TOOLTIP_CSS = "@media (forced-colors:active){.blazeplot-tooltip{border:1px solid CanvasText}}";
 
 /** Options for the built-in hover tooltip plugin. */
 export interface TooltipPluginOptions {
@@ -62,6 +64,7 @@ function placeTooltip(container: HTMLElement, state: ChartHoverState, options: T
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {
+      const releaseStyles = [installPluginStyle(chart, "tooltip", TOOLTIP_CSS), installPluginStyle(chart, "pick", PICK_FORCED_COLORS_CSS)];
       const container = chart.dom.document.createElement("div");
       container.className = options.className ?? "blazeplot-tooltip";
       container.style.position = "fixed";
@@ -84,7 +87,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
 
       let lockedTooltipWidth = 0;
       let tooltipSize = { width: 0, height: 0 };
-      const markers: HTMLDivElement[] = [];
+      const markers = createPickMarkerPool(markerLayer);
       const ResizeObserverCtor = chart.dom.view.ResizeObserver ?? globalThis.ResizeObserver;
       const tooltipResizeObserver = typeof ResizeObserverCtor !== "undefined"
         ? new ResizeObserverCtor(() => {
@@ -113,23 +116,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       };
 
       const renderMarkers = (state: ChartHoverState | null): void => {
-        const items = options.highlight === false || !state ? [] : state.items;
-        for (let i = 0; i < items.length; i++) {
-          const item = items[i]!;
-          let marker = markers[i];
-          if (!marker) {
-            marker = createPickMarker(chart.dom.document, item, { strokeColor: chart.theme.markerStrokeColor });
-            markers[i] = marker;
-            markerLayer.appendChild(marker);
-          }
-          marker.style.display = "block";
-          marker.style.left = `${item.plotX}px`;
-          marker.style.top = `${item.plotY}px`;
-          marker.style.background = rgbaCss(item.series.style.color);
-        }
-        for (let i = items.length; i < markers.length; i++) {
-          markers[i]!.style.display = "none";
-        }
+        markers.update(options.highlight === false || !state ? [] : state.items, { strokeColor: chart.theme.markerStrokeColor });
       };
 
       const render = (state: ChartHoverState | null): void => {
@@ -195,17 +182,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         notifyPeers(state);
       };
 
-      requestLongPressTouchAction(chart, options.longPressMs);
-      const longPress = createLongPressTouchTracker({
-        view: chart.dom.view,
-        delayMs: () => options.longPressMs,
-        onPoint: showAtClientPoint,
-      });
-
-      chart.dom.listen("plot", "pointerdown", longPress.onPointerDown, { capture: true });
-      chart.dom.listen("plot", "pointermove", longPress.onPointerMove, { capture: true });
-      chart.dom.listen("plot", "pointerup", longPress.clearIfTouchPointer, { capture: true });
-      chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer, { capture: true });
+      const longPress = installLongPress(chart, { longPressMs: options.longPressMs, onPoint: showAtClientPoint });
 
       // `hover` runs after the frame it describes, so render synchronously: no extra frame of lag.
       chart.events.subscribe("hover", (state) => {
@@ -222,6 +199,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
           longPress.clear();
           sync.leave();
           tooltipResizeObserver?.disconnect();
+          for (const release of releaseStyles) release();
         },
       };
     },
