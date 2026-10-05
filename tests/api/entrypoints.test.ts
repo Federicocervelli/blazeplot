@@ -39,6 +39,7 @@ const expectedExports: Record<string, readonly string[]> = {
   "./plugins/navigator": ["navigatorPlugin"],
   "./plugins/flamegraph": ["buildStatusChartModel", "flameGraphPlugin", "parseFoldedStacks"],
   "./plugins/a11y": ["a11yPlugin"],
+  "./renderers/canvas2d": ["Canvas2DUnavailableError", "autoRenderer", "canvas2dRenderer"],
 };
 
 interface PackageJson {

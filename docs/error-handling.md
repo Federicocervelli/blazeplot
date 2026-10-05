@@ -21,7 +21,7 @@ Only `WebGL2UnavailableError` is a named class. Match other failures with `insta
 
 If a plugin's `install()` throws, the chart disposes everything already set up and rethrows that error from the constructor.
 
-Check availability first when you want fallback UI instead of a `try`/`catch`:
+To keep drawing without WebGL2, use the built-in Canvas 2D fallback (`renderer: autoRenderer()` from `blazeplot/renderers/canvas2d`; see [Browser support](./browser-support.md#canvas-2d-renderer)). Check availability first when you want your own fallback UI instead of a `try`/`catch`:
 
 ```ts
 import { Chart, WebGL2UnavailableError, isWebGL2Available } from "blazeplot";

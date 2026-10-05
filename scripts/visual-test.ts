@@ -23,7 +23,22 @@ interface Options {
   baselines: "compare" | "update" | "skip";
   /** Compare baselines even on non-Linux platforms. */
   forceCompare: boolean;
+  /** Renderer configurations to run; see RENDERER_MODES. */
+  renderers: RendererMode[];
 }
+
+/**
+ * Renderer configurations. `webgl2` is the primary run and owns the committed pixel baselines.
+ * `canvas2d` forces the Canvas 2D renderer and is compared against the same WebGL baselines with a looser
+ * tolerance (antialiasing and pixel snapping differ; see docs/internal/local-development.md).
+ * `auto-no-webgl` launches Chrome with WebGL disabled and checks that `renderer: autoRenderer()` falls back.
+ */
+type RendererMode = "webgl2" | "canvas2d" | "auto-no-webgl";
+const RENDERER_MODES: readonly RendererMode[] = ["webgl2", "canvas2d", "auto-no-webgl"];
+/** Canvas 2D may differ from the WebGL baselines in this many times the baseline's allowed pixel ratio. */
+const CANVAS2D_DIFF_FACTOR = 15;
+/** Cases that need a real WebGL context and are skipped when it is disabled. */
+const WEBGL_ONLY_CASES = new Set(["context-restore"]);
 
 interface VisualSnapshot {
   state?: string;
@@ -105,6 +120,7 @@ const DEFAULT_CASES = [
   "scale-options",
   "overlay-layering",
   "context-restore",
+  "gaps",
   "translucent-overlap",
   "scatter-markers",
   "scatter-markers-dpr2",
@@ -138,6 +154,7 @@ const CASE_CHECKS: Readonly<Record<string, CaseCheck>> = {
   "scale-options": { minInkRatio: 0.0025, baseline: { region: "plot" } },
   "overlay-layering": { minInkRatio: 0.003 },
   "context-restore": { minInkRatio: 0.004 },
+  gaps: { minInkRatio: 0.004 },
   // These cases assert their pixels inside the page (see assertPixelCase in tests/browser/visual/main.ts).
   "translucent-overlap": { minInkRatio: 0.1 },
   "scatter-markers": { minInkRatio: 0.00002 },
@@ -153,8 +170,6 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const serverUrl = options.url ?? `http://127.0.0.1:${options.port}`;
   let viteProc: Bun.Subprocess | null = null;
-  let chromeProc: Bun.Subprocess | null = null;
-  let userDataDir: string | null = null;
 
   try {
     if (!options.url) {
@@ -174,8 +189,38 @@ async function main(): Promise<void> {
     }
 
     const chromePath = resolveChrome(options.chrome);
+    const failures: string[] = [];
+    for (const [index, mode] of options.renderers.entries()) {
+      failures.push(...await runMode(mode, index, options, serverUrl, chromePath));
+    }
+    if (failures.length > 0) {
+      throw new Error(`${failures.length} visual case(s) failed:\n  - ${failures.join("\n  - ")}`);
+    }
+    if (options.baselines === "update") console.log(`Baselines written to ${options.baselineDir}`);
+  } finally {
+    if (viteProc) viteProc.kill();
+  }
+}
+
+/** Run the selected cases for one renderer configuration in its own browser; returns the failure messages. */
+async function runMode(mode: RendererMode, index: number, base: Options, serverUrl: string, chromePath: string): Promise<string[]> {
+  const options: Options = {
+    ...base,
+    outDir: mode === "webgl2" ? base.outDir : join(base.outDir, mode),
+    debugPort: base.debugPort + index,
+    cases: base.cases.filter((name) => mode !== "auto-no-webgl" || !WEBGL_ONLY_CASES.has(name)),
+    // Pixel baselines belong to the WebGL run; Canvas 2D is compared against them, the fallback run only checks ink.
+    baselines: mode === "auto-no-webgl" || (mode === "canvas2d" && base.baselines === "update") ? "skip" : base.baselines,
+  };
+  const diffFactor = mode === "canvas2d" ? CANVAS2D_DIFF_FACTOR : 1;
+  const label = mode === "webgl2" ? "" : `[${mode}] `;
+  await mkdir(options.outDir, { recursive: true });
+  let chromeProc: Bun.Subprocess | null = null;
+  let userDataDir: string | null = null;
+
+  try {
     userDataDir = await mkdtemp(join(tmpdir(), "blazeplot-visual-chrome-"));
-    chromeProc = launchChrome(chromePath, userDataDir, options);
+    chromeProc = launchChrome(chromePath, userDataDir, options, mode === "auto-no-webgl" ? ["--disable-3d-apis"] : []);
     await waitForHttp(`http://127.0.0.1:${options.debugPort}/json/version`, 30_000);
 
     const summary: CaseResult[] = [];
@@ -183,6 +228,13 @@ async function main(): Promise<void> {
     for (const caseName of options.cases) {
       const url = new URL("/visual/", serverUrl);
       url.searchParams.set("case", caseName);
+      if (mode === "canvas2d") {
+        url.searchParams.set("renderer", "canvas2d");
+        url.searchParams.set("expectRenderer", "canvas2d");
+      } else if (mode === "auto-no-webgl") {
+        url.searchParams.set("renderer", "auto");
+        url.searchParams.set("expectRenderer", "canvas2d");
+      }
       const target = await createTarget(options.debugPort, url.toString());
       const cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
       try {
@@ -224,36 +276,32 @@ async function main(): Promise<void> {
         if (check.baseline) {
           const region = check.baseline.region === "chart" ? rects.root : rects.plot;
           const actual = await captureRegion(cdp, region);
-          const outcome = await checkBaseline(caseName, actual, check.baseline.maxDiffRatio ?? BASELINE_MAX_DIFF_RATIO, options);
+          const outcome = await checkBaseline(caseName, actual, (check.baseline.maxDiffRatio ?? BASELINE_MAX_DIFF_RATIO) * diffFactor, options);
           result.baseline = outcome.summary;
           baselineNote = `, baseline ${outcome.note}`;
           if (outcome.failure) {
             failures.push(outcome.failure);
-            console.error(`✗ ${outcome.failure}`);
+            console.error(`✗ ${label}${outcome.failure}`);
             continue;
           }
         }
-        console.log(`✓ ${caseName}: ink ${(ink.ratio * 100).toFixed(2)}%${baselineNote}; ${(snapshot.assertions ?? []).join(", ")}`);
+        console.log(`✓ ${label}${caseName}: ink ${(ink.ratio * 100).toFixed(2)}%${baselineNote}; ${(snapshot.assertions ?? []).join(", ")}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        failures.push(`${caseName}: ${message}`);
-        console.error(`✗ ${caseName}: ${message}`);
+        failures.push(`${label}${caseName}: ${message}`);
+        console.error(`✗ ${label}${caseName}: ${message}`);
       } finally {
         cdp.close();
       }
     }
 
     const reportPath = join(options.outDir, "summary.json");
-    await writeFile(reportPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), browser: basename(chromePath), platform: process.platform, baselines: options.baselines, cases: summary }, null, 2)}\n`);
-    console.log(`Visual test screenshots written to ${options.outDir}`);
-    if (failures.length > 0) {
-      throw new Error(`${failures.length} visual case(s) failed:\n  - ${failures.join("\n  - ")}`);
-    }
-    if (options.baselines === "update") console.log(`Baselines written to ${options.baselineDir}`);
+    await writeFile(reportPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), renderer: mode, browser: basename(chromePath), platform: process.platform, baselines: options.baselines, cases: summary }, null, 2)}\n`);
+    console.log(`${label}Visual test screenshots written to ${options.outDir}`);
+    return failures;
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
-    if (viteProc) viteProc.kill();
-    if (userDataDir && !options.keepBrowser) await rm(userDataDir, { recursive: true, force: true });
+    if (userDataDir && !options.keepBrowser) await rm(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
   }
 }
 
@@ -270,6 +318,7 @@ function parseArgs(args: readonly string[]): Options {
     baselineDir: DEFAULT_BASELINE_DIR,
     baselines: "compare",
     forceCompare: false,
+    renderers: [...RENDERER_MODES],
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -287,6 +336,14 @@ function parseArgs(args: readonly string[]): Options {
       case "--case":
       case "--cases":
         parsed.cases = readValue().split(",").map((value) => value.trim()).filter(Boolean);
+        break;
+      case "--renderer":
+      case "--renderers":
+        parsed.renderers = readValue().split(",").map((value) => {
+          const mode = value.trim() as RendererMode;
+          if (!RENDERER_MODES.includes(mode)) throw new Error(`Unknown renderer ${value}; expected one of ${RENDERER_MODES.join(", ")}`);
+          return mode;
+        });
         break;
       case "--out-dir":
         parsed.outDir = readValue();
@@ -343,6 +400,7 @@ function printHelpAndExit(): never {
 
 Options:
   --cases <a,b>          Comma-separated visual cases
+  --renderer <a,b>       Renderer runs, any of ${RENDERER_MODES.join(", ")} (default: all). canvas2d is compared to the WebGL baselines with a looser tolerance; auto-no-webgl disables WebGL in Chrome and checks the fallback
   --out-dir <path>       Screenshot/report output directory
   --width <px>           Browser width
   --height <px>          Browser height
@@ -360,7 +418,7 @@ Options:
   process.exit(0);
 }
 
-function launchChrome(chromePath: string, userDataDir: string, opts: Options): Bun.Subprocess {
+function launchChrome(chromePath: string, userDataDir: string, opts: Options, extraArgs: readonly string[] = []): Bun.Subprocess {
   const cmd = [
     chromePath,
     "--headless=new",
@@ -376,6 +434,7 @@ function launchChrome(chromePath: string, userDataDir: string, opts: Options): B
     "--ignore-gpu-blocklist",
     "--enable-unsafe-swiftshader",
     "--use-angle=swiftshader",
+    ...extraArgs,
     "about:blank",
   ];
   return spawnChrome(cmd);

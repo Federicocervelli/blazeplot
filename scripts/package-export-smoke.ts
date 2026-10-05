@@ -11,6 +11,7 @@ const expectedExports = {
   "blazeplot/linked": ["createLinkedCharts"],
   "blazeplot/data": ["binSamples", "rollingMean"],
   "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob", "exportChartData", "chartDataToCsv"],
+  "blazeplot/renderers/canvas2d": ["canvas2dRenderer", "autoRenderer", "Canvas2DUnavailableError"],
   "blazeplot/plugins/legend": ["legendPlugin"],
   "blazeplot/plugins/tooltip": ["tooltipPlugin"],
   "blazeplot/plugins/interactions": ["interactionsPlugin"],

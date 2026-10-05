@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-152 exports.
+156 exports.
 
 #### interface AcceleratedDataset
 
@@ -148,6 +148,7 @@ class Camera2D {
 ```ts
 class Chart {
     constructor(target: HTMLElement, options?: ChartOptions);
+    get renderer(): ChartRendererKind;
     get rootElement(): HTMLElement;
     get theme(): ResolvedChartTheme;
     dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [
@@ -392,6 +393,7 @@ interface ChartOptions {
     readonly renderLoop?: ChartRenderLoop;
     readonly plugins?: readonly ChartPlugin[];
     readonly theme?: ChartTheme;
+    readonly renderer?: "webgl2" | ChartRendererFactory;
 }
 ```
 
@@ -635,6 +637,34 @@ interface ChartRect {
 
 ```ts
 type ChartRenderLoop = "auto" | "continuous";
+```
+
+#### type ChartRendererFactory
+
+```ts
+type ChartRendererFactory = (context: ChartRendererFactoryContext) => ChartRendererHandle;
+```
+
+#### interface ChartRendererFactoryContext
+
+```ts
+interface ChartRendererFactoryContext {
+    readonly canvas: HTMLCanvasElement;
+}
+```
+
+#### interface ChartRendererHandle
+
+```ts
+interface ChartRendererHandle {
+    readonly kind: ChartRendererKind;
+}
+```
+
+#### type ChartRendererKind
+
+```ts
+type ChartRendererKind = "webgl2" | "canvas2d";
 ```
 
 #### interface ChartScreenshotOptions
@@ -1968,6 +1998,30 @@ function downloadChartScreenshot(chart: Chart, options?: ChartDownloadOptions): 
 
 ```ts
 function exportChartData(chart: ExportableChart, options?: ChartDataExportOptions): ChartDataExport;
+```
+
+### `blazeplot/renderers/canvas2d`
+
+3 exports.
+
+#### class Canvas2DUnavailableError
+
+```ts
+class Canvas2DUnavailableError extends Error {
+    constructor(message?: string);
+}
+```
+
+#### function autoRenderer
+
+```ts
+function autoRenderer(): ChartRendererFactory;
+```
+
+#### function canvas2dRenderer
+
+```ts
+function canvas2dRenderer(): ChartRendererFactory;
 ```
 
 ### `blazeplot/plugins/legend`

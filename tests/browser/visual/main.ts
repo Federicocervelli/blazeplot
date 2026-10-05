@@ -9,6 +9,7 @@ import { legendPlugin } from "@/plugins/legend.ts";
 import { navigatorPlugin } from "@/plugins/navigator.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
+import { autoRenderer, canvas2dRenderer } from "@/renderers/canvas2d.ts";
 
 interface VisualTestSnapshot {
   readonly state: "booting" | "ready" | "error";
@@ -60,6 +61,7 @@ const CASES = [
   "scale-options",
   "overlay-layering",
   "context-restore",
+  "gaps",
   "translucent-overlap",
   "scatter-markers",
   "scatter-markers-dpr2",
@@ -91,7 +93,14 @@ let error: string | null = null;
 const assertions: string[] = [];
 
 if (caseName === "scatter-markers-dpr2") Object.defineProperty(window, "devicePixelRatio", { value: 2, configurable: true });
-const chart = new Chart(chartTarget, optionsForCase(caseName));
+// `?renderer=` selects the backend: webgl2 (default), canvas2d, or auto (WebGL2 with Canvas 2D fallback).
+// `?expectRenderer=` asserts which backend ended up in use (e.g. canvas2d when WebGL is disabled).
+const rendererParam = params.get("renderer") ?? "webgl2";
+const expectedRenderer = params.get("expectRenderer");
+const chart = new Chart(chartTarget, {
+  ...optionsForCase(caseName),
+  renderer: rendererParam === "canvas2d" ? canvas2dRenderer() : rendererParam === "auto" ? autoRenderer() : "webgl2",
+});
 /** Last rendered frame, copied while the drawing buffer is still valid (it is cleared after compositing). */
 let lastFrame: ImageData | null = null;
 const captureCanvas = document.createElement("canvas");
@@ -255,6 +264,9 @@ function setupCase(name: VisualCase, chart: Chart): void {
     case "context-restore":
       addLine(chart);
       break;
+    case "gaps":
+      addGaps(chart);
+      break;
     case "translucent-overlap":
       addTranslucentOverlap(chart);
       break;
@@ -383,10 +395,21 @@ function assertPixelCase(name: VisualCase): void {
   }
 }
 
+/** Lines, area, and scatter with NaN gaps, so every renderer has to break paths at missing samples. */
+function addGaps(chart: Chart): void {
+  const { x, y } = wave(240);
+  for (const gap of [40, 41, 42, 100, 101, 170, 171, 172, 173]) y[gap] = Number.NaN;
+  chart.addLine({ dataset: new StaticDataset(x, y), name: "gappy line" }, { lineWidth: 3 });
+  chart.addArea({ dataset: new StaticDataset(x, Float32Array.from(y, (v) => v - 2.2)), name: "gappy area" }, { fillColor: [0.2, 0.7, 1, 0.28], lineWidth: 2, baseline: -3.4 });
+  chart.setViewport({ xMin: 0, xMax: 239, yMin: -3.6, yMax: 1.6 });
+}
+
 async function finalizeCase(): Promise<void> {
   try {
     if (caseName === "context-restore") await exerciseContextRestore(chart);
     stats = chart.getFrameStats();
+    // Checked without recording a label: the status line width feeds the page layout, which the pixel baselines depend on.
+    if (expectedRenderer && chart.renderer !== expectedRenderer) throw new Error(`Expected renderer ${expectedRenderer}, got ${chart.renderer}`);
     assert(stats.drawCalls > 0, "drawCalls > 0");
     assert(stats.pointsRendered > 0, "pointsRendered > 0");
     assert(stats.renderMode !== "none", `renderMode=${stats.renderMode}`);

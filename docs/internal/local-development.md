@@ -77,6 +77,16 @@ bun run test:stability --case streaming --verbose  # one case, print every heap/
 
 Artifacts land in `build/visual-tests/`: `<case>.png` (full page), `actual/<case>.png` (the exact crop compared with the baseline, ready to commit), and `diff/<case>.png` (expected dimmed with differing pixels in red, only on failure). Missing baselines fail the run.
 
+#### Renderer runs
+
+`bun run test:visual` runs the case list once per renderer configuration (`--renderer webgl2,canvas2d,auto-no-webgl` selects a subset):
+
+- `webgl2`: the default renderer; owns the committed baselines and the `build/visual-tests/` root (including `actual/`).
+- `canvas2d`: `?renderer=canvas2d`, output in `build/visual-tests/canvas2d/`. It runs the same cases and blank-canvas guard and is compared against the same WebGL baselines, but with 15x the allowed differing-pixel ratio (3% for plot-only cases, 15% for the DOM-text cases). Canvas 2D antialiases lines and snaps rectangles to whole pixels, so a few percent of pixels differ at the edges; locally measured differences against WebGL renders were about 0.05% to 1.5% per case. Never update baselines from this run (`--update-baselines` only writes the WebGL ones).
+- `auto-no-webgl`: launches Chrome with `--disable-3d-apis` and constructs the chart with `autoRenderer()`, asserting it ended up on Canvas 2D. Blank-canvas guard only; the `context-restore` case is skipped because it needs a real WebGL context.
+
+The `gaps` case (NaN gaps in a line and an area series) has no pixel baseline and exists so every renderer has to break paths at missing samples.
+
 GPU, driver, and OS differences change anti-aliasing and text, so baselines must be generated in the CI environment (headless Chrome on `ubuntu-latest` with SwiftShader/ANGLE software GL), not on a laptop. For that reason the pixel comparison only runs on Linux by default; on other platforms it is skipped with a note and only the blank-canvas guard runs. `--compare-baselines` forces the comparison and `--skip-baselines` disables it.
 
 To regenerate baselines after an intentional rendering change, or to add a case:

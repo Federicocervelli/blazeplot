@@ -31,7 +31,7 @@ interface BundleSizeReport {
 // Budgets are the built size plus about 1.5% (at least 100 bytes), rounded up to 100 bytes.
 // Tighten them when a change shrinks a chunk; raise one only with a reason in the PR.
 const budgets: Budget[] = [
-  { label: "root entry", path: "dist/index.js", maxBytes: 12_100 },
+  { label: "root entry", path: "dist/index.js", maxBytes: 12_300 },
   { label: "linked entry", path: "dist/linked.js", maxBytes: 2_500 },
   { label: "data entry", path: "dist/data.js", maxBytes: 1_800 },
   { label: "export entry", path: "dist/export.js", maxBytes: 3_900 },
@@ -42,14 +42,16 @@ const budgets: Budget[] = [
   { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 4_600 },
   { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_600 },
   { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 10_100 },
-  { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 21_100 },
+  { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 22_100 },
   { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 11_900 },
+  { label: "canvas2d renderer entry", path: "dist/renderers/canvas2d.js", maxBytes: 5_700 },
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
   // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152.
-  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 157_600 },
+  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 148_500 },
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
+  { label: "shared WebGL2 renderer chunk", pattern: /^webgl2Renderer-.*.js$/, maxBytes: 12_100 },
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 6_400 },
   { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 5_600 },

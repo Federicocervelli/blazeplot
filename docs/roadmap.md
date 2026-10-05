@@ -45,7 +45,7 @@ These are additive and can ship in 1.x minor releases.
 
 ## Non-goals for now
 
-- Canvas2D/SVG fallback renderer for core plot drawing.
+- An SVG renderer for core plot drawing (a Canvas 2D fallback ships as `blazeplot/renderers/canvas2d`).
 - Large chart-type expansion that bloats the time-series core.
 - Bundling timezone databases or heavyweight data-processing libraries.
 - Breaking synchronous chart construction for optional feature splitting.

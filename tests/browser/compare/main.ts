@@ -13,12 +13,13 @@ import {
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { Chart, StaticDataset } from "@/index.ts";
+import { canvas2dRenderer } from "@/renderers/canvas2d.ts";
 import type { AcceleratedDataset, Dataset, SampleCopyLayout, SeriesStore, TimeRange, Viewport } from "@/index.ts";
 import officialConfig from "../../../scripts/benchmark-config.json";
 
 ChartJs.register(LineController, LineElement, PointElement, LinearScale, Decimation, Legend, Tooltip);
 
-type LibraryId = "blazeplot" | "uplot" | "chartjs";
+type LibraryId = "blazeplot" | "blazeplot-canvas2d" | "uplot" | "chartjs";
 type ScenarioOperation = "static" | "pan" | "stream";
 type BlazePlotDataPath = "prepared-arrays" | "accelerated-dataset";
 type BenchmarkState = "prewarming" | "ready" | "running" | "done" | "error";
@@ -299,7 +300,7 @@ function readListParam<T extends string>(name: string, fallback: readonly T[], p
 }
 
 function isLibraryId(value: string): value is LibraryId {
-  return value === "blazeplot" || value === "uplot" || value === "chartjs";
+  return value === "blazeplot" || value === "blazeplot-canvas2d" || value === "uplot" || value === "chartjs";
 }
 
 async function prepare(): Promise<void> {
@@ -502,7 +503,9 @@ async function runLibraryBenchmark(library: LibraryId, scenario: ScenarioConfig,
 function createInstance(library: LibraryId, host: HTMLElement, scenario: ScenarioConfig, data: BenchmarkData): BenchmarkInstance {
   switch (library) {
     case "blazeplot":
-      return createBlazePlotInstance(host, scenario, data);
+      return createBlazePlotInstance(host, scenario, data, "webgl2");
+    case "blazeplot-canvas2d":
+      return createBlazePlotInstance(host, scenario, data, "canvas2d");
     case "uplot":
       return createUPlotInstance(host, scenario, data);
     case "chartjs":
@@ -510,11 +513,12 @@ function createInstance(library: LibraryId, host: HTMLElement, scenario: Scenari
   }
 }
 
-function createBlazePlotInstance(host: HTMLElement, scenario: ScenarioConfig, data: BenchmarkData): BenchmarkInstance {
+function createBlazePlotInstance(host: HTMLElement, scenario: ScenarioConfig, data: BenchmarkData, renderer: "webgl2" | "canvas2d"): BenchmarkInstance {
   const chart = new Chart(host, {
     axes: { x: { position: "outside" }, y: { position: "outside" } },
     grid: false,
     renderLoop: "auto",
+    renderer: renderer === "canvas2d" ? canvas2dRenderer() : "webgl2",
   });
   const streaming = scenario.operation === "stream";
   const series = streaming
@@ -882,7 +886,7 @@ class ProceduralBenchmarkDataset implements AcceleratedDataset {
 
 function createBenchmarkData(scenario: ScenarioConfig, libraries: readonly LibraryId[]): BenchmarkData {
   const sampleCount = scenario.sampleCount;
-  const needsBlazePlot = libraries.includes("blazeplot") && scenario.blazeplotDataPath !== "accelerated-dataset";
+  const needsBlazePlot = (libraries.includes("blazeplot") || libraries.includes("blazeplot-canvas2d")) && scenario.blazeplotDataPath !== "accelerated-dataset";
   const needsUPlot = libraries.includes("uplot");
   const needsChartJs = libraries.includes("chartjs");
   const xFloat = needsBlazePlot ? new Float64Array(sampleCount) : undefined;

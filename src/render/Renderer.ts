@@ -1,3 +1,4 @@
+import type { ChartRenderer } from "./ChartRenderer.js";
 import type { DrawCommand, GpuBackend, SolidPrimitive } from "./types.js";
 import type { RgbaColor, SeriesStyle } from "../core/types.js";
 
@@ -15,7 +16,8 @@ export interface RenderProjection {
  * @internal Records a frame's draws against one CPU-side vertex stream and submits it to a
  * `GpuBackend` in `endFrame`, so buffer uploads per frame stay constant.
  */
-export class Renderer {
+export class Renderer implements ChartRenderer {
+  readonly kind = "webgl2" as const;
   private stream = new Float32Array(INITIAL_STREAM_FLOATS);
   private streamFloats = 0;
   private commands: DrawCommand[] = [];

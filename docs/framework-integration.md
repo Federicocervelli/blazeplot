@@ -329,7 +329,7 @@ The `dispose` indirection matters: the dynamic import resolves after `onMount` r
 
 ## No-WebGL2 fallback
 
-There is no Canvas2D or SVG renderer, so a browser without WebGL2 cannot draw a chart. Decide what those users see. There are two ways to detect it, and they behave differently:
+By default a browser without WebGL2 cannot draw a chart. The simplest fix is the built-in Canvas 2D fallback: pass `renderer: autoRenderer()` from `blazeplot/renderers/canvas2d` and read `chart.renderer` (see [Browser support](./browser-support.md#canvas-2d-renderer)). If you would rather show your own UI (a static image, a table, a message), decide what those users see. There are two ways to detect it, and they behave differently:
 
 | Check | What it tells you | Behavior |
 |---|---|---|
