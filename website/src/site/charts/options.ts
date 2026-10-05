@@ -42,7 +42,7 @@ export const SITE_CHART_THEME: ChartTheme = {
 };
 
 export function siteChartOptions(options: ChartOptions = {}): ChartOptions {
-  return { ...options, theme: { ...SITE_CHART_THEME, ...options.theme } };
+  return { ...options, theme: { ...SITE_CHART_THEME, ...(options.theme === "auto" ? undefined : options.theme) } };
 }
 
 export function darkOutsideAxesOptions(options: ChartOptions = {}): ChartOptions {

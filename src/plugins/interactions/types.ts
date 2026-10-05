@@ -92,10 +92,10 @@ export interface InteractionsPluginOptions {
   readonly resumeFollowOnReset?: boolean;
   readonly resetViewport?: () => Viewport;
   /**
-   * One-finger touch pan. `true` (the default) pans with one finger and blocks page scrolling
-   * over the plot. `"two-finger"` is cooperative: one finger scrolls the page, and two fingers
-   * pan and zoom the plot (a hint explains it). Axis gutters still pan with one finger.
-   * `false` disables touch pan.
+   * Touch pan. `"two-finger"` (the default) is cooperative: one finger scrolls the page, and two
+   * fingers pan and zoom the plot (a hint explains it). Axis gutters still pan with one finger.
+   * `true` opts into one-finger pan, which blocks page scrolling over the plot (use it for
+   * full-viewport charts). `false` disables touch pan.
    */
   readonly touchPan?: boolean | "two-finger";
   readonly pinchZoom?: boolean;

@@ -183,7 +183,7 @@ For each release candidate and the final 1.0 release, the release checklist reco
 
 Mobile WebGL2 verification is manual and not yet automated.
 
-Mobile browsers should use touch-friendly interaction options and compact axis/layout settings. Touch input uses Pointer Events only (there are no separate touch-event handlers). Charts on scrolling pages can use `interactionsPlugin({ touchPan: "two-finger", wheelZoom: "modifier" })` so they do not trap page scrolling; one-finger page scrolling in that mode is verified through touch emulation, not yet on a physical phone. See [Theming and layout](./theming-and-layout.md#mobile-layouts) and [Troubleshooting](./troubleshooting.md#page-scrolling-and-chart-gestures).
+Mobile browsers should use touch-friendly interaction options and compact axis/layout settings. Touch input uses Pointer Events only (there are no separate touch-event handlers). `interactionsPlugin` defaults to `touchPan: "two-finger"` (one finger scrolls the page, two fingers pan and pinch) so charts do not trap page scrolling; add `wheelZoom: "modifier"` to keep the mouse wheel for the page too, or `touchPan: true` for one-finger pan. One-finger page scrolling in the default mode is verified through touch emulation, not yet on a physical phone. See [Theming and layout](./theming-and-layout.md#mobile-layouts) and [Troubleshooting](./troubleshooting.md#page-scrolling-and-chart-gestures).
 
 ## Iframes, popups, and multiple documents
 

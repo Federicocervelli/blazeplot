@@ -34,7 +34,18 @@ Theme values are merged with the default theme, so you can override only the tok
 | Overlays | `selectionFillColor`, `selectionStrokeColor` (box zoom and selection), `crosshairColor`, `markerStrokeColor` (hover markers) |
 | Focus | `focusRingColor` (keyboard focus ring on the chart root, legend items, navigator, and annotations) |
 
-`DEFAULT_CHART_THEME` (dark) and `LIGHT_CHART_THEME` are the built-in themes; a unit test checks both for WCAG contrast (4.5:1 for text, 3:1 for graphics). Use the light one with `theme: LIGHT_CHART_THEME`, or spread it and override a few tokens. In the operating system's forced-colors (high-contrast) mode the chart switches to system colors on its own; see [Accessibility](./accessibility.md#contrast-and-high-contrast).
+`DEFAULT_CHART_THEME` (dark) and `LIGHT_CHART_THEME` are the built-in themes; a unit test checks both for WCAG contrast (4.5:1 for text, 3:1 for graphics). Use the light one with `theme: LIGHT_CHART_THEME`, follow the system preference with `theme: "auto"` (see below), or spread it and override a few tokens. In the operating system's forced-colors (high-contrast) mode the chart switches to system colors on its own; see [Accessibility](./accessibility.md#contrast-and-high-contrast).
+
+### Following the system color scheme
+
+The default theme is dark. Pass `theme: "auto"` to follow the page's `prefers-color-scheme` instead: the chart uses the dark theme, or `LIGHT_CHART_THEME` when the user prefers a light scheme, and switches live (with the usual `themechange` event and plugin `onThemeChange` hooks) when the preference changes. The preference is read from the chart's own window, so charts in iframes and popup windows follow their own document. `chart.setTheme("auto")` turns it on later; passing any explicit theme to `setTheme` stops following the preference. To combine `"auto"` with your own tokens, call `chart.setTheme(...)` from a `prefers-color-scheme` listener of your own and pass the theme you want.
+
+```ts
+import { Chart } from "blazeplot";
+
+const chart = new Chart(document.body, { theme: "auto" });
+chart.dispose();
+```
 
 Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(config, { color: "#f97316", lineWidth: 2 })`. The second argument of every `add*` helper is a `SeriesStyleOptions` object:
 
@@ -142,7 +153,7 @@ For small screens, prefer:
 
 - inside axes or fewer visible axes,
 - fewer ticks through axis scale/tick options,
-- touch-first interaction options. `interactionsPlugin()` already pans with one finger and pinch-zooms (`touchPan: true`, `pinchZoom: true` are the defaults), which blocks page scrolling over the plot; on a scrolling page use `interactionsPlugin({ touchPan: "two-finger", wheelZoom: "modifier" })` so one finger scrolls the page and two fingers pan and zoom the chart, with a short hint (`gestureHint`) explaining it,
+- touch-first interaction options. `interactionsPlugin()` already lets one finger scroll the page while two fingers pan and pinch-zoom the chart (`touchPan: "two-finger"`, `pinchZoom: true` are the defaults), with a short hint (`gestureHint`) explaining it; a full-viewport chart can opt into one-finger pan with `touchPan: true`, and `wheelZoom: "modifier"` also keeps the mouse wheel for page scrolling,
 - legends outside the plot when space allows (`legendPlugin({ position: "bottom" })`),
 - `axes: { y: { size: "auto" } }` so gutters fit the actual tick labels instead of a fixed width.
 

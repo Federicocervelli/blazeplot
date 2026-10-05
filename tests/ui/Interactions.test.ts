@@ -42,7 +42,7 @@ describe("interactionsPlugin install and dispose", () => {
     const box = chartInternals(chart).plotElement.querySelector(".blazeplot-selection") as HTMLElement;
     expect(box.style.display).toBe("none");
     expect(box.style.pointerEvents).toBe("none");
-    expect(chartInternals(chart).canvas.style.touchAction).toBe("none");
+    expect(chartInternals(chart).canvas.style.touchAction).toBe("pan-x pan-y");
     expect(x.style.pointerEvents).toBe("auto");
     expect(x.style.cursor).toBe("ew-resize");
     expect(y.style.cursor).toBe("ns-resize");
@@ -67,13 +67,13 @@ describe("interactionsPlugin install and dispose", () => {
       expect(el.style.touchAction).toBe("");
     }
     const withPlugin = make();
-    expect(chartInternals(withPlugin).canvas.style.touchAction).toBe("none");
+    expect(chartInternals(withPlugin).canvas.style.touchAction).toBe("pan-x pan-y");
   });
 
   it("keeps the most restrictive touch-action whatever the plugin install order", () => {
-    const tooltipFirst = h.make({ plugins: [tooltipPlugin(), interactionsPlugin()] });
+    const tooltipFirst = h.make({ plugins: [tooltipPlugin(), interactionsPlugin({ touchPan: true })] });
     expect(chartInternals(tooltipFirst).canvas.style.touchAction).toBe("none");
-    const interactionsFirst = h.make({ plugins: [interactionsPlugin(), tooltipPlugin()] });
+    const interactionsFirst = h.make({ plugins: [interactionsPlugin({ touchPan: true }), tooltipPlugin()] });
     expect(chartInternals(interactionsFirst).canvas.style.touchAction).toBe("none");
     const tooltipOnly = h.make({ plugins: [tooltipPlugin()] });
     expect(chartInternals(tooltipOnly).canvas.style.touchAction).toBe("pan-y");
@@ -357,7 +357,7 @@ const touch = (type: "pointerdown" | "pointermove" | "pointerup" | "pointercance
 
 describe("interactionsPlugin touch", () => {
   it("pans with one finger and pinch-zooms with two", () => {
-    const chart = make();
+    const chart = make({ touchPan: true });
     fire(chartInternals(chart).canvas, touch("pointerdown", 200, 100));
     fire(chartInternals(chart).canvas, touch("pointermove", 240, 100));
     expect(chart.getViewport().xMin).toBeCloseTo(-10, 5);
@@ -488,6 +488,23 @@ describe("interactionsPlugin cooperative gestures", () => {
     expect(hintOf(chart)!.style.display).toBe("flex");
     await new Promise((resolve) => setTimeout(resolve, 30));
     expect(hintOf(chart)!.style.display).toBe("none");
+    chart.dispose();
+  });
+
+  it("defaults to two-finger touch pan: one finger leaves the page scrolling, two fingers pan and pinch", () => {
+    const chart = make();
+    expect(chartInternals(chart).canvas.style.touchAction).toBe("pan-x pan-y");
+    const before = chart.getViewport();
+    fire(chartInternals(chart).canvas, touch("pointerdown", 200, 100));
+    fire(chartInternals(chart).canvas, touch("pointermove", 260, 100));
+    expect(chart.getViewport()).toEqual(before);
+    fire(chartInternals(chart).canvas, touch("pointercancel", 260, 100));
+    fire(chartInternals(chart).canvas, touch("pointerdown", 150, 100, 1));
+    fire(chartInternals(chart).canvas, touch("pointerdown", 250, 100, 2));
+    const width = span(chart, "x");
+    fire(chartInternals(chart).canvas, touch("pointermove", 100, 100, 1));
+    fire(chartInternals(chart).canvas, touch("pointermove", 300, 100, 2));
+    expect(span(chart, "x")).toBeLessThan(width);
     chart.dispose();
   });
 

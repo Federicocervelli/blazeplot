@@ -66,7 +66,7 @@ For a maintainer-oriented page list, see [Documentation map](./README.md).
 | Static data | `StaticDataset` for fixed X/Y arrays. See [Data semantics](./data-semantics.md). |
 | Live data | Series appends with `chart.addLine({ capacity })`, `chart.addLine({ capacity, xStep })`, or OHLC ring buffers. See [Live data](./live-data.md) and [Performance recipes](./performance-recipes.md). |
 | Chart types | Line, area, scatter, bar, OHLC, and candlestick series; histograms are bars over a `HistogramDataset`. |
-| Interaction | Optional `interactionsPlugin` for wheel zoom, shift-drag/axis pan, box zoom, touch pan, pinch zoom, and keyboard pan/zoom. It can stay out of the way of page scrolling with `wheelZoom: "modifier"` and `touchPan: "two-finger"`. |
+| Interaction | Optional `interactionsPlugin` for wheel zoom, shift-drag/axis pan, box zoom, touch pan, pinch zoom, and keyboard pan/zoom. On touch screens one finger scrolls the page and two fingers pan and pinch by default (`touchPan: true` opts into one-finger pan); `wheelZoom: "modifier"` also keeps the plain wheel for page scrolling. |
 | Live viewport helpers | `followX` for rolling windows and `autoFitY` for visible-range Y fitting. |
 | Plugins | Interactions, legend, tooltip, crosshair, annotations, selection, navigator, accessibility, and flame graph plugins. See [Built-in plugins](./built-in-plugins.md). |
 | Layout and themes | Theme tokens, inside/outside axes with optional auto-sized gutters, titles, and plugin layout reservations. See [Theming and layout](./theming-and-layout.md). |
