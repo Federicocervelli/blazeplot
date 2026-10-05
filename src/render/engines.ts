@@ -82,11 +82,11 @@ const namedRenderers: Readonly<Record<RendererChoice, () => ChartRendererFactory
   shared: () => sharedRenderer(),
 };
 
-/** Names accepted by `ChartOptions.renderer`, for error messages. */
+/** @internal Names accepted by `ChartOptions.renderer`, for error messages. */
 export const rendererChoices = Object.keys(namedRenderers) as readonly RendererChoice[];
 
 /**
- * Build the engine for a chart's plot canvas from its `renderer` option: a name, a factory, or
+ * @internal Build the engine for a chart's plot canvas from its `renderer` option: a name, a factory, or
  * `undefined` for `"auto"`. Synchronous. Throws what the chosen engine throws when it is unavailable,
  * and a `TypeError` for anything else.
  */
