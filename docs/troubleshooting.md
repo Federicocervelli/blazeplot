@@ -19,7 +19,7 @@ Use this page when a chart renders blank, feels slow, or behaves differently fro
 Check these first:
 
 1. **The host element has size.** BlazePlot fills its container; a `0px`-tall parent produces a `0px` plot.
-2. **The browser supports WebGL2.** BlazePlot does not include a Canvas2D or SVG fallback. Use `isWebGL2Available()` if you need to show a fallback UI.
+2. **The browser supports WebGL2.** Charts use WebGL2 by default. Pass `renderer: autoRenderer()` from `blazeplot/renderers/canvas2d` to fall back to the built-in Canvas 2D renderer, or use `isWebGL2Available()` to show your own fallback UI.
 3. **The chart has a viewport.** Call `chart.fitToData()` after adding initial series, or set a viewport explicitly with `chart.setViewport(...)`.
 4. **Render scheduling is active.** Call `chart.start()` after setup. The default mode renders when chart-owned state changes and then idles; append through series APIs or call `series.markDirty()` after direct dataset mutation. Use the `renderLoop: "continuous"` chart option only for custom animations.
 5. **The data is finite and sorted.** Built-in datasets expect ascending X values. Non-finite Y values create gaps.

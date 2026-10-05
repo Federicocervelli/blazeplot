@@ -4,6 +4,11 @@ import type { RgbaColor, SeriesStyle } from "../core/types.js";
 /** Rendering backend a chart is drawn with. */
 export type ChartRendererKind = "webgl2" | "canvas2d";
 
+/** Opaque renderer instance returned by a renderer factory. Only the built-in renderers implement it. */
+export interface ChartRendererHandle {
+  readonly kind: ChartRendererKind;
+}
+
 /**
  * @internal Semantic drawing surface the chart talks to. Vertices are data-space `[x, y]` floats
  * (origin-shifted, with nonlinear axis scales already applied) mapped to clip space by a linear
@@ -11,8 +16,7 @@ export type ChartRendererKind = "webgl2" | "canvas2d";
  * Draw calls only have to be complete by `endFrame()`, and the data arrays may be reused by the
  * chart as soon as a draw call returns.
  */
-export interface ChartRenderer {
-  readonly kind: ChartRendererKind;
+export interface ChartRenderer extends ChartRendererHandle {
   /** Set the drawing-buffer size (device pixels) and device pixel ratio for this frame and clear it. */
   beginFrame(width: number, height: number, pixelRatio: number): void;
   /** Finish the frame: submit anything recorded since `beginFrame` and present it. */
@@ -43,4 +47,4 @@ export interface ChartRendererFactoryContext {
  * Creates the renderer for a chart. It may throw when its backend is unavailable.
  * Use `canvas2dRenderer()` / `autoRenderer()` from `blazeplot/renderers/canvas2d`.
  */
-export type ChartRendererFactory = (context: ChartRendererFactoryContext) => ChartRenderer;
+export type ChartRendererFactory = (context: ChartRendererFactoryContext) => ChartRendererHandle;

@@ -17,7 +17,7 @@ BlazePlot is for datasets that outgrow general-purpose charting libraries: milli
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **163 KiB raw**. Plugins and helpers ship as separate subpath entries.
+The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **164 KiB raw**. Plugins and helpers ship as separate subpath entries.
 
 Headline numbers from the manual headed comparison against uPlot and Chart.js:
 
@@ -99,6 +99,7 @@ Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](doc
 | `blazeplot/linked` | Multi-panel layouts with shared X and per-panel plugins. |
 | `blazeplot/data` | Pure, chart-agnostic data transforms (binning, rolling mean). |
 | `blazeplot/export` | Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers. |
+| `blazeplot/renderers/canvas2d` | Canvas 2D renderer and WebGL2-with-Canvas-2D-fallback renderer factories. |
 | `blazeplot/plugins/legend` | Built-in legend plugin. |
 | `blazeplot/plugins/tooltip` | Built-in tooltip plugin. |
 | `blazeplot/plugins/interactions` | Built-in pan, zoom, axis interaction, and reset plugin. |

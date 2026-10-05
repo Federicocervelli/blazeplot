@@ -1547,7 +1547,7 @@ export class Chart {
       throw new TypeError('ChartOptions.renderer must be "webgl2" or a factory such as canvas2dRenderer() from "blazeplot/renderers/canvas2d".');
     }
     const factory = typeof option === "function" ? option : webgl2Renderer();
-    return { renderer: backendFactory ? new Renderer(backendFactory({ canvas: this.canvas })) : factory({ canvas: this.canvas }) };
+    return { renderer: backendFactory ? new Renderer(backendFactory({ canvas: this.canvas })) : (factory({ canvas: this.canvas }) as ChartRenderer) };
   }
 
   private installGpuResources(resources: ChartGpuResources): void {

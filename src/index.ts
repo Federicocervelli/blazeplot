@@ -135,7 +135,7 @@ export type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "./interact
 export type { AxisControllerAxisOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
 
 // Renderer selection (factories live in blazeplot/renderers/canvas2d)
-export type { ChartRendererFactory, ChartRendererFactoryContext, ChartRendererKind } from "./render/ChartRenderer.js";
+export type { ChartRendererFactory, ChartRendererFactoryContext, ChartRendererHandle, ChartRendererKind } from "./render/ChartRenderer.js";
 
 // WebGL2 support detection
 export { isWebGL2Available, WebGL2UnavailableError } from "./render/WebGL2Backend.js";

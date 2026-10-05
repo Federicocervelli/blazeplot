@@ -1,17 +1,18 @@
 # Browser support
 
-BlazePlot targets modern browsers with WebGL2. The plot renderer does not have a Canvas2D or SVG fallback.
+BlazePlot targets modern browsers with WebGL2 and ships an opt-in Canvas 2D renderer for environments where WebGL2 is unavailable or unreliable.
 
 ## Requirements
 
 | Feature | Used for | Notes |
 |---|---|---|
-| WebGL2 | Plot rendering | Required for every chart. BlazePlot throws `WebGL2UnavailableError` when a chart cannot create a WebGL2 context. |
+| WebGL2 | Plot rendering | Required by the default renderer. BlazePlot throws `WebGL2UnavailableError` when a chart cannot create a WebGL2 context, unless you pass the [Canvas 2D renderer](#canvas-2d-renderer). |
+| Canvas 2D | Fallback plot rendering | Used by `blazeplot/renderers/canvas2d`. Available in every browser that can draw a `<canvas>`. |
 | Pointer Events | Built-in interactions | Used for pan, zoom, box selection, touch gestures, and plugin hit testing. |
 | `ResizeObserver` | Automatic layout updates | Optional. Without it, call `chart.resize()` after container size changes. |
 | Async Clipboard API + `ClipboardItem` | Clipboard export helpers | Optional. Browsers usually require HTTPS and a user gesture. Download helpers still work without clipboard support. |
 
-Use `isWebGL2Available()` before creating a chart if your app needs to show fallback UI.
+Use the [Canvas 2D renderer](#canvas-2d-renderer) to keep drawing without WebGL2, or `isWebGL2Available()` before creating a chart if your app needs to show its own fallback UI.
 
 ```ts
 import { Chart, isWebGL2Available } from "blazeplot";
@@ -24,9 +25,42 @@ if (isWebGL2Available()) {
 }
 ```
 
+## Canvas 2D renderer
+
+`blazeplot/renderers/canvas2d` is a separate entry point, so WebGL-only apps do not pay for it. It exports two renderer factories:
+
+- `autoRenderer()` uses WebGL2 and falls back to Canvas 2D when WebGL2 is unavailable or its context cannot be created (browsers with hardware acceleration off, GPU blocklists, privacy-hardened browsers, headless screenshot pipelines, pages that used up the WebGL context cap).
+- `canvas2dRenderer()` always uses Canvas 2D.
+
+```ts
+import { Chart, StaticDataset } from "blazeplot";
+import { autoRenderer } from "blazeplot/renderers/canvas2d";
+
+const chart = new Chart(element, { renderer: autoRenderer() });
+chart.addLine({ dataset: new StaticDataset(new Float64Array([0, 1, 2]), new Float32Array([0, 1, 0])) });
+chart.fitToData();
+chart.start();
+
+console.log(chart.renderer); // "webgl2" or "canvas2d"
+// Later: chart.dispose();
+```
+
+Every series type (line, area, bar, scatter, OHLC, candlestick, histogram), gaps, log/symlog and reversed axes, dual Y axes, wide lines, `chart.screenshot()`, every built-in plugin, and the flame graph plugin work on both renderers. `ctx.unstable.getWebGLContext()` returns `null` on Canvas 2D.
+
+The renderers draw the same data with the same level-of-detail pipeline, so Canvas 2D stays interactive at typical chart sizes, but it is CPU-bound and slower than WebGL2 for very large visible point counts and many simultaneous charts. Expected visual differences:
+
+- Lines are antialiased (WebGL lines are not), so strokes look slightly softer.
+- Rectangles (bars, histogram bins, dense min/max columns, candle bodies) snap to whole device pixels and are at least one pixel wide and tall, so adjacent columns never show seams.
+- Scatter points are pixel-snapped squares of the same size.
+- Thin lines (1 CSS pixel or less) are 1 device pixel wide.
+
+The visual test suite (`bun run test:visual`) renders every case with WebGL2, with Canvas 2D, and with WebGL disabled in Chrome through `autoRenderer()`; the Canvas 2D render has to stay within a documented pixel tolerance of the WebGL baselines (see [Local development](./internal/local-development.md)).
+
+The default `renderer: "webgl2"` is unchanged, and a chart created without the option still throws `WebGL2UnavailableError` when WebGL2 is unavailable.
+
 ## Unsupported-browser fallback
 
-Keep the fallback outside the chart constructor so users without WebGL2 still get a useful page.
+If you would rather show your own UI than a Canvas 2D chart, keep the fallback outside the chart constructor so users without WebGL2 still get a useful page.
 
 ```ts
 import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
