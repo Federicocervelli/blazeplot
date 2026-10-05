@@ -1,6 +1,6 @@
 import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSyncRegistry, formatCompactNumber, pickAtDataX, placeFixedWithinViewport, renderPickItems } from "./OverlayUtils.js";
+import { createLongPressTouchTracker, requestLongPressTouchAction,createOverlayLayer, createPickMarker, createSyncRegistry, formatCompactNumber, pickAtDataX, placeFixedWithinViewport, renderPickItems } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 
 /** Options for the built-in hover tooltip plugin. */
@@ -187,6 +187,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         notifyPeers(state);
       };
 
+      requestLongPressTouchAction(chart, options.longPressMs);
       const longPress = createLongPressTouchTracker({
         delayMs: () => options.longPressMs,
         onPoint: showAtClientPoint,

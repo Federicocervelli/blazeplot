@@ -198,6 +198,16 @@ export function createPickMarker(item: ChartPickItem, options: PickMarkerOptions
   return marker;
 }
 
+/**
+ * Let a long press follow the finger sideways while the page can still scroll vertically.
+ * Skipped when long press is off or another plugin (interactions, selection) already claimed
+ * the plot's `touch-action`.
+ */
+export function requestLongPressTouchAction(chart: ChartPluginContext, longPressMs: number | false | undefined): void {
+  if (longPressMs === false || chart.unstable.element("plot").style.touchAction) return;
+  chart.dom.decorate("plot", { style: { touchAction: "pan-y" } });
+}
+
 /** Options for long-press touch tracking. */
 export interface LongPressTouchTrackerOptions {
   readonly delayMs: () => number | false | undefined;

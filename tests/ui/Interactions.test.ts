@@ -59,6 +59,15 @@ describe("interactionsPlugin install and dispose", () => {
     chart.dispose();
   });
 
+  it("leaves touch-action alone without the plugin so the page can scroll", () => {
+    const plain = h.make({ axes: { x: true, y: true } });
+    for (const el of [plain.canvas, plain.plotElement, plain.rootElement, plain.xAxisElement, plain.yAxisElement]) {
+      expect(el.style.touchAction).toBe("");
+    }
+    const withPlugin = make();
+    expect(withPlugin.canvas.style.touchAction).toBe("none");
+  });
+
   it("does not claim gutters or touch-action when the related options are off", () => {
     const chart = make({ axisInteractions: false, touchPan: false, pinchZoom: false });
     expect(chart.xAxisElement.style.pointerEvents).not.toBe("auto");

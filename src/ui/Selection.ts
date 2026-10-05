@@ -179,6 +179,8 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       };
       applyTheme();
       const unmount = chart.dom.mount("plot", overlay);
+      // A touch drag selects instead of scrolling the page.
+      chart.dom.decorate("plot", { style: { touchAction: "none" } });
 
       const onPointerDown = (event: PointerEvent): void => {
         if (drag || event.button !== 0) return;

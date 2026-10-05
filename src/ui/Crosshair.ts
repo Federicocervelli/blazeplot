@@ -1,7 +1,7 @@
 import type { SeriesYAxis } from "../core/types.js";
 import type { ChartPickItem, ChartPickMode } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
+import { createLongPressTouchTracker, requestLongPressTouchAction,createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
 import type { SyncMembership } from "./OverlayUtils.js";
 
 /** Axis drawn by the crosshair overlay. */
@@ -400,6 +400,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         updateAtClientPoint(clientX, clientY);
       };
 
+      requestLongPressTouchAction(chart, options.longPressMs);
       const longPress = createLongPressTouchTracker({
         delayMs: () => options.longPressMs,
         onPoint: showAtClientPoint,
