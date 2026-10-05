@@ -11,6 +11,13 @@ export class Canvas2DUnavailableError extends Error {
   }
 }
 
+/**
+ * Stroke width, in device pixels, up to which a line counts as thin: it is stroked with mitered joins and may
+ * be reduced to its pixel columns (see `tracePolyline`). Wider strokes keep every vertex and round joins,
+ * because their sub-pixel geometry is visible (and costs, as WebGL does, proportionally more anyway).
+ */
+const THIN_STROKE_PX = 1.5;
+
 /** Typical desktop-browser limit on a canvas's area; browsers do not expose it. */
 const MAX_CANVAS_PIXELS = 16_384 * 16_384;
 
@@ -79,55 +86,112 @@ export class Canvas2DRenderer implements ChartRenderer {
     const n = Math.min(vertexCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
     const ctx = this.ctx;
+    const width = Math.max(1, lineWidth * this.pixelRatio);
     ctx.beginPath();
-    if (primitive === "line_strip") {
-      let pen = false;
-      for (let i = 0; i < n; i++) {
-        const x = d[i * 2]!;
-        const y = d[i * 2 + 1]!;
-        if (!Number.isFinite(x) || !Number.isFinite(y)) {
-          pen = false;
-          continue;
-        }
-        if (pen) ctx.lineTo(x * sx + ox, y * sy + oy);
-        else {
-          ctx.moveTo(x * sx + ox, y * sy + oy);
-          pen = true;
-        }
+    if (primitive === "line_strip") this.tracePolyline(d, n, sx, ox, sy, oy, width <= THIN_STROKE_PX);
+    else this.traceSegments(d, n, sx, ox, sy, oy, false);
+    this.stroke(color, width);
+  }
+
+  /**
+   * Add a polyline through `n` data-space vertices to the current path; with `reduce`, reduced to its pixel columns.
+   *
+   * A device pixel can only show one column of ink, so a run of consecutive vertices that land in the same
+   * pixel column is replaced by the vertices that define what that column looks like: the first, the lowest
+   * and highest (in the order they occurred), and the last. Everything dropped lies strictly between those
+   * in the column, so no spike or dip is lost and the line enters and leaves the column exactly as before;
+   * only sub-pixel wiggles inside one column disappear. The two extremes are placed on the column's pixel
+   * center: a vertical stroke there fills its pixel column the way the overdraw of many sub-pixel strokes
+   * does, where at their true x they would straddle two columns and read lighter than the unreduced line
+   * (this keeps a dense, noisy 1px trace within the cross-engine ink tolerance). Canvas 2D strokes cost per path segment, so a 10k
+   * sample window on a 1k pixel plot (dense raw data is the common live-chart case) emits about a third of
+   * the segments, while sparse data, with at most one vertex per column, passes through unchanged. The
+   * reduction depends only on the projected geometry, never on the series, and a non-finite vertex still
+   * breaks the line. Only thin strokes (<= `THIN_STROKE_PX`) reduce: a wider stroke makes the sub-pixel x
+   * spread of a column visible. Each column is scanned in one inner loop so all of its state lives in locals.
+   */
+  private tracePolyline(d: Float32Array, n: number, sx: number, ox: number, sy: number, oy: number, reduce: boolean): void {
+    const ctx = this.ctx;
+    let pen = false;
+    let i = 0;
+    while (i < n) {
+      const fx = d[i * 2]!;
+      const fy = d[i * 2 + 1]!;
+      i++;
+      if (!Number.isFinite(fx + fy)) {
+        pen = false;
+        continue;
       }
-    } else {
-      for (let i = 0; i + 1 < n; i += 2) {
-        const x0 = d[i * 2]!;
-        const y0 = d[i * 2 + 1]!;
-        const x1 = d[i * 2 + 2]!;
-        const y1 = d[i * 2 + 3]!;
-        if (!Number.isFinite(x0 + y0 + x1 + y1)) continue;
-        ctx.moveTo(x0 * sx + ox, y0 * sy + oy);
-        ctx.lineTo(x1 * sx + ox, y1 * sy + oy);
+      const firstX = fx * sx + ox;
+      const firstY = fy * sy + oy;
+      const key = Math.floor(firstX);
+      let lastX = firstX;
+      let lastY = firstY;
+      let minY = firstY;
+      let maxY = firstY;
+      let minAt = 0;
+      let maxAt = 0;
+      let count = 1;
+      for (; i < n; i++) {
+        const dx = d[i * 2]!;
+        const dy = d[i * 2 + 1]!;
+        if (!Number.isFinite(dx + dy)) break;
+        const x = dx * sx + ox;
+        if (!reduce || Math.floor(x) !== key) break;
+        const y = dy * sy + oy;
+        lastX = x;
+        lastY = y;
+        if (y < minY) {
+          minY = y;
+          minAt = count;
+        }
+        if (y > maxY) {
+          maxY = y;
+          maxAt = count;
+        }
+        count++;
       }
+
+      if (pen) ctx.lineTo(firstX, firstY);
+      else {
+        ctx.moveTo(firstX, firstY);
+        pen = true;
+      }
+      if (count === 1) continue;
+      // Extremes strictly inside the column; the first and last vertices are emitted anyway.
+      const lowFirst = minAt < maxAt;
+      const firstAt = lowFirst ? minAt : maxAt;
+      const secondAt = lowFirst ? maxAt : minAt;
+      if (firstAt > 0 && firstAt < count - 1) ctx.lineTo(key + 0.5, lowFirst ? minY : maxY);
+      if (secondAt > 0 && secondAt < count - 1) ctx.lineTo(key + 0.5, lowFirst ? maxY : minY);
+      ctx.lineTo(lastX, lastY);
     }
-    this.stroke(color, Math.max(1, lineWidth * this.pixelRatio));
+  }
+
+  /** Add independent segments (`n` vertices, two per segment) to the current path; with `snap`, axis-aligned ones sit on pixel centers. */
+  private traceSegments(d: Float32Array, n: number, sx: number, ox: number, sy: number, oy: number, snap: boolean): void {
+    const ctx = this.ctx;
+    for (let i = 0; i + 1 < n; i += 2) {
+      let x0 = d[i * 2]! * sx + ox;
+      let y0 = d[i * 2 + 1]! * sy + oy;
+      let x1 = d[i * 2 + 2]! * sx + ox;
+      let y1 = d[i * 2 + 3]! * sy + oy;
+      if (!Number.isFinite(x0 + y0 + x1 + y1)) continue;
+      // Snapped grid lines stay crisp at 1px.
+      if (snap && x0 === x1) x0 = x1 = Math.min(Math.floor(x0), this.width - 1) + 0.5;
+      if (snap && y0 === y1) y0 = y1 = Math.min(Math.floor(y0), this.height - 1) + 0.5;
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+    }
   }
 
   drawClipLines(data: Float32Array, vertexCount: number, color: RgbaColor): void {
     this.drawCalls++;
-    const d = data;
-    const n = Math.min(vertexCount, d.length >> 1);
     const hw = this.width * 0.5;
     const hh = this.height * 0.5;
-    const ctx = this.ctx;
-    ctx.beginPath();
-    for (let i = 0; i + 1 < n; i += 2) {
-      let x0 = (d[i * 2]! + 1) * hw;
-      let y0 = (1 - d[i * 2 + 1]!) * hh;
-      let x1 = (d[i * 2 + 2]! + 1) * hw;
-      let y1 = (1 - d[i * 2 + 3]!) * hh;
-      // Snap axis-aligned grid lines to pixel centers so 1px lines stay crisp.
-      if (x0 === x1) x0 = x1 = Math.min(Math.floor(x0), this.width - 1) + 0.5;
-      if (y0 === y1) y0 = y1 = Math.min(Math.floor(y0), this.height - 1) + 0.5;
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-    }
+    this.ctx.beginPath();
+    // Clip space is the pixel map x * hw + hw, y * -hh + hh.
+    this.traceSegments(data, Math.min(vertexCount, data.length >> 1), hw, hw, -hh, hh, true);
     this.stroke(color, 1);
   }
 
@@ -138,7 +202,7 @@ export class Canvas2DRenderer implements ChartRenderer {
     const { sx, ox, sy, oy } = this.project(projection);
     const radius = Math.max(0.5, pointSize * this.pixelRatio * 0.5);
     const ctx = this.ctx;
-    ctx.fillStyle = css(color);
+    this.setFill(color);
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = d[i * 2]! * sx + ox;
@@ -157,13 +221,16 @@ export class Canvas2DRenderer implements ChartRenderer {
     const { sx, ox, sy, oy } = this.project(projection);
     const half = style.barWidth * 0.5;
     const base = (style.baseline - yOrigin) * sy + oy;
-    this.ctx.fillStyle = css(style.color);
+    this.setFill(style.color);
+    // One path and one fill for the whole batch instead of a fill call per bar.
+    this.ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = d[i * 2]!;
       const y = d[i * 2 + 1]!;
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      this.fillSnapped((x - half) * sx + ox, y * sy + oy, (x + half) * sx + ox, base);
+      this.addSnappedRect((x - half) * sx + ox, y * sy + oy, (x + half) * sx + ox, base);
     }
+    this.ctx.fill();
   }
 
   drawTriangles(
@@ -178,7 +245,7 @@ export class Canvas2DRenderer implements ChartRenderer {
     const n = Math.min(vertexCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
     const ctx = this.ctx;
-    ctx.fillStyle = css(color);
+    this.setFill(color);
 
     if (primitive === "triangle_strip") {
       // A strip is a ribbon: even vertices run along one edge, odd vertices along the other. A pair with a
@@ -198,14 +265,16 @@ export class Canvas2DRenderer implements ChartRenderer {
       return;
     }
 
-    // The chart emits axis-aligned rectangles as two triangles (6 vertices). Fill those with
-    // pixel-snapped rects so adjacent dense buckets leave no antialiasing seams; anything else is
-    // filled as plain triangles.
+    // The chart emits axis-aligned rectangles as two triangles (6 vertices). Fill those as pixel-snapped
+    // rects so adjacent dense buckets leave no antialiasing seams, all in one path with one fill (a dense
+    // min/max line is one rect per pixel column, and a fill call per rect dominates its frame time);
+    // anything else is filled as plain triangles.
     let generic: Path2D | null = null;
+    ctx.beginPath();
     for (let v = 0; v + 5 < n; v += 6) {
       const o = v * 2;
       if (isRectPair(d, o)) {
-        this.fillSnapped(d[o]! * sx + ox, d[o + 1]! * sy + oy, d[o + 2]! * sx + ox, d[o + 5]! * sy + oy);
+        this.addSnappedRect(d[o]! * sx + ox, d[o + 1]! * sy + oy, d[o + 2]! * sx + ox, d[o + 5]! * sy + oy);
         continue;
       }
       generic ??= new Path2D();
@@ -224,6 +293,9 @@ export class Canvas2DRenderer implements ChartRenderer {
         generic.closePath();
       }
     }
+    ctx.fill();
+    // Free triangles keep their own path: its winding is unrelated to the rects', and a shared nonzero fill
+    // would cancel where opposite windings overlap.
     if (generic) ctx.fill(generic);
   }
 
@@ -298,13 +370,20 @@ export class Canvas2DRenderer implements ChartRenderer {
     const ctx = this.ctx;
     ctx.strokeStyle = css(color);
     ctx.lineWidth = width;
-    ctx.lineJoin = width > 1.5 ? "round" : "miter";
+    ctx.lineJoin = width > THIN_STROKE_PX ? "round" : "miter";
     ctx.lineCap = "butt";
     ctx.stroke();
   }
 
-  /** Fill the rectangle spanned by two device-pixel corners, snapped to whole pixels and at least 1px each way. */
-  private fillSnapped(xa: number, ya: number, xb: number, yb: number): void {
+  private setFill(color: RgbaColor): void {
+    this.ctx.fillStyle = css(color);
+  }
+
+  /**
+   * Add the rectangle spanned by two device-pixel corners to the current path, snapped to whole pixels and
+   * at least 1px each way. Callers fill a whole batch of these with one `fill()`.
+   */
+  private addSnappedRect(xa: number, ya: number, xb: number, yb: number): void {
     if (!Number.isFinite(xa + ya + xb + yb)) return;
     if (xa === xb || ya === yb) return;
     const left = Math.round(Math.min(xa, xb));
@@ -312,9 +391,10 @@ export class Canvas2DRenderer implements ChartRenderer {
     const right = Math.max(Math.round(Math.max(xa, xb)), left + 1);
     const bottom = Math.max(Math.round(Math.max(ya, yb)), top + 1);
     if (right < 0 || bottom < 0 || left > this.width || top > this.height) return;
-    this.ctx.fillRect(left, top, right - left, bottom - top);
+    this.ctx.rect(left, top, right - left, bottom - top);
   }
 }
+
 
 function css(color: RgbaColor): string {
   return `rgba(${Math.round(color[0] * 255)},${Math.round(color[1] * 255)},${Math.round(color[2] * 255)},${color[3]})`;

@@ -193,6 +193,8 @@ function observe2d(calls: ReadonlyArray<readonly [string, ...unknown[]]>): DrawO
   const out: DrawObs[] = [];
   let ops: Array<{ op: "move" | "line"; x: number; y: number }> = [];
   let arcs: Array<{ x: number; y: number; r: number }> = [];
+  /** Rectangles added to the current path with `rect`; one `fill` paints them all. */
+  let pathRects: Rect[] = [];
   let rects: Rect[] = [];
   const flushRects = (): void => {
     if (rects.length > 0) out.push({ kind: "rect", rects });
@@ -205,7 +207,13 @@ function observe2d(calls: ReadonlyArray<readonly [string, ...unknown[]]>): DrawO
       case "beginPath":
         ops = [];
         arcs = [];
+        pathRects = [];
         break;
+      case "rect": {
+        const [x, y, w, h] = args as [number, number, number, number];
+        pathRects.push([x, y, x + w, y + h]);
+        break;
+      }
       case "moveTo":
         ops.push({ op: "move", x: args[0] as number, y: args[1] as number });
         break;
@@ -226,8 +234,10 @@ function observe2d(calls: ReadonlyArray<readonly [string, ...unknown[]]>): DrawO
         break;
       }
       case "fill":
-        if (arcs.length > 0) out.push({ kind: "marker", diameterPx: arcs[0]!.r * 2, centers: arcs.map((a) => [a.x, a.y] as const) });
-        else out.push({ kind: "polygon", bbox: bbox(ops.map((o) => [o.x, o.y] as const)) });
+        if (pathRects.length > 0) out.push({ kind: "rect", rects: pathRects });
+        else if (arcs.length > 0) out.push({ kind: "marker", diameterPx: arcs[0]!.r * 2, centers: arcs.map((a) => [a.x, a.y] as const) });
+        else if (ops.length > 0 || args[1] !== -1) out.push({ kind: "polygon", bbox: bbox(ops.map((o) => [o.x, o.y] as const)) });
+        pathRects = [];
         break;
       case "fillRect": {
         const [, x, y, w, h] = args as [string, number, number, number, number];

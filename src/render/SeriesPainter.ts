@@ -262,7 +262,7 @@ export class SeriesPainter {
         this.barTriangleData[dst + 2] = x;
         this.barTriangleData[dst + 3] = this.rawLineData[src + 2]!;
       }
-      this.uploadBarTriangleData(candleCount * 2, projection);
+      this.transformVertices(this.barTriangleData, candleCount * 2, projection);
       this.renderer.drawLines(this.barTriangleData, candleCount * 2, style.wickColor, style.lineWidth, projection, "lines");
       this.recordDraw("raw", candleCount * 2);
 
@@ -318,7 +318,7 @@ export class SeriesPainter {
       start += count;
 
       if (instanced) {
-        this.uploadRawLineData(count, projection);
+        this.transformVertices(this.rawLineData, count, projection);
         this.renderer.drawBarsInstanced(this.rawLineData, count, style, projection, yOrigin);
         this.recordDraw("bars", count);
         continue;
@@ -338,21 +338,21 @@ export class SeriesPainter {
 
   private drawRawLine(vertexCount: number, style: SeriesStyle, projection: RenderProjection, mode: DrawMode): void {
     if (vertexCount < 2) return;
-    this.uploadRawLineData(vertexCount, projection);
+    this.transformVertices(this.rawLineData, vertexCount, projection);
     this.renderer.drawLines(this.rawLineData, vertexCount, style.color, style.lineWidth, projection);
     this.recordDraw(mode, vertexCount);
   }
 
   private drawAreaFill(vertexCount: number, style: SeriesStyle, projection: RenderProjection): void {
     if (vertexCount < 4) return;
-    this.uploadRawLineData(vertexCount, projection);
+    this.transformVertices(this.rawLineData, vertexCount, projection);
     this.renderer.drawTriangles(this.rawLineData, vertexCount, style.fillColor, projection, "triangle_strip");
     this.recordDraw("area", vertexCount);
   }
 
   private drawPointBatch(count: number, style: SeriesStyle, projection: RenderProjection): void {
     if (count <= 0) return;
-    this.uploadRawLineData(count, projection);
+    this.transformVertices(this.rawLineData, count, projection);
     this.renderer.drawPoints(this.rawLineData, count, style.color, style.pointSize, projection);
     this.recordDraw("points", count);
   }
@@ -440,7 +440,7 @@ export class SeriesPainter {
     }
 
     if (vertexCount <= 0) return;
-    this.uploadBarTriangleData(vertexCount, projection);
+    this.transformVertices(this.barTriangleData, vertexCount, projection);
     this.renderer.drawLines(this.barTriangleData, vertexCount, color, lineWidth, projection, "lines");
     this.recordDraw("raw", vertexCount);
   }
@@ -482,7 +482,7 @@ export class SeriesPainter {
 
   private drawTriangleBatch(vertexCount: number, color: RgbaColor, projection: RenderProjection, mode: DrawMode): void {
     if (vertexCount <= 0) return;
-    this.uploadBarTriangleData(vertexCount, projection);
+    this.transformVertices(this.barTriangleData, vertexCount, projection);
     this.renderer.drawTriangles(this.barTriangleData, vertexCount, color, projection, "triangles");
     this.recordDraw(mode, vertexCount);
   }
@@ -500,14 +500,6 @@ export class SeriesPainter {
       if (transformX) data[offset] = controller.scaleValue(data[offset]! + this.currentXOrigin, "x") - scaledOrigin;
       if (transformY) data[offset + 1] = controller.scaleValue(data[offset + 1]!, "y");
     }
-  }
-
-  private uploadRawLineData(vertexCount: number, projection: RenderProjection): void {
-    this.transformVertices(this.rawLineData, vertexCount, projection);
-  }
-
-  private uploadBarTriangleData(vertexCount: number, projection: RenderProjection): void {
-    this.transformVertices(this.barTriangleData, vertexCount, projection);
   }
 
   private recordDraw(mode: DrawMode, points: number): void {

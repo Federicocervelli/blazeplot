@@ -64,7 +64,7 @@ Generated from `dist/` after the package build.
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
 | shared PickOverlay chunk | `dist/PickOverlay-*.js` | 5 KiB |
-| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 195 KiB |
+| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 196 KiB |
 
 ### All public exports
 
