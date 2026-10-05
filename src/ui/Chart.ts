@@ -13,8 +13,8 @@ import { AxisController } from "../interaction/AxisController.js";
 import type { PanIntent, ZoomIntent } from "../interaction/types.js";
 import { AUTO_GUTTER_PADDING_PX, AxisOverlay, GutterTracker, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
-import { ChartPicker, hoverStatesEqual, insidePlot, plotToData } from "./ChartPicker.js";
-import type { PlotRect } from "./ChartPicker.js";
+import { ChartHover } from "./ChartHover.js";
+import { ChartPicker, insidePlot, plotToData } from "./ChartPicker.js";
 import { forcedColorsTheme, resolveChartTheme } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import { PluginHost } from "./PluginHost.js";
@@ -71,13 +71,16 @@ export class Chart {
   /** Listener sets keyed by event; `never` payloads let every typed listener share one map. */
   private readonly listeners = new Map<ChartEventName, Set<(payload: never) => void>>();
   private readonly layoutReservations = new Map<string, ChartLayoutReservation>();
-  private currentHover: ChartHoverState | null = null;
-  private lastPointerClientX: number = 0;
-  private lastPointerClientY: number = 0;
-  private lastPointerPlotX: number = 0;
-  private lastPointerPlotY: number = 0;
-  private lastPointerButtons: number = 0;
-  private pointerInPlot: boolean = false;
+  private readonly hover: ChartHover = new ChartHover({
+    picker: this.picker,
+    canvas: () => this.canvas,
+    view: () => this.layout.view,
+    series: () => this.series,
+    hoverOptions: () => this.options.hover,
+    axis: () => this.axis,
+    emit: (event, payload) => this.emit(event, payload),
+    hasListeners: (event) => this.hasListeners(event),
+  });
   private lastFrameAt: number = 0;
   private readonly followXPolicy: FollowXController = new FollowXController({
     camera: () => this.camera,
@@ -91,7 +94,6 @@ export class Chart {
     requestRender: () => this.requestRender(),
   });
   private rafId: number = 0;
-  private hoverRafId: number = 0;
   private restoreRenderRafId: number = 0;
   private running: boolean = false;
   private disposed: boolean = false;
@@ -114,49 +116,8 @@ export class Chart {
   });
   /** Caller style options per series, plus the theme palette slot it follows (`null` once a color is pinned). */
   private readonly seriesStyleState = new WeakMap<SeriesStore, { options: SeriesStyleOptions; paletteIndex: number | null }>();
-  private inspection: ChartInspectionTarget | null = null;
   private readonly handleRootFocusIn = (): void => {
     this.a11y.flushIfDirty();
-  };
-  private readonly handlePointerMove = (event: PointerEvent): void => {
-    if (event.pointerType !== "touch") {
-      // A real pointer over the plot takes over from keyboard inspection.
-      this.inspection = null;
-      this.pointerInPlot = true;
-      this.lastPointerClientX = event.clientX;
-      this.lastPointerClientY = event.clientY;
-      this.lastPointerPlotX = event.offsetX;
-      this.lastPointerPlotY = event.offsetY;
-      this.lastPointerButtons = event.buttons;
-      this.scheduleHoverRefresh();
-    }
-    if (this.hasListeners("pointermove")) this.emitPointerEvent("pointermove", event);
-  };
-  private readonly handlePointerDown = (event: PointerEvent): void => {
-    this.lastPointerButtons = event.buttons;
-    if (event.pointerType === "touch") {
-      this.pointerInPlot = false;
-      this.setHover(this.inspectionHoverState());
-    }
-    this.emitPointerEvent("pointerdown", event);
-  };
-  private readonly handlePointerUp = (event: PointerEvent): void => {
-    this.lastPointerButtons = event.buttons;
-    this.emitPointerEvent("pointerup", event);
-    this.refreshHover();
-  };
-  private readonly handleClick = (event: MouseEvent): void => {
-    const pointerEvent = this.emitPointerEvent("click", event);
-    const item = pointerEvent?.items[0];
-    if (pointerEvent && item) this.emit("seriesclick", { ...pointerEvent, item });
-  };
-  private readonly handleDoubleClick = (event: MouseEvent): void => {
-    this.emitPointerEvent("dblclick", event);
-  };
-  private readonly handlePointerLeave = (): void => {
-    this.pointerInPlot = false;
-    this.lastPointerButtons = 0;
-    this.setHover(this.inspectionHoverState());
   };
   private readonly handleWebGLContextLost = (event: Event): void => {
     event.preventDefault();
@@ -232,8 +193,8 @@ export class Chart {
     this.plugins = new PluginHost(this, {
       emit: (event, payload) => this.emit(event, payload),
       setLayoutReservation: (id, reservation) => this.setLayoutReservation(id, reservation),
-      inspect: (inspectTarget) => this.inspect(inspectTarget),
-      getInspection: () => this.inspection,
+      inspect: (inspectTarget) => this.hover.inspect(inspectTarget),
+      getInspection: () => this.hover.inspection,
       formatValue: (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis),
     });
     try {
@@ -343,7 +304,7 @@ export class Chart {
       this.getCamera(yAxis).setViewport({ yMin: viewport.yMin, yMax: viewport.yMax });
     }
     this.emitViewportChange(options.source ?? "api");
-    this.refreshHover();
+    this.hover.refresh();
   }
 
   /**
@@ -397,7 +358,7 @@ export class Chart {
     this.followXPolicy.pauseForInteraction();
     this.syncRightCameraX();
     this.emitViewportChange(source);
-    this.scheduleHoverRefresh();
+    this.hover.schedule();
   }
 
   /** Add a series with an explicit mode. Prefer the typed helpers such as `addLine`. */
@@ -456,7 +417,7 @@ export class Chart {
     if (index === -1) return false;
 
     this.series.splice(index, 1);
-    if (this.inspection?.series === series) this.inspection = null;
+    if (this.hover.inspection?.series === series) this.hover.inspection = null;
     const original = this.a11y.originalStyles.get(series);
     if (original) {
       series.applyResolvedStyle(original);
@@ -570,7 +531,7 @@ export class Chart {
     if (changed) {
       this.syncRightCameraX();
       this.emitViewportChange(options.source ?? "fit");
-      this.refreshHover();
+      this.hover.refresh();
     }
     return changed;
   }
@@ -581,7 +542,7 @@ export class Chart {
     if (resized) {
       // `plugins` is unset while the constructor sizes the canvas, before any plugin exists.
       this.plugins?.notify("onResize", { width: this.canvas.clientWidth, height: this.canvas.clientHeight });
-      this.refreshHover();
+      this.hover.refresh();
       this.requestRender();
     }
     return resized;
@@ -594,7 +555,7 @@ export class Chart {
 
   /** Return the latest hover state, or `null` when nothing is hovered. */
   getHoverState(): ChartHoverState | null {
-    return this.currentHover;
+    return this.hover.state;
   }
 
   /** Reserve or release plot-adjacent layout space; plugins reach it through `ctx.layout.reserve`. */
@@ -652,7 +613,7 @@ export class Chart {
     this.plugins.notify("onThemeChange", this.resolvedTheme);
     this.emit("themechange", undefined);
     this.requestRender();
-    this.refreshHover();
+    this.hover.refresh();
   }
 
   /** Show or hide grid lines. */
@@ -672,7 +633,7 @@ export class Chart {
     this.rebuildAxisOverlay();
     this.updateTitles();
     this.resize();
-    this.refreshHover();
+    this.hover.refresh();
   }
 
   /** Hit-test a client-coordinate point against visible series. */
@@ -730,13 +691,11 @@ export class Chart {
     this.stop();
     this.followXPolicy.clearTimer();
     this.resizeObserver?.disconnect();
-    if (this.hoverRafId !== 0) this.layout.view.cancelAnimationFrame(this.hoverRafId);
-    this.hoverRafId = 0;
     if (this.restoreRenderRafId !== 0) this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
     this.restoreRenderRafId = 0;
     this.toggleDomListeners("removeEventListener");
     this.a11y.dispose();
-    this.inspection = null;
+    this.hover.dispose();
     // Reverse registration order; plugin cleanup errors never block chart-owned cleanup.
     this.plugins?.disposeAll();
     this.axisOverlay?.dispose();
@@ -802,11 +761,8 @@ export class Chart {
     }
 
     this.stats.frameMs = performance.now() - frameStartedAt;
-    if (this.hoverRafId !== 0) {
-      this.layout.view.cancelAnimationFrame(this.hoverRafId);
-      this.hoverRafId = 0;
-    }
-    this.refreshHover();
+    this.hover.cancelScheduled();
+    this.hover.refresh();
     if (this.running && this.options.renderLoop !== "continuous" && this.followXPolicy.options?.currentX && !this.followXPolicy.isPaused) {
       this.requestRender();
     }
@@ -905,59 +861,6 @@ export class Chart {
     }
   }
 
-  /** Show a sample as the hover state (keyboard inspection), or end inspection with `null`. */
-  private inspect(target: ChartInspectionTarget | null): ChartHoverState | null {
-    if (target) {
-      if (!this.series.includes(target.series)) throw new RangeError("chart inspection target series is not attached to this chart.");
-      if (!Number.isInteger(target.index) || target.index < 0 || target.index >= target.series.length) {
-        throw new RangeError(`chart inspection index ${target.index} is outside the series (length ${target.series.length}).`);
-      }
-      this.inspection = { series: target.series, index: target.index };
-      this.setHover(this.inspectionHoverState());
-    } else {
-      this.inspection = null;
-      if (this.pointerInPlot) this.refreshHover();
-      else this.setHover(null);
-    }
-    return this.currentHover;
-  }
-
-  /**
-   * Hover state for the inspected sample: it is `items[0]`, followed by other visible series at
-   * the same X when hover grouping is `"x"`. `null` when it is hidden, a gap, or outside the plot.
-   */
-  private inspectionHoverState(): ChartHoverState | null {
-    const target = this.inspection;
-    if (!target) return null;
-    const { series } = target;
-    const seriesIndex = this.series.indexOf(series);
-    const sample = seriesIndex === -1 || !series.visible ? null : series.sampleAt(target.index);
-    if (!sample) return null;
-    const rect = this.canvas.getBoundingClientRect();
-    const probe = this.picker.createPickItem(sample, series, seriesIndex, 0, 0, rect);
-    if (!insidePlot(probe.plotX, probe.plotY, rect)) return null;
-    const { clientX, clientY } = probe;
-    const primary: ChartPickItem = { ...probe, distancePx: 0 };
-    const group = this.options.hover?.group ?? "x";
-    const items = group === "none"
-      ? [primary]
-      : [primary, ...this.picker.collectPickItems(sample.x, clientX, clientY, rect).filter((item) => item.series !== series)];
-    return {
-      clientX,
-      clientY,
-      plotX: primary.plotX,
-      plotY: primary.plotY,
-      dataX: sample.x,
-      dataY: sample.y,
-      anchorX: sample.x,
-      mode: "nearest-x",
-      group,
-      maxDistancePx: Infinity,
-      items,
-      source: "inspection",
-    };
-  }
-
   /** Attached series that pass the visibility and explicit-series filters. */
   private candidateSeries(options: { readonly series?: readonly SeriesStore[]; readonly includeHidden?: boolean }): SeriesStore[] {
     const candidates = options.series ? options.series.filter((series) => this.series.includes(series)) : this.series;
@@ -1006,12 +909,12 @@ export class Chart {
     const canvas = this.canvas;
     const root = this.layout.root;
     const listeners: Array<[EventTarget, string, (event: never) => void]> = [
-      [canvas, "pointermove", this.handlePointerMove],
-      [canvas, "pointerdown", this.handlePointerDown],
-      [canvas, "pointerup", this.handlePointerUp],
-      [canvas, "pointerleave", this.handlePointerLeave],
-      [canvas, "click", this.handleClick],
-      [canvas, "dblclick", this.handleDoubleClick],
+      [canvas, "pointermove", this.hover.onPointerMove],
+      [canvas, "pointerdown", this.hover.onPointerDown],
+      [canvas, "pointerup", this.hover.onPointerUp],
+      [canvas, "pointerleave", this.hover.onPointerLeave],
+      [canvas, "click", this.hover.onClick],
+      [canvas, "dblclick", this.hover.onDoubleClick],
       [canvas, "webglcontextlost", this.handleWebGLContextLost],
       [canvas, "webglcontextrestored", this.handleWebGLContextRestored],
     ];
@@ -1104,69 +1007,6 @@ export class Chart {
     else this.y2Ticks.length = 0;
   }
 
-  private scheduleHoverRefresh(): void {
-    if (this.hoverRafId !== 0) return;
-    this.hoverRafId = this.layout.view.requestAnimationFrame(() => {
-      this.hoverRafId = 0;
-      this.refreshHover();
-    });
-  }
-
-  /** Re-pick under the last pointer position; while a button is held, keep the same items and only reproject them. */
-  private refreshHover(): void {
-    if (this.inspection) {
-      this.setHover(this.inspectionHoverState());
-      return;
-    }
-    if (!this.pointerInPlot) return;
-    const rect: PlotRect = {
-      left: this.lastPointerClientX - this.lastPointerPlotX,
-      top: this.lastPointerClientY - this.lastPointerPlotY,
-      width: this.canvas.clientWidth,
-      height: this.canvas.clientHeight,
-    };
-    if (this.lastPointerButtons !== 0) {
-      this.setHover(this.picker.reprojectHoverState(this.currentHover, rect, { clientX: this.lastPointerClientX, clientY: this.lastPointerClientY, plotX: this.lastPointerPlotX, plotY: this.lastPointerPlotY }));
-      return;
-    }
-    this.setHover(this.picker.pickAtPlot(this.lastPointerPlotX, this.lastPointerPlotY, this.lastPointerClientX, this.lastPointerClientY, rect));
-  }
-
-  /** Emit `hover` only when the picked items or the anchor actually changed. */
-  private setHover(state: ChartHoverState | null): void {
-    if (hoverStatesEqual(this.currentHover, state)) return;
-    this.currentHover = state;
-    this.emit("hover", state);
-  }
-
-  private emitPointerEvent(type: ChartPointerEventType, source: MouseEvent | PointerEvent): ChartPointerEvent | null {
-    const rect = this.canvas.getBoundingClientRect();
-    const plotX = source.clientX - rect.left;
-    const plotY = source.clientY - rect.top;
-    if (!insidePlot(plotX, plotY, rect)) return null;
-
-    const [dataX, dataY] = plotToData(plotX, plotY, rect, this.axis);
-    const hover = this.picker.pickAtPlot(plotX, plotY, source.clientX, source.clientY, rect, this.options.hover);
-    const event: ChartPointerEvent = {
-      type,
-      clientX: source.clientX,
-      clientY: source.clientY,
-      plotX,
-      plotY,
-      dataX,
-      dataY,
-      button: source.button,
-      buttons: source.buttons,
-      altKey: source.altKey,
-      ctrlKey: source.ctrlKey,
-      metaKey: source.metaKey,
-      shiftKey: source.shiftKey,
-      items: hover?.items ?? [],
-    };
-    this.emit(type, event);
-    return event;
-  }
-
   private emitViewportChange(source: ChartViewportChangeSource): void {
     this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source });
     this.requestRender();
@@ -1179,7 +1019,7 @@ export class Chart {
   private emitSeriesChange(): void {
     this.a11y.markSummaryDirty();
     this.emit("serieschange", undefined);
-    this.refreshHover();
+    this.hover.refresh();
     this.requestRender();
   }
 
