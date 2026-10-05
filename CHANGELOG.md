@@ -6,6 +6,7 @@ Maintainers: add the new release to the top of this list in the release pull req
 
 ## Releases
 
+- [v1.0.0-rc.6](./changelogs/v1.0.0-rc.6.md)
 - [v1.0.0-rc.5](./changelogs/v1.0.0-rc.5.md)
 - [v1.0.0-rc.4](./changelogs/v1.0.0-rc.4.md)
 - [v1.0.0-rc.3](./changelogs/v1.0.0-rc.3.md)
