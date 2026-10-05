@@ -2,6 +2,7 @@ import { describeRenderer } from "../ChartRenderer.js";
 import type { ChartRenderer, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererInfo, FrameReport, RendererLossState } from "../ChartRenderer.js";
 import { WebGL2Renderer } from "./WebGL2Renderer.js";
 import type { GpuBackend } from "./types.js";
+import { keepWarm } from "./warm.js";
 
 /**
  * One hidden WebGL2 canvas that renders every attached chart's plot area in turn and copies the
@@ -14,7 +15,7 @@ export interface ChartRenderContext {
   renderer(): ChartRendererFactory;
   /** Number of charts (and plugin render surfaces) currently attached. */
   readonly chartCount: number;
-  /** Detach nothing, but release the WebGL context now if no chart is attached. Charts release it themselves on dispose. */
+  /** Detach nothing, but release the WebGL context now if no chart is attached. When the last chart is disposed the context is released on its own after a short idle period. */
   dispose(): void;
 }
 
@@ -22,6 +23,8 @@ export interface ChartRenderContext {
 export class SharedWebGLContext implements ChartRenderContext {
   private canvas: HTMLCanvasElement | null = null;
   private renderer_: WebGL2Renderer | null = null;
+  /** Cancels the pending idle release while the context waits, warm, for another chart. */
+  private cancelIdleRelease: (() => void) | null = null;
   /**
    * @param doc Document that owns the hidden canvas; defaults to the first attached chart's document.
    * @param createBackend Builds the backend on the hidden canvas (a seam for tests).
@@ -46,6 +49,8 @@ export class SharedWebGLContext implements ChartRenderContext {
 
   /** @internal */
   attach(client: SharedWebGLRenderer): void {
+    this.cancelIdleRelease?.();
+    this.cancelIdleRelease = null;
     if (!this.canvas) {
       const doc = this.doc ?? client.ownerDocument ?? globalThis.document;
       if (!doc) throw new Error("A shared render context needs a DOM.");
@@ -63,7 +68,9 @@ export class SharedWebGLContext implements ChartRenderContext {
   /** @internal */
   detach(client: SharedWebGLRenderer): void {
     this.clients.delete(client);
-    this.teardownIfIdle();
+    // Keep the context, programs, and stream for the next chart instead of paying for a new context and
+    // program build when a page unmounts its charts and mounts others (route change, tab, list re-render).
+    if (this.clients.size === 0 && this.canvas) this.cancelIdleRelease ??= keepWarm(() => this.teardownIfIdle());
   }
 
   /** @internal Prepare the shared canvas for a frame of `width` x `height` device pixels. */
@@ -105,6 +112,8 @@ export class SharedWebGLContext implements ChartRenderContext {
 
   private teardownIfIdle(): void {
     if (this.clients.size > 0 || !this.canvas) return;
+    this.cancelIdleRelease?.();
+    this.cancelIdleRelease = null;
     const canvas = this.canvas;
     const renderer = this.renderer_;
     this.canvas = null;
