@@ -594,7 +594,11 @@ describe("Chart overlays and screenshot", () => {
     const chart = make({ title: "Shot" });
     let renders = 0;
     chart.subscribe("render", () => renders++);
-    await chart.screenshot({ width: 10, height: 10 }).catch(() => undefined);
+    const shot = chart.screenshot({ width: 10, height: 10 }).catch(() => undefined);
+    // The frame is rendered after the compositor chunk loads, not before: a frame presented while
+    // the chunk loads would clear the non-preserved drawing buffer and capture a blank plot.
+    expect(renders).toBe(0);
+    await shot;
     expect(renders).toBe(1);
     chart.dispose();
   });
