@@ -198,10 +198,6 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         chart.dom.listen("plot", "pointermove", longPress.onPointerMove, { capture: true }),
         chart.dom.listen("plot", "pointerup", longPress.clearIfTouchPointer, { capture: true }),
         chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer, { capture: true }),
-        chart.dom.listen("plot", "touchstart", longPress.onTouchStart, { capture: true, passive: true }),
-        chart.dom.listen("plot", "touchmove", longPress.onTouchMove, { capture: true, passive: false }),
-        chart.dom.listen("plot", "touchend", longPress.clear),
-        chart.dom.listen("plot", "touchcancel", longPress.clear),
       ];
 
       let hoverRaf = 0;

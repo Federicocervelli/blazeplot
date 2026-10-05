@@ -55,8 +55,16 @@ function releasePointer(target: Element | null, pointerId: number): void {
   if (target?.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
 }
 
+/** Movement (CSS px) beyond which a touch is a drag, not a tap. */
+const TAP_SLOP_PX = 10;
+
+interface TouchPoint {
+  x: number;
+  y: number;
+}
+
 type TouchGestureState =
-  | { readonly mode: "pan"; readonly axis: ZoomAxis; readonly yAxis?: SeriesYAxis; lastX: number; lastY: number }
+  | { readonly mode: "pan"; readonly pointerId: number; readonly axis: ZoomAxis; readonly yAxis?: SeriesYAxis; lastX: number; lastY: number }
   | { readonly mode: "pinch"; readonly axis: ZoomAxis; readonly yAxis?: SeriesYAxis; lastDistance: number };
 
 type DragState =
@@ -133,24 +141,12 @@ function clientToDataClamped(
   );
 }
 
-function touchCenter(touches: TouchList): { x: number; y: number } | null {
-  if (touches.length === 0) return null;
-  let x = 0;
-  let y = 0;
-  for (let i = 0; i < touches.length; i++) {
-    const touch = touches.item(i);
-    if (!touch) continue;
-    x += touch.clientX;
-    y += touch.clientY;
-  }
-  return { x: x / touches.length, y: y / touches.length };
-}
-
-function touchDistance(touches: TouchList): number | null {
-  const a = touches.item(0);
-  const b = touches.item(1);
+/** Centroid and spread of the first two active touch pointers. */
+function pinchMetrics(touches: ReadonlyMap<number, TouchPoint>): { cx: number; cy: number; distance: number } | null {
+  if (touches.size < 2) return null;
+  const [a, b] = touches.values();
   if (!a || !b) return null;
-  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  return { cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2, distance: Math.hypot(a.x - b.x, a.y - b.y) };
 }
 
 function applySelectionAxis(
@@ -184,7 +180,12 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const cleanups: Array<() => void> = [];
       const hoverUndo = new Map<AxisSurface, () => void>();
       let drag: DragState | null = null;
+      const touches = new Map<number, TouchPoint>();
       let touchGesture: TouchGestureState | null = null;
+      let touchSurface: GestureSurface = "plot";
+      let tapCandidate = false;
+      let tapStartX = 0;
+      let tapStartY = 0;
       let resetViewport: Viewport | null = null;
       let resetRightViewport: Viewport | null = null;
       let lastTapTime = 0;
@@ -288,7 +289,10 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       const onPlotPointerDown = (event: PointerEvent): void => {
-        if (event.pointerType === "touch") return;
+        if (event.pointerType === "touch") {
+          onTouchDown(event, "plot");
+          return;
+        }
         if (drag || event.button !== 0) return;
 
         if (event.shiftKey && options.shiftDragPan !== false) {
@@ -312,13 +316,20 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       const onAxisPointerDown = (event: PointerEvent, surface: AxisSurface): void => {
-        if (event.pointerType === "touch") return;
+        if (event.pointerType === "touch") {
+          onTouchDown(event, surface);
+          return;
+        }
         if (drag || event.button !== 0) return;
         const config = axisGestureConfig(surface);
         beginPan(event, config.axis, surface, config.yAxis);
       };
 
       const onPointerMove = (event: PointerEvent): void => {
+        if (event.pointerType === "touch") {
+          onTouchMove(event);
+          return;
+        }
         if (!drag || event.pointerId !== drag.pointerId) return;
         event.preventDefault();
 
@@ -338,6 +349,10 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       const onPointerUp = (event: PointerEvent): void => {
+        if (event.pointerType === "touch") {
+          onTouchEnd(event);
+          return;
+        }
         if (!drag || event.pointerId !== drag.pointerId) return;
         event.preventDefault();
 
@@ -372,6 +387,10 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       const onPointerCancel = (event: PointerEvent): void => {
+        if (event.pointerType === "touch") {
+          onTouchEnd(event);
+          return;
+        }
         if (!drag || event.pointerId !== drag.pointerId) return;
         const completed = drag;
         drag = null;
@@ -424,95 +443,99 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const touchTargetConfig = (surface: GestureSurface): { axis: ZoomAxis; yAxis?: SeriesYAxis } =>
         surface === "plot" ? { axis: resolveAxis(options.axis) } : axisGestureConfig(surface);
 
-      const onTouchStart = (event: TouchEvent, surface: GestureSurface): void => {
-        if (event.touches.length === 0) return;
-        const config = touchTargetConfig(surface);
-        captureResetViewport();
-        if (event.touches.length >= 2 && options.pinchZoom !== false) {
-          event.preventDefault();
-          const distance = touchDistance(event.touches);
-          if (distance && distance > 0) touchGesture = { mode: "pinch", axis: config.axis, yAxis: config.yAxis, lastDistance: distance };
-          return;
-        }
-        if (options.touchPan === false) return;
-        const touch = event.touches.item(0);
-        if (!touch) return;
-        event.preventDefault();
-        touchGesture = { mode: "pan", axis: config.axis, yAxis: config.yAxis, lastX: touch.clientX, lastY: touch.clientY };
+      const startPan = (pointerId: number, point: TouchPoint, config: { axis: ZoomAxis; yAxis?: SeriesYAxis }): void => {
+        touchGesture = { mode: "pan", pointerId, axis: config.axis, yAxis: config.yAxis, lastX: point.x, lastY: point.y };
       };
 
-      const onTouchMove = (event: TouchEvent): void => {
-        if (!touchGesture) return;
+      const startPinch = (config: { axis: ZoomAxis; yAxis?: SeriesYAxis }): void => {
+        const metrics = pinchMetrics(touches);
+        touchGesture = metrics && metrics.distance > 0
+          ? { mode: "pinch", axis: config.axis, yAxis: config.yAxis, lastDistance: metrics.distance }
+          : null;
+      };
+
+      function onTouchDown(event: PointerEvent, surface: GestureSurface): void {
+        if (options.touchPan === false && options.pinchZoom === false) return;
+        captureResetViewport();
+        capturePointer(event);
+        touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        if (touches.size === 1) {
+          touchSurface = surface;
+          tapCandidate = surface === "plot" && options.touchPan !== false && options.doubleTapReset !== false;
+          tapStartX = event.clientX;
+          tapStartY = event.clientY;
+          if (options.touchPan !== false) startPan(event.pointerId, touches.get(event.pointerId)!, touchTargetConfig(surface));
+          return;
+        }
+        tapCandidate = false;
+        if (options.pinchZoom !== false) startPinch(touchTargetConfig(touchSurface));
+      }
+
+      function onTouchMove(event: PointerEvent): void {
+        const point = touches.get(event.pointerId);
+        if (!point) return;
+        point.x = event.clientX;
+        point.y = event.clientY;
+        // Another plugin (a long-press tooltip) owns this move.
+        if (event.defaultPrevented) return;
+        if (tapCandidate && Math.hypot(point.x - tapStartX, point.y - tapStartY) > TAP_SLOP_PX) tapCandidate = false;
         const rect = chart.layout.plotRect();
-        if (event.touches.length >= 2 && options.pinchZoom !== false) {
-          event.preventDefault();
-          const distance = touchDistance(event.touches);
-          const center = touchCenter(event.touches);
-          if (!distance || !center) return;
-          if (touchGesture.mode !== "pinch" || touchGesture.lastDistance <= 0) {
-            touchGesture = { mode: "pinch", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastDistance: distance };
+        if (touches.size >= 2 && options.pinchZoom !== false) {
+          const metrics = pinchMetrics(touches);
+          if (!metrics) return;
+          if (touchGesture?.mode !== "pinch" || touchGesture.lastDistance <= 0) {
+            startPinch(touchTargetConfig(touchSurface));
             return;
           }
-          const factor = distance / touchGesture.lastDistance;
-          const cx = rect.width > 0 ? (center.x - rect.left) / rect.width : 0.5;
-          const cy = rect.height > 0 ? 1 - (center.y - rect.top) / rect.height : 0.5;
+          const factor = metrics.distance / touchGesture.lastDistance;
+          const cx = rect.width > 0 ? (metrics.cx - rect.left) / rect.width : 0.5;
+          const cy = rect.height > 0 ? 1 - (metrics.cy - rect.top) / rect.height : 0.5;
           chart.viewport.zoom(directZoom({ factor, cx, cy, axis: touchGesture.axis }, touchGesture.yAxis ?? "left"), touchGesture.yAxis);
-          touchGesture = { mode: "pinch", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastDistance: distance };
+          touchGesture = { ...touchGesture, lastDistance: metrics.distance };
           return;
         }
-        if (touchGesture.mode !== "pan" || options.touchPan === false) return;
-        const touch = event.touches.item(0);
-        if (!touch) return;
-        event.preventDefault();
-        const dx = rect.width > 0 ? (touchGesture.lastX - touch.clientX) / rect.width : 0;
-        const dy = rect.height > 0 ? (touch.clientY - touchGesture.lastY) / rect.height : 0;
+        if (touchGesture?.mode !== "pan" || touchGesture.pointerId !== event.pointerId) return;
+        const dx = rect.width > 0 ? (touchGesture.lastX - point.x) / rect.width : 0;
+        const dy = rect.height > 0 ? (point.y - touchGesture.lastY) / rect.height : 0;
         chart.viewport.pan(directPan({ dx, dy }, touchGesture.axis, touchGesture.yAxis ?? "left"), touchGesture.yAxis);
-        touchGesture = { mode: "pan", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastX: touch.clientX, lastY: touch.clientY };
-      };
+        touchGesture.lastX = point.x;
+        touchGesture.lastY = point.y;
+      }
 
-      const onTouchEnd = (event: TouchEvent, surface: GestureSurface): void => {
-        if (event.touches.length >= 2 && options.pinchZoom !== false && touchGesture) {
-          const distance = touchDistance(event.touches);
-          if (distance && distance > 0) touchGesture = { mode: "pinch", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastDistance: distance };
+      function onTouchEnd(event: PointerEvent): void {
+        if (!touches.delete(event.pointerId)) return;
+        const config = touchTargetConfig(touchSurface);
+        if (touches.size >= 2 && options.pinchZoom !== false) {
+          startPinch(config);
           return;
         }
-        if (event.touches.length === 1 && options.touchPan !== false && touchGesture) {
-          const touch = event.touches.item(0);
-          if (touch) touchGesture = { mode: "pan", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastX: touch.clientX, lastY: touch.clientY };
+        if (touches.size === 1) {
+          const [remaining] = touches;
+          touchGesture = null;
+          if (remaining && options.touchPan !== false) startPan(remaining[0], remaining[1], config);
           return;
         }
-        const completedOnCanvas = touchGesture !== null && (surface === "plot" || !touchGesture.yAxis && touchGesture.axis === resolveAxis(options.axis));
         touchGesture = null;
-        if (!completedOnCanvas || options.doubleTapReset === false || event.changedTouches.length !== 1) return;
-        const touch = event.changedTouches.item(0);
-        if (!touch) return;
+        const wasTap = tapCandidate && event.type === "pointerup";
+        tapCandidate = false;
+        if (touches.size > 0 || !wasTap) return;
         const now = event.timeStamp;
-        if (now - lastTapTime <= 320 && Math.hypot(touch.clientX - lastTapX, touch.clientY - lastTapY) <= 24) {
+        if (now - lastTapTime <= 320 && Math.hypot(event.clientX - lastTapX, event.clientY - lastTapY) <= 24) {
           event.preventDefault();
           resetToCapturedViewport();
           lastTapTime = 0;
           return;
         }
         lastTapTime = now;
-        lastTapX = touch.clientX;
-        lastTapY = touch.clientY;
-      };
-
-      const listenTouch = (surface: GestureSurface): void => {
-        cleanups.push(
-          chart.dom.listen(surface, "touchstart", (event) => onTouchStart(event, surface), { passive: false }),
-          chart.dom.listen(surface, "touchmove", onTouchMove, { passive: false }),
-          chart.dom.listen(surface, "touchend", (event) => onTouchEnd(event, surface), { passive: false }),
-          chart.dom.listen(surface, "touchcancel", (event) => onTouchEnd(event, surface), { passive: false }),
-        );
-      };
+        lastTapX = event.clientX;
+        lastTapY = event.clientY;
+      }
 
       cleanups.push(
         chart.dom.listen("plot", "pointerdown", onPlotPointerDown),
         chart.dom.listen("plot", "wheel", (event) => wheelOnAxis(event, resolveAxis(options.axis)), { passive: false }),
         chart.dom.listen("plot", "dblclick", onDoubleClick),
       );
-      listenTouch("plot");
 
       if (axisInteractions) {
         for (const surface of AXIS_SURFACES) {
@@ -524,7 +547,6 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
             chart.dom.listen(surface, "wheel", (event) => wheelOnAxis(event, config.axis, config.yAxis), { passive: false }),
             chart.dom.listen(surface, "dblclick", onDoubleClick),
           );
-          listenTouch(surface);
         }
       }
 
@@ -542,6 +564,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         for (const cleanup of cleanups.splice(0).reverse()) cleanup();
         drag = null;
         touchGesture = null;
+        touches.clear();
       };
     },
   };

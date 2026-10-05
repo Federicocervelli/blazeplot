@@ -200,11 +200,11 @@ export function createPickMarker(item: ChartPickItem, options: PickMarkerOptions
 
 /**
  * Let a long press follow the finger sideways while the page can still scroll vertically.
- * Skipped when long press is off or another plugin (interactions, selection) already claimed
- * the plot's `touch-action`.
+ * `touch-action` decorations intersect, so a plugin that needs `none` (interactions,
+ * selection) still wins.
  */
 export function requestLongPressTouchAction(chart: ChartPluginContext, longPressMs: number | false | undefined): void {
-  if (longPressMs === false || chart.unstable.element("plot").style.touchAction) return;
+  if (longPressMs === false) return;
   chart.dom.decorate("plot", { style: { touchAction: "pan-y" } });
 }
 
@@ -215,20 +215,21 @@ export interface LongPressTouchTrackerOptions {
   readonly movementThresholdPx?: number;
 }
 
-/** Touch/pointer handlers for long-press interactions. */
+/** Pointer handlers for long-press interactions. Only touch pointers take part. */
 export interface LongPressTouchTracker {
   clear(): void;
   schedule(clientX: number, clientY: number): void;
-  onTouchStart(event: TouchEvent): void;
-  onTouchMove(event: TouchEvent): void;
   onPointerDown(event: PointerEvent): void;
+  /** Returns true for touch pointers, which never drive hover. */
   onPointerMove(event: PointerEvent): boolean;
+  /** Pointer up or cancel: forget the pointer and end any press. */
   clearIfTouchPointer(event: PointerEvent): void;
 }
 
-/** Create a touch tracker that activates after a stationary long press. */
+/** Create a tracker that activates after a stationary one-finger long press. */
 export function createLongPressTouchTracker(options: LongPressTouchTrackerOptions): LongPressTouchTracker {
   const movementThresholdPx = options.movementThresholdPx ?? 8;
+  const touchIds = new Set<number>();
   let timer: number | null = null;
   let raf = 0;
   let active = false;
@@ -265,46 +266,37 @@ export function createLongPressTouchTracker(options: LongPressTouchTrackerOption
     timer = window.setTimeout(activate, delayMs ?? 450);
   };
 
-  const handleMove = (event: TouchEvent | PointerEvent, nextClientX: number, nextClientY: number): void => {
-    if (active) {
-      event.preventDefault();
-      event.stopPropagation();
-      clientX = nextClientX;
-      clientY = nextClientY;
-      options.onPoint(clientX, clientY);
-      return;
-    }
-    if (timer !== null && Math.hypot(nextClientX - clientX, nextClientY - clientY) > movementThresholdPx) clear();
-  };
-
   return {
     clear,
     schedule,
-    onTouchStart(event: TouchEvent): void {
-      if (event.touches.length !== 1) {
+    onPointerDown(event: PointerEvent): void {
+      if (event.pointerType !== "touch") return;
+      touchIds.add(event.pointerId);
+      // A second finger means pinch or pan, never a long press.
+      if (touchIds.size !== 1) {
         clear();
         return;
       }
-      const touch = event.touches.item(0);
-      if (!touch) return;
-      schedule(touch.clientX, touch.clientY);
-    },
-    onTouchMove(event: TouchEvent): void {
-      const touch = event.touches.item(0);
-      if (!touch) return;
-      handleMove(event, touch.clientX, touch.clientY);
-    },
-    onPointerDown(event: PointerEvent): void {
-      if (event.pointerType !== "touch") return;
       schedule(event.clientX, event.clientY);
     },
     onPointerMove(event: PointerEvent): boolean {
       if (event.pointerType !== "touch") return false;
-      handleMove(event, event.clientX, event.clientY);
+      if (touchIds.size !== 1 || !touchIds.has(event.pointerId)) return true;
+      if (active) {
+        // Own the move: later listeners (pan) see it as handled.
+        event.preventDefault();
+        clientX = event.clientX;
+        clientY = event.clientY;
+        options.onPoint(clientX, clientY);
+      } else if (timer !== null && Math.hypot(event.clientX - clientX, event.clientY - clientY) > movementThresholdPx) {
+        clear();
+      }
       return true;
     },
     clearIfTouchPointer(event: PointerEvent): void {
-      if (event.pointerType === "touch") clear();
+      if (event.pointerType !== "touch") return;
+      touchIds.delete(event.pointerId);
+      clear();
     },
   };
 }

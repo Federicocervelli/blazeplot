@@ -196,6 +196,15 @@ export interface ChartPluginDom {
   decorate(surface: ChartSurface, decoration: ChartSurfaceDecoration): () => void;
   /** Whether `target` is inside the chart (its root element or a descendant). */
   contains(target: EventTarget | null | undefined): boolean;
+  /**
+   * Claim the pointer behind a `pointerdown` event for this plugin's gesture (a drag, a pan, a
+   * brush). Returns `true` when this plugin now owns the pointer and `false` when another plugin
+   * already claimed it; in that case do not start the gesture. The first plugin to claim wins, and
+   * listeners run in plugin install order. Claiming again from the same plugin returns `true`.
+   * A claim ends when the pointer is released or cancelled, or when the plugin is disposed.
+   * Built-in plugins claim their drags and skip pointers claimed by others.
+   */
+  claimPointer(event: PointerEvent): boolean;
 }
 
 /** Chart event subscription and typed plugin events. */
@@ -323,6 +332,26 @@ function toRect(rect: DOMRect): ChartRect {
   return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
 }
 
+const TOUCH_GESTURES = ["pan-x", "pan-y", "pinch-zoom"] as const;
+
+/** Intersect CSS `touch-action` values: only gestures every value allows stay with the browser. */
+function intersectTouchActions(values: readonly string[]): string {
+  let allowed: Set<string> = new Set(TOUCH_GESTURES);
+  for (const value of values) {
+    const own = new Set<string>();
+    for (const token of value.trim().split(/\s+/)) {
+      if (token === "auto" || token === "manipulation") for (const t of TOUCH_GESTURES) own.add(t);
+      else if (token === "pan-left" || token === "pan-right") own.add("pan-x");
+      else if (token === "pan-up" || token === "pan-down") own.add("pan-y");
+      else if ((TOUCH_GESTURES as readonly string[]).includes(token)) own.add(token);
+    }
+    allowed = new Set([...allowed].filter((t) => own.has(t)));
+  }
+  if (allowed.size === 0) return "none";
+  if (allowed.size === TOUCH_GESTURES.length) return "auto";
+  return TOUCH_GESTURES.filter((t) => allowed.has(t)).join(" ");
+}
+
 /**
  * @internal Installs plugins, builds their contexts, runs lifecycle hooks in registration order,
  * and disposes in reverse order.
@@ -330,7 +359,50 @@ function toRect(rect: DOMRect): ChartRect {
 export class PluginHost {
   private readonly installed: InstalledPlugin[] = [];
 
+  private readonly touchActions = new Map<HTMLElement, { readonly base: string; readonly values: string[] }>();
+  private readonly pointerClaims = new Map<number, InstalledPlugin>();
+  private claimListening = false;
+
   constructor(private readonly chart: PluginHostChart, private readonly internals: PluginHostInternals) {}
+
+  private readonly releaseClaim = (event: Event): void => {
+    this.pointerClaims.delete((event as PointerEvent).pointerId);
+  };
+
+  /**
+   * `touch-action` decorations combine by intersection, so the most restrictive plugin wins
+   * whatever the install order: `none` beats `pan-y`, and `pan-y` beats `auto`.
+   */
+  private claimTouchAction(target: HTMLElement, value: string): () => void {
+    let entry = this.touchActions.get(target);
+    if (!entry) {
+      entry = { base: target.style.touchAction, values: [] };
+      this.touchActions.set(target, entry);
+    }
+    const state = entry;
+    state.values.push(value);
+    const apply = (): void => {
+      target.style.touchAction = state.values.length === 0 ? state.base : intersectTouchActions(state.values);
+    };
+    apply();
+    return () => {
+      const index = state.values.indexOf(value);
+      if (index !== -1) state.values.splice(index, 1);
+      apply();
+      if (state.values.length === 0) this.touchActions.delete(target);
+    };
+  }
+
+  private claimPointer(entry: InstalledPlugin, event: PointerEvent): boolean {
+    const owner = this.pointerClaims.get(event.pointerId);
+    if (owner && owner !== entry && !owner.disposed) return false;
+    this.pointerClaims.set(event.pointerId, entry);
+    if (!this.claimListening) {
+      this.claimListening = true;
+      for (const type of ["pointerup", "pointercancel"]) this.chart.rootElement.addEventListener(type, this.releaseClaim, true);
+    }
+    return true;
+  }
 
   /** Install one plugin. Returns a function that disposes just this plugin. */
   install(plugin: ChartPlugin): () => void {
@@ -370,6 +442,11 @@ export class PluginHost {
   /** Dispose every plugin in reverse registration order. Cleanup errors never stop later plugins. */
   disposeAll(): void {
     for (const entry of this.installed.splice(0).reverse()) this.disposeEntry(entry);
+    if (this.claimListening) {
+      this.claimListening = false;
+      for (const type of ["pointerup", "pointercancel"]) this.chart.rootElement.removeEventListener(type, this.releaseClaim, true);
+    }
+    this.pointerClaims.clear();
   }
 
   private disposeEntry(entry: InstalledPlugin): void {
@@ -493,6 +570,10 @@ export class PluginHost {
         const restore: Array<() => void> = [];
         for (const [property, value] of Object.entries(decoration.style ?? {}) as Array<[keyof ChartSurfaceStyle, string | undefined]>) {
           if (value === undefined) continue;
+          if (property === "touchAction") {
+            restore.push(this.claimTouchAction(target, value));
+            continue;
+          }
           const previous = target.style[property];
           target.style[property] = value;
           restore.push(() => {
@@ -516,6 +597,7 @@ export class PluginHost {
           for (const undo of restore.reverse()) undo();
         });
       },
+      claimPointer: (event) => this.claimPointer(entry, event),
       contains: (target) => {
         const root = chart.rootElement;
         return target === root || (typeof Node !== "undefined" && target instanceof Node && root.contains(target));

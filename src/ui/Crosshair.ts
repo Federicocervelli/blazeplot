@@ -442,12 +442,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       };
 
       const unlisten = [
-        chart.dom.listen("plot", "pointermove", onPointerMove),
-        chart.dom.listen("plot", "pointercancel", longPress.clear),
-        chart.dom.listen("plot", "touchstart", longPress.onTouchStart, { capture: true, passive: true }),
-        chart.dom.listen("plot", "touchmove", longPress.onTouchMove, { capture: true, passive: false }),
-        chart.dom.listen("plot", "touchend", longPress.clear),
-        chart.dom.listen("plot", "touchcancel", longPress.clear),
+        chart.dom.listen("plot", "pointermove", onPointerMove, { capture: true }),
+        chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer),
         chart.dom.listen("plot", "pointerleave", onPointerLeave),
         chart.dom.listen("plot", "pointerdown", onPointerDown, { capture: true }),
         chart.dom.listen("plot", "pointerup", onPointerUp, { capture: true }),
