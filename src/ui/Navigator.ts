@@ -288,6 +288,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       const applyTheme = (): void => {
         if (!root || !windowRect || !leftHandle || !rightHandle) return;
         const windowStroke = options.windowStrokeColor ?? chart.theme.axisColor;
+        root.setAttribute("data-blazeplot-screenshot-box", "");
         root.style.background = options.backgroundColor ?? chart.theme.legendBackgroundColor;
         root.style.outline = `1px solid ${options.borderColor ?? chart.theme.legendBorderColor}`;
         windowRect.setAttribute("fill", options.windowFillColor ?? rgbaCss(chart.theme.gridColor));
