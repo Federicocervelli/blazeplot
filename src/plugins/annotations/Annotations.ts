@@ -4,10 +4,12 @@ import type { ChartPluginContext } from "../../ui/PluginTypes.js";
 import { asElement, singleChartPlugin } from "../common/OverlayUtils.js";
 import { createSvgElement, annotationFocusRect, annotationName, createHitEvent, hitTestAnnotation } from "./geometry.js";
 import { renderAnnotations } from "./svg.js";
-import type { Annotation, AnnotationHitEvent, AnnotationHitEventType, AnnotationsPlugin, AnnotationsPluginOptions } from "./types.js";
+import { DEFAULT_ANNOTATIONS_MESSAGES } from "./types.js";
+import type { Annotation, AnnotationHitEvent, AnnotationHitEventType, AnnotationsMessages, AnnotationsPlugin, AnnotationsPluginOptions } from "./types.js";
 
 /** Create a plugin that renders lines, ranges, boxes, points, and labels. */
 export function annotationsPlugin(options: AnnotationsPluginOptions = {}): AnnotationsPlugin {
+  const messages: AnnotationsMessages = { ...DEFAULT_ANNOTATIONS_MESSAGES, ...options.messages };
   let annotations = [...(options.annotations ?? [])];
   let chartRef: ChartPluginContext | null = null;
   let overlay: SVGSVGElement | null = null;
@@ -44,12 +46,12 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
         target.className = "blazeplot-annotation-focus";
         target.tabIndex = 0;
         target.setAttribute("role", "button");
-        target.setAttribute("aria-roledescription", "annotation");
+        target.setAttribute("aria-roledescription", messages.roleDescription);
         Object.assign(target.style, { position: "absolute", pointerEvents: "none", borderRadius: "2px", boxSizing: "border-box" });
         focusTargets.set(annotation, target);
         focusedAnnotation.set(target, annotation);
       }
-      target.setAttribute("aria-label", annotationName(chart, annotation));
+      target.setAttribute("aria-label", annotationName(chart, annotation, messages));
       if (isRemovable(annotation)) target.setAttribute("aria-keyshortcuts", "Enter Delete");
       else target.setAttribute("aria-keyshortcuts", "Enter");
       target.style.left = `${rect.x}px`;

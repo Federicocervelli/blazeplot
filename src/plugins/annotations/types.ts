@@ -138,7 +138,37 @@ export interface AnnotationHitEvent {
 export type AnnotationHitEventType = "hover" | "click";
 
 /** Options for the annotation overlay plugin. */
+/**
+ * Overridable annotation strings, for localization. Unset keys keep their English defaults. Names are
+ * used for annotations without `ariaLabel` or a label text; coordinates are formatted with the axis formatters.
+ */
+export interface AnnotationsMessages {
+  /** Screen reader role description of a focusable annotation. */
+  readonly roleDescription: string;
+  readonly xLine: (x: string) => string;
+  readonly yLine: (y: string) => string;
+  readonly xRange: (from: string, to: string) => string;
+  readonly yRange: (from: string, to: string) => string;
+  readonly box: (xFrom: string, xTo: string, yFrom: string, yTo: string) => string;
+  readonly point: (x: string, y: string) => string;
+  readonly label: (x: string, y: string) => string;
+}
+
+/** English defaults for `AnnotationsMessages`. */
+export const DEFAULT_ANNOTATIONS_MESSAGES: AnnotationsMessages = {
+  roleDescription: "annotation",
+  xLine: (x) => `Vertical line at x ${x}`,
+  yLine: (y) => `Horizontal line at y ${y}`,
+  xRange: (from, to) => `X range from ${from} to ${to}`,
+  yRange: (from, to) => `Y range from ${from} to ${to}`,
+  box: (xFrom, xTo, yFrom, yTo) => `Box from x ${xFrom} to ${xTo}, y ${yFrom} to ${yTo}`,
+  point: (x, y) => `Point at x ${x}, y ${y}`,
+  label: (x, y) => `Label at x ${x}, y ${y}`,
+};
+
 export interface AnnotationsPluginOptions {
+  /** Override the accessible names and role description of annotations, for localization. */
+  readonly messages?: Partial<AnnotationsMessages>;
   readonly annotations?: readonly Annotation[];
   readonly className?: string;
   readonly defaultColor?: string;

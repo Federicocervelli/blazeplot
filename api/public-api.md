@@ -2164,7 +2164,7 @@ function tooltipPlugin(options?: TooltipPluginOptions): ChartPlugin;
 
 ### `blazeplot/plugins/interactions`
 
-5 exports.
+6 exports.
 
 #### type InteractionAxisOption
 
@@ -2195,10 +2195,20 @@ interface InteractionsKeyboardOptions {
 }
 ```
 
+#### interface InteractionsMessages
+
+```ts
+interface InteractionsMessages {
+    readonly wheelHint: (modifier: string) => string;
+    readonly touchHint: string;
+}
+```
+
 #### interface InteractionsPluginOptions
 
 ```ts
 interface InteractionsPluginOptions {
+    readonly messages?: Partial<InteractionsMessages>;
     readonly keyboard?: boolean | InteractionsKeyboardOptions;
     readonly axis?: InteractionAxisOption;
     readonly boxZoom?: boolean;
@@ -2232,7 +2242,7 @@ function interactionsPlugin(options?: InteractionsPluginOptions): ChartPlugin;
 
 ### `blazeplot/plugins/annotations`
 
-16 exports.
+17 exports.
 
 #### type Annotation
 
@@ -2303,6 +2313,21 @@ interface AnnotationLabelOptions {
 }
 ```
 
+#### interface AnnotationsMessages
+
+```ts
+interface AnnotationsMessages {
+    readonly roleDescription: string;
+    readonly xLine: (x: string) => string;
+    readonly yLine: (y: string) => string;
+    readonly xRange: (from: string, to: string) => string;
+    readonly yRange: (from: string, to: string) => string;
+    readonly box: (xFrom: string, xTo: string, yFrom: string, yTo: string) => string;
+    readonly point: (x: string, y: string) => string;
+    readonly label: (x: string, y: string) => string;
+}
+```
+
 #### interface AnnotationsPlugin
 
 ```ts
@@ -2322,6 +2347,7 @@ interface AnnotationsPlugin extends ChartPlugin {
 
 ```ts
 interface AnnotationsPluginOptions {
+    readonly messages?: Partial<AnnotationsMessages>;
     readonly annotations?: readonly Annotation[];
     readonly className?: string;
     readonly defaultColor?: string;
@@ -2654,7 +2680,16 @@ function crosshairPlugin(options?: CrosshairPluginOptions): CrosshairPlugin;
 
 ### `blazeplot/plugins/navigator`
 
-3 exports.
+4 exports.
+
+#### interface NavigatorMessages
+
+```ts
+interface NavigatorMessages {
+    readonly label: string;
+    readonly visibleRange: (from: string, to: string) => string;
+}
+```
 
 #### interface NavigatorPlugin
 
@@ -2668,6 +2703,12 @@ interface NavigatorPlugin extends ChartPlugin {
 
 ```ts
 interface NavigatorPluginOptions {
+    readonly messages?: Partial<NavigatorMessages>;
+    readonly label?: string;
+    readonly formatValueText?: (range: {
+        readonly xMin: number;
+        readonly xMax: number;
+    }) => string;
     readonly height?: number;
     readonly placement?: "bottom" | "top";
     readonly series?: SeriesStore | readonly SeriesStore[];

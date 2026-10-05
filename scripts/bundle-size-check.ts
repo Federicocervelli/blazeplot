@@ -44,9 +44,9 @@ const budgets: Budget[] = [
   { label: "linked entry", path: "dist/linked.js", maxBytes: 2_500 },
   { label: "data entry", path: "dist/data.js", maxBytes: 1_800 },
   { label: "export entry", path: "dist/export.js", maxBytes: 4_300 },
-  { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 15_100 },
-  { label: "annotations plugin", path: "dist/plugins/annotations.js", maxBytes: 15_200 },
-  { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 10_200 },
+  { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 15_200 }, // +100 for localizable hint messages
+  { label: "annotations plugin", path: "dist/plugins/annotations.js", maxBytes: 15_400 }, // +200 for localizable annotation names
+  { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 10_300 }, // +100 for localizable label and value text
   { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 8_800 },
   { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 4_800 },
   { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_300 },
