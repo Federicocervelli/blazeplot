@@ -23,10 +23,10 @@ export interface PluginHostChart {
   stopFollowX(): void;
   setFollowXPaused(paused: boolean): void;
   getFollowXState(): ChartFollowXState;
-  getSeriesState(): ChartSeriesState[];
+  getSeriesState(): readonly ChartSeriesState[];
   getHoverState(): ChartHoverState | null;
   pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
-  getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+  getFrameStats(target?: ChartFrameStats): Readonly<ChartFrameStats>;
   requestRender(): void;
   subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
 }

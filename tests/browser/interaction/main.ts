@@ -193,7 +193,7 @@ if (caseName === "a11y") {
     renderer: pageRenderer,
     title: "Accessible interaction chart",
     axes: { x: { position: "outside" }, y: { position: "outside" } },
-    plugins: [a11yPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }), selection, annotations, legendPlugin(), navigatorPlugin({ height: 48 })],
+    plugins: [a11yPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }), selection, annotations, legendPlugin(), navigatorPlugin({ heightPx: 48 })],
   }));
 } else if (caseName === "iframe") {
   charts.push(createIframeChart());

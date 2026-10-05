@@ -144,7 +144,11 @@ function renderDefaultLegend(
   }
 }
 
-/** Create a plugin that renders a clickable series legend. */
+/**
+ * Create a plugin that renders a clickable series legend.
+ *
+ * One instance may be passed to several charts: it keeps no per-chart state outside each install.
+ */
 export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {

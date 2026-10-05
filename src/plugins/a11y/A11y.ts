@@ -181,7 +181,8 @@ function findSample(series: SeriesStore, from: number, direction: 1 | -1): numbe
 }
 
 /**
- * Create the accessibility plugin: a visually hidden data table of the visible data, a keyboard
+ * Create the accessibility plugin (stateful: one instance per chart, see `singleChartPlugin` semantics:
+ * installing it on a second live chart throws). A visually hidden data table of the visible data, a keyboard
  * inspection cursor that drives the tooltip and crosshair through `ctx.state.inspect`, and an
  * optional throttled live summary for streaming charts.
  */

@@ -13,7 +13,8 @@
     "realtime",
     "streaming",
     "dashboard",
-    "react"
+    "framework-agnostic",
+    "canvas"
   ],
   "author": {
     "name": "Federico Cervelli",
@@ -36,55 +37,68 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./linked": {
       "types": "./dist/linked.d.ts",
-      "import": "./dist/linked.js"
+      "import": "./dist/linked.js",
+      "default": "./dist/linked.js"
     },
     "./data": {
       "types": "./dist/data.d.ts",
-      "import": "./dist/data.js"
+      "import": "./dist/data.js",
+      "default": "./dist/data.js"
     },
     "./export": {
       "types": "./dist/export.d.ts",
-      "import": "./dist/export.js"
+      "import": "./dist/export.js",
+      "default": "./dist/export.js"
     },
     "./plugins/legend": {
       "types": "./dist/plugins/legend.d.ts",
-      "import": "./dist/plugins/legend.js"
+      "import": "./dist/plugins/legend.js",
+      "default": "./dist/plugins/legend.js"
     },
     "./plugins/tooltip": {
       "types": "./dist/plugins/tooltip.d.ts",
-      "import": "./dist/plugins/tooltip.js"
+      "import": "./dist/plugins/tooltip.js",
+      "default": "./dist/plugins/tooltip.js"
     },
     "./plugins/interactions": {
       "types": "./dist/plugins/interactions.d.ts",
-      "import": "./dist/plugins/interactions.js"
+      "import": "./dist/plugins/interactions.js",
+      "default": "./dist/plugins/interactions.js"
     },
     "./plugins/annotations": {
       "types": "./dist/plugins/annotations.d.ts",
-      "import": "./dist/plugins/annotations.js"
+      "import": "./dist/plugins/annotations.js",
+      "default": "./dist/plugins/annotations.js"
     },
     "./plugins/selection": {
       "types": "./dist/plugins/selection.d.ts",
-      "import": "./dist/plugins/selection.js"
+      "import": "./dist/plugins/selection.js",
+      "default": "./dist/plugins/selection.js"
     },
     "./plugins/crosshair": {
       "types": "./dist/plugins/crosshair.d.ts",
-      "import": "./dist/plugins/crosshair.js"
+      "import": "./dist/plugins/crosshair.js",
+      "default": "./dist/plugins/crosshair.js"
     },
     "./plugins/navigator": {
       "types": "./dist/plugins/navigator.d.ts",
-      "import": "./dist/plugins/navigator.js"
+      "import": "./dist/plugins/navigator.js",
+      "default": "./dist/plugins/navigator.js"
     },
     "./plugins/flamegraph": {
       "types": "./dist/plugins/flamegraph.d.ts",
-      "import": "./dist/plugins/flamegraph.js"
+      "import": "./dist/plugins/flamegraph.js",
+      "default": "./dist/plugins/flamegraph.js"
     },
     "./plugins/a11y": {
       "types": "./dist/plugins/a11y.d.ts",
-      "import": "./dist/plugins/a11y.js"
+      "import": "./dist/plugins/a11y.js",
+      "default": "./dist/plugins/a11y.js"
     },
     "./package.json": "./package.json"
   },
@@ -167,5 +181,51 @@
     "typescript": "^7.0.2",
     "uplot": "^1.6.32",
     "vite": "^8.0.13"
-  }
+  },
+  "typesVersions": {
+    "*": {
+      "linked": [
+        "./dist/linked.d.ts"
+      ],
+      "data": [
+        "./dist/data.d.ts"
+      ],
+      "export": [
+        "./dist/export.d.ts"
+      ],
+      "plugins/legend": [
+        "./dist/plugins/legend.d.ts"
+      ],
+      "plugins/tooltip": [
+        "./dist/plugins/tooltip.d.ts"
+      ],
+      "plugins/interactions": [
+        "./dist/plugins/interactions.d.ts"
+      ],
+      "plugins/annotations": [
+        "./dist/plugins/annotations.d.ts"
+      ],
+      "plugins/selection": [
+        "./dist/plugins/selection.d.ts"
+      ],
+      "plugins/crosshair": [
+        "./dist/plugins/crosshair.d.ts"
+      ],
+      "plugins/navigator": [
+        "./dist/plugins/navigator.d.ts"
+      ],
+      "plugins/flamegraph": [
+        "./dist/plugins/flamegraph.d.ts"
+      ],
+      "plugins/a11y": [
+        "./dist/plugins/a11y.d.ts"
+      ]
+    }
+  },
+  "browserslist": [
+    "chrome >= 93",
+    "edge >= 93",
+    "firefox >= 92",
+    "safari >= 15.4"
+  ]
 }

@@ -104,7 +104,7 @@ export default class Preview extends PreviewResources {
         { id: "target-band", type: "y-range", yMin: 0.95, yMax: 1.18, fillColor: "rgba(96, 165, 250, 0.10)", borderColor: "rgba(147, 197, 253, 0.35)", label: "target zone" },
         { id: "release-window", type: "x-range", xMin: sampleToTime(VIEW_SAMPLES * 0.18), xMax: sampleToTime(VIEW_SAMPLES * 0.24), fillColor: "rgba(250, 204, 21, 0.10)", borderColor: "rgba(250, 204, 21, 0.35)", label: "event window" },
         { id: "threshold", type: "y-line", y: -0.25, color: "rgba(248, 113, 113, 0.85)", dash: "5 4", label: "spike threshold" },
-        { id: "marker", type: "point", x: sampleToTime(VIEW_SAMPLES * 0.5), y: 0.82, radius: 6, color: "rgba(34, 211, 238, 0.95)", shape: "diamond", label: "marker" },
+        { id: "marker", type: "point", x: sampleToTime(VIEW_SAMPLES * 0.5), y: 0.82, radiusPx: 6, color: "rgba(34, 211, 238, 0.95)", shape: "diamond", label: "marker" },
       ],
     });
 
