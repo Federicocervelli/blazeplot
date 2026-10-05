@@ -101,8 +101,11 @@ export class ChartHover {
     this.rafId = 0;
   }
 
-  /** Re-pick under the last pointer position; while a button is held, keep the same items and only reproject them. */
-  refresh(): void {
+  /**
+   * Re-pick under the last pointer position; while a button is held, keep the same items and only reproject them.
+   * A caller that already read the plot size this frame passes it in, so the refresh adds no layout read.
+   */
+  refresh(plotWidth?: number, plotHeight?: number): void {
     if (this.inspection) {
       this.set(this.inspectionHoverState());
       return;
@@ -112,8 +115,8 @@ export class ChartHover {
     const rect: PlotRect = {
       left: this.lastClientX - this.lastPlotX,
       top: this.lastClientY - this.lastPlotY,
-      width: canvas.clientWidth,
-      height: canvas.clientHeight,
+      width: plotWidth ?? canvas.clientWidth,
+      height: plotHeight ?? canvas.clientHeight,
     };
     if (this.lastButtons !== 0) {
       this.set(this.host.picker.reprojectHoverState(this.state, rect, { clientX: this.lastClientX, clientY: this.lastClientY, plotX: this.lastPlotX, plotY: this.lastPlotY }));
