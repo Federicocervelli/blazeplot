@@ -224,7 +224,7 @@ if (caseName === "a11y") {
   const plugins: ChartPlugin[] = caseName === "plain"
     ? []
     : caseName === "cooperative"
-    ? [interactionsPlugin({ minDragDistancePx: 4, wheelZoom: "modifier", touchPan: "two-finger" })]
+    ? [interactionsPlugin({ minDragDistancePx: 4, wheelZoom: "modifier" })] // touchPan stays at its default, "two-finger"
     : caseName === "arbitration"
     // Both plugins at their defaults: one plain drag must do exactly one thing.
     ? [interactionsPlugin({ minDragDistancePx: 4 }), selection = selectionPlugin({
