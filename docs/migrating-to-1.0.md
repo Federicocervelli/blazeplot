@@ -543,7 +543,7 @@ In a CommonJS project, use dynamic `import()` or move the chart code into an ES 
 
 ### TypeScript 5.0 or newer
 
-The declarations are checked against TypeScript 5.0 and newer. Your `moduleResolution` must understand package `exports` (`bundler`, `node16`, or `nodenext`); the legacy `node`/`node10` setting also resolves every subpath through `typesVersions`. Include `"DOM"` in `lib`. Details: [TypeScript support](./versioning-and-migration.md#typescript-support).
+The declarations are checked against TypeScript 5.0 and newer. Use a `moduleResolution` that reads package `exports` (`bundler`, `node16`, or `nodenext`); the legacy `node`/`node10` setting also resolves every subpath through `typesVersions`. Include `"DOM"` in `lib`. Details: [TypeScript support](./versioning-and-migration.md#typescript-support).
 
 ```json
 {
