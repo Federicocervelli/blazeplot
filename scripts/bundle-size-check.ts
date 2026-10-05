@@ -35,7 +35,8 @@ const budgets: Budget[] = [
   { label: "linked entry", path: "dist/linked.js", maxBytes: 2_300 },
   { label: "data entry", path: "dist/data.js", maxBytes: 1_800 },
   { label: "export entry", path: "dist/export.js", maxBytes: 3_900 },
-  { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 11_700 },
+  // 11_500 before #162/#175/#176/#186: Pointer Events-only touch shrank it; cooperative gestures and the hint add the rest.
+  { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 13_700 },
   { label: "annotations plugin", path: "dist/plugins/annotations.js", maxBytes: 13_700 },
   { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 8_800 },
   { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 8_400 },
@@ -52,7 +53,7 @@ const sharedBudgets: SharedChunkBudget[] = [
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 3_600 },
-  { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 4_700 },
+  { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 4_950 },
 ];
 
 export async function collectBundleSizeReport(): Promise<BundleSizeReport> {

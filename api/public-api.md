@@ -487,6 +487,7 @@ interface ChartPluginDom {
     listen<K extends keyof HTMLElementEventMap>(surface: ChartSurface, type: K, listener: (event: HTMLElementEventMap[K]) => void, options?: boolean | AddEventListenerOptions): () => void;
     decorate(surface: ChartSurface, decoration: ChartSurfaceDecoration): () => void;
     contains(target: EventTarget | null | undefined): boolean;
+    claimPointer(event: PointerEvent): boolean;
 }
 ```
 
@@ -1973,12 +1974,26 @@ function tooltipPlugin(options?: TooltipPluginOptions): ChartPlugin;
 
 ### `blazeplot/plugins/interactions`
 
-3 exports.
+4 exports.
 
 #### type InteractionAxisOption
 
 ```ts
 type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
+```
+
+#### interface InteractionsGestureHintOptions
+
+```ts
+interface InteractionsGestureHintOptions {
+    readonly wheelText?: string;
+    readonly touchText?: string;
+    readonly durationMs?: number;
+    readonly className?: string;
+    readonly backgroundColor?: string;
+    readonly textColor?: string;
+    readonly font?: string;
+}
 ```
 
 #### interface InteractionsPluginOptions
@@ -1987,7 +2002,8 @@ type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
 interface InteractionsPluginOptions {
     readonly axis?: InteractionAxisOption;
     readonly boxZoom?: boolean;
-    readonly wheelZoom?: boolean;
+    readonly boxZoomModifier?: "none" | "shift" | "alt" | "ctrl";
+    readonly wheelZoom?: boolean | "modifier";
     readonly wheelZoomSensitivity?: number;
     readonly trackpadPinchSensitivity?: number;
     readonly trackpadPan?: boolean;
@@ -2000,8 +2016,9 @@ interface InteractionsPluginOptions {
     readonly doubleClickReset?: boolean;
     readonly resumeFollowOnReset?: boolean;
     readonly resetViewport?: () => Viewport;
-    readonly touchPan?: boolean;
+    readonly touchPan?: boolean | "two-finger";
     readonly pinchZoom?: boolean;
+    readonly gestureHint?: boolean | InteractionsGestureHintOptions;
     readonly doubleTapReset?: boolean;
     readonly minDragDistancePx?: number;
 }
@@ -2281,6 +2298,7 @@ interface SelectionPluginOptions {
     readonly mode?: SelectionMode;
     readonly yAxis?: SeriesYAxis;
     readonly minDragDistancePx?: number;
+    readonly modifier?: "none" | "shift" | "alt" | "ctrl";
     readonly className?: string;
     readonly fillColor?: string;
     readonly strokeColor?: string;

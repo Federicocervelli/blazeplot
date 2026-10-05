@@ -32,7 +32,7 @@ export function examplePlugin(): ChartPlugin {
 | `ctx.viewport` | `get(yAxis?)`, `set(viewport, yAxis?)`, `pan(intent, yAxis?)`, `zoom(intent, yAxis?)`, `fitToData(options?)`, `isReversed(axis, yAxis?)`, `followX(options?)`, `stopFollowX()`, `setFollowXPaused(paused)`, `getFollowXState()` | Reading and changing the visible domain. Changes go through the chart's `ViewportPolicy` and pause latest-X following like a user gesture. |
 | `ctx.state` | `getSeries()`, `getHover()`, `pick(clientX, clientY, options?)`, `getFrameStats(target?)`, `inspect(target)`, `getInspection()` | Series metadata, the current hover hit, hit-testing, render metrics, and keyboard inspection (see below). |
 | `ctx.layout` | `plotRect()`, `rootRect()`, `reserve(reservation)` | Plot and chart geometry in client coordinates, and space around the plot for plugin UI. `reserve` returns a release function. |
-| `ctx.dom` | `mount(slot, element)`, `listen(surface, type, listener, options?)`, `decorate(surface, decoration)`, `contains(target)` | Attaching plugin DOM, listening to input on chart-owned elements, and styling them. Each returns an undo function. |
+| `ctx.dom` | `mount(slot, element)`, `listen(surface, type, listener, options?)`, `decorate(surface, decoration)`, `contains(target)`, `claimPointer(event)` | Attaching plugin DOM, listening to input on chart-owned elements, styling them, and claiming pointer gestures. `mount`, `listen`, and `decorate` return an undo function. |
 | `ctx.events` | `subscribe(event, callback)`, `emit(event, payload)` | Chart events (`render`, `hover`, `viewportchange`, `serieschange`, pointer events, ...) and typed plugin events. |
 | `ctx.requestRender()` | | Schedule a frame after changing something the chart draws. Chart-owned changes already request one. |
 | `ctx.unstable` | `canvas`, `element(slot)`, `getWebGLContext()`, `getCamera(yAxis?)` | Experimental escape hatches. Prefer the groups above. |
@@ -58,7 +58,30 @@ Plugins never receive raw chart elements. They attach DOM to named **mount slots
 | `"root"` | The chart root. | Focusable; receives keyboard input when `accessibility` is enabled. |
 | `"axis-x"`, `"axis-y"`, `"axis-y2"` | The axis gutters. | Ignore pointer input until decorated with `{ style: { pointerEvents: "auto" } }`. |
 
-`listen` passes the DOM event through unchanged, so `event.currentTarget` is the surface element: call `setPointerCapture` on it for drags. `decorate(surface, { style, classes, attributes })` applies a limited set of inline styles (`cursor`, `touchAction`, `pointerEvents`, `filter`, `outline`, `outlineOffset`), CSS classes, and attributes, and returns a function that restores the previous values. When several decorations touch the same property, undo them in reverse order. `contains(target)` tells you whether an event target is inside the chart, for example to scope global keyboard shortcuts.
+`listen` passes the DOM event through unchanged, so `event.currentTarget` is the surface element: call `setPointerCapture` on it for drags. `decorate(surface, { style, classes, attributes })` applies a limited set of inline styles (`cursor`, `touchAction`, `pointerEvents`, `filter`, `outline`, `outlineOffset`), CSS classes, and attributes, and returns a function that restores the previous values. When several decorations touch the same property, undo them in reverse order; `touchAction` is the exception, because decorations of it combine by intersection: `none` beats `pan-y`, which beats the default, whichever plugin was installed first. A chart sets no `touch-action` of its own, so request one only when your plugin needs exclusive touch input (a drag that must not scroll the page). `contains(target)` tells you whether an event target is inside the chart, for example to scope global keyboard shortcuts.
+
+## Claiming pointer gestures
+
+Several plugins may want the same drag. `ctx.dom.claimPointer(event)` decides who gets it:
+
+```ts
+import type { ChartPlugin } from "blazeplot";
+
+export const brushPlugin: ChartPlugin = {
+  install(ctx) {
+    ctx.dom.listen("plot", "pointerdown", (event) => {
+      if (event.button !== 0 || !ctx.dom.claimPointer(event)) return; // another plugin owns this pointer
+      // start the drag
+    });
+  },
+};
+```
+
+- Call it from `pointerdown`, only when your gesture would actually start (check the button and modifier keys first).
+- It returns `true` when your plugin now owns the pointer and `false` when another plugin claimed it first. Calling it again from the same plugin returns `true`.
+- The first claimer wins, and listeners on a surface run in plugin install order. A listener registered with `{ capture: true }` runs before non-capture listeners on the same surface, which is how `selectionPlugin` takes a plain drag ahead of box zoom whatever the install order.
+- A claim lasts until that `pointerId` is released (`pointerup` or `pointercancel`) or the plugin is disposed.
+- The built-in drag plugins (box zoom, shift and axis pan, touch pan and pinch, selection, ruler measurement) claim before they start and skip pointers claimed by others, so a third-party drag plugin that claims first keeps them out of its way. Give your gesture a modifier option so users can resolve genuine conflicts, as `selectionPlugin({ modifier })` and `interactionsPlugin({ boxZoomModifier })` do.
 
 ## Lifecycle
 

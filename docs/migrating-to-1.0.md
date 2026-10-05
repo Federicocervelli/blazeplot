@@ -361,6 +361,13 @@ console.log(chart.getFollowXState(), chart.getViewport().xMin);
 chart.dispose();
 ```
 
+### 11. Gesture handling
+
+- **`touch-action` is no longer forced.** A chart without `interactionsPlugin` (or another plugin that asks for it) no longer sets `touch-action: none`, so one-finger swipes scroll the page. `interactionsPlugin` and `selectionPlugin` set it themselves, and the tooltip and crosshair long press use `pan-y`. If you relied on the old default for your own touch handling, request it with `ctx.dom.decorate("plot", { style: { touchAction: "none" } })`. `touchAction` decorations now combine by intersection.
+- **Touch input uses Pointer Events only.** The built-in plugins no longer register `touchstart`, `touchmove`, `touchend`, or `touchcancel` listeners. If a custom plugin listens for those on the plot, listen for `pointerdown`, `pointermove`, `pointerup`, and `pointercancel` and check `event.pointerType === "touch"`.
+- **Pointer gestures are arbitrated.** Plugins claim a drag with `ctx.dom.claimPointer(event)`. With `interactionsPlugin` and `selectionPlugin` both at their defaults, a plain drag now selects and no longer also box-zooms; use `interactionsPlugin({ boxZoomModifier: "alt" })` to keep box zoom. `selectionPlugin` now ignores presses with Shift, Alt, or Ctrl/Cmd held unless you set `modifier`.
+- **New cooperative options.** `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger" })` leaves plain wheel and one-finger input to the page. See [Built-in plugins](./built-in-plugins.md#cooperative-gestures-on-scrolling-pages).
+
 ## Platform requirements
 
 ### ESM only
@@ -441,5 +448,6 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 9. If you write custom plugins, port them to the grouped plugin context with the table in change 8 (search for `install(`, `setLayoutReservation`, `rootElement`, `plotElement`, `getCamera`, and `render:` callbacks of the legend, tooltip, and crosshair plugins). The new contract is stable. If you implement custom fast-path datasets or use `ctx.unstable`, note they are experimental: pin a 1.x range and read each minor changelog.
 10. Apply the renames in change 10: search for `followLatestX`, `stopFollowingLatestX`, `setXFollowPaused`, `getXFollowState`, `ChartXFollowState`, `ChartPointerEventState`, `LODStrategy`, `chartDataToCSV`, `sharedX`, `labelBackground`, the `fill`/`stroke`/`background`/`window*` options of `selectionPlugin` and `navigatorPlugin`, and `chart.getCamera`, `chart.getWebGLContext`, `chart.canvas`, `chart.plotElement`, and the `*AxisElement` getters.
 11. Check change 9 if you style or test the chart root: search for `role="img"`, `aria-description`, `querySelector("style")` on the chart root, and full `ResolvedChartTheme` objects (add `focusRingColor`). Give each chart an `accessibility.label`, and consider `a11yPlugin()` for charts whose values users need.
-12. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-13. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
+12. If you use `interactionsPlugin` with `selectionPlugin`, or write custom touch or drag plugins, read change 11: check `touch-action`, touch listeners, and which plugin owns a plain drag.
+13. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
+14. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
