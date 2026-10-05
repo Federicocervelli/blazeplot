@@ -1,8 +1,8 @@
-import type { ChartPointerEvent } from "./ChartEvents.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginTypes.js";
-import type { SeriesYAxis } from "../core/types.js";
-import { asElement } from "./OverlayUtils.js";
-import { singleChartPlugin } from "./OverlayUtils.js";
+import type { ChartPointerEvent } from "../../ui/ChartEvents.js";
+import type { ChartPlugin, ChartPluginContext } from "../../ui/PluginTypes.js";
+import type { SeriesYAxis } from "../../core/types.js";
+import { asElement } from "../common/OverlayUtils.js";
+import { singleChartPlugin } from "../common/OverlayUtils.js";
 
 /** Label styling for annotation overlays. */
 export interface AnnotationLabelOptions {

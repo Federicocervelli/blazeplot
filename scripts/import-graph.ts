@@ -111,6 +111,12 @@ export const layerRules: readonly LayerRule[] = [
   { name: "interaction mutates the camera: it imports only core and interaction", from: "src/interaction/", allow: ["src/core/", "src/interaction/"] },
   { name: "render imports only core, interaction, and render", from: "src/render/", allow: ["src/core/", "src/interaction/", "src/render/"] },
   { name: "ui (Chart) never imports optional plugins or linked charts", from: "src/ui/", allow: ["src/core/", "src/interaction/", "src/render/", "src/ui/"] },
+  {
+    name: "plugins import only the public plugin types (ui/PluginTypes, ChartEvents, ChartViewportTypes), core, interaction, theme, and each other; never Chart",
+    from: "src/plugins/",
+    allow: ["src/plugins/", "src/core/", "src/interaction/", "src/ui/PluginTypes.ts", "src/ui/ChartEvents.ts", "src/ui/ChartViewportTypes.ts", "src/ui/theme.ts"],
+  },
+  { name: "linked charts build on the public Chart API, never on plugins' internals", from: "src/linked/", allow: ["src/linked/", "src/core/", "src/interaction/", "src/ui/"] },
 ];
 
 export function findLayerViolations(graph: ImportGraph, rules: readonly LayerRule[] = layerRules): string[] {

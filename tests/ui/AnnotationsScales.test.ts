@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { annotationsPlugin } from "../../src/plugins/annotations.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
-import type { Annotation } from "../../src/ui/Annotations.ts";
+import type { Annotation } from "../../src/plugins/annotations/Annotations.ts";
 import { installPlugin, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();

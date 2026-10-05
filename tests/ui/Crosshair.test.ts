@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
 import { HistogramDataset } from "../../src/core/Histogram.ts";
-import type { CrosshairPluginOptions, CrosshairPosition, RulerMeasurement } from "../../src/ui/Crosshair.ts";
+import type { CrosshairPluginOptions, CrosshairPosition, RulerMeasurement } from "../../src/plugins/crosshair/Crosshair.ts";
 import { countNodes } from "./fakes.ts";
 import { fire, installPlugin, pointerEvent, useChartHarness } from "./harness.ts";
 

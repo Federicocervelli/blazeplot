@@ -1,9 +1,9 @@
-import type { SeriesYAxis, Viewport } from "../core/types.js";
-import type { ChartPlugin, ChartPluginContext, ChartRect } from "./PluginTypes.js";
-import type { SelectionMode, SelectionPlotBounds, SelectionState } from "./ChartEvents.js";
+import type { SeriesYAxis, Viewport } from "../../core/types.js";
+import type { ChartPlugin, ChartPluginContext, ChartRect } from "../../ui/PluginTypes.js";
+import type { SelectionMode, SelectionPlotBounds, SelectionState } from "../../ui/ChartEvents.js";
 
 export type { SelectionMode, SelectionPlotBounds, SelectionState };
-import { asElement, clamp, createOverlayLayer, dragModifierMatches, installPluginStyle, singleChartPlugin } from "./OverlayUtils.js";
+import { asElement, clamp, createOverlayLayer, dragModifierMatches, installPluginStyle, singleChartPlugin } from "../common/OverlayUtils.js";
 
 const SELECTION_CSS = "@media (forced-colors:active){.blazeplot-selection-brush{border-color:Highlight!important}}";
 

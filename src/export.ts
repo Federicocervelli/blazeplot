@@ -3,7 +3,7 @@ import type { SeriesStore } from "./core/SeriesStore.js";
 import type { Chart } from "./ui/Chart.js";
 import type { ChartSeriesState } from "./ui/ChartEvents.js";
 import type { ChartScreenshotOptions } from "./ui/ChartOptions.js";
-import type { SelectionState } from "./ui/Selection.js";
+import type { SelectionState } from "./plugins/selection/Selection.js";
 
 /** Options for downloading a chart screenshot. */
 export interface ChartDownloadOptions extends ChartScreenshotOptions {
