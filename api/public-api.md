@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-166 exports.
+165 exports.
 
 #### interface AcceleratedDataset
 
