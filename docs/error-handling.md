@@ -54,7 +54,7 @@ export function mountChart(element: HTMLElement): Chart | null {
 
 | Call | Throws |
 |---|---|
-| `chart.addLine({ capacity })` and other chart-owned series | `TypeError` when `capacity` is not a positive integer and no `dataset` is given. `TypeError` when `xStep`/`xStart` is combined with an overflow strategy other than `"wrap"`. |
+| `chart.addLine({ capacity })` and other chart-owned series | `TypeError` when `capacity` is not a positive integer and no `dataset` is given. `TypeError` when `xStep`/`xStart` is combined with an overflow strategy other than `"wrap"` or with `onInvalidSample`. `TypeError` when `dataset` is combined with `capacity`, `xStart`, `xStep`, `overflow`, `valuePrecision`, or `onInvalidSample`, which configure a buffer the chart creates. TypeScript rejects all of these at compile time; the checks cover JavaScript callers and casts. |
 | `chart.addSeries({ mode })` | `TypeError` when `mode` is not one of `line`, `area`, `scatter`, `bar`, `ohlc`, `candlestick` (JavaScript callers, or a removed mode such as `"envelope"`). |
 | `chart.addOhlc(...)` / `addCandlestick(...)` | `TypeError` without an `OhlcDataset`. |
 | `chart.addBar({ dataset: HistogramDataset.from(...) })` | `TypeError` when variable-width bins have no `style.barWidth`; histogram option errors below. |

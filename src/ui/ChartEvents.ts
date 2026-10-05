@@ -16,6 +16,7 @@ export type ChartPickGroup = "x" | "none";
 export interface ChartPickOptions {
   readonly mode?: ChartPickMode;
   readonly group?: ChartPickGroup;
+  /** Largest pointer-to-sample distance, in CSS pixels, that still counts as a hit. */
   readonly maxDistancePx?: number;
 }
 

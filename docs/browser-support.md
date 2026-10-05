@@ -2,6 +2,16 @@
 
 BlazePlot targets modern browsers with WebGL2 and draws with Canvas 2D where WebGL2 is unavailable or unreliable. Both engines ship in the core package and are fully supported; the default `renderer: "auto"` picks between them.
 
+## Minimum browser versions
+
+| Browser | Minimum |
+|---|---|
+| Chrome and Edge (Chromium) | 93 |
+| Firefox | 92 |
+| Safari (macOS and iOS) | 15.4 |
+
+These are set by the language and platform features the package uses without a fallback (`Object.hasOwn`, logical assignment operators, CSS `inset`); the library is built for `esnext` and does not transpile or polyfill them. The crosshair marker fill uses CSS `color-mix()` and simply renders without that tint on older browsers. WebGL2 itself is available from Chrome 56, Firefox 51, and Safari 15; charts on browsers or machines without it use Canvas 2D. Older browsers are not tested and are not supported. The same targets are declared in `package.json#browserslist`.
+
 ## Requirements
 
 | Feature | Used for | Notes |
@@ -95,7 +105,7 @@ The visual suite (`bun run test:visual`) renders every case with each engine and
 If you would rather show your own UI than a Canvas 2D chart, keep the fallback outside the chart constructor and ask for the strict engine, so users without WebGL2 get a useful page instead of a slower chart.
 
 ```ts
-import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
+import { Chart, isWebGL2Available } from "blazeplot";
 
 // Your own fallback: a static image from your backend, a table, or a message.
 function renderStaticFallback(x: number[], y: number[]): Node {
@@ -111,7 +121,7 @@ function renderTelemetryChart(element: HTMLElement, x: number[], y: number[]) {
   }
 
   const chart = new Chart(element, { renderer: "webgl2" });
-  chart.addLine({ dataset: new StaticDataset(x, y), name: "telemetry" });
+  chart.addLine({ x, y, name: "telemetry" });
   chart.fitToData({ padding: 0.05 });
   chart.start();
   return chart;
@@ -130,7 +140,7 @@ Charts are browser-only. In SSR apps, create charts after client mount or dynami
 
 ```tsx
 import { useEffect, useRef } from "react";
-import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
+import { Chart, isWebGL2Available } from "blazeplot";
 
 export function ClientOnlyChart({ x, y }: { x: number[]; y: number[] }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -139,7 +149,7 @@ export function ClientOnlyChart({ x, y }: { x: number[]; y: number[] }) {
     if (!ref.current || !isWebGL2Available()) return;
 
     const chart = new Chart(ref.current);
-    chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+    chart.addLine({ x, y, name: "series" });
     chart.fitToData();
     chart.start();
 

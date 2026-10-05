@@ -70,7 +70,7 @@ describe("navigatorPlugin ARIA and layout", () => {
   });
 
   it("reserves space at the chosen placement and releases it on dispose", () => {
-    const bottom = make({ height: 40, margin: 5 });
+    const bottom = make({ heightPx: 40, marginPx: 5 });
     expect(padding(bottom.chart)).toBe("0px 0px 50px 0px");
     expect(rootOf(bottom.chart).style.bottom).toBe("5px");
     bottom.chart.dispose();
@@ -113,7 +113,7 @@ describe("navigatorPlugin ARIA and layout", () => {
   });
 
   it("limits the overview to the configured series and applies styling options", () => {
-    const plugin = navigatorPlugin({ strokeColor: "red", strokeWidth: 3, fillColor: "blue", className: "nav", zIndex: 9 });
+    const plugin = navigatorPlugin({ strokeColor: "red", strokeWidthPx: 3, fillColor: "blue", className: "nav", zIndex: 9 });
     const chart = h.make({ plugins: [plugin] });
     const a = chart.addLine({ capacity: 16 });
     const b = chart.addLine({ capacity: 16 });

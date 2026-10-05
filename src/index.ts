@@ -32,7 +32,12 @@ export type {
   ChartViewportChangeEvent,
   ChartViewportChangeSource,
   ChartViewportGestureOptions,
+  DatasetSeriesConfig,
+  HistogramSeriesConfig,
+  StaticSeriesConfig,
+  RingSeriesConfig,
   SeriesIdentityConfig,
+  UniformRingSeriesConfig,
   TextOverlayConfig,
   TypedSeriesConfig,
 } from "./ui/Chart.js";
@@ -68,6 +73,7 @@ export type { SeriesStore } from "./core/SeriesStore.js";
 export type { SeriesDataBoundsOptions, SeriesOhlcSample } from "./core/SeriesStore.js";
 export type {
   SeriesAppendData,
+  SeriesAppendFor,
   SeriesAppendRow,
   SeriesObjectAppendData,
   SeriesOhlcAppendData,
@@ -76,6 +82,10 @@ export type {
   SeriesReplaceData,
   SeriesScalarOrArray,
   SeriesUpdateData,
+  SeriesUpdateFor,
+  SeriesXYExplicitAppendData,
+  SeriesYAppendData,
+  SeriesYUpdateData,
   SeriesXYAppendData,
   SeriesXYAppendRow,
   SeriesXYUpdateData,

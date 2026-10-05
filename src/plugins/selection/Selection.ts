@@ -52,7 +52,7 @@ export interface SelectionPluginOptions {
   readonly mode?: SelectionMode;
   /** Y axis whose domain the selection measures. Defaults to `"left"`. */
   readonly yAxis?: SeriesYAxis;
-  /** Drags shorter than this are ignored. Defaults to 4. */
+  /** Drags shorter than this many CSS pixels are ignored. Defaults to 4. */
   readonly minDragDistancePx?: number;
   /**
    * Modifier that starts a selection drag. Defaults to `"none"`: a plain drag with no Shift,
@@ -131,7 +131,12 @@ function plotBoundsForDrag(drag: DragState, rect: ChartRect, mode: SelectionMode
   };
 }
 
-/** Create a plugin that lets users select chart ranges by dragging. */
+/**
+ * Create a plugin that lets users select chart ranges by dragging.
+ *
+ * Stateful: an instance serves one chart at a time. Installing it on a second chart while the first is
+ * alive throws; create one instance per chart (linked layouts: `panelPlugins`). Disposing the chart frees it.
+ */
 export function selectionPlugin(options: SelectionPluginOptions = {}): SelectionPlugin {
   const mode = options.mode ?? "xy";
   const yAxis = options.yAxis ?? "left";

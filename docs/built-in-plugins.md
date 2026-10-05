@@ -177,12 +177,12 @@ chart.start();
 `navigatorPlugin` adds an overview control. It reserves top or bottom space by default so it does not overlap the plot (`reserveSpace: false` overlays it instead). This is useful for dense history where the main chart shows a small moving window.
 
 ```ts
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 import { navigatorPlugin } from "blazeplot/plugins/navigator";
 
 // The series the navigator summarizes; normally the one you already added to the chart.
 const priceSeries = new Chart(element).addLine({
-  dataset: new StaticDataset([0, 1, 2, 3], [10, 12, 11, 13]),
+  x: [0, 1, 2, 3], y: [10, 12, 11, 13],
   name: "price",
 });
 

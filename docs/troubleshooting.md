@@ -31,7 +31,7 @@ Check these first:
 7. **The log scale has no valid domain.** See [Log axis throws a domain error](#log-axis-throws-a-domain-error).
 
 ```ts
-import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
+import { Chart, isWebGL2Available } from "blazeplot";
 
 const x = [0, 1, 2];
 const y = [3, 6, 4];
@@ -44,7 +44,7 @@ if (!isWebGL2Available()) {
   showUnsupportedBrowserMessage();
 } else {
   const chart = new Chart(element, { renderer: "webgl2" });
-  chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+  chart.addLine({ x, y, name: "series" });
   chart.fitToData({ padding: 0.05 });
   chart.start();
 }

@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-167 exports.
+177 exports.
 
 #### interface AcceleratedDataset
 
@@ -180,37 +180,47 @@ class Chart {
     setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis, options?: ChartSetViewportOptions): void;
     pan(intent: PanIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
     zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
-    addSeries<D extends Dataset = Dataset>(config: SeriesConfig & {
-        readonly dataset?: D;
+    addSeries<D extends OhlcDataset>(config: DatasetSeriesConfig<D> & {
+        readonly mode: "ohlc" | "candlestick";
     }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addLine<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
+    addSeries<D extends Dataset>(config: DatasetSeriesConfig<D> & {
+        readonly mode: "line" | "area" | "scatter" | "bar";
     }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addArea<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
-    }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addScatter<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
-    }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addBar<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
-    }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addOhlc<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
-    }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addCandlestick<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
-    }, style?: SeriesStyleOptions): SeriesStore<D>;
+    addSeries(config: UniformRingSeriesConfig & {
+        readonly mode: "line" | "area" | "scatter" | "bar";
+    }, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+    addSeries(config: RingSeriesConfig & {
+        readonly mode: "line" | "area" | "scatter" | "bar";
+    }, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+    addLine<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addLine(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
+    addLine(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+    addLine(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+    addArea<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addArea(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
+    addArea(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+    addArea(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+    addScatter<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addScatter(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
+    addScatter(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+    addScatter(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+    addBar<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addBar(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
+    addBar(config: HistogramSeriesConfig, style?: SeriesStyleOptions): SeriesStore<HistogramDataset>;
+    addBar(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+    addBar(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+    addOhlc<D extends OhlcDataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addCandlestick<D extends OhlcDataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
     removeSeries(series: SeriesStore): boolean;
     getSummary(): ChartSummary;
-    getSeriesState(): ChartSeriesState[];
+    getSeriesState(): readonly ChartSeriesState[];
     followX(options?: ChartFollowXOptions): void;
     stopFollowX(): void;
     setFollowXPaused(paused: boolean): void;
     getFollowXState(): ChartFollowXState;
     fitToData(options?: ChartFitToDataOptions): boolean;
     resize(pixelRatio?: number): boolean;
-    getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+    getFrameStats(target?: ChartFrameStats): Readonly<ChartFrameStats>;
     getHoverState(): ChartHoverState | null;
     subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
     setTheme(theme?: ChartTheme): void;
@@ -577,10 +587,10 @@ interface ChartPluginLayout {
 
 ```ts
 interface ChartPluginState {
-    getSeries(): ChartSeriesState[];
+    getSeries(): readonly ChartSeriesState[];
     getHover(): ChartHoverState | null;
     pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
-    getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+    getFrameStats(target?: ChartFrameStats): Readonly<ChartFrameStats>;
     inspect(target: ChartInspectionTarget | null): ChartHoverState | null;
     getInspection(): ChartInspectionTarget | null;
 }
@@ -867,28 +877,28 @@ interface ChartSurfaceStyle {
 interface ChartTheme {
     readonly backgroundColor?: ThemeColor;
     readonly gridColor?: ThemeColor;
-    readonly axisColor?: string;
+    readonly axisColor?: ThemeColor;
     readonly axisFont?: string;
     readonly seriesColors?: readonly ThemeColor[];
-    readonly tooltipBackgroundColor?: string;
-    readonly tooltipTextColor?: string;
+    readonly tooltipBackgroundColor?: ThemeColor;
+    readonly tooltipTextColor?: ThemeColor;
     readonly tooltipFont?: string;
-    readonly legendBackgroundColor?: string;
-    readonly legendBorderColor?: string;
-    readonly legendTextColor?: string;
-    readonly legendMutedTextColor?: string;
+    readonly legendBackgroundColor?: ThemeColor;
+    readonly legendBorderColor?: ThemeColor;
+    readonly legendTextColor?: ThemeColor;
+    readonly legendMutedTextColor?: ThemeColor;
     readonly legendFont?: string;
-    readonly titleColor?: string;
+    readonly titleColor?: ThemeColor;
     readonly titleFont?: string;
-    readonly subtitleColor?: string;
+    readonly subtitleColor?: ThemeColor;
     readonly subtitleFont?: string;
-    readonly axisTitleColor?: string;
+    readonly axisTitleColor?: ThemeColor;
     readonly axisTitleFont?: string;
-    readonly selectionFillColor?: string;
-    readonly selectionStrokeColor?: string;
-    readonly crosshairColor?: string;
-    readonly markerStrokeColor?: string;
-    readonly focusRingColor?: string;
+    readonly selectionFillColor?: ThemeColor;
+    readonly selectionStrokeColor?: ThemeColor;
+    readonly crosshairColor?: ThemeColor;
+    readonly markerStrokeColor?: ThemeColor;
+    readonly focusRingColor?: ThemeColor;
 }
 ```
 
@@ -955,6 +965,20 @@ interface Dataset {
     upperBoundX(x: number): number;
     invalidate?(): void;
     readonly ordinalOffset?: number;
+}
+```
+
+#### interface DatasetSeriesConfig
+
+```ts
+interface DatasetSeriesConfig<D extends Dataset = Dataset> extends SeriesIdentityConfig {
+    readonly dataset: D;
+    readonly capacity?: never;
+    readonly xStart?: never;
+    readonly xStep?: never;
+    readonly overflow?: never;
+    readonly valuePrecision?: never;
+    readonly onInvalidSample?: never;
 }
 ```
 
@@ -1025,6 +1049,17 @@ interface HistogramResult {
     readonly invalid: number;
     readonly min: number;
     readonly max: number;
+}
+```
+
+#### interface HistogramSeriesConfig
+
+```ts
+interface HistogramSeriesConfig extends SeriesIdentityConfig, HistogramOptions {
+    readonly values: ArrayLike<number>;
+    readonly dataset?: never;
+    readonly capacity?: never;
+    readonly x?: never;
 }
 ```
 
@@ -1252,6 +1287,20 @@ interface RingBufferOptions {
 }
 ```
 
+#### interface RingSeriesConfig
+
+```ts
+interface RingSeriesConfig extends SeriesIdentityConfig {
+    readonly capacity: number;
+    readonly overflow?: BufferOverflowStrategy;
+    readonly valuePrecision?: ValuePrecision;
+    readonly onInvalidSample?: (sample: InvalidSample) => void;
+    readonly dataset?: never;
+    readonly xStart?: never;
+    readonly xStep?: never;
+}
+```
+
 #### type SampleCopyLayout
 
 ```ts
@@ -1262,6 +1311,20 @@ type SampleCopyLayout = "points" | "area";
 
 ```ts
 type SeriesAppendData = SeriesObjectAppendData | readonly SeriesAppendRow[];
+```
+
+#### type SeriesAppendFor
+
+```ts
+type SeriesAppendFor<D extends Dataset> = (D extends OhlcDataset & {
+    append(x: ArrayLike<number>, open: ArrayLike<number>, high: ArrayLike<number>, low: ArrayLike<number>, close: ArrayLike<number>): void;
+} ? SeriesOhlcAppendData | readonly SeriesOhlcAppendRow[] : never) | (D extends {
+    append(x: ArrayLike<number>, y: ArrayLike<number>): void;
+} ? SeriesXYExplicitAppendData | readonly Required<SeriesXYAppendRow>[] : never) | (D extends {
+    appendY(y: ArrayLike<number>): void;
+} ? SeriesYAppendData | readonly {
+    readonly y: number;
+}[] : never);
 ```
 
 #### type SeriesAppendRow
@@ -1298,10 +1361,15 @@ interface SeriesDataBoundsOptions {
 }
 ```
 
-#### type SeriesIdentityConfig
+#### interface SeriesIdentityConfig
 
 ```ts
-type SeriesIdentityConfig = Pick<SeriesConfig, "id" | "name" | "yAxis" | "downsample">;
+interface SeriesIdentityConfig {
+    readonly id?: string;
+    readonly name?: string;
+    readonly yAxis?: SeriesYAxis;
+    readonly downsample?: DownsampleStrategy;
+}
 ```
 
 #### type SeriesMode
@@ -1390,7 +1458,7 @@ type SeriesScalarOrArray = number | ArrayLike<number>;
 #### class SeriesStore
 
 ```ts
-class SeriesStore<D extends Dataset = Dataset> {
+class SeriesStore<D extends Dataset = any> {
     readonly config: SeriesConfig;
     readonly style: SeriesStyle;
     get length(): number;
@@ -1398,9 +1466,9 @@ class SeriesStore<D extends Dataset = Dataset> {
     get xRange(): TimeRange | null;
     setStyle(options: SeriesStyleOptions): void;
     setVisible(visible: boolean): void;
-    append(data: SeriesAppendData): void;
-    updateLast(data: SeriesUpdateData): boolean;
-    updateAt(index: number, data: SeriesUpdateData): boolean;
+    append(data: SeriesAppendFor<D>): void;
+    updateLast(data: SeriesUpdateFor<D>): boolean;
+    updateAt(index: number, rawData: SeriesUpdateFor<D>): boolean;
     replace(data: SeriesReplaceData<D>): void;
     markDirty(): void;
     clear(): void;
@@ -1450,6 +1518,18 @@ interface SeriesStyleOptions {
 type SeriesUpdateData = SeriesXYUpdateData | SeriesOhlcUpdateData;
 ```
 
+#### type SeriesUpdateFor
+
+```ts
+type SeriesUpdateFor<D extends Dataset> = (D extends OhlcDataset & {
+    updateAt(index: number, open: number, high: number, low: number, close: number): boolean;
+} ? SeriesOhlcUpdateData : never) | (D extends {
+    update(index: number, x: number, y: number): boolean;
+} ? SeriesXYUpdateData : D extends {
+    updateY(index: number, y: number): boolean;
+} ? SeriesYUpdateData : never);
+```
+
 #### interface SeriesXYAppendData
 
 ```ts
@@ -1468,6 +1548,15 @@ interface SeriesXYAppendRow {
 }
 ```
 
+#### interface SeriesXYExplicitAppendData
+
+```ts
+interface SeriesXYExplicitAppendData {
+    readonly x: SeriesScalarOrArray;
+    readonly y: SeriesScalarOrArray;
+}
+```
+
 #### interface SeriesXYUpdateData
 
 ```ts
@@ -1477,10 +1566,28 @@ interface SeriesXYUpdateData {
 }
 ```
 
+#### interface SeriesYAppendData
+
+```ts
+interface SeriesYAppendData {
+    readonly y: SeriesScalarOrArray;
+    readonly x?: undefined;
+}
+```
+
 #### type SeriesYAxis
 
 ```ts
 type SeriesYAxis = "left" | "right";
+```
+
+#### interface SeriesYUpdateData
+
+```ts
+interface SeriesYUpdateData {
+    readonly y: number;
+    readonly x?: undefined;
+}
 ```
 
 #### interface ServerSampledBuckets
@@ -1633,6 +1740,18 @@ interface StaticOhlcDatasetSortedOptions {
 }
 ```
 
+#### interface StaticSeriesConfig
+
+```ts
+interface StaticSeriesConfig extends SeriesIdentityConfig {
+    readonly x: ArrayLike<number>;
+    readonly y: ArrayLike<number>;
+    readonly dataset?: never;
+    readonly capacity?: never;
+    readonly values?: never;
+}
+```
+
 #### interface TextOverlayConfig
 
 ```ts
@@ -1640,8 +1759,8 @@ interface TextOverlayConfig {
     readonly text: string;
     readonly color?: string;
     readonly font?: string;
-    readonly offsetX?: number;
-    readonly offsetY?: number;
+    readonly offsetXPx?: number;
+    readonly offsetYPx?: number;
 }
 ```
 
@@ -1663,7 +1782,7 @@ interface TimeRange {
 #### type TypedSeriesConfig
 
 ```ts
-type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
+type TypedSeriesConfig<D extends Dataset = Dataset> = DatasetSeriesConfig<D> | StaticSeriesConfig | HistogramSeriesConfig | RingSeriesConfig | UniformRingSeriesConfig;
 ```
 
 #### class UniformRingBuffer
@@ -1702,6 +1821,24 @@ interface UniformRingBufferOptions {
     readonly xStep?: number;
     readonly valuePrecision?: ValuePrecision;
 }
+```
+
+#### type UniformRingSeriesConfig
+
+```ts
+type UniformRingSeriesConfig = SeriesIdentityConfig & {
+    readonly capacity: number;
+    readonly valuePrecision?: ValuePrecision;
+    readonly overflow?: "wrap";
+    readonly onInvalidSample?: never;
+    readonly dataset?: never;
+} & ({
+    readonly xStep: number;
+    readonly xStart?: number;
+} | {
+    readonly xStep?: number;
+    readonly xStart: number;
+});
 ```
 
 #### interface UpdatableDataset
@@ -2151,8 +2288,8 @@ interface TooltipPluginOptions {
     readonly group?: ChartPickGroup;
     readonly syncGroup?: string;
     readonly maxDistancePx?: number;
-    readonly offsetX?: number;
-    readonly offsetY?: number;
+    readonly offsetXPx?: number;
+    readonly offsetYPx?: number;
     readonly highlight?: boolean;
     readonly longPressMs?: number | false;
     readonly backgroundColor?: string;
@@ -2307,8 +2444,8 @@ interface AnnotationLabelOptions {
     readonly position?: "start" | "center" | "end" | "top" | "bottom" | "left" | "right";
     readonly color?: string;
     readonly font?: string;
-    readonly offsetX?: number;
-    readonly offsetY?: number;
+    readonly offsetXPx?: number;
+    readonly offsetYPx?: number;
 }
 ```
 
@@ -2357,7 +2494,7 @@ interface BoxAnnotation extends AnnotationBase {
     readonly yMax: number;
     readonly fillColor?: string;
     readonly borderColor?: string;
-    readonly borderWidth?: number;
+    readonly borderWidthPx?: number;
 }
 ```
 
@@ -2382,10 +2519,10 @@ interface PointAnnotation extends AnnotationBase {
     readonly type: "point";
     readonly x: number;
     readonly y: number;
-    readonly radius?: number;
+    readonly radiusPx?: number;
     readonly color?: string;
     readonly strokeColor?: string;
-    readonly strokeWidth?: number;
+    readonly strokeWidthPx?: number;
     readonly shape?: "circle" | "diamond" | "cross";
 }
 ```
@@ -2397,7 +2534,7 @@ interface XLineAnnotation extends AnnotationBase {
     readonly type: "x-line";
     readonly x: number;
     readonly color?: string;
-    readonly width?: number;
+    readonly widthPx?: number;
     readonly dash?: string;
 }
 ```
@@ -2411,7 +2548,7 @@ interface XRangeAnnotation extends AnnotationBase {
     readonly xMax: number;
     readonly fillColor?: string;
     readonly borderColor?: string;
-    readonly borderWidth?: number;
+    readonly borderWidthPx?: number;
 }
 ```
 
@@ -2422,7 +2559,7 @@ interface YLineAnnotation extends AnnotationBase {
     readonly type: "y-line";
     readonly y: number;
     readonly color?: string;
-    readonly width?: number;
+    readonly widthPx?: number;
     readonly dash?: string;
 }
 ```
@@ -2436,7 +2573,7 @@ interface YRangeAnnotation extends AnnotationBase {
     readonly yMax: number;
     readonly fillColor?: string;
     readonly borderColor?: string;
-    readonly borderWidth?: number;
+    readonly borderWidthPx?: number;
 }
 ```
 
@@ -2598,7 +2735,7 @@ interface CrosshairPluginOptions {
     readonly snap?: CrosshairSnapMode;
     readonly syncGroup?: string;
     readonly color?: string;
-    readonly width?: number;
+    readonly widthPx?: number;
     readonly dash?: string;
     readonly label?: boolean;
     readonly labelBackgroundColor?: string;
@@ -2607,9 +2744,9 @@ interface CrosshairPluginOptions {
     readonly labelPlacement?: CrosshairLabelPlacement;
     readonly zIndex?: number;
     readonly highlight?: boolean;
-    readonly markerSize?: number;
+    readonly markerSizePx?: number;
     readonly markerStrokeColor?: string;
-    readonly markerStrokeWidth?: number;
+    readonly markerStrokeWidthPx?: number;
     readonly renderHighlight?: CrosshairHighlightRenderer;
     readonly longPressMs?: number | false;
     readonly rulerModifier?: "none" | "ctrl" | "shift" | "alt" | "meta";
@@ -2677,7 +2814,7 @@ interface NavigatorPlugin extends ChartPlugin {
 
 ```ts
 interface NavigatorPluginOptions {
-    readonly height?: number;
+    readonly heightPx?: number;
     readonly placement?: "bottom" | "top";
     readonly series?: SeriesStore | readonly SeriesStore[];
     readonly maxSamplesPerSeries?: number;
@@ -2686,15 +2823,15 @@ interface NavigatorPluginOptions {
     readonly backgroundColor?: string;
     readonly borderColor?: string;
     readonly strokeColor?: string;
-    readonly strokeWidth?: number;
+    readonly strokeWidthPx?: number;
     readonly fillColor?: string;
     readonly windowFillColor?: string;
     readonly windowStrokeColor?: string;
-    readonly handleWidth?: number;
-    readonly handleHitWidth?: number;
+    readonly handleWidthPx?: number;
+    readonly handleHitWidthPx?: number;
     readonly zIndex?: number;
     readonly reserveSpace?: boolean;
-    readonly margin?: number;
+    readonly marginPx?: number;
     readonly align?: "plot" | "chart";
     readonly onRangeChange?: (range: {
         readonly xMin: number;

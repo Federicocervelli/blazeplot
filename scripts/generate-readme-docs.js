@@ -33,7 +33,7 @@ const checkExportDescriptions = args.has("--check-export-descriptions");
 const pkg = JSON.parse(readFileSync(packagePath, "utf-8"));
 
 const exportDescriptions = new Map([
-  [".", "Chart, datasets, data contracts, theming, and the WebGL2 backend."],
+  [".", "Chart, datasets, data contracts, theming, and renderer selection."],
   ["./linked", "Multi-panel layouts with shared X and per-panel plugins."],
   ["./data", "Pure, chart-agnostic data transforms (binning, rolling mean)."],
   ["./export", "Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers."],
@@ -363,7 +363,7 @@ function renderBenchmarkComparisonDocs() {
 }
 
 function renderComparisonPerformanceBlock(report, size) {
-  const { scoreboard, summary } = readmeSummaryLines(report);
+  const { summary } = readmeSummaryLines(report);
   const date = typeof report.generatedAt === "string" ? report.generatedAt.slice(0, 10) : "unknown date";
   const machine = report.environment?.machine;
   const page = report.environment?.page;
@@ -375,13 +375,9 @@ function renderComparisonPerformanceBlock(report, size) {
     "",
     `The core runtime (\`import { Chart } from "blazeplot"\`, without optional plugins) is about **${size}**. Plugins and helpers ship as separate subpath entries.`,
     "",
-    "Headline numbers from the manual headed comparison against uPlot and Chart.js, one primary metric per scenario (median of fresh-page runs; bold marks the winner among BlazePlot WebGL, uPlot and Chart.js):",
-    "",
-    ...scoreboard,
-    "",
     summary,
     "",
-    `Measured ${date} on ${String(machine?.cpuModel ?? "local machine").trim()} (${machine?.cpuCount ?? "?"} logical CPUs), ${shortGpuName(page?.webglRenderer)}, ${browser?.product ?? page?.userAgent ?? "unknown browser"}, ${report.options?.width ?? "?"}x${report.options?.height ?? "?"} CSS px chart, ${report.options?.runs ?? "?"} fresh-page runs per cell. Every metric, spread, and the full list of scenarios where BlazePlot does not clearly win: [docs/benchmarks.md](docs/benchmarks.md). Reproduce with \`bun run bench:compare\`.`,
+    `Measured ${date} on ${String(machine?.cpuModel ?? "local machine").trim()}, ${shortGpuName(page?.webglRenderer)}, ${browser?.product ?? page?.userAgent ?? "unknown browser"}, ${report.options?.runs ?? "?"} fresh-page runs per cell. The per-scenario tables, spreads, and every scenario where BlazePlot does not clearly win are in [docs/benchmarks.md](docs/benchmarks.md). Reproduce with \`bun run bench:compare\`.`,
     performanceEndMarker,
   ].join("\n");
 }
@@ -468,7 +464,7 @@ let nextReadme = existsSync(readmePath) ? readFileSync(readmePath, "utf-8") : ""
 if (nextReadme) {
   const readmeGeneratedBlock = renderReadmeDocs();
   if (!nextReadme.includes(performanceStartMarker)) {
-    nextReadme = nextReadme.replace(/^## Performance[\s\S]*?\n## Installation/m, `${performanceStartMarker}\n## Performance\n\n${performanceEndMarker}\n\n## Installation`);
+    nextReadme = nextReadme.replace(/^## Performance[\s\S]*?\n## Documentation/m, `${performanceStartMarker}\n## Performance\n\n${performanceEndMarker}\n\n## Documentation`);
   }
   nextReadme = replaceBlock(nextReadme, performanceStartMarker, performanceEndMarker, renderPerformanceBlock(), "README performance");
   nextReadme = replaceBlock(nextReadme, docsStartMarker, docsEndMarker, readmeGeneratedBlock, "README docs");

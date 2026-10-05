@@ -58,7 +58,7 @@ describe("tooltipPlugin", () => {
   });
 
   it("clamps the tooltip position inside the viewport", () => {
-    const chart = h.make({ plugins: [tooltipPlugin({ offsetX: 10, offsetY: 10 })] }, { width: 790, height: 200 });
+    const chart = h.make({ plugins: [tooltipPlugin({ offsetXPx: 10, offsetYPx: 10 })] }, { width: 790, height: 200 });
     seed(chart);
     hover(chart, 785, 100);
     // window is 800x600; the fallback tooltip size is 240x80, with a 4px margin.
