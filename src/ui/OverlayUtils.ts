@@ -198,6 +198,20 @@ export function createPickMarker(item: ChartPickItem, options: PickMarkerOptions
   return marker;
 }
 
+/** Modifier that must be held to start a plot drag gesture. `"none"` means no modifier key at all. */
+export type DragModifier = "none" | "shift" | "alt" | "ctrl";
+
+/** Whether a press carries exactly the modifier a drag gesture is configured for. */
+export function dragModifierMatches(event: PointerEvent, modifier: DragModifier | undefined): boolean {
+  const ctrl = event.ctrlKey || event.metaKey;
+  switch (modifier) {
+    case "shift": return event.shiftKey && !event.altKey && !ctrl;
+    case "alt": return event.altKey && !event.shiftKey && !ctrl;
+    case "ctrl": return ctrl && !event.shiftKey && !event.altKey;
+    default: return !event.shiftKey && !event.altKey && !ctrl;
+  }
+}
+
 /**
  * Let a long press follow the finger sideways while the page can still scroll vertically.
  * `touch-action` decorations intersect, so a plugin that needs `none` (interactions,

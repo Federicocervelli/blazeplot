@@ -1,5 +1,6 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { PanIntent, ZoomAxis, ZoomIntent } from "../interaction/types.js";
+import { dragModifierMatches } from "./OverlayUtils.js";
 import type { ChartPlugin, ChartPluginContext, ChartRect, ChartSurface } from "./PluginHost.js";
 
 /** Static or dynamic axis choice for wheel and drag interactions. */
@@ -8,7 +9,19 @@ export type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
 /** Options for mouse, wheel, touch, and keyboard chart interactions. */
 export interface InteractionsPluginOptions {
   readonly axis?: InteractionAxisOption;
+  /**
+   * Drag a rectangle on the plot to zoom into it. Defaults to true. The drag starts on a plain
+   * press (no modifier) unless `boxZoomModifier` says otherwise, and `selectionPlugin` takes a
+   * plain drag first when both are installed; see `boxZoomModifier`.
+   */
   readonly boxZoom?: boolean;
+  /**
+   * Modifier that starts a box zoom. By default any drag that is not a shift-drag pan zooms.
+   * Set it to require exactly one modifier (or `"none"` for no modifier at all); use `"alt"`
+   * or `"ctrl"` when `selectionPlugin` (or another plugin) owns the plain drag. `"shift"` is
+   * replaces shift-drag pan.
+   */
+  readonly boxZoomModifier?: "none" | "shift" | "alt" | "ctrl";
   readonly wheelZoom?: boolean;
   readonly wheelZoomSensitivity?: number;
   readonly trackpadPinchSensitivity?: number;
@@ -274,6 +287,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       const beginPan = (event: PointerEvent, panAxis: ZoomAxis, surface: GestureSurface, targetYAxis?: SeriesYAxis): void => {
+        if (!chart.dom.claimPointer(event)) return;
         captureResetViewport();
         event.preventDefault();
         if (surface !== "plot") setAxisHovered(surface, true);
@@ -295,12 +309,12 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         }
         if (drag || event.button !== 0) return;
 
-        if (event.shiftKey && options.shiftDragPan !== false) {
+        if (event.shiftKey && options.shiftDragPan !== false && options.boxZoomModifier !== "shift") {
           beginPan(event, resolveAxis(options.axis), "plot");
           return;
         }
 
-        if (options.boxZoom === false) return;
+        if (options.boxZoom === false || (options.boxZoomModifier !== undefined && !dragModifierMatches(event, options.boxZoomModifier)) || !chart.dom.claimPointer(event)) return;
         captureResetViewport();
         event.preventDefault();
         drag = {
@@ -456,6 +470,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
 
       function onTouchDown(event: PointerEvent, surface: GestureSurface): void {
         if (options.touchPan === false && options.pinchZoom === false) return;
+        if (!chart.dom.claimPointer(event)) return;
         captureResetViewport();
         capturePointer(event);
         touches.set(event.pointerId, { x: event.clientX, y: event.clientY });

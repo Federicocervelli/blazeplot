@@ -367,7 +367,20 @@ export class PluginHost {
 
   private readonly releaseClaim = (event: Event): void => {
     this.pointerClaims.delete((event as PointerEvent).pointerId);
+    this.syncClaimListeners();
   };
+
+  /** Listen for pointer release only while some pointer is claimed. */
+  private syncClaimListeners(): void {
+    const wanted = this.pointerClaims.size > 0;
+    if (wanted === this.claimListening) return;
+    this.claimListening = wanted;
+    const root = this.chart.rootElement;
+    for (const type of ["pointerup", "pointercancel"]) {
+      if (wanted) root.addEventListener(type, this.releaseClaim, true);
+      else root.removeEventListener(type, this.releaseClaim, true);
+    }
+  }
 
   /**
    * `touch-action` decorations combine by intersection, so the most restrictive plugin wins
@@ -397,10 +410,7 @@ export class PluginHost {
     const owner = this.pointerClaims.get(event.pointerId);
     if (owner && owner !== entry && !owner.disposed) return false;
     this.pointerClaims.set(event.pointerId, entry);
-    if (!this.claimListening) {
-      this.claimListening = true;
-      for (const type of ["pointerup", "pointercancel"]) this.chart.rootElement.addEventListener(type, this.releaseClaim, true);
-    }
+    this.syncClaimListeners();
     return true;
   }
 
@@ -442,11 +452,6 @@ export class PluginHost {
   /** Dispose every plugin in reverse registration order. Cleanup errors never stop later plugins. */
   disposeAll(): void {
     for (const entry of this.installed.splice(0).reverse()) this.disposeEntry(entry);
-    if (this.claimListening) {
-      this.claimListening = false;
-      for (const type of ["pointerup", "pointercancel"]) this.chart.rootElement.removeEventListener(type, this.releaseClaim, true);
-    }
-    this.pointerClaims.clear();
   }
 
   private disposeEntry(entry: InstalledPlugin): void {
@@ -459,6 +464,8 @@ export class PluginHost {
       // Plugin cleanup must not prevent other plugins or chart-owned resources from being released.
     }
     this.runCleanups(entry);
+    for (const [pointerId, owner] of this.pointerClaims) if (owner === entry) this.pointerClaims.delete(pointerId);
+    this.syncClaimListeners();
   }
 
   private runCleanups(entry: InstalledPlugin): void {

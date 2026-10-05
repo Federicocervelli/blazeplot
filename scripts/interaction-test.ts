@@ -105,6 +105,8 @@ async function main(): Promise<void> {
     const cases: ReadonlyArray<readonly [string, (options: Options, serverUrl: string) => Promise<void>]> = [
       ["interactions", runInteractionsCase],
       ["selection", runSelectionCase],
+      ["arbitration", runArbitrationCase],
+      ["touch-action", runTouchActionCase],
       ["linked", runLinkedCase],
       ["mobile", runMobileCase],
       ["mobile-longpress", runMobileLongPressCase],
@@ -396,6 +398,46 @@ async function runLinkedCase(options: Options, serverUrl: string): Promise<void>
     assert(after.visibleCrosshairs >= 2, "linked crosshairs are visible on both charts");
     assert(after.visibleTooltips >= 2, "linked tooltips are visible on both charts");
     console.log("✓ linked: synchronized crosshair and tooltip");
+  } finally {
+    cdp.close();
+  }
+}
+
+/** Interactions and selection at their defaults share the plain drag: it must select once and not zoom. */
+async function runArbitrationCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "arbitration");
+  try {
+    const snapshot = await waitForReady(cdp, options.timeoutMs);
+    const rect = snapshot.canvasRect;
+    await drag(cdp, rect.left + rect.width * 0.2, rect.top + rect.height * 0.2, rect.left + rect.width * 0.7, rect.top + rect.height * 0.65, 0);
+    await sleep(200);
+    const after = await getRequiredSnapshot(cdp);
+    assert(after.selectionCommits === 1, "plain drag commits exactly one selection");
+    assert(close(spanX(after.viewport), spanX(snapshot.viewport), 1e-6), "plain drag does not also box-zoom x");
+    assert(close(spanY(after.viewport), spanY(snapshot.viewport), 1e-6), "plain drag does not also box-zoom y");
+    console.log("✓ arbitration: one plain drag, one action");
+  } finally {
+    cdp.close();
+  }
+}
+
+/** `touch-action` is only set when a plugin needs exclusive touch input. */
+async function runTouchActionCase(options: Options, serverUrl: string): Promise<void> {
+  const touchActions = "[...document.querySelectorAll('#chart, #chart *')].map((el) => getComputedStyle(el).touchAction)";
+  let cdp = await openCase(options, serverUrl, "plain");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    const values = await evaluate(cdp, `${touchActions}.filter((v) => v !== 'auto')`, false) as string[];
+    assert(values.length === 0, `a chart without plugins leaves touch-action alone (found ${values.join(", ")})`);
+  } finally {
+    cdp.close();
+  }
+  cdp = await openCase(options, serverUrl, "arbitration");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    const canvas = await evaluate(cdp, "getComputedStyle(document.querySelector('#chart canvas')).touchAction", false);
+    assert(canvas === "none", `interactionsPlugin requests exclusive touch input (got ${String(canvas)})`);
+    console.log("✓ touch-action: auto without plugins, none with interactions");
   } finally {
     cdp.close();
   }

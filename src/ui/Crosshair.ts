@@ -421,8 +421,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
 
       const onPointerDown = (event: PointerEvent): void => {
         longPress.onPointerDown(event);
-        if (mode !== "ruler" || event.button !== 0 || !hasModifier(event, rulerModifier)) return;
-        rulerStart = resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
+        if (mode !== "ruler" || event.button !== 0 || !hasModifier(event, rulerModifier) || !chart.dom.claimPointer(event)) return;
+        rulerStart =resolvePosition(chart, event.clientX, event.clientY, yAxis, snap);
         if (rulerStart) {
           emitMeasureStart(rulerStart);
           event.preventDefault();
