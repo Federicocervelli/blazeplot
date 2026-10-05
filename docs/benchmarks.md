@@ -3,29 +3,29 @@
 
 This page is generated from `benchmarks/latest.json`; do not edit benchmark numbers by hand. To update it, run `bun run bench:compare` and then `bun run docs:readme`.
 
-Generated: 2026-10-04T11:49:53.195Z
-Command: `bun run bench:compare --chrome C:\Program Files\Thorium\Application\thorium.exe`
+Generated: 2026-10-05T10:17:49.928Z
+Command: `bun run bench:compare --libraries blazeplot,blazeplot-canvas2d,uplot,chartjs`
 Publishable: yes
 
 ## Environment
 
-- Machine: Ryzen 7 7800X3D / RX 9070 / Windows 11; AMD Ryzen 7 7800X3D 8-Core Processor           ; 16 logical CPUs; 15.2 GiB RAM
+- Machine: local machine; AMD Ryzen 7 7800X3D 8-Core Processor           ; 16 logical CPUs; 15.2 GiB RAM
 - OS: win32 10.0.26200 x64
-- Browser: Chrome/138.0.7204.303
+- Browser: Chrome/153.0.8010.12
 - GPU/WebGL: ANGLE (AMD, AMD Radeon RX 9070 (0x00007550) Direct3D11 vs_5_0 ps_5_0, D3D11)
 - Canvas: 1280×720 CSS px; DPR 1
-- Library prewarm: 87.5 ms before measured runs
+- Library prewarm: 164.1 ms before measured runs
 - Setup warmup runs: 1 discarded run(s) before each measured library/scenario
 
 ## Scenario data preparation
 
 | Scenario | Description | Samples | Visible samples | Data prep ms |
 |---|---|---:|---:|---:|
-| line-100k-static | 100k point line, initial render | 100,000 | 100,000 | 4.2 |
-| line-1m-static | 1M point line, initial render | 1,000,000 | 1,000,000 | 52.3 |
-| line-1m-pan | 1M point line, automated pan over 100k visible samples | 1,000,000 | 100,000 | 34.2 |
-| line-1m-stream | 1M point line, live append while following latest 100k samples | 1,000,000 | 100,000 | 33.9 |
-| line-10m-accelerated-pan | 10M point line, automated pan over 5M visible samples using BlazePlot's accelerated dataset path | 10,000,000 | 5,000,000 | 385.9 |
+| line-100k-static | 100k point line, initial render | 100,000 | 100,000 | 7.7 |
+| line-1m-static | 1M point line, initial render | 1,000,000 | 1,000,000 | 80.0 |
+| line-1m-pan | 1M point line, automated pan over 100k visible samples | 1,000,000 | 100,000 | 87.0 |
+| line-1m-stream | 1M point line, live append while following latest 100k samples | 1,000,000 | 100,000 | 75.3 |
+| line-10m-accelerated-pan | 10M point line, automated pan over 5M visible samples using BlazePlot's accelerated dataset path | 10,000,000 | 5,000,000 | 764.7 |
 
 ## BlazePlot vs uPlot runtime delta
 
@@ -33,21 +33,21 @@ Higher ratios favor BlazePlot. FPS ratio is BlazePlot RAF FPS divided by uPlot R
 
 | Scenario | FPS ratio | Work p95 ratio | BlazePlot FPS | uPlot FPS | BlazePlot work p95 | uPlot work p95 |
 |---|---:|---:|---:|---:|---:|---:|
-| line-1m-pan | 1.00× | 1.90× | 144.0 | 144.0 | 1.00 | 1.90 |
-| line-1m-stream | 1.00× | 1.67× | 144.0 | 144.0 | 0.90 | 1.50 |
-| line-10m-accelerated-pan | 4.32× | 76.50× | 144.0 | 33.4 | 0.40 | 30.60 |
+| line-1m-pan | 1.35× | 1.63× | 1045.5 | 775.1 | 0.80 | 1.30 |
+| line-1m-stream | 1.41× | 1.86× | 1087.6 | 769.9 | 0.70 | 1.30 |
+| line-10m-accelerated-pan | 62.97× | 109.67× | 1987.1 | 31.6 | 0.30 | 32.90 |
 
 ## Initial chart ready time
 
 Ready time includes library chart construction plus the first browser frame after shared scenario data has been prepared.
 
-| Scenario | BlazePlot 1.0.0-rc.1 | uPlot 1.6.32 | Chart.js 4.5.1 |
-|---|---:|---:|---:|
-| line-100k-static | 13.9 | 7.8 | **7.2** |
-| line-1m-static | 17.4 | **10.9** | 14.1 |
-| line-1m-pan | 15.3 | **4.9** | 6.5 |
-| line-1m-stream | 14.6 | **5.6** | 7.0 |
-| line-10m-accelerated-pan | **7.7** | 37.0 | 48.6 |
+| Scenario | BlazePlot 1.0.0-rc.6 | BlazePlot (Canvas 2D) 1.0.0-rc.6 | uPlot 1.6.32 | Chart.js 4.5.1 |
+|---|---:|---:|---:|---:|
+| line-100k-static | 8.6 | 5.1 | **3.2** | 6.4 |
+| line-1m-static | 13.5 | **11.4** | 13.7 | 12.3 |
+| line-1m-pan | 11.1 | 8.7 | **2.9** | 4.7 |
+| line-1m-stream | 13.4 | 10.7 | **3.3** | 5.2 |
+| line-10m-accelerated-pan | 7.8 | **3.4** | 36.9 | 38.2 |
 
 ## Runtime measurements
 
@@ -55,15 +55,18 @@ RAF columns measure browser animation-frame cadence during automated pan/stream 
 
 | Scenario | Library | RAF FPS | RAF p95 ms | Work p50 ms | Work p95 ms | Points p50 | Draws p50 | Appended | Heap after measure |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| line-1m-pan | BlazePlot | **144.0** | **7.00** | **0.80** | **1.00** | 24,006 | 1 | 0 | 75.8 MiB |
-| line-1m-pan | uPlot | **144.0** | 7.20 | 1.40 | 1.90 | — | — | 0 | 70.7 MiB |
-| line-1m-pan | Chart.js | 143.7 | 7.30 | 2.00 | 2.30 | — | — | 0 | 76.6 MiB |
-| line-1m-stream | BlazePlot | **144.0** | **7.30** | **0.70** | **0.90** | 24,006 | 1 | 184,098 | 84.9 MiB |
-| line-1m-stream | uPlot | **144.0** | **7.30** | 1.30 | 1.50 | — | — | 184,233 | 89.7 MiB |
-| line-1m-stream | Chart.js | **144.0** | **7.30** | 2.00 | 2.20 | — | — | 184,012 | 112.4 MiB |
-| line-10m-accelerated-pan | BlazePlot | **144.0** | **7.30** | **0.20** | **0.40** | 24,576 | 1 | 0 | 479.2 MiB |
-| line-10m-accelerated-pan | uPlot | 33.4 | 34.90 | 29.80 | 30.60 | — | — | 0 | 473.5 MiB |
-| line-10m-accelerated-pan | Chart.js | 30.1 | 35.10 | 32.80 | 33.40 | — | — | 0 | 490.1 MiB |
+| line-1m-pan | BlazePlot | **1045.5** | **1.10** | **0.60** | **0.80** | 24,006 | 1 | 0 | 72.2 MiB |
+| line-1m-pan | BlazePlot (Canvas 2D) | 683.3 | 1.70 | 1.00 | 1.20 | 24,006 | 1 | 0 | 80.0 MiB |
+| line-1m-pan | uPlot | 775.1 | 1.50 | 1.10 | 1.30 | — | — | 0 | 91.9 MiB |
+| line-1m-pan | Chart.js | 513.8 | 2.20 | 1.80 | 2.10 | — | — | 0 | 75.1 MiB |
+| line-1m-stream | BlazePlot | **1087.6** | **1.10** | **0.60** | **0.70** | 24,006 | 1 | 184,307 | 135.4 MiB |
+| line-1m-stream | BlazePlot (Canvas 2D) | 690.0 | 1.70 | 1.00 | 1.20 | 24,006 | 1 | 184,313 | 127.5 MiB |
+| line-1m-stream | uPlot | 769.9 | 1.50 | 1.10 | 1.30 | — | — | 184,264 | 87.7 MiB |
+| line-1m-stream | Chart.js | 514.5 | 2.20 | 1.80 | 2.00 | — | — | 184,289 | 88.3 MiB |
+| line-10m-accelerated-pan | BlazePlot | **1987.1** | **0.60** | **0.20** | **0.30** | 24,576 | 1 | 0 | 537.2 MiB |
+| line-10m-accelerated-pan | BlazePlot (Canvas 2D) | 973.6 | 1.40 | 0.50 | 0.70 | 24,576 | 1 | 0 | 494.1 MiB |
+| line-10m-accelerated-pan | uPlot | 31.6 | 33.60 | 31.90 | 32.90 | — | — | 0 | 477.7 MiB |
+| line-10m-accelerated-pan | Chart.js | 29.6 | 50.20 | 33.70 | 34.50 | — | — | 0 | 495.2 MiB |
 
 ## Source artifacts
 

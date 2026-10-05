@@ -3,12 +3,15 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CdpClient, createTarget, evaluate, resolveChrome, sleep, waitForHttp } from "./browser-harness.js";
+import { CdpClient, applyChromeEnv, createTarget, evaluate, resolveChrome, sleep, waitForHttp } from "./browser-harness.js";
 
 const only = process.argv[2];
 const port = await freePort();
 const debugPort = await freePort();
 const base = `http://127.0.0.1:${port}${(process.env.BLAZEPLOT_PAGES_BASE ?? "/").replace(/\/$/, "")}`;
+// Vite serves absolute files at /@fs/<path>; normalise Windows backslashes (they would be JS escapes inside the injected code).
+const fsPath = process.cwd().replaceAll("\\", "/");
+const viteFsRoot = fsPath.startsWith("/") ? `/@fs${fsPath}` : `/@fs/${fsPath}`;
 const profile = await mkdtemp(join(tmpdir(), "blazeplot-website-"));
 const server = Bun.spawn(["node", "node_modules/vite/bin/vite.js", ...(only === "production" ? ["preview"] : []), "--config", "vite.pages.config.ts", "--host", "127.0.0.1", "--port", String(port), "--strictPort", "--open", "false"], { stdout: "ignore", stderr: "ignore", env: { ...process.env, BLAZEPLOT_WEBSITE_TEST: "1", BLAZEPLOT_PAGES_BASE: process.env.BLAZEPLOT_PAGES_BASE ?? "/" } });
 let chrome: Bun.Subprocess | undefined;
@@ -20,7 +23,7 @@ let tabId: string | null = null;
 let viewportWidth = 1280;
 try {
   await waitForHttp(base, 30_000);
-  chrome = Bun.spawn([resolveChrome(undefined), "--headless=new", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, "--no-sandbox", "--disable-dev-shm-usage", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--no-first-run", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "about:blank"], { stdout: "ignore", stderr: "ignore" });
+  chrome = Bun.spawn(applyChromeEnv([resolveChrome(undefined), "--headless=new", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, "--no-sandbox", "--disable-dev-shm-usage", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--no-first-run", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "about:blank"]), { stdout: "ignore", stderr: "ignore" });
   await waitForHttp(`http://127.0.0.1:${debugPort}/json/version`, 30_000);
   await openTab();
   await run("responsive", async () => {
@@ -235,8 +238,8 @@ try {
   await run("legend", async () => {
     await goto("/", "blazeplot-home");
     await js(`(async () => {
-      const { Chart, StaticDataset } = await import('/@fs${process.cwd()}/src/index.ts');
-      const { legendPlugin } = await import('/@fs${process.cwd()}/src/plugins/legend.ts');
+      const { Chart, StaticDataset } = await import('${viteFsRoot}/src/index.ts');
+      const { legendPlugin } = await import('${viteFsRoot}/src/plugins/legend.ts');
       window.legendHost = document.createElement('div'); legendHost.style.cssText = 'width:500px;height:300px'; document.body.append(legendHost);
       window.legendChart = new Chart(legendHost, { plugins: [legendPlugin()] });
       window.legendSeries = legendChart.addLine({ dataset:new StaticDataset([0,1],[0,1]), name:'Signal' });
@@ -256,7 +259,7 @@ try {
     await check("legendHost.querySelectorAll('.blazeplot-legend button').length === 0", "removed series disappear from legend");
     await js("legendChart.dispose(); legendHost.remove()");
     await js(`(async () => {
-      const { Chart } = await import('/@fs${process.cwd()}/src/index.ts');
+      const { Chart } = await import('${viteFsRoot}/src/index.ts');
       window.legendHost = document.createElement('div'); legendHost.style.cssText = 'width:500px;height:300px'; document.body.append(legendHost);
       window.legendChart = new Chart(legendHost, { plugins: [legendFactory({toggleOnClick:false})] });
       legendChart.addLine({capacity:10,name:'Read only'});
