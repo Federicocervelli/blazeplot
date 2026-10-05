@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { buildStatusChartModel, parseFoldedStacks } from "../../src/plugins/flamegraph.ts";
-import { buildFlameGraphModel, pickFrame } from "../../src/plugins/flamegraph/FlameGraph.ts";
+import { buildFlameGraphModel, pickFrame } from "../../src/plugins/flamegraph/model.ts";
 
 describe("FlameGraph model helpers", () => {
   it("parses folded stacks and builds merged flame graph frames", () => {

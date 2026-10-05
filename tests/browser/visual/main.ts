@@ -5,7 +5,7 @@ import type { AnnotationsPlugin } from "@/plugins/annotations.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { flameGraphPlugin } from "@/plugins/flamegraph.ts";
-import { buildFlameGraphModel } from "@/plugins/flamegraph/FlameGraph.ts";
+import { buildFlameGraphModel } from "@/plugins/flamegraph/model.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { navigatorPlugin } from "@/plugins/navigator.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
