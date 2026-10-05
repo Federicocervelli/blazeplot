@@ -283,7 +283,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       overlay.appendChild(leftHandleHit);
       overlay.appendChild(rightHandleHit);
       root.appendChild(overlay);
-      const unmount = chart.dom.mount("root", root);
+      chart.dom.mount("root", root);
 
       const applyTheme = (): void => {
         if (!root || !windowRect || !leftHandle || !rightHandle) return;
@@ -297,8 +297,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       };
 
       const onRender = (): void => render();
-      const unsubscribeRender = chart.events.subscribe("render", onRender);
-      const unsubscribeViewport = chart.events.subscribe("viewportchange", () => render(false));
+      chart.events.subscribe("render", onRender);
+      chart.events.subscribe("viewportchange", () => render(false));
       applyTheme();
 
       const onPointerDown = (event: PointerEvent): void => {
@@ -387,8 +387,6 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           render();
         },
         dispose() {
-          unsubscribeRender();
-          unsubscribeViewport();
           root?.removeEventListener("pointerdown", onPointerDown);
           root?.removeEventListener("pointermove", onPointerMove);
           root?.removeEventListener("pointerup", onPointerUp);
@@ -396,7 +394,6 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           root?.removeEventListener("dblclick", onDoubleClick);
           root?.removeEventListener("keydown", onKeyDown);
           releaseSpace?.();
-          unmount();
           root = null;
           overlay = null;
           windowRect = null;

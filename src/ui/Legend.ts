@@ -111,7 +111,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.setAttribute("role", "group");
       container.setAttribute("aria-label", "Chart series legend");
       applyPosition(container, options.position ?? "top-right");
-      const unmount = chart.dom.mount("root", container);
+      chart.dom.mount("root", container);
 
       const applyTheme = (): void => {
         container.style.border = legendBorder(options, chart);
@@ -131,15 +131,13 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
         }
       };
 
-      const unsubscribeSeries = chart.events.subscribe("serieschange", render);
+      chart.events.subscribe("serieschange", render);
       render();
 
       return {
         onThemeChange: render,
         dispose() {
-          unsubscribeSeries();
           rows.clear();
-          unmount();
         },
       };
     },

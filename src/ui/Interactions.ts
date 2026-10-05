@@ -197,7 +197,6 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const selection = document.createElement("div");
       const axisHoverClass = `blazeplot-axis-hover-${nextInteractionsPluginId++}`;
       const axisHoverStyle = document.createElement("style");
-      const cleanups: Array<() => void> = [];
       const hoverUndo = new Map<AxisSurface, () => void>();
       let drag: DragState | null = null;
       let touchGesture: TouchGestureState | null = null;
@@ -214,23 +213,23 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       selection.style.zIndex = "24";
       selection.style.border = `1px solid ${chart.theme.selectionStrokeColor}`;
       selection.style.background = chart.theme.selectionFillColor;
-      cleanups.push(chart.dom.mount("plot", selection));
+      chart.dom.mount("plot", selection);
 
       axisHoverStyle.textContent = `.${axisHoverClass} > div { color: ${options.axisHoverColor ?? chart.theme.titleColor} !important; }`;
       if (axisInteractions && options.axisHover !== false) {
-        cleanups.push(chart.dom.mount("root", axisHoverStyle));
+        chart.dom.mount("root", axisHoverStyle);
       }
 
       if (options.touchPan !== false || options.pinchZoom !== false) {
-        cleanups.push(chart.dom.decorate("plot", { style: { touchAction: "none" } }));
+        chart.dom.decorate("plot", { style: { touchAction: "none" } });
         if (axisInteractions) {
-          for (const surface of AXIS_SURFACES) cleanups.push(chart.dom.decorate(surface, { style: { touchAction: "none" } }));
+          for (const surface of AXIS_SURFACES) chart.dom.decorate(surface, { style: { touchAction: "none" } });
         }
       }
 
       if (axisInteractions) {
         for (const surface of AXIS_SURFACES) {
-          cleanups.push(chart.dom.decorate(surface, { style: { pointerEvents: "auto", cursor: surface === "axis-x" ? "ew-resize" : "ns-resize" } }));
+          chart.dom.decorate(surface, { style: { pointerEvents: "auto", cursor: surface === "axis-x" ? "ew-resize" : "ns-resize" } });
         }
       }
 
@@ -515,41 +514,33 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       const listenTouch = (surface: GestureSurface): void => {
-        cleanups.push(
-          chart.dom.listen(surface, "touchstart", (event) => onTouchStart(event, surface), { passive: false }),
-          chart.dom.listen(surface, "touchmove", onTouchMove, { passive: false }),
-          chart.dom.listen(surface, "touchend", (event) => onTouchEnd(event, surface), { passive: false }),
-          chart.dom.listen(surface, "touchcancel", (event) => onTouchEnd(event, surface), { passive: false }),
-        );
+        chart.dom.listen(surface, "touchstart", (event) => onTouchStart(event, surface), { passive: false });
+        chart.dom.listen(surface, "touchmove", onTouchMove, { passive: false });
+        chart.dom.listen(surface, "touchend", (event) => onTouchEnd(event, surface), { passive: false });
+        chart.dom.listen(surface, "touchcancel", (event) => onTouchEnd(event, surface), { passive: false });
       };
 
-      cleanups.push(
-        chart.dom.listen("plot", "pointerdown", onPlotPointerDown),
-        chart.dom.listen("plot", "wheel", (event) => wheelOnAxis(event, resolveAxis(options.axis)), { passive: false }),
-        chart.dom.listen("plot", "dblclick", onDoubleClick),
-      );
+      chart.dom.listen("plot", "pointerdown", onPlotPointerDown);
+      chart.dom.listen("plot", "wheel", (event) => wheelOnAxis(event, resolveAxis(options.axis)), { passive: false });
+      chart.dom.listen("plot", "dblclick", onDoubleClick);
       listenTouch("plot");
 
       if (axisInteractions) {
         for (const surface of AXIS_SURFACES) {
           const config = axisGestureConfig(surface);
-          cleanups.push(
-            chart.dom.listen(surface, "pointerdown", (event) => onAxisPointerDown(event, surface)),
-            chart.dom.listen(surface, "pointerenter", () => setAxisHovered(surface, true)),
-            chart.dom.listen(surface, "pointerleave", () => setAxisHovered(surface, false)),
-            chart.dom.listen(surface, "wheel", (event) => wheelOnAxis(event, config.axis, config.yAxis), { passive: false }),
-            chart.dom.listen(surface, "dblclick", onDoubleClick),
-          );
+          chart.dom.listen(surface, "pointerdown", (event) => onAxisPointerDown(event, surface));
+          chart.dom.listen(surface, "pointerenter", () => setAxisHovered(surface, true));
+          chart.dom.listen(surface, "pointerleave", () => setAxisHovered(surface, false));
+          chart.dom.listen(surface, "wheel", (event) => wheelOnAxis(event, config.axis, config.yAxis), { passive: false });
+          chart.dom.listen(surface, "dblclick", onDoubleClick);
           listenTouch(surface);
         }
       }
 
       for (const surface of ["plot", ...AXIS_SURFACES] as const) {
-        cleanups.push(
-          chart.dom.listen(surface, "pointermove", onPointerMove),
-          chart.dom.listen(surface, "pointerup", onPointerUp),
-          chart.dom.listen(surface, "pointercancel", onPointerCancel),
-        );
+        chart.dom.listen(surface, "pointermove", onPointerMove);
+        chart.dom.listen(surface, "pointerup", onPointerUp);
+        chart.dom.listen(surface, "pointercancel", onPointerCancel);
       }
 
       if (options.keyboard !== false) {
@@ -558,7 +549,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         const zoomFactor = typeof config?.zoomFactor === "number" && Number.isFinite(config.zoomFactor) && config.zoomFactor > 1 ? config.zoomFactor : 1.25;
         const zoomAtCenter = (factor: number, axis: ZoomAxis): void => chart.viewport.zoom({ factor, cx: 0.5, cy: 0.5, axis }, undefined, USER_VIEWPORT);
         // Bubble phase: the a11y plugin's inspection keys (capture) and any child handler run first.
-        cleanups.push(chart.dom.listen("root", "keydown", (event) => {
+        chart.dom.listen("root", "keydown", (event) => {
           if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
           const target = event.target;
           if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
@@ -580,16 +571,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
             default: handled = false; break;
           }
           if (handled) event.preventDefault();
-        }));
+        });
       }
-
-      return () => {
-        for (const undo of hoverUndo.values()) undo();
-        hoverUndo.clear();
-        for (const cleanup of cleanups.splice(0).reverse()) cleanup();
-        drag = null;
-        touchGesture = null;
-      };
     },
   };
 }

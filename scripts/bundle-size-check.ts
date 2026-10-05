@@ -32,23 +32,23 @@ interface BundleSizeReport {
 // Tighten them when a change shrinks a chunk; raise one only with a reason in the PR.
 const budgets: Budget[] = [
   { label: "root entry", path: "dist/index.js", maxBytes: 12_000 },
-  { label: "linked entry", path: "dist/linked.js", maxBytes: 2_400 },
+  { label: "linked entry", path: "dist/linked.js", maxBytes: 2_350 },
   { label: "data entry", path: "dist/data.js", maxBytes: 1_800 },
   { label: "export entry", path: "dist/export.js", maxBytes: 3_900 },
-  { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 13_200 },
+  { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 13_000 },
   { label: "annotations plugin", path: "dist/plugins/annotations.js", maxBytes: 13_700 },
   { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 8_800 },
-  { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 8_400 },
-  { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 3_500 },
-  { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_800 },
-  { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 9_300 },
+  { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 8_200 },
+  { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 3_300 },
+  { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_500 },
+  { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 9_900 },
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 21_100 },
   { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 10_100 },
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
-  // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152; 150_450 after moving keyboard navigation into interactionsPlugin.
-  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 150_600 },
+  // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152; 151_300 after the plugin guard, hover dedupe, and keyboard move.
+  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 151_400 },
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 3_600 },

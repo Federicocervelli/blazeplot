@@ -55,11 +55,11 @@ Generated from `dist/` after the package build.
 | navigator plugin | `dist/plugins/navigator.js` | 9 KiB |
 | selection plugin | `dist/plugins/selection.js` | 8 KiB |
 | legend plugin | `dist/plugins/legend.js` | 3 KiB |
-| tooltip plugin | `dist/plugins/tooltip.js` | 5 KiB |
-| crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
+| tooltip plugin | `dist/plugins/tooltip.js` | 4 KiB |
+| crosshair plugin | `dist/plugins/crosshair.js` | 10 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 10 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 147 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 148 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 3 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 5 KiB |

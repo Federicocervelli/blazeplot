@@ -450,7 +450,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
       overlay.style.overflow = "hidden";
       overlay.style.zIndex = String(options.zIndex ?? 12);
       overlay.setAttribute("aria-hidden", "true");
-      const unmount = chart.dom.mount("plot", overlay);
+      chart.dom.mount("plot", overlay);
 
       focusLayer = document.createElement("div");
       focusLayer.className = "blazeplot-annotation-focus-layer";
@@ -477,23 +477,19 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
         }
       };
       focusLayer.addEventListener("keydown", onFocusKeyDown);
-      const unsubscribeRender = chart.events.subscribe("render", () => requestRender());
-      const unsubscribeMove = chart.events.subscribe("pointermove", (event) => {
+      chart.events.subscribe("render", () => requestRender());
+      chart.events.subscribe("pointermove", (event) => {
         const hit = pickAt(event.clientX, event.clientY, event);
         const nextAnnotation = hit?.annotation ?? null;
         if (nextAnnotation !== lastHoverAnnotation || hit) emitHover(hit);
         lastHoverAnnotation = nextAnnotation;
       });
-      const unsubscribeClick = chart.events.subscribe("click", (event) => {
+      chart.events.subscribe("click", (event) => {
         const hit = pickAt(event.clientX, event.clientY, event);
         if (hit) emitClick(hit);
       });
       requestRender();
       return () => {
-        unsubscribeRender();
-        unsubscribeMove();
-        unsubscribeClick();
-        unmount();
         focusLayer?.removeEventListener("keydown", onFocusKeyDown);
         focusLayer?.remove();
         focusLayer = null;

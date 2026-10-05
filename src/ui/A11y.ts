@@ -399,7 +399,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
       };
 
       if (inspectionEnabled) {
-        // Capture on the root runs before the chart's own arrow-key pan on the same element.
+        // Capture on the root runs before the interactions plugin's arrow-key pan on the same element.
         chart.dom.listen("root", "keydown", onInspectionKey, { capture: true });
         chart.dom.listen("root", "keydown", onStartKey);
         chart.dom.listen("root", "blur", () => stopInspection(null));

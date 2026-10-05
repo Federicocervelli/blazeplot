@@ -395,7 +395,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       overlayLayer.appendChild(markerLayer);
       overlayLayer.appendChild(label);
       root.append(lineLayer, overlayLayer);
-      const unmount = chart.dom.mount("plot", root);
+      chart.dom.mount("plot", root);
 
       sync = joinCrosshairSyncGroup(options.syncGroup, {
         showAt(dataX) {
@@ -462,26 +462,24 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         rulerStart = null;
       };
 
-      const unlisten = [
-        chart.dom.listen("plot", "pointermove", onPointerMove),
-        chart.dom.listen("plot", "pointercancel", longPress.clear),
-        chart.dom.listen("plot", "touchstart", longPress.onTouchStart, { capture: true, passive: true }),
-        chart.dom.listen("plot", "touchmove", longPress.onTouchMove, { capture: true, passive: false }),
-        chart.dom.listen("plot", "touchend", longPress.clear),
-        chart.dom.listen("plot", "touchcancel", longPress.clear),
-        chart.dom.listen("plot", "pointerleave", onPointerLeave),
-        chart.dom.listen("plot", "pointerdown", onPointerDown, { capture: true }),
-        chart.dom.listen("plot", "pointerup", onPointerUp, { capture: true }),
-      ];
+      chart.dom.listen("plot", "pointermove", onPointerMove);
+      chart.dom.listen("plot", "pointercancel", longPress.clear);
+      chart.dom.listen("plot", "touchstart", longPress.onTouchStart, { capture: true, passive: true });
+      chart.dom.listen("plot", "touchmove", longPress.onTouchMove, { capture: true, passive: false });
+      chart.dom.listen("plot", "touchend", longPress.clear);
+      chart.dom.listen("plot", "touchcancel", longPress.clear);
+      chart.dom.listen("plot", "pointerleave", onPointerLeave);
+      chart.dom.listen("plot", "pointerdown", onPointerDown, { capture: true });
+      chart.dom.listen("plot", "pointerup", onPointerUp, { capture: true });
 
-      const unsubscribeRender = chart.events.subscribe("render", () => {
+      chart.events.subscribe("render", () => {
         if (!activeClientPoint) return;
         updateAtClientPoint(activeClientPoint.clientX, activeClientPoint.clientY);
       });
 
       // Keyboard inspection (`ctx.state.inspect`) drives the crosshair to the inspected sample.
       let inspecting = false;
-      const unsubscribeHover = chart.events.subscribe("hover", (state) => {
+      chart.events.subscribe("hover", (state) => {
         if (state?.source === "inspection") {
           const item = state.items[0];
           if (!item) return;
@@ -504,12 +502,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
 
       return () => {
         longPress.clear();
-        for (const off of unlisten) off();
-        unsubscribeRender();
-        unsubscribeHover();
         sync?.leave();
         sync = null;
-        unmount();
         root = null;
         lineLayer = null;
         overlayLayer = null;

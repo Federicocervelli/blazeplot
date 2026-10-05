@@ -77,10 +77,10 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       container.style.whiteSpace = "pre";
       container.setAttribute("role", "tooltip");
       container.setAttribute("aria-hidden", "true");
-      const unmountContainer = chart.dom.mount("body", container);
+      chart.dom.mount("body", container);
 
       const markerLayer = createOverlayLayer("blazeplot-tooltip-markers", { inset: "0", display: "block", zIndex: 25 });
-      const unmountMarkers = chart.dom.mount("plot", markerLayer);
+      chart.dom.mount("plot", markerLayer);
 
       let lockedTooltipWidth = 0;
       let tooltipSize = { width: 0, height: 0 };
@@ -199,19 +199,17 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         onPoint: showAtClientPoint,
       });
 
-      const unlisten = [
-        chart.dom.listen("plot", "pointerdown", longPress.onPointerDown, { capture: true }),
-        chart.dom.listen("plot", "pointermove", longPress.onPointerMove, { capture: true }),
-        chart.dom.listen("plot", "pointerup", longPress.clearIfTouchPointer, { capture: true }),
-        chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer, { capture: true }),
-        chart.dom.listen("plot", "touchstart", longPress.onTouchStart, { capture: true, passive: true }),
-        chart.dom.listen("plot", "touchmove", longPress.onTouchMove, { capture: true, passive: false }),
-        chart.dom.listen("plot", "touchend", longPress.clear),
-        chart.dom.listen("plot", "touchcancel", longPress.clear),
-      ];
+      chart.dom.listen("plot", "pointerdown", longPress.onPointerDown, { capture: true });
+      chart.dom.listen("plot", "pointermove", longPress.onPointerMove, { capture: true });
+      chart.dom.listen("plot", "pointerup", longPress.clearIfTouchPointer, { capture: true });
+      chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer, { capture: true });
+      chart.dom.listen("plot", "touchstart", longPress.onTouchStart, { capture: true, passive: true });
+      chart.dom.listen("plot", "touchmove", longPress.onTouchMove, { capture: true, passive: false });
+      chart.dom.listen("plot", "touchend", longPress.clear);
+      chart.dom.listen("plot", "touchcancel", longPress.clear);
 
       // `hover` runs after the frame it describes, so render synchronously: no extra frame of lag.
-      const unsubscribeHover = chart.events.subscribe("hover", (state) => {
+      chart.events.subscribe("hover", (state) => {
         render(state);
         notifyPeers(state);
       });
@@ -223,12 +221,8 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         },
         dispose() {
           longPress.clear();
-          for (const off of unlisten) off();
-          unsubscribeHover();
           sync.leave();
           tooltipResizeObserver?.disconnect();
-          unmountMarkers();
-          unmountContainer();
         },
       };
     },

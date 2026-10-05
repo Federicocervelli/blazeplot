@@ -178,7 +178,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         overlay.style.background = options.fillColor ?? chart.theme.selectionFillColor;
       };
       applyTheme();
-      const unmount = chart.dom.mount("plot", overlay);
+      chart.dom.mount("plot", overlay);
 
       const onPointerDown = (event: PointerEvent): void => {
         if (drag || event.button !== 0) return;
@@ -359,28 +359,22 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         setOverlay(committedSelection.plotBounds);
       };
 
-      const unlisten = [
-        chart.dom.listen("plot", "pointerdown", onPointerDown),
-        chart.dom.listen("plot", "pointermove", onPointerMove),
-        chart.dom.listen("plot", "pointerup", onPointerUp),
-        chart.dom.listen("plot", "pointercancel", onPointerCancel),
-        // Capture runs before the chart's own Shift+Arrow pan on the same root element.
-        chart.dom.listen("root", "keydown", onRootKeyDown, { capture: true }),
-      ];
+      chart.dom.listen("plot", "pointerdown", onPointerDown);
+      chart.dom.listen("plot", "pointermove", onPointerMove);
+      chart.dom.listen("plot", "pointerup", onPointerUp);
+      chart.dom.listen("plot", "pointercancel", onPointerCancel);
+      chart.dom.listen("root", "keydown", onRootKeyDown, { capture: true });
       globalThis.addEventListener("pointerdown", armEscape, { capture: true });
       globalThis.addEventListener("focusin", armEscape, { capture: true });
       globalThis.addEventListener("keydown", onKeyDown);
-      const unsubscribeRender = chart.events.subscribe("render", onRender);
+      chart.events.subscribe("render", onRender);
 
       return {
         onThemeChange: applyTheme,
         dispose() {
-          for (const off of unlisten) off();
           globalThis.removeEventListener("pointerdown", armEscape, { capture: true });
           globalThis.removeEventListener("focusin", armEscape, { capture: true });
           globalThis.removeEventListener("keydown", onKeyDown);
-          unsubscribeRender();
-          unmount();
           overlay = null;
           chartRef = null;
           drag = null;
