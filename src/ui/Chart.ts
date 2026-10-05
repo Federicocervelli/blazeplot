@@ -10,18 +10,19 @@ import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
 import { webgl2Renderer } from "../render/webgl2Renderer.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
-import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { PanIntent, ZoomIntent } from "../interaction/types.js";
 import { AUTO_GUTTER_PADDING_PX, AxisOverlay, GutterTracker, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
 import { ChartPicker, hoverStatesEqual, insidePlot, plotToData } from "./ChartPicker.js";
 import type { PlotRect } from "./ChartPicker.js";
-import type { NormalizedAxisConfig } from "./ChartLayout.js";
-import { forcedColorsTheme, resolveChartTheme, resolveThemeColor } from "./theme.js";
+import { forcedColorsTheme, resolveChartTheme } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import { PluginHost } from "./PluginHost.js";
 import type { ChartLayoutReservation, ChartPlugin } from "./PluginHost.js";
-import { ChartAccessibility, withAlpha } from "./ChartAccessibility.js";
+import { FollowXController } from "./FollowX.js";
+import { ChartAccessibility } from "./ChartAccessibility.js";
+import { domainsAlmostEqual, normalizeAxesConfig, normalizeFitPadding, paddedAxisDomain, resolveSeriesStyle } from "./ChartConfig.js";
+import type { ResolvedAxesConfig } from "./ChartConfig.js";
 import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
 import type { ChartSummary } from "./ChartSummary.js";
 
@@ -34,72 +35,10 @@ export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartPickMode, Ch
 import type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartPickMode, ChartPickGroup, ChartPickOptions, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartBackendFactoryContext, ChartBackendFactory, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeSource, ChartViewportChangeEvent, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartScreenshotOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState, ChartFrameStats } from "./ChartTypes.js";
 
 
-type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | TextOverlayConfig };
-
-type ResolvedAxesConfig = { x: ResolvedAxisConfig; y: ResolvedAxisConfig; y2: ResolvedAxisConfig };
-
 type Listener<K extends ChartEventName> = (payload: ChartEventMap[K]) => void;
 
 interface ChartGpuResources {
   readonly renderer: ChartRenderer;
-}
-
-function normalizeAxisConfig(config: boolean | AxisConfig | undefined, defaultVisible: boolean): ResolvedAxisConfig {
-  if (config === undefined) return { visible: defaultVisible, position: "outside" };
-  if (typeof config === "boolean") return { visible: config, position: "outside" };
-  return { ...config, visible: config.visible !== false, position: config.position ?? "outside" };
-}
-
-function normalizeAxesConfig(axes: ChartOptions["axes"]): ResolvedAxesConfig {
-  if (typeof axes === "boolean") {
-    return { x: normalizeAxisConfig(axes, axes), y: normalizeAxisConfig(axes, axes), y2: normalizeAxisConfig(false, false) };
-  }
-  return {
-    x: normalizeAxisConfig(axes?.x, true),
-    y: normalizeAxisConfig(axes?.y, true),
-    y2: normalizeAxisConfig(axes?.y2, false),
-  };
-}
-
-function normalizeFitPadding(padding: number | ChartFitToDataPadding | undefined): Required<ChartFitToDataPadding> {
-  const clean = (value: number | undefined): number => typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
-  return typeof padding === "number" ? { x: clean(padding), y: clean(padding) } : { x: clean(padding?.x), y: clean(padding?.y) };
-}
-
-function domainsAlmostEqual(aMin: number, aMax: number, bMin: number, bMax: number): boolean {
-  const scale = Math.max(1, Math.abs(aMax - aMin), Math.abs(bMax - bMin));
-  const epsilon = scale * 1e-9;
-  return Math.abs(aMin - bMin) <= epsilon && Math.abs(aMax - bMax) <= epsilon;
-}
-
-/** Pad a fit domain in the axis's scale space, so log axes stay positive; `null` when no usable domain results. */
-function paddedAxisDomain(controller: AxisController, axis: "x" | "y", min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } | null {
-  let domain = paddedDomain(min, max, padding, includeZero);
-  if (controller.isNonlinear(axis)) {
-    try {
-      const from = includeZero ? Math.min(0, min) : min;
-      const to = includeZero ? Math.max(0, max) : max;
-      const scaled = paddedDomain(controller.scaleValue(from, axis), controller.scaleValue(to, axis), padding, false);
-      domain = { min: controller.unscaleValue(scaled.min, axis), max: controller.unscaleValue(scaled.max, axis) };
-    } catch {
-      // Custom scales without fromScreen() cannot map back; keep the linear padding.
-    }
-  }
-  return controller.isValidDomain(axis, domain.min, domain.max) ? domain : null;
-}
-
-function paddedDomain(min: number, max: number, padding: number, includeZero: boolean): { min: number; max: number } {
-  let nextMin = includeZero ? Math.min(0, min) : min;
-  let nextMax = includeZero ? Math.max(0, max) : max;
-  let span = nextMax - nextMin;
-  if (span <= 0) {
-    const halfSpan = Math.max(1, Math.abs(nextMin)) * 0.5;
-    nextMin -= halfSpan;
-    nextMax += halfSpan;
-    span = nextMax - nextMin;
-  }
-  const amount = span * padding;
-  return { min: nextMin - amount, max: nextMax + amount };
 }
 
 /** Imperative WebGL chart instance for rendering, interaction, and plugins. */
@@ -140,9 +79,17 @@ export class Chart {
   private lastPointerButtons: number = 0;
   private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
-  private followXConfig: ChartFollowXOptions | null = null;
-  private xFollowPaused: boolean = false;
-  private xFollowResumeTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly followXPolicy: FollowXController = new FollowXController({
+    camera: () => this.camera,
+    axis: () => this.axis,
+    candidates: (config) => this.candidateSeries(config),
+    onStateChange: () => this.emitFollowXChange(),
+    onViewportChange: () => {
+      this.syncRightCameraX();
+      this.emitViewportChange("follow");
+    },
+    requestRender: () => this.requestRender(),
+  });
   private rafId: number = 0;
   private hoverRafId: number = 0;
   private restoreRenderRafId: number = 0;
@@ -243,7 +190,7 @@ export class Chart {
   /** Create a chart inside `target`. Call `start()` to begin rendering. */
   constructor(target: HTMLElement, options: ChartOptions = {}) {
     this.options = options;
-    this.followXConfig = options.followX ? (options.followX === true ? {} : options.followX) : null;
+    this.followXPolicy.configure(options.followX ? (options.followX === true ? {} : options.followX) : null);
     this.userTheme = options.theme;
     this.baseTheme = resolveChartTheme(options.theme, target);
     this.resolvedTheme = this.baseTheme;
@@ -388,7 +335,7 @@ export class Chart {
    */
   setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left", options: ChartSetViewportOptions = {}): void {
     if (viewport.xMin !== undefined || viewport.xMax !== undefined) {
-      if (options.pauseFollow !== false) this.pauseXFollowForInteraction();
+      if (options.pauseFollow !== false) this.followXPolicy.pauseForInteraction();
       this.camera.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax });
       this.syncRightCameraX();
     }
@@ -447,7 +394,7 @@ export class Chart {
       this.rightCamera.setViewport(right);
       return;
     }
-    this.pauseXFollowForInteraction();
+    this.followXPolicy.pauseForInteraction();
     this.syncRightCameraX();
     this.emitViewportChange(source);
     this.scheduleHoverRefresh();
@@ -551,38 +498,22 @@ export class Chart {
 
   /** Keep the X viewport on the latest data, replacing any previous follow options. */
   followX(options: ChartFollowXOptions = {}): void {
-    this.followXConfig = options;
-    this.clearXFollowResumeTimer();
-    this.xFollowPaused = false;
-    this.emitFollowXChange();
-    this.applyFollowXPolicy();
-    this.requestRender();
+    this.followXPolicy.start(options);
   }
 
   /** Disable latest-X following. */
   stopFollowX(): void {
-    if (!this.followXConfig && !this.xFollowPaused) return;
-    this.followXConfig = null;
-    this.xFollowPaused = false;
-    this.clearXFollowResumeTimer();
-    this.emitFollowXChange();
-    this.requestRender();
+    this.followXPolicy.stop();
   }
 
   /** Pause or resume latest-X following without changing its options. */
   setFollowXPaused(paused: boolean): void {
-    this.clearXFollowResumeTimer();
-    if (this.xFollowPaused === paused) return;
-    this.xFollowPaused = paused;
-    this.emitFollowXChange();
-    if (!paused) this.applyFollowXPolicy();
-    this.requestRender();
+    this.followXPolicy.setPaused(paused);
   }
 
   /** Return whether latest-X following is off, active, or paused by interaction. */
   getFollowXState(): ChartFollowXState {
-    if (!this.followXConfig) return "off";
-    return this.xFollowPaused ? "paused" : "following";
+    return this.followXPolicy.state;
   }
 
   /**
@@ -797,7 +728,7 @@ export class Chart {
     if (this.disposed) return;
     this.disposed = true;
     this.stop();
-    this.clearXFollowResumeTimer();
+    this.followXPolicy.clearTimer();
     this.resizeObserver?.disconnect();
     if (this.hoverRafId !== 0) this.layout.view.cancelAnimationFrame(this.hoverRafId);
     this.hoverRafId = 0;
@@ -830,7 +761,7 @@ export class Chart {
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
-    this.applyFollowXPolicy();
+    this.followXPolicy.apply();
     this.applyAutoFitYPolicy();
     try {
       this.axis.validateDomain("x");
@@ -876,7 +807,7 @@ export class Chart {
       this.hoverRafId = 0;
     }
     this.refreshHover();
-    if (this.running && this.options.renderLoop !== "continuous" && this.followXConfig?.currentX && !this.xFollowPaused) {
+    if (this.running && this.options.renderLoop !== "continuous" && this.followXPolicy.options?.currentX && !this.followXPolicy.isPaused) {
       this.requestRender();
     }
   }
@@ -952,22 +883,7 @@ export class Chart {
   private resolveSeriesStyle(style: SeriesStyleOptions, paletteIndex: number): SeriesStyle {
     // The caller palette, not the forced-colors one: forced styles are applied on top and undone later.
     const palette = this.baseTheme.seriesColors;
-    const root = this.layout.root;
-    const color = resolveThemeColor(style.color, palette[paletteIndex % palette.length]!, root);
-    const fillColor = resolveThemeColor(style.fillColor, withAlpha(color, 0.25), root);
-    const barWidth = style.barWidth ?? 0.8;
-    return {
-      color,
-      lineWidth: style.lineWidth ?? 1,
-      pointSize: style.pointSize ?? 4,
-      barWidth,
-      baseline: style.baseline ?? 0,
-      fillColor,
-      tickWidth: style.tickWidth ?? barWidth,
-      upColor: resolveThemeColor(style.upColor, color, root),
-      downColor: resolveThemeColor(style.downColor, style.fillColor === undefined ? withAlpha(color, 0.45) : fillColor, root),
-      wickColor: resolveThemeColor(style.wickColor, color, root),
-    };
+    return resolveSeriesStyle(style, palette[paletteIndex % palette.length]!, this.layout.root);
   }
 
   private handleSeriesChange(change: SeriesChange): void {
@@ -1046,50 +962,6 @@ export class Chart {
   private candidateSeries(options: { readonly series?: readonly SeriesStore[]; readonly includeHidden?: boolean }): SeriesStore[] {
     const candidates = options.series ? options.series.filter((series) => this.series.includes(series)) : this.series;
     return options.includeHidden ? candidates : candidates.filter((series) => series.visible);
-  }
-
-  private pauseXFollowForInteraction(): void {
-    const config = this.followXConfig;
-    if (!config || config.pauseOnInteraction === false) return;
-    const wasPaused = this.xFollowPaused;
-    this.xFollowPaused = true;
-    this.clearXFollowResumeTimer();
-    if (!wasPaused) this.emitFollowXChange();
-    const resumeAfterMs = config.resumeAfterMs;
-    if (typeof resumeAfterMs !== "number" || !Number.isFinite(resumeAfterMs) || resumeAfterMs <= 0) return;
-    this.xFollowResumeTimer = setTimeout(() => {
-      this.xFollowResumeTimer = null;
-      this.setFollowXPaused(false);
-    }, resumeAfterMs);
-  }
-
-  private clearXFollowResumeTimer(): void {
-    if (this.xFollowResumeTimer === null) return;
-    clearTimeout(this.xFollowResumeTimer);
-    this.xFollowResumeTimer = null;
-  }
-
-  private applyFollowXPolicy(): void {
-    const config = this.followXConfig;
-    if (!config || this.xFollowPaused) return;
-
-    let xMax = -Infinity;
-    for (const series of this.candidateSeries(config)) {
-      const range = series.xRange;
-      if (range) xMax = Math.max(xMax, range.end);
-    }
-    const clockX = config.currentX?.();
-    if (clockX !== undefined && Number.isFinite(clockX)) xMax = Math.max(xMax, clockX);
-    if (!Number.isFinite(xMax)) return;
-
-    const span = typeof config.window === "number" && Number.isFinite(config.window) && config.window > 0
-      ? config.window
-      : this.camera.xMax - this.camera.xMin;
-    const xMin = xMax - span;
-    if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax) || !this.axis.isValidDomain("x", xMin, xMax)) return;
-    this.camera.setViewport({ xMin, xMax });
-    this.syncRightCameraX();
-    this.emitViewportChange("follow");
   }
 
   private applyAutoFitYPolicy(): void {

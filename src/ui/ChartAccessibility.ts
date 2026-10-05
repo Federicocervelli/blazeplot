@@ -4,6 +4,7 @@ import type { ChartAccessibilityOptions } from "./ChartTypes.js";
 import type { ChartLayout } from "./ChartLayout.js";
 import { titleText } from "./ChartLayout.js";
 import type { ChartSummary } from "./ChartSummary.js";
+import { withAlpha } from "./ChartConfig.js";
 
 /** Minimum delay between regenerated accessibility summaries while data changes. */
 const SUMMARY_THROTTLE_MS = 1_000;
@@ -30,11 +31,6 @@ const CHART_STYLESHEET = [
 ].join("");
 
 let nextSummaryId = 1;
-
-/** Copy of `color` with its alpha multiplied by `factor`. */
-export function withAlpha(color: RgbaColor, factor: number): RgbaColor {
-  return [color[0], color[1], color[2], color[3] * factor];
-}
 
 /** What the accessibility layer reads from the chart. */
 export interface ChartAccessibilityHost {
