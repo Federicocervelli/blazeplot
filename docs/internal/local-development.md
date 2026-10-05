@@ -94,8 +94,8 @@ GPU, driver, and OS differences change anti-aliasing and text, so baselines must
 
 To regenerate baselines after an intentional rendering change, or to add a case:
 
-1. Push your branch and open or update the PR. The `browser` job uploads the `visual-tests` artifact on every run, pass or fail. (To refresh without a failing run, dispatch CI on the branch: `gh workflow run ci.yml --ref <branch>`.)
-2. Download the artifact: `gh run download <run-id> -n visual-tests -D build/ci-visual-tests`.
+1. Push your branch and open or update the PR. The `Browser (visual-gl)` and `Browser (visual-fallback)` shards upload `visual-tests-visual-gl` and `visual-tests-visual-fallback` artifacts on every run (baselines come from the WebGL2 run, so `visual-tests-visual-gl`), pass or fail. (To refresh without a failing run, dispatch CI on the branch: `gh workflow run ci.yml --ref <branch>`.)
+2. Download the artifact: `gh run download <run-id> -n visual-tests-visual-gl -D build/ci-visual-tests`.
 3. Review `build/ci-visual-tests/actual/*.png` (and `diff/*.png` for failures) to confirm the change is intended.
 4. Copy the reviewed images over the baselines and commit them: `cp build/ci-visual-tests/actual/*.png tests/browser/visual/baselines/`. Only copy the cases you meant to change.
 
