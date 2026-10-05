@@ -2364,6 +2364,13 @@ export class Chart {
   private emit<K extends ChartEventName>(event: K, payload: ChartEventMap[K]): void {
     const listeners = this.listeners.get(event);
     if (!listeners) return;
-    for (const listener of listeners) (listener as Listener<K>)(payload);
+    // Snapshot: a listener may unsubscribe itself or others. One throwing listener never stops the rest.
+    for (const listener of [...listeners]) {
+      try {
+        (listener as Listener<K>)(payload);
+      } catch (error) {
+        console.error(`BlazePlot ${event} listener failed:`, error);
+      }
+    }
   }
 }

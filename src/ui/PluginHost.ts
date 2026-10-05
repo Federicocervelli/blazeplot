@@ -378,8 +378,9 @@ export class PluginHost {
     try {
       if (entry.disposeFn) entry.disposeFn();
       else entry.handle?.dispose?.();
-    } catch {
+    } catch (error) {
       // Plugin cleanup must not prevent other plugins or chart-owned resources from being released.
+      console.error("BlazePlot plugin dispose failed:", error);
     }
     this.runCleanups(entry);
   }
@@ -388,8 +389,9 @@ export class PluginHost {
     for (const cleanup of entry.cleanups.splice(0).reverse()) {
       try {
         cleanup();
-      } catch {
+      } catch (error) {
         // Keep releasing the remaining resources.
+        console.error("BlazePlot plugin cleanup failed:", error);
       }
     }
   }
