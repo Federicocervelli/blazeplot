@@ -62,6 +62,9 @@ describe("annotationsPlugin rendering", () => {
     expect(yText.getAttribute("fill")).toBe("blue");
     expect(yText.getAttribute("x")).toBe("386");
     expect(yText.getAttribute("y")).toBe("151");
+    // `font` is a CSS shorthand, not an SVG attribute: it must be a style or browsers fall back to serif.
+    expect(yText.getAttribute("font")).toBeNull();
+    expect(yText.style.font).not.toBe("");
     dispose();
     chart.dispose();
   });
