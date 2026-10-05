@@ -1,7 +1,6 @@
-import type { ChartRenderer, ChartRendererFactory, ChartRendererFactoryContext, RenderProjection } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, FrameReport, RenderProjection, RendererLossState } from "../ChartRenderer.js";
 import { WebGL2Renderer } from "./WebGL2Renderer.js";
-import { releaseWebGLContext } from "./releaseWebGLContext.js";
-import { WebGL2Backend } from "./WebGL2Backend.js";
+import type { GpuBackend } from "./types.js";
 import type { RgbaColor, SeriesStyle } from "../../core/types.js";
 
 /**
@@ -23,33 +22,14 @@ export interface ChartRenderContext {
 export class SharedWebGLContext implements ChartRenderContext {
   private canvas: HTMLCanvasElement | null = null;
   private renderer_: WebGL2Renderer | null = null;
-  /** @param doc Document that owns the hidden canvas; defaults to the first attached chart's document. */
-  constructor(private readonly doc?: Document) {}
+  /**
+   * @param doc Document that owns the hidden canvas; defaults to the first attached chart's document.
+   * @param createBackend Builds the backend on the hidden canvas (a seam for tests).
+   */
+  constructor(private readonly doc?: Document, private readonly createBackend?: (canvas: HTMLCanvasElement) => GpuBackend) {}
   private readonly clients = new Set<SharedWebGLRenderer>();
-  private lost = false;
-  private readonly handleLost = (event: Event): void => {
-    // Allow the browser to restore the context, and tell every chart so it stops drawing.
-    event.preventDefault();
-    this.lost = true;
-    for (const client of Array.from(this.clients)) client.notify("webglcontextlost");
-  };
-  private readonly handleRestored = (): void => {
-    const canvas = this.canvas;
-    if (!canvas) return;
-    const previous = this.renderer_;
-    try {
-      this.renderer_ = new WebGL2Renderer(new WebGL2Backend(canvas));
-    } catch (error) {
-      console.error("BlazePlot failed to restore the shared WebGL2 context.", error);
-      return;
-    }
-    this.lost = false;
-    try {
-      previous?.dispose();
-    } catch {
-      // The previous renderer belonged to the lost context generation; nothing is left to free.
-    }
-    for (const client of Array.from(this.clients)) client.notify("webglcontextrestored");
+  private readonly handleLoss = (state: RendererLossState): void => {
+    for (const client of Array.from(this.clients)) client.notifyLoss(state);
   };
 
   get chartCount(): number {
@@ -71,12 +51,11 @@ export class SharedWebGLContext implements ChartRenderContext {
       if (!doc) throw new Error("A shared render context needs a DOM.");
       const canvas = doc.createElement("canvas");
       // Rendering happens in the shared canvas; it only needs a size, never to be attached to the page.
-      const renderer = new WebGL2Renderer(new WebGL2Backend(canvas));
-      canvas.addEventListener("webglcontextlost", this.handleLost);
-      canvas.addEventListener("webglcontextrestored", this.handleRestored);
+      // The engine owns the hidden canvas's loss/restore events and rebuilds itself; the context just fans them out.
+      const renderer = new WebGL2Renderer(canvas, this.createBackend);
+      renderer.setLossListener(this.handleLoss);
       this.canvas = canvas;
       this.renderer_ = renderer;
-      this.lost = false;
     }
     this.clients.add(client);
   }
@@ -99,14 +78,20 @@ export class SharedWebGLContext implements ChartRenderContext {
   }
 
   /** @internal Submit the frame and return the canvas holding it. */
-  endFrame(): HTMLCanvasElement {
-    this.renderer_?.endFrame();
-    return this.requireCanvas();
+  endFrame(): { readonly source: HTMLCanvasElement; readonly report: FrameReport } {
+    const report = this.renderer_?.endFrame() ?? { uploadBytes: 0, drawCalls: 0 };
+    return { source: this.requireCanvas(), report };
   }
 
   /** @internal Whether the shared context is currently lost. */
   get isLost(): boolean {
-    return this.lost;
+    return this.renderer_?.isLost ?? false;
+  }
+
+  /** @internal Capabilities of the shared engine. */
+  get capabilities(): ChartRendererCapabilities {
+    const base = this.renderer_?.capabilities;
+    return { gpu: true, contextLoss: true, shared: true, maxDrawingBufferPixels: base?.maxDrawingBufferPixels ?? 0 };
   }
 
   /** @internal The shared renderer; draw calls from the active chart go straight to it. */
@@ -122,18 +107,15 @@ export class SharedWebGLContext implements ChartRenderContext {
   private teardownIfIdle(): void {
     if (this.clients.size > 0 || !this.canvas) return;
     const canvas = this.canvas;
-    canvas.removeEventListener("webglcontextlost", this.handleLost);
-    canvas.removeEventListener("webglcontextrestored", this.handleRestored);
     const renderer = this.renderer_;
-    const gl = renderer?.getWebGLContext() ?? null;
     this.canvas = null;
     this.renderer_ = null;
     try {
+      // Releases the WebGL context as well.
       renderer?.dispose();
     } catch {
-      // Cleanup can throw while the context is lost; the context is released below regardless.
+      // Cleanup can throw while the context is lost; there is nothing left to free.
     }
-    releaseWebGLContext(gl);
     // Dropping the size frees the drawing buffer even if the browser keeps the context object around.
     canvas.width = 1;
     canvas.height = 1;
@@ -143,6 +125,7 @@ export class SharedWebGLContext implements ChartRenderContext {
 /** @internal Per-chart renderer that draws into a `SharedWebGLContext` and blits into the chart canvas. */
 class SharedWebGLRenderer implements ChartRenderer {
   readonly kind = "webgl2-shared" as const;
+  private lossListener: ((state: RendererLossState) => void) | null = null;
   private readonly target: CanvasRenderingContext2D;
   private readonly chartCanvas: HTMLCanvasElement;
   private width = 1;
@@ -168,13 +151,26 @@ class SharedWebGLRenderer implements ChartRenderer {
     this.shared.beginFrame(this.width, this.height, pixelRatio);
   }
 
-  endFrame(): void {
-    const source = this.shared.endFrame();
+  get capabilities(): ChartRendererCapabilities {
+    return this.shared.capabilities;
+  }
+
+  get isLost(): boolean {
+    return this.shared.isLost;
+  }
+
+  setLossListener(listener: ((state: RendererLossState) => void) | null): void {
+    this.lossListener = listener;
+  }
+
+  endFrame(): FrameReport {
+    const { source, report } = this.shared.endFrame();
     const target = this.target;
     target.setTransform(1, 0, 0, 1, 0, 0);
     target.clearRect(0, 0, this.width, this.height);
     // A lost shared context has no valid pixels; the chart keeps its previous image until it is restored.
     if (!this.shared.isLost) target.drawImage(source, 0, 0);
+    return report;
   }
 
   getWebGLContext(): null {
@@ -205,11 +201,12 @@ class SharedWebGLRenderer implements ChartRenderer {
   dispose(): void {
     if (!this.attached) return;
     this.attached = false;
+    this.lossListener = null;
     this.shared.detach(this);
   }
 
-  /** @internal Re-dispatch a shared-context event on this chart's canvas, where the chart listens for it. */
-  notify(type: "webglcontextlost" | "webglcontextrestored"): void {
-    this.chartCanvas.dispatchEvent(new Event(type, { cancelable: true }));
+  /** @internal Forward a shared-context loss or restore to the chart that owns this renderer. */
+  notifyLoss(state: RendererLossState): void {
+    this.lossListener?.(state);
   }
 }

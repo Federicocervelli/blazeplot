@@ -37,6 +37,8 @@ interface ProgramState {
 export class WebGL2Backend implements GpuBackend {
   private readonly gl: WebGL2RenderingContext;
   private readonly stream: WebGLBuffer;
+  /** Pixels in the largest viewport the context reports (a conservative default when it cannot say). */
+  readonly maxDrawingBufferPixels: number;
   private programs: Partial<Record<keyof typeof ShaderPrograms, ProgramState>> = {};
   private scissorBox: { x: number; y: number; w: number; h: number } | null = null;
   /**
@@ -68,6 +70,7 @@ export class WebGL2Backend implements GpuBackend {
     }
 
     this.gl = gl;
+    this.maxDrawingBufferPixels = maxViewportPixels(gl);
     const stream = gl.createBuffer();
     if (!stream) throw new Error("Failed to allocate WebGL buffer.");
     this.stream = stream;
@@ -326,4 +329,16 @@ export class WebGL2Backend implements GpuBackend {
         return this.gl.TRIANGLE_STRIP;
     }
   }
+}
+
+const DEFAULT_MAX_VIEWPORT_PIXELS = 16_384 * 16_384;
+
+function maxViewportPixels(gl: WebGL2RenderingContext): number {
+  try {
+    const dims = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as ArrayLike<number> | null;
+    if (dims && dims.length >= 2 && dims[0]! > 0 && dims[1]! > 0) return dims[0]! * dims[1]!;
+  } catch {
+    // Contexts that cannot answer (or are already lost) fall back to a conservative size.
+  }
+  return DEFAULT_MAX_VIEWPORT_PIXELS;
 }

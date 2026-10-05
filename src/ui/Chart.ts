@@ -3,10 +3,9 @@ import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
-import type { ChartRenderer, ChartRendererKind } from "../render/ChartRenderer.js";
+import type { ChartRenderer, ChartRendererKind, RendererLossState } from "../render/ChartRenderer.js";
 import { WebGL2Renderer, webgl2Renderer } from "../render/webgl2/WebGL2Renderer.js";
 import { SeriesPainter } from "../render/SeriesPainter.js";
-import { releaseWebGLContext } from "../render/webgl2/releaseWebGLContext.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { PanIntent, ZoomIntent } from "../interaction/types.js";
@@ -94,7 +93,7 @@ export class Chart {
   private restoreRenderRafId: number = 0;
   private running: boolean = false;
   private disposed: boolean = false;
-  private webglContextLost: boolean = false;
+  private rendererLost: boolean = false;
   private domainErrorLogged: boolean = false;
   private readonly options: ChartOptions;
   /** Caller theme before forced-colors substitution; `setTheme` replaces it. */
@@ -116,30 +115,20 @@ export class Chart {
   private readonly handleRootFocusIn = (): void => {
     this.a11y.flushIfDirty();
   };
-  private readonly handleWebGLContextLost = (event: Event): void => {
-    event.preventDefault();
-    this.webglContextLost = true;
-    if (this.restoreRenderRafId !== 0) {
-      this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
-      this.restoreRenderRafId = 0;
-    }
-    this.resetFrameStats();
-    this.plugins.notify("onContextLost");
-  };
-  private readonly handleWebGLContextRestored = (): void => {
-    const oldRenderer = this.rendererImpl;
-    let nextResources: ChartGpuResources;
-    try {
-      nextResources = this.createGpuResources();
-    } catch (error) {
-      this.webglContextLost = true;
-      console.error("BlazePlot failed to restore WebGL resources after context restoration.", error);
+  /** The one place the engine's context state lands: stop drawing while lost, resume after restore. */
+  private readonly onRendererState = (state: RendererLossState): void => {
+    if (this.disposed) return;
+    if (state === "lost") {
+      this.rendererLost = true;
+      if (this.restoreRenderRafId !== 0) {
+        this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
+        this.restoreRenderRafId = 0;
+      }
+      this.resetFrameStats();
+      this.plugins.notify("onContextLost");
       return;
     }
-
-    this.installGpuResources(nextResources);
-    this.disposeRenderer(oldRenderer);
-    this.webglContextLost = false;
+    this.rendererLost = false;
     this.applyCanvasSize();
     this.plugins.notify("onContextRestored");
     this.scheduleRenderAfterRestore();
@@ -689,9 +678,7 @@ export class Chart {
     // Reverse registration order; plugin cleanup errors never block chart-owned cleanup.
     this.plugins?.disposeAll();
     this.axisOverlay?.dispose();
-    const gl = this.rendererImpl.getWebGLContext();
     this.disposeRenderer(this.rendererImpl);
-    releaseWebGLContext(gl);
     this.layout.dispose();
   }
 
@@ -703,8 +690,8 @@ export class Chart {
     this.lastFrameAt = frameStartedAt;
     this.resetFrameStats();
 
-    if (this.webglContextLost || this.rendererImpl.getWebGLContext()?.isContextLost() === true) {
-      this.webglContextLost = true;
+    if (this.rendererLost || this.rendererImpl.isLost) {
+      this.rendererLost = true;
       return;
     }
 
@@ -736,14 +723,16 @@ export class Chart {
         series.rebuildPyramid();
         this.painter.drawSeries(series);
       }
-      this.rendererImpl.endFrame();
+      const report = this.rendererImpl.endFrame();
+      this.stats.drawCalls = report.drawCalls;
+      this.stats.uploadBytes = report.uploadBytes;
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
       this.updateAutoGutters();
       this.events.emit("render", undefined);
     } catch (error) {
-      if (this.rendererImpl.getWebGLContext()?.isContextLost() === true) {
-        this.webglContextLost = true;
+      if (this.rendererImpl.isLost) {
+        this.rendererLost = true;
         this.resetFrameStats();
         return;
       }
@@ -870,11 +859,12 @@ export class Chart {
       throw new TypeError('ChartOptions.renderer must be "webgl2" or a factory such as canvas2dRenderer() from "blazeplot/renderers/canvas2d".');
     }
     const factory = typeof option === "function" ? option : webgl2Renderer();
-    return { renderer: backendFactory ? new WebGL2Renderer(backendFactory({ canvas: this.canvas })) : (factory({ canvas: this.canvas }) as ChartRenderer) };
+    return { renderer: backendFactory ? new WebGL2Renderer(this.canvas, (canvas) => backendFactory({ canvas })) : (factory({ canvas: this.canvas }) as ChartRenderer) };
   }
 
   private installGpuResources(resources: ChartGpuResources): void {
     this.rendererImpl = resources.renderer;
+    resources.renderer.setLossListener(this.onRendererState);
   }
 
   private disposeRenderer(renderer: ChartRenderer): void {
@@ -905,8 +895,6 @@ export class Chart {
       [canvas, "pointerleave", this.hover.onPointerLeave],
       [canvas, "click", this.hover.onClick],
       [canvas, "dblclick", this.hover.onDoubleClick],
-      [canvas, "webglcontextlost", this.handleWebGLContextLost],
-      [canvas, "webglcontextrestored", this.handleWebGLContextRestored],
     ];
     if (this.a11y.hasSummary) listeners.push([root, "focusin", this.handleRootFocusIn]);
     for (const [target, type, listener] of listeners) target[method](type, listener as EventListener);

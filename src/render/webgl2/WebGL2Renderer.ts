@@ -1,9 +1,11 @@
-import type { ChartRenderer, ChartRendererFactory, RenderProjection } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererCapabilities, ChartRendererFactory, FrameReport, RenderProjection, RendererLossState } from "../ChartRenderer.js";
 import type { DrawCommand, GpuBackend, SolidPrimitive } from "./types.js";
 import type { RgbaColor, SeriesStyle } from "../../core/types.js";
 import { WebGL2Backend } from "./WebGL2Backend.js";
+import { releaseWebGLContext } from "./releaseWebGLContext.js";
 
 const INITIAL_STREAM_FLOATS = 1 << 16;
+const DEFAULT_MAX_DRAWING_BUFFER_PIXELS = 16_384 * 16_384;
 
 /**
  * @internal Records a frame's draws against one CPU-side vertex stream and submits it to a
@@ -18,7 +20,32 @@ export class WebGL2Renderer implements ChartRenderer {
   private canvasHeight = 1;
   private pixelRatio = 1;
 
-  constructor(private readonly backend: GpuBackend) {}
+  private backend: GpuBackend;
+  private lossListener: ((state: RendererLossState) => void) | null = null;
+  private lost = false;
+  private disposed = false;
+
+  /**
+   * @param canvas Canvas that owns the WebGL2 context; the renderer listens for its loss and restore events.
+   * @param createBackend Builds a backend on `canvas`; called again after a context restore.
+   */
+  constructor(private readonly canvas: HTMLCanvasElement, private readonly createBackend: (canvas: HTMLCanvasElement) => GpuBackend = (target) => new WebGL2Backend(target)) {
+    this.backend = createBackend(canvas);
+    canvas.addEventListener("webglcontextlost", this.handleContextLost);
+    canvas.addEventListener("webglcontextrestored", this.handleContextRestored);
+  }
+
+  get capabilities(): ChartRendererCapabilities {
+    return { gpu: true, contextLoss: true, shared: false, maxDrawingBufferPixels: this.backend.maxDrawingBufferPixels ?? DEFAULT_MAX_DRAWING_BUFFER_PIXELS };
+  }
+
+  get isLost(): boolean {
+    return this.lost || this.backend.getContext?.()?.isContextLost() === true;
+  }
+
+  setLossListener(listener: ((state: RendererLossState) => void) | null): void {
+    this.lossListener = listener;
+  }
 
   /** Set the drawing-buffer size and device pixel ratio for this frame and clear it. */
   beginFrame(width: number, height: number, pixelRatio: number): void {
@@ -32,11 +59,12 @@ export class WebGL2Renderer implements ChartRenderer {
   }
 
   /** Upload everything recorded since `beginFrame` once and issue the draws in order. */
-  endFrame(): void {
+  endFrame(): FrameReport {
     const commands = this.commands;
-    if (commands.length === 0) return;
+    if (commands.length === 0) return { uploadBytes: 0, drawCalls: 0 };
     this.commands = [];
     this.backend.submit(this.stream, this.streamFloats, commands);
+    return { uploadBytes: this.streamFloats * Float32Array.BYTES_PER_ELEMENT, drawCalls: commands.length };
   }
 
   /** Return the underlying WebGL2 context when available. */
@@ -118,11 +146,50 @@ export class WebGL2Renderer implements ChartRenderer {
     this.drawSolid(data, vertexCount, color, projection, primitive);
   }
 
-  /** Release all GPU resources owned by the backend. */
+  /** Release all GPU resources and the WebGL context itself, so a disposed chart does not hold one until GC. */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.canvas.removeEventListener("webglcontextlost", this.handleContextLost);
+    this.canvas.removeEventListener("webglcontextrestored", this.handleContextRestored);
+    this.lossListener = null;
     this.commands = [];
-    this.backend.destroy();
+    const gl = this.backend.getContext?.();
+    try {
+      this.backend.destroy();
+    } finally {
+      // Browsers cap live contexts (~16) and evict the oldest, so release now instead of waiting for GC.
+      releaseWebGLContext(gl);
+    }
   }
+
+  private readonly handleContextLost = (event: Event): void => {
+    // Allow the browser to restore the context; the chart stops drawing until it does.
+    event.preventDefault();
+    this.lost = true;
+    this.commands = [];
+    this.lossListener?.("lost");
+  };
+
+  private readonly handleContextRestored = (): void => {
+    // A restored context is a new generation: every object from the old one is invalid, so rebuild the backend.
+    const previous = this.backend;
+    let next: GpuBackend;
+    try {
+      next = this.createBackend(this.canvas);
+    } catch (error) {
+      console.error("BlazePlot failed to restore WebGL resources after context restoration.", error);
+      return;
+    }
+    this.backend = next;
+    try {
+      previous.destroy();
+    } catch {
+      // The previous backend belonged to the lost context generation; nothing is left to free.
+    }
+    this.lost = false;
+    this.lossListener?.("restored");
+  };
 
   private drawSolid(data: Float32Array, vertexCount: number, color: RgbaColor, projection: RenderProjection, primitive: SolidPrimitive): void {
     if (vertexCount <= 0) return;
@@ -149,5 +216,5 @@ export class WebGL2Renderer implements ChartRenderer {
 
 /** The default renderer factory: WebGL2, throwing `WebGL2UnavailableError` when it is unavailable. */
 export function webgl2Renderer(): ChartRendererFactory {
-  return ({ canvas }) => new WebGL2Renderer(new WebGL2Backend(canvas));
+  return ({ canvas }) => new WebGL2Renderer(canvas);
 }

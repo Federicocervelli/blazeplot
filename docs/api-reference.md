@@ -61,10 +61,10 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| canvas2d renderer entry | `dist/renderers/canvas2d.js` | 5 KiB |
+| canvas2d renderer entry | `dist/renderers/canvas2d.js` | 6 KiB |
 | shared renderer entry | `dist/renderers/shared.js` | 4 KiB |
 | shared Chart chunk | `dist/Chart-*.js` | 139 KiB |
-| shared WebGL2 engine chunk | `dist/WebGL2Renderer-*.js` | 12 KiB |
+| shared WebGL2 engine chunk | `dist/WebGL2Renderer-*.js` | 13 KiB |
 | shared WebGL context release chunk | `dist/releaseWebGLContext-*.js` | 0 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |

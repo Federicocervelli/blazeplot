@@ -246,12 +246,51 @@ function createHost(width: number, height: number): HTMLElement {
   return host;
 }
 
-function newChart(host: HTMLElement, plugins: boolean): Chart {
+function newChart(host: HTMLElement, plugins: boolean, extra: ChartPlugin[] = []): Chart {
   return new Chart(host, {
     axes: { x: true, y: true, y2: true },
     title: "stability",
-    plugins: plugins ? fullPlugins() : [],
+    plugins: [...(plugins ? fullPlugins() : []), ...extra],
   });
+}
+
+/** Counts the chart's context loss and restore notifications, which every engine reports through plugin hooks. */
+interface ContextWatcher {
+  readonly plugin: ChartPlugin;
+  readonly lost: number;
+  readonly restored: number;
+  next(kind: "lost" | "restored", timeoutMs: number): Promise<void>;
+}
+
+function contextWatcher(): ContextWatcher {
+  const waiters = new Set<{ kind: "lost" | "restored"; resolve: () => void }>();
+  const state = { lost: 0, restored: 0 };
+  const notify = (kind: "lost" | "restored"): void => {
+    state[kind]++;
+    for (const waiter of waiters) {
+      if (waiter.kind !== kind) continue;
+      waiters.delete(waiter);
+      waiter.resolve();
+    }
+  };
+  return {
+    plugin: { install: () => ({ onContextLost: () => notify("lost"), onContextRestored: () => notify("restored") }) },
+    get lost() {
+      return state.lost;
+    },
+    get restored() {
+      return state.restored;
+    },
+    next: (kind, timeoutMs) =>
+      new Promise<void>((resolve, reject) => {
+        const waiter = { kind, resolve: () => { window.clearTimeout(timer); resolve(); } };
+        const timer = window.setTimeout(() => {
+          waiters.delete(waiter);
+          reject(new Error(`Timed out waiting for context ${kind}`));
+        }, timeoutMs);
+        waiters.add(waiter);
+      }),
+  };
 }
 
 function addSampleSeries(chart: Chart, points = 200): SeriesStore[] {
@@ -558,20 +597,6 @@ function stopStreaming(): StreamingStats {
 // (5) WebGL context loss and restore
 // ---------------------------------------------------------------------------
 
-function waitForCanvasEvent(canvas: HTMLCanvasElement, type: "webglcontextlost" | "webglcontextrestored", timeoutMs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
-      canvas.removeEventListener(type, handle);
-      reject(new Error(`Timed out waiting for ${type}`));
-    }, timeoutMs);
-    const handle = (): void => {
-      window.clearTimeout(timer);
-      resolve();
-    };
-    canvas.addEventListener(type, handle, { once: true });
-  });
-}
-
 /** Count pixels in the current drawing buffer that differ from the clear color. Must run inside a render event. */
 function countLitPixels(chart: Chart): number {
   const gl = chart.getWebGLContext();
@@ -591,7 +616,8 @@ function countLitPixels(chart: Chart): number {
 
 async function contextLoss(cycles: number): Promise<ContextLossResult> {
   const host = createHost(480, 280);
-  const chart = newChart(host, true);
+  const watcher = contextWatcher();
+  const chart = newChart(host, true, [watcher.plugin]);
   const renders = countRenders(chart);
   const series = addSampleSeries(chart);
   chart.fitToData({ padding: 0.05 });
@@ -601,16 +627,11 @@ async function contextLoss(cycles: number): Promise<ContextLossResult> {
   const extension = chart.getWebGLContext()?.getExtension("WEBGL_lose_context");
   if (!extension) throw new Error("WEBGL_lose_context is unavailable in this browser");
 
-  let lostEvents = 0;
-  let restoredEvents = 0;
-  chart.canvas.addEventListener("webglcontextlost", () => lostEvents++);
-  chart.canvas.addEventListener("webglcontextrestored", () => restoredEvents++);
-
   let rendersAfterRestore = 0;
   let drawCallsAfterRestore = 0;
   let litPixelsAfterRestore = 0;
   for (let cycle = 0; cycle < cycles; cycle++) {
-    const lost = waitForCanvasEvent(chart.canvas, "webglcontextlost", 2_000);
+    const lost = watcher.next("lost", 2_000);
     extension.loseContext();
     await lost;
 
@@ -623,7 +644,7 @@ async function contextLoss(cycles: number): Promise<ContextLossResult> {
     await frames(3);
     if (renders() !== rendersWhileLost) throw new Error("chart reported a render while the WebGL context was lost");
 
-    const restored = waitForCanvasEvent(chart.canvas, "webglcontextrestored", 3_000);
+    const restored = watcher.next("restored", 3_000);
     extension.restoreContext();
     await restored;
 
@@ -645,19 +666,20 @@ async function contextLoss(cycles: number): Promise<ContextLossResult> {
   }
 
   // Taken before dispose: releasing the context on dispose fires one more (expected) lost event.
-  const lostDuringCycles = lostEvents;
-  const restoredDuringCycles = restoredEvents;
+  const lostDuringCycles = watcher.lost;
+  const restoredDuringCycles = watcher.restored;
 
   // A chart disposed while its context is still lost must clean up without throwing, and a later restore must be harmless.
   const secondHost = createHost(320, 200);
-  const second = newChart(secondHost, true);
+  const secondWatcher = contextWatcher();
+  const second = newChart(secondHost, true, [secondWatcher.plugin]);
   addSampleSeries(second);
   second.start();
   await nextRender(second);
   const secondExtension = second.getWebGLContext()?.getExtension("WEBGL_lose_context");
   let disposedWhileLost = false;
   if (secondExtension) {
-    const lost = waitForCanvasEvent(second.canvas, "webglcontextlost", 2_000);
+    const lost = secondWatcher.next("lost", 2_000);
     secondExtension.loseContext();
     await lost;
     second.dispose();
@@ -689,10 +711,11 @@ function countBlittedPixels(chart: Chart): number {
 /** Context loss and restore of the one WebGL context behind several charts that share a render context. */
 async function sharedContextLoss(cycles: number): Promise<ContextLossResult> {
   const mounted: Array<{ chart: Chart; host: HTMLElement; renders: () => number }> = [];
+  const watcher = contextWatcher();
   for (let i = 0; i < 3; i++) {
     const host = createHost(320, 200);
     host.style.left = `${i * 10}px`;
-    const chart = new Chart(host, { axes: { x: true, y: true }, renderer: sharedRenderer() });
+    const chart = new Chart(host, { axes: { x: true, y: true }, renderer: sharedRenderer(), plugins: i === 0 ? [watcher.plugin] : [] });
     const renders = countRenders(chart);
     addSampleSeries(chart);
     chart.fitToData({ padding: 0.05 });
@@ -705,24 +728,20 @@ async function sharedContextLoss(cycles: number): Promise<ContextLossResult> {
   const extension = gl?.getExtension("WEBGL_lose_context");
   if (!extension) throw new Error("WEBGL_lose_context is unavailable in this browser");
 
-  let lostEvents = 0;
-  let restoredEvents = 0;
   const first = mounted[0]!.chart;
-  first.canvas.addEventListener("webglcontextlost", () => lostEvents++);
-  first.canvas.addEventListener("webglcontextrestored", () => restoredEvents++);
 
   let rendersAfterRestore = 0;
   let drawCallsAfterRestore = 0;
   let litPixelsAfterRestore = 0;
   for (let cycle = 0; cycle < cycles; cycle++) {
-    const lost = waitForCanvasEvent(first.canvas, "webglcontextlost", 2_000);
+    const lost = watcher.next("lost", 2_000);
     extension.loseContext();
     await lost;
     for (const { chart } of mounted) chart.requestRender();
     hover(first);
     await frames(3);
 
-    const restored = waitForCanvasEvent(first.canvas, "webglcontextrestored", 3_000);
+    const restored = watcher.next("restored", 3_000);
     extension.restoreContext();
     await restored;
     await Promise.all(mounted.map(({ chart }) => {
@@ -739,9 +758,9 @@ async function sharedContextLoss(cycles: number): Promise<ContextLossResult> {
   }
 
   // Disposing every chart while the shared context is lost must release it cleanly; a later restore is harmless.
-  const lostDuringCycles = lostEvents;
-  const restoredDuringCycles = restoredEvents;
-  const lost = waitForCanvasEvent(first.canvas, "webglcontextlost", 2_000);
+  const lostDuringCycles = watcher.lost;
+  const restoredDuringCycles = watcher.restored;
+  const lost = watcher.next("lost", 2_000);
   extension.loseContext();
   await lost;
   for (const { chart, host } of mounted) {

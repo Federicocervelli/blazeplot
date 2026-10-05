@@ -2,50 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import { Canvas2DRenderer, Canvas2DUnavailableError } from "../../src/render/canvas2d/Canvas2DRenderer.ts";
 import { testStyle } from "../helpers.ts";
 import type { RenderProjection } from "../../src/render/ChartRenderer.ts";
-
-type Call = readonly [string, ...unknown[]];
-
-class FakePath {
-  readonly calls: Call[] = [];
-  moveTo(x: number, y: number): void {
-    this.calls.push(["moveTo", x, y]);
-  }
-  lineTo(x: number, y: number): void {
-    this.calls.push(["lineTo", x, y]);
-  }
-  arc(...args: number[]): void {
-    this.calls.push(["arc", ...args]);
-  }
-  closePath(): void {
-    this.calls.push(["closePath"]);
-  }
-}
-
-class FakeContext extends FakePath {
-  fillStyle = "";
-  strokeStyle = "";
-  lineWidth = 0;
-  lineJoin = "";
-  lineCap = "";
-  setTransform(...args: number[]): void {
-    this.calls.push(["setTransform", ...args]);
-  }
-  clearRect(...args: number[]): void {
-    this.calls.push(["clearRect", ...args]);
-  }
-  beginPath(): void {
-    this.calls.push(["beginPath"]);
-  }
-  stroke(): void {
-    this.calls.push(["stroke", this.strokeStyle, this.lineWidth]);
-  }
-  fill(path?: FakePath): void {
-    this.calls.push(["fill", this.fillStyle, path ? path.calls.length : -1]);
-  }
-  fillRect(...args: number[]): void {
-    this.calls.push(["fillRect", this.fillStyle, ...args]);
-  }
-}
+import { FakeContext2D as FakeContext, FakePath, fakeCanvas2d } from "./fake2d.ts";
 
 beforeAll(() => {
   (globalThis as { Path2D?: unknown }).Path2D = FakePath;
@@ -53,7 +10,7 @@ beforeAll(() => {
 
 function setup(): { renderer: Canvas2DRenderer; ctx: FakeContext } {
   const ctx = new FakeContext();
-  const canvas = { getContext: (kind: string) => (kind === "2d" ? ctx : null) } as unknown as HTMLCanvasElement;
+  const canvas = fakeCanvas2d(ctx);
   const renderer = new Canvas2DRenderer(canvas);
   // 100 x 50 device pixels, DPR 1.
   renderer.beginFrame(100, 50, 1);
