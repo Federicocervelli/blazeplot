@@ -46,7 +46,7 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 21 KiB |
+| root entry | `dist/index.js` | 15 KiB |
 | linked entry | `dist/linked.js` | 2 KiB |
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
@@ -59,7 +59,7 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 17 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 170 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 169 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
@@ -155,12 +155,11 @@ Generated from `dist/index.d.ts` after the package build.
 | `Dataset` | interface | `./core/types` | Sorted XY data source consumed by chart series. |
 | `DEFAULT_CHART_THEME` | const | `./ui/theme` | Default dark chart theme. |
 | `DownsampleStrategy` | type | `./core/types` | Downsampling strategy used when a series is denser than the plot. |
-| `histogram` | function | `./core/Histogram` | Convert one-dimensional finite values into histogram bins. |
-| `HistogramBin` | interface | `./core/Histogram` | One histogram bucket, suitable for rendering as a bar centered at `x`. |
+| `HistogramBin` | interface | `./core/histogramBins` | One histogram bucket, suitable for rendering as a bar centered at `x`. |
 | `HistogramDataset` | class | `./core/Histogram` | Static histogram dataset that preserves each bucket's X interval for picks and tooltips. |
-| `HistogramNormalization` | type | `./core/Histogram` | Histogram value normalization modes. |
-| `HistogramOptions` | interface | `./core/Histogram` | Options for converting one-dimensional values into histogram bins. |
-| `HistogramResult` | interface | `./core/Histogram` | Result of a histogram transform. |
+| `HistogramNormalization` | type | `./core/histogramBins` | Histogram value normalization modes. |
+| `HistogramOptions` | interface | `./core/histogramBins` | Options for converting one-dimensional values into histogram bins. |
+| `HistogramResult` | interface | `./core/histogramBins` | Result of a histogram transform. |
 | `InvalidOhlcSample` | interface | `./core/types` | An OHLC candle an `OhlcRingBuffer` skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSample` | interface | `./core/types` | A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSampleReason` | type | `./core/types` | Why a sample broke the dataset X rule (X finite and non-decreasing): `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the previous accepted X (or, for `update`, outside its neighbors). |

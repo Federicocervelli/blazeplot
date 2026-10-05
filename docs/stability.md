@@ -29,7 +29,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 |---|---|---|
 | `blazeplot` | Stable, with the exceptions listed in the tables below | Chart, datasets, data contracts, theming, rendering-engine selection (names, factories, `rendererInfo`), `isWebGL2Available`, `WebGL2UnavailableError`, `Canvas2DUnavailableError`. |
 | `blazeplot/linked` | Stable | `createLinkedCharts` and its option/handle types. |
-| `blazeplot/data` | Stable | `binSamples`, `rollingMean`, and their types (pure, chart-agnostic transforms). |
+| `blazeplot/data` | Stable | `binSamples`, `histogramBins`, `rollingMean`, and their types (pure, chart-agnostic transforms). |
 | `blazeplot/export` | Stable | `exportChartData`, `chartDataToCsv`, `downloadBlob`, `downloadChartScreenshot`, `copyChartScreenshotToClipboard`, and their types. |
 | `blazeplot/plugins/legend` | Stable | Options may grow; existing option names are kept. |
 | `blazeplot/plugins/tooltip` | Stable | Same. |
