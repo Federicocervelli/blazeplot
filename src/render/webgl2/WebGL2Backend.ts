@@ -36,19 +36,14 @@ interface PendingProgram {
   readonly shaders: readonly WebGLShader[];
 }
 
+/** Every uniform a built-in program may declare; a program that lacks one gets `null`, which GL ignores. */
+const UNIFORM_NAMES = ["uScale", "uOffset", "uColor", "uCanvasSize", "uLineWidth", "uPointSize", "uBarWidth", "uBaseline"] as const;
+
 /** A linked program with its fixed vertex array object and uniform locations. */
-interface ProgramState {
+interface ProgramState extends Readonly<Record<(typeof UNIFORM_NAMES)[number], WebGLUniformLocation | null>> {
   readonly program: WebGLProgram;
   readonly vao: WebGLVertexArrayObject;
   readonly corners: WebGLBuffer | null;
-  readonly uScale: WebGLUniformLocation | null;
-  readonly uOffset: WebGLUniformLocation | null;
-  readonly uColor: WebGLUniformLocation | null;
-  readonly uCanvasSize: WebGLUniformLocation | null;
-  readonly uLineWidth: WebGLUniformLocation | null;
-  readonly uPointSize: WebGLUniformLocation | null;
-  readonly uBarWidth: WebGLUniformLocation | null;
-  readonly uBaseline: WebGLUniformLocation | null;
   /** Attribute locations of the per-instance streams (`aStart`/`aEnd` or `aPosition`). */
   readonly aStart: number;
   readonly aEnd: number;
@@ -316,14 +311,7 @@ export class WebGL2Backend implements GpuBackend {
       program,
       vao,
       corners: cornerBuffer,
-      uScale: gl.getUniformLocation(program, "uScale"),
-      uOffset: gl.getUniformLocation(program, "uOffset"),
-      uColor: gl.getUniformLocation(program, "uColor"),
-      uCanvasSize: gl.getUniformLocation(program, "uCanvasSize"),
-      uLineWidth: gl.getUniformLocation(program, "uLineWidth"),
-      uPointSize: gl.getUniformLocation(program, "uPointSize"),
-      uBarWidth: gl.getUniformLocation(program, "uBarWidth"),
-      uBaseline: gl.getUniformLocation(program, "uBaseline"),
+      ...(Object.fromEntries(UNIFORM_NAMES.map((uniform) => [uniform, gl.getUniformLocation(program, uniform)])) as Record<(typeof UNIFORM_NAMES)[number], WebGLUniformLocation | null>),
       aStart,
       aEnd,
     };
