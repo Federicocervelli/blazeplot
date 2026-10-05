@@ -52,6 +52,7 @@ export function mountChart(element: HTMLElement): Chart | null {
 | Call | Throws |
 |---|---|
 | `chart.addLine({ capacity })` and other chart-owned series | `TypeError` when `capacity` is not a positive integer and no `dataset` is given. `TypeError` when `xStep`/`xStart` is combined with an overflow strategy other than `"wrap"`. |
+| `chart.addSeries({ mode })` | `TypeError` when `mode` is not one of `line`, `area`, `scatter`, `bar`, `ohlc`, `candlestick` (JavaScript callers, or a removed mode such as `"envelope"`). |
 | `chart.addOhlc(...)` / `addCandlestick(...)` | `TypeError` without an `OhlcDataset`. |
 | `chart.addHistogram(...)` | `TypeError` when variable-width bins have no `style.barWidth`; histogram option errors below. |
 | `series.append({ x, y })` | `TypeError` when the dataset is not appendable XY (for example `StaticDataset`). `RangeError("... capacity exceeded.")` for `overflow: "error"` buffers that are full. |
@@ -69,8 +70,8 @@ Dataset constructors validate their arguments: `RingBuffer`, `OhlcRingBuffer`, a
 
 | Call | Throws when |
 |---|---|
-| `new StaticDataset(x, y)`, `new StaticOhlcDataset(x, open, high, low, close)` | An X (within the shorter array's length) is non-finite or below the previous X. Skipped with `{ assumeSorted: true }`. |
-| `StaticDataset.replace(...)` / `series.replace({ x?, y })` | Same check for the new X (or for X values a longer Y brings into use). The current data is kept. Skipped when the dataset was built with `assumeSorted`. |
+| `new StaticDataset(x, y)`, `new StaticOhlcDataset(x, open, high, low, close)` | The parallel arrays differ in length (`RangeError` such as `StaticDataset: x has 3 values but y has 2.`), or an X is non-finite or below the previous X. The X check is skipped with `{ assumeSorted: true }`; the length check never is. |
+| `StaticDataset.replace(...)` / `series.replace({ x?, y })` | Same checks for the new arrays, including a length mismatch between `x` (or the retained X) and `y`. The current data is kept. The X check is skipped when the dataset was built with `assumeSorted`. |
 | `StaticDataset.fromObjects(rows, options)` | A row's X is non-finite, or X decreases and `sort: true` was not passed. The message names the row. |
 | `new ServerSampledDataset(data)`, `replace(data)` | A point X, bucket `xStart`, or bucket `xEnd` is non-finite or decreasing, or a bucket has `xEnd < xStart` (`inverted-bucket`). The current data is kept. |
 
@@ -126,7 +127,7 @@ Every built-in dataset follows one rule: X is finite and non-decreasing, and a n
 | Duplicate X | Allowed. |
 | Data mutated in place followed by `series.markDirty()` | Not re-checked. Keep in-place edits sorted and finite. |
 | Custom `Dataset` with unsorted X | Not checked. Samples can be hidden, drawn in the wrong place, or missed by picking and export. |
-| Mismatched array lengths | `StaticDataset` and `RingBuffer.append(x, y)` use the shorter array and ignore the extra values. No error. |
+| Mismatched array lengths | Every dataset constructor, `replace`, and `append(x, y, ...)` (`RingBuffer`, `UniformRingBuffer`, `OhlcRingBuffer`, `StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`) throws `RangeError`, for example `RingBuffer.append: x has 100 values but y has 99.`, and leaves existing data unchanged. A mismatch is almost always a bug in the data pipeline, so the tail is not silently dropped. |
 | Values beyond float32 precision | Stored as `float32` by default and rounded; pass `valuePrecision: "float64"` for exact storage. X is always `float64`. |
 | `UniformRingBuffer` with explicit X | X is ignored; the buffer derives X from `xStart + index * xStep`. |
 | Buffer full with `overflow: "wrap"` (default) | Oldest samples are dropped. |

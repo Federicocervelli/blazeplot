@@ -81,6 +81,7 @@ Setting `onInvalidSample` turns off the console warning for that buffer. `reject
 ## Invalid values
 
 - X values follow [the X rule](#the-x-rule): static datasets throw, streaming buffers skip.
+- Parallel input arrays must have the same length. A mismatch throws a `RangeError` naming both lengths (for example `RingBuffer.append: x has 100 values but y has 99.`) from constructors, `replace`, and `append`, and the existing data is left unchanged.
 - Non-finite Y values (`NaN`, `Infinity`, `-Infinity`) act as missing/gap samples for built-in extraction, picking, and data bounds. They are stored as given.
 - An OHLC candle with any non-finite open, high, low, or close is a gap: it is stored, but not drawn, picked, or counted in bounds.
 - Built-in datasets do not re-check data you mutate in place (for example writing into a `StaticDataset` array and calling `series.markDirty()`); keep such edits sorted yourself.

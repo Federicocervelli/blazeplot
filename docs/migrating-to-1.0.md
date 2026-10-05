@@ -361,6 +361,12 @@ console.log(chart.getFollowXState(), chart.getViewport().xMin);
 chart.dispose();
 ```
 
+### 11. Data and series API corrections
+
+- **Mismatched array lengths throw.** In 0.5, `StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`, `RingBuffer.append`, `UniformRingBuffer.append`, and `OhlcRingBuffer.append` silently used the shortest array. 1.0 throws a `RangeError` such as `RingBuffer.append: x has 100 values but y has 99.` and leaves existing data unchanged. If you relied on the truncation, slice the arrays yourself before passing them.
+- **`"envelope"` is removed from `SeriesMode`.** It never rendered anything but a line. Use `"line"`, or `downsample: "server"` with `ServerSampledDataset` for a pre-reduced min/max band. `chart.addSeries` now throws a `TypeError` for any unknown `mode`.
+- **`downsample: "none"` line and bar series draw every visible sample.** Past 16,384 visible samples (4,096 bars on the non-instanced path) they used to stop drawing partway across the plot. No code change is needed.
+
 ## Platform requirements
 
 ### ESM only
