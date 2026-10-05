@@ -58,6 +58,7 @@ export class FakeGl {
   deleteShader(o: Tagged): void { this.del("shader", o); }
   deleteProgram(o: Tagged): void { this.del("program", o); }
   deleteVertexArray(o: Tagged): void { this.del("vertexArray", o); }
+  getExtension(): null { return null; }
   getShaderParameter(): boolean { return true; }
   getProgramParameter(): boolean { return true; }
   getAttribLocation(_p: unknown, name: string): number { return name.length % 4; }
@@ -77,9 +78,9 @@ export class FakeGl {
   bindVertexArray(): void {}
   useProgram(): void {}
   shaderSource(): void {}
-  compileShader(): void {}
+  compileShader(): void { this.hit("compileShader"); }
   attachShader(): void {}
-  linkProgram(): void {}
+  linkProgram(): void { this.hit("linkProgram"); }
   enableVertexAttribArray(): void {}
   vertexAttribPointer(): void {}
   vertexAttribDivisor(): void {}

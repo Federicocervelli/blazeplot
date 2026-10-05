@@ -123,8 +123,11 @@ export class ChartLayout implements ChartLayoutElements {
   private readonly originalCanvasCssText: string;
   private readonly originalCanvasParent: HTMLElement | null;
 
-  /** Create chart layout DOM around a target element or canvas. */
-  constructor(target: HTMLElement, config: ChartLayoutConfig) {
+  /**
+   * Create chart layout DOM around a target element or canvas. `createCanvas` supplies the plot canvas
+   * when `target` is not one (the engine layer can hand out a warm one); the default is a new canvas.
+   */
+  constructor(target: HTMLElement, config: ChartLayoutConfig, createCanvas?: (doc: Document) => HTMLCanvasElement) {
     const doc = target.ownerDocument;
     this.doc = doc;
     this.view = doc.defaultView ?? (globalThis as Window & typeof globalThis);
@@ -145,7 +148,7 @@ export class ChartLayout implements ChartLayoutElements {
       outlineOffset: "-2px",
     });
     this.plot = styledDiv(doc, "blazeplot-plot", { ...gridCell(2, 2), position: "relative", overflow: "hidden" });
-    this.canvas = canvasTarget ?? doc.createElement("canvas");
+    this.canvas = canvasTarget ?? createCanvas?.(doc) ?? doc.createElement("canvas");
     this.canvas.classList.add("blazeplot-canvas");
     Object.assign(this.canvas.style, { position: "absolute", inset: "0", zIndex: "1", display: "block", width: "100%", height: "100%" });
     this.yAxis = styledDiv(doc, "blazeplot-axis blazeplot-axis-y", axisCell(1, 2));

@@ -41,6 +41,13 @@ class MockBackend implements GpuBackend {
     this.viewports.push([x, y, w, h]);
   }
 
+  /** Program names this backend was asked to prepare, one entry per call. */
+  readonly prepared: Array<readonly string[]> = [];
+
+  prepare(programs: readonly string[]): void {
+    this.prepared.push([...programs]);
+  }
+
   destroy(): void {
     this.destroyed = true;
     this.destroyCount++;
@@ -182,6 +189,27 @@ describe("WebGL2Renderer", () => {
     }
     expect(backend.submits.map((s) => s.floatCount)).toEqual([16, 16]);
     expect(backend.submits[1]!.commands[0]!.first).toBe(0);
+  });
+});
+
+describe("WebGL2Renderer program hints", () => {
+  it("asks the backend to build what a series mode draws with, wide lines included", () => {
+    const { renderer, backend } = makeRenderer();
+    renderer.prepare("line", 1);
+    renderer.prepare("line", 3);
+    renderer.prepare("scatter", 1);
+    renderer.prepare("bar", 1);
+    expect(backend.prepared).toEqual([["line"], ["line", "thickLine"], ["line", "point"], ["line", "bar"]]);
+  });
+
+  it("starts the same programs again on the backend built after a context restore", () => {
+    const backends: MockBackend[] = [];
+    const canvas = new EventTarget() as unknown as HTMLCanvasElement;
+    const renderer = new WebGL2Renderer(canvas, { createBackend: () => (backends[backends.push(new MockBackend()) - 1]!) });
+    renderer.prepare("scatter", 1);
+    canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+    canvas.dispatchEvent(new Event("webglcontextrestored"));
+    expect(backends[1]!.prepared).toEqual([["line", "point"]]);
   });
 });
 

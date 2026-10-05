@@ -3,7 +3,7 @@ import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { toRenderSurface } from "../render/ChartRenderer.js";
 import type { ChartRenderSurface, ChartRenderer, ChartRendererInfo, RendererLossState, RendererName } from "../render/ChartRenderer.js";
-import { createEngine } from "../render/engines.js";
+import { createEngine, createPlotCanvas } from "../render/engines.js";
 import { SeriesPainter } from "../render/SeriesPainter.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
@@ -161,7 +161,7 @@ export class Chart {
     this.normalizedAxes = normalizeAxesConfig(options.axes);
     this.gridVisible = options.grid !== false;
 
-    this.layout = new ChartLayout(target, this.normalizedAxes);
+    this.layout = new ChartLayout(target, this.normalizedAxes, (doc) => createPlotCanvas(options.renderer, doc));
     this.a11y.watchForcedColors();
     if (this.a11y.forcedColorsActive) this.resolvedTheme = forcedColorsTheme(this.baseTheme, this.layout.root);
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
@@ -380,6 +380,7 @@ export class Chart {
     this.seriesStyles.track(series, style, slot);
     series.bindStyleHandler((target, options) => this.seriesStyles.set(target, options));
     this.series.push(series);
+    this.engine.prepare?.(config.mode, series.style.lineWidth);
     if (this.a11y.forcedColorsActive) this.a11y.applyForcedSeriesStyles();
     this.emitSeriesChange();
     return series;
@@ -650,7 +651,8 @@ export class Chart {
     this.hover.dispose();
     // Reverse registration order; plugin cleanup errors never block chart-owned cleanup.
     this.plugins?.disposeAll();
-    this.axisOverlay?.dispose();
+    // The layout removal below detaches every label at once.
+    this.axisOverlay?.dispose(false);
     try {
       this.engine.dispose();
     } catch {
@@ -672,6 +674,11 @@ export class Chart {
       return;
     }
 
+    // The one layout read of the frame, taken before any DOM write so it never forces a flush. Ticks,
+    // the pixel ratio, the axis overlay and the closing hover refresh all share it.
+    const plotWidth = this.canvas.clientWidth;
+    const plotHeight = this.canvas.clientHeight;
+
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
     this.followXPolicy.apply();
@@ -688,11 +695,12 @@ export class Chart {
       return;
     }
 
+    let sizeChanged = false;
     try {
-      const pixelRatio = this.canvas.width / Math.max(1, this.canvas.clientWidth);
+      const pixelRatio = this.canvas.width / Math.max(1, plotWidth);
       this.engine.beginFrame(this.canvas.width, this.canvas.height, pixelRatio);
       this.painter.beginFrame({ renderer: this.engine, canvas: this.canvas, camera: this.camera, rightCamera: this.rightCamera, axis: this.axis, rightAxis: this.rightAxis });
-      this.updateTicks();
+      this.updateTicks(plotWidth, plotHeight);
       if (this.gridVisible) this.painter.drawGrid(this.xTicks, this.yTicks, this.resolvedTheme.gridColor);
 
       for (const series of this.series) {
@@ -704,8 +712,8 @@ export class Chart {
       this.stats.drawCalls = report.drawCalls;
       this.stats.uploadBytes = report.uploadBytes;
 
-      this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
-      this.updateAutoGutters();
+      this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks, plotWidth, plotHeight);
+      sizeChanged = this.updateAutoGutters();
       this.events.emit("render", undefined);
     } catch (error) {
       if (this.engine.isLost) {
@@ -718,7 +726,8 @@ export class Chart {
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     this.hover.cancelScheduled();
-    this.hover.refresh();
+    if (sizeChanged) this.hover.refresh();
+    else this.hover.refresh(plotWidth, plotHeight);
     if (this.running && this.options.renderLoop !== "continuous" && this.followXPolicy.options?.currentX && !this.followXPolicy.isPaused) {
       this.requestRender();
     }
@@ -787,9 +796,9 @@ export class Chart {
   }
 
   /** Resize `size: "auto"` gutters from the labels measured this frame. */
-  private updateAutoGutters(): void {
+  private updateAutoGutters(): boolean {
     const overlay = this.axisOverlay;
-    if (!overlay) return;
+    if (!overlay) return false;
     let changed = false;
     for (const axis of ["x", "y", "y2"] as const) {
       const config = this.normalizedAxes[axis];
@@ -803,6 +812,7 @@ export class Chart {
       this.resize();
       this.requestRender();
     }
+    return changed;
   }
 
   private updateTitles(): void {
@@ -851,9 +861,9 @@ export class Chart {
   }
 
   /** Compute tick values once per frame for both grid lines and axis labels. */
-  private updateTicks(): void {
-    const width = Math.max(1, this.canvas.clientWidth);
-    const height = Math.max(1, this.canvas.clientHeight);
+  private updateTicks(plotWidth: number, plotHeight: number): void {
+    const width = Math.max(1, plotWidth);
+    const height = Math.max(1, plotHeight);
     const axes = this.normalizedAxes;
     if (this.gridVisible || axes.x.visible) this.axis.getXTickValues(width, X_TICK_LIMIT, this.xTicks);
     else this.xTicks.length = 0;

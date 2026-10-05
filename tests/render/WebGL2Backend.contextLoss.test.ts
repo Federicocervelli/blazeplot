@@ -95,3 +95,37 @@ describe("WebGL2Backend frame submission", () => {
     b.destroy();
   });
 });
+
+describe("WebGL2Backend program building", () => {
+  it("starts prepared programs before any draw and does not compile them again when they are drawn", () => {
+    const { gl, backend } = setupFakeGl();
+    const b = backend();
+    b.prepare(["line", "point"]);
+    // Two programs, two shaders each, issued without any draw.
+    expect(gl.count("linkProgram")).toBe(2);
+    expect(gl.count("compileShader")).toBe(4);
+    b.prepare(["line"]);
+    expect(gl.count("linkProgram")).toBe(2);
+
+    b.submit(stream, 64, [commands[0]!, commands[2]!]);
+    expect(gl.count("linkProgram")).toBe(2);
+    b.destroy();
+  });
+
+  it("builds an unprepared program on first draw, so correctness does not depend on hints", () => {
+    const { gl, backend } = setupFakeGl();
+    const b = backend();
+    b.submit(stream, 64, commands);
+    expect(gl.count("linkProgram")).toBe(commands.length);
+    b.destroy();
+  });
+
+  it("releases programs that were prepared but never drawn on destroy", () => {
+    const { gl, backend } = setupFakeGl();
+    const b = backend();
+    b.prepare(["thickLine", "bar"]);
+    b.destroy();
+    expect(gl.validDeletes.filter((kind) => kind === "program")).toHaveLength(2);
+    expect(gl.invalidDeletes).toEqual([]);
+  });
+});

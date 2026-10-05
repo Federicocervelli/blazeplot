@@ -283,7 +283,7 @@ $effect(() => {
 
 ## Many charts in one page
 
-Each chart opens its own WebGL context by default, and browsers keep only about 16 per page, evicting the oldest. A list, grid, or table with a chart per row should draw through one shared context. `"shared"` needs no extra wiring in the component: pass it as the `renderer` option, and the hidden context is created with the first chart and released when the last one is disposed.
+Each chart opens its own WebGL context by default, and browsers keep only about 16 per page, evicting the oldest. A list, grid, or table with a chart per row should draw through one shared context. `"shared"` needs no extra wiring in the component: pass it as the `renderer` option, and the hidden context is created with the first chart and released two seconds after the last one is disposed (charts mounted in between reuse it, with its compiled programs).
 
 ```tsx
 import { useEffect, useRef } from "react";
