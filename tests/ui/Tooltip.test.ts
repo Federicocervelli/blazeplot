@@ -181,6 +181,8 @@ describe("tooltipPlugin", () => {
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(tooltipOf().getAttribute("aria-hidden")).toBe("false");
     fire(chart.canvas, pointerEvent("pointerup", 200, 100, { pointerType: "touch" }));
+    // Lifting the finger ends the press and hides the tooltip again.
+    expect(tooltipOf().getAttribute("aria-hidden")).toBe("true");
     chart.dispose();
 
     const cancelled = h.make({ plugins: [tooltipPlugin({ longPressMs: 1 })] });
@@ -214,6 +216,7 @@ describe("tooltipPlugin", () => {
     expect(move.defaultPrevented).toBe(true);
     expect(tip.textContent).toContain("(6, 60)");
     fire(chart.canvas, touch("pointerup", 240, 100));
+    expect(tip.getAttribute("aria-hidden")).toBe("true");
     chart.dispose();
 
     const moved = h.make({ plugins: [tooltipPlugin({ longPressMs: 20 })] });
@@ -233,6 +236,16 @@ describe("tooltipPlugin", () => {
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(tooltipOf().getAttribute("aria-hidden")).toBe("true");
     multi.dispose();
+
+    // A second finger arriving during an active press also ends it.
+    const during = h.make({ plugins: [tooltipPlugin({ longPressMs: 1 })] });
+    seed(during);
+    fire(during.canvas, touch("pointerdown", 200, 100, 1));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(tooltipOf().getAttribute("aria-hidden")).toBe("false");
+    fire(during.canvas, touch("pointerdown", 220, 100, 2));
+    expect(tooltipOf().getAttribute("aria-hidden")).toBe("true");
+    during.dispose();
   });
 
   it("lets the page scroll vertically but keeps sideways long-press drags", () => {
