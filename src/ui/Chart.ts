@@ -18,7 +18,7 @@ import { ChartPicker, insidePlot, plotToData } from "./ChartPicker.js";
 import { forcedColorsTheme, resolveChartTheme } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import { PluginHost } from "./PluginHost.js";
-import type { ChartLayoutReservation, ChartPlugin } from "./PluginHost.js";
+import type { ChartLayoutReservation, ChartPlugin } from "./PluginTypes.js";
 import { FollowXController } from "./FollowX.js";
 import { ChartAccessibility } from "./ChartAccessibility.js";
 import { domainsAlmostEqual, normalizeAxesConfig, normalizeFitPadding, paddedAxisDomain, resolveSeriesStyle } from "./ChartConfig.js";
@@ -31,8 +31,12 @@ const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "b
 const GRID_LINE_VERTEX_CAPACITY = (X_TICK_LIMIT + 2 + Y_TICK_LIMIT + 2) * 2;
 /** Smallest auto-sized gutter, so a short-label axis still leaves room for ticks. */
 const MIN_AUTO_GUTTER_PX = 16;
-export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartPickMode, ChartPickGroup, ChartPickOptions, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeSource, ChartViewportChangeEvent, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartScreenshotOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState, ChartFrameStats };
-import type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartPickMode, ChartPickGroup, ChartPickOptions, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeSource, ChartViewportChangeEvent, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartScreenshotOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState, ChartFrameStats } from "./ChartTypes.js";
+export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartScreenshotOptions } from "./ChartOptions.js";
+export type { ChartPickMode, ChartPickGroup, ChartPickOptions, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeEvent, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartFrameStats } from "./ChartEvents.js";
+export type { ChartViewportChangeSource, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
+import type { ChartOptions, TypedSeriesConfig, ChartScreenshotOptions } from "./ChartOptions.js";
+import type { ChartPickOptions, ChartSeriesState, ChartHoverState, ChartEventMap, ChartEventName, ChartFrameStats } from "./ChartEvents.js";
+import type { ChartViewportChangeSource, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFitToDataOptions, ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
 
 
 /** Imperative chart instance for rendering, interaction, and plugins. */

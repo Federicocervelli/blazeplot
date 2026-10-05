@@ -1,6 +1,6 @@
 import type { SeriesYAxis } from "../core/types.js";
-import type { ChartPickItem, ChartPickMode } from "./Chart.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
+import type { ChartPickItem, ChartPickMode } from "./ChartEvents.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginTypes.js";
 import { createOverlayLayer, createSvgElement, installPluginStyle, singleChartPlugin } from "./OverlayUtils.js";
 import { PICK_FORCED_COLORS_CSS, createPickMarker, createPickMarkerPool, createSyncRegistry, formatCompactNumber, installLongPress, pickAtDataX, placeAbsoluteWithinBox, renderPickItems } from "./PickOverlay.js";
 import type { PickMarkerPool, SyncMembership } from "./PickOverlay.js";

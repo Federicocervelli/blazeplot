@@ -1,6 +1,7 @@
 import { Chart } from "./Chart.js";
-import type { ChartOptions, ChartSelectEvent } from "./Chart.js";
-import type { ChartPlugin } from "./PluginHost.js";
+import type { ChartOptions } from "./ChartOptions.js";
+import type { ChartSelectEvent } from "./ChartEvents.js";
+import type { ChartPlugin } from "./PluginTypes.js";
 
 /** Options for one chart panel in a linked layout. */
 export interface LinkedChartPanelOptions {

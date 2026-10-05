@@ -1,4 +1,4 @@
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginTypes.js";
 import { placeFixedWithinViewport, singleChartPlugin } from "./OverlayUtils.js";
 import type { RgbaColor } from "../core/types.js";
 import { rgbaCss } from "./theme.js";

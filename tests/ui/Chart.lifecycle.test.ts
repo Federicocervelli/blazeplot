@@ -3,7 +3,7 @@ import { countNodes, RecordingRenderer, FakeResizeObserver, setupDom, trackListe
 import { chartRenderer, describeRecorded, installEngineDoubles, itRecorded } from "./engines.ts";
 import type { FakeRaf, ListenerLedger, TestEnv } from "./fakes.ts";
 import type { Chart as ChartType, ChartOptions } from "../../src/ui/Chart.ts";
-import type { ChartPlugin, ChartPluginContext, ChartPluginHandle } from "../../src/ui/PluginHost.ts";
+import type { ChartPlugin, ChartPluginContext, ChartPluginHandle } from "../../src/ui/PluginTypes.ts";
 import type { WebGL2UnavailableError as UnavailableErrorType } from "../../src/render/webgl2/availability.ts";
 
 let env: TestEnv;

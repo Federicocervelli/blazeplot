@@ -1,5 +1,5 @@
-import type { ChartSeriesState } from "./Chart.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
+import type { ChartSeriesState } from "./ChartEvents.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginTypes.js";
 import { installPluginStyle } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 

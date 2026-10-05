@@ -3,7 +3,7 @@ import { chartRenderer, installEngineDoubles, uiEngine } from "./engines.ts";
 import { RecordingRenderer, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
 import type { FakeRaf, ListenerLedger, TestEnv } from "./fakes.ts";
 import type { Chart as ChartType, ChartOptions } from "../../src/ui/Chart.ts";
-import type { ChartPlugin, ChartPluginContext } from "../../src/ui/PluginHost.ts";
+import type { ChartPlugin, ChartPluginContext } from "../../src/ui/PluginTypes.ts";
 
 export interface ChartHarness {
   readonly raf: FakeRaf;

@@ -1,5 +1,5 @@
-import type { ChartPointerEvent } from "./Chart.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
+import type { ChartPointerEvent } from "./ChartEvents.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginTypes.js";
 import type { SeriesYAxis } from "../core/types.js";
 import { asElement } from "./OverlayUtils.js";
 import { singleChartPlugin } from "./OverlayUtils.js";
