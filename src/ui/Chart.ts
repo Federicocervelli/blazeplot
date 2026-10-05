@@ -3,8 +3,6 @@ import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
-import { HistogramDataset, histogram } from "../core/Histogram.js";
-import type { HistogramOptions, HistogramResult } from "../core/Histogram.js";
 import type { ChartRenderer, ChartRendererFactory, ChartRendererKind } from "../render/ChartRenderer.js";
 import { Renderer } from "../render/Renderer.js";
 import { SeriesPainter } from "../render/SeriesPainter.js";
@@ -189,17 +187,6 @@ export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
 
 /** Identity and axis options shared by series that build their own dataset. */
 export type SeriesIdentityConfig = Pick<SeriesConfig, "id" | "name" | "yAxis" | "downsample">;
-
-/** `Chart.addHistogram(...)` config that bins raw one-dimensional values. */
-export interface HistogramSeriesConfig extends SeriesIdentityConfig, HistogramOptions {
-  readonly values: ArrayLike<number>;
-  readonly histogram?: never;
-}
-
-/** `Chart.addHistogram(...)` config for bins computed with `histogram(...)`. */
-export interface PrecomputedHistogramSeriesConfig extends SeriesIdentityConfig {
-  readonly histogram: HistogramResult;
-}
 
 /** Runtime state for one chart series. */
 export interface ChartSeriesState {
@@ -865,6 +852,7 @@ export class Chart {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
     const dataset = (config.dataset ?? this.createDefaultDataset(config)) as D;
+    if (config.mode === "bar" && style.barWidth === undefined) style = this.datasetBarWidth(dataset, style);
     const slot = this.nextPaletteIndex();
     const series = new SeriesStore(dataset, config, this.resolveSeriesStyle(style, slot), (change) => this.handleSeriesChange(change));
     this.seriesStyleState.set(series, { options: { ...style }, paletteIndex: style.color ? null : slot });
@@ -903,23 +891,6 @@ export class Chart {
   /** Add a candlestick series backed by an `OhlcDataset`. */
   addCandlestick<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
     return this.addSeries({ ...config, mode: "candlestick" }, style);
-  }
-
-  /**
-   * Add a histogram rendered as bars. Pass raw `values` plus `HistogramOptions`,
-   * or a precomputed `histogram` result. Bars default to the bin width.
-   */
-  addHistogram(config: HistogramSeriesConfig | PrecomputedHistogramSeriesConfig, style: SeriesStyleOptions = {}): SeriesStore<HistogramDataset> {
-    const result = "values" in config ? histogram(config.values, config) : config.histogram;
-    if (result.binWidth === null && style.barWidth === undefined && result.bins.length > 0) {
-      throw new TypeError("Chart.addHistogram requires style.barWidth for variable-width histogram bins.");
-    }
-
-    const { id, name, yAxis, downsample } = config;
-    return this.addBar(
-      { id, name, yAxis, downsample, dataset: new HistogramDataset(result) },
-      { ...style, barWidth: style.barWidth ?? result.binWidth ?? undefined },
-    );
   }
 
   /** Remove a series from the chart; returns `false` when it is not attached. */
@@ -1300,6 +1271,16 @@ export class Chart {
     if (this.running && this.options.renderLoop !== "continuous" && this.followXConfig?.currentX && !this.xFollowPaused) {
       this.requestRender();
     }
+  }
+
+  /** Datasets with fixed-width buckets (such as `HistogramDataset`) expose `defaultBarWidth`; `null` means variable width. */
+  private datasetBarWidth(dataset: Dataset, style: SeriesStyleOptions): SeriesStyleOptions {
+    const width = (dataset as { readonly defaultBarWidth?: number | null }).defaultBarWidth;
+    if (typeof width === "number") return { ...style, barWidth: width };
+    if (width === null && dataset.length > 0) {
+      throw new TypeError("Chart.addBar requires style.barWidth for variable-width histogram bins.");
+    }
+    return style;
   }
 
   private createDefaultDataset(config: SeriesConfig): Dataset {

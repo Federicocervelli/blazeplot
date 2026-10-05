@@ -1,4 +1,4 @@
-import { Chart, ServerSampledDataset, StaticDataset, StaticOhlcDataset, type ChartOptions } from "../../../../src/index.ts";
+import { Chart, HistogramDataset, ServerSampledDataset, StaticDataset, StaticOhlcDataset, type ChartOptions } from "../../../../src/index.ts";
 import { createLinkedCharts } from "../../../../src/linked.ts";
 import { annotationsPlugin } from "../../../../src/plugins/annotations.ts";
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
@@ -76,7 +76,7 @@ class DocChartGroup {
       axes: { x: { position: "outside", title: "Latency ms" }, y: { position: "outside", title: "Count" } },
       plugins: [interactionsPlugin({ doubleClickReset: true }), tooltipPlugin({ mode: "nearest-x" })],
     });
-    chart.addHistogram({ values, binSize: 5, name: "latency" }, { color: [0.988, 0.29, 0.02, 0.75] });
+    chart.addBar({ name: "latency", dataset: HistogramDataset.from(values, { binSize: 5 }) }, { color: [0.988, 0.29, 0.02, 0.75] });
     chart.fitToData({ includeZero: true, padding: { x: 0.04, y: 0.1 } });
     chart.start();
   }

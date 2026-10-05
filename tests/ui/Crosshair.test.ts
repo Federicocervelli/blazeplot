@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
+import { HistogramDataset } from "../../src/core/Histogram.ts";
 import type { CrosshairPluginOptions, CrosshairPosition, RulerMeasurement } from "../../src/ui/Crosshair.ts";
 import { countNodes } from "./fakes.ts";
 import { fire, installPlugin, pointerEvent, useChartHarness } from "./harness.ts";
@@ -131,7 +132,7 @@ describe("crosshairPlugin crosshair mode", () => {
   it("highlights histogram bins as an X interval", () => {
     const plugin = crosshairPlugin({ snap: "nearest-x" });
     const chart = h.make({ plugins: [plugin] });
-    chart.addHistogram({ values: [1, 1.2, 7], binSize: 1, min: 0, max: 10 });
+    chart.addBar({ dataset: HistogramDataset.from([1, 1.2, 7], { binSize: 1, min: 0, max: 10 }) });
     chart.setViewport({ xMin: 0, xMax: 10, yMin: 0, yMax: 5 });
     move(chart, 60, 100);
     const markers = chart.plotElement.querySelector(".blazeplot-crosshair-markers") as HTMLElement;
