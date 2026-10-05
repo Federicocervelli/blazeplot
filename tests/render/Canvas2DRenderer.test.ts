@@ -95,18 +95,19 @@ describe("Canvas2DRenderer", () => {
     expect(ctx.calls.filter((c) => c[0] === "arc")).toEqual([["arc", 50, 25, 4, 0, Math.PI * 2]]);
   });
 
-  it("draws bars from the baseline and enforces a 1px minimum width", () => {
+  it("draws bars from the baseline in one path and enforces a 1px minimum width", () => {
     const { renderer, ctx } = setup();
     const style = testStyle({ barWidth: 1, baseline: 0, color: [0, 0, 1, 1] });
     renderer.drawBarsInstanced(upload(renderer, [5, 5, 8, 2.5]), 2, style, projection);
-    expect(ctx.calls.filter((c) => c[0] === "fillRect")).toEqual([
-      ["fillRect", "rgba(0,0,255,1)", 45, 0, 10, 50],
-      ["fillRect", "rgba(0,0,255,1)", 75, 25, 10, 25],
+    expect(ctx.calls.filter((c) => c[0] === "rect" || c[0] === "fill" || c[0] === "fillRect")).toEqual([
+      ["rect", 45, 0, 10, 50],
+      ["rect", 75, 25, 10, 25],
+      ["fill", "rgba(0,0,255,1)", -1],
     ]);
 
     ctx.calls.length = 0;
     renderer.drawBarsInstanced(upload(renderer, [5, 5]), 1, testStyle({ barWidth: 0.01 }), projection);
-    expect(ctx.calls.filter((c) => c[0] === "fillRect")).toEqual([["fillRect", "rgba(255,255,255,1)", 50, 0, 1, 50]]);
+    expect(ctx.calls.filter((c) => c[0] === "rect")).toEqual([["rect", 50, 0, 1, 50]]);
   });
 
   it("fills rectangle triangle pairs as snapped rects and other triangles as paths", () => {
@@ -115,10 +116,45 @@ describe("Canvas2DRenderer", () => {
     const rect = [2, 1, 4, 1, 2, 3, 2, 3, 4, 1, 4, 3];
     const free = [0, 0, 5, 0, 0, 5, 5, 0, 5, 5, 2, 2];
     renderer.drawTriangles(upload(renderer, [...rect, ...free]), 12, [1, 0, 1, 1], projection);
-    expect(ctx.calls.filter((c) => c[0] === "fillRect")).toEqual([["fillRect", "rgba(255,0,255,1)", 20, 20, 20, 20]]);
-    const fill = ctx.calls.find((c) => c[0] === "fill");
-    expect(fill?.[2]).toBe(8);
+    expect(ctx.calls.filter((c) => c[0] === "rect")).toEqual([["rect", 20, 20, 20, 20]]);
+    const fills = ctx.calls.filter((c) => c[0] === "fill");
+    expect(fills.map((c) => c[2])).toEqual([-1, 8]);
   });
+
+  it("fills every rectangle of a dense batch with a single fill", () => {
+    const { renderer, ctx } = setup();
+    const verts: number[] = [];
+    for (let i = 0; i < 50; i++) verts.push(i * 0.2, 0, i * 0.2 + 0.2, 0, i * 0.2, 5, i * 0.2, 5, i * 0.2 + 0.2, 0, i * 0.2 + 0.2, 5);
+    renderer.drawTriangles(upload(renderer, verts), 300, [0, 0, 0, 1], projection);
+    expect(ctx.calls.filter((c) => c[0] === "rect")).toHaveLength(50);
+    expect(ctx.calls.filter((c) => c[0] === "fill")).toHaveLength(1);
+  });
+
+  it("keeps only the first, extreme, and last vertices of each pixel column", () => {
+    const { renderer, ctx } = setup();
+    // 100 px wide for x in [0, 10]: x 1.0 .. 1.09 share pixel column 10. Data y 1, 4, 2, 3, 0.5 sit at device y
+    // 40, 10, 30, 20, 45 (flipped), so only the second vertex is an interior extreme; it is placed on the column center (10.5).
+    const buffer = upload(renderer, [0, 2.5, 1.0, 1, 1.02, 4, 1.04, 2, 1.06, 3, 1.09, 0.5, 5, 2.5]);
+    renderer.drawLines(buffer, 7, [1, 0, 0, 1], 1, projection);
+    const path = ctx.calls.filter((c) => c[0] === "moveTo" || c[0] === "lineTo");
+    expect(path.map((c) => [c[0], Math.round((c[1] as number) * 100) / 100, Math.round((c[2] as number) * 100) / 100])).toEqual([
+      ["moveTo", 0, 25],
+      ["lineTo", 10, 40],
+      ["lineTo", 10.5, 10],
+      ["lineTo", 10.9, 45],
+      ["lineTo", 50, 25],
+    ]);
+  });
+
+  it("never merges vertices across a non-finite gap or into a different pixel column", () => {
+    const { renderer, ctx } = setup();
+    // One vertex in column 10, a NaN, then vertices in columns 10 and 11.
+    const buffer = upload(renderer, [1.0, 1, NaN, NaN, 1.05, 2, 1.1, 3]);
+    renderer.drawLines(buffer, 4, [1, 0, 0, 1], 1, projection);
+    const path = ctx.calls.filter((c) => c[0] === "moveTo" || c[0] === "lineTo");
+    expect(path.map((c) => c[0])).toEqual(["moveTo", "moveTo", "lineTo"]);
+  });
+
 
   it("fills triangle strips as one ribbon polygon", () => {
     const { renderer, ctx } = setup();

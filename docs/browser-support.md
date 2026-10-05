@@ -86,6 +86,7 @@ Pixel-level output between engines, and between releases, is not covered by semv
 - Rectangles (bars, histogram bins, dense min/max columns, candle bodies) snap to whole device pixels and are at least one pixel wide and tall, so adjacent columns never show seams. A rectangle edge that falls exactly on a half pixel may land one pixel away from where the GPU puts it.
 - Scatter markers are round and the same size in every engine; Canvas 2D antialiases their edges.
 - Lines narrower than one device pixel are drawn one device pixel wide.
+- Thin lines (up to 1.5 device pixels) with several samples per device pixel column are drawn through the first, lowest, highest, and last sample of each column, so spikes and dips survive but sub-pixel wiggles inside one column do not; this is what keeps dense live data fast on Canvas 2D. Wider lines keep every sample.
 
 The visual suite (`bun run test:visual`) renders every case with each engine and with WebGL disabled in Chrome through the default renderer, and compares the Canvas 2D and shared renders with the WebGL2 render of the same case within documented tolerances (see [Local development](./internal/local-development.md#cross-engine-parity)). Firefox and WebKit run the smoke tests on both WebGL2 and Canvas 2D.
 
