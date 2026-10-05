@@ -59,7 +59,7 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 17 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 167 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 168 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
@@ -88,7 +88,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `Camera2D` | class | `./interaction/Camera2D` | Camera that maps data domains to clip, screen, and plot coordinates. |
 | `canvas2dRenderer` | function | `./render/engines` | Renderer factory for Canvas 2D: no WebGL2 needed, lower throughput. Throws `Canvas2DUnavailableError` without a 2D context. Same as `renderer: "canvas2d"`. |
 | `Canvas2DUnavailableError` | class | `./render/canvas2d/Canvas2DRenderer` | Error thrown when a Canvas 2D renderer cannot be created. |
-| `Chart` | class | `./ui/Chart` | Imperative chart instance for rendering, interaction, and plugins. |
+| `Chart` | class | `./ui/Chart` | Imperative chart instance for rendering, interaction, and plugins. This file is intentionally the one large module (about 870 lines): it is the public facade, and most of its length is the documented public API (series, viewport, follow, fit, hover/pick, theme, lifecycle). The logic lives in focused collaborators (ChartPicker, ChartHover, ChartAccessibility, ChartSeriesStyles, ChartFit, FollowXController, ChartEmitter, PluginHost, SeriesPainter, ChartLayout) that this class wires. |
 | `ChartAccessibilityMessages` | type | `./ui/Chart` | — |
 | `ChartAccessibilityOptions` | type | `./ui/Chart` | — |
 | `ChartAutoFitYOptions` | type | `./ui/Chart` | — |

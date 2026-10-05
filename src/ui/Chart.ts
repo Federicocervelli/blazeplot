@@ -1,8 +1,6 @@
-import type { SeriesConfig, SeriesStyle, SeriesStyleOptions, Dataset, SeriesYAxis, Viewport } from "../core/types.js";
+import type { SeriesConfig, SeriesStyleOptions, Dataset, SeriesYAxis, Viewport } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
-import { RingBuffer } from "../core/RingBuffer.js";
-import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import { toRenderSurface } from "../render/ChartRenderer.js";
 import type { ChartRenderSurface, ChartRenderer, ChartRendererInfo, RendererLossState, RendererName } from "../render/ChartRenderer.js";
 import { createEngine } from "../render/engines.js";
@@ -22,7 +20,9 @@ import { chartInternals, registerChartInternals } from "./ChartInternals.js";
 import type { ChartLayoutReservation } from "./PluginTypes.js";
 import { FollowXController } from "./FollowX.js";
 import { ChartAccessibility } from "./ChartAccessibility.js";
-import { domainsAlmostEqual, normalizeAxesConfig, normalizeFitPadding, paddedAxisDomain, resolveSeriesStyle } from "./ChartConfig.js";
+import { normalizeAxesConfig, createDefaultDataset, datasetBarWidth } from "./ChartConfig.js";
+import { ChartSeriesStyles } from "./ChartSeriesStyles.js";
+import { fitCameras } from "./ChartFit.js";
 import type { ResolvedAxesConfig } from "./ChartConfig.js";
 import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
 import type { ChartSummary } from "./ChartSummary.js";
@@ -40,7 +40,14 @@ import type { ChartPickOptions, ChartSeriesState, ChartHoverState, ChartEventMap
 import type { ChartViewportChangeSource, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFitToDataOptions, ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
 
 
-/** Imperative chart instance for rendering, interaction, and plugins. */
+/**
+ * Imperative chart instance for rendering, interaction, and plugins.
+ *
+ * This file is intentionally the one large module (about 870 lines): it is the public facade, and most of
+ * its length is the documented public API (series, viewport, follow, fit, hover/pick, theme, lifecycle).
+ * The logic lives in focused collaborators (ChartPicker, ChartHover, ChartAccessibility, ChartSeriesStyles,
+ * ChartFit, FollowXController, ChartEmitter, PluginHost, SeriesPainter, ChartLayout) that this class wires.
+ */
 export class Chart {
   private series: SeriesStore[] = [];
   private camera: Camera2D;
@@ -112,8 +119,13 @@ export class Chart {
     seriesColors: () => this.resolvedTheme.seriesColors,
     onForcedColorsChange: () => this.applyTheme(),
   });
-  /** Caller style options per series, plus the theme palette slot it follows (`null` once a color is pinned). */
-  private readonly seriesStyleState = new WeakMap<SeriesStore, { options: SeriesStyleOptions; paletteIndex: number | null }>();
+  private readonly seriesStyles = new ChartSeriesStyles({
+    series: () => this.series,
+    palette: () => this.baseTheme.seriesColors,
+    root: () => this.layout.root,
+    a11y: () => this.a11y,
+    emitSeriesChange: () => this.emitSeriesChange(),
+  });
   private readonly handleRootFocusIn = (): void => {
     this.a11y.flushIfDirty();
   };
@@ -361,12 +373,12 @@ export class Chart {
     if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
-    const dataset = (config.dataset ?? this.createDefaultDataset(config)) as D;
-    if (config.mode === "bar" && style.barWidth === undefined) style = this.datasetBarWidth(dataset, style);
-    const slot = this.nextPaletteIndex();
-    const series = new SeriesStore(dataset, config, this.resolveSeriesStyle(style, slot), (change) => this.handleSeriesChange(change));
-    this.seriesStyleState.set(series, { options: { ...style }, paletteIndex: style.color ? null : slot });
-    series.bindStyleHandler((target, options) => this.setSeriesStyle(target, options));
+    const dataset = (config.dataset ?? createDefaultDataset(config)) as D;
+    if (config.mode === "bar" && style.barWidth === undefined) style = datasetBarWidth(dataset, style);
+    const slot = this.seriesStyles.nextPaletteIndex();
+    const series = new SeriesStore(dataset, config, this.seriesStyles.resolve(style, slot), (change) => this.handleSeriesChange(change));
+    this.seriesStyles.track(series, style, slot);
+    series.bindStyleHandler((target, options) => this.seriesStyles.set(target, options));
     this.series.push(series);
     if (this.a11y.forcedColorsActive) this.a11y.applyForcedSeriesStyles();
     this.emitSeriesChange();
@@ -474,51 +486,7 @@ export class Chart {
    * scale space, and an axis with no usable domain (e.g. non-positive data on a log axis) is left alone.
    */
   fitToData(options: ChartFitToDataOptions = {}): boolean {
-    const fitX = options.x !== false;
-    const fitY = options.y !== false;
-    if (!fitX && !fitY) return false;
-
-    const yAxis = options.yAxis ?? "both";
-    const padding = normalizeFitPadding(options.padding);
-    let xMin = Infinity;
-    let xMax = -Infinity;
-    let leftYMin = Infinity;
-    let leftYMax = -Infinity;
-    let rightYMin = Infinity;
-    let rightYMax = -Infinity;
-
-    for (const series of this.candidateSeries(options)) {
-      const bounds = series.dataBounds({ xMin: options.xMin, xMax: options.xMax });
-      if (!bounds) continue;
-
-      xMin = Math.min(xMin, bounds.xMin);
-      xMax = Math.max(xMax, bounds.xMax);
-      if (series.config.yAxis === "right") {
-        rightYMin = Math.min(rightYMin, bounds.yMin);
-        rightYMax = Math.max(rightYMax, bounds.yMax);
-      } else {
-        leftYMin = Math.min(leftYMin, bounds.yMin);
-        leftYMax = Math.max(leftYMax, bounds.yMax);
-      }
-    }
-
-    let changed = false;
-    if (fitX && Number.isFinite(xMin) && Number.isFinite(xMax)) {
-      const xDomain = paddedAxisDomain(this.axis, "x", xMin, xMax, padding.x, false);
-      if (xDomain && !domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xDomain.min, xDomain.max)) {
-        this.camera.setViewport({ xMin: xDomain.min, xMax: xDomain.max });
-        changed = true;
-      }
-    }
-    const fitYAxis = (camera: Camera2D, controller: AxisController, min: number, max: number): void => {
-      if (!Number.isFinite(min) || !Number.isFinite(max)) return;
-      const domain = paddedAxisDomain(controller, "y", min, max, padding.y, options.includeZero === true);
-      if (!domain || domainsAlmostEqual(camera.yMin, camera.yMax, domain.min, domain.max)) return;
-      camera.setViewport({ yMin: domain.min, yMax: domain.max });
-      changed = true;
-    };
-    if (fitY && yAxis !== "right") fitYAxis(this.camera, this.axis, leftYMin, leftYMax);
-    if (fitY && yAxis !== "left") fitYAxis(this.rightCamera, this.rightAxis, rightYMin, rightYMax);
+    const changed = fitCameras(this.candidateSeries(options), options, { camera: this.camera, controller: this.axis }, { camera: this.rightCamera, controller: this.rightAxis });
 
     if (changed) {
       this.syncRightCameraX();
@@ -590,7 +558,7 @@ export class Chart {
     this.resolvedTheme = forcedColorsActive ? forcedColorsTheme(this.baseTheme, root) : this.baseTheme;
     root.style.background = this.resolvedTheme.backgroundCssColor;
     root.style.setProperty("--blazeplot-focus-ring", this.resolvedTheme.focusRingColor);
-    this.refreshSeriesStyles();
+    this.seriesStyles.refresh();
     this.a11y.applyForcedSeriesStyles();
     this.axisOverlay?.setOptions({ color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont });
     this.updateTitles();
@@ -754,80 +722,6 @@ export class Chart {
     if (this.running && this.options.renderLoop !== "continuous" && this.followXPolicy.options?.currentX && !this.followXPolicy.isPaused) {
       this.requestRender();
     }
-  }
-
-  /** Datasets with fixed-width buckets (such as `HistogramDataset`) expose `defaultBarWidth`; `null` means variable width. */
-  private datasetBarWidth(dataset: Dataset, style: SeriesStyleOptions): SeriesStyleOptions {
-    const width = (dataset as { readonly defaultBarWidth?: number | null }).defaultBarWidth;
-    if (typeof width === "number") return { ...style, barWidth: width };
-    if (width === null && dataset.length > 0) {
-      throw new TypeError("Chart.addBar requires style.barWidth for variable-width histogram bins.");
-    }
-    return style;
-  }
-
-  private createDefaultDataset(config: SeriesConfig): Dataset {
-    const { capacity } = config;
-    if (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity <= 0) {
-      throw new TypeError("Series capacity must be a positive integer when no dataset is provided.");
-    }
-    if (config.xStep !== undefined || config.xStart !== undefined) {
-      if (config.overflow !== undefined && config.overflow !== "wrap") {
-        throw new TypeError("Series shorthand { capacity, xStep } uses UniformRingBuffer, which supports only wrap overflow.");
-      }
-      return new UniformRingBuffer(capacity, { xStart: config.xStart, xStep: config.xStep, valuePrecision: config.valuePrecision });
-    }
-    return new RingBuffer(capacity, { overflow: config.overflow, valuePrecision: config.valuePrecision, onInvalidSample: config.onInvalidSample });
-  }
-
-  /** First theme palette slot no attached palette-colored series uses (the next slot in order when all are taken). */
-  private nextPaletteIndex(): number {
-    const size = this.baseTheme.seriesColors.length;
-    const used = new Set<number>();
-    for (const series of this.series) {
-      const slot = this.seriesStyleState.get(series)?.paletteIndex;
-      if (slot !== null && slot !== undefined) used.add(slot);
-    }
-    for (let slot = 0; slot < size; slot++) if (!used.has(slot)) return slot;
-    return this.series.length % size;
-  }
-
-  /** Merge `options` into a series' style: pin an explicit color, resolve, and respect forced colors. */
-  private setSeriesStyle(series: SeriesStore, options: SeriesStyleOptions): void {
-    const state = this.seriesStyleState.get(series);
-    if (!state) return;
-    const merged: Record<string, unknown> = { ...state.options };
-    for (const [key, value] of Object.entries(options)) {
-      if (value !== undefined) merged[key] = value;
-    }
-    state.options = merged as SeriesStyleOptions;
-    if (options.color) state.paletteIndex = null;
-    const resolved = this.resolveSeriesStyle(state.options, state.paletteIndex ?? this.nextPaletteIndex());
-    if (this.a11y.forcedColorsActive || this.a11y.originalStyles.has(series)) {
-      this.a11y.originalStyles.set(series, resolved);
-      this.a11y.applyForcedSeriesStyles();
-    } else {
-      series.applyResolvedStyle(resolved);
-    }
-    this.emitSeriesChange();
-  }
-
-  /** Re-resolve every series style from its stored options, so palette-colored series follow the theme. */
-  private refreshSeriesStyles(): void {
-    for (const series of this.series) {
-      const state = this.seriesStyleState.get(series);
-      if (!state) continue;
-      const resolved = this.resolveSeriesStyle(state.options, state.paletteIndex ?? this.nextPaletteIndex());
-      if (this.a11y.forcedColorsActive) this.a11y.originalStyles.set(series, resolved);
-      else series.applyResolvedStyle(resolved);
-    }
-    if (!this.a11y.forcedColorsActive) this.a11y.originalStyles.clear();
-  }
-
-  private resolveSeriesStyle(style: SeriesStyleOptions, paletteIndex: number): SeriesStyle {
-    // The caller palette, not the forced-colors one: forced styles are applied on top and undone later.
-    const palette = this.baseTheme.seriesColors;
-    return resolveSeriesStyle(style, palette[paletteIndex % palette.length]!, this.layout.root);
   }
 
   private handleSeriesChange(change: SeriesChange): void {

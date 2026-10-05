@@ -1,4 +1,6 @@
-import type { RgbaColor, SeriesStyle, SeriesStyleOptions } from "../core/types.js";
+import type { Dataset, RgbaColor, SeriesConfig, SeriesStyle, SeriesStyleOptions } from "../core/types.js";
+import { RingBuffer } from "../core/RingBuffer.js";
+import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import type { AxisController, AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { NormalizedAxisConfig } from "./ChartLayout.js";
 import { resolveThemeColor } from "./theme.js";
@@ -91,4 +93,28 @@ export function resolveSeriesStyle(style: SeriesStyleOptions, fallbackColor: Rgb
     downColor: resolveThemeColor(style.downColor, style.fillColor === undefined ? withAlpha(color, 0.45) : fillColor, root),
     wickColor: resolveThemeColor(style.wickColor, color, root),
   };
+}
+
+/** Datasets with fixed-width buckets (such as `HistogramDataset`) expose `defaultBarWidth`; `null` means variable width. */
+export function datasetBarWidth(dataset: Dataset, style: SeriesStyleOptions): SeriesStyleOptions {
+  const width = (dataset as { readonly defaultBarWidth?: number | null }).defaultBarWidth;
+  if (typeof width === "number") return { ...style, barWidth: width };
+  if (width === null && dataset.length > 0) {
+    throw new TypeError("Chart.addBar requires style.barWidth for variable-width histogram bins.");
+  }
+  return style;
+}
+
+export function createDefaultDataset(config: SeriesConfig): Dataset {
+  const { capacity } = config;
+  if (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity <= 0) {
+    throw new TypeError("Series capacity must be a positive integer when no dataset is provided.");
+  }
+  if (config.xStep !== undefined || config.xStart !== undefined) {
+    if (config.overflow !== undefined && config.overflow !== "wrap") {
+      throw new TypeError("Series shorthand { capacity, xStep } uses UniformRingBuffer, which supports only wrap overflow.");
+    }
+    return new UniformRingBuffer(capacity, { xStart: config.xStart, xStep: config.xStep, valuePrecision: config.valuePrecision });
+  }
+  return new RingBuffer(capacity, { overflow: config.overflow, valuePrecision: config.valuePrecision, onInvalidSample: config.onInvalidSample });
 }
