@@ -106,6 +106,11 @@ export class AxisController {
   private options: AxisControllerOptions;
   private lastXTimeInterval: TimeInterval | null = null;
   private lastYTimeInterval: TimeInterval | null = null;
+  private lastXStep: number | null = null;
+  private lastYStep: number | null = null;
+  private lastXFirstTick: number | null = null;
+  private lastYFirstTick: number | null = null;
+  private lastLinearStep: number | null = null;
 
   /** Create an axis controller for a camera and optional scale settings. */
   constructor(private readonly camera: Camera2D, options: AxisControllerOptions = {}) {
@@ -117,6 +122,10 @@ export class AxisController {
     this.options = options;
     this.lastXTimeInterval = null;
     this.lastYTimeInterval = null;
+    this.lastXStep = null;
+    this.lastYStep = null;
+    this.lastXFirstTick = null;
+    this.lastYFirstTick = null;
   }
 
   /** Generate X-axis tick values for the current viewport. */
@@ -125,10 +134,14 @@ export class AxisController {
     if (axisOptions?.scale === "time") {
       const result = this.getTimeTickValues(this.camera.xMin, this.camera.xMax, canvasWidth, maxTicks, 80, target, axisOptions);
       this.lastXTimeInterval = this.lastTimeInterval;
+      this.lastXFirstTick = result[0] ?? null;
       return result;
     }
     this.lastXTimeInterval = null;
-    return this.getScaledTickValues(this.camera.xMin, this.camera.xMax, canvasWidth, maxTicks, 80, target, axisOptions, "x");
+    this.lastLinearStep = null;
+    const ticks = this.getScaledTickValues(this.camera.xMin, this.camera.xMax, canvasWidth, maxTicks, 80, target, axisOptions, "x");
+    this.lastXStep = this.lastLinearStep;
+    return ticks;
   }
 
   /** Generate Y-axis tick values for the current viewport. */
@@ -137,10 +150,14 @@ export class AxisController {
     if (axisOptions?.scale === "time") {
       const result = this.getTimeTickValues(this.camera.yMin, this.camera.yMax, canvasHeight, maxTicks, 48, target, axisOptions);
       this.lastYTimeInterval = this.lastTimeInterval;
+      this.lastYFirstTick = result[0] ?? null;
       return result;
     }
     this.lastYTimeInterval = null;
-    return this.getScaledTickValues(this.camera.yMin, this.camera.yMax, canvasHeight, maxTicks, 48, target, axisOptions, "y");
+    this.lastLinearStep = null;
+    const ticks = this.getScaledTickValues(this.camera.yMin, this.camera.yMax, canvasHeight, maxTicks, 48, target, axisOptions, "y");
+    this.lastYStep = this.lastLinearStep;
+    return ticks;
   }
 
   /** Throw when the current domain is invalid for the configured scale. */
@@ -297,7 +314,7 @@ export class AxisController {
     if (typeof tickFormat === "function") return tickFormat(value, axis);
 
     if (axisOptions?.scale && typeof axisOptions.scale === "object") {
-      return axisOptions.scale.formatTick?.(value, axis) ?? this.formatLinearValue(value);
+      return axisOptions.scale.formatTick?.(value, axis) ?? this.formatLinearValue(value, null);
     }
 
     if (axisOptions?.scale === "categorical") {
@@ -307,10 +324,12 @@ export class AxisController {
 
     if (axisOptions?.scale === "time") {
       const interval = axis === "x" ? this.lastXTimeInterval : this.lastYTimeInterval;
-      return this.formatTimeValue(value, tickFormat, axisOptions.timezone ?? "local", interval);
+      const first = axis === "x" ? this.lastXFirstTick : this.lastYFirstTick;
+      return this.formatTimeValue(value, tickFormat, axisOptions.timezone ?? "local", interval, first);
     }
 
-    return this.formatLinearValue(value);
+    const step = axisOptions?.scale === "log" || axisOptions?.scale === "symlog" ? null : axis === "x" ? this.lastXStep : this.lastYStep;
+    return this.formatLinearValue(value, step);
   }
 
   private lastTimeInterval: TimeInterval | null = null;
@@ -359,6 +378,7 @@ export class AxisController {
     const transform = (value: number): number => Math.sign(value) * Math.log1p(Math.abs(value) / c);
     const inverse = (value: number): number => Math.sign(value) * c * Math.expm1(Math.abs(value));
     const scaled = this.getLinearTickValues(transform(min), transform(max), pixelSize, maxTicks, minPixelSpacing, target);
+    this.lastLinearStep = null;
     for (let i = 0; i < scaled.length; i++) scaled[i] = this.normalizeTick(inverse(scaled[i]!), Math.abs(inverse(scaled[1] ?? scaled[0] ?? 1) - inverse(scaled[0] ?? 0)) || 1);
     return scaled;
   }
@@ -373,9 +393,19 @@ export class AxisController {
     return target;
   }
 
-  private formatLinearValue(value: number): string {
-    if (Math.abs(value) < 1e-12) return "0";
+  /**
+   * Format a linear value. With a known tick `step`, precision follows the step so
+   * adjacent ticks always read differently; without one it follows the magnitude.
+   */
+  private formatLinearValue(value: number, step: number | null): string {
     const abs = Math.abs(value);
+    if (step !== null && step > 0 && Number.isFinite(step)) {
+      if (abs < step * 1e-6) return "0";
+      const decimals = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
+      if (decimals <= 20 && abs < 1e21) return value.toFixed(decimals);
+      return value.toExponential(Math.min(20, Math.max(2, Math.ceil(Math.log10(abs / step)))));
+    }
+    if (abs < 1e-12) return "0";
     if (abs >= 1e6 || abs < 1e-3) return value.toExponential(2);
     if (abs >= 100) return value.toFixed(0);
     if (abs >= 10) return value.toFixed(1);
@@ -401,6 +431,7 @@ export class AxisController {
       lastIndex = Math.ceil(max / step);
     }
 
+    this.lastLinearStep = step;
     for (let index = firstIndex; index <= lastIndex; index++) {
       target.push(this.normalizeTick(index * step, step));
     }
@@ -522,14 +553,29 @@ export class AxisController {
       : new Date(year, month, day, hour, minute, second, millisecond).getTime();
   }
 
-  private formatTimeValue(value: number, tickFormat: string | undefined, timezone: AxisTimeZone, interval: TimeInterval | null): string {
+  private formatTimeValue(value: number, tickFormat: string | undefined, timezone: AxisTimeZone, interval: TimeInterval | null, firstTick: number | null = null): string {
     const date = new Date(value);
     if (tickFormat) return this.formatTimePattern(date, tickFormat, timezone);
 
     const approxMs = interval?.[2] ?? 0;
-    if (approxMs > 0 && approxMs < SECOND) return this.formatTimePattern(date, "%H:%M:%S.%L", timezone);
-    if (approxMs > 0 && approxMs < DAY) return this.formatTimePattern(date, "%H:%M:%S", timezone);
-    if (approxMs > 0 && approxMs < YEAR) return this.formatTimePattern(date, "%b %d", timezone);
+    const utc = timezone === "utc";
+    const isFirst = firstTick !== null && value === firstTick;
+    const month = utc ? date.getUTCMonth() : date.getMonth();
+    const day = utc ? date.getUTCDate() : date.getDate();
+    const hour = utc ? date.getUTCHours() : date.getHours();
+    const dayStart = hour === 0 && (utc ? date.getUTCMinutes() : date.getMinutes()) === 0 && (utc ? date.getUTCSeconds() : date.getSeconds()) === 0 && (utc ? date.getUTCMilliseconds() : date.getMilliseconds()) === 0;
+    const yearStart = month === 0 && day === 1 && dayStart;
+    // Two-level labels: the first tick and ticks crossing a larger boundary carry the larger unit.
+    if (approxMs > 0 && approxMs < SECOND) {
+      return this.formatTimePattern(date, isFirst || dayStart ? "%b %d %H:%M:%S.%L" : "%H:%M:%S.%L", timezone);
+    }
+    if (approxMs > 0 && approxMs < DAY) {
+      if (yearStart) return this.formatTimePattern(date, "%Y-%m-%d", timezone);
+      return this.formatTimePattern(date, isFirst || dayStart ? "%b %d %H:%M:%S" : "%H:%M:%S", timezone);
+    }
+    if (approxMs > 0 && approxMs < YEAR) {
+      return this.formatTimePattern(date, isFirst || yearStart ? "%b %d %Y" : "%b %d", timezone);
+    }
     return this.formatTimePattern(date, "%Y", timezone);
   }
 
