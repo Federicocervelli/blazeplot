@@ -2,15 +2,15 @@
 
 This guide is for applications and plugins written against BlazePlot 0.x. It lists every breaking change between 0.5.5 and 1.0, with before and after code, and a checklist at the end.
 
-The list was produced by comparing the published declarations of 0.5.5 with the 1.0 declarations (the `api/public-api.md` snapshot), plus the 1.0 changes that alter runtime behavior. If you are on 0.4 or older, apply the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) first (most upgrades there are mechanical renames), then come back here. Release candidates are published to the npm `rc` dist-tag until 1.0 ships.
+The list was produced by comparing the published declarations of 0.5.5 with the 1.0 declarations (the `api/public-api.md` snapshot), plus the changelogs of the release candidates (`changelogs/v1.0.0-rc.*.md`) for the changes that alter runtime behavior. If you are on 0.4 or older, apply the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) first (most upgrades there are mechanical renames), then come back here. Release candidates are published to the npm `rc` dist-tag until 1.0 ships.
 
-Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals and two flame graph helpers, with chart data export moved to `blazeplot/export`, one typing fix, one data-ingestion rule (X must be finite and non-decreasing; see change 3), a reshaped (now stable) plugin contract that only custom plugin authors touch, accessibility semantics on the chart root (`role="figure"`, a generated description, focus rings, and new keyboard paths; see change 9), and a final naming pass that renames a few methods, types, and options and removes the raw camera, GL, and element getters from `Chart` (change 10).
+Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals, two flame graph helpers, and `chart.addHistogram`, with chart data export moved to `blazeplot/export`, one typing fix, one data-ingestion rule (X must be finite and non-decreasing; see change 3), a reshaped (now stable) plugin contract that only custom plugin authors touch, accessibility semantics on the chart root (`role="figure"`, a generated description, focus rings, and keyboard navigation that moved into `interactionsPlugin`; see change 9), a final naming pass that renames a few methods, types, and options and removes the raw camera, GL, and element getters from `Chart` (change 10), stricter dataset input (mismatched lengths throw, change 11), cooperative touch and wheel handling (change 12), a few rendering and layout differences (changes 13 and 15), and runtime behavior changes in events and plugins (change 14). Everything new and additive (renderers, localization, axis sizing, and so on) is listed under [New in 1.0](#new-in-10).
 
 ## What did not change
 
-- The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`, dataset classes, and every built-in plugin option keep their signatures, except that the custom `render`/`renderHighlight` callbacks of the legend, tooltip, and crosshair plugins now receive the plugin context instead of the `Chart` (see change 8), and the renames in change 10. Datasets gained optional validation options (change 3).
-- Entry points and subpaths are the same: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and `blazeplot/plugins/*`. What lives in `blazeplot/data` and `blazeplot/export` changed (see change 6).
-- The package was already ESM only and already required WebGL2; 1.0 now states both as policy.
+- The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`, dataset classes, and every built-in plugin option keep their signatures, except that the custom `render`/`renderHighlight` callbacks of the legend, tooltip, and crosshair plugins now receive the plugin context instead of the `Chart` (see change 8), the renames in change 10, and the removed or moved options in changes 9, 11, and 12. Datasets gained optional validation options (change 3).
+- The existing entry points and subpaths still exist: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and the `blazeplot/plugins/*` entries. What lives in `blazeplot/data` and `blazeplot/export` changed (see change 6). 1.0 adds `blazeplot/plugins/a11y`, `blazeplot/renderers/canvas2d`, and `blazeplot/renderers/shared` (see [New in 1.0](#new-in-10)).
+- The package was already ESM only and already required WebGL2 by default; 1.0 states both as policy. Canvas 2D is an opt-in fallback (change 16), never a silent default.
 
 ## Breaking changes
 
@@ -44,7 +44,7 @@ if (isWebGL2Available()) {
 }
 ```
 
-Custom backends are not supported, and `backendFactory` is not covered by semver. If you only used it for test fakes, keep doing so against the internal option at your own risk; otherwise render in a real browser (see [Troubleshooting](./troubleshooting.md)).
+Custom backends are not supported, and `backendFactory` is not covered by semver. If you only used it for test fakes, keep doing so against the internal option at your own risk; otherwise render in a real browser (see [Troubleshooting](./troubleshooting.md)). To draw without WebGL2, pass `renderer: autoRenderer()` from `blazeplot/renderers/canvas2d` instead of writing a backend (change 16).
 
 ### 2. `emitSelect` is removed, and `ChartSelectEvent` is no longer generic
 
@@ -139,7 +139,7 @@ Nothing was removed here, but the tier changed. These are now tagged `@experimen
 
 The plugin contract itself is stable in 1.0, in its new shape (change 8).
 
-Action: if you implement a fast-path dataset interface or use `ctx.unstable`, pin a compatible 1.x range, read the changelog on minor upgrades, and prefer the stable `Dataset` contract and context groups where possible. See [API stability](./stability.md#experimental).
+Action: if you implement a fast-path dataset interface or use `ctx.unstable`, pin a compatible 1.x range, read the changelog on minor upgrades, and prefer the stable `Dataset` contract and context groups where possible. The built-in datasets' copy methods gained an optional trailing `yOrigin` argument (the Y shift of change 13); a custom fast-path dataset keeps working without it, because the chart shifts its output after the copy. `ctx.unstable.getWebGLContext()` returns `null` with the Canvas 2D and shared renderers (change 16). See [API stability](./stability.md#experimental).
 
 ### 5. Newly exported helper types
 
@@ -282,6 +282,8 @@ const footerPlugin: ChartPlugin = {
 export { footerPlugin };
 ```
 
+Later release candidates added to `ctx.dom` and `ctx.viewport`: `ctx.dom.document` and `ctx.dom.view` (the chart's own document and window, which differ from the globals inside an iframe, popup, or Picture-in-Picture window), `ctx.dom.create(tag)` and `createSvg(tag)` (create elements with these instead of `document.createElement`), `ctx.dom.claimPointer(event)` (change 12), and an optional trailing `{ source }` argument on `ctx.viewport.set`/`pan`/`zoom` (change 14).
+
 See [Plugin authoring](./plugin-authoring.md) for the full contract, mount slots, lifecycle hooks, and typed plugin events.
 
 ### 9. Chart semantics and keyboard changes
@@ -292,7 +294,7 @@ See [Plugin authoring](./plugin-authoring.md) for the full contract, mount slots
 |---|---|
 | Chart root `role="img"` | `role="figure"`, so the content inside (summary, data table, legend, navigator) is exposed. Pass `accessibility: { role: "img" }` to keep the old role. |
 | `accessibility.description` set `aria-description` | The root has `aria-describedby` pointing at a visually hidden element. By default it holds a generated data summary; a string `description` replaces it, a function rewords the `ChartSummary`, and `""` removes it. `aria-description` is no longer set. |
-| No focus styles of its own | A `<style class="blazeplot-style">` element inside the chart root adds 2px `:focus-visible` rings (theme token `focusRingColor`) and forced-colors rules. Tests that count `<style>` elements in the root should skip `.blazeplot-style`. |
+| No focus styles of its own | A `<style class="blazeplot-style">` element inside the chart root adds 2px `:focus-visible` rings (theme token `focusRingColor`). Tests that count `<style>` elements in the root should skip `.blazeplot-style`. The legend, tooltip, crosshair, selection, and navigator add their own forced-colors rules as one shared `<style data-blazeplot-plugin-style>` per plugin in the chart's document (or shadow root), outside the chart root; these rules apply even with `accessibility: false`. |
 | Canvas ignored OS high-contrast mode | In `forced-colors: active`, the canvas and series use system colors, and switch back when the mode ends. Opt out with `accessibility.forcedColors: false`. |
 | `ResolvedChartTheme` | Has a new required `focusRingColor` token. Objects you build as a full `ResolvedChartTheme` (rather than a partial `ChartTheme`) need it. |
 | Arrow, `+`/`-`, PageUp/PageDown, and Home/`0` keys panned, zoomed, and fitted every focused chart (`accessibility.keyboard`, `ChartKeyboardOptions`) | Only charts with `interactionsPlugin()` navigate by keyboard, so a chart without it keeps its viewport. Tune with `interactionsPlugin({ keyboard: { panFraction, zoomFactor } })` or turn off with `keyboard: false`. `accessibility.keyboard` and `ChartKeyboardOptions` are removed. |
@@ -388,7 +390,7 @@ chart.addBar({ name: "latency", dataset: HistogramDataset.from(values, { binSize
 chart.dispose();
 ```
 
-- **`downsample: "none"` line and bar series draw every visible sample.** Past 16,384 visible samples (4,096 bars on the non-instanced path) they used to stop drawing partway across the plot. No code change is needed.
+- **`downsample: "none"` line and bar series draw every visible sample.** Past the per-draw upload budget (16,384 samples for a line) they used to stop drawing partway across the plot; they are now drawn in chunks. No code change is needed.
 
 ### 12. Gesture handling
 
@@ -405,6 +407,62 @@ chart.dispose();
 | `pointSize` was a diameter in device pixels, so scatter markers were half as large on a 2x display. Markers were squares. | `pointSize` is a diameter in CSS pixels, like `lineWidth`, and markers are round. Scale `pointSize` down if you compensated for the old behavior. |
 | Dense area series (more than 8,192 visible samples) kept one sample per stride bucket, so spikes could disappear. | Dense area series render from min/max buckets, so peaks and dips survive at every zoom level. |
 | Lines drawn at a large Y offset (for example `1e6 + 0.01`) were quantized to float32 and rendered as a staircase. | Y is shifted by the viewport origin before upload, so they render smoothly. No API change. |
+| Zoomed-in linear tick labels could repeat, and time axes zoomed below 1 ms had no usable ticks. | Tick labels stay distinct as you zoom in, time ticks carry date context, and ticks below 1 ms use fractional-second labels. |
+| `chart.screenshot()` could miss the legend and other plugin text, ignore rotated axis titles, and capture a stale frame. | It includes the legend, plugin text and boxes, and rotated axis titles, and renders a fresh frame right before capturing. |
+| Annotations were placed as if axes were linear. | They project through the chart's scales, so they follow `log`, `symlog`, and custom scales and reversed axes. |
+
+### 14. Event, plugin, and runtime behavior
+
+- **Listener errors are isolated.** An exception thrown by a `chart.subscribe` or `ctx.events.subscribe` listener, or by a plugin hook, is logged with `console.error` (`BlazePlot <event> listener failed:`) and no longer stops later listeners or aborts `render()`, `pan`, `zoom`, or `setViewport`. Code that relied on a listener exception reaching the caller must catch it itself. Plugin `dispose` and cleanup failures are logged too. See [Error handling](./error-handling.md#listeners-and-plugins).
+- **`hover` fires on change, not every frame.** It is emitted after a frame only when the picked items, their values, or the pointer position changed, and the tooltip renders synchronously from it. If you used `hover` as a per-frame tick, subscribe to `render` instead.
+- **`viewportchange` reports a `source`.** The payload gained a required `source`: `"user"` (interaction, navigator, and keyboard gestures), `"follow"` (latest-X following), `"fit"` (`fitToData`, `autoFitY`), `"linked"` (a linked chart mirroring another panel), or `"api"` (everything else, the default). Pass `{ source }` as the last argument of `chart.pan`, `zoom`, and `setViewport` (and in `fitToData` options) to tag your own changes, and `{ pauseFollow: false }` to `setViewport` to keep latest-X following running. A new `followxchange` event reports `ChartFollowXState` transitions (`"off"`, `"following"`, `"paused"`). Listeners that only read `viewport` are unaffected; code that builds a `ChartViewportChangeEvent` by hand needs `source`.
+- **Stateful built-in plugin instances are single-chart.** Installing the same a11y, annotations, crosshair, flame graph, navigator, or selection instance on a second chart throws `<name> plugin instance is already installed on a chart. Create one plugin instance per chart.` Create plugins inside a function that runs once per chart; `createLinkedCharts({ panelPlugins })` already does. The legend, tooltip, and interactions plugins can still be shared.
+- **Charts own their document and window.** The chart, its overlays, and the built-in plugins use the document and window of the element you mount into, so charts work in iframes, popup windows, and Document Picture-in-Picture windows instead of reading the global `document` and `window`. Custom plugins should use `ctx.dom.document`, `ctx.dom.view`, and `ctx.dom.create` (change 8).
+- **Plugin CSS ships with the plugin.** See the last row of the table in change 9.
+
+### 15. Layout and axis changes
+
+- **A title row.** A chart with a `title` or `subtitle` reserves its own grid row for them instead of overlapping the plot, so the plot is 26 px shorter with a title and 46 px shorter with both (20 px for a subtitle alone). Charts without titles are unchanged. Fixed-height containers and visual baselines may need a small adjustment.
+- **Axis titles and gutters.** Y and Y2 axis titles are centered on the plot area. Outside axis gutters stay 52 px (Y, Y2) and 28 px (X) by default, plus room for the axis title; `axes.*.size` sets a fixed size or `"auto"` (see [New in 1.0](#new-in-10)).
+- **Legend placement.** `legendPlugin({ position })` still defaults to `"top-right"` and overlays the plot for the four corner values; the new edge values (`"top"`, `"bottom"`, `"left"`, `"right"`) sit outside the plot and reserve space.
+
+### 16. Renderer selection and internals
+
+WebGL2 is still the default: `new Chart(...)` throws `WebGL2UnavailableError` when it is missing. What changed underneath:
+
+- **`ChartOptions.renderer`** accepts `"webgl2"` (the default) or a factory from the new renderer subpaths: `canvas2dRenderer()` and `autoRenderer()` (WebGL2 with a Canvas 2D fallback) from `blazeplot/renderers/canvas2d`, and `sharedRenderer()` or `createChartRenderContext().renderer()` (one hidden WebGL context for many charts) from `blazeplot/renderers/shared`. The string `"canvas2d"` is not accepted (`TypeError`). `chart.renderer` reports the backend in use (`"webgl2"`, `"webgl2-shared"`, or `"canvas2d"`), and `createLinkedCharts` takes a `renderer` for every panel. Custom renderer implementations are not supported.
+- **Fewer WebGL code paths.** The non-instanced scatter and bar fallbacks and the internal buffer pool are gone; every frame is recorded into one vertex stream and uploaded once. This is internal, with no API change.
+- **Context-dependent hooks.** With the Canvas 2D renderer there is no WebGL context: `ctx.unstable.getWebGLContext()` is `null` and `onContextLost` / `onContextRestored` never run. With the shared renderer the context belongs to a hidden canvas, so `getWebGLContext()` is `null` too, while the lost and restored hooks still run for every attached chart.
+
+Before (0.5): no way to render without WebGL2.
+
+After (1.0):
+
+```ts
+import { Chart } from "blazeplot";
+import { autoRenderer } from "blazeplot/renderers/canvas2d";
+
+const chart = new Chart(element, { renderer: autoRenderer() });
+chart.start();
+console.log(chart.renderer); // "webgl2" or "canvas2d"
+chart.dispose();
+```
+
+See [Browser support](./browser-support.md#canvas-2d-renderer) and [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
+
+## New in 1.0
+
+Additive features that need no migration work but are easy to miss:
+
+- **Accessibility:** `blazeplot/plugins/a11y` (data table, keyboard inspection, live summary), `chart.getSummary()`, `LIGHT_CHART_THEME` (change 9, [Accessibility](./accessibility.md)).
+- **Localization:** `accessibility.locale` and `messages`, `a11yPlugin({ locale, messages })`, `legendPlugin({ messages })`, `selectionPlugin({ messages })`.
+- **Renderers:** `blazeplot/renderers/canvas2d` and `blazeplot/renderers/shared` (change 16).
+- **Gestures:** `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger", gestureHint, boxZoomModifier })`, `selectionPlugin({ modifier })`, `ctx.dom.claimPointer` (change 12), and the long-press tooltip and crosshair on touch.
+- **Layout:** `axes.*.size` (a number, or `"auto"` to size gutters from the measured tick labels), outside legend positions, the title row (change 15).
+- **Series and data:** `series.setStyle(options)`, `HistogramDataset.from(values, options)`, `StaticDataset.sorted(...)`, `StaticOhlcDataset.sorted(...)`, and `rejectedSamples` / `onInvalidSample` on streaming buffers.
+- **Events and viewport:** `viewportchange.source`, `followxchange`, and the options argument of `chart.pan`, `zoom`, and `setViewport` (change 14).
+- **Plugin context:** `ctx.coords.format`, `clientToPlot`, `plotToClient`, `ctx.state.inspect`, `ctx.dom.document`, `view`, `create`, `createSvg`, and `claimPointer`.
+- **Time axes:** sub-millisecond ticks and fractional-second labels.
 
 ## Platform requirements
 
@@ -488,5 +546,8 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 11. Check change 9 if you style or test the chart root: search for `role="img"`, `aria-description`, `querySelector("style")` on the chart root, and full `ResolvedChartTheme` objects (add `focusRingColor`). Give each chart an `accessibility.label`, and consider `a11yPlugin()` for charts whose values users need.
 12. If you use `interactionsPlugin` with `selectionPlugin`, or write custom touch or drag plugins, read change 12: check `touch-action`, touch listeners, and which plugin owns a plain drag.
 13. Search for `addHistogram`, `HistogramSeriesConfig`, and `PrecomputedHistogramSeriesConfig`. Replace each call with `chart.addBar({ dataset: HistogramDataset.from(values, options) })` (see change 11).
-14. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-15. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
+14. Check change 14: search for `.subscribe("hover"` used as a per-frame callback, listeners that relied on exceptions propagating, and hand-built `ChartViewportChangeEvent` objects. Create stateful built-in plugin instances once per chart (`annotationsPlugin()`, `crosshairPlugin()`, `selectionPlugin()`, `navigatorPlugin()`, `a11yPlugin()`, `flameGraphPlugin()`).
+15. Check fixed-height containers and visual baselines for charts with a `title` or `subtitle` (the title row, change 15) and for the rendering differences in change 13 (translucent blending, round `pointSize` markers in CSS pixels, dense area peaks).
+16. If you need to run without WebGL2, use `renderer: autoRenderer()`; if you mount many charts on one page, consider `sharedRenderer()` (change 16).
+17. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
+18. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.

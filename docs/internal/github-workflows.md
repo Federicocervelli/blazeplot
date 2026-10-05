@@ -25,9 +25,9 @@ Runs on pull requests targeting `main` or `v1`, when the release workflow is abo
 
 | Job | Command | Covers |
 |---|---|---|
-| `checks` | `bun run check` | Typecheck, unit tests, library build, generated-docs freshness, doc snippet types, package exports, package contents, bundle budgets. |
+| `checks` | `bun run check` | Typecheck, Oxlint, unit tests with coverage floors, library build, generated-docs freshness, doc snippet types, package exports, package contents, public API snapshot (`api/public-api.md`), bundle budgets. |
 | `typescript-floor` | `bun run build && bun run test:typescript-floor` | Packs the built package, installs the tarball into a temp consumer project with TypeScript 5.0.4 (the documented minimum) and the latest 5.x, and typechecks a file importing every `package.json#exports` entry with `skipLibCheck: false` under `bundler` and `node16` resolution. Separate from `checks` because it installs TypeScript from npm and needs network. |
-| `browser` | `bun run test:browser` | Benchmark smoke, visual tests, interaction tests, website UX tests in headless Chrome. Always uploads `build/visual-tests` as the `visual-tests` artifact (screenshots, `actual/` baseline candidates rendered on the runner, `diff/` for failing baselines; kept 14 days). See [Visual pixel baselines](./local-development.md#visual-pixel-baselines). |
+| `browser` | `bun run test:browser` | Benchmark smoke, performance regression gate, visual tests (WebGL2, shared, Canvas 2D, and no-WebGL renderers), interaction tests (including forced colors), axe-core accessibility checks, real-browser stability (leak) tests, and website UX tests in headless Chrome. Always uploads `build/visual-tests` as the `visual-tests` artifact (screenshots, `actual/` baseline candidates rendered on the runner, `diff/` for failing baselines; kept 14 days). See [Visual pixel baselines](./local-development.md#visual-pixel-baselines). |
 | `cross-browser` | `bun run test:cross-browser` | Firefox and WebKit (Playwright) smoke: WebGL2, non-blank render, hover/wheel/pan/box-zoom/reset. Browsers are installed with `bunx playwright install --with-deps firefox webkit` and cached in `~/.cache/ms-playwright`; Firefox runs headed under `xvfb-run` to get software WebGL2. Uploads `build/cross-browser` when it fails. Unlike the other checks it is not part of `bun run ci` because it needs the Playwright browsers. |
 | `validate` | — | Passes only when every job above passed. This is the single required status check for branch protection, so adding or splitting jobs does not require settings changes. |
 
@@ -64,7 +64,7 @@ File: `.github/workflows/pages.yml`
 
 Called by the release workflow on every push to `main` (never for `v1`), and by manual dispatch. It has no push trigger of its own. Builds two sites into one Pages artifact:
 
-- The latest stable `vX.Y.Z` release tag at `/`, so the stable docs match what is on npm. `-rc.N` tags are ignored.
+- The latest stable `vX.Y.Z` release tag at `/`, so the stable docs match what is on `npm i blazeplot` (`latest`). `-rc.N` tags are ignored, so until 1.0 ships the stable site documents the last 0.x release and `/next/` documents `main`.
 - `main` at `/next/`, for unreleased work.
 
 The stable build is cached by the release tag's commit, so it is only rebuilt on the first deploy after a release. Bump the `v1` segment of its cache key when the stable build steps change, to force a rebuild.

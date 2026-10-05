@@ -15,12 +15,12 @@ These apply to every chart unless you pass `accessibility: false`.
 | Behavior | Detail |
 |---|---|
 | Role | `role="figure"` by default, so the summary, data table, legend, and other controls inside stay reachable. Override with `accessibility.role`. |
-| Accessible name | `aria-label` is `accessibility.label`, otherwise the chart `title` and `subtitle` joined with an em dash, otherwise `"BlazePlot chart"`. |
+| Accessible name | `aria-label` is `accessibility.label`, otherwise the chart `title` and `subtitle` joined with an em dash, otherwise `accessibility.messages.defaultLabel`, otherwise `"BlazePlot chart"`. |
 | Description | `aria-describedby` points at a visually hidden element holding a generated summary: chart type, series count, the X range, and for each series its name, point count, value range, and latest value. It is refreshed at most once a second while data changes (and immediately when the chart gains focus), never per frame. `accessibility.description` replaces it with a fixed string, rewords it with a function of the `ChartSummary`, or removes it with `""`. `chart.getSummary()` returns the same data on demand. |
 | Focusable root | The chart root gets `tabindex="0"` unless it already has a non-negative tab index. |
 | Focus ring | A 2px `:focus-visible` outline on the chart root and on every focusable control inside it (legend buttons, navigator, annotations), colored by the `focusRingColor` theme token. Pointer clicks do not show it. |
-| Hidden decoration | The WebGL canvas and the axis tick containers get `aria-hidden="true"`; the plot layer gets `role="presentation"`. |
-| Forced colors | When the OS forces a high-contrast palette (`forced-colors: active`, e.g. Windows Contrast themes), the canvas switches to CSS system colors (`Canvas`, `CanvasText`, `Highlight`, `LinkText`, ...), every series is drawn in the system palette, overlays get forced-colors styles, and it switches back when the mode ends. Opt out with `accessibility.forcedColors: false`. |
+| Hidden decoration | The chart canvas (WebGL or Canvas 2D) and the axis tick containers get `aria-hidden="true"`; the plot layer gets `role="presentation"`. |
+| Forced colors | When the OS forces a high-contrast palette (`forced-colors: active`, e.g. Windows Contrast themes), the canvas switches to CSS system colors (`Canvas`, `CanvasText`, `Highlight`, `LinkText`, ...), every series is drawn in the system palette, and it switches back when the mode ends. Opt out with `accessibility.forcedColors: false`, which stops the canvas from following the OS palette. The built-in plugins style their own overlays for forced colors (see [Contrast and high contrast](#contrast-and-high-contrast)). |
 | Keyboard navigation | Not part of the chart itself: arrow-key pan and zoom come from `interactionsPlugin` (on by default there). Without it, a focused chart does not change its viewport. See the key map. |
 
 ```ts
@@ -127,7 +127,8 @@ const chart = new Chart(element, {
   plugins: [interactionsPlugin({ keyboard: { panFraction: 0.2, zoomFactor: 1.5 } })],
 });
 // interactionsPlugin({ keyboard: false }) turns the chart keys off but keeps pointer interaction.
-// accessibility: false disables the chart's ARIA, keys, summary, focus styles, and forced colors.
+// accessibility: false disables the chart's role, label, summary, focus styles, and forced-colors theme,
+// and the root is no longer made focusable, so these keys then need a tabindex you set yourself.
 chart.dispose();
 ```
 
@@ -140,7 +141,7 @@ Keyboard pan and zoom pass through `ViewportPolicy.beforePan` and `beforeZoom`, 
 | `a11yPlugin` | Hidden data table, inspection cursor, live summary; see above. |
 | `legendPlugin` | Container is `role="group"` labelled "Chart series legend". With the default `toggleOnClick`, each series is a `<button>` with `aria-pressed` and the series name as `aria-label`. Hidden series keep 4.5:1 text and are marked with a strike-through and a dimmed swatch, not only color. Focus is preserved when series or theme update. |
 | `navigatorPlugin` | `role="slider"`, `tabindex="0"`, labelled "Chart navigator visible X range", with `aria-valuemin`, `aria-valuemax`, `aria-valuenow` (center of the visible range), and `aria-valuetext`. The overlay SVG is `aria-hidden`. |
-| `tooltipPlugin` | `role="tooltip"`, toggled between `aria-hidden="true"` and `"false"`. Follows the pointer, a long press on touch, or the keyboard inspection cursor. Its content is not a live region; the a11y plugin announces inspected values. |
+| `tooltipPlugin` | `role="tooltip"`, toggled between `aria-hidden="true"` and `"false"`. Follows the pointer, a long press on touch (it hides when the finger lifts), or the keyboard inspection cursor. Its content is not a live region; the a11y plugin announces inspected values. |
 | `crosshairPlugin` | Follows the pointer or the keyboard inspection cursor (`onMove` fires for both). Decorative for assistive technology. |
 | `selectionPlugin` | Pointer drag, or Shift + Arrow keys from the chart root (`keyboard: { step }`, default 5% of the plot per press; `keyboard: false` turns it off). The range being extended, the committed range, cancelling, and clearing are announced through a polite live region. Emits the same `select` event and `onChange` events (`sourceEvent` is the `KeyboardEvent`). |
 | `annotationsPlugin` | The SVG stays `aria-hidden`; each visible annotation gets a focus target with `role="button"`, `aria-roledescription="annotation"`, and an accessible name from `ariaLabel`, the label text, or a generated description ("Vertical line at x 50"). Opt out with `focusable: false` (per plugin or per annotation). Removal by keyboard needs `removable: true` and calls `onRemove`. |
@@ -156,7 +157,7 @@ Every user-facing string can be replaced, so a non-English app can ship a fully 
 - `legendPlugin({ messages })`: the group label and the hide/show titles (`LegendMessages`).
 - `selectionPlugin({ messages })`: selection announcements (`SelectionMessages`).
 
-Counts use `Intl.NumberFormat` semantics for `locale` (default `"en-US"`). Axis tick text is formatted by your `tickFormat`.
+Counts use `Intl.NumberFormat` semantics for `locale` (default `"en-US"`). Axis tick text is formatted by your `tickFormat`. A few fixed strings are not localizable yet: the navigator's slider label and value text, the `aria-roledescription` of annotations (set `ariaLabel` per annotation for its name), and the cooperative-gesture hint, which has its own `interactionsPlugin({ gestureHint: { wheelText, touchText } })` options.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -184,7 +185,7 @@ const chart = new Chart(element, {
 
 The built-in dark theme (`DEFAULT_CHART_THEME`) and light theme (`LIGHT_CHART_THEME`) are checked by a unit test that computes WCAG contrast ratios from the theme tokens: text tokens (axis labels, titles, tooltip and legend text, including muted legend text) reach at least 4.5:1 against what they sit on, and series colors, the selection border, crosshair, point-marker outline, and focus ring reach at least 3:1 against the background. Translucent tokens are composited first. Grid lines are decorative and not checked. If you pass your own `theme`, checking its contrast is up to you.
 
-In forced-colors mode the chart follows the OS palette as described above. Series then differ by system color and by legend label only; if the series must stay distinguishable in high contrast, keep the count small or label them in the chart (for example with annotations).
+In forced-colors mode the chart follows the OS palette as described above. The forced-colors rules for the legend, tooltip, crosshair, selection, and navigator ship with those plugins (one `<style data-blazeplot-plugin-style>` per plugin in the chart's document or shadow root), so they apply whenever the plugin is installed, even with `accessibility: false`, and chart-only bundles carry none of them. Series then differ by system color and by legend label only; if the series must stay distinguishable in high contrast, keep the count small or label them in the chart (for example with annotations).
 
 ## What BlazePlot does not provide
 

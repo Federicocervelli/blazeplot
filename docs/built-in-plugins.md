@@ -13,6 +13,10 @@ const chart = new Chart(element, {
 });
 ```
 
+**One instance per chart.** The annotations, crosshair, selection, navigator, a11y, and flame graph plugins keep their state in the factory closure, so installing the same instance on a second chart throws (`... plugin instance is already installed on a chart. Create one plugin instance per chart.`). Call the factory once per chart, or use `createLinkedCharts({ panelPlugins })`, which is a factory that runs once per panel. The legend, tooltip, and interactions plugins keep their state inside `install`, so one instance can be shared. Disposing the chart (or the plugin) frees an instance for reuse.
+
+**Plugin styles.** Plugins that need CSS (forced-colors rules for the legend, tooltip, selection, navigator, and the shared pick markers) inject one `<style data-blazeplot-plugin-style>` per plugin into the chart's document (or its shadow root). Every chart using the plugin shares it, and it is removed when the last one is disposed. Chart-only bundles ship none of it.
+
 ## Interactions
 
 `interactionsPlugin` adds wheel zoom, shift-drag plot pan, axis drag pan, plot box zoom, double-click reset, touch pan, and pinch zoom. Touch pan and pinch zoom are enabled by default unless you set them to `false`. With the focused chart root it also pans, zooms, and fits by keyboard (arrows, `+`/`-`, PageUp/PageDown, Home or `0`); tune with `keyboard: { panFraction, zoomFactor }` or pass `keyboard: false`. A chart without this plugin does not navigate by keyboard.
@@ -21,7 +25,9 @@ Use it when users should control the viewport directly. If your app owns all cam
 
 For live charts using `chart.followX(...)`, double-click/tap reset resumes latest-X follow by default so a reset action behaves like a "back to live" action. Set `resumeFollowOnReset: false` if your reset button should keep the chart paused on a historical viewport.
 
-Without `interactionsPlugin` a chart sets no `touch-action`, so one-finger swipes scroll the page. The plugin sets `touch-action: none` on the plot (and axis gutters) while touch pan or pinch zoom is on, which makes a touch drag pan the chart instead of the page.
+Gestures made through this plugin (drag, wheel, touch, keyboard) report `viewportchange` with `source: "user"`, so apps can tell them from `follow`, `fit`, `api`, and `linked` changes (`ChartViewportChangeSource`).
+
+Without `interactionsPlugin` a chart sets no `touch-action`, so one-finger swipes scroll the page. The plugin sets `touch-action: none` on the plot (and axis gutters) while touch pan or pinch zoom is on, which makes a touch drag pan the chart instead of the page. Touch input uses Pointer Events only.
 
 ### Cooperative gestures on scrolling pages
 
@@ -75,6 +81,8 @@ const chart = new Chart(element, {
 
 Use the `group` or `syncGroup` options when several charts should share hover state. The tooltip and crosshair also follow the keyboard inspection cursor of `a11yPlugin` (any hover state with `source: "inspection"`).
 
+On touch screens the tooltip and crosshair appear on a long press (`longPressMs`, default 450 ms; `false` turns it off), follow the finger while it is held, and hide when it lifts, is cancelled, or a second finger arrives (that starts a pinch or pan instead). Both ask for `touch-action: pan-y` on the plot, so a vertical swipe still scrolls the page. Their `render` (and the crosshair's `renderHighlight`) callbacks receive the plugin context, not the `Chart`, as the last argument.
+
 ```ts
 import { Chart } from "blazeplot";
 import { crosshairPlugin } from "blazeplot/plugins/crosshair";
@@ -90,7 +98,7 @@ const chart = new Chart(element, {
 });
 ```
 
-Legends are positioned inside the chart root. They do not reserve outside layout space. If you need external controls, create your own plugin and use layout reservations; see [Plugin authoring](./plugin-authoring.md).
+`legendPlugin({ position })` takes a corner (`"top-left"`, `"top-right"` (the default), `"bottom-left"`, `"bottom-right"`), which overlays the plot, or an edge (`"top"`, `"bottom"`, `"left"`, `"right"`), which sits outside it: the legend reserves its measured size through `ctx.layout.reserve` and the plot shrinks to fit. Pass `messages` (`ariaLabel`, `hide`, `show`, `seriesName`) to localize its strings; see [Accessibility](./accessibility.md#localization). For other external controls, create your own plugin and use layout reservations; see [Plugin authoring](./plugin-authoring.md).
 
 ## Annotations
 
@@ -112,7 +120,7 @@ const chart = new Chart(element, { plugins: [annotations] });
 annotations.add({ type: "point", x: earningsTime + 3_600_000, y: 182.4, label: "peak" });
 ```
 
-The plugin handle supports `add`, `remove`, `clear`, `setAnnotations`, `getAnnotations`, `pick`, and `subscribe("hover" | "click", ...)`.
+The plugin handle supports `add`, `remove`, `clear`, `setAnnotations`, `getAnnotations`, `pick`, and `subscribe("hover" | "click", ...)`. Annotations are projected through the chart's axis scales, so they stay aligned on `log`, `symlog`, and custom scales and on reversed axes.
 
 Each visible annotation is keyboard focusable (`role="button"`, named by `ariaLabel`, its label, or a generated description). Enter or Space activates it like a click. Set `removable: true` on the plugin or on an annotation to let Delete or Backspace remove it (`onRemove` is called), or `focusable: false` to keep annotations out of the Tab order.
 
@@ -166,7 +174,7 @@ chart.start();
 
 ## Navigator
 
-`navigatorPlugin` adds an overview control. It can reserve top or bottom space so it does not overlap the plot. This is useful for dense history where the main chart shows a small moving window.
+`navigatorPlugin` adds an overview control. It reserves top or bottom space by default so it does not overlap the plot (`reserveSpace: false` overlays it instead). This is useful for dense history where the main chart shows a small moving window.
 
 ```ts
 import { Chart, StaticDataset } from "blazeplot";
@@ -195,7 +203,7 @@ The overview takes its X and Y domain from each series' `dataBounds()`, so gaps,
 
 ## Flame graphs and status spans
 
-`flameGraphPlugin` adds an optional WebGL2 overlay for FlameGraph-style stack traces and lane/status charts. It lives in its own subpath so the core XY renderer stays small.
+`flameGraphPlugin` adds an optional overlay for FlameGraph-style stack traces and lane/status charts. It lives in its own subpath so the core XY renderer stays small. Its rectangle layer draws with its own WebGL2 context, separate from the chart's renderer (so `sharedRenderer()` does not cover it), and falls back to Canvas 2D when WebGL2 is unavailable. Labels use a 2D canvas.
 
 > **Experimental.** `blazeplot/plugins/flamegraph` and its exports (`flameGraphPlugin`, `parseFoldedStacks`, `buildStatusChartModel`, and their types) are tagged `@experimental` and may change in a minor release. See [API stability](./stability.md#experimental).
 
@@ -221,10 +229,10 @@ const chart = new Chart(element, {
 });
 ```
 
-`foldedStacks` also accepts Brendan Gregg folded-stack text (`parseFoldedStacks(text)` returns the parsed samples if you need them). Pass `build: { flameChart: true }` for chronological unmerged stacks, or `statusSpans` (or `buildStatusChartModel(spans)` for the `model` option) for explicit `{ start, end, depth }` intervals. To replace the data later, call `flame.setFoldedStacks(stacks, buildOptions)`, `flame.setStatusSpans(spans)`, or `flame.setModel(model)`; `flame.pick(clientX, clientY)` returns the frame under a point. The plugin renders rectangles in WebGL2 and labels on a 2D canvas overlay; `chart.screenshot()` includes both overlay canvases.
+`foldedStacks` also accepts Brendan Gregg folded-stack text (`parseFoldedStacks(text)` returns the parsed samples if you need them). Pass `build: { flameChart: true }` for chronological unmerged stacks, or `statusSpans` (or `buildStatusChartModel(spans)` for the `model` option) for explicit `{ start, end, depth }` intervals. To replace the data later, call `flame.setFoldedStacks(stacks, buildOptions)`, `flame.setStatusSpans(spans)`, or `flame.setModel(model)`; `flame.pick(clientX, clientY)` returns the frame under a point. `chart.screenshot()` includes both overlay canvases.
 
 ## Linked charts
 
-For dashboards with shared X ranges, use `blazeplot/linked`. Its `panelPlugins` option adds synced crosshair and tooltip plugins to every panel. See [Examples](./examples.md#linked-charts).
+For dashboards with shared X ranges, use `blazeplot/linked`. Its `panelPlugins` option is a factory called once per panel (so each panel gets fresh plugin instances), typically to add synced crosshair and tooltip plugins, and its `renderer` option passes a renderer such as `sharedRenderer()` to every panel. See [Examples](./examples.md#linked-charts).
 
 All plugin entry points are listed in the [API reference](./api-reference.md#package-entry-points).

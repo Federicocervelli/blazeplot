@@ -1,6 +1,6 @@
 # Shared render context design note
 
-Status: implemented as an opt-in prototype (`blazeplot/renderers/shared`). `LinkedCharts` is not switched to it by default yet; see [Open questions](#open-questions).
+Status: shipped as an opt-in renderer in 1.0 (`blazeplot/renderers/shared`, public API `sharedRenderer()` and `createChartRenderContext()`). `createLinkedCharts` keeps per-chart contexts by default and takes a `renderer` option to opt in; see [Open questions](#open-questions).
 
 ## Problem
 
@@ -33,7 +33,7 @@ On the software-GL headless Chrome used in CI and on the author's machine, `draw
 
 ### Context loss
 
-The shared canvas listens for `webglcontextlost` / `webglcontextrestored`. On loss it calls `preventDefault()` and re-dispatches the event on every attached chart canvas, where `Chart` already handles it (stop drawing, notify plugins). On restore it builds a fresh `Renderer` for the restored context, drops the old one without deleting stale objects, and re-dispatches `webglcontextrestored`, which makes every chart rebuild its renderer (a new attachment) and re-render. The stability suite (`shared-context-loss`) loses and restores the shared context five times with three charts attached and checks every chart paints again, then disposes the charts while the context is lost.
+The shared canvas listens for `webglcontextlost` / `webglcontextrestored`. On loss it calls `preventDefault()` and re-dispatches the event on every attached chart canvas, where `Chart` already handles it (stop drawing, notify plugins). On restore it builds a fresh `Renderer` for the restored context, drops the old one without deleting stale objects, and re-dispatches `webglcontextrestored`, which makes every chart rebuild its renderer (a new attachment) and re-render. The stability suite (`shared-context-loss`) loses and restores the shared context five times (25 with `--long`) with three charts attached and checks every chart paints again, then disposes the charts while the context is lost.
 
 ### DPR
 
