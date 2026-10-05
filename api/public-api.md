@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-156 exports.
+154 exports.
 
 #### interface AcceleratedDataset
 
@@ -184,7 +184,6 @@ class Chart {
     addCandlestick<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
         readonly dataset?: D;
     }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addHistogram(config: HistogramSeriesConfig | PrecomputedHistogramSeriesConfig, style?: SeriesStyleOptions): SeriesStore<HistogramDataset>;
     removeSeries(series: SeriesStore): boolean;
     getSummary(): ChartSummary;
     getSeriesState(): ChartSeriesState[];
@@ -924,6 +923,8 @@ interface HistogramBin {
 class HistogramDataset extends StaticDataset implements XRangeDataset {
     readonly result: HistogramResult;
     constructor(result: HistogramResult);
+    static from(values: ArrayLike<number>, options?: HistogramOptions): HistogramDataset;
+    get defaultBarWidth(): number | null;
     getXRange(index: number): XRange | null;
 }
 ```
@@ -964,15 +965,6 @@ interface HistogramResult {
     readonly invalid: number;
     readonly min: number;
     readonly max: number;
-}
-```
-
-#### interface HistogramSeriesConfig
-
-```ts
-interface HistogramSeriesConfig extends SeriesIdentityConfig, HistogramOptions {
-    readonly values: ArrayLike<number>;
-    readonly histogram?: never;
 }
 ```
 
@@ -1081,14 +1073,6 @@ interface OhlcRingBufferOptions {
 interface PanIntent {
     readonly dx: number;
     readonly dy: number;
-}
-```
-
-#### interface PrecomputedHistogramSeriesConfig
-
-```ts
-interface PrecomputedHistogramSeriesConfig extends SeriesIdentityConfig {
-    readonly histogram: HistogramResult;
 }
 ```
 

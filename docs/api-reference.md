@@ -48,7 +48,7 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 12 KiB |
+| root entry | `dist/index.js` | 20 KiB |
 | linked entry | `dist/linked.js` | 2 KiB |
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
@@ -63,7 +63,7 @@ Generated from `dist/` after the package build.
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
 | canvas2d renderer entry | `dist/renderers/canvas2d.js` | 5 KiB |
 | shared renderer entry | `dist/renderers/shared.js` | 4 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 143 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 137 KiB |
 | shared WebGL2 backend chunk | `dist/WebGL2Backend-*.js` | 12 KiB |
 | shared WebGL2 renderer chunk | `dist/webgl2Renderer-*.js` | 0 KiB |
 | shared WebGL context release chunk | `dist/releaseWebGLContext-*.js` | 0 KiB |
@@ -79,7 +79,7 @@ Generated from `dist/index.d.ts` after the package build.
 |---|---|---|---|
 | `AcceleratedDataset` | interface | `./core/types` | Convenience contract for maximum-performance custom datasets. Implement this when a dataset can provide fast exact sample copies, stable viewport sampling, range min/max queries, and renderer-ready min/max buckets. |
 | `AppendableDataset` | interface | `./core/types` | Dataset that accepts appended X/Y samples; implementations may store X values explicitly or use them to seed implicit X spacing. |
-| `AxisConfig` | interface | `./ui/Chart` | Axis visibility, placement, scale, tick formatting, and title options. |
+| `AxisConfig` | type | `./ui/Chart` | — |
 | `AxisControllerAxisOptions` | interface | `./interaction/AxisController` | Scale and formatting options for one axis. |
 | `AxisPosition` | type | `./ui/ChartLayout` | Placement for chart axis labels and ticks. |
 | `AxisRenderTarget` | type | `./interaction/AxisController` | Axis dimension targeted by axis helpers. |
@@ -91,26 +91,26 @@ Generated from `dist/index.d.ts` after the package build.
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | Built-in axis scale names. |
 | `Camera2D` | class | `./interaction/Camera2D` | Camera that maps data domains to clip, screen, and plot coordinates. |
 | `Chart` | class | `./ui/Chart` | Imperative WebGL chart instance for rendering, interaction, and plugins. |
-| `ChartAccessibilityMessages` | interface | `./ui/Chart` | Overridable core accessibility strings. Unset keys keep their English defaults. |
-| `ChartAccessibilityOptions` | interface | `./ui/Chart` | ARIA and high-contrast options for the chart root. Keyboard pan and zoom come from `interactionsPlugin`. |
-| `ChartAutoFitYOptions` | type | `./ui/Chart` | Options for automatically refitting Y as the X viewport changes. |
-| `ChartEventMap` | interface | `./ui/Chart` | Payload delivered to `chart.subscribe(event, callback)` for each chart event. Includes the plugin events declared on `ChartPluginEventMap` (such as `select`). |
-| `ChartEventName` | type | `./ui/Chart` | Name of an event accepted by `Chart.subscribe`. |
-| `ChartFitToDataOptions` | interface | `./ui/Chart` | Options for fitting the viewport to series data bounds. |
-| `ChartFitToDataPadding` | interface | `./ui/Chart` | Fractional padding applied when fitting domains to data. |
-| `ChartFollowXChangeEvent` | interface | `./ui/Chart` | Latest-X follow state change, emitted when following starts, stops, pauses, or resumes. |
-| `ChartFollowXOptions` | interface | `./ui/Chart` | Options for keeping the X viewport anchored to the latest data. |
-| `ChartFollowXState` | type | `./ui/Chart` | Latest-X follow state: disabled, actively following, or paused by interaction. |
-| `ChartFrameStats` | interface | `./ui/Chart` | Render metrics from the last frame. |
-| `ChartHoverState` | interface | `./ui/Chart` | Current hover hit-test result, including pointer position and picked items. |
-| `ChartInspectionTarget` | interface | `./ui/Chart` | A sample to show as the hover state, set with `ctx.state.inspect(...)`. |
+| `ChartAccessibilityMessages` | type | `./ui/Chart` | — |
+| `ChartAccessibilityOptions` | type | `./ui/Chart` | — |
+| `ChartAutoFitYOptions` | type | `./ui/Chart` | — |
+| `ChartEventMap` | type | `./ui/Chart` | — |
+| `ChartEventName` | type | `./ui/Chart` | — |
+| `ChartFitToDataOptions` | type | `./ui/Chart` | — |
+| `ChartFitToDataPadding` | type | `./ui/Chart` | — |
+| `ChartFollowXChangeEvent` | type | `./ui/Chart` | — |
+| `ChartFollowXOptions` | type | `./ui/Chart` | — |
+| `ChartFollowXState` | type | `./ui/Chart` | — |
+| `ChartFrameStats` | type | `./ui/Chart` | — |
+| `ChartHoverState` | type | `./ui/Chart` | — |
+| `ChartInspectionTarget` | type | `./ui/Chart` | — |
 | `ChartLayoutReservation` | interface | `./ui/PluginHost` | Extra CSS-pixel space reserved around the plot by a plugin, e.g. for a navigator or toolbar. Reservations from every plugin add up. |
 | `ChartMountSlot` | type | `./ui/PluginHost` | Where a plugin can attach its own DOM with `ctx.dom.mount(slot, element)`. - `"plot"`: the plot area, above the WebGL canvas. Coordinates match `ctx.coords` plot coordinates (CSS pixels from the plot's top-left). Overlays here should keep `pointer-events: none` unless they handle their own input. - `"root"`: the whole chart box, including axis gutters and space reserved with `ctx.layout.reserve(...)`. Use it for legends, toolbars, and navigators. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters (bottom, left, right). - `"body"`: the owning document's `<body>`, for `position: fixed` UI such as tooltips that must escape the chart's `overflow: hidden`. |
-| `ChartOptions` | interface | `./ui/Chart` | Constructor options for `Chart`. Boolean-or-object options accept `false` to disable and an object to configure. |
-| `ChartPickGroup` | type | `./ui/Chart` | Whether picks include all series sharing the same X value. |
-| `ChartPickItem` | interface | `./ui/Chart` | A picked data point with series metadata and screen coordinates. |
-| `ChartPickMode` | type | `./ui/Chart` | Strategy used to find data points near a pointer location. |
-| `ChartPickOptions` | interface | `./ui/Chart` | Options for hover and pointer hit-testing. |
+| `ChartOptions` | type | `./ui/Chart` | — |
+| `ChartPickGroup` | type | `./ui/Chart` | — |
+| `ChartPickItem` | type | `./ui/Chart` | — |
+| `ChartPickMode` | type | `./ui/Chart` | — |
+| `ChartPickOptions` | type | `./ui/Chart` | — |
 | `ChartPlotSize` | interface | `./ui/PluginHost` | Plot-area size in CSS pixels, passed to `ChartPluginHandle.onResize`. |
 | `ChartPlugin` | interface | `./ui/PluginHost` | Plugin installer for extending chart behavior. |
 | `ChartPluginContext` | interface | `./ui/PluginHost` | The API a plugin receives in `install(ctx)`. Each plugin gets its own context; listeners, subscriptions, mounted elements, decorations, and layout reservations created through it are released automatically after the plugin is disposed. |
@@ -124,20 +124,20 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartPluginState` | interface | `./ui/PluginHost` | Read-only chart state. |
 | `ChartPluginUnstable` | interface | `./ui/PluginHost` | Escape hatches outside the stable plugin contract. |
 | `ChartPluginViewport` | interface | `./ui/PluginHost` | Viewport reads, changes, and latest-X follow control. Changes go through the chart's `ViewportPolicy`. |
-| `ChartPointerEvent` | interface | `./ui/Chart` | Pointer event payload expressed in both screen and data coordinates. |
-| `ChartPointerEventType` | type | `./ui/Chart` | Pointer events that can be subscribed to through `Chart.subscribe`. |
+| `ChartPointerEvent` | type | `./ui/Chart` | — |
+| `ChartPointerEventType` | type | `./ui/Chart` | — |
 | `ChartRect` | interface | `./ui/PluginHost` | A rectangle in CSS pixels. |
 | `ChartRendererFactory` | type | `./render/ChartRenderer` | Creates the renderer for a chart. It may throw when its backend is unavailable. Use `canvas2dRenderer()` / `autoRenderer()` from `blazeplot/renderers/canvas2d`. |
 | `ChartRendererFactoryContext` | interface | `./render/ChartRenderer` | Context passed to a renderer factory when a chart (re)creates its renderer. |
 | `ChartRendererHandle` | interface | `./render/ChartRenderer` | Opaque renderer instance returned by a renderer factory. Only the built-in renderers implement it. |
 | `ChartRendererKind` | type | `./render/ChartRenderer` | Rendering backend a chart is drawn with. |
-| `ChartRenderLoop` | type | `./ui/Chart` | Render loop scheduling mode. |
-| `ChartScreenshotOptions` | interface | `./ui/Chart` | Options for exporting the chart as an image blob. |
-| `ChartSelectEvent` | interface | `./ui/Chart` | Selection event payload emitted by selection plugins or custom code. `null` means the selection was cleared. |
-| `ChartSeriesClickEvent` | interface | `./ui/Chart` | Click payload for the nearest chart series item. |
-| `ChartSeriesState` | interface | `./ui/Chart` | Runtime state for one chart series. |
+| `ChartRenderLoop` | type | `./ui/Chart` | — |
+| `ChartScreenshotOptions` | type | `./ui/Chart` | — |
+| `ChartSelectEvent` | type | `./ui/Chart` | — |
+| `ChartSeriesClickEvent` | type | `./ui/Chart` | — |
+| `ChartSeriesState` | type | `./ui/Chart` | — |
 | `ChartSeriesSummary` | interface | `./ui/ChartSummary` | Per-series facts in a `ChartSummary`. |
-| `ChartSetViewportOptions` | interface | `./ui/Chart` | Options for `chart.setViewport`. |
+| `ChartSetViewportOptions` | type | `./ui/Chart` | — |
 | `ChartSummary` | interface | `./ui/ChartSummary` | Data summary the chart exposes to assistive technology through `aria-describedby`. Pass `accessibility.description` as a function to turn it into your own text. |
 | `ChartSummaryMessages` | interface | `./ui/ChartSummary` | Strings and formatters behind the generated chart summary. Override any key through `accessibility.messages.summary`; unset keys keep the English default. |
 | `ChartSummaryRange` | interface | `./ui/ChartSummary` | Inclusive numeric range used by `ChartSummary`. |
@@ -145,10 +145,10 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartSurfaceDecoration` | interface | `./ui/PluginHost` | Styles, classes, and attributes applied to a chart surface by `ctx.dom.decorate`. |
 | `ChartSurfaceStyle` | interface | `./ui/PluginHost` | Inline style properties a plugin may set on a chart surface. |
 | `ChartTheme` | interface | `./ui/theme` | Partial chart theme supplied by callers. |
-| `ChartTitleConfig` | interface | `./ui/Chart` | Chart title or subtitle text and alignment. |
-| `ChartViewportChangeEvent` | interface | `./ui/Chart` | Emitted after the visible domain changes. |
-| `ChartViewportChangeSource` | type | `./ui/Chart` | What changed the viewport: a user gesture (`"user"`, passed by the interaction, navigator, and keyboard plugins), latest-X following (`"follow"`), `fitToData`/`autoFitY` (`"fit"`), a linked chart mirroring another panel (`"linked"`), or app code (`"api"`, the default). |
-| `ChartViewportGestureOptions` | interface | `./ui/Chart` | Options for `chart.pan` and `chart.zoom`. |
+| `ChartTitleConfig` | type | `./ui/Chart` | — |
+| `ChartViewportChangeEvent` | type | `./ui/Chart` | — |
+| `ChartViewportChangeSource` | type | `./ui/Chart` | — |
+| `ChartViewportGestureOptions` | type | `./ui/Chart` | — |
 | `CustomAxisScale` | interface | `./interaction/AxisController` | Custom scale hooks for tick generation, formatting, and coordinate mapping. |
 | `Dataset` | interface | `./core/types` | Sorted XY data source consumed by chart series. |
 | `DEFAULT_CHART_THEME` | const | `./ui/theme` | Default dark chart theme. |
@@ -159,7 +159,6 @@ Generated from `dist/index.d.ts` after the package build.
 | `HistogramNormalization` | type | `./core/Histogram` | Histogram value normalization modes. |
 | `HistogramOptions` | interface | `./core/Histogram` | Options for converting one-dimensional values into histogram bins. |
 | `HistogramResult` | interface | `./core/Histogram` | Result of a histogram transform. |
-| `HistogramSeriesConfig` | interface | `./ui/Chart` | `Chart.addHistogram(...)` config that bins raw one-dimensional values. |
 | `InvalidOhlcSample` | interface | `./core/types` | An OHLC candle an `OhlcRingBuffer` skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSample` | interface | `./core/types` | A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSampleReason` | type | `./core/types` | Why a sample broke the dataset X rule (X finite and non-decreasing): `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the previous accepted X (or, for `update`, outside its neighbors). |
@@ -171,7 +170,6 @@ Generated from `dist/index.d.ts` after the package build.
 | `OhlcRingBuffer` | class | `./core/OhlcDataset` | Fixed-capacity streaming buffer for OHLC/candlestick data. X must be finite and non-decreasing. A candle that breaks that rule is skipped (never thrown), counted in `rejectedSamples`, reported to `onInvalidSample`, and logged with one console warning per buffer when no callback is set. A candle with a non-finite price is stored and treated as a gap. |
 | `OhlcRingBufferOptions` | interface | `./core/OhlcDataset` | Options for `OhlcRingBuffer`. |
 | `PanIntent` | interface | `./interaction/types` | Pan request expressed in data units or screen pixels. |
-| `PrecomputedHistogramSeriesConfig` | interface | `./ui/Chart` | `Chart.addHistogram(...)` config for bins computed with `histogram(...)`. |
 | `RangeMinMaxDataset` | interface | `./core/types` | Dataset that can answer min/max Y queries for index ranges. |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
 | `ResolvedChartTheme` | interface | `./ui/theme` | Fully resolved chart theme with concrete RGBA values. |
@@ -183,7 +181,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `SeriesAppendRow` | type | `./core/SeriesStore` | Any supported object row for batched appends. |
 | `SeriesConfig` | interface | `./core/types` | Configuration for adding a series to a chart. |
 | `SeriesDataBoundsOptions` | interface | `./core/SeriesStore` | X-range filter for `SeriesStore.dataBounds`. |
-| `SeriesIdentityConfig` | type | `./ui/Chart` | Identity and axis options shared by series that build their own dataset. |
+| `SeriesIdentityConfig` | type | `./ui/Chart` | — |
 | `SeriesMode` | type | `./core/types` | Built-in renderer mode for a series. |
 | `SeriesObjectAppendData` | type | `./core/SeriesStore` | Any object payload for appending one or more samples. |
 | `SeriesOhlcAppendData` | interface | `./core/SeriesStore` | Object form for appending one OHLC sample or a batch of OHLC arrays. |
@@ -214,10 +212,10 @@ Generated from `dist/index.d.ts` after the package build.
 | `StaticOhlcDataset` | class | `./core/OhlcDataset` | Immutable OHLC dataset backed by parallel arrays. X must be finite and non-decreasing; the constructor checks it and throws a `RangeError` naming the first bad index. A candle with any non-finite price is a gap. |
 | `StaticOhlcDatasetOptions` | interface | `./core/OhlcDataset` | Options for `StaticOhlcDataset`. |
 | `StaticOhlcDatasetSortedOptions` | interface | `./core/OhlcDataset` | Options for `StaticOhlcDataset.sorted`. |
-| `TextOverlayConfig` | interface | `./ui/Chart` | Text and styling for an axis title. |
+| `TextOverlayConfig` | type | `./ui/Chart` | — |
 | `ThemeColor` | type | `./core/types` | Any CSS color string (`"#3b82f6"`, `"rgb(59 130 246)"`, `"var(--accent)"`) or an RGBA tuple. |
 | `TimeRange` | interface | `./core/types` | Inclusive data X range. |
-| `TypedSeriesConfig` | type | `./ui/Chart` | Series configuration used by typed helpers such as `addLine`. |
+| `TypedSeriesConfig` | type | `./ui/Chart` | — |
 | `UniformRingBuffer` | class | `./core/UniformRingBuffer` | High-throughput ring buffer for uniformly spaced X values. Store only Y samples and derive X as `xStart + index * xStep`. This is the fastest built-in dataset for live telemetry, signals, and other fixed-rate streams because appends copy a single typed array and min/max extraction uses a block segment tree over the physical ring. Derived X is always finite and ascending, so no sample is ever rejected. X passed to `push`/`append` only seeds the stream; a non-finite seed is ignored with one console warning per buffer and the Y sample is still stored. Non-finite Y is a gap. |
 | `UniformRingBufferOptions` | interface | `./core/UniformRingBuffer` | Options for implicit-X streaming buffers. |
 | `UpdatableDataset` | interface | `./core/types` | Dataset that supports updating existing X/Y samples. |

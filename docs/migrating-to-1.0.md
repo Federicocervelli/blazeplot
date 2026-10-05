@@ -370,23 +370,24 @@ chart.dispose();
 - **The navigator overview uses `series.dataBounds()` and a min/max envelope for dense series.** Spikes between samples now show up in the overview and its Y domain, and series that start or end with a gap are no longer dropped. `maxSamplesPerSeries` now sets the size up to which a series draws as an exact polyline.
 - **`chart.addHistogram(...)` is removed; histograms are bar series over a `HistogramDataset`.** The binning code is no longer imported by `Chart`, so apps that never draw a histogram no longer bundle it. Use `HistogramDataset.from(values, options)` for raw values, or `new HistogramDataset(histogram(values, options))` for bins you computed. `addBar` uses the bin width as the default `barWidth`, and throws a `TypeError` for variable-width bins until you pass `style.barWidth`. The `HistogramSeriesConfig` and `PrecomputedHistogramSeriesConfig` types are removed.
 
-  Before (0.5):
+Before (0.5):
 
-  <!-- snippet: skip intentionally old 0.5 API; chart.addHistogram no longer exists -->
-  ```ts
-  chart.addHistogram({ values, binSize: 10, name: "latency" }, { baseline: 0 });
-  ```
+<!-- snippet: skip intentionally old 0.5 API; chart.addHistogram no longer exists -->
+```ts
+chart.addHistogram({ values, binSize: 10, name: "latency" }, { baseline: 0 });
+```
 
-  After (1.0):
+After (1.0):
 
-  ```ts
-  import { Chart, HistogramDataset } from "blazeplot";
+```ts
+import { Chart, HistogramDataset } from "blazeplot";
 
-  const values = [12, 18, 19, 20, 21, 28, 33, 35];
-  const chart = new Chart(document.body);
-  chart.addBar({ name: "latency", dataset: HistogramDataset.from(values, { binSize: 10 }) }, { baseline: 0 });
-  chart.dispose();
-  ```
+const values = [12, 18, 19, 20, 21, 28, 33, 35];
+const chart = new Chart(document.body);
+chart.addBar({ name: "latency", dataset: HistogramDataset.from(values, { binSize: 10 }) }, { baseline: 0 });
+chart.dispose();
+```
+
 - **`downsample: "none"` line and bar series draw every visible sample.** Past 16,384 visible samples (4,096 bars on the non-instanced path) they used to stop drawing partway across the plot. No code change is needed.
 
 ### 12. Gesture handling
