@@ -54,7 +54,11 @@ export class ChartHover {
       this.lastPlotX = event.offsetX;
       this.lastPlotY = event.offsetY;
       this.lastButtons = event.buttons;
-      this.schedule();
+      // Resolve now: the overlay plugins that subscribe to `hover` only touch DOM, so the pointer is answered in
+      // this event instead of a frame later. Browsers deliver at most one mouse move per frame (last wins), so
+      // this is not extra work, and the plot size is cached, so it adds no layout read.
+      this.cancelScheduled();
+      this.refresh();
     }
     if (this.host.hasListeners("pointermove")) this.emitPointerEvent("pointermove", event);
   };

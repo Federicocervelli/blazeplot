@@ -84,7 +84,27 @@ export function placeAbsoluteWithinBox(
   element.style.top = `${top}px`;
 }
 
-/** Render picked series values as text rows; formatter output is plain text, never HTML. */
+/** The nodes of one rendered row: a color swatch and its text. */
+interface PickRow {
+  readonly swatch: HTMLSpanElement;
+  readonly text: Text;
+  color: string;
+}
+
+interface RenderedRows {
+  readonly rows: readonly PickRow[];
+  readonly first: Node;
+  readonly last: Node;
+}
+
+/** Rows last rendered into a container, so the next render can update them in place. */
+const renderedRows = new WeakMap<HTMLElement, RenderedRows>();
+
+/**
+ * Render picked series values as text rows; formatter output is plain text, never HTML. While the item
+ * count stays the same (the usual case while the pointer moves) the existing nodes are updated in place and
+ * only what changed is written, so a hover does not rebuild the container's subtree on every move.
+ */
 export function renderPickItems<TContext>(
   container: HTMLElement,
   items: readonly ChartPickItem[],
@@ -93,16 +113,43 @@ export function renderPickItems<TContext>(
   defaultFormatter: (item: ChartPickItem, context: TContext) => string,
 ): void {
   const pad = Math.max(1, ...items.map((item) => labelOfPickItem(item).length));
-  container.replaceChildren();
-  items.forEach((item, index) => {
-    if (index > 0) container.append(container.ownerDocument.createElement("br"));
-    const swatch = container.ownerDocument.createElement("span");
-    swatch.className = "blazeplot-pick-swatch";
-    swatch.style.color = rgbaCss(item.series.style.color);
-    swatch.textContent = "\u2588";
+  let rendered = renderedRows.get(container);
+  // Reuse only while the container still holds exactly the nodes this function made (a custom render may have replaced them).
+  const reusable = rendered !== undefined && rendered.rows.length === items.length &&
+    container.firstChild === rendered.first && container.lastChild === rendered.last;
+  if (!reusable) {
+    container.replaceChildren();
+    const rows: PickRow[] = [];
+    const doc = container.ownerDocument;
+    for (let index = 0; index < items.length; index++) {
+      if (index > 0) container.append(doc.createElement("br"));
+      const swatch = doc.createElement("span");
+      swatch.className = "blazeplot-pick-swatch";
+      swatch.textContent = "\u2588";
+      const text = doc.createTextNode("");
+      container.append(swatch, text);
+      rows.push({ swatch, text, color: "" });
+    }
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+    rendered = first && last ? { rows, first: first.swatch, last: last.text } : undefined;
+    if (rendered) renderedRows.set(container, rendered);
+    else renderedRows.delete(container);
+  }
+  if (!rendered) return;
+  const { rows } = rendered;
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]!;
+    const row = rows[index]!;
+    const color = rgbaCss(item.series.style.color);
+    if (row.color !== color) {
+      row.color = color;
+      row.swatch.style.color = color;
+    }
     const value = formatter ? formatter(item, context) : defaultFormatter(item, context);
-    container.append(swatch, ` ${labelOfPickItem(item).padEnd(pad)}  ${value}`);
-  });
+    const text = ` ${labelOfPickItem(item).padEnd(pad)}  ${value}`;
+    if (row.text.data !== text) row.text.data = text;
+  }
 }
 
 /** Visual options for the hover/selection pick marker. */
