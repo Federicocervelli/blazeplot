@@ -232,7 +232,8 @@ export function appendText(group: SVGGElement, textValue: string, x: number, y: 
   text.setAttribute("x", String(x));
   text.setAttribute("y", String(y));
   text.setAttribute("fill", color);
-  text.setAttribute("font", font);
+  // `font` is a CSS shorthand, not an SVG presentation attribute: set it as a style or browsers ignore it.
+  text.style.font = font;
   text.setAttribute("text-anchor", anchor);
   text.setAttribute("dominant-baseline", "hanging");
   text.setAttribute("paint-order", "stroke");
