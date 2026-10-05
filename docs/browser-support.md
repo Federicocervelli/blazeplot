@@ -149,7 +149,7 @@ Mobile browsers should use touch-friendly interaction options and compact axis/l
 
 ## Iframes, popups, and multiple documents
 
-A chart uses the document and window that own its host element, so it works inside an iframe, a popup window, or a Document Picture-in-Picture window: create it with a host element from that document. Resize observation, animation frames, theme color resolution, `matchMedia` (forced colors), overlays, and plugin DOM use the host's window rather than the global one. Two helpers still use the global `document`: `isWebGL2Available()` probes with a throwaway canvas from it, and `downloadBlob` attaches its download link to it. Call them from the document you want them to act on, or pass your own check and download code.
+A chart uses the document and window that own its host element, so it works inside an iframe, a popup window, or a Document Picture-in-Picture window: create it with a host element from that document. Resize observation, animation frames, theme color resolution, `matchMedia` (forced colors), overlays, and plugin DOM use the host's window rather than the global one. `sharedRenderer()` creates its hidden canvas in the document that owns each chart's canvas (one default context per document), and `downloadChartScreenshot` attaches its link to the chart's document. Two standalone helpers default to the global `document`: `isWebGL2Available(doc?)` probes with a throwaway canvas from it, and `downloadBlob(blob, filename, doc?)` attaches its download link to it. Pass the iframe or popup document (for example `host.ownerDocument`) to act on that window; `createChartRenderContext(doc?)` takes one too.
 
 ## Clipboard and downloads
 

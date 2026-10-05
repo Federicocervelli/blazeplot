@@ -313,7 +313,7 @@ If WebGL2 may be missing, choose the factory yourself with `isWebGL2Available() 
 
 ## Iframes, portals, and popups
 
-A chart uses the document and window of its host element. To render into an iframe or a popup window, create the chart from code that runs in the parent but passes a host element that belongs to the other document; the chart then observes size, schedules frames, and creates its overlays in that document. In React, mount the host with a portal into the iframe's `contentDocument.body`, and create the chart in the effect once that element exists. See [Browser support](./browser-support.md#iframes-popups-and-multiple-documents).
+A chart uses the document and window of its host element. To render into an iframe or a popup window, create the chart from code that runs in the parent but passes a host element that belongs to the other document; the chart then observes size, schedules frames, and creates its overlays in that document. In React, mount the host with a portal into the iframe's `contentDocument.body`, and create the chart in the effect once that element exists. Pass the iframe's `contentDocument` to `isWebGL2Available(doc)` and `downloadBlob(blob, filename, doc)` when you call them directly. See [Browser support](./browser-support.md#iframes-popups-and-multiple-documents).
 
 ## Server-side rendering
 

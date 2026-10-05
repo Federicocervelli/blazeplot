@@ -1745,7 +1745,7 @@ function histogram(values: ArrayLike<number>, options?: HistogramOptions): Histo
 #### function isWebGL2Available
 
 ```ts
-function isWebGL2Available(): boolean;
+function isWebGL2Available(doc?: Document | undefined): boolean;
 ```
 
 ### `blazeplot/linked`
@@ -1970,7 +1970,7 @@ function copyChartScreenshotToClipboard(chart: Chart, options?: ChartClipboardOp
 #### function downloadBlob
 
 ```ts
-function downloadBlob(blob: Blob, filename?: string): void;
+function downloadBlob(blob: Blob, filename?: string, doc?: Document): void;
 ```
 
 #### function downloadChartScreenshot
@@ -2026,7 +2026,7 @@ interface ChartRenderContext {
 #### function createChartRenderContext
 
 ```ts
-function createChartRenderContext(): ChartRenderContext;
+function createChartRenderContext(doc?: Document): ChartRenderContext;
 ```
 
 #### function sharedRenderer

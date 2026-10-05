@@ -15,14 +15,17 @@ export interface ChartClipboardOptions extends ChartScreenshotOptions {
   readonly clipboard?: Clipboard;
 }
 
-/** Trigger a browser download for a blob. */
-export function downloadBlob(blob: Blob, filename = "blazeplot.png"): void {
+/**
+ * Trigger a browser download for a blob. The link is attached to `doc` (default: the global
+ * `document`); pass the chart's `ownerDocument` when it lives in an iframe or popup window.
+ */
+export function downloadBlob(blob: Blob, filename = "blazeplot.png", doc: Document = document): void {
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
+  const anchor = doc.createElement("a");
   anchor.href = url;
   anchor.download = filename;
   anchor.style.display = "none";
-  document.body.appendChild(anchor);
+  doc.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
@@ -32,7 +35,7 @@ export function downloadBlob(blob: Blob, filename = "blazeplot.png"): void {
 export async function downloadChartScreenshot(chart: Chart, options: ChartDownloadOptions = {}): Promise<Blob> {
   const { filename = defaultScreenshotFilename(options.type), ...screenshotOptions } = options;
   const blob = await chart.screenshot(screenshotOptions);
-  downloadBlob(blob, filename);
+  downloadBlob(blob, filename, chart.canvas.ownerDocument);
   return blob;
 }
 

@@ -141,7 +141,7 @@ chart.followX({
 - `chart.stopFollowX()` disables live-follow.
 - With the built-in interactions plugin, double-click/tap reset resumes follow by default. Pass `interactionsPlugin({ resumeFollowOnReset: false })` to keep reset on a historical viewport.
 
-With `pauseOnInteraction` enabled (the default), every `chart.pan(...)` and `chart.zoom(...)` call pauses follow, including Y-only gestures such as dragging a Y axis or Y-only wheel zoom, and so does any `chart.setViewport(...)` call that changes X (unless you pass `{ pauseFollow: false }`). Viewport changes that come from following itself, `fitToData`, or `autoFitY` do not pause it. There is no per-axis switch: to let users change Y without leaving live mode, set `pauseOnInteraction: false` and call `chart.setFollowXPaused(true)` from your own UI when you want to stop following.
+With `pauseOnInteraction` enabled (the default), every `chart.pan(...)` and `chart.zoom(...)` call that moves X pauses follow, and so does any `chart.setViewport(...)` call that changes X (unless you pass `{ pauseFollow: false }`). Viewport changes that come from following itself, `fitToData`, or `autoFitY` do not pause it. Y-only gestures (dragging a Y axis, wheel zoom over a Y axis, or `chart.zoom({ axis: "y", ... })` and `chart.pan({ dx: 0, ... })`) leave follow running and emit no `followxchange`, so users can rescale Y without leaving live mode. In linked charts the same holds for every panel.
 
 ### Telling user changes from automatic ones
 

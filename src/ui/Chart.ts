@@ -314,7 +314,7 @@ export class Chart {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.applyGesture(options.source ?? "api", () => {
+    this.applyGesture(options.source ?? "api", next.dx !== 0, () => {
       if (yAxis === "right") {
         return (next.dx === 0 || this.axis.pan({ dx: next.dx, dy: 0 })) && (next.dy === 0 || this.rightAxis.pan({ dx: 0, dy: next.dy }));
       }
@@ -332,7 +332,7 @@ export class Chart {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.applyGesture(options.source ?? "api", () => {
+    this.applyGesture(options.source ?? "api", next.axis !== "y", () => {
       if (yAxis === "right") {
         return (next.axis === "y" || this.axis.zoom({ ...next, axis: "x" })) && (next.axis === "x" || this.rightAxis.zoom({ ...next, axis: "y" }));
       }
@@ -342,10 +342,10 @@ export class Chart {
   }
 
   /**
-   * Run a pan/zoom that moves one or both cameras. If any step is rejected (invalid scale
+   * Run a pan/zoom that moves one or both cameras; `movesX` says whether it changes the X viewport. If any step is rejected (invalid scale
    * domain or a span beyond float precision), restore both so the axes never drift apart.
    */
-  private applyGesture(source: ChartViewportChangeSource, move: () => boolean): void {
+  private applyGesture(source: ChartViewportChangeSource, movesX: boolean, move: () => boolean): void {
     const left = this.camera.viewport;
     const right = this.rightCamera.viewport;
     if (!move()) {
@@ -353,7 +353,8 @@ export class Chart {
       this.rightCamera.setViewport(right);
       return;
     }
-    this.followXPolicy.pauseForInteraction();
+    // Y-only gestures leave the X viewport alone, so they must not take the chart out of live follow.
+    if (movesX) this.followXPolicy.pauseForInteraction();
     this.syncRightCameraX();
     this.emitViewportChange(source);
     this.hover.schedule();

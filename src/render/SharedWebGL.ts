@@ -24,6 +24,8 @@ export interface ChartRenderContext {
 export class SharedWebGLContext implements ChartRenderContext {
   private canvas: HTMLCanvasElement | null = null;
   private renderer_: Renderer | null = null;
+  /** @param doc Document that owns the hidden canvas; defaults to the first attached chart's document. */
+  constructor(private readonly doc?: Document) {}
   private readonly clients = new Set<SharedWebGLRenderer>();
   private lost = false;
   private readonly handleLost = (event: Event): void => {
@@ -66,8 +68,9 @@ export class SharedWebGLContext implements ChartRenderContext {
   /** @internal */
   attach(client: SharedWebGLRenderer): void {
     if (!this.canvas) {
-      if (typeof document === "undefined") throw new Error("A shared render context needs a DOM.");
-      const canvas = document.createElement("canvas");
+      const doc = this.doc ?? client.ownerDocument ?? globalThis.document;
+      if (!doc) throw new Error("A shared render context needs a DOM.");
+      const canvas = doc.createElement("canvas");
       // Rendering happens in the shared canvas; it only needs a size, never to be attached to the page.
       const renderer = new Renderer(new WebGL2Backend(canvas));
       canvas.addEventListener("webglcontextlost", this.handleLost);
@@ -146,6 +149,11 @@ class SharedWebGLRenderer implements ChartRenderer {
   private width = 1;
   private height = 1;
   private attached = true;
+
+  /** @internal Document that owns the chart canvas. */
+  get ownerDocument(): Document | undefined {
+    return this.chartCanvas.ownerDocument ?? undefined;
+  }
 
   constructor(private readonly shared: SharedWebGLContext, context: ChartRendererFactoryContext) {
     const target = context.canvas.getContext("2d");
