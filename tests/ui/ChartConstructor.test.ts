@@ -1,7 +1,8 @@
 import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { FakeGl } from "../render/fakeGl.ts";
-import { stubPlot, useChartHarness } from "./harness.ts";
+import { FakeResizeObserver } from "./fakes.ts";
+import { fire, pointerEvent, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();
 
@@ -48,6 +49,12 @@ function countCanvasLayoutReads(run: () => void): number {
   return reads;
 }
 
+/** Change the laid-out size of a canvas without telling the chart (a browser would, via its ResizeObserver). */
+function setLayoutSize(canvas: HTMLCanvasElement, width: number, height: number): void {
+  Object.defineProperty(canvas, "clientWidth", { configurable: true, value: width });
+  Object.defineProperty(canvas, "clientHeight", { configurable: true, value: height });
+}
+
 async function chartClass(): Promise<typeof import("../../src/ui/Chart.ts").Chart> {
   return (await import("../../src/ui/Chart.ts")).Chart;
 }
@@ -82,7 +89,7 @@ describe("chart constructor", () => {
     const Chart = await chartClass();
     const chart = new Chart(h.target(), { renderer: "canvas2d", axes: { x: true, y: true } });
     const canvas = chartInternals(chart).canvas;
-    stubPlot(chart, { width: 320, height: 180 });
+    setLayoutSize(canvas, 320, 180);
     expect(canvas.width).not.toBe(320);
     chart.start();
     h.raf.flush();
@@ -90,11 +97,42 @@ describe("chart constructor", () => {
     chart.dispose();
   });
 
+  it("reads no layout in later frames or hover refreshes, which would force a flush after other charts' DOM writes", async () => {
+    const Chart = await chartClass();
+    const chart = new Chart(h.target(), { renderer: "canvas2d", axes: { x: true, y: true } });
+    chart.addLine({ capacity: 4 }).append({ x: 1, y: 2 });
+    chart.start();
+    h.raf.flush();
+    const canvas = chartInternals(chart).canvas;
+    const reads = countCanvasLayoutReads(() => {
+      for (let i = 0; i < 5; i++) {
+        chart.setViewport({ xMin: i, xMax: i + 10 });
+        fire(canvas, pointerEvent("pointermove", 100, 50, { offsetX: 100, offsetY: 50 }));
+        h.raf.flush();
+      }
+    });
+    expect(reads).toBe(0);
+    chart.dispose();
+  });
+
+  it("takes the plot size from the resize path, so a ResizeObserver notification is enough", async () => {
+    const Chart = await chartClass();
+    const chart = new Chart(h.target(), { renderer: "canvas2d", axes: { x: true, y: true } });
+    chart.start();
+    h.raf.flush();
+    const canvas = chartInternals(chart).canvas;
+    setLayoutSize(canvas, 200, 100);
+    FakeResizeObserver.instances[FakeResizeObserver.instances.length - 1]!.trigger();
+    h.raf.flush();
+    expect([canvas.width, canvas.height]).toEqual([200, 100]);
+    chart.dispose();
+  });
+
   it("does not let the first frame override an explicit resize", async () => {
     const Chart = await chartClass();
     const chart = new Chart(h.target(), { renderer: "canvas2d", axes: { x: true, y: true } });
     const canvas = chartInternals(chart).canvas;
-    stubPlot(chart, { width: 320, height: 180 });
+    setLayoutSize(canvas, 320, 180);
     expect(chart.resize(1)).toBe(true);
     expect(canvas.width).toBe(320);
     chart.start();

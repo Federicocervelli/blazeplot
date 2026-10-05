@@ -19,6 +19,9 @@ export interface ChartHoverHost {
   view(): Pick<Window, "requestAnimationFrame" | "cancelAnimationFrame">;
   series(): readonly SeriesStore[];
   hoverOptions(): ChartPickOptions | undefined;
+  /** Plot size in CSS pixels from the chart's last layout read; reading it never forces layout. */
+  plotWidth(): number;
+  plotHeight(): number;
   /** Controller of the left Y axis, which maps pointer positions to data. */
   axis(): AxisController;
   emit<K extends "hover" | ChartPointerEventType | "seriesclick">(event: K, payload: ChartEventMap[K]): void;
@@ -105,18 +108,17 @@ export class ChartHover {
    * Re-pick under the last pointer position; while a button is held, keep the same items and only reproject them.
    * A caller that already read the plot size this frame passes it in, so the refresh adds no layout read.
    */
-  refresh(plotWidth?: number, plotHeight?: number): void {
+  refresh(): void {
     if (this.inspection) {
       this.set(this.inspectionHoverState());
       return;
     }
     if (!this.pointerInPlot) return;
-    const canvas = this.host.canvas();
     const rect: PlotRect = {
       left: this.lastClientX - this.lastPlotX,
       top: this.lastClientY - this.lastPlotY,
-      width: plotWidth ?? canvas.clientWidth,
-      height: plotHeight ?? canvas.clientHeight,
+      width: this.host.plotWidth(),
+      height: this.host.plotHeight(),
     };
     if (this.lastButtons !== 0) {
       this.set(this.host.picker.reprojectHoverState(this.state, rect, { clientX: this.lastClientX, clientY: this.lastClientY, plotX: this.lastPlotX, plotY: this.lastPlotY }));

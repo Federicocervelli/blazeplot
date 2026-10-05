@@ -83,12 +83,22 @@ export class Chart {
     series: () => this.series,
     hoverOptions: () => this.options.hover,
     axis: () => this.axis,
+    plotWidth: () => this.plotWidth,
+    plotHeight: () => this.plotHeight,
     emit: (event, payload) => this.events.emit(event, payload),
     hasListeners: (event) => this.events.has(event),
   });
   private lastFrameAt: number = 0;
   /** Whether the canvas drawing buffer has been sized from layout yet (the first frame or `resize()` does it). */
   private canvasSized: boolean = false;
+  /**
+   * Plot size in CSS pixels, as of the last layout read. Layout is read when the canvas is sized (first
+   * frame, `resize()`, and the ResizeObserver, which fires whenever the plot's size changes), never
+   * per frame: a read after another chart's or plugin's DOM writes forces a synchronous layout, and a
+   * page of many charts redrawing in one animation frame would pay one per chart per frame.
+   */
+  private plotWidth: number = 0;
+  private plotHeight: number = 0;
   private readonly followXPolicy: FollowXController = new FollowXController({
     camera: () => this.camera,
     axis: () => this.axis,
@@ -681,10 +691,7 @@ export class Chart {
     }
 
     if (!this.canvasSized) this.applyCanvasSize();
-    // The one layout read of the frame, taken before any DOM write so it never forces a flush. Ticks,
-    // the pixel ratio, the axis overlay and the closing hover refresh all share it.
-    const plotWidth = this.canvas.clientWidth;
-    const plotHeight = this.canvas.clientHeight;
+    const { plotWidth, plotHeight } = this;
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
@@ -702,7 +709,6 @@ export class Chart {
       return;
     }
 
-    let sizeChanged = false;
     try {
       const pixelRatio = this.canvas.width / Math.max(1, plotWidth);
       this.engine.beginFrame(this.canvas.width, this.canvas.height, pixelRatio);
@@ -720,7 +726,7 @@ export class Chart {
       this.stats.uploadBytes = report.uploadBytes;
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks, plotWidth, plotHeight);
-      sizeChanged = this.updateAutoGutters();
+      this.updateAutoGutters();
       this.events.emit("render", undefined);
     } catch (error) {
       if (this.engine.isLost) {
@@ -733,8 +739,7 @@ export class Chart {
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     this.hover.cancelScheduled();
-    if (sizeChanged) this.hover.refresh();
-    else this.hover.refresh(plotWidth, plotHeight);
+    this.hover.refresh();
     if (this.running && this.options.renderLoop !== "continuous" && this.followXPolicy.options?.currentX && !this.followXPolicy.isPaused) {
       this.requestRender();
     }
@@ -803,9 +808,9 @@ export class Chart {
   }
 
   /** Resize `size: "auto"` gutters from the labels measured this frame. */
-  private updateAutoGutters(): boolean {
+  private updateAutoGutters(): void {
     const overlay = this.axisOverlay;
-    if (!overlay) return false;
+    if (!overlay) return;
     let changed = false;
     for (const axis of ["x", "y", "y2"] as const) {
       const config = this.normalizedAxes[axis];
@@ -819,7 +824,6 @@ export class Chart {
       this.resize();
       this.requestRender();
     }
-    return changed;
   }
 
   private updateTitles(): void {
@@ -839,8 +843,10 @@ export class Chart {
   private applyCanvasSize(dpr: number = this.layout.view.devicePixelRatio): boolean {
     this.canvasSized = true;
     const scale = Number.isFinite(dpr) ? Math.max(1, dpr) : 1;
-    const width = Math.max(1, Math.floor(this.canvas.clientWidth * scale));
-    const height = Math.max(1, Math.floor(this.canvas.clientHeight * scale));
+    const plotWidth = this.plotWidth = this.canvas.clientWidth;
+    const plotHeight = this.plotHeight = this.canvas.clientHeight;
+    const width = Math.max(1, Math.floor(plotWidth * scale));
+    const height = Math.max(1, Math.floor(plotHeight * scale));
     if (this.canvas.width === width && this.canvas.height === height) return false;
 
     this.canvas.width = width;
