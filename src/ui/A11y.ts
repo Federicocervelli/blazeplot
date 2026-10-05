@@ -183,6 +183,15 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
       const updateMs = Math.max(0, tableOptions?.updateMs ?? DEFAULT_TABLE_UPDATE_MS);
       let tableTimer: ReturnType<typeof setTimeout> | null = null;
       let tableSignature = "";
+      const tableCache = new Map<ChartSeriesState["series"], { table: HTMLTableElement; caption: HTMLElement; rows: HTMLElement[][]; columns: number; name: string }>();
+      const setText = (element: HTMLElement, text: string): void => {
+        const node = element.firstChild;
+        if (node && node.nodeType === 3) {
+          if ((node as Text).data !== text) (node as Text).data = text;
+        } else {
+          element.textContent = text;
+        }
+      };
 
       const formatValues = (state: ChartSeriesState, index: number, sample: SeriesSample): string[] => {
         if (isOhlc(state)) {
@@ -204,6 +213,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
         tableSignature = signature;
 
         const nodes: HTMLElement[] = [];
+        const seen = new Set<unknown>();
         for (const [i, state] of states.entries()) {
           const range = ranges[i]!;
           const visibleCount = Math.max(0, range.end - range.start);
@@ -215,14 +225,35 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
             continue;
           }
           const indices = sampleTableIndices(range.start, range.end, maxRows);
+          const sampled = indices.length < visibleCount ? `, evenly sampled from ${visibleCount.toLocaleString("en-US")} visible points` : " visible";
+          const captionText = `${name}: ${indices.length.toLocaleString("en-US")} points${sampled}`;
+          const headers = [tableOptions.xLabel ?? "X", ...(isOhlc(state) ? ["Open", "High", "Low", "Close"] : [tableOptions.yLabel ?? "Y"])];
+          const rows: Array<{ readonly index: number; readonly sample: SeriesSample; readonly values: string[] }> = [];
+          for (const index of indices) {
+            const sample = state.series.sampleAt(index);
+            if (sample) rows.push({ index, sample, values: formatValues(state, index, sample) });
+          }
+
+          // A live table is updated in place when its shape is unchanged, so streaming creates no garbage nodes.
+          const cached = tableCache.get(state.series);
+          if (cached && cached.rows.length === rows.length && cached.columns === headers.length && cached.name === name) {
+            setText(cached.caption, captionText);
+            for (const [r, row] of rows.entries()) {
+              const cells = cached.rows[r]!;
+              setText(cells[0]!, formatX(row.sample.x));
+              for (const [c, value] of row.values.entries()) setText(cells[c + 1]!, value);
+            }
+            nodes.push(cached.table);
+            seen.add(state.series);
+            continue;
+          }
+
           const table = doc.createElement("table");
           const caption = doc.createElement("caption");
-          const sampled = indices.length < visibleCount ? `, evenly sampled from ${visibleCount.toLocaleString("en-US")} visible points` : " visible";
-          caption.textContent = `${name}: ${indices.length.toLocaleString("en-US")} points${sampled}`;
+          caption.textContent = captionText;
           table.appendChild(caption);
           const head = doc.createElement("thead");
           const headRow = doc.createElement("tr");
-          const headers = [tableOptions.xLabel ?? "X", ...(isOhlc(state) ? ["Open", "High", "Low", "Close"] : [tableOptions.yLabel ?? "Y"])];
           for (const label of headers) {
             const th = doc.createElement("th");
             th.scope = "col";
@@ -232,25 +263,33 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
           head.appendChild(headRow);
           table.appendChild(head);
           const body = doc.createElement("tbody");
-          for (const index of indices) {
-            const sample = state.series.sampleAt(index);
-            if (!sample) continue;
-            const row = doc.createElement("tr");
+          const cellRows: HTMLElement[][] = [];
+          for (const row of rows) {
+            const tr = doc.createElement("tr");
             const x = doc.createElement("th");
             x.scope = "row";
-            x.textContent = formatX(sample.x);
-            row.appendChild(x);
-            for (const value of formatValues(state, index, sample)) {
+            x.textContent = formatX(row.sample.x);
+            tr.appendChild(x);
+            const cells: HTMLElement[] = [x];
+            for (const value of row.values) {
               const cell = doc.createElement("td");
               cell.textContent = value;
-              row.appendChild(cell);
+              tr.appendChild(cell);
+              cells.push(cell);
             }
-            body.appendChild(row);
+            cellRows.push(cells);
+            body.appendChild(tr);
           }
           table.appendChild(body);
           nodes.push(table);
+          tableCache.set(state.series, { table, caption, rows: cellRows, columns: headers.length, name });
+          seen.add(state.series);
         }
-        tables.replaceChildren(...nodes);
+        for (const series of tableCache.keys()) {
+          if (!seen.has(series)) tableCache.delete(series);
+        }
+        const current = tables.children;
+        if (current.length !== nodes.length || nodes.some((node, i) => current[i] !== node)) tables.replaceChildren(...nodes);
       };
 
       const scheduleTable = (): void => {

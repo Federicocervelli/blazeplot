@@ -43,7 +43,7 @@ const budgets: Budget[] = [
   { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_600 },
   { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 10_100 },
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 21_100 },
-  { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 10_100 },
+  { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 11_300 },
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
