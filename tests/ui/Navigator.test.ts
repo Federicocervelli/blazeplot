@@ -325,3 +325,102 @@ describe("navigatorPlugin lifecycle", () => {
     expect(h.ledger().reachable()).toBe(0);
   });
 });
+
+describe("navigatorPlugin overview", () => {
+  const pathOf = (chart: Chart, index = 0): string => rootOf(chart).querySelectorAll("path")[index]!.getAttribute("d")!;
+  /** Y coordinates (svg space, 55 = bottom of a 56px track) of every vertex in a path. */
+  const ys = (d: string): number[] => [...d.matchAll(/[ML] [\d.-]+ ([\d.-]+)/g)].map((m) => Number(m[1]));
+
+  /** happy-dom reports a zero-width track, so give this navigator the 400px the other stubs describe. */
+  const track = (chart: Chart): void => {
+    Object.defineProperty(rootOf(chart), "clientWidth", { configurable: true, value: 400 });
+  };
+
+  it("keeps a series whose first or last sample is a gap", () => {
+    const { chart, plugin } = make({}, false);
+    const series = chart.addLine({ capacity: 64 });
+    series.append({ x: [0, 1, 2, 3, 4, 5], y: [NaN, 1, 5, 2, 4, NaN] });
+    plugin.refresh();
+    const root = rootOf(chart);
+    expect(root.style.display).toBe("block");
+    expect(num(root, "aria-valuemin")).toBe(1);
+    expect(num(root, "aria-valuemax")).toBe(4);
+    expect(pathOf(chart).startsWith("M ")).toBe(true);
+    chart.dispose();
+  });
+
+  it("includes an isolated spike in the Y domain and the dense overview", () => {
+    const { chart, plugin } = make({}, false);
+    const n = 20_000;
+    const series = chart.addLine({ capacity: n });
+    const x = new Float64Array(n);
+    const y = new Float64Array(n);
+    for (let i = 0; i < n; i++) x[i] = i;
+    y[12_345] = 100;
+    series.append({ x, y });
+    track(chart);
+    plugin.refresh();
+    const d = pathOf(chart);
+    expect(d.endsWith("Z")).toBe(true);
+    // The spike reaches the top of the track (y = 0) while the baseline sits at the bottom (y = 55).
+    expect(Math.min(...ys(d))).toBeCloseTo(0, 5);
+    expect(Math.max(...ys(d))).toBe(55);
+    const path = rootOf(chart).querySelector("path")!;
+    expect(path.getAttribute("fill-opacity")).toBe("0.35");
+    chart.dispose();
+  });
+
+  it("breaks the envelope across X gaps and the polyline across Y gaps", () => {
+    const { chart, plugin } = make({}, false);
+    const n = 4000;
+    const series = chart.addLine({ capacity: n });
+    const x = new Float64Array(n);
+    const y = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      x[i] = i < n / 2 ? i : i + 4000;
+      y[i] = i % 7;
+    }
+    series.append({ x, y });
+    track(chart);
+    plugin.refresh();
+    expect(pathOf(chart).match(/M /g)!.length).toBeGreaterThanOrEqual(2);
+    chart.dispose();
+
+    const sparse = make({}, false);
+    const line = sparse.chart.addLine({ capacity: 8 });
+    line.append({ x: [0, 1, 2, 3, 4], y: [1, 2, NaN, 3, 4] });
+    track(sparse.chart);
+    sparse.plugin.refresh();
+    expect(pathOf(sparse.chart).match(/M /g)).toHaveLength(2);
+    sparse.chart.dispose();
+  });
+
+  it("refreshes a 1M-point overview quickly and reuses it for viewport-only renders", () => {
+    const { chart, plugin } = make({}, false);
+    const n = 1_000_000;
+    const series = chart.addLine({ capacity: n });
+    const x = new Float64Array(n);
+    const y = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      x[i] = i;
+      y[i] = Math.sin(i / 1000);
+    }
+    series.append({ x, y });
+    track(chart);
+    plugin.refresh();
+
+    let best = Infinity;
+    for (let i = 0; i < 5; i++) {
+      const start = performance.now();
+      plugin.refresh();
+      best = Math.min(best, performance.now() - start);
+    }
+    // Typically ~1 ms; the bound leaves headroom for loaded CI runners and coverage instrumentation.
+    expect(best).toBeLessThan(5);
+
+    const before = pathOf(chart);
+    chart.setViewport({ xMin: 1000, xMax: 5000 });
+    expect(pathOf(chart)).toBe(before);
+    chart.dispose();
+  });
+});

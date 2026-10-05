@@ -32,7 +32,7 @@ export function examplePlugin(): ChartPlugin {
 | `ctx.viewport` | `get(yAxis?)`, `set(viewport, yAxis?)`, `pan(intent, yAxis?)`, `zoom(intent, yAxis?)`, `fitToData(options?)`, `isReversed(axis, yAxis?)`, `followX(options?)`, `stopFollowX()`, `setFollowXPaused(paused)`, `getFollowXState()` | Reading and changing the visible domain. Changes go through the chart's `ViewportPolicy` and pause latest-X following like a user gesture. |
 | `ctx.state` | `getSeries()`, `getHover()`, `pick(clientX, clientY, options?)`, `getFrameStats(target?)`, `inspect(target)`, `getInspection()` | Series metadata, the current hover hit, hit-testing, render metrics, and keyboard inspection (see below). |
 | `ctx.layout` | `plotRect()`, `rootRect()`, `reserve(reservation)` | Plot and chart geometry in client coordinates, and space around the plot for plugin UI. `reserve` returns a release function. |
-| `ctx.dom` | `mount(slot, element)`, `listen(surface, type, listener, options?)`, `decorate(surface, decoration)`, `contains(target)`, `claimPointer(event)` | Attaching plugin DOM, listening to input on chart-owned elements, styling them, and claiming pointer gestures. `mount`, `listen`, and `decorate` return an undo function. |
+| `ctx.dom` | `document`, `view`, `create(tag)`, `createSvg(tag)`, `mount(slot, element)`, `listen(surface, type, listener, options?)`, `decorate(surface, decoration)`, `contains(target)`, `claimPointer(event)` | Claiming pointer gestures, creating plugin elements in the chart's own document (an iframe, popup, or Document Picture-in-Picture window may differ from the global one), attaching them, listening to input on chart-owned elements, and styling them. `mount`, `listen`, and `decorate` return undo functions. Create elements with `ctx.dom.create` instead of the global `document`, and read `devicePixelRatio`, `matchMedia`, and animation frames from `ctx.dom.view`. |
 | `ctx.events` | `subscribe(event, callback)`, `emit(event, payload)` | Chart events (`render`, `hover`, `viewportchange`, `serieschange`, pointer events, ...) and typed plugin events. |
 | `ctx.requestRender()` | | Schedule a frame after changing something the chart draws. Chart-owned changes already request one. |
 | `ctx.unstable` | `canvas`, `element(slot)`, `getWebGLContext()`, `getCamera(yAxis?)` | Experimental escape hatches. Prefer the groups above. |
@@ -97,12 +97,15 @@ export const brushPlugin: ChartPlugin = {
 | `onContextRestored()` | The context is restored and the chart's GPU resources are rebuilt. |
 
 - Hooks run in **registration order**. Disposal runs in **reverse registration order**, so a plugin can rely on plugins installed before it still being alive during its own cleanup.
-- A hook that throws is reported with `console.error` and does not stop other plugins. A cleanup that throws never prevents chart-owned resources from being released.
+- A hook that throws is reported with `console.error` and does not stop other plugins. A `dispose` or cleanup that throws is logged and never prevents chart-owned resources from being released.
 - If `install` throws, the context releases what it handed out, the plugins already installed are disposed in reverse order, and the chart constructor rethrows.
+- **One plugin instance per chart.** Keep per-chart state inside `install` (or throw if your instance is already installed). The built-in stateful plugins (a11y, annotations, crosshair, flame graph, navigator, selection) keep state in the factory closure and throw `one plugin instance per chart` when the same instance is installed on a second chart, so call the factory once per chart instead of sharing a `plugins` array of instances. The legend, tooltip, and interactions plugins keep their state inside `install`, so one instance may be installed on several charts.
 
 The app that owns the chart controls `chart.start()` and `chart.stop()`. Plugin code should update plugin-owned DOM or state from chart events and hooks.
 
 ## Plugin events
+
+The `hover` event fires after a frame and only when the picked items, their values, or the pointer position changed, not every frame; a still pointer over unchanged data is silent, while a live chart fires again as the hovered values change. Render from the `hover` callback directly instead of deferring to another animation frame.
 
 Plugins can emit typed events that chart users receive through `chart.subscribe(...)`. The built-in `select` event (emitted by `selectionPlugin` and linked layouts) is declared on `ChartPluginEventMap`. Add your own events with declaration merging, prefixed with your plugin name:
 
@@ -151,7 +154,7 @@ export interface LastValuePluginOptions {
 export function lastValuePlugin(options: LastValuePluginOptions): ChartPlugin {
   return {
     install(ctx) {
-      const badge = document.createElement("div");
+      const badge = ctx.dom.create("div");
       badge.className = "last-value-badge";
       Object.assign(badge.style, { position: "absolute", right: "4px", padding: "2px 6px", pointerEvents: "none", transform: "translateY(-50%)" });
       ctx.dom.mount("plot", badge);
@@ -240,7 +243,7 @@ import type { ChartPlugin } from "blazeplot";
 export function footerPlugin(): ChartPlugin {
   return {
     install(ctx) {
-      const footer = document.createElement("div");
+      const footer = ctx.dom.create("div");
       footer.textContent = "Updated live";
       Object.assign(footer.style, { position: "absolute", left: "0", right: "0", bottom: "4px", textAlign: "center" });
       const unmount = ctx.dom.mount("root", footer);

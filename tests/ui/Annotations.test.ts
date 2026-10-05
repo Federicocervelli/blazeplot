@@ -283,7 +283,7 @@ describe("annotationsPlugin lifecycle", () => {
       ],
     });
     const targets = (): HTMLElement[] => [...chart.plotElement.querySelectorAll<HTMLElement>(".blazeplot-annotation-focus")];
-    expect(targets().map((target) => target.getAttribute("aria-label"))).toEqual(["Deploy", "Horizontal line at y 50.0", "Incident window"]);
+    expect(targets().map((target) => target.getAttribute("aria-label"))).toEqual(["Deploy", "Horizontal line at y 50", "Incident window"]);
     const [line] = targets();
     expect(line!.tabIndex).toBe(0);
     expect(line!.getAttribute("role")).toBe("button");

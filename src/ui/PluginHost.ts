@@ -5,6 +5,8 @@ import type {
   ChartEventMap,
   ChartEventName,
   ChartFitToDataOptions,
+  ChartSetViewportOptions,
+  ChartViewportGestureOptions,
   ChartFollowXOptions,
   ChartFrameStats,
   ChartHoverState,
@@ -126,12 +128,12 @@ export interface ChartPluginCoords {
 export interface ChartPluginViewport {
   /** Visible data domain for the requested Y axis (defaults to `"left"`). */
   get(yAxis?: SeriesYAxis): Viewport;
-  /** Set any viewport edges. X is shared by both Y axes; changing X pauses latest-X following. */
-  set(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
+  /** Set any viewport edges. X is shared by both Y axes; changing X pauses latest-X following unless `options.pauseFollow` is false. Pass `{ source: "user" }` for gestures. */
+  set(viewport: Partial<Viewport>, yAxis?: SeriesYAxis, options?: ChartSetViewportOptions): void;
   /** Pan in scale space. Omit `yAxis` to pan Y on both axes like a plot gesture. */
-  pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
+  pan(intent: PanIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
   /** Zoom in scale space around a normalized anchor. Omit `yAxis` to zoom Y on both axes. */
-  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
+  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
   /** Fit the viewport to data bounds; returns `false` when nothing changed. */
   fitToData(options?: ChartFitToDataOptions): boolean;
   /** Whether an axis runs right-to-left (`"x"`) or top-to-bottom (`"y"`) on screen. */
@@ -180,6 +182,14 @@ export interface ChartPluginLayout {
 
 /** DOM attachment and input on chart-owned elements. Everything is released when the plugin is disposed. */
 export interface ChartPluginDom {
+  /** The document that owns the chart. Differs from the global `document` inside an iframe, popup, or Document Picture-in-Picture window. */
+  readonly document: Document;
+  /** The window that owns the chart (`document.defaultView`, else the global). Use it for `devicePixelRatio`, `matchMedia`, and animation frames. */
+  readonly view: Window & typeof globalThis;
+  /** Create an HTML element in the chart's document. Plugins should use this instead of the global `document`. */
+  create<K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K];
+  /** Create an SVG element in the chart's document. */
+  createSvg<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K];
   /** Append `element` to a mount slot. Returns a function that removes it. */
   mount(slot: ChartMountSlot, element: Element): () => void;
   /** Listen for a DOM event on a chart surface. Returns a function that removes the listener. */
@@ -292,9 +302,9 @@ export interface PluginHostChart {
   dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
   clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
   getViewport(yAxis?: SeriesYAxis): Viewport;
-  setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
-  pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
-  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
+  setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis, options?: ChartSetViewportOptions): void;
+  pan(intent: PanIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
+  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
   fitToData(options?: ChartFitToDataOptions): boolean;
   followX(options?: ChartFollowXOptions): void;
   stopFollowX(): void;
@@ -460,8 +470,9 @@ export class PluginHost {
     try {
       if (entry.disposeFn) entry.disposeFn();
       else entry.handle?.dispose?.();
-    } catch {
+    } catch (error) {
       // Plugin cleanup must not prevent other plugins or chart-owned resources from being released.
+      console.error("BlazePlot plugin dispose failed:", error);
     }
     this.runCleanups(entry);
     for (const [pointerId, owner] of this.pointerClaims) if (owner === entry) this.pointerClaims.delete(pointerId);
@@ -472,8 +483,9 @@ export class PluginHost {
     for (const cleanup of entry.cleanups.splice(0).reverse()) {
       try {
         cleanup();
-      } catch {
+      } catch (error) {
         // Keep releasing the remaining resources.
+        console.error("BlazePlot plugin cleanup failed:", error);
       }
     }
   }
@@ -528,9 +540,9 @@ export class PluginHost {
 
     const viewport: ChartPluginViewport = {
       get: (yAxis) => chart.getViewport(yAxis),
-      set: (next, yAxis) => chart.setViewport(next, yAxis),
-      pan: (intent, yAxis) => chart.pan(intent, yAxis),
-      zoom: (intent, yAxis) => chart.zoom(intent, yAxis),
+      set: (next, yAxis, options) => chart.setViewport(next, yAxis, options),
+      pan: (intent, yAxis, options) => chart.pan(intent, yAxis, options),
+      zoom: (intent, yAxis, options) => chart.zoom(intent, yAxis, options),
       fitToData: (options) => chart.fitToData(options),
       isReversed: (axis, yAxis) => {
         const camera = chart.getCamera(yAxis);
@@ -561,7 +573,12 @@ export class PluginHost {
       },
     };
 
+    const ownerDocument = chart.rootElement.ownerDocument;
     const dom: ChartPluginDom = {
+      document: ownerDocument,
+      view: ownerDocument.defaultView ?? (globalThis as Window & typeof globalThis),
+      create: (tag) => ownerDocument.createElement(tag),
+      createSvg: (tag) => ownerDocument.createElementNS("http://www.w3.org/2000/svg", tag),
       mount: (slot, element) => {
         this.surfaceElement(slot).appendChild(element);
         return track(() => element.remove());
@@ -607,7 +624,7 @@ export class PluginHost {
       claimPointer: (event) => this.claimPointer(entry, event),
       contains: (target) => {
         const root = chart.rootElement;
-        return target === root || (typeof Node !== "undefined" && target instanceof Node && root.contains(target));
+        return target === root || (target !== null && target !== undefined && (target as Node).nodeType !== undefined && root.contains(target as Node));
       },
     };
 

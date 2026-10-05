@@ -87,6 +87,7 @@ const RENDER_SETTLE_MS = 250;
 
 const DEFAULT_CASES = [
   "line",
+  "exact-line-long",
   "area",
   "scatter",
   "bar",
@@ -114,6 +115,7 @@ const DEFAULT_CASES = [
  */
 const CASE_CHECKS: Readonly<Record<string, CaseCheck>> = {
   line: { minInkRatio: 0.004, baseline: { region: "plot" } },
+  "exact-line-long": { minInkRatio: 0.004 },
   area: { minInkRatio: 0.1, baseline: { region: "plot" } },
   scatter: { minInkRatio: 0.01, baseline: { region: "plot" } },
   bar: { minInkRatio: 0.15, baseline: { region: "plot" } },

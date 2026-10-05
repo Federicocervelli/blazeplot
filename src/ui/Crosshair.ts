@@ -1,8 +1,9 @@
 import type { SeriesYAxis } from "../core/types.js";
 import type { ChartPickItem, ChartPickMode } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createLongPressTouchTracker, requestLongPressTouchAction,createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
+import { createLongPressTouchTracker, requestLongPressTouchAction, createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, singleChartPlugin, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
 import type { SyncMembership } from "./OverlayUtils.js";
+import { rgbaCss } from "./theme.js";
 
 /** Axis drawn by the crosshair overlay. */
 export type CrosshairAxis = "x" | "y" | "xy";
@@ -143,7 +144,7 @@ function createXRangeHighlight(item: ChartPickItem, chart: ChartPluginContext, c
   const [leftX, valueY] = chart.coords.dataToPlot(item.xRange!.xStart, item.y, yAxis);
   const [rightX, baselineY] = chart.coords.dataToPlot(item.xRange!.xEnd, baseline, yAxis);
   const width = Math.max(1, Math.abs(rightX - leftX));
-  const marker = document.createElement("div");
+  const marker = chart.dom.document.createElement("div");
   marker.style.position = "absolute";
   marker.style.left = `${(leftX + rightX) / 2 - width / 2}px`;
   marker.style.top = `${Math.min(valueY, baselineY)}px`;
@@ -236,28 +237,49 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     placeAbsoluteWithinBox(label, position.plotX, position.plotY, plot.width, plot.height, { offsetX, offsetY });
   };
 
+  // Plain point markers are reused across updates; custom or interval highlights rebuild the layer.
+  const markerPool: HTMLDivElement[] = [];
+
   const renderMarkers = (position: CrosshairPosition | null): void => {
     if (!markerLayer) return;
-    markerLayer.replaceChildren();
-    if (options.highlight === false || !position) return;
-    if (options.renderHighlight && chartRef) {
-      options.renderHighlight(position, markerLayer, chartRef);
+    const items = options.highlight === false || !position || options.renderHighlight ? [] : position.items;
+    if (options.renderHighlight || items.some((item) => item.xRange)) {
+      markerLayer.replaceChildren();
+      markerPool.length = 0;
+      if (!position || options.highlight === false) return;
+      if (options.renderHighlight && chartRef) {
+        options.renderHighlight(position, markerLayer, chartRef);
+        return;
+      }
+      const stroke = options.markerStrokeColor ?? chartRef?.theme.markerStrokeColor ?? "";
+      for (const item of items) {
+        if (item.xRange && chartRef) markerLayer.appendChild(createXRangeHighlight(item, chartRef, stroke));
+        else markerLayer.appendChild(createPickMarker(markerLayer.ownerDocument, item, { sizePx: Math.max(2, options.markerSize ?? 10), strokeColor: stroke, strokeWidthPx: Math.max(0, options.markerStrokeWidth ?? 2) }));
+      }
       return;
     }
+    // Leftovers from a previous interval highlight are not in the pool.
+    if (markerPool.length === 0 && markerLayer.firstChild) markerLayer.replaceChildren();
 
     const size = Math.max(2, options.markerSize ?? 10);
     const strokeWidth = Math.max(0, options.markerStrokeWidth ?? 2);
-    for (const item of position.items) {
-      if (item.xRange && chartRef) {
-        markerLayer.appendChild(createXRangeHighlight(item, chartRef, options.markerStrokeColor ?? chartRef.theme.markerStrokeColor));
+    const strokeColor = options.markerStrokeColor ?? chartRef?.theme.markerStrokeColor ?? "";
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      let marker = markerPool[i];
+      if (!marker) {
+        marker = createPickMarker(markerLayer.ownerDocument, item, { sizePx: size, strokeColor, strokeWidthPx: strokeWidth });
+        markerPool[i] = marker;
+        markerLayer.appendChild(marker);
       } else {
-        markerLayer.appendChild(createPickMarker(item, {
-          sizePx: size,
-          strokeColor: options.markerStrokeColor ?? chartRef?.theme.markerStrokeColor ?? "",
-          strokeWidthPx: strokeWidth,
-        }));
+        marker.style.display = "block";
+        marker.style.left = `${item.plotX}px`;
+        marker.style.top = `${item.plotY}px`;
+        marker.style.background = rgbaCss(item.series.style.color);
+        marker.style.borderColor = strokeColor;
       }
     }
+    for (let i = items.length; i < markerPool.length; i++) markerPool[i]!.style.display = "none";
   };
 
   const renderPosition = (position: CrosshairPosition | null): void => {
@@ -308,24 +330,24 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     emitMeasureChange(measurementFrom(rulerStart, end, chart));
   };
 
-  return {
+  return singleChartPlugin("crosshair", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
       const color = options.color ?? chart.theme.crosshairColor;
       const width = `${options.width ?? 1}px`;
       const dash = options.dash;
 
-      root = document.createElement("div");
+      root = chart.dom.document.createElement("div");
       root.className = "blazeplot-crosshair";
       root.style.position = "absolute";
       root.style.inset = "0";
       root.style.display = "none";
       root.style.pointerEvents = "none";
 
-      lineLayer = createOverlayLayer("blazeplot-crosshair-lines", { inset: "0", zIndex: options.zIndex ?? 0 });
-      overlayLayer = createOverlayLayer("blazeplot-crosshair-overlay", { inset: "0", zIndex: options.zIndex ?? 22 });
+      lineLayer = createOverlayLayer(chart.dom.document, "blazeplot-crosshair-lines", { inset: "0", zIndex: options.zIndex ?? 0 });
+      overlayLayer = createOverlayLayer(chart.dom.document, "blazeplot-crosshair-overlay", { inset: "0", zIndex: options.zIndex ?? 22 });
 
-      vertical = document.createElement("div");
+      vertical = chart.dom.document.createElement("div");
       vertical.style.position = "absolute";
       vertical.style.top = "0";
       vertical.style.bottom = "0";
@@ -333,7 +355,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       vertical.style.borderLeft = `${width} solid ${color}`;
       if (dash) vertical.style.borderLeftStyle = "dashed";
 
-      horizontal = document.createElement("div");
+      horizontal = chart.dom.document.createElement("div");
       horizontal.style.position = "absolute";
       horizontal.style.left = "0";
       horizontal.style.right = "0";
@@ -341,9 +363,9 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       horizontal.style.borderTop = `${width} solid ${color}`;
       if (dash) horizontal.style.borderTopStyle = "dashed";
 
-      markerLayer = createOverlayLayer("blazeplot-crosshair-markers", { inset: "0", display: "block", zIndex: 2 });
+      markerLayer = createOverlayLayer(chart.dom.document, "blazeplot-crosshair-markers", { inset: "0", display: "block", zIndex: 2 });
 
-      label = document.createElement("div");
+      label = chart.dom.document.createElement("div");
       label.style.position = "absolute";
       label.style.zIndex = "3";
       label.style.padding = "4px 6px";
@@ -353,7 +375,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       label.style.font = options.labelFont ?? chart.theme.tooltipFont;
       label.style.whiteSpace = "nowrap";
 
-      rulerSvg = createSvgElement("svg");
+      rulerSvg = createSvgElement(chart.dom.document, "svg");
       rulerSvg.style.position = "absolute";
       rulerSvg.style.inset = "0";
       rulerSvg.style.width = "100%";
@@ -361,7 +383,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       rulerSvg.style.display = "none";
       rulerSvg.style.overflow = "hidden";
       rulerSvg.style.zIndex = "1";
-      rulerLine = createSvgElement("line");
+      rulerLine = createSvgElement(chart.dom.document, "line");
       rulerLine.setAttribute("stroke", color);
       rulerLine.setAttribute("stroke-width", String(options.width ?? 1));
       if (dash) rulerLine.setAttribute("stroke-dasharray", dash);
@@ -373,7 +395,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       overlayLayer.appendChild(markerLayer);
       overlayLayer.appendChild(label);
       root.append(lineLayer, overlayLayer);
-      const unmount = chart.dom.mount("plot", root);
+      chart.dom.mount("plot", root);
 
       sync = joinCrosshairSyncGroup(options.syncGroup, {
         showAt(dataX) {
@@ -402,6 +424,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
 
       requestLongPressTouchAction(chart, options.longPressMs);
       const longPress = createLongPressTouchTracker({
+        view: chart.dom.view,
         delayMs: () => options.longPressMs,
         onPoint: showAtClientPoint,
       });
@@ -441,22 +464,20 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         rulerStart = null;
       };
 
-      const unlisten = [
-        chart.dom.listen("plot", "pointermove", onPointerMove, { capture: true }),
-        chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer),
-        chart.dom.listen("plot", "pointerleave", onPointerLeave),
-        chart.dom.listen("plot", "pointerdown", onPointerDown, { capture: true }),
-        chart.dom.listen("plot", "pointerup", onPointerUp, { capture: true }),
-      ];
+      chart.dom.listen("plot", "pointermove", onPointerMove, { capture: true });
+      chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer);
+      chart.dom.listen("plot", "pointerleave", onPointerLeave);
+      chart.dom.listen("plot", "pointerdown", onPointerDown, { capture: true });
+      chart.dom.listen("plot", "pointerup", onPointerUp, { capture: true });
 
-      const unsubscribeRender = chart.events.subscribe("render", () => {
+      chart.events.subscribe("render", () => {
         if (!activeClientPoint) return;
         updateAtClientPoint(activeClientPoint.clientX, activeClientPoint.clientY);
       });
 
       // Keyboard inspection (`ctx.state.inspect`) drives the crosshair to the inspected sample.
       let inspecting = false;
-      const unsubscribeHover = chart.events.subscribe("hover", (state) => {
+      chart.events.subscribe("hover", (state) => {
         if (state?.source === "inspection") {
           const item = state.items[0];
           if (!item) return;
@@ -479,12 +500,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
 
       return () => {
         longPress.clear();
-        for (const off of unlisten) off();
-        unsubscribeRender();
-        unsubscribeHover();
         sync?.leave();
         sync = null;
-        unmount();
         root = null;
         lineLayer = null;
         overlayLayer = null;
@@ -510,5 +527,5 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       rulerStart = null;
       if (rulerSvg) rulerSvg.style.display = "none";
     },
-  };
+  });
 }

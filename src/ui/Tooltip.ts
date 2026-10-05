@@ -62,7 +62,7 @@ function placeTooltip(container: HTMLElement, state: ChartHoverState, options: T
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {
-      const container = document.createElement("div");
+      const container = chart.dom.document.createElement("div");
       container.className = options.className ?? "blazeplot-tooltip";
       container.style.position = "fixed";
       container.style.left = "0";
@@ -77,16 +77,17 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
       container.style.whiteSpace = "pre";
       container.setAttribute("role", "tooltip");
       container.setAttribute("aria-hidden", "true");
-      const unmountContainer = chart.dom.mount("body", container);
+      chart.dom.mount("body", container);
 
-      const markerLayer = createOverlayLayer("blazeplot-tooltip-markers", { inset: "0", display: "block", zIndex: 25 });
-      const unmountMarkers = chart.dom.mount("plot", markerLayer);
+      const markerLayer = createOverlayLayer(chart.dom.document, "blazeplot-tooltip-markers", { inset: "0", display: "block", zIndex: 25 });
+      chart.dom.mount("plot", markerLayer);
 
       let lockedTooltipWidth = 0;
       let tooltipSize = { width: 0, height: 0 };
       const markers: HTMLDivElement[] = [];
-      const tooltipResizeObserver = typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(() => {
+      const ResizeObserverCtor = chart.dom.view.ResizeObserver ?? globalThis.ResizeObserver;
+      const tooltipResizeObserver = typeof ResizeObserverCtor !== "undefined"
+        ? new ResizeObserverCtor(() => {
             tooltipSize = { width: container.offsetWidth, height: container.offsetHeight };
           })
         : null;
@@ -117,7 +118,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
           const item = items[i]!;
           let marker = markers[i];
           if (!marker) {
-            marker = createPickMarker(item, { strokeColor: chart.theme.markerStrokeColor });
+            marker = createPickMarker(chart.dom.document, item, { strokeColor: chart.theme.markerStrokeColor });
             markers[i] = marker;
             markerLayer.appendChild(marker);
           }
@@ -175,7 +176,14 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         showAt: renderSharedAtX,
         hide: () => render(null),
       });
-      const notifyPeers = (state: ChartHoverState | null): void => sync.broadcast(state ? state.anchorX : null);
+      // Peers re-pick and rebuild their DOM, so only tell them when the anchor actually moved.
+      let lastBroadcastX: number | null | undefined;
+      const notifyPeers = (state: ChartHoverState | null): void => {
+        const anchorX = state ? state.anchorX : null;
+        if (anchorX === lastBroadcastX) return;
+        lastBroadcastX = anchorX;
+        sync.broadcast(anchorX);
+      };
 
       const showAtClientPoint = (clientX: number, clientY: number): void => {
         const state = chart.state.pick(clientX, clientY, {
@@ -189,29 +197,20 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
 
       requestLongPressTouchAction(chart, options.longPressMs);
       const longPress = createLongPressTouchTracker({
+        view: chart.dom.view,
         delayMs: () => options.longPressMs,
         onPoint: showAtClientPoint,
       });
 
-      const unlisten = [
-        chart.dom.listen("plot", "pointerdown", longPress.onPointerDown, { capture: true }),
-        chart.dom.listen("plot", "pointermove", longPress.onPointerMove, { capture: true }),
-        chart.dom.listen("plot", "pointerup", longPress.clearIfTouchPointer, { capture: true }),
-        chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer, { capture: true }),
-      ];
+      chart.dom.listen("plot", "pointerdown", longPress.onPointerDown, { capture: true });
+      chart.dom.listen("plot", "pointermove", longPress.onPointerMove, { capture: true });
+      chart.dom.listen("plot", "pointerup", longPress.clearIfTouchPointer, { capture: true });
+      chart.dom.listen("plot", "pointercancel", longPress.clearIfTouchPointer, { capture: true });
 
-      let hoverRaf = 0;
-      let pendingHoverState: ChartHoverState | null = null;
-      const flushHover = (): void => {
-        hoverRaf = 0;
-        const state = pendingHoverState;
-        pendingHoverState = null;
+      // `hover` runs after the frame it describes, so render synchronously: no extra frame of lag.
+      chart.events.subscribe("hover", (state) => {
         render(state);
         notifyPeers(state);
-      };
-      const unsubscribeHover = chart.events.subscribe("hover", (state) => {
-        pendingHoverState = state;
-        if (hoverRaf === 0) hoverRaf = requestAnimationFrame(flushHover);
       });
       applyTheme();
       return {
@@ -221,13 +220,8 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         },
         dispose() {
           longPress.clear();
-          for (const off of unlisten) off();
-          if (hoverRaf !== 0) cancelAnimationFrame(hoverRaf);
-          unsubscribeHover();
           sync.leave();
           tooltipResizeObserver?.disconnect();
-          unmountMarkers();
-          unmountContainer();
         },
       };
     },

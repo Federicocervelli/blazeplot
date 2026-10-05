@@ -9,12 +9,12 @@ import { Renderer } from "../render/Renderer.js";
 import type { RenderProjection } from "../render/Renderer.js";
 import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
 import { WebGL2Backend } from "../render/WebGL2Backend.js";
-import type { GpuBackend, GpuBuffer } from "../render/types.js";
+import type { GpuBackend } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { PanIntent, ViewportPolicy, ZoomIntent } from "../interaction/types.js";
-import { AxisOverlay, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
+import { AUTO_GUTTER_PADDING_PX, AxisOverlay, GutterTracker, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
 import { forcedColorsTheme, resolveChartTheme, resolveThemeColor } from "./theme.js";
@@ -22,11 +22,13 @@ import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import type { SelectionState } from "./Selection.js";
 import { PluginHost } from "./PluginHost.js";
 import type { ChartLayoutReservation, ChartPlugin, ChartPluginEventMap } from "./PluginHost.js";
-import { buildChartSummary } from "./ChartSummary.js";
-import type { ChartSummary } from "./ChartSummary.js";
+import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
+import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 
 /** Vertices in the shared raw line/point/area upload buffer. */
+const BYTES_PER_VERTEX = 2 * Float32Array.BYTES_PER_ELEMENT;
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
+const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "bar", "ohlc", "candlestick"]);
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 /** Bars, min/max buckets, or candles expanded into triangles per draw. */
 const BAR_TRIANGLE_CAPACITY = 4_096;
@@ -37,6 +39,10 @@ const FLOATS_PER_OHLC_TUPLE = 5;
 const GRID_LINE_VERTEX_CAPACITY = (X_TICK_LIMIT + 2 + Y_TICK_LIMIT + 2) * 2;
 const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
 const TITLE_TOP_PX = 6;
+/** Height of the subtitle line, reserved below the title. */
+const SUBTITLE_ROW_PX = 20;
+/** Smallest auto-sized gutter, so a short-label axis still leaves room for ticks. */
+const MIN_AUTO_GUTTER_PX = 16;
 const SUBTITLE_TOP_PX = 26;
 const TITLE_SIDE_INSET_PX = 8;
 const AXIS_TITLE_INSET_PX = 4;
@@ -85,6 +91,13 @@ export interface AxisConfig extends AxisControllerAxisOptions {
   readonly visible?: boolean;
   readonly position?: AxisPosition;
   readonly title?: string | TextOverlayConfig;
+  /**
+   * Gutter size in CSS pixels for an `"outside"` axis, not counting room for the axis title.
+   * Pass `"auto"` to size it from the widest (Y, Y2) or tallest (X) measured tick label; it
+   * grows at once and shrinks only after the smaller size holds for about a second.
+   * Defaults to 52 for Y and Y2 and 28 for X.
+   */
+  readonly size?: number | "auto";
 }
 
 /** Strategy used to find data points near a pointer location. */
@@ -99,8 +112,20 @@ export interface ChartPickOptions {
   readonly maxDistancePx?: number;
 }
 
-/** ARIA, keyboard-navigation, and high-contrast options for the chart root. */
+/** Overridable core accessibility strings. Unset keys keep their English defaults. */
+export interface ChartAccessibilityMessages {
+  /** Accessible name when the chart has no title. Defaults to `"BlazePlot chart"`. */
+  readonly defaultLabel?: string;
+  /** Wording of the generated summary (`aria-describedby`). */
+  readonly summary?: Partial<ChartSummaryMessages>;
+}
+
+/** ARIA and high-contrast options for the chart root. Keyboard pan and zoom come from `interactionsPlugin`. */
 export interface ChartAccessibilityOptions {
+  /** BCP 47 locale for counts in generated text. Defaults to `"en-US"`. */
+  readonly locale?: string;
+  /** Override the generated core strings, for localization. */
+  readonly messages?: ChartAccessibilityMessages;
   /** Accessible name. Defaults to the chart title and subtitle, then `"BlazePlot chart"`. */
   readonly label?: string;
   /**
@@ -112,22 +137,12 @@ export interface ChartAccessibilityOptions {
   readonly description?: string | ((summary: ChartSummary) => string);
   /** ARIA role for the chart root. Defaults to `"figure"`. */
   readonly role?: string;
-  /** Arrow-key pan, +/- zoom, and Home to fit. Pass `false` to disable. */
-  readonly keyboard?: boolean | ChartKeyboardOptions;
   /**
    * Follow the operating system's forced-colors (high-contrast) mode: the canvas switches to
    * system colors and DOM overlays get forced-colors styles, updating when the mode changes.
    * Defaults to true.
    */
   readonly forcedColors?: boolean;
-}
-
-/** Keyboard pan and zoom behavior for accessible charts. */
-export interface ChartKeyboardOptions {
-  /** Fraction of the viewport moved per arrow key. Defaults to 0.1. */
-  readonly panFraction?: number;
-  /** Zoom factor per +/- key. Defaults to 1.25. */
-  readonly zoomFactor?: number;
 }
 
 /** @internal Context passed to a custom GPU backend factory. */
@@ -242,10 +257,36 @@ export interface ChartSeriesClickEvent extends ChartPointerEvent {
   readonly item: ChartPickItem;
 }
 
+/**
+ * What changed the viewport: a user gesture (`"user"`, passed by the interaction, navigator, and
+ * keyboard plugins), latest-X following (`"follow"`), `fitToData`/`autoFitY` (`"fit"`), a linked
+ * chart mirroring another panel (`"linked"`), or app code (`"api"`, the default).
+ */
+export type ChartViewportChangeSource = "user" | "follow" | "fit" | "api" | "linked";
+
 /** Emitted after the visible domain changes. */
 export interface ChartViewportChangeEvent {
   readonly viewport: Viewport;
   readonly rightViewport: Viewport;
+  /** What changed the viewport. */
+  readonly source: ChartViewportChangeSource;
+}
+
+/** Options for `chart.pan` and `chart.zoom`. */
+export interface ChartViewportGestureOptions {
+  /** Reported as `viewportchange.source`. Defaults to `"api"`. */
+  readonly source?: ChartViewportChangeSource;
+}
+
+/** Options for `chart.setViewport`. */
+export interface ChartSetViewportOptions extends ChartViewportGestureOptions {
+  /** Pause latest-X following when X changes. Defaults to true. Linked charts pass false for mirrored updates. */
+  readonly pauseFollow?: boolean;
+}
+
+/** Latest-X follow state change, emitted when following starts, stops, pauses, or resumes. */
+export interface ChartFollowXChangeEvent {
+  readonly state: ChartFollowXState;
 }
 
 /** Selection event payload emitted by selection plugins or custom code. `null` means the selection was cleared. */
@@ -294,6 +335,8 @@ export interface ChartEventMap extends ChartPluginEventMap {
   /** A frame finished drawing. */
   render: void;
   viewportchange: ChartViewportChangeEvent;
+  /** Latest-X following started, stopped, paused, or resumed. */
+  followxchange: ChartFollowXChangeEvent;
   seriesclick: ChartSeriesClickEvent;
   click: ChartPointerEvent;
   dblclick: ChartPointerEvent;
@@ -340,6 +383,8 @@ export interface ChartFitToDataOptions {
   readonly xMin?: number;
   /** Only consider samples at or before this X. */
   readonly xMax?: number;
+  /** Reported as `viewportchange.source`. Defaults to `"fit"`. */
+  readonly source?: ChartViewportChangeSource;
 }
 
 /** Options for automatically refitting Y as the X viewport changes. */
@@ -406,9 +451,6 @@ interface PlotRect {
 
 interface ChartGpuResources {
   readonly renderer: Renderer;
-  readonly rawLineBuffer: GpuBuffer;
-  readonly barTriangleBuffer: GpuBuffer;
-  readonly gridBuffer: GpuBuffer;
 }
 
 function normalizeAxisConfig(config: boolean | AxisConfig | undefined, defaultVisible: boolean): ResolvedAxisConfig {
@@ -485,17 +527,15 @@ export class Chart {
   private axis: AxisController;
   private rightAxis: AxisController;
   private renderer!: Renderer;
-  private rawLineBuffer!: GpuBuffer;
   private readonly rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
   private readonly minMaxBucketData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_MINMAX_BUCKET);
-  private barTriangleBuffer!: GpuBuffer;
   private readonly barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLES);
-  private gridBuffer!: GpuBuffer;
   private readonly gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
   private readonly xTicks: number[] = [];
   private readonly yTicks: number[] = [];
   private readonly y2Ticks: number[] = [];
   private axisOverlay: AxisOverlay | null = null;
+  private gutterTrackers = { x: new GutterTracker(), y: new GutterTracker(), y2: new GutterTracker() };
   private normalizedAxes: ResolvedAxesConfig;
   private resolvedTheme: ResolvedChartTheme;
   private gridVisible: boolean;
@@ -536,6 +576,8 @@ export class Chart {
   private forcedColorsActive: boolean = false;
   /** Series styles saved while forced colors replace them. */
   private readonly forcedOriginalStyles = new Map<SeriesStore, SeriesStyle>();
+  /** Caller style options per series, plus the theme palette slot it follows (`null` once a color is pinned). */
+  private readonly seriesStyleState = new WeakMap<SeriesStore, { options: SeriesStyleOptions; paletteIndex: number | null }>();
   private summaryElement: HTMLElement | null = null;
   private summaryTimer: ReturnType<typeof setTimeout> | null = null;
   private summaryDirty: boolean = false;
@@ -590,14 +632,11 @@ export class Chart {
     this.lastPointerButtons = 0;
     this.setHover(this.inspectionHoverState());
   };
-  private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    this.handleKeyboardNavigation(event);
-  };
   private readonly handleWebGLContextLost = (event: Event): void => {
     event.preventDefault();
     this.webglContextLost = true;
     if (this.restoreRenderRafId !== 0) {
-      cancelAnimationFrame(this.restoreRenderRafId);
+      this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
       this.restoreRenderRafId = 0;
     }
     this.resetFrameStats();
@@ -658,8 +697,9 @@ export class Chart {
 
     this.toggleDomListeners("addEventListener");
 
-    if (typeof ResizeObserver !== "undefined") {
-      this.resizeObserver = new ResizeObserver(() => this.resize());
+    const ResizeObserverCtor = this.layout.view.ResizeObserver ?? globalThis.ResizeObserver;
+    if (typeof ResizeObserverCtor !== "undefined") {
+      this.resizeObserver = new ResizeObserverCtor(() => this.resize());
       this.resizeObserver.observe(this.layout.plot);
     }
 
@@ -762,16 +802,16 @@ export class Chart {
    * Set any viewport edges. X is shared by both Y axes; Y edges apply to `yAxis`.
    * Changing X pauses latest-X following like a user pan would.
    */
-  setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left"): void {
+  setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left", options: ChartSetViewportOptions = {}): void {
     if (viewport.xMin !== undefined || viewport.xMax !== undefined) {
-      this.pauseXFollowForInteraction();
+      if (options.pauseFollow !== false) this.pauseXFollowForInteraction();
       this.camera.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax });
       this.syncRightCameraX();
     }
     if (viewport.yMin !== undefined || viewport.yMax !== undefined) {
       this.getCamera(yAxis).setViewport({ yMin: viewport.yMin, yMax: viewport.yMax });
     }
-    this.emitViewportChange();
+    this.emitViewportChange(options.source ?? "api");
     this.refreshHover();
   }
 
@@ -780,11 +820,11 @@ export class Chart {
    * Y pans only `yAxis` when given; omitted, Y pans both axes like a plot-area gesture.
    * The intent is normalized to the left axis domain (or `yAxis` when given).
    */
-  pan(intent: PanIntent, yAxis?: SeriesYAxis): void {
+  pan(intent: PanIntent, yAxis?: SeriesYAxis, options: ChartViewportGestureOptions = {}): void {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.applyGesture(() => {
+    this.applyGesture(options.source ?? "api", () => {
       if (yAxis === "right") {
         return (next.dx === 0 || this.axis.pan({ dx: next.dx, dy: 0 })) && (next.dy === 0 || this.rightAxis.pan({ dx: 0, dy: next.dy }));
       }
@@ -798,11 +838,11 @@ export class Chart {
    * Y zooms only `yAxis` when given; omitted, Y zooms both axes like a plot-area gesture.
    * The anchor is normalized to the left axis domain (or `yAxis` when given).
    */
-  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void {
+  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options: ChartViewportGestureOptions = {}): void {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.applyGesture(() => {
+    this.applyGesture(options.source ?? "api", () => {
       if (yAxis === "right") {
         return (next.axis === "y" || this.axis.zoom({ ...next, axis: "x" })) && (next.axis === "x" || this.rightAxis.zoom({ ...next, axis: "y" }));
       }
@@ -815,7 +855,7 @@ export class Chart {
    * Run a pan/zoom that moves one or both cameras. If any step is rejected (invalid scale
    * domain or a span beyond float precision), restore both so the axes never drift apart.
    */
-  private applyGesture(move: () => boolean): void {
+  private applyGesture(source: ChartViewportChangeSource, move: () => boolean): void {
     const left = this.camera.viewport;
     const right = this.rightCamera.viewport;
     if (!move()) {
@@ -825,17 +865,23 @@ export class Chart {
     }
     this.pauseXFollowForInteraction();
     this.syncRightCameraX();
-    this.emitViewportChange();
+    this.emitViewportChange(source);
     this.scheduleHoverRefresh();
   }
 
   /** Add a series with an explicit mode. Prefer the typed helpers such as `addLine`. */
   addSeries<D extends Dataset = Dataset>(config: SeriesConfig & { readonly dataset?: D }, style: SeriesStyleOptions = {}): SeriesStore<D> {
+    if (!SERIES_MODES.has(config.mode)) {
+      throw new TypeError(`Chart.addSeries: unknown series mode ${JSON.stringify(config.mode)}. Expected one of ${[...SERIES_MODES].join(", ")}.`);
+    }
     if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
     const dataset = (config.dataset ?? this.createDefaultDataset(config)) as D;
-    const series = new SeriesStore(dataset, config, this.resolveSeriesStyle(style), (change) => this.handleSeriesChange(change));
+    const slot = this.nextPaletteIndex();
+    const series = new SeriesStore(dataset, config, this.resolveSeriesStyle(style, slot), (change) => this.handleSeriesChange(change));
+    this.seriesStyleState.set(series, { options: { ...style }, paletteIndex: style.color ? null : slot });
+    series.bindStyleHandler((target, options) => this.setSeriesStyle(target, options));
     this.series.push(series);
     if (this.forcedColorsActive) this.applyForcedSeriesStyles();
     this.emitSeriesChange();
@@ -898,7 +944,7 @@ export class Chart {
     if (this.inspection?.series === series) this.inspection = null;
     const original = this.forcedOriginalStyles.get(series);
     if (original) {
-      series.setStyle(original);
+      series.applyResolvedStyle(original);
       this.forcedOriginalStyles.delete(series);
       this.applyForcedSeriesStyles();
     }
@@ -912,7 +958,13 @@ export class Chart {
    * most once a second from the same data.
    */
   getSummary(): ChartSummary {
-    return buildChartSummary(this.series, (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis));
+    const option = this.options.accessibility;
+    const config = typeof option === "object" ? option : undefined;
+    return buildChartSummary(
+      this.series,
+      (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis),
+      createSummaryMessages(config?.locale ?? "en-US", config?.messages?.summary),
+    );
   }
 
   /** Return metadata for all attached series. */
@@ -934,6 +986,7 @@ export class Chart {
     this.followXConfig = options;
     this.clearXFollowResumeTimer();
     this.xFollowPaused = false;
+    this.emitFollowXChange();
     this.applyFollowXPolicy();
     this.requestRender();
   }
@@ -944,6 +997,7 @@ export class Chart {
     this.followXConfig = null;
     this.xFollowPaused = false;
     this.clearXFollowResumeTimer();
+    this.emitFollowXChange();
     this.requestRender();
   }
 
@@ -952,6 +1006,7 @@ export class Chart {
     this.clearXFollowResumeTimer();
     if (this.xFollowPaused === paused) return;
     this.xFollowPaused = paused;
+    this.emitFollowXChange();
     if (!paused) this.applyFollowXPolicy();
     this.requestRender();
   }
@@ -1015,14 +1070,14 @@ export class Chart {
 
     if (changed) {
       this.syncRightCameraX();
-      this.emitViewportChange();
+      this.emitViewportChange(options.source ?? "fit");
       this.refreshHover();
     }
     return changed;
   }
 
   /** Resize the canvas to match its layout size and device pixel ratio. */
-  resize(dpr: number = globalThis.devicePixelRatio): boolean {
+  resize(dpr: number = this.layout.view.devicePixelRatio): boolean {
     const resized = this.applyCanvasSize(dpr);
     if (resized) {
       // `plugins` is unset while the constructor sizes the canvas, before any plugin exists.
@@ -1091,6 +1146,7 @@ export class Chart {
     this.resolvedTheme = this.forcedColorsActive ? forcedColorsTheme(this.baseTheme, root) : this.baseTheme;
     root.style.background = this.resolvedTheme.backgroundCssColor;
     root.style.setProperty("--blazeplot-focus-ring", this.resolvedTheme.focusRingColor);
+    this.refreshSeriesStyles();
     this.applyForcedSeriesStyles();
     this.axisOverlay?.setOptions({ color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont });
     this.updateTextOverlays();
@@ -1128,8 +1184,10 @@ export class Chart {
 
   /** Render the chart, including DOM overlays under the chart root, to an image blob. */
   async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
-    this.render();
+    // Load the chunk first, then render synchronously right before the compose step reads the
+    // (non-preserved) drawing buffer, so a presented frame cannot clear it in between.
     const { composeChartScreenshot } = await import("./screenshot.js");
+    this.render();
     return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
@@ -1146,7 +1204,7 @@ export class Chart {
   stop(): void {
     this.running = false;
     if (this.rafId !== 0) {
-      cancelAnimationFrame(this.rafId);
+      this.layout.view.cancelAnimationFrame(this.rafId);
       this.rafId = 0;
     }
   }
@@ -1154,7 +1212,7 @@ export class Chart {
   /** Schedule a frame. Chart-owned changes call this automatically. */
   requestRender(): void {
     if (!this.running || this.rafId !== 0) return;
-    this.rafId = requestAnimationFrame(() => {
+    this.rafId = this.layout.view.requestAnimationFrame(() => {
       this.rafId = 0;
       if (!this.running) return;
       try {
@@ -1173,9 +1231,9 @@ export class Chart {
     this.stop();
     this.clearXFollowResumeTimer();
     this.resizeObserver?.disconnect();
-    if (this.hoverRafId !== 0) cancelAnimationFrame(this.hoverRafId);
+    if (this.hoverRafId !== 0) this.layout.view.cancelAnimationFrame(this.hoverRafId);
     this.hoverRafId = 0;
-    if (this.restoreRenderRafId !== 0) cancelAnimationFrame(this.restoreRenderRafId);
+    if (this.restoreRenderRafId !== 0) this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
     this.restoreRenderRafId = 0;
     this.toggleDomListeners("removeEventListener");
     this.unwatchForcedColors();
@@ -1232,8 +1290,10 @@ export class Chart {
         series.rebuildPyramid();
         this.drawSeries(series);
       }
+      this.renderer.endFrame();
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
+      this.updateAutoGutters();
       this.emit("render", undefined);
     } catch (error) {
       if (this.renderer.getWebGLContext()?.isContextLost() === true) {
@@ -1246,7 +1306,7 @@ export class Chart {
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     if (this.hoverRafId !== 0) {
-      cancelAnimationFrame(this.hoverRafId);
+      this.layout.view.cancelAnimationFrame(this.hoverRafId);
       this.hoverRafId = 0;
     }
     this.refreshHover();
@@ -1269,11 +1329,55 @@ export class Chart {
     return new RingBuffer(capacity, { overflow: config.overflow, valuePrecision: config.valuePrecision, onInvalidSample: config.onInvalidSample });
   }
 
-  private resolveSeriesStyle(style: SeriesStyleOptions): SeriesStyle {
+  /** First theme palette slot no attached palette-colored series uses (the next slot in order when all are taken). */
+  private nextPaletteIndex(): number {
+    const size = this.baseTheme.seriesColors.length;
+    const used = new Set<number>();
+    for (const series of this.series) {
+      const slot = this.seriesStyleState.get(series)?.paletteIndex;
+      if (slot !== null && slot !== undefined) used.add(slot);
+    }
+    for (let slot = 0; slot < size; slot++) if (!used.has(slot)) return slot;
+    return this.series.length % size;
+  }
+
+  /** Merge `options` into a series' style: pin an explicit color, resolve, and respect forced colors. */
+  private setSeriesStyle(series: SeriesStore, options: SeriesStyleOptions): void {
+    const state = this.seriesStyleState.get(series);
+    if (!state) return;
+    const merged: Record<string, unknown> = { ...state.options };
+    for (const [key, value] of Object.entries(options)) {
+      if (value !== undefined) merged[key] = value;
+    }
+    state.options = merged as SeriesStyleOptions;
+    if (options.color) state.paletteIndex = null;
+    const resolved = this.resolveSeriesStyle(state.options, state.paletteIndex ?? this.nextPaletteIndex());
+    if (this.forcedColorsActive || this.forcedOriginalStyles.has(series)) {
+      this.forcedOriginalStyles.set(series, resolved);
+      this.applyForcedSeriesStyles();
+    } else {
+      series.applyResolvedStyle(resolved);
+    }
+    this.emitSeriesChange();
+  }
+
+  /** Re-resolve every series style from its stored options, so palette-colored series follow the theme. */
+  private refreshSeriesStyles(): void {
+    for (const series of this.series) {
+      const state = this.seriesStyleState.get(series);
+      if (!state) continue;
+      const resolved = this.resolveSeriesStyle(state.options, state.paletteIndex ?? this.nextPaletteIndex());
+      if (this.forcedColorsActive) this.forcedOriginalStyles.set(series, resolved);
+      else series.applyResolvedStyle(resolved);
+    }
+    if (!this.forcedColorsActive) this.forcedOriginalStyles.clear();
+  }
+
+  private resolveSeriesStyle(style: SeriesStyleOptions, paletteIndex: number): SeriesStyle {
     // The caller palette, not the forced-colors one: forced styles are applied on top and undone later.
     const palette = this.baseTheme.seriesColors;
     const root = this.layout.root;
-    const color = resolveThemeColor(style.color, palette[this.series.length % palette.length]!, root);
+    const color = resolveThemeColor(style.color, palette[paletteIndex % palette.length]!, root);
     const fillColor = resolveThemeColor(style.fillColor, withAlpha(color, 0.25), root);
     const barWidth = style.barWidth ?? 0.8;
     return {
@@ -1303,7 +1407,7 @@ export class Chart {
   private watchForcedColors(): void {
     const option = this.options.accessibility;
     if (option === false || (typeof option === "object" && option.forcedColors === false)) return;
-    const view = this.layout.root.ownerDocument.defaultView ?? globalThis;
+    const view = this.layout.view;
     if (typeof view.matchMedia !== "function") return;
     const query = view.matchMedia("(forced-colors: active)");
     this.forcedColorsQuery = query;
@@ -1322,7 +1426,7 @@ export class Chart {
    */
   private applyForcedSeriesStyles(): void {
     if (!this.forcedColorsActive) {
-      for (const [series, style] of this.forcedOriginalStyles) series.setStyle(style);
+      for (const [series, style] of this.forcedOriginalStyles) series.applyResolvedStyle(style);
       this.forcedOriginalStyles.clear();
       return;
     }
@@ -1336,7 +1440,7 @@ export class Chart {
       }
       const color = palette[index % palette.length]!;
       const contrast = palette[(index + 1) % palette.length]!;
-      series.setStyle({ ...original, color, fillColor: withAlpha(color, 0.35), upColor: color, downColor: contrast, wickColor: color });
+      series.applyResolvedStyle({ ...original, color, fillColor: withAlpha(color, 0.35), upColor: color, downColor: contrast, wickColor: color });
     }
   }
 
@@ -1433,8 +1537,10 @@ export class Chart {
   private pauseXFollowForInteraction(): void {
     const config = this.followXConfig;
     if (!config || config.pauseOnInteraction === false) return;
+    const wasPaused = this.xFollowPaused;
     this.xFollowPaused = true;
     this.clearXFollowResumeTimer();
+    if (!wasPaused) this.emitFollowXChange();
     const resumeAfterMs = config.resumeAfterMs;
     if (typeof resumeAfterMs !== "number" || !Number.isFinite(resumeAfterMs) || resumeAfterMs <= 0) return;
     this.xFollowResumeTimer = setTimeout(() => {
@@ -1469,7 +1575,7 @@ export class Chart {
     if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax) || !this.axis.isValidDomain("x", xMin, xMax)) return;
     this.camera.setViewport({ xMin, xMax });
     this.syncRightCameraX();
-    this.emitViewportChange();
+    this.emitViewportChange("follow");
   }
 
   private applyAutoFitYPolicy(): void {
@@ -1480,25 +1586,11 @@ export class Chart {
 
   private createGpuResources(): ChartGpuResources {
     const backend = this.options.backendFactory?.({ canvas: this.canvas }) ?? new WebGL2Backend(this.canvas);
-    const renderer = new Renderer(backend);
-    try {
-      return {
-        renderer,
-        rawLineBuffer: renderer.createFloatBuffer(this.rawLineData.length),
-        barTriangleBuffer: renderer.createFloatBuffer(this.barTriangleData.length),
-        gridBuffer: renderer.createFloatBuffer(this.gridData.length),
-      };
-    } catch (error) {
-      this.disposeRenderer(renderer);
-      throw error;
-    }
+    return { renderer: new Renderer(backend) };
   }
 
   private installGpuResources(resources: ChartGpuResources): void {
     this.renderer = resources.renderer;
-    this.rawLineBuffer = resources.rawLineBuffer;
-    this.barTriangleBuffer = resources.barTriangleBuffer;
-    this.gridBuffer = resources.gridBuffer;
   }
 
   private disposeRenderer(renderer: Renderer): void {
@@ -1531,7 +1623,6 @@ export class Chart {
       [canvas, "dblclick", this.handleDoubleClick],
       [canvas, "webglcontextlost", this.handleWebGLContextLost],
       [canvas, "webglcontextrestored", this.handleWebGLContextRestored],
-      [root, "keydown", this.handleKeyDown],
     ];
     if (this.summaryElement) listeners.push([root, "focusin", this.handleRootFocusIn]);
     for (const [target, type, listener] of listeners) target[method](type, listener as EventListener);
@@ -1539,7 +1630,7 @@ export class Chart {
 
   private scheduleRenderAfterRestore(): void {
     if (this.restoreRenderRafId !== 0) return;
-    this.restoreRenderRafId = requestAnimationFrame(() => {
+    this.restoreRenderRafId = this.layout.view.requestAnimationFrame(() => {
       this.restoreRenderRafId = 0;
       this.render();
     });
@@ -1555,7 +1646,7 @@ export class Chart {
     const doc = root.ownerDocument;
     if (root.tabIndex < 0) root.tabIndex = 0;
     root.setAttribute("role", config?.role ?? "figure");
-    root.setAttribute("aria-label", config?.label ?? (title || "BlazePlot chart"));
+    root.setAttribute("aria-label", config?.label ?? (title || config?.messages?.defaultLabel || "BlazePlot chart"));
     this.layout.plot.setAttribute("role", "presentation");
     for (const element of [this.canvas, this.xAxisElement, this.yAxisElement, this.y2AxisElement]) {
       element.setAttribute("aria-hidden", "true");
@@ -1575,71 +1666,29 @@ export class Chart {
     this.summaryElement = summary;
   }
 
-  private keyboardOptions(): Required<ChartKeyboardOptions> | null {
-    const accessibility = this.options.accessibility;
-    if (accessibility === false) return null;
-    const keyboard = typeof accessibility === "object" ? accessibility.keyboard : undefined;
-    if (keyboard === false) return null;
-    const config = typeof keyboard === "object" ? keyboard : undefined;
-    const panFraction = config?.panFraction;
-    const zoomFactor = config?.zoomFactor;
-    return {
-      panFraction: typeof panFraction === "number" && Number.isFinite(panFraction) ? Math.max(0, panFraction) : 0.1,
-      zoomFactor: typeof zoomFactor === "number" && Number.isFinite(zoomFactor) && zoomFactor > 1 ? zoomFactor : 1.25,
-    };
-  }
-
-  private handleKeyboardNavigation(event: KeyboardEvent): void {
-    const keyboard = this.keyboardOptions();
-    if (!keyboard || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-    const target = event.target;
-    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
-
-    const panStep = keyboard.panFraction * (event.shiftKey ? 2.5 : 1);
-    const zoomAtCenter = (factor: number, axis: ZoomIntent["axis"]): void => this.zoom({ factor, cx: 0.5, cy: 0.5, axis });
-    let handled = true;
-
-    switch (event.key) {
-      case "ArrowLeft":
-        this.pan({ dx: -panStep, dy: 0 });
-        break;
-      case "ArrowRight":
-        this.pan({ dx: panStep, dy: 0 });
-        break;
-      case "ArrowUp":
-        this.pan({ dx: 0, dy: panStep });
-        break;
-      case "ArrowDown":
-        this.pan({ dx: 0, dy: -panStep });
-        break;
-      case "+":
-      case "=":
-        zoomAtCenter(keyboard.zoomFactor, "xy");
-        break;
-      case "-":
-      case "_":
-        zoomAtCenter(1 / keyboard.zoomFactor, "xy");
-        break;
-      case "PageUp":
-        zoomAtCenter(keyboard.zoomFactor, "y");
-        break;
-      case "PageDown":
-        zoomAtCenter(1 / keyboard.zoomFactor, "y");
-        break;
-      case "Home":
-      case "0":
-        handled = this.fitToData({ padding: 0.05 });
-        break;
-      default:
-        handled = false;
-        break;
+  /** Resize `size: "auto"` gutters from the labels measured this frame. */
+  private updateAutoGutters(): void {
+    const overlay = this.axisOverlay;
+    if (!overlay) return;
+    let changed = false;
+    for (const axis of ["x", "y", "y2"] as const) {
+      const config = this.normalizedAxes[axis];
+      if (config.size !== "auto" || !config.visible || config.position !== "outside") continue;
+      const extent = overlay.measuredExtent(axis);
+      if (extent <= 0) continue;
+      const next = this.gutterTrackers[axis].next(Math.max(MIN_AUTO_GUTTER_PX, extent + AUTO_GUTTER_PADDING_PX));
+      if (next !== null && this.layout.setAutoSize(axis, next)) changed = true;
     }
-
-    if (handled) event.preventDefault();
+    if (changed) {
+      this.resize();
+      this.requestRender();
+    }
   }
 
   private rebuildAxisOverlay(): void {
     this.axisOverlay?.dispose();
+    this.gutterTrackers = { x: new GutterTracker(), y: new GutterTracker(), y2: new GutterTracker() };
+    for (const axis of ["x", "y", "y2"] as const) this.layout.setAutoSize(axis, null);
     const axes = this.normalizedAxes;
     this.axisOverlay = axes.x.visible || axes.y.visible || axes.y2.visible
       ? new AxisOverlay(this.layout, axes, { color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont })
@@ -1648,8 +1697,12 @@ export class Chart {
 
   private updateTextOverlays(): void {
     const theme = this.resolvedTheme;
+    const hasTitle = titleText(this.options.title) !== "";
+    const hasSubtitle = titleText(this.options.subtitle) !== "";
     this.applyChartTitle(this.layout.title, this.options.title, theme.titleColor, theme.titleFont, TITLE_TOP_PX);
-    this.applyChartTitle(this.layout.subtitle, this.options.subtitle, theme.subtitleColor, theme.subtitleFont, SUBTITLE_TOP_PX);
+    this.applyChartTitle(this.layout.subtitle, this.options.subtitle, theme.subtitleColor, theme.subtitleFont, hasTitle ? SUBTITLE_TOP_PX : TITLE_TOP_PX);
+    // Title and subtitle get their own grid row, so they never sit on top of the plot.
+    this.layout.setTitleInset((hasTitle ? SUBTITLE_TOP_PX : 0) + (hasSubtitle ? SUBTITLE_ROW_PX : 0));
     this.applyAxisTitle(this.layout.xAxisTitle, this.normalizedAxes.x.title, "x");
     this.applyAxisTitle(this.layout.yAxisTitle, this.normalizedAxes.y.title, "y");
     this.applyAxisTitle(this.layout.y2AxisTitle, this.normalizedAxes.y2.title, "y2");
@@ -1703,7 +1756,7 @@ export class Chart {
     }
   }
 
-  private applyCanvasSize(dpr: number = globalThis.devicePixelRatio): boolean {
+  private applyCanvasSize(dpr: number = this.layout.view.devicePixelRatio): boolean {
     const scale = Number.isFinite(dpr) ? Math.max(1, dpr) : 1;
     const width = Math.max(1, Math.floor(this.canvas.clientWidth * scale));
     const height = Math.max(1, Math.floor(this.canvas.clientHeight * scale));
@@ -1797,8 +1850,8 @@ export class Chart {
     }
     if (vertexCount === 0) return;
 
-    this.uploadFloatData(this.gridBuffer, this.gridData, vertexCount * 2);
-    this.renderer.drawClipLines(this.gridBuffer, vertexCount, this.resolvedTheme.gridColor);
+    this.stats.uploadBytes += vertexCount * BYTES_PER_VERTEX;
+    this.renderer.drawClipLines(this.gridData, vertexCount, this.resolvedTheme.gridColor);
     this.stats.drawCalls++;
   }
 
@@ -1835,8 +1888,13 @@ export class Chart {
       return;
     }
 
-    const count = series.copyRawVisibleClipped(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
-    this.drawRawLine(count, series.style, projection, "raw");
+    for (let start = 0, done = false; !done;) {
+      const chunk = series.copyRawClippedChunk(viewport, start, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+      this.drawRawLine(chunk.count, series.style, projection, "raw");
+      // Resume at the last segment's end so consecutive chunks share a vertex and the seam stays closed.
+      start = chunk.next;
+      done = chunk.done || chunk.count === 0;
+    }
   }
 
   private drawAreaSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
@@ -1899,7 +1957,7 @@ export class Chart {
         this.barTriangleData[dst + 3] = this.rawLineData[src + 2]!;
       }
       this.uploadBarTriangleData(candleCount * 2, projection);
-      this.renderer.drawLines(this.barTriangleBuffer, candleCount * 2, style.wickColor, style.lineWidth, projection, "lines");
+      this.renderer.drawLines(this.barTriangleData, candleCount * 2, style.wickColor, style.lineWidth, projection, "lines");
       this.recordDraw("raw", candleCount * 2);
 
       this.drawCandlestickBodies(candleCount, style.barWidth, true, style.upColor, projection);
@@ -1926,8 +1984,7 @@ export class Chart {
 
   private drawBarSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const { style } = series;
-    const rawBarCapacity = this.renderer.supportsInstancing ? RAW_LINE_VERTEX_CAPACITY : BAR_TRIANGLE_CAPACITY;
-    if (series.downsampled && series.visibleSampleCount(viewport) > rawBarCapacity) {
+    if (series.downsampled && series.visibleSampleCount(viewport) > RAW_LINE_VERTEX_CAPACITY) {
       const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin);
       for (let i = 0; i < bucketCount; i++) {
         const offset = i * FLOATS_PER_MINMAX_BUCKET;
@@ -1939,44 +1996,53 @@ export class Chart {
     }
 
     const range = series.visibleIndexRange(viewport, 1);
-    const count = series.copyRawRange(range.start, range.end, this.rawLineData, rawBarCapacity, this.currentXOrigin);
-    if (count <= 0) return;
-
     const controller = this.controllerFor(series.config.yAxis);
-    if (this.renderer.supportsInstancing && !controller.isNonlinear("x") && !controller.isNonlinear("y")) {
-      this.uploadRawLineData(count, projection);
-      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, style, projection);
-      this.recordDraw("bars", count);
-      return;
-    }
-
-    const barCount = Math.min(count, BAR_TRIANGLE_CAPACITY);
+    const instanced = !controller.isNonlinear("x") && !controller.isNonlinear("y");
     const halfWidth = style.barWidth * 0.5;
-    for (let i = 0; i < barCount; i++) {
-      const x = this.rawLineData[i * 2]!;
-      this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[i * 2 + 1]!);
+
+    // Draw every visible bar in upload-buffer sized chunks so exact series are never truncated.
+    for (let start = range.start; start < range.end;) {
+      const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+      if (count <= 0) break;
+      start += count;
+
+      if (instanced) {
+        this.uploadRawLineData(count, projection);
+        this.renderer.drawBarsInstanced(this.rawLineData, count, style, projection);
+        this.recordDraw("bars", count);
+        continue;
+      }
+
+      // Nonlinear axes scale vertices on the CPU, so bars are expanded into transformed triangles.
+      for (let offset = 0; offset < count; offset += BAR_TRIANGLE_CAPACITY) {
+        const batch = Math.min(BAR_TRIANGLE_CAPACITY, count - offset);
+        for (let i = 0; i < batch; i++) {
+          const x = this.rawLineData[(offset + i) * 2]!;
+          this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[(offset + i) * 2 + 1]!);
+        }
+        this.drawTriangleBatch(batch * 6, style.color, projection, "bars");
+      }
     }
-    this.drawTriangleBatch(barCount * 6, style.color, projection, "bars");
   }
 
   private drawRawLine(vertexCount: number, style: SeriesStyle, projection: RenderProjection, mode: DrawMode): void {
     if (vertexCount < 2) return;
     this.uploadRawLineData(vertexCount, projection);
-    this.renderer.drawLines(this.rawLineBuffer, vertexCount, style.color, style.lineWidth, projection);
+    this.renderer.drawLines(this.rawLineData, vertexCount, style.color, style.lineWidth, projection);
     this.recordDraw(mode, vertexCount);
   }
 
   private drawAreaFill(vertexCount: number, style: SeriesStyle, projection: RenderProjection): void {
     if (vertexCount < 4) return;
     this.uploadRawLineData(vertexCount, projection);
-    this.renderer.drawTriangles(this.rawLineBuffer, vertexCount, style.fillColor, projection, "triangle_strip");
+    this.renderer.drawTriangles(this.rawLineData, vertexCount, style.fillColor, projection, "triangle_strip");
     this.recordDraw("area", vertexCount);
   }
 
   private drawPointBatch(count: number, style: SeriesStyle, projection: RenderProjection): void {
     if (count <= 0) return;
     this.uploadRawLineData(count, projection);
-    this.renderer.drawPoints(this.rawLineBuffer, count, style.color, style.pointSize, projection);
+    this.renderer.drawPoints(this.rawLineData, count, style.color, style.pointSize, projection);
     this.recordDraw("points", count);
   }
 
@@ -2059,7 +2125,7 @@ export class Chart {
 
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount, projection);
-    this.renderer.drawLines(this.barTriangleBuffer, vertexCount, color, lineWidth, projection, "lines");
+    this.renderer.drawLines(this.barTriangleData, vertexCount, color, lineWidth, projection, "lines");
     this.recordDraw("raw", vertexCount);
   }
 
@@ -2101,7 +2167,7 @@ export class Chart {
   private drawTriangleBatch(vertexCount: number, color: RgbaColor, projection: RenderProjection, mode: DrawMode): void {
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount, projection);
-    this.renderer.drawTriangles(this.barTriangleBuffer, vertexCount, color, projection, "triangles");
+    this.renderer.drawTriangles(this.barTriangleData, vertexCount, color, projection, "triangles");
     this.recordDraw(mode, vertexCount);
   }
 
@@ -2122,18 +2188,12 @@ export class Chart {
 
   private uploadRawLineData(vertexCount: number, projection: RenderProjection): void {
     this.transformVertices(this.rawLineData, vertexCount, projection);
-    this.uploadFloatData(this.rawLineBuffer, this.rawLineData, vertexCount * 2);
+    this.stats.uploadBytes += vertexCount * BYTES_PER_VERTEX;
   }
 
   private uploadBarTriangleData(vertexCount: number, projection: RenderProjection): void {
     this.transformVertices(this.barTriangleData, vertexCount, projection);
-    this.uploadFloatData(this.barTriangleBuffer, this.barTriangleData, vertexCount * 2);
-  }
-
-  private uploadFloatData(buffer: GpuBuffer, data: Float32Array, floatCount: number): void {
-    const count = Math.max(0, Math.min(floatCount, data.length));
-    this.renderer.updateFloatBuffer(buffer, data, count);
-    this.stats.uploadBytes += count * Float32Array.BYTES_PER_ELEMENT;
+    this.stats.uploadBytes += vertexCount * BYTES_PER_VERTEX;
   }
 
   private recordDraw(mode: DrawMode, points: number): void {
@@ -2267,7 +2327,7 @@ export class Chart {
 
   private scheduleHoverRefresh(): void {
     if (this.hoverRafId !== 0) return;
-    this.hoverRafId = requestAnimationFrame(() => {
+    this.hoverRafId = this.layout.view.requestAnimationFrame(() => {
       this.hoverRafId = 0;
       this.refreshHover();
     });
@@ -2312,7 +2372,9 @@ export class Chart {
     };
   }
 
+  /** Emit `hover` only when the picked items or the anchor actually changed. */
   private setHover(state: ChartHoverState | null): void {
+    if (hoverStatesEqual(this.currentHover, state)) return;
     this.currentHover = state;
     this.emit("hover", state);
   }
@@ -2345,9 +2407,13 @@ export class Chart {
     return event;
   }
 
-  private emitViewportChange(): void {
-    this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport });
+  private emitViewportChange(source: ChartViewportChangeSource): void {
+    this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source });
     this.requestRender();
+  }
+
+  private emitFollowXChange(): void {
+    if (this.hasListeners("followxchange")) this.emit("followxchange", { state: this.getFollowXState() });
   }
 
   private emitSeriesChange(): void {
@@ -2364,6 +2430,36 @@ export class Chart {
   private emit<K extends ChartEventName>(event: K, payload: ChartEventMap[K]): void {
     const listeners = this.listeners.get(event);
     if (!listeners) return;
-    for (const listener of listeners) (listener as Listener<K>)(payload);
+    // One throwing listener never stops the rest.
+    for (const listener of listeners) {
+      try {
+        (listener as Listener<K>)(payload);
+      } catch (error) {
+        console.error(`BlazePlot ${event} listener failed:`, error);
+      }
+    }
   }
+}
+
+/** Coordinates closer than this many CSS pixels count as unchanged. */
+const HOVER_EPSILON_PX = 1e-3;
+
+const near = (a: number, b: number): boolean => a === b || Math.abs(a - b) <= HOVER_EPSILON_PX;
+
+/** Whether two hover states show the same items at the same anchor (series, index, x, y, and position). */
+function hoverStatesEqual(a: ChartHoverState | null, b: ChartHoverState | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.source !== b.source || a.mode !== b.mode || a.group !== b.group || a.maxDistancePx !== b.maxDistancePx) return false;
+  if (a.items.length !== b.items.length) return false;
+  if (!near(a.plotX, b.plotX) || !near(a.plotY, b.plotY) || !near(a.clientX, b.clientX) || !near(a.clientY, b.clientY)) return false;
+  if (!Object.is(a.anchorX, b.anchorX) || !Object.is(a.dataX, b.dataX) || !Object.is(a.dataY, b.dataY)) return false;
+  for (let i = 0; i < a.items.length; i++) {
+    const p = a.items[i]!;
+    const q = b.items[i]!;
+    if (p.series !== q.series || p.index !== q.index || !Object.is(p.x, q.x) || !Object.is(p.y, q.y)) return false;
+    if (!near(p.plotX, q.plotX) || !near(p.plotY, q.plotY)) return false;
+    if (p.xRange?.xStart !== q.xRange?.xStart || p.xRange?.xEnd !== q.xRange?.xEnd) return false;
+  }
+  return true;
 }

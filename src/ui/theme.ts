@@ -243,7 +243,7 @@ export function resolveCssColor(color: string, context?: Element): string | null
   const doc = context?.ownerDocument ?? globalThis.document;
   if (!doc?.documentElement || typeof getComputedStyle === "undefined") return null;
 
-  const parent = context instanceof HTMLElement ? context : doc.documentElement;
+  const parent = context?.nodeType === 1 ? (context as HTMLElement) : doc.documentElement;
   const el = doc.createElement("span");
   el.style.position = "absolute";
   el.style.visibility = "hidden";

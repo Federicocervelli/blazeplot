@@ -42,6 +42,7 @@ declare global {
 
 const CASES = [
   "line",
+  "exact-line-long",
   "area",
   "scatter",
   "bar",
@@ -188,6 +189,9 @@ function setupCase(name: VisualCase, chart: Chart): void {
     case "line":
       addLine(chart);
       break;
+    case "exact-line-long":
+      addExactLineLong(chart);
+      break;
     case "area":
       addArea(chart);
       break;
@@ -285,6 +289,15 @@ function addLine(chart: Chart): void {
   const { x, y } = wave(512);
   chart.addLine({ dataset: new StaticDataset(x, y), name: "line" }, { lineWidth: 2 });
   chart.setViewport({ xMin: 0, xMax: 511, yMin: -1.4, yMax: 1.4 });
+}
+
+/** More visible samples than the raw line upload buffer holds; the line must still reach the right edge. */
+function addExactLineLong(chart: Chart): void {
+  const count = 40_000;
+  const x = Float64Array.from({ length: count }, (_, i) => i);
+  const y = Float32Array.from({ length: count }, (_, i) => Math.sin(i * 0.002) + (i % 2 === 0 ? 0.05 : -0.05));
+  chart.addLine({ dataset: new StaticDataset(x, y), downsample: "none", name: "exact line" }, { lineWidth: 2 });
+  chart.setViewport({ xMin: 0, xMax: count - 1, yMin: -1.4, yMax: 1.4 });
 }
 
 function addArea(chart: Chart): void {

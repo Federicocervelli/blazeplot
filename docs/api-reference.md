@@ -46,22 +46,22 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 11 KiB |
+| root entry | `dist/index.js` | 12 KiB |
 | linked entry | `dist/linked.js` | 2 KiB |
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
-| interactions plugin | `dist/plugins/interactions.js` | 13 KiB |
-| annotations plugin | `dist/plugins/annotations.js` | 13 KiB |
-| navigator plugin | `dist/plugins/navigator.js` | 8 KiB |
+| interactions plugin | `dist/plugins/interactions.js` | 15 KiB |
+| annotations plugin | `dist/plugins/annotations.js` | 15 KiB |
+| navigator plugin | `dist/plugins/navigator.js` | 10 KiB |
 | selection plugin | `dist/plugins/selection.js` | 8 KiB |
-| legend plugin | `dist/plugins/legend.js` | 3 KiB |
+| legend plugin | `dist/plugins/legend.js` | 4 KiB |
 | tooltip plugin | `dist/plugins/tooltip.js` | 4 KiB |
-| crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
+| crosshair plugin | `dist/plugins/crosshair.js` | 10 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 20 KiB |
-| a11y plugin | `dist/plugins/a11y.js` | 10 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 150 KiB |
+| a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 151 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
-| lazy screenshot chunk | `dist/screenshot-*.js` | 3 KiB |
+| lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 5 KiB |
 
 ### All public exports
@@ -84,18 +84,19 @@ Generated from `dist/index.d.ts` after the package build.
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | Built-in axis scale names. |
 | `Camera2D` | class | `./interaction/Camera2D` | Camera that maps data domains to clip, screen, and plot coordinates. |
 | `Chart` | class | `./ui/Chart` | Imperative WebGL chart instance for rendering, interaction, and plugins. |
-| `ChartAccessibilityOptions` | interface | `./ui/Chart` | ARIA, keyboard-navigation, and high-contrast options for the chart root. |
+| `ChartAccessibilityMessages` | interface | `./ui/Chart` | Overridable core accessibility strings. Unset keys keep their English defaults. |
+| `ChartAccessibilityOptions` | interface | `./ui/Chart` | ARIA and high-contrast options for the chart root. Keyboard pan and zoom come from `interactionsPlugin`. |
 | `ChartAutoFitYOptions` | type | `./ui/Chart` | Options for automatically refitting Y as the X viewport changes. |
 | `ChartEventMap` | interface | `./ui/Chart` | Payload delivered to `chart.subscribe(event, callback)` for each chart event. Includes the plugin events declared on `ChartPluginEventMap` (such as `select`). |
 | `ChartEventName` | type | `./ui/Chart` | Name of an event accepted by `Chart.subscribe`. |
 | `ChartFitToDataOptions` | interface | `./ui/Chart` | Options for fitting the viewport to series data bounds. |
 | `ChartFitToDataPadding` | interface | `./ui/Chart` | Fractional padding applied when fitting domains to data. |
+| `ChartFollowXChangeEvent` | interface | `./ui/Chart` | Latest-X follow state change, emitted when following starts, stops, pauses, or resumes. |
 | `ChartFollowXOptions` | interface | `./ui/Chart` | Options for keeping the X viewport anchored to the latest data. |
 | `ChartFollowXState` | type | `./ui/Chart` | Latest-X follow state: disabled, actively following, or paused by interaction. |
 | `ChartFrameStats` | interface | `./ui/Chart` | Render metrics from the last frame. |
 | `ChartHoverState` | interface | `./ui/Chart` | Current hover hit-test result, including pointer position and picked items. |
 | `ChartInspectionTarget` | interface | `./ui/Chart` | A sample to show as the hover state, set with `ctx.state.inspect(...)`. |
-| `ChartKeyboardOptions` | interface | `./ui/Chart` | Keyboard pan and zoom behavior for accessible charts. |
 | `ChartLayoutReservation` | interface | `./ui/PluginHost` | Extra CSS-pixel space reserved around the plot by a plugin, e.g. for a navigator or toolbar. Reservations from every plugin add up. |
 | `ChartMountSlot` | type | `./ui/PluginHost` | Where a plugin can attach its own DOM with `ctx.dom.mount(slot, element)`. - `"plot"`: the plot area, above the WebGL canvas. Coordinates match `ctx.coords` plot coordinates (CSS pixels from the plot's top-left). Overlays here should keep `pointer-events: none` unless they handle their own input. - `"root"`: the whole chart box, including axis gutters and space reserved with `ctx.layout.reserve(...)`. Use it for legends, toolbars, and navigators. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters (bottom, left, right). - `"body"`: the owning document's `<body>`, for `position: fixed` UI such as tooltips that must escape the chart's `overflow: hidden`. |
 | `ChartOptions` | interface | `./ui/Chart` | Constructor options for `Chart`. Boolean-or-object options accept `false` to disable and an object to configure. |
@@ -125,7 +126,9 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartSeriesClickEvent` | interface | `./ui/Chart` | Click payload for the nearest chart series item. |
 | `ChartSeriesState` | interface | `./ui/Chart` | Runtime state for one chart series. |
 | `ChartSeriesSummary` | interface | `./ui/ChartSummary` | Per-series facts in a `ChartSummary`. |
+| `ChartSetViewportOptions` | interface | `./ui/Chart` | Options for `chart.setViewport`. |
 | `ChartSummary` | interface | `./ui/ChartSummary` | Data summary the chart exposes to assistive technology through `aria-describedby`. Pass `accessibility.description` as a function to turn it into your own text. |
+| `ChartSummaryMessages` | interface | `./ui/ChartSummary` | Strings and formatters behind the generated chart summary. Override any key through `accessibility.messages.summary`; unset keys keep the English default. |
 | `ChartSummaryRange` | interface | `./ui/ChartSummary` | Inclusive numeric range used by `ChartSummary`. |
 | `ChartSurface` | type | `./ui/PluginHost` | Chart-owned element a plugin can listen on or decorate with `ctx.dom.listen` and `ctx.dom.decorate`. - `"plot"`: the interactive plot surface (it receives pointer, wheel, and touch input). - `"root"`: the chart root; it is focusable and receives keyboard input when accessibility is enabled. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters. They ignore pointer input until a plugin decorates them with `pointerEvents: "auto"`. |
 | `ChartSurfaceDecoration` | interface | `./ui/PluginHost` | Styles, classes, and attributes applied to a chart surface by `ctx.dom.decorate`. |
@@ -133,6 +136,8 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartTheme` | interface | `./ui/theme` | Partial chart theme supplied by callers. |
 | `ChartTitleConfig` | interface | `./ui/Chart` | Chart title or subtitle text and alignment. |
 | `ChartViewportChangeEvent` | interface | `./ui/Chart` | Emitted after the visible domain changes. |
+| `ChartViewportChangeSource` | type | `./ui/Chart` | What changed the viewport: a user gesture (`"user"`, passed by the interaction, navigator, and keyboard plugins), latest-X following (`"follow"`), `fitToData`/`autoFitY` (`"fit"`), a linked chart mirroring another panel (`"linked"`), or app code (`"api"`, the default). |
+| `ChartViewportGestureOptions` | interface | `./ui/Chart` | Options for `chart.pan` and `chart.zoom`. |
 | `CustomAxisScale` | interface | `./interaction/AxisController` | Custom scale hooks for tick generation, formatting, and coordinate mapping. |
 | `Dataset` | interface | `./core/types` | Sorted XY data source consumed by chart series. |
 | `DEFAULT_CHART_THEME` | const | `./ui/theme` | Default dark chart theme. |
