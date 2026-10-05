@@ -62,8 +62,6 @@ console.log(chart.rendererInfo);
 | `shared` (the context belongs to several charts) | no | no | yes |
 | `maxDrawingBufferPixels` | the context's maximum viewport area | 16,384 x 16,384 (a typical desktop limit; browsers do not expose theirs) | the shared context's maximum viewport area |
 
-The `rendererchange` event is reserved for a chart that switches engine while it runs; nothing emits it yet.
-
 ### Context loss
 
 Every engine reports context loss and restore the same way. The chart stops drawing while its context is lost, plugins' `onContextLost` and `onContextRestored` hooks run, and the engine rebuilds what it needs before drawing resumes (see [Error handling](./error-handling.md)). WebGL engines handle `webglcontextlost` and `webglcontextrestored`, the shared engine reports its one context to every attached chart, and Canvas 2D handles the canvas `contextlost` and `contextrestored` events in browsers that fire them.
