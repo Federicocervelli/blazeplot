@@ -148,8 +148,8 @@ export type { AxisTimeZone } from "./interaction/timeAxis.js";
 
 // Rendering engines: the `renderer` option takes a name or one of these factories
 export type { ChartRenderSurface, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererHandle, ChartRendererInfo, RendererChoice, RendererLossState, RendererName } from "./render/ChartRenderer.js";
-export { autoRenderer, canvas2dRenderer, createChartRenderContext, sharedRenderer, webgl2Renderer } from "./render/engines.js";
-export type { ChartRenderContext } from "./render/engines.js";
+export { autoRenderer, canvas2dRenderer, createChartRenderContext, preloadWebGL, sharedRenderer, webgl2Renderer } from "./render/engines.js";
+export type { AutoRendererOptions, ChartRenderContext } from "./render/engines.js";
 export { Canvas2DUnavailableError } from "./render/canvas2d/Canvas2DRenderer.js";
 
 // Engine support detection

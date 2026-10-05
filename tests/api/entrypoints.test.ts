@@ -29,6 +29,7 @@ const expectedExports: Record<string, readonly string[]> = {
     "canvas2dRenderer",
     "createChartRenderContext",
     "isWebGL2Available",
+    "preloadWebGL",
     "sharedRenderer",
     "webgl2Renderer",
   ],

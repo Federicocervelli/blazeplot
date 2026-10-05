@@ -20,6 +20,8 @@ import { chartInternals, registerChartInternals } from "./ChartInternals.js";
 import type { ChartLayoutReservation } from "./PluginTypes.js";
 import { FollowXController } from "./FollowX.js";
 import { ChartAccessibility } from "./ChartAccessibility.js";
+import { assertChartTarget } from "./target.js";
+import { devWarn } from "../core/deprecation.js";
 import { normalizeAxesConfig, createDefaultDataset, datasetBarWidth, rejectBufferOptions, resolveSeriesSource } from "./ChartConfig.js";
 import type { RawSeriesConfig } from "./ChartConfig.js";
 import { ChartSeriesStyles } from "./ChartSeriesStyles.js";
@@ -114,6 +116,10 @@ export class Chart {
   private rafId: number = 0;
   private restoreRenderRafId: number = 0;
   private running: boolean = false;
+  /** Whether `start()` was ever called; drives the one-time "series added but never started" warning. */
+  private everStarted: boolean = false;
+  private startWarnTimer: ReturnType<Window["setTimeout"]> | undefined;
+  private sizeChecked: boolean = false;
   private disposed: boolean = false;
   private rendererLost: boolean = false;
   private domainErrorLogged: boolean = false;
@@ -127,6 +133,7 @@ export class Chart {
     titles: () => ({ title: this.options.title, subtitle: this.options.subtitle }),
     layout: () => this.layout,
     getSummary: () => this.getSummary(),
+    hasPlugins: () => (this.options.plugins?.length ?? 0) > 0,
     disposed: () => this.disposed,
     series: () => this.series,
     seriesColors: () => this.resolvedTheme.seriesColors,
@@ -153,11 +160,13 @@ export class Chart {
       }
       this.resetFrameStats();
       this.plugins.notify("onContextLost");
+      this.events.emit("contextlost", undefined);
       return;
     }
     this.rendererLost = false;
     this.applyCanvasSize();
     this.plugins.notify("onContextRestored");
+    this.events.emit("contextrestored", undefined);
     this.scheduleRenderAfterRestore();
   };
 
@@ -166,6 +175,7 @@ export class Chart {
     // The internals accessor reads private state through getters, so it needs a name for the instance.
     // oxlint-disable-next-line typescript/no-this-alias
     const chart = this;
+    assertChartTarget("Chart", target);
     this.options = options;
     this.followXPolicy.configure(options.followX ? (options.followX === true ? {} : options.followX) : null);
     this.userTheme = options.theme;
@@ -411,6 +421,7 @@ export class Chart {
     series.bindStyleHandler((target, options) => this.seriesStyles.set(target, options));
     this.series.push(series);
     this.engine.prepare?.(config.mode, series.style.lineWidth);
+    this.warnIfNeverStarted();
     if (this.a11y.forcedColorsActive) this.a11y.applyForcedSeriesStyles();
     this.emitSeriesChange();
     return series;
@@ -665,8 +676,26 @@ export class Chart {
     return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
+  /**
+   * Development-only hint for the most common first-run mistake: a series was added, but nothing was
+   * ever drawn because `start()` was not called. One warning per chart, a second after the first series.
+   */
+  private warnIfNeverStarted(): void {
+    if (this.everStarted || this.startWarnTimer !== undefined) return;
+    this.startWarnTimer = this.layout.view.setTimeout(() => {
+      this.startWarnTimer = undefined;
+      if (this.everStarted || this.disposed) return;
+      devWarn("a series was added but chart.start() was never called, so nothing is drawn.");
+    }, 1_000);
+  }
+
   /** Start rendering according to `options.renderLoop`. */
   start(): void {
+    this.everStarted = true;
+    if (this.startWarnTimer !== undefined) {
+      this.layout.view.clearTimeout(this.startWarnTimer);
+      this.startWarnTimer = undefined;
+    }
     if (!this.running) {
       this.running = true;
       this.lastFrameAt = 0;
@@ -705,6 +734,8 @@ export class Chart {
     this.stop();
     this.followXPolicy.clearTimer();
     this.resizeObserver?.disconnect();
+    if (this.startWarnTimer !== undefined) this.layout.view.clearTimeout(this.startWarnTimer);
+    this.startWarnTimer = undefined;
     if (this.restoreRenderRafId !== 0) this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
     this.restoreRenderRafId = 0;
     this.toggleDomListeners("removeEventListener");
@@ -737,6 +768,13 @@ export class Chart {
 
     if (this.plotSize.width < 0) this.applyCanvasSize();
     const { width: plotWidth, height: plotHeight } = this.plotSize;
+    if (!this.sizeChecked) {
+      this.sizeChecked = true;
+      if (plotWidth <= 0 || plotHeight <= 0) {
+        const axis = plotHeight <= 0 ? "height" : "width";
+        devWarn(`the plot area is ${plotWidth}x${plotHeight}px at the first render because the host element has zero ${axis}. Give it an explicit size (for example height: 400px) and make sure it is attached and visible.`);
+      }
+    }
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
