@@ -1,4 +1,4 @@
-import type { ChartRenderer, RenderProjection } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererCapabilities, FrameReport, RenderProjection, RendererLossState } from "../ChartRenderer.js";
 import type { RgbaColor, SeriesStyle } from "../../core/types.js";
 
 /** Error thrown when a Canvas 2D renderer cannot be created. */
@@ -9,6 +9,9 @@ export class Canvas2DUnavailableError extends Error {
     this.name = "Canvas2DUnavailableError";
   }
 }
+
+/** Typical desktop-browser limit on a canvas's area; browsers do not expose it. */
+const MAX_CANVAS_PIXELS = 16_384 * 16_384;
 
 /** Device-pixel mapping of the linear data -> clip projection (y flipped). */
 interface PixelMap {
@@ -21,28 +24,45 @@ interface PixelMap {
 /** @internal CPU-projected Canvas 2D implementation of `ChartRenderer`, used without WebGL2. */
 export class Canvas2DRenderer implements ChartRenderer {
   readonly kind = "canvas2d" as const;
+  readonly capabilities: ChartRendererCapabilities = { gpu: false, contextLoss: true, shared: false, maxDrawingBufferPixels: MAX_CANVAS_PIXELS };
   private readonly ctx: CanvasRenderingContext2D;
+  private lossListener: ((state: RendererLossState) => void) | null = null;
+  private lost = false;
+  private drawCalls = 0;
   private width = 1;
   private height = 1;
   private pixelRatio = 1;
   private readonly map: PixelMap = { sx: 0, ox: 0, sy: 0, oy: 0 };
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Canvas2DUnavailableError();
     this.ctx = ctx;
+    canvas.addEventListener("contextlost", this.handleContextLost);
+    canvas.addEventListener("contextrestored", this.handleContextRestored);
+  }
+
+  get isLost(): boolean {
+    return this.lost || this.ctx.isContextLost?.() === true;
+  }
+
+  setLossListener(listener: ((state: RendererLossState) => void) | null): void {
+    this.lossListener = listener;
   }
 
   beginFrame(width: number, height: number, pixelRatio: number): void {
     this.width = Math.max(1, width);
     this.height = Math.max(1, height);
     this.pixelRatio = Math.max(1, pixelRatio);
+    this.drawCalls = 0;
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
 
-  /** Canvas 2D draws immediately in each draw call, so there is nothing left to submit. */
-  endFrame(): void {}
+  /** Canvas 2D draws immediately in each draw call, so there is nothing left to submit or upload. */
+  endFrame(): FrameReport {
+    return { uploadBytes: 0, drawCalls: this.drawCalls };
+  }
 
   getWebGLContext(): null {
     return null;
@@ -56,6 +76,7 @@ export class Canvas2DRenderer implements ChartRenderer {
     projection: RenderProjection,
     primitive: "line_strip" | "lines" = "line_strip",
   ): void {
+    this.drawCalls++;
     const d = data;
     const n = Math.min(vertexCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
@@ -91,6 +112,7 @@ export class Canvas2DRenderer implements ChartRenderer {
   }
 
   drawClipLines(data: Float32Array, vertexCount: number, color: RgbaColor): void {
+    this.drawCalls++;
     const d = data;
     const n = Math.min(vertexCount, d.length >> 1);
     const hw = this.width * 0.5;
@@ -112,6 +134,7 @@ export class Canvas2DRenderer implements ChartRenderer {
   }
 
   drawPoints(data: Float32Array, pointCount: number, color: RgbaColor, pointSize: number, projection: RenderProjection): void {
+    this.drawCalls++;
     const d = data;
     const n = Math.min(pointCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
@@ -130,6 +153,7 @@ export class Canvas2DRenderer implements ChartRenderer {
   }
 
   drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection, yOrigin: number = 0): void {
+    this.drawCalls++;
     const d = data;
     const n = Math.min(barCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
@@ -151,6 +175,7 @@ export class Canvas2DRenderer implements ChartRenderer {
     projection: RenderProjection,
     primitive: "triangles" | "triangle_strip" = "triangles",
   ): void {
+    this.drawCalls++;
     const d = data;
     const n = Math.min(vertexCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
@@ -213,9 +238,24 @@ export class Canvas2DRenderer implements ChartRenderer {
   }
 
   dispose(): void {
+    this.canvas.removeEventListener("contextlost", this.handleContextLost);
+    this.canvas.removeEventListener("contextrestored", this.handleContextRestored);
+    this.lossListener = null;
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
+
+  private readonly handleContextLost = (event: Event): void => {
+    event.preventDefault();
+    this.lost = true;
+    this.lossListener?.("lost");
+  };
+
+  private readonly handleContextRestored = (): void => {
+    // The 2D state is reset on restore; every frame sets its transform again, so nothing needs rebuilding.
+    this.lost = false;
+    this.lossListener?.("restored");
+  };
 
   private project(p: RenderProjection): PixelMap {
     const m = this.map;

@@ -8,6 +8,29 @@ export interface RenderProjection {
   readonly offsetY: number;
 }
 
+/** What one frame cost the engine: bytes staged for the GPU and draw calls issued. */
+export interface FrameReport {
+  /** Vertex bytes uploaded to the GPU this frame (0 for engines that draw immediately, such as Canvas 2D). */
+  readonly uploadBytes: number;
+  /** Draw calls the engine issued this frame. */
+  readonly drawCalls: number;
+}
+
+/** Context state transitions an engine reports to the chart that owns it. */
+export type RendererLossState = "lost" | "restored";
+
+/** @internal Static facts about an engine instance. */
+export interface ChartRendererCapabilities {
+  /** Draws on the GPU. */
+  readonly gpu: boolean;
+  /** Reports context loss and restoration through `setLossListener`. */
+  readonly contextLoss: boolean;
+  /** Draws through a context shared with other charts. */
+  readonly shared: boolean;
+  /** Largest drawing buffer, in pixels, the engine can render into. */
+  readonly maxDrawingBufferPixels: number;
+}
+
 /** Rendering backend a chart is drawn with. */
 export type ChartRendererKind = "webgl2" | "webgl2-shared" | "canvas2d";
 
@@ -26,8 +49,17 @@ export interface ChartRendererHandle {
 export interface ChartRenderer extends ChartRendererHandle {
   /** Set the drawing-buffer size (device pixels) and device pixel ratio for this frame and clear it. */
   beginFrame(width: number, height: number, pixelRatio: number): void;
-  /** Finish the frame: submit anything recorded since `beginFrame` and present it. */
-  endFrame(): void;
+  /** Finish the frame: submit anything recorded since `beginFrame`, present it, and report what it cost. */
+  endFrame(): FrameReport;
+  /** Static facts about this engine instance. */
+  readonly capabilities: ChartRendererCapabilities;
+  /** Whether the engine's context is currently lost, so drawing is pointless until it is restored. */
+  readonly isLost: boolean;
+  /**
+   * Register the single listener told when the context is lost or restored (`null` clears it). The
+   * engine owns the underlying DOM events and rebuilds its own resources before reporting `"restored"`.
+   */
+  setLossListener(listener: ((state: RendererLossState) => void) | null): void;
   /** The underlying WebGL2 context, or `null` when the renderer does not expose one. */
   getWebGLContext(): WebGL2RenderingContext | null;
   /** Polyline (`"line_strip"`) or independent segments (`"lines"`); NaN vertices break the line. */
