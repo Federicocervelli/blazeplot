@@ -361,6 +361,15 @@ console.log(chart.getFollowXState(), chart.getViewport().xMin);
 chart.dispose();
 ```
 
+### 11. Rendering fixes that change how charts look
+
+| 0.5 | 1.0 |
+|---|---|
+| Translucent colors replaced the pixel underneath. An area fill erased the grid lines, and the later of two overlapping translucent series hid the earlier one. | Colors with alpha blend over what is already drawn. Charts that used translucent fills, grid colors, or series colors may look different where shapes overlap. |
+| `pointSize` was a diameter in device pixels, so scatter markers were half as large on a 2x display. Markers were squares. | `pointSize` is a diameter in CSS pixels, like `lineWidth`, and markers are round. Scale `pointSize` down if you compensated for the old behavior. |
+| Dense area series (more than 8,192 visible samples) kept one sample per stride bucket, so spikes could disappear. | Dense area series render from min/max buckets, so peaks and dips survive at every zoom level. |
+| Lines drawn at a large Y offset (for example `1e6 + 0.01`) were quantized to float32 and rendered as a staircase. | Y is shifted by the viewport origin before upload, so they render smoothly. No API change. |
+
 ## Platform requirements
 
 ### ESM only

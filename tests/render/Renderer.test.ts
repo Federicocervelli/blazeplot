@@ -133,6 +133,22 @@ describe("Renderer", () => {
     expect(backend.draws.at(-1)!.instances).toBeUndefined();
   });
 
+  it("treats pointSize as a CSS-pixel diameter on both point paths", () => {
+    for (const instancing of [true, false]) {
+      const { renderer, backend, positions } = makeRenderer(instancing);
+      renderer.beginFrame(1280, 960, 2);
+      renderer.drawPoints(positions, 10, [0, 0, 1, 1], 6, projection);
+      expect(backend.draws.at(-1)!.uniforms.uPointSize).toBe(12);
+    }
+  });
+
+  it("offsets the instanced bar baseline by the Y origin", () => {
+    const { renderer, backend, positions } = makeRenderer(true);
+    renderer.beginFrame(640, 480, 1);
+    renderer.drawBarsInstanced(positions, 5, testStyle({ barWidth: 0.4, baseline: 1_000_000 }), projection, 999_990);
+    expect(backend.draws.at(-1)!.uniforms.uBaseline).toBe(10);
+  });
+
   it("uses instanced quads for points and bars when supported", () => {
     const { renderer, backend, positions } = makeRenderer(true);
     renderer.beginFrame(640, 480, 1);

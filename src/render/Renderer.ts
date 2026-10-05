@@ -107,16 +107,17 @@ export class Renderer {
     this.drawSolid("lines", positions, vertexCount, color);
   }
 
-  /** Draw scatter points `pointSize` device pixels across. */
+  /** Draw round scatter markers `pointSize` CSS pixels in diameter. */
   drawPoints(positions: GpuBuffer, pointCount: number, color: RgbaColor, pointSize: number, projection: RenderProjection): void {
     this.writeProjection(projection);
+    const sizePx = pointSize * this.pixelRatio;
     if (!this.supportsInstancing) {
       this.backend.draw({
         program: this.program("pointSprite"),
         primitive: "points",
         count: pointCount,
         attributes: { aPosition: positions },
-        uniforms: { uScale: this.scaleUniform, uOffset: this.offsetUniform, uPointSize: pointSize, uColor: color },
+        uniforms: { uScale: this.scaleUniform, uOffset: this.offsetUniform, uPointSize: sizePx, uColor: color },
       });
       return;
     }
@@ -134,14 +135,14 @@ export class Renderer {
         uScale: this.scaleUniform,
         uOffset: this.offsetUniform,
         uCanvasSize: this.canvasSizeUniform,
-        uPointSize: pointSize,
+        uPointSize: sizePx,
         uColor: color,
       },
     });
   }
 
-  /** Draw one instanced bar per `[x, y]` vertex, `style.barWidth` wide, from `style.baseline`. */
-  drawBarsInstanced(positions: GpuBuffer, barCount: number, style: SeriesStyle, projection: RenderProjection): void {
+  /** Draw one instanced bar per `[x, y]` vertex, `style.barWidth` wide, from `style.baseline - yOrigin`. */
+  drawBarsInstanced(positions: GpuBuffer, barCount: number, style: SeriesStyle, projection: RenderProjection, yOrigin: number = 0): void {
     this.writeProjection(projection);
     this.backend.draw({
       program: this.program("bar"),
@@ -156,7 +157,7 @@ export class Renderer {
         uScale: this.scaleUniform,
         uOffset: this.offsetUniform,
         uBarWidth: style.barWidth,
-        uBaseline: style.baseline,
+        uBaseline: style.baseline - yOrigin,
         uColor: style.color,
       },
     });

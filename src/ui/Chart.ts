@@ -517,6 +517,9 @@ export class Chart {
   private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
   private currentXOrigin: number = 0;
+  /** Per-frame Y origin of each Y axis (its camera `yMin` when linear, else 0), subtracted in float64 before upload. */
+  private leftYOrigin: number = 0;
+  private rightYOrigin: number = 0;
   private followXConfig: ChartFollowXOptions | null = null;
   private xFollowPaused: boolean = false;
   private xFollowResumeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1224,6 +1227,8 @@ export class Chart {
       const pixelRatio = this.canvas.width / Math.max(1, this.canvas.clientWidth);
       this.renderer.beginFrame(this.canvas.width, this.canvas.height, pixelRatio);
       this.currentXOrigin = this.camera.xMin;
+      this.leftYOrigin = this.axis.isNonlinear("y") ? 0 : this.camera.yMin;
+      this.rightYOrigin = this.rightAxis.isNonlinear("y") ? 0 : this.rightCamera.yMin;
       this.updateTicks();
       if (this.gridVisible) this.drawGrid();
 
@@ -1737,13 +1742,18 @@ export class Chart {
     const scaledOrigin = controller.scaleValue(this.currentXOrigin, "x");
     const xMin = controller.scaleValue(camera.xMin, "x") - scaledOrigin;
     const xMax = controller.scaleValue(camera.xMax, "x") - scaledOrigin;
-    const yMin = controller.scaleValue(camera.yMin, "y");
-    const yMax = controller.scaleValue(camera.yMax, "y");
+    const scaledYOrigin = controller.isNonlinear("y") ? 0 : this.yOriginFor(yAxis);
+    const yMin = controller.scaleValue(camera.yMin, "y") - scaledYOrigin;
+    const yMax = controller.scaleValue(camera.yMax, "y") - scaledYOrigin;
     projection.scaleX = (camera.xReversed ? -2 : 2) / (xMax - xMin);
     projection.scaleY = (camera.yReversed ? -2 : 2) / (yMax - yMin);
     projection.offsetX = (camera.xReversed ? 1 : -1) * (xMin + xMax) / (xMax - xMin);
     projection.offsetY = (camera.yReversed ? 1 : -1) * (yMin + yMax) / (yMax - yMin);
     return projection;
+  }
+
+  private yOriginFor(yAxis: SeriesYAxis | undefined): number {
+    return yAxis === "right" ? this.rightYOrigin : this.leftYOrigin;
   }
 
   /** Whether both Y axes share a screen direction, so left-domain Y anchors map 1:1 onto the right axis. */
@@ -1827,15 +1837,16 @@ export class Chart {
   }
 
   private drawLineSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
+    const yOrigin = this.yOriginFor(series.config.yAxis);
     const dense = series.hasServerMinMax || (series.downsampled && series.visibleSampleCount(viewport) > RAW_LINE_VERTEX_CAPACITY - 2);
     if (dense) {
-      const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin);
+      const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin, yOrigin);
       this.padBucketsToLineWidth(bucketCount, viewport, series);
       this.drawBucketColumns(bucketCount, viewport, series.style.color, projection, "minmax");
       return;
     }
 
-    const count = series.copyRawVisibleClipped(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+    const count = series.copyRawVisibleClipped(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin, yOrigin);
     this.drawRawLine(count, series.style, projection, "raw");
   }
 
@@ -1844,34 +1855,58 @@ export class Chart {
     if (range.end - range.start < 2) return;
 
     const { style } = series;
-    if (range.end - range.start > AREA_POINT_CAPACITY) {
-      this.drawAreaFill(series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, style.baseline, this.currentXOrigin), style, projection);
-      this.drawRawLine(series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin), style, projection, "area");
+    const yOrigin = this.yOriginFor(series.config.yAxis);
+    const visibleSamples = range.end - range.start;
+    if (series.hasServerMinMax || (series.downsampled && visibleSamples > AREA_POINT_CAPACITY)) {
+      this.drawDenseArea(series, viewport, projection, yOrigin);
+      return;
+    }
+
+    if (visibleSamples > AREA_POINT_CAPACITY) {
+      // `downsample: "none"`: stable stride decimation keeps the strip within the buffer.
+      this.drawAreaFill(series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, style.baseline, this.currentXOrigin, yOrigin), style, projection);
+      this.drawRawLine(series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin, yOrigin), style, projection, "area");
       return;
     }
 
     for (let start = range.start; start < range.end;) {
-      const vertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, style.baseline, this.currentXOrigin);
+      const vertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, style.baseline, this.currentXOrigin, yOrigin);
       if (vertexCount < 4) break;
       this.drawAreaFill(vertexCount, style, projection);
       start += Math.max(1, (vertexCount >> 1) - 1);
     }
 
     for (let start = range.start; start < range.end;) {
-      const vertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
+      const vertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin, yOrigin);
       if (vertexCount < 2) break;
       this.drawRawLine(vertexCount, style, projection, "area");
       start += Math.max(1, vertexCount - 1);
     }
   }
 
+  /**
+   * Dense area: min/max buckets rendered as full-width columns. The fill spans each bucket from the
+   * baseline to its extreme, and the outline is the min/max envelope, so isolated spikes survive.
+   */
+  private drawDenseArea(series: SeriesStore, viewport: Viewport, projection: RenderProjection, yOrigin: number): void {
+    const { style } = series;
+    // At most one bucket per drawing-buffer column: narrower buckets can miss every pixel center and drop a spike.
+    const maxBuckets = Math.max(1, Math.min(BAR_TRIANGLE_CAPACITY, this.canvas.width));
+    const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, maxBuckets, this.currentXOrigin, yOrigin);
+    if (bucketCount <= 0) return;
+    this.drawBucketColumns(bucketCount, viewport, style.fillColor, projection, "area", style.baseline - yOrigin);
+    this.padBucketsToLineWidth(bucketCount, viewport, series);
+    this.drawBucketColumns(bucketCount, viewport, style.color, projection, "area");
+  }
+
   private drawOhlcSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport);
     const maxCandles = Math.min(Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE), BAR_TRIANGLE_CAPACITY);
     const { style } = series;
+    const yOrigin = this.yOriginFor(series.config.yAxis);
 
     for (let start = range.start; start < range.end;) {
-      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin);
+      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin, yOrigin);
       if (candleCount <= 0) break;
 
       this.drawOhlcTicks(candleCount, style.tickWidth, true, style.upColor, style.lineWidth, projection);
@@ -1884,9 +1919,10 @@ export class Chart {
     const range = series.visibleIndexRange(viewport, 1);
     const maxCandles = Math.min(Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE), BAR_TRIANGLE_CAPACITY);
     const { style } = series;
+    const yOrigin = this.yOriginFor(series.config.yAxis);
 
     for (let start = range.start; start < range.end;) {
-      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin);
+      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin, yOrigin);
       if (candleCount <= 0) break;
 
       for (let i = 0; i < candleCount; i++) {
@@ -1910,42 +1946,47 @@ export class Chart {
 
   private drawScatterSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const { style } = series;
+    const yOrigin = this.yOriginFor(series.config.yAxis);
+    // Culling padding is measured in drawing-buffer pixels, so scale the CSS-pixel point size.
+    const pointSizePx = style.pointSize * (this.canvas.width / Math.max(1, this.canvas.clientWidth));
     if (series.config.downsample === "none" && series.visibleSampleCount(viewport) <= MAX_EXACT_SCATTER_POINTS) {
       const range = series.visibleIndexRange(viewport);
       for (let start = range.start; start < range.end; start += RAW_LINE_VERTEX_CAPACITY) {
         const end = Math.min(range.end, start + RAW_LINE_VERTEX_CAPACITY);
-        const count = series.copyScatterRange(start, end, viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin, this.canvas.height, style.pointSize);
+        const count = series.copyScatterRange(start, end, viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin, this.canvas.height, pointSizePx, yOrigin);
         this.drawPointBatch(count, style, projection);
       }
       return;
     }
 
-    const count = series.copyScatterVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.canvas.width, this.canvas.height, style.pointSize, this.currentXOrigin);
+    const count = series.copyScatterVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.canvas.width, this.canvas.height, pointSizePx, this.currentXOrigin, yOrigin);
     this.drawPointBatch(count, style, projection);
   }
 
   private drawBarSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const { style } = series;
+    const yOrigin = this.yOriginFor(series.config.yAxis);
+    const baseline = style.baseline - yOrigin;
     const rawBarCapacity = this.renderer.supportsInstancing ? RAW_LINE_VERTEX_CAPACITY : BAR_TRIANGLE_CAPACITY;
     if (series.downsampled && series.visibleSampleCount(viewport) > rawBarCapacity) {
-      const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin);
+      const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin, yOrigin);
       for (let i = 0; i < bucketCount; i++) {
         const offset = i * FLOATS_PER_MINMAX_BUCKET;
-        this.minMaxBucketData[offset + 1] = Math.min(style.baseline, this.minMaxBucketData[offset + 1]!);
-        this.minMaxBucketData[offset + 2] = Math.max(style.baseline, this.minMaxBucketData[offset + 2]!);
+        this.minMaxBucketData[offset + 1] = Math.min(baseline, this.minMaxBucketData[offset + 1]!);
+        this.minMaxBucketData[offset + 2] = Math.max(baseline, this.minMaxBucketData[offset + 2]!);
       }
       this.drawBucketColumns(bucketCount, viewport, style.color, projection, "bars");
       return;
     }
 
     const range = series.visibleIndexRange(viewport, 1);
-    const count = series.copyRawRange(range.start, range.end, this.rawLineData, rawBarCapacity, this.currentXOrigin);
+    const count = series.copyRawRange(range.start, range.end, this.rawLineData, rawBarCapacity, this.currentXOrigin, yOrigin);
     if (count <= 0) return;
 
     const controller = this.controllerFor(series.config.yAxis);
     if (this.renderer.supportsInstancing && !controller.isNonlinear("x") && !controller.isNonlinear("y")) {
       this.uploadRawLineData(count, projection);
-      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, style, projection);
+      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, style, projection, yOrigin);
       this.recordDraw("bars", count);
       return;
     }
@@ -1954,7 +1995,7 @@ export class Chart {
     const halfWidth = style.barWidth * 0.5;
     for (let i = 0; i < barCount; i++) {
       const x = this.rawLineData[i * 2]!;
-      this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[i * 2 + 1]!);
+      this.writeBarTriangles(i, x - halfWidth, x + halfWidth, baseline, this.rawLineData[i * 2 + 1]!);
     }
     this.drawTriangleBatch(barCount * 6, style.color, projection, "bars");
   }
@@ -1998,8 +2039,11 @@ export class Chart {
     }
   }
 
-  /** Expand `[x, minY, maxY]` buckets into columns spanning the full bucket width so dense data has no gaps. */
-  private drawBucketColumns(bucketCount: number, viewport: Viewport, color: RgbaColor, projection: RenderProjection, mode: DrawMode): void {
+  /**
+   * Expand `[x, minY, maxY]` buckets into columns spanning the full bucket width so dense data has no gaps.
+   * With `baseline`, each column is extended to include it (dense bars and area fills).
+   */
+  private drawBucketColumns(bucketCount: number, viewport: Viewport, color: RgbaColor, projection: RenderProjection, mode: DrawMode, baseline?: number): void {
     const count = Math.min(bucketCount, BAR_TRIANGLE_CAPACITY);
     if (count <= 0) return;
 
@@ -2025,7 +2069,9 @@ export class Chart {
           x1 = i + 1 === count ? viewportXMax : x0 + bucketWidth;
         }
       }
-      this.writeBarTriangles(i, Math.max(viewportXMin, x0), Math.min(viewportXMax, x1), data[i * 3 + 1]!, data[i * 3 + 2]!);
+      const low = data[i * 3 + 1]!;
+      const high = data[i * 3 + 2]!;
+      this.writeBarTriangles(i, Math.max(viewportXMin, x0), Math.min(viewportXMax, x1), baseline === undefined ? low : Math.min(baseline, low), baseline === undefined ? high : Math.max(baseline, high));
     }
     this.drawTriangleBatch(count * 6, color, projection, mode);
   }

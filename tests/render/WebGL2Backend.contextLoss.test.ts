@@ -20,6 +20,14 @@ class GenerationGl {
   readonly STREAM_DRAW = 11;
   readonly DEPTH_TEST = 12;
   readonly STENCIL_TEST = 13;
+  readonly BLEND = 14;
+  readonly ONE = 15;
+  readonly ONE_MINUS_SRC_ALPHA = 16;
+  readonly SCISSOR_TEST = 17;
+  readonly COLOR_BUFFER_BIT = 18;
+  /** Capabilities currently enabled; a context restore resets them. */
+  readonly enabled = new Set<number>();
+  blendFunc: number[] | null = null;
 
   isContextLost(): boolean { return this.lost; }
   private make(): { gen: number } { return { gen: this.generation }; }
@@ -36,7 +44,12 @@ class GenerationGl {
   deleteProgram(o: { gen: number }): void { this.del("program", o); }
   getShaderParameter(): boolean { return true; }
   getProgramParameter(_p: unknown, pname: number): number | boolean { return pname === this.LINK_STATUS ? true : 0; }
-  disable(): void {}
+  disable(cap: number): void { this.enabled.delete(cap); }
+  enable(cap: number): void { this.enabled.add(cap); }
+  blendFuncSeparate(...args: number[]): void { this.blendFunc = args; }
+  viewport(): void {}
+  clearColor(): void {}
+  clear(): void {}
   bindBuffer(): void {}
   bufferData(): void {}
   shaderSource(): void {}
@@ -61,6 +74,8 @@ function setup(): { gl: GenerationGl; backend: () => WebGL2Backend; fireLost: ()
 function restore(gl: GenerationGl): void {
   gl.lost = false;
   gl.generation++;
+  gl.enabled.clear();
+  gl.blendFunc = null;
 }
 
 describe("WebGL2Backend context loss", () => {
@@ -97,6 +112,20 @@ describe("WebGL2Backend context loss", () => {
     next.destroy();
     expect(gl.invalidDeletes).toEqual([]);
     expect(gl.validDeletes).toContain("buffer");
+  });
+
+  it("enables premultiplied-alpha blending and re-applies it after a context restore", () => {
+    const { gl, backend, fireLost } = setup();
+    const b = backend();
+    expect(gl.enabled.has(gl.BLEND)).toBe(true);
+    expect(gl.blendFunc).toEqual([gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA]);
+
+    fireLost();
+    restore(gl);
+    expect(gl.enabled.has(gl.BLEND)).toBe(false);
+    b.clear(0, 0, 0, 0);
+    expect(gl.enabled.has(gl.BLEND)).toBe(true);
+    expect(gl.blendFunc).toEqual([gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA]);
   });
 
   it("stops listening for context loss once destroyed", () => {

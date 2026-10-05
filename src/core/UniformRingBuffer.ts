@@ -183,6 +183,9 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return this.tree.queryRing(this.logicalToPhysical(from), to - from);
   }
 
+  /** @internal Copy methods accept a trailing `yOrigin` that is subtracted in float64 before the render-buffer write. */
+  readonly supportsYOrigin = true;
+
   /** Ordinal of logical index 0 on the X grid, so `ordinalOffset + index` is stable while the buffer wraps. */
   get ordinalOffset(): number {
     return Math.round(this.firstX() / this.xStep);
@@ -196,6 +199,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     layout: SampleCopyLayout,
     baseline: number,
     xOrigin: number,
+    yOrigin: number = 0,
   ): number {
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);
@@ -205,7 +209,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const stride = Math.max(1, Math.ceil(viewportSamples / maxPoints));
     const remainder = positiveModulo(this.ordinalOffset + start, stride);
     const alignedStart = start + positiveModulo(-remainder, stride);
-    return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
+    return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin, yOrigin);
   }
 
   /** Copy a logical sample range into a packed render buffer. */
@@ -217,8 +221,9 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     layout: SampleCopyLayout,
     baseline: number,
     xOrigin: number,
+    yOrigin: number = 0,
   ): number {
-    return this.copyStridedSamples(Math.max(0, Math.floor(start)), Math.min(this._length, Math.ceil(end)), 1, target, maxPoints, layout, baseline, xOrigin);
+    return this.copyStridedSamples(Math.max(0, Math.floor(start)), Math.min(this._length, Math.ceil(end)), 1, target, maxPoints, layout, baseline, xOrigin, yOrigin);
   }
 
   /** Copy `[x, minY, maxY]` buckets anchored to absolute sample ordinals, so streaming does not jitter them. */
@@ -227,6 +232,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     target: Float32Array,
     maxSegments: number,
     xOrigin: number,
+    yOrigin: number = 0,
   ): number {
     if (maxSegments <= 0 || target.length < maxSegments * 3) return 0;
 
@@ -251,8 +257,8 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
       const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
       const offset = written * 3;
       target[offset] = this.firstX() + representative * this.xStep - xOrigin;
-      target[offset + 1] = range.minY;
-      target[offset + 2] = range.maxY;
+      target[offset + 1] = range.minY - yOrigin;
+      target[offset + 2] = range.maxY - yOrigin;
       written++;
     }
 
@@ -298,6 +304,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     layout: SampleCopyLayout,
     baseline: number,
     xOrigin: number,
+    yOrigin: number,
   ): number {
     const floatsPerSample = layout === "points" ? 2 : 4;
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
@@ -323,12 +330,12 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
       const x = firstX + index * this.xStep - xOrigin;
       if (layout === "points") {
         target[offset] = x;
-        target[offset + 1] = y;
+        target[offset + 1] = y - yOrigin;
       } else {
         target[offset] = x;
-        target[offset + 1] = baseline;
+        target[offset + 1] = baseline - yOrigin;
         target[offset + 2] = x;
-        target[offset + 3] = y;
+        target[offset + 3] = y - yOrigin;
       }
       count++;
       lastWasGap = false;

@@ -1,4 +1,4 @@
-import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRange, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRange, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 import type { MinMaxY } from "./MinMaxTree.js";
 
@@ -55,6 +55,34 @@ function hasCopyMinMaxSegments(dataset: Dataset): dataset is MinMaxSegmentCopyDa
 
 function hasCopyVisibleSamples(dataset: Dataset): dataset is VisibleSampleCopyDataset {
   return "copyVisibleSamples" in dataset;
+}
+
+/**
+ * Built-in datasets set this and accept a trailing `yOrigin` argument on their copy methods, so Y is
+ * shifted in float64 before the float32 render-buffer write. Custom datasets keep the public
+ * signatures and are shifted in place after the copy.
+ */
+interface YOriginDataset {
+  readonly supportsYOrigin: true;
+  copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number, yOrigin: number): number;
+  copyVisibleSamples(viewport: Viewport, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number, yOrigin: number): number;
+  copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number, yOrigin: number): number;
+}
+
+function honorsYOrigin(dataset: Dataset): dataset is Dataset & YOriginDataset {
+  return (dataset as Partial<YOriginDataset>).supportsYOrigin === true;
+}
+
+const POINT_Y_OFFSETS: readonly number[] = [1];
+const AREA_Y_OFFSETS: readonly number[] = [1, 3];
+const MINMAX_Y_OFFSETS: readonly number[] = [1, 2];
+
+/** Subtract `yOrigin` from the Y components of `count` packed samples (best effort, after the float32 write). */
+function shiftY(target: Float32Array, count: number, floatsPerSample: number, offsets: readonly number[], yOrigin: number): void {
+  if (yOrigin === 0) return;
+  for (let i = 0; i < count; i++) {
+    for (const offset of offsets) target[i * floatsPerSample + offset]! -= yOrigin;
+  }
 }
 
 function hasCopyVisiblePoints(dataset: Dataset): dataset is VisiblePointCopyDataset {
@@ -212,7 +240,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   /** @internal Whether dense views of this series are reduced to min/max buckets. */
   get downsampled(): boolean {
     const mode = this.config.mode;
-    return (mode === "line" || mode === "bar" || mode === "scatter") && this.config.downsample !== "none";
+    return (mode === "line" || mode === "area" || mode === "bar" || mode === "scatter") && this.config.downsample !== "none";
   }
 
   /** @internal Whether the dataset supplies its own pre-sampled min/max buckets. */
@@ -657,8 +685,8 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   /** @internal Copy stable, viewport-anchored XY samples into a render buffer. */
-  copyRawVisible(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
-    return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0, xOrigin);
+  copyRawVisible(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0, yOrigin: number = 0): number {
+    return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0, xOrigin, yOrigin);
   }
 
   /** @internal Copy 2D-culled, screen-space sampled scatter points into a render buffer. */
@@ -670,8 +698,9 @@ export class SeriesStore<D extends Dataset = Dataset> {
     pixelHeight: number,
     pointSize: number,
     xOrigin: number = 0,
+    yOrigin: number = 0,
   ): number {
-    return this.copyVisiblePoints(viewport, target, maxPoints, pixelWidth, pixelHeight, pointSize, xOrigin);
+    return this.copyVisiblePoints(viewport, target, maxPoints, pixelWidth, pixelHeight, pointSize, xOrigin, yOrigin);
   }
 
   /** @internal Copy exact Y-culled scatter points for a logical index range. */
@@ -684,6 +713,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     xOrigin: number = 0,
     pixelHeight: number = 0,
     pointSize: number = 0,
+    yOrigin: number = 0,
   ): number {
     if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
 
@@ -695,11 +725,11 @@ export class SeriesStore<D extends Dataset = Dataset> {
     const height = Math.max(0, Math.floor(pixelHeight));
     const safePointSize = Number.isFinite(pointSize) ? Math.max(0, pointSize) : 0;
     const yPad = yRange > 0 && height > 0 ? ((safePointSize * 0.5) / height) * yRange : 0;
-    return this.copyVisiblePointRange(from, to, viewport.yMin - yPad, viewport.yMax + yPad, target, maxPoints, xOrigin);
+    return this.copyVisiblePointRange(from, to, viewport.yMin - yPad, viewport.yMax + yPad, target, maxPoints, xOrigin, yOrigin);
   }
 
   /** @internal Copy visible XY samples with the line clipped to the viewport's X edges. */
-  copyRawVisibleClipped(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
+  copyRawVisibleClipped(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0, yOrigin: number = 0): number {
     if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
 
     const start = Math.max(0, this.dataset.lowerBoundX(viewport.xMin) - 1);
@@ -716,7 +746,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
       if (count >= maxPoints) return false;
       const offset = count * 2;
       target[offset] = outX;
-      target[offset + 1] = y;
+      target[offset + 1] = y - yOrigin;
       count++;
       lastX = outX;
       lastY = y;
@@ -766,24 +796,27 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   /** @internal Copy a logical XY range into a render buffer; gaps are written as NaN. */
-  copyRawRange(start: number, end: number, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
-    return this.copySampleRange(start, end, target, maxPoints, "points", 0, xOrigin);
+  copyRawRange(start: number, end: number, target: Float32Array, maxPoints: number, xOrigin: number = 0, yOrigin: number = 0): number {
+    return this.copySampleRange(start, end, target, maxPoints, "points", 0, xOrigin, yOrigin);
   }
 
   /** @internal Copy stable, viewport-anchored area strip vertices; returns the vertex count. */
-  copyAreaVisible(viewport: Viewport, target: Float32Array, maxPoints: number, baseline: number = 0, xOrigin: number = 0): number {
-    return this.copyVisibleSamples(viewport, target, maxPoints, "area", baseline, xOrigin) * 2;
+  copyAreaVisible(viewport: Viewport, target: Float32Array, maxPoints: number, baseline: number = 0, xOrigin: number = 0, yOrigin: number = 0): number {
+    return this.copyVisibleSamples(viewport, target, maxPoints, "area", baseline, xOrigin, yOrigin) * 2;
   }
 
   /** @internal Copy an area strip for a logical index range; returns the vertex count. */
-  copyAreaRange(start: number, end: number, target: Float32Array, maxPoints: number, baseline: number = 0, xOrigin: number = 0): number {
-    return this.copySampleRange(start, end, target, maxPoints, "area", baseline, xOrigin) * 2;
+  copyAreaRange(start: number, end: number, target: Float32Array, maxPoints: number, baseline: number = 0, xOrigin: number = 0, yOrigin: number = 0): number {
+    return this.copySampleRange(start, end, target, maxPoints, "area", baseline, xOrigin, yOrigin) * 2;
   }
 
   /** @internal Copy visible `[x, minY, maxY]` bucket triples into a render buffer. */
-  copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number = 0): number {
+  copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number = 0, yOrigin: number = 0): number {
     if (hasCopyMinMaxSegments(this.dataset)) {
-      return this.dataset.copyMinMaxSegments(viewport, target, maxSegments, xOrigin);
+      if (honorsYOrigin(this.dataset)) return this.dataset.copyMinMaxSegments(viewport, target, maxSegments, xOrigin, yOrigin);
+      const written = this.dataset.copyMinMaxSegments(viewport, target, maxSegments, xOrigin);
+      shiftY(target, written, 3, MINMAX_Y_OFFSETS, yOrigin);
+      return written;
     }
     if (!this.downsampled || maxSegments <= 0 || target.length < maxSegments * 3) return 0;
 
@@ -805,8 +838,8 @@ export class SeriesStore<D extends Dataset = Dataset> {
       const representative = Math.max(segmentStart, Math.min(bucketEnd - 1, bucketStart + (bucketWidth >> 1)));
       const offset = written * 3;
       target[offset] = this.dataset.getX(representative) - xOrigin;
-      target[offset + 1] = range.minY;
-      target[offset + 2] = range.maxY;
+      target[offset + 1] = range.minY - yOrigin;
+      target[offset + 2] = range.maxY - yOrigin;
       written++;
     }
 
@@ -814,7 +847,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   /** @internal Copy `[x, open, high, low, close]` tuples for a logical index range; gap candles are written as all-NaN tuples. */
-  copyOhlcTuplesRange(start: number, end: number, target: Float32Array, maxCandles: number, xOrigin: number = 0): number {
+  copyOhlcTuplesRange(start: number, end: number, target: Float32Array, maxCandles: number, xOrigin: number = 0, yOrigin: number = 0): number {
     if (!isOhlcDataset(this.dataset) || maxCandles <= 0 || target.length < maxCandles * 5) return 0;
 
     const from = Math.max(0, Math.floor(start));
@@ -829,10 +862,10 @@ export class SeriesStore<D extends Dataset = Dataset> {
         continue;
       }
       target[offset] = this.dataset.getX(index) - xOrigin;
-      target[offset + 1] = this.dataset.getOpen(index);
-      target[offset + 2] = this.dataset.getHigh(index);
-      target[offset + 3] = this.dataset.getLow(index);
-      target[offset + 4] = this.dataset.getClose(index);
+      target[offset + 1] = this.dataset.getOpen(index) - yOrigin;
+      target[offset + 2] = this.dataset.getHigh(index) - yOrigin;
+      target[offset + 3] = this.dataset.getLow(index) - yOrigin;
+      target[offset + 4] = this.dataset.getClose(index) - yOrigin;
     }
 
     return count;
@@ -901,9 +934,12 @@ export class SeriesStore<D extends Dataset = Dataset> {
     pixelHeight: number,
     pointSize: number,
     xOrigin: number,
+    yOrigin: number,
   ): number {
     if (hasCopyVisiblePoints(this.dataset)) {
-      return this.dataset.copyVisiblePoints(viewport, target, maxPoints, xOrigin, pixelWidth, pixelHeight, pointSize);
+      const written = this.dataset.copyVisiblePoints(viewport, target, maxPoints, xOrigin, pixelWidth, pixelHeight, pointSize);
+      shiftY(target, written, 2, POINT_Y_OFFSETS, yOrigin);
+      return written;
     }
 
     if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
@@ -928,7 +964,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     if (end <= start) return 0;
 
     if (end - start <= maxPoints) {
-      return this.copyVisiblePointRange(start, end, yMin, yMax, target, maxPoints, xOrigin);
+      return this.copyVisiblePointRange(start, end, yMin, yMax, target, maxPoints, xOrigin, yOrigin);
     }
 
     const hasIntervalBounds = this.hasPointIntervalBounds();
@@ -936,12 +972,12 @@ export class SeriesStore<D extends Dataset = Dataset> {
     if (fullRange && (fullRange.maxY < yMin || fullRange.minY > yMax)) return 0;
 
     if (end - start <= maxPoints * 4) {
-      const exact = this.copyVisiblePointsExact(start, end, yMin, yMax, target, maxPoints, xOrigin);
+      const exact = this.copyVisiblePointsExact(start, end, yMin, yMax, target, maxPoints, xOrigin, yOrigin);
       if (!exact.overflow) return exact.count;
     }
 
     const fullRangeInside = fullRange !== null && fullRange.minY >= yMin && fullRange.maxY <= yMax;
-    return this.copyVisiblePointBuckets(viewport, start, end, yMin, yMax, target, maxPoints, xOrigin, fullRangeInside, hasIntervalBounds);
+    return this.copyVisiblePointBuckets(viewport, start, end, yMin, yMax, target, maxPoints, xOrigin, yOrigin, fullRangeInside, hasIntervalBounds);
   }
 
   private copyVisiblePointRange(
@@ -952,6 +988,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     target: Float32Array,
     maxPoints: number,
     xOrigin: number,
+    yOrigin: number,
   ): number {
     let count = 0;
     for (let i = start; i < end && count < maxPoints; i++) {
@@ -960,7 +997,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
       const offset = count * 2;
       target[offset] = this.dataset.getX(i) - xOrigin;
-      target[offset + 1] = y;
+      target[offset + 1] = y - yOrigin;
       count++;
     }
     return count;
@@ -975,6 +1012,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     target: Float32Array,
     maxPoints: number,
     xOrigin: number,
+    yOrigin: number,
     fullRangeInside: boolean,
     hasIntervalBounds: boolean,
   ): number {
@@ -987,7 +1025,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
       if (this.isGap(index, y)) return false;
       const offset = count * 2;
       target[offset] = this.dataset.getX(index) - xOrigin;
-      target[offset + 1] = y;
+      target[offset + 1] = y - yOrigin;
       count++;
       return true;
     };
@@ -1067,6 +1105,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     target: Float32Array,
     maxPoints: number,
     xOrigin: number,
+    yOrigin: number,
   ): { count: number; overflow: boolean } {
     let count = 0;
     let overflow = false;
@@ -1082,7 +1121,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
       const offset = count * 2;
       target[offset] = this.dataset.getX(index) - xOrigin;
-      target[offset + 1] = y;
+      target[offset + 1] = y - yOrigin;
       count++;
       return true;
     };
@@ -1114,9 +1153,13 @@ export class SeriesStore<D extends Dataset = Dataset> {
     layout: "points" | "area",
     baseline: number,
     xOrigin: number,
+    yOrigin: number,
   ): number {
     if (hasCopyVisibleSamples(this.dataset)) {
-      return this.dataset.copyVisibleSamples(viewport, target, maxPoints, layout, baseline, xOrigin);
+      if (honorsYOrigin(this.dataset)) return this.dataset.copyVisibleSamples(viewport, target, maxPoints, layout, baseline, xOrigin, yOrigin);
+      const written = this.dataset.copyVisibleSamples(viewport, target, maxPoints, layout, baseline, xOrigin);
+      shiftY(target, written, layout === "points" ? 2 : 4, layout === "points" ? POINT_Y_OFFSETS : AREA_Y_OFFSETS, yOrigin);
+      return written;
     }
 
     const floatsPerSample = layout === "points" ? 2 : 4;
@@ -1148,12 +1191,12 @@ export class SeriesStore<D extends Dataset = Dataset> {
       const offset = count * floatsPerSample;
       if (layout === "points") {
         target[offset] = x;
-        target[offset + 1] = y;
+        target[offset + 1] = y - yOrigin;
       } else {
         target[offset] = x;
-        target[offset + 1] = baseline;
+        target[offset + 1] = baseline - yOrigin;
         target[offset + 2] = x;
-        target[offset + 3] = y;
+        target[offset + 3] = y - yOrigin;
       }
       count++;
       lastWasGap = false;
@@ -1189,9 +1232,13 @@ export class SeriesStore<D extends Dataset = Dataset> {
     layout: "points" | "area",
     baseline: number,
     xOrigin: number,
+    yOrigin: number,
   ): number {
     if (hasCopySamplesRange(this.dataset)) {
-      return this.dataset.copySamplesRange(start, end, target, maxPoints, layout, baseline, xOrigin);
+      if (honorsYOrigin(this.dataset)) return this.dataset.copySamplesRange(start, end, target, maxPoints, layout, baseline, xOrigin, yOrigin);
+      const written = this.dataset.copySamplesRange(start, end, target, maxPoints, layout, baseline, xOrigin);
+      shiftY(target, written, layout === "points" ? 2 : 4, layout === "points" ? POINT_Y_OFFSETS : AREA_Y_OFFSETS, yOrigin);
+      return written;
     }
 
     const floatsPerSample = layout === "points" ? 2 : 4;
@@ -1208,13 +1255,13 @@ export class SeriesStore<D extends Dataset = Dataset> {
       if (layout === "points") {
         const offset = i * 2;
         target[offset] = gap ? NaN : x;
-        target[offset + 1] = gap ? NaN : y;
+        target[offset + 1] = gap ? NaN : y - yOrigin;
       } else {
         const offset = i * 4;
         target[offset] = gap ? NaN : x;
-        target[offset + 1] = gap ? NaN : baseline;
+        target[offset + 1] = gap ? NaN : baseline - yOrigin;
         target[offset + 2] = gap ? NaN : x;
-        target[offset + 3] = gap ? NaN : y;
+        target[offset + 3] = gap ? NaN : y - yOrigin;
       }
     }
 

@@ -47,8 +47,8 @@ const budgets: Budget[] = [
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
-  // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152.
-  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 153_800 },
+  // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152; 154_189 with Y-origin shift, dense area LOD, and round markers.
+  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 154_400 },
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 3_600 },

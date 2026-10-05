@@ -68,7 +68,9 @@ export class WebGL2Backend implements GpuBackend {
       antialias: false,
       depth: false,
       stencil: false,
-      premultipliedAlpha: false,
+      // Fragment shaders emit premultiplied color and blending uses ONE / ONE_MINUS_SRC_ALPHA, so
+      // translucent colors blend with what is already drawn and the page composites the result correctly.
+      premultipliedAlpha: true,
       preserveDrawingBuffer: false,
       powerPreference: "high-performance",
     });
@@ -86,6 +88,7 @@ export class WebGL2Backend implements GpuBackend {
 
     this.gl.disable(this.gl.DEPTH_TEST);
     this.gl.disable(this.gl.STENCIL_TEST);
+    this.applyBlendState();
   }
 
   /** Allocate a GPU buffer from a buffer spec. */
@@ -195,6 +198,8 @@ export class WebGL2Backend implements GpuBackend {
   /** Clear the active framebuffer. */
   clear(r: number, g: number, b: number, a: number): void {
     this.updateFullViewport();
+    // Re-applied every frame so the state also survives context loss and restore, which resets it.
+    this.applyBlendState();
     this.gl.disable(this.gl.SCISSOR_TEST);
     this.gl.clearColor(r, g, b, a);
     this.gl.clear(this.gl.COLOR_BUFFER_BIT);
@@ -232,6 +237,11 @@ export class WebGL2Backend implements GpuBackend {
     }
     this.allocatedPrograms.clear();
     this.resources.destroy();
+  }
+
+  private applyBlendState(): void {
+    this.gl.enable(this.gl.BLEND);
+    this.gl.blendFuncSeparate(this.gl.ONE, this.gl.ONE_MINUS_SRC_ALPHA, this.gl.ONE, this.gl.ONE_MINUS_SRC_ALPHA);
   }
 
   private isContextInvalid(): boolean {

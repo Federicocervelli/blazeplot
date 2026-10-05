@@ -59,9 +59,22 @@ const CASES = [
   "scale-options",
   "overlay-layering",
   "context-restore",
+  "translucent-overlap",
+  "scatter-markers",
+  "scatter-markers-dpr2",
+  "large-y-offset",
+  "dense-area-spike",
 ] as const;
 
 type VisualCase = typeof CASES[number];
+
+const OVERLAP_Y = 0.3;
+const MARKER_X = 50;
+const MARKER_Y = 0;
+const MARKER_SIZE = 6;
+const Y_OFFSET = 1_000_000;
+const SPIKE_COUNT = 1_000_000;
+const SPIKE_INDEX = 500_000;
 
 const params = new URLSearchParams(window.location.search);
 const requestedCase = params.get("case") ?? "line";
@@ -76,7 +89,20 @@ let stats: ChartFrameStats | null = null;
 let error: string | null = null;
 const assertions: string[] = [];
 
+if (caseName === "scatter-markers-dpr2") Object.defineProperty(window, "devicePixelRatio", { value: 2, configurable: true });
 const chart = new Chart(chartTarget, optionsForCase(caseName));
+/** Last rendered frame, copied while the drawing buffer is still valid (it is cleared after compositing). */
+let lastFrame: ImageData | null = null;
+const captureCanvas = document.createElement("canvas");
+chart.subscribe("render", () => {
+  const { width, height } = chart.canvas;
+  captureCanvas.width = width;
+  captureCanvas.height = height;
+  const ctx = captureCanvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return;
+  ctx.drawImage(chart.canvas, 0, 0);
+  lastFrame = ctx.getImageData(0, 0, width, height);
+});
 window.__blazeplotVisualTest = {
   snapshot: () => ({ state, caseName, stats, assertions, error }),
   screenshot: async () => {
@@ -225,6 +251,131 @@ function setupCase(name: VisualCase, chart: Chart): void {
     case "context-restore":
       addLine(chart);
       break;
+    case "translucent-overlap":
+      addTranslucentOverlap(chart);
+      break;
+    case "scatter-markers":
+    case "scatter-markers-dpr2":
+      addMarkerProbe(chart);
+      break;
+    case "large-y-offset":
+      addLargeYOffset(chart);
+      break;
+    case "dense-area-spike":
+      addDenseAreaSpike(chart);
+      break;
+  }
+}
+
+function addTranslucentOverlap(chart: Chart): void {
+  const flat = (x0: number, x1: number): StaticDataset => new StaticDataset(Float64Array.of(x0, x1), Float32Array.of(0.8, 0.8));
+  chart.addArea({ dataset: flat(0, 60), name: "A", downsample: "none" }, { fillColor: [1, 0, 0, 0.4], color: [0, 0, 0, 0], baseline: 0 });
+  chart.addArea({ dataset: flat(40, 100), name: "B", downsample: "none" }, { fillColor: [0, 0, 1, 0.4], color: [0, 0, 0, 0], baseline: 0 });
+  chart.setViewport({ xMin: 0, xMax: 100, yMin: -1, yMax: 1 });
+}
+
+function addMarkerProbe(chart: Chart): void {
+  chart.addScatter(
+    { dataset: new StaticDataset(Float64Array.of(MARKER_X), Float32Array.of(MARKER_Y)), name: "marker", downsample: "none" },
+    { color: [1, 1, 1, 1], pointSize: MARKER_SIZE },
+  );
+  chart.setViewport({ xMin: 0, xMax: 100, yMin: -1, yMax: 1 });
+  chart.setGridVisible(false);
+}
+
+function addLargeYOffset(chart: Chart): void {
+  const count = 400;
+  const x = Float64Array.from({ length: count }, (_, i) => i);
+  const y = Float64Array.from({ length: count }, (_, i) => Y_OFFSET + Math.sin(i * 0.05) * 0.01);
+  const dataset = new StaticDataset(x, y);
+  chart.addArea({ dataset, name: "offset", downsample: "none" }, { color: [1, 1, 1, 1], fillColor: [0, 0.6, 1, 0.5], lineWidth: 2, baseline: Y_OFFSET - 0.012 });
+  chart.setViewport({ xMin: 0, xMax: count - 1, yMin: Y_OFFSET - 0.012, yMax: Y_OFFSET + 0.012 });
+  chart.setGridVisible(false);
+}
+
+function addDenseAreaSpike(chart: Chart): void {
+  const x = Float64Array.from({ length: SPIKE_COUNT }, (_, i) => i);
+  const y = new Float32Array(SPIKE_COUNT).fill(1);
+  y[SPIKE_INDEX] = 10;
+  chart.addArea({ dataset: new StaticDataset(x, y), name: "dense" }, { color: [1, 1, 1, 1], fillColor: [0, 0.6, 1, 0.5], lineWidth: 1, baseline: 0 });
+  chart.setViewport({ xMin: 0, xMax: SPIKE_COUNT - 1, yMin: 0, yMax: 11 });
+  chart.setGridVisible(false);
+}
+
+interface Pixel { readonly r: number; readonly g: number; readonly b: number; readonly a: number }
+
+/** Read the last frame at a data coordinate. */
+function pixelAt(dataX: number, dataY: number, dx = 0, dy = 0): Pixel {
+  if (!lastFrame) throw new Error("No captured frame");
+  const [px, py] = chart.dataToPlot(dataX, dataY);
+  const ratio = lastFrame.width / Math.max(1, chart.canvas.clientWidth);
+  const x = Math.min(lastFrame.width - 1, Math.max(0, Math.round(px * ratio) + dx));
+  const y = Math.min(lastFrame.height - 1, Math.max(0, Math.round(py * ratio) + dy));
+  const i = (y * lastFrame.width + x) * 4;
+  const d = lastFrame.data;
+  return { r: d[i]!, g: d[i + 1]!, b: d[i + 2]!, a: d[i + 3]! };
+}
+
+function inkAt(x: number, y: number): boolean {
+  if (!lastFrame || x < 0 || y < 0 || x >= lastFrame.width || y >= lastFrame.height) return false;
+  return lastFrame.data[(y * lastFrame.width + x) * 4 + 3]! > 127;
+}
+
+function assertPixelCase(name: VisualCase): void {
+  if (name === "translucent-overlap") {
+    const aOnly = pixelAt(20, OVERLAP_Y);
+    const overlap = pixelAt(50, OVERLAP_Y);
+    const bOnly = pixelAt(80, OVERLAP_Y);
+    assert(aOnly.r > aOnly.b + 20, `series A tints its own region ${JSON.stringify(aOnly)}`);
+    assert(bOnly.b > bOnly.r + 20, `series B tints its own region ${JSON.stringify(bOnly)}`);
+    assert(overlap.r > bOnly.r + 10 && overlap.b > aOnly.b + 10, `overlapping translucent fills blend instead of replacing ${JSON.stringify(overlap)}`);
+    const colors = new Set<string>();
+    for (let dy = -60; dy <= 60; dy++) {
+      const p = pixelAt(20, OVERLAP_Y, 0, dy);
+      colors.add(`${p.r},${p.g},${p.b},${p.a}`);
+    }
+    assert(colors.size >= 2, `grid lines stay visible under the area fill (${[...colors].join(" | ")})`);
+  }
+  if (name === "scatter-markers" || name === "scatter-markers-dpr2") {
+    if (!lastFrame) throw new Error("No captured frame");
+    const ratio = lastFrame.width / Math.max(1, chart.canvas.clientWidth);
+    assert(Math.abs(ratio - (name === "scatter-markers" ? 1 : 2)) < 0.01, `pixel ratio ${ratio}`);
+    const [px, py] = chart.dataToPlot(MARKER_X, MARKER_Y);
+    const cx = Math.round(px * ratio);
+    const cy = Math.round(py * ratio);
+    let left = cx;
+    while (inkAt(left - 1, cy)) left--;
+    let right = cx;
+    while (inkAt(right + 1, cy)) right++;
+    const width = right - left + 1;
+    const expected = MARKER_SIZE * ratio;
+    assert(Math.abs(width - expected) <= 1.5, `marker is ${width}px across, expected ${expected}`);
+    // Round: the corner of the bounding box is empty, a square would fill it.
+    const half = Math.floor(expected / 2) - 1;
+    assert(!inkAt(cx + half, cy + half) || expected < 6, "marker corners are empty (round marker)");
+    assert(inkAt(cx, cy), "marker center is filled");
+  }
+  if (name === "large-y-offset") {
+    if (!lastFrame) throw new Error("No captured frame");
+    const rows = new Set<number>();
+    let columns = 0;
+    for (let x = 0; x < lastFrame.width; x++) {
+      let top = -1;
+      for (let y = 0; y < lastFrame.height; y++) {
+        const i = (y * lastFrame.width + x) * 4;
+        if (lastFrame.data[i]! > 200 && lastFrame.data[i + 1]! > 200 && lastFrame.data[i + 2]! > 200 && lastFrame.data[i + 3]! > 200) { top = y; break; }
+      }
+      if (top >= 0) { rows.add(top); columns++; }
+    }
+    assert(columns > lastFrame.width * 0.9, "offset line is drawn across the plot");
+    assert(rows.size > 60, `offset line is smooth (${rows.size} distinct rows, a float32 staircase has 1 to 2)`);
+    const baseline = pixelAt(100, Y_OFFSET - 0.011);
+    assert(baseline.a > 0, "area fill starts at the baseline with a large Y offset");
+  }
+  if (name === "dense-area-spike") {
+    const near = (dataX: number): number => Math.max(...[-2, -1, 0, 1, 2].map((dx) => pixelAt(dataX, 6, dx).a));
+    assert(near(SPIKE_INDEX) > 0, "isolated spike survives dense area LOD");
+    assert(near(SPIKE_INDEX - 300_000) === 0, "no fill away from the spike at the same height");
   }
 }
 
@@ -236,6 +387,7 @@ async function finalizeCase(): Promise<void> {
     assert(stats.pointsRendered > 0, "pointsRendered > 0");
     assert(stats.renderMode !== "none", `renderMode=${stats.renderMode}`);
     assertCaseDom(caseName, chart);
+    assertPixelCase(caseName);
     state = "ready";
   } catch (caught) {
     error = caught instanceof Error ? caught.message : String(caught);
