@@ -34,17 +34,29 @@ export interface PaintFrame {
   readonly rightAxis: AxisController;
 }
 
-type MutableRenderProjection = { scaleX: number; scaleY: number; offsetX: number; offsetY: number };
+/**
+ * Vertex staging arrays, allocated the first time a draw path needs each one and shared by every chart
+ * in the module. A frame runs start to finish on the one JS thread, and every `ChartRenderer` draw call
+ * copies its input before returning, so nothing in these arrays outlives a draw call. One set therefore
+ * serves any number of charts: a page of 50 charts holds the 0.4 MiB once instead of 50 times, and a
+ * chart that only draws raw lines never allocates the bucket or bar-triangle arrays.
+ */
+const lazyScratch = (floats: number): (() => Float32Array) => {
+  let array: Float32Array | undefined;
+  return () => (array ??= new Float32Array(floats));
+};
+const rawLineScratch = lazyScratch(RAW_LINE_VERTEX_CAPACITY * 2);
+const minMaxBucketScratch = lazyScratch(BAR_TRIANGLE_CAPACITY * FLOATS_PER_MINMAX_BUCKET);
+const barTriangleScratch = lazyScratch(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLES);
+
+type MutableRenderProjection ={ scaleX: number; scaleY: number; offsetX: number; offsetY: number };
 
 /**
  * Draws grid lines and every series mode through a `ChartRenderer`. Owns the scratch arrays used to
  * stage vertices; the chart supplies the per-frame cameras, axes, and renderer via `beginFrame`.
  */
 export class SeriesPainter {
-  private readonly rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
-  private readonly minMaxBucketData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_MINMAX_BUCKET);
-  private readonly barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLES);
-  private readonly gridData: Float32Array;
+  private gridScratch: Float32Array | null = null;
   private readonly gridLineVertexCapacity: number;
   private readonly leftProjection: MutableRenderProjection = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
   private readonly rightProjection: MutableRenderProjection = { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 };
@@ -62,7 +74,18 @@ export class SeriesPainter {
   /** `gridLineVertexCapacity` is the most grid vertices (two per line) one frame may draw. */
   constructor(private readonly stats: PaintStats, gridLineVertexCapacity: number) {
     this.gridLineVertexCapacity = gridLineVertexCapacity;
-    this.gridData = new Float32Array(gridLineVertexCapacity * 2);
+  }
+
+  private get rawLineData(): Float32Array {
+    return rawLineScratch();
+  }
+
+  private get minMaxBucketData(): Float32Array {
+    return minMaxBucketScratch();
+  }
+
+  private get barTriangleData(): Float32Array {
+    return barTriangleScratch();
   }
 
   /** Bind this frame's renderer, cameras, and axes, and fix the float64 origins subtracted before upload. */
@@ -112,13 +135,14 @@ export class SeriesPainter {
 
   drawGrid(xTicks: readonly number[], yTicks: readonly number[], color: RgbaColor): void {
     let vertexCount = 0;
+    const gridData = (this.gridScratch ??= new Float32Array(this.gridLineVertexCapacity * 2));
     const pushLine = (x0: number, y0: number, x1: number, y1: number): boolean => {
       if (vertexCount + 2 > this.gridLineVertexCapacity) return false;
       const offset = vertexCount * 2;
-      this.gridData[offset] = x0;
-      this.gridData[offset + 1] = y0;
-      this.gridData[offset + 2] = x1;
-      this.gridData[offset + 3] = y1;
+      gridData[offset] = x0;
+      gridData[offset + 1] = y0;
+      gridData[offset + 2] = x1;
+      gridData[offset + 3] = y1;
       vertexCount += 2;
       return true;
     };
@@ -132,7 +156,7 @@ export class SeriesPainter {
     }
     if (vertexCount === 0) return;
 
-    this.renderer.drawClipLines(this.gridData, vertexCount, color);
+    this.renderer.drawClipLines(gridData, vertexCount, color);
   }
 
   drawSeries(series: SeriesStore): void {
