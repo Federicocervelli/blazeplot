@@ -17,7 +17,7 @@ BlazePlot is for datasets that outgrow general-purpose charting libraries: milli
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **196 KiB raw**. Plugins and helpers ship as separate subpath entries.
+The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **197 KiB raw**. Plugins and helpers ship as separate subpath entries.
 
 Headline numbers from the manual headed comparison against uPlot and Chart.js, one primary metric per scenario (median of fresh-page runs; bold marks the winner among BlazePlot WebGL, uPlot and Chart.js):
 
