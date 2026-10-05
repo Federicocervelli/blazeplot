@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
-import type { InteractionsPluginOptions } from "../../src/plugins/interactions/Interactions.ts";
+import type { InteractionsPluginOptions } from "../../src/plugins/interactions/types.ts";
 import { tooltipPlugin } from "../../src/plugins/tooltip.ts";
 import { countNodes } from "./fakes.ts";
 import { fire, installPlugin, pointerEvent, useChartHarness, wheelEvent } from "./harness.ts";
