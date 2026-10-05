@@ -1,8 +1,8 @@
 # BlazePlot overview
 
-BlazePlot is a WebGL2 charting library for large, interactive time-series plots in the browser. It is a good fit when SVG, Canvas2D, or general-purpose chart libraries start to struggle with live data, dense history, or many redraws per second.
+BlazePlot is a GPU-accelerated charting library, with an automatic Canvas 2D fallback, for large, interactive time-series plots in the browser. It is a good fit when SVG, Canvas2D, or general-purpose chart libraries start to struggle with live data, dense history, or many redraws per second.
 
-The core chart keeps rendering on the GPU and keeps DOM work limited to labels, overlays, and plugin UI. WebGL2 is preferred, and the default `renderer: "auto"` falls back to Canvas 2D where WebGL2 is unavailable (`renderer: "canvas2d"` asks for it directly, at lower throughput), while a shared WebGL context (`renderer: "shared"`) lets a page mount many charts without hitting the browser's WebGL context cap; see [Browser support](./browser-support.md) and [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
+The core chart renders on the GPU through WebGL2 and keeps DOM work limited to labels, overlays, and plugin UI. The default `renderer: "auto"` uses WebGL2 and falls back to Canvas 2D where WebGL2 is unavailable (`renderer: "canvas2d"` asks for Canvas 2D directly, at lower throughput on very large visible point counts), while a shared WebGL context (`renderer: "shared"`) lets a page mount many charts without hitting the browser's WebGL context cap; see [Browser support](./browser-support.md) and [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
 
 ## Install
 
@@ -70,13 +70,13 @@ For a maintainer-oriented page list, see [Documentation map](./README.md).
 | Live viewport helpers | `followX` for rolling windows and `autoFitY` for visible-range Y fitting. |
 | Plugins | Interactions, legend, tooltip, crosshair, annotations, selection, navigator, accessibility, and flame graph plugins. See [Built-in plugins](./built-in-plugins.md). |
 | Layout and themes | Theme tokens, inside/outside axes with optional auto-sized gutters, titles, and plugin layout reservations. See [Theming and layout](./theming-and-layout.md). |
-| Renderers | WebGL2 by default, Canvas 2D fallback, and a shared WebGL context for many charts. See [Browser support](./browser-support.md). |
+| Renderers | `"auto"` by default (WebGL2, with a Canvas 2D fallback), plus a shared WebGL context for many charts. See [Browser support](./browser-support.md). |
 | Frameworks | Create and dispose the same `Chart` API in an effect, `onMounted`, or an action. See [Framework integration](./framework-integration.md). |
 | Exports | Screenshot, clipboard, and CSV/JSON data helpers. |
 
 ## Main tradeoffs
 
-- WebGL2 is required by the default renderer. Pass `renderer: autoRenderer()` to fall back to Canvas 2D, which is slower for very large visible point counts.
+- The default renderer is `"auto"`: WebGL2 where available, Canvas 2D otherwise. Canvas 2D is slower for very large visible point counts; pass `renderer: "webgl2"` to require the GPU engine and fail loudly without it.
 - X values must be finite and non-decreasing: static datasets throw on unsorted input, and streaming buffers skip out-of-order samples.
 - Datasets passed as parallel arrays must have equal lengths; a mismatch throws a `RangeError`.
 - Plugins are opt-in so the base chart stays small. Create a new plugin instance for each chart: the stateful built-ins (a11y, annotations, crosshair, flame graph, navigator, selection) throw if one instance is installed on a second chart.

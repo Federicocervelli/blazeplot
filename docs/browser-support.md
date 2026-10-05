@@ -2,6 +2,16 @@
 
 BlazePlot targets modern browsers with WebGL2 and draws with Canvas 2D where WebGL2 is unavailable or unreliable. Both engines ship in the core package and are fully supported; the default `renderer: "auto"` picks between them.
 
+## Minimum browser versions
+
+| Browser | Minimum |
+|---|---|
+| Chrome and Edge (Chromium) | 93 |
+| Firefox | 92 |
+| Safari (macOS and iOS) | 15.4 |
+
+These are set by the language and platform features the package uses without a fallback (`Object.hasOwn`, logical assignment operators, CSS `inset`); the library is built for `esnext` and does not transpile or polyfill them. The crosshair marker fill uses CSS `color-mix()` and simply renders without that tint on older browsers. WebGL2 itself is available from Chrome 56, Firefox 51, and Safari 15; charts on browsers or machines without it use Canvas 2D. Older browsers are not tested and are not supported. The same targets are declared in `package.json#browserslist`.
+
 ## Requirements
 
 | Feature | Used for | Notes |

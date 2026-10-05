@@ -50,6 +50,14 @@ for (const specifier of packageExportSpecifiers) {
   }
 }
 
+for (const [subpath, condition] of Object.entries(packageJson.exports)) {
+  if (typeof condition === "string") continue;
+  const conditions = condition as Record<string, string>;
+  if (conditions.default !== conditions.import) {
+    throw new Error(`package.json exports["${subpath}"] needs a "default" condition equal to "import" (Node require(esm), Jest, Vitest).`);
+  }
+}
+
 const rootSpecifier: string = "blazeplot";
 const rootExports = await import(rootSpecifier) as Record<string, unknown>;
 for (const removed of ["ReglBackend", "MinMaxPyramid", "SeriesStore", "DataCursor", "histogramDataset", "WebGL2Backend"]) {

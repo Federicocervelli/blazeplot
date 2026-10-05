@@ -18,7 +18,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 
 ## Package format
 
-- **ESM only.** `package.json` has `"type": "module"` and every export has only an `import` condition. `require("blazeplot")` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`; use `import` or a dynamic `import()` from CommonJS. There is no UMD or CommonJS build.
+- **ESM only.** `package.json` has `"type": "module"` and every export has `import` and `default` conditions that point at the ES module build, so `import()`, Node.js 22.12+ `require()` of ES modules, Jest, and Vitest resolve it. There is no UMD or CommonJS build.
 - **Types** ship as `.d.ts` files next to each entry (`types` condition). See [TypeScript support](./versioning-and-migration.md#typescript-support) for the supported compiler versions.
 - **Tree shaking:** `"sideEffects": false`. Optional features (plugins, linked charts, data helpers, export helpers) live in subpath entries so chart-only apps do not pay for them. The rendering engines (WebGL2, Canvas 2D, and the shared context) are part of the core graph, not subpaths.
 - **Browser only.** Charts need the DOM and a canvas: WebGL2 when available, Canvas 2D otherwise (the default `"auto"` renderer). See [Browser support](./browser-support.md).
@@ -94,4 +94,4 @@ These are not an API for application code. The engine and GPU backend types (`Ch
 
 ## Promotion
 
-Proposed rule, for the maintainer to confirm: an experimental item becomes stable in a minor release once it has been unchanged for at least two minor releases and covered by unit or browser tests. The promotion is noted in the changelog and this page is updated in the same pull request. An internal item is never promoted silently; it needs a docs change that moves it to a stable or experimental row first.
+An experimental item is promoted to stable in a minor release once it has been unchanged for two minor releases and is covered by unit or browser tests. The promotion is noted in the changelog and this page is updated in the same pull request. An internal item is never promoted silently; it needs a docs change that moves it to a stable or experimental row first.
