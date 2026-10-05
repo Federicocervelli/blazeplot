@@ -5,8 +5,22 @@ import type { ChartPlugin, ChartPluginContext, ChartRect, ChartSurface } from ".
 /** Static or dynamic axis choice for wheel and drag interactions. */
 export type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
 
+/** Keyboard pan and zoom step sizes for `interactionsPlugin({ keyboard })`. */
+export interface InteractionsKeyboardOptions {
+  /** Fraction of the viewport moved per arrow key. Defaults to 0.1. */
+  readonly panFraction?: number;
+  /** Zoom factor per +/- key. Defaults to 1.25. */
+  readonly zoomFactor?: number;
+}
+
 /** Options for mouse, wheel, touch, and keyboard chart interactions. */
 export interface InteractionsPluginOptions {
+  /**
+   * Arrow-key pan, +/- zoom, PageUp/PageDown Y zoom, and Home or 0 to fit, from the focused chart root.
+   * Enabled by default; pass `false` to turn it off or an object to tune the step sizes.
+   * The chart does not navigate by keyboard without this plugin.
+   */
+  readonly keyboard?: boolean | InteractionsKeyboardOptions;
   readonly axis?: InteractionAxisOption;
   readonly boxZoom?: boolean;
   readonly wheelZoom?: boolean;
@@ -536,6 +550,37 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           chart.dom.listen(surface, "pointerup", onPointerUp),
           chart.dom.listen(surface, "pointercancel", onPointerCancel),
         );
+      }
+
+      if (options.keyboard !== false) {
+        const config = typeof options.keyboard === "object" ? options.keyboard : undefined;
+        const panFraction = typeof config?.panFraction === "number" && Number.isFinite(config.panFraction) ? Math.max(0, config.panFraction) : 0.1;
+        const zoomFactor = typeof config?.zoomFactor === "number" && Number.isFinite(config.zoomFactor) && config.zoomFactor > 1 ? config.zoomFactor : 1.25;
+        const zoomAtCenter = (factor: number, axis: ZoomAxis): void => chart.viewport.zoom({ factor, cx: 0.5, cy: 0.5, axis }, undefined, USER_VIEWPORT);
+        // Bubble phase: the a11y plugin's inspection keys (capture) and any child handler run first.
+        cleanups.push(chart.dom.listen("root", "keydown", (event) => {
+          if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+          const target = event.target;
+          if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
+          const panStep = panFraction * (event.shiftKey ? 2.5 : 1);
+          let handled = true;
+          switch (event.key) {
+            case "ArrowLeft": chart.viewport.pan({ dx: -panStep, dy: 0 }, undefined, USER_VIEWPORT); break;
+            case "ArrowRight": chart.viewport.pan({ dx: panStep, dy: 0 }, undefined, USER_VIEWPORT); break;
+            case "ArrowUp": chart.viewport.pan({ dx: 0, dy: panStep }, undefined, USER_VIEWPORT); break;
+            case "ArrowDown": chart.viewport.pan({ dx: 0, dy: -panStep }, undefined, USER_VIEWPORT); break;
+            case "+":
+            case "=": zoomAtCenter(zoomFactor, "xy"); break;
+            case "-":
+            case "_": zoomAtCenter(1 / zoomFactor, "xy"); break;
+            case "PageUp": zoomAtCenter(zoomFactor, "y"); break;
+            case "PageDown": zoomAtCenter(1 / zoomFactor, "y"); break;
+            case "Home":
+            case "0": handled = chart.viewport.fitToData({ padding: 0.05, source: "user" }); break;
+            default: handled = false; break;
+          }
+          if (handled) event.preventDefault();
+        }));
       }
 
       return () => {

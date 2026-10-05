@@ -149,7 +149,7 @@ Every `viewportchange` event carries a `source`: `"user"` (gestures from the int
 
 ```ts
 chart.subscribe("viewportchange", ({ viewport, source }) => {
-  if (source === "user") saveRange(viewport.xMin, viewport.xMax);
+  if (source === "user") localStorage.setItem("range", `${viewport.xMin},${viewport.xMax}`);
 });
 ```
 

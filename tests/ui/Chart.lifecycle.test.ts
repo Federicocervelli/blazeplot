@@ -461,7 +461,10 @@ describe("Chart plugins", () => {
         { install: () => () => { throw new Error("boom"); } },
       ],
     });
+    const error = spyOn(console, "error").mockImplementation(() => {});
     expect(() => chart.dispose()).not.toThrow();
+    expect(error.mock.calls.some((call) => String(call[0]).includes("plugin dispose failed"))).toBe(true);
+    error.mockRestore();
     expect(log).toEqual(["first"]);
     expect(target.children).toHaveLength(0);
     expect(backends[0]!.destroyCount).toBe(1);

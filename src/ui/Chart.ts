@@ -99,7 +99,7 @@ export interface ChartPickOptions {
   readonly maxDistancePx?: number;
 }
 
-/** ARIA, keyboard-navigation, and high-contrast options for the chart root. */
+/** ARIA and high-contrast options for the chart root. Keyboard pan and zoom come from `interactionsPlugin`. */
 export interface ChartAccessibilityOptions {
   /** Accessible name. Defaults to the chart title and subtitle, then `"BlazePlot chart"`. */
   readonly label?: string;
@@ -112,22 +112,12 @@ export interface ChartAccessibilityOptions {
   readonly description?: string | ((summary: ChartSummary) => string);
   /** ARIA role for the chart root. Defaults to `"figure"`. */
   readonly role?: string;
-  /** Arrow-key pan, +/- zoom, and Home to fit. Pass `false` to disable. */
-  readonly keyboard?: boolean | ChartKeyboardOptions;
   /**
    * Follow the operating system's forced-colors (high-contrast) mode: the canvas switches to
    * system colors and DOM overlays get forced-colors styles, updating when the mode changes.
    * Defaults to true.
    */
   readonly forcedColors?: boolean;
-}
-
-/** Keyboard pan and zoom behavior for accessible charts. */
-export interface ChartKeyboardOptions {
-  /** Fraction of the viewport moved per arrow key. Defaults to 0.1. */
-  readonly panFraction?: number;
-  /** Zoom factor per +/- key. Defaults to 1.25. */
-  readonly zoomFactor?: number;
 }
 
 /** @internal Context passed to a custom GPU backend factory. */
@@ -619,9 +609,6 @@ export class Chart {
     this.pointerInPlot = false;
     this.lastPointerButtons = 0;
     this.setHover(this.inspectionHoverState());
-  };
-  private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    this.handleKeyboardNavigation(event);
   };
   private readonly handleWebGLContextLost = (event: Event): void => {
     event.preventDefault();
@@ -1566,7 +1553,6 @@ export class Chart {
       [canvas, "dblclick", this.handleDoubleClick],
       [canvas, "webglcontextlost", this.handleWebGLContextLost],
       [canvas, "webglcontextrestored", this.handleWebGLContextRestored],
-      [root, "keydown", this.handleKeyDown],
     ];
     if (this.summaryElement) listeners.push([root, "focusin", this.handleRootFocusIn]);
     for (const [target, type, listener] of listeners) target[method](type, listener as EventListener);
@@ -1608,69 +1594,6 @@ export class Chart {
     root.appendChild(summary);
     root.setAttribute("aria-describedby", summary.id);
     this.summaryElement = summary;
-  }
-
-  private keyboardOptions(): Required<ChartKeyboardOptions> | null {
-    const accessibility = this.options.accessibility;
-    if (accessibility === false) return null;
-    const keyboard = typeof accessibility === "object" ? accessibility.keyboard : undefined;
-    if (keyboard === false) return null;
-    const config = typeof keyboard === "object" ? keyboard : undefined;
-    const panFraction = config?.panFraction;
-    const zoomFactor = config?.zoomFactor;
-    return {
-      panFraction: typeof panFraction === "number" && Number.isFinite(panFraction) ? Math.max(0, panFraction) : 0.1,
-      zoomFactor: typeof zoomFactor === "number" && Number.isFinite(zoomFactor) && zoomFactor > 1 ? zoomFactor : 1.25,
-    };
-  }
-
-  private handleKeyboardNavigation(event: KeyboardEvent): void {
-    const keyboard = this.keyboardOptions();
-    if (!keyboard || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-    const target = event.target;
-    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
-
-    const panStep = keyboard.panFraction * (event.shiftKey ? 2.5 : 1);
-    const zoomAtCenter = (factor: number, axis: ZoomIntent["axis"]): void => this.zoom({ factor, cx: 0.5, cy: 0.5, axis });
-    let handled = true;
-
-    switch (event.key) {
-      case "ArrowLeft":
-        this.pan({ dx: -panStep, dy: 0 });
-        break;
-      case "ArrowRight":
-        this.pan({ dx: panStep, dy: 0 });
-        break;
-      case "ArrowUp":
-        this.pan({ dx: 0, dy: panStep });
-        break;
-      case "ArrowDown":
-        this.pan({ dx: 0, dy: -panStep });
-        break;
-      case "+":
-      case "=":
-        zoomAtCenter(keyboard.zoomFactor, "xy");
-        break;
-      case "-":
-      case "_":
-        zoomAtCenter(1 / keyboard.zoomFactor, "xy");
-        break;
-      case "PageUp":
-        zoomAtCenter(keyboard.zoomFactor, "y");
-        break;
-      case "PageDown":
-        zoomAtCenter(1 / keyboard.zoomFactor, "y");
-        break;
-      case "Home":
-      case "0":
-        handled = this.fitToData({ padding: 0.05 });
-        break;
-      default:
-        handled = false;
-        break;
-    }
-
-    if (handled) event.preventDefault();
   }
 
   private rebuildAxisOverlay(): void {
@@ -2403,8 +2326,8 @@ export class Chart {
   private emit<K extends ChartEventName>(event: K, payload: ChartEventMap[K]): void {
     const listeners = this.listeners.get(event);
     if (!listeners) return;
-    // Snapshot: a listener may unsubscribe itself or others. One throwing listener never stops the rest.
-    for (const listener of [...listeners]) {
+    // One throwing listener never stops the rest.
+    for (const listener of listeners) {
       try {
         (listener as Listener<K>)(payload);
       } catch (error) {

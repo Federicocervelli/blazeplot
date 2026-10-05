@@ -13,7 +13,6 @@ export type {
   ChartFrameStats,
   ChartHoverState,
   ChartInspectionTarget,
-  ChartKeyboardOptions,
   ChartOptions,
   ChartPickGroup,
   ChartPickItem,

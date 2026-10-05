@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { legendPlugin } from "../../src/plugins/legend.ts";
+import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import { countNodes } from "./fakes.ts";
 import { fire, installPlugin, keyEvent, useChartHarness } from "./harness.ts";
 
@@ -106,7 +107,7 @@ describe("legendPlugin", () => {
   });
 
   it("is operable by keyboard: Enter and Space on a real button are native clicks, other keys are ignored", () => {
-    const chart = h.make({ plugins: [legendPlugin()] });
+    const chart = h.make({ plugins: [legendPlugin(), interactionsPlugin()] });
     chart.addLine({ capacity: 4, name: "A" });
     const row = legendOf(chart.rootElement).children[0] as HTMLButtonElement;
     // A <button> is focusable without tabindex; the legend does not trap keys.
