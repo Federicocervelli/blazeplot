@@ -1,5 +1,5 @@
 import { MinMaxTree } from "./MinMaxTree.js";
-import type { MinMaxY } from "./MinMaxTree.js";
+import type { MinMaxOut, MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
 import type { Dataset, TimeRange, ValuePrecision } from "./types.js";
 import { createValueArray } from "./valueArray.js";
@@ -66,7 +66,6 @@ export interface StaticDatasetData {
 export class StaticDataset implements Dataset {
   readonly rangeMinMaxExcludesGaps = true;
   private tree: MinMaxTree | null = null;
-  private treeStale = false;
   private count: number;
   private readonly assumeSorted: boolean;
   /** Leading samples of the current X array already checked, so Y-only replaces skip the X check. */
@@ -162,7 +161,7 @@ export class StaticDataset implements Dataset {
 
   /** Drop cached min/max summaries after the arrays were mutated in place. Called by `series.markDirty()`. */
   invalidate(): void {
-    this.treeStale = true;
+    this.tree?.update(0, this.count);
   }
 
   /** X range covered by samples, or `null` when empty. */
@@ -208,20 +207,19 @@ export class StaticDataset implements Dataset {
     return upperBound(this.length, (index) => this.xData[index]!, x);
   }
 
-  /** Return min/max Y values for a logical index range. The summary index is built on first use. */
+  /** Return min/max Y values for a logical index range. Summaries are built lazily, only for the blocks queried. */
   rangeMinMaxY(start: number, end: number): MinMaxY | null {
+    const out = { minY: Infinity, maxY: -Infinity };
+    return this.rangeMinMaxInto(start, end, out) ? out : null;
+  }
+
+  /** @internal Allocation-free `rangeMinMaxY`: writes into `out` and returns whether the range holds a finite value. */
+  rangeMinMaxInto(start: number, end: number, out: MinMaxOut): boolean {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
-    if (to <= from) return null;
-    if (!this.tree) {
-      this.tree = new MinMaxTree(this.yData, this.length);
-      this.treeStale = true;
-    }
-    if (this.treeStale) {
-      this.tree.update(0, this.length);
-      this.treeStale = false;
-    }
-    return this.tree.query(from, to);
+    if (to <= from) return false;
+    if (!this.tree) this.tree = new MinMaxTree(this.yData, this.length);
+    return this.tree.queryInto(from, to, out);
   }
 
   /** Check the first `count` X values unless trusted or already checked for this array. */

@@ -4,155 +4,168 @@ export interface MinMaxY {
   readonly maxY: number;
 }
 
+/**
+ * Reusable, mutable result slot for the allocation-free `*Into` queries. Callers keep one per
+ * extraction pass so a dense min/max bucket loop does not allocate a `MinMaxY` per bucket.
+ */
+export interface MinMaxOut {
+  minY: number;
+  maxY: number;
+}
+
 const DEFAULT_BLOCK_SIZE = 64;
 
 /**
- * Block min/max segment tree over a fixed-capacity array of Y values.
+ * Lazily built block min/max segment tree over a fixed-capacity array of Y values.
  *
- * Leaves summarize `blockSize` physical samples, so memory stays small while
- * range queries cost one partial-block scan at each end plus a logarithmic tree
- * walk. Non-finite values are treated as gaps and ignored.
+ * Leaves summarize `blockSize` physical samples, so memory stays small while range queries cost one
+ * partial-block scan at each end plus a logarithmic tree walk. Non-finite values are treated as
+ * gaps and ignored.
+ *
+ * Design: every node carries a validity flag and is computed from the data the first time a query
+ * needs it (children first, a leaf by scanning its block). Nothing is summarized up front, so
+ *
+ * - the first query over a range costs about one pass over just the samples it touches (a pan over a
+ *   huge static series never summarizes the off-screen part), and later queries reuse the nodes;
+ * - writes only mark the touched blocks and their ancestors stale (`update`), so a burst of appends
+ *   between two frames is summarized once, when the next frame asks for it;
+ * - invariant: a valid node has valid children, so staleness always propagates to the root.
+ *
+ * Min/max values are stored in the element type of the data (`Float32Array` data gets a
+ * `Float32Array` tree; a float32 extremum round-trips exactly), which halves the tree's footprint
+ * for the default float32 value storage.
  */
 export class MinMaxTree {
   private readonly base: number;
-  private readonly minTree: Float64Array;
-  private readonly maxTree: Float64Array;
+  private readonly minTree: Float32Array | Float64Array;
+  private readonly maxTree: Float32Array | Float64Array;
+  /** 1 once the node's summary matches the data. */
+  private readonly valid: Uint8Array;
+  /** Physical samples at or beyond this index hold no data yet (a ring buffer fills from index 0). */
+  private validEnd: number;
+  /** Result slot for recomputing one node, so refreshing allocates nothing. */
+  private readonly scratch: MinMaxOut = { minY: Infinity, maxY: -Infinity };
 
   constructor(
     private readonly values: ArrayLike<number>,
     readonly capacity: number,
     private readonly blockSize: number = DEFAULT_BLOCK_SIZE,
   ) {
-    if (!Number.isInteger(blockSize) || blockSize <= 0) {
-      throw new RangeError("MinMaxTree blockSize must be a positive integer.");
-    }
     const blockCount = Math.max(1, Math.ceil(capacity / blockSize));
     this.base = 2 ** Math.ceil(Math.log2(blockCount));
-    this.minTree = new Float64Array(this.base * 2).fill(Infinity);
-    this.maxTree = new Float64Array(this.base * 2).fill(-Infinity);
+    const Storage = values instanceof Float32Array ? Float32Array : Float64Array;
+    this.minTree = new Storage(this.base * 2);
+    this.maxTree = new Storage(this.base * 2);
+    this.valid = new Uint8Array(this.base * 2);
+    this.validEnd = capacity;
   }
 
-  /** Forget all summarized values. */
-  reset(): void {
-    this.minTree.fill(Infinity);
-    this.maxTree.fill(-Infinity);
-  }
-
-  /** Recompute the blocks covering physical `[start, end)`, reading only indices below `validEnd`. */
+  /**
+   * Mark the blocks covering physical `[start, end)` stale after the data there changed, and record
+   * that only indices below `validEnd` hold data (`update(0, capacity, 0)` forgets everything).
+   */
   update(start: number, end: number, validEnd: number = this.capacity): void {
+    this.validEnd = validEnd;
     if (end <= start) return;
-    const firstBlock = Math.floor(start / this.blockSize);
-    const lastBlock = Math.floor((end - 1) / this.blockSize);
-    for (let block = firstBlock; block <= lastBlock; block++) {
-      const from = block * this.blockSize;
-      const to = Math.min(validEnd, from + this.blockSize);
-      let minY = Infinity;
-      let maxY = -Infinity;
-      for (let i = from; i < to; i++) {
-        const value = this.values[i]!;
-        if (!Number.isFinite(value)) continue;
-        if (value < minY) minY = value;
-        if (value > maxY) maxY = value;
-      }
-      this.minTree[this.base + block] = minY;
-      this.maxTree[this.base + block] = maxY;
-    }
-
-    let left = (this.base + firstBlock) >> 1;
-    let right = (this.base + lastBlock) >> 1;
+    let left = this.base + Math.floor(start / this.blockSize);
+    let right = this.base + Math.floor((end - 1) / this.blockSize);
     while (left >= 1) {
-      for (let node = left; node <= right; node++) this.recomputeNode(node);
+      for (let node = left; node <= right; node++) this.valid[node] = 0;
       left >>= 1;
       right >>= 1;
     }
   }
 
   /**
-   * Fold one newly written value into its block without rescanning. Only valid
-   * when the write did not overwrite a previously summarized sample.
+   * Write the Y extent of physical `[start, end)` into `out` and return whether it holds a finite
+   * value. Queries never allocate: callers keep one `out` slot per extraction pass.
    */
-  include(index: number, value: number): void {
-    if (!Number.isFinite(value)) return;
-    let node = this.base + Math.floor(index / this.blockSize);
-    while (node >= 1) {
-      const minChanged = value < this.minTree[node]!;
-      const maxChanged = value > this.maxTree[node]!;
-      if (!minChanged && !maxChanged) return;
-      if (minChanged) this.minTree[node] = value;
-      if (maxChanged) this.maxTree[node] = value;
-      node >>= 1;
-    }
+  queryInto(start: number, end: number, out: MinMaxOut): boolean {
+    out.minY = Infinity;
+    out.maxY = -Infinity;
+    this.fold(start, end, out);
+    return out.minY <= out.maxY;
   }
 
-  /** Return the Y extent of physical `[start, end)`, or `null` when it contains no finite values. */
-  query(start: number, end: number): MinMaxY | null {
-    let minY = Infinity;
-    let maxY = -Infinity;
-    let i = Math.max(0, start);
+  /** `queryInto` over `count` samples of a ring buffer starting at a physical index, wrapping at capacity. */
+  queryRingInto(physicalStart: number, count: number, out: MinMaxOut): boolean {
+    out.minY = Infinity;
+    out.maxY = -Infinity;
+    if (count <= 0) return false;
+    const end = physicalStart + count;
+    if (end <= this.capacity) {
+      this.fold(physicalStart, end, out);
+    } else {
+      this.fold(physicalStart, this.capacity, out);
+      this.fold(0, end - this.capacity, out);
+    }
+    return out.minY <= out.maxY;
+  }
+
+  /** Widen `out` by the extent of physical `[start, end)`: partial blocks by scanning, whole blocks through the tree. */
+  private fold(start: number, end: number, out: MinMaxOut): void {
+    const blockSize = this.blockSize;
+    const from = Math.max(0, start);
     const to = Math.min(this.capacity, end);
-
-    const firstFullBlock = Math.ceil(i / this.blockSize);
-    const lastFullBlock = Math.floor(to / this.blockSize);
+    const firstFullBlock = Math.ceil(from / blockSize);
+    const lastFullBlock = Math.floor(to / blockSize);
     if (firstFullBlock >= lastFullBlock) {
-      for (; i < to; i++) {
-        const value = this.values[i]!;
-        if (!Number.isFinite(value)) continue;
-        if (value < minY) minY = value;
-        if (value > maxY) maxY = value;
-      }
-      return minY <= maxY ? { minY, maxY } : null;
+      this.scan(from, to, out);
+      return;
     }
 
-    for (const blockEdge = firstFullBlock * this.blockSize; i < blockEdge; i++) {
-      const value = this.values[i]!;
-      if (!Number.isFinite(value)) continue;
-      if (value < minY) minY = value;
-      if (value > maxY) maxY = value;
-    }
-
+    this.scan(from, firstFullBlock * blockSize, out);
     let left = this.base + firstFullBlock;
     let right = this.base + lastFullBlock;
     while (left < right) {
-      if (left & 1) {
-        if (this.minTree[left]! < minY) minY = this.minTree[left]!;
-        if (this.maxTree[left]! > maxY) maxY = this.maxTree[left]!;
-        left++;
-      }
-      if (right & 1) {
-        right--;
-        if (this.minTree[right]! < minY) minY = this.minTree[right]!;
-        if (this.maxTree[right]! > maxY) maxY = this.maxTree[right]!;
-      }
+      if (left & 1) this.take(left++, out);
+      if (right & 1) this.take(--right, out);
       left >>= 1;
       right >>= 1;
     }
+    this.scan(lastFullBlock * blockSize, to, out);
+  }
 
-    for (i = lastFullBlock * this.blockSize; i < to; i++) {
-      const value = this.values[i]!;
+  /** Widen `out` by the finite values among `values[from, to)`. */
+  private scan(from: number, to: number, out: MinMaxOut): void {
+    const values = this.values;
+    let minY = out.minY;
+    let maxY = out.maxY;
+    for (let i = from; i < to; i++) {
+      const value = values[i]!;
       if (!Number.isFinite(value)) continue;
       if (value < minY) minY = value;
       if (value > maxY) maxY = value;
     }
-    return minY <= maxY ? { minY, maxY } : null;
+    out.minY = minY;
+    out.maxY = maxY;
   }
 
-  /** Query `count` samples of a ring buffer starting at a physical index, wrapping at capacity. */
-  queryRing(physicalStart: number, count: number): MinMaxY | null {
-    if (count <= 0) return null;
-    const end = physicalStart + count;
-    if (end <= this.capacity) return this.query(physicalStart, end);
-
-    const first = this.query(physicalStart, this.capacity);
-    const second = this.query(0, end - this.capacity);
-    if (!first) return second;
-    if (!second) return first;
-    return { minY: Math.min(first.minY, second.minY), maxY: Math.max(first.maxY, second.maxY) };
+  /** Widen `out` by a node summary. */
+  private take(node: number, out: MinMaxOut): void {
+    this.refresh(node);
+    if (this.minTree[node]! < out.minY) out.minY = this.minTree[node]!;
+    if (this.maxTree[node]! > out.maxY) out.maxY = this.maxTree[node]!;
   }
 
-  private recomputeNode(node: number): void {
-    const left = node << 1;
-    const right = left + 1;
-    this.minTree[node] = Math.min(this.minTree[left]!, this.minTree[right]!);
-    this.maxTree[node] = Math.max(this.maxTree[left]!, this.maxTree[right]!);
+  /** Bring a node summary up to date: children first, a leaf by scanning its block. */
+  private refresh(node: number): void {
+    if (this.valid[node] !== 0) return;
+    const own = this.scratch;
+    own.minY = Infinity;
+    own.maxY = -Infinity;
+    if (node >= this.base) {
+      const from = (node - this.base) * this.blockSize;
+      this.scan(from, Math.min(this.validEnd, from + this.blockSize), own);
+    } else {
+      const left = node << 1;
+      this.refresh(left);
+      this.refresh(left + 1);
+      own.minY = Math.min(this.minTree[left]!, this.minTree[left + 1]!);
+      own.maxY = Math.max(this.maxTree[left]!, this.maxTree[left + 1]!);
+    }
+    this.minTree[node] = own.minY;
+    this.maxTree[node] = own.maxY;
+    this.valid[node] = 1;
   }
 }

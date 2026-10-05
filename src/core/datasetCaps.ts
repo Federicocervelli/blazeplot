@@ -2,6 +2,7 @@
  * Optional dataset abilities (append, update, gaps, bulk copy, min/max, Y origin), detected once when a
  * series is created, plus the small helpers that apply them. Internal to the series modules.
  */
+import type { MinMaxOut } from "./MinMaxTree.js";
 import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, Viewport } from "./types.js";
 
 export function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
@@ -47,6 +48,26 @@ export interface XYRangeReader extends Dataset {
 /** Dataset with an explicit per-index gap predicate. */
 export type GapDataset = Dataset & { isGap(index: number): boolean };
 
+/** Writes the Y extent of an index range into `out` and returns whether it holds a finite value; allocates nothing. */
+export type RangeExtentReader = (start: number, end: number, out: MinMaxOut) => boolean;
+
+/**
+ * Built-in datasets expose `rangeMinMaxInto` directly; custom `rangeMinMaxY` datasets are adapted, so
+ * bucket loops always read extents through one allocation-free call shape.
+ */
+function rangeExtentReader(dataset: Dataset): RangeExtentReader | null {
+  const into = (dataset as Partial<{ rangeMinMaxInto: RangeExtentReader }>).rangeMinMaxInto;
+  if (into) return into.bind(dataset);
+  if (!("rangeMinMaxY" in dataset)) return null;
+  return (start, end, out) => {
+    const range = (dataset as RangeMinMaxDataset).rangeMinMaxY(start, end);
+    if (!range) return false;
+    out.minY = range.minY;
+    out.maxY = range.maxY;
+    return true;
+  };
+}
+
 /**
  * Optional dataset abilities, detected once when the series is created. A dataset's capabilities are
  * fixed for its lifetime: methods added to a dataset after construction are not picked up.
@@ -57,6 +78,8 @@ export interface DatasetCaps {
   readonly ohlc: OhlcDataset | null;
   readonly xRange: XRangeDataset | null;
   readonly rangeMinMax: RangeMinMaxDataset | null;
+  /** `rangeMinMax` into a caller-owned slot (see `RangeExtentReader`), so bucket loops allocate nothing. */
+  readonly rangeExtent: RangeExtentReader | null;
   readonly minMaxSegments: MinMaxSegmentCopyDataset | null;
   readonly copyVisibleSamples: VisibleSampleCopyDataset | null;
   readonly copySamplesRange: RangeSampleCopyDataset | null;
@@ -98,6 +121,7 @@ export function resolveCaps(dataset: Dataset): DatasetCaps {
     ohlc: isOhlcDataset(dataset) ? dataset : null,
     xRange: "getXRange" in dataset ? (dataset as XRangeDataset) : null,
     rangeMinMax: "rangeMinMaxY" in dataset ? (dataset as RangeMinMaxDataset) : null,
+    rangeExtent: rangeExtentReader(dataset),
     minMaxSegments: "copyMinMaxSegments" in dataset ? (dataset as MinMaxSegmentCopyDataset) : null,
     copyVisibleSamples: "copyVisibleSamples" in dataset ? (dataset as VisibleSampleCopyDataset) : null,
     copySamplesRange: "copySamplesRange" in dataset ? (dataset as RangeSampleCopyDataset) : null,
