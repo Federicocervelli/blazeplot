@@ -31,10 +31,12 @@ interface Options {
  * Renderer configurations. `webgl2` is the primary run and owns the committed pixel baselines.
  * `canvas2d` forces the Canvas 2D renderer and is compared against the same WebGL baselines with a looser
  * tolerance (antialiasing and pixel snapping differ; see docs/internal/local-development.md).
+ * `shared` renders through `sharedRenderer()` (one hidden WebGL context, blitted into each chart canvas) and is
+ * compared against the WebGL baselines with the baseline's own tolerance, since the pixels are the same GL output.
  * `auto-no-webgl` launches Chrome with WebGL disabled and checks that `renderer: autoRenderer()` falls back.
  */
-type RendererMode = "webgl2" | "canvas2d" | "auto-no-webgl";
-const RENDERER_MODES: readonly RendererMode[] = ["webgl2", "canvas2d", "auto-no-webgl"];
+type RendererMode = "webgl2" | "shared" | "canvas2d" | "auto-no-webgl";
+const RENDERER_MODES: readonly RendererMode[] = ["webgl2", "shared", "canvas2d", "auto-no-webgl"];
 /** Canvas 2D may differ from the WebGL baselines in this many times the baseline's allowed pixel ratio. */
 const CANVAS2D_DIFF_FACTOR = 15;
 /** Cases that need a real WebGL context and are skipped when it is disabled. */
@@ -210,7 +212,7 @@ async function runMode(mode: RendererMode, index: number, base: Options, serverU
     debugPort: base.debugPort + index,
     cases: base.cases.filter((name) => mode !== "auto-no-webgl" || !WEBGL_ONLY_CASES.has(name)),
     // Pixel baselines belong to the WebGL run; Canvas 2D is compared against them, the fallback run only checks ink.
-    baselines: mode === "auto-no-webgl" || (mode === "canvas2d" && base.baselines === "update") ? "skip" : base.baselines,
+    baselines: mode === "auto-no-webgl" || (mode !== "webgl2" && base.baselines === "update") ? "skip" : base.baselines,
   };
   const diffFactor = mode === "canvas2d" ? CANVAS2D_DIFF_FACTOR : 1;
   const label = mode === "webgl2" ? "" : `[${mode}] `;
@@ -228,7 +230,10 @@ async function runMode(mode: RendererMode, index: number, base: Options, serverU
     for (const caseName of options.cases) {
       const url = new URL("/visual/", serverUrl);
       url.searchParams.set("case", caseName);
-      if (mode === "canvas2d") {
+      if (mode === "shared") {
+        url.searchParams.set("renderer", "shared");
+        url.searchParams.set("expectRenderer", "webgl2-shared");
+      } else if (mode === "canvas2d") {
         url.searchParams.set("renderer", "canvas2d");
         url.searchParams.set("expectRenderer", "canvas2d");
       } else if (mode === "auto-no-webgl") {

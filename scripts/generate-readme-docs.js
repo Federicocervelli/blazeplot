@@ -37,6 +37,7 @@ const exportDescriptions = new Map([
   ["./data", "Pure, chart-agnostic data transforms (binning, rolling mean)."],
   ["./export", "Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers."],
   ["./renderers/canvas2d", "Canvas 2D renderer and WebGL2-with-Canvas-2D-fallback renderer factories."],
+  ["./renderers/shared", "Shared WebGL2 render context: many charts, one WebGL context."],
   ["./plugins/interactions", "Built-in pan, zoom, axis interaction, and reset plugin."],
   ["./plugins/legend", "Built-in legend plugin."],
   ["./plugins/tooltip", "Built-in tooltip plugin."],

@@ -27,6 +27,11 @@ export interface LinkedChartsOptions {
    * links crosshairs and tooltips across panels.
    */
   readonly panelPlugins?: (syncGroup: string) => readonly ChartPlugin[];
+  /**
+   * Renderer for every panel that does not set its own `options.renderer`, for example
+   * `sharedRenderer()` from `blazeplot/renderers/shared` so all panels use one WebGL context.
+   */
+  readonly renderer?: ChartOptions["renderer"];
 }
 
 /** Handle returned by `createLinkedCharts`. */
@@ -78,7 +83,8 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
       },
     };
     const shared = [...(options.panelPlugins?.(syncGroup) ?? []), ...(options.syncSelections ? [relayPlugin] : [])];
-    const chartOptions = shared.length > 0 ? { ...panel.options, plugins: [...(panel.options?.plugins ?? []), ...shared] } : panel.options;
+    const panelOptions = options.renderer && !panel.options?.renderer ? { ...panel.options, renderer: options.renderer } : panel.options;
+    const chartOptions = shared.length > 0 ? { ...panelOptions, plugins: [...(panelOptions?.plugins ?? []), ...shared] } : panelOptions;
     try {
       const chart = new Chart(cell, chartOptions);
       charts.push(chart);

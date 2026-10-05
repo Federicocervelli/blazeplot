@@ -62,6 +62,7 @@ These pages are primarily for contributors and release maintainers.
 - [Internal local development](./internal/local-development.md) — setup, daily validation commands, browser-backed checks, package checks.
 - [Internal release checklist](./internal/release-checklist.md) — release PR checklist and monitoring steps.
 - [Internal GitHub workflow runbook](./internal/github-workflows.md) — CI, Pages, release workflow ownership, and failure modes.
+- [Internal shared render context design note](./internal/shared-render-context.md) — how many charts share one WebGL context, blit cost, context loss, DPR.
 - [Internal benchmark notes](./internal/benchmarks.md) — benchmark methodology.
 - [Internal benchmark results](./internal/benchmark-results.md) — historical benchmark output.
 

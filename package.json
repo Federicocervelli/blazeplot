@@ -54,6 +54,10 @@
       "types": "./dist/renderers/canvas2d.d.ts",
       "import": "./dist/renderers/canvas2d.js"
     },
+    "./renderers/shared": {
+      "types": "./dist/renderers/shared.d.ts",
+      "import": "./dist/renderers/shared.js"
+    },
     "./plugins/legend": {
       "types": "./dist/plugins/legend.d.ts",
       "import": "./dist/plugins/legend.js"
@@ -116,6 +120,7 @@
     "pages:preview": "vite preview --config vite.pages.config.ts",
     "bench": "bun scripts/benchmark.ts",
     "bench:compare": "bun scripts/benchmark-compare.ts",
+    "bench:multi": "bun scripts/benchmark-multichart.ts",
     "bench:scatter": "bun scripts/scatter-profile.ts",
     "bench:report": "bun scripts/benchmark-report.ts",
     "release:benchmarks": "bun scripts/release-benchmarks.ts",
