@@ -18,9 +18,9 @@ export async function composeChartScreenshot(
   const { layout, canvas: sourceCanvas, theme } = context;
   const rootRect = layout.root.getBoundingClientRect();
   const plotRect = layout.plot.getBoundingClientRect();
-  const dpr = Number.isFinite(options.dpr) ? Math.max(1, options.dpr!) : Math.max(1, layout.view.devicePixelRatio || 1);
-  const width = Number.isFinite(options.width) ? Math.max(1, Math.round(options.width!)) : Math.max(1, Math.round(rootRect.width * dpr));
-  const height = Number.isFinite(options.height) ? Math.max(1, Math.round(options.height!)) : Math.max(1, Math.round(rootRect.height * dpr));
+  const pixelRatio = Number.isFinite(options.pixelRatio) ? Math.max(1, options.pixelRatio!) : Math.max(1, layout.view.devicePixelRatio || 1);
+  const width = Number.isFinite(options.width) ? Math.max(1, Math.round(options.width!)) : Math.max(1, Math.round(rootRect.width * pixelRatio));
+  const height = Number.isFinite(options.height) ? Math.max(1, Math.round(options.height!)) : Math.max(1, Math.round(rootRect.height * pixelRatio));
   const scaleX = width / Math.max(1, rootRect.width);
   const scaleY = height / Math.max(1, rootRect.height);
   const canvas = layout.doc.createElement("canvas");

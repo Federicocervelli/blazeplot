@@ -14,7 +14,7 @@ import type { ResolvedChartTheme } from "./theme.js";
 /**
  * Where a plugin can attach its own DOM with `ctx.dom.mount(slot, element)`.
  *
- * - `"plot"`: the plot area, above the WebGL canvas. Coordinates match `ctx.coords` plot
+ * - `"plot"`: the plot area, above the plot canvas. Coordinates match `ctx.coords` plot
  *   coordinates (CSS pixels from the plot's top-left). Overlays here should keep
  *   `pointer-events: none` unless they handle their own input.
  * - `"root"`: the whole chart box, including axis gutters and space reserved with
@@ -202,14 +202,14 @@ export interface ChartPluginEvents {
  * @experimental May change in a minor release. See docs/stability.md.
  */
 export interface ChartPluginUnstable {
-  /** The chart's WebGL canvas. Prefer `ctx.dom` and `ctx.layout`. */
+  /** The chart's plot canvas (whatever engine draws it). Prefer `ctx.dom` and `ctx.layout`. */
   readonly canvas: HTMLCanvasElement;
   /** Raw element behind a mount slot or surface. Prefer `ctx.dom.mount`, `listen`, and `decorate`. */
   element(slot: ChartMountSlot | ChartSurface): HTMLElement;
   /**
    * The chart's WebGL2 context, or `null` when its engine does not own one (Canvas 2D, and the shared
    * WebGL2 engine, whose context belongs to every chart that uses it). The chart may recreate GPU state
-   * after context loss.
+   * after context loss. Check `ctx.renderer.capabilities.gpu` first: it is false on Canvas 2D, where this returns `null`.
    */
   getWebGLContext(): WebGL2RenderingContext | null;
   /**
