@@ -84,7 +84,14 @@ export function placeAbsoluteWithinBox(
   element.style.top = `${top}px`;
 }
 
-/** Render picked series values as text rows; formatter output is plain text, never HTML. */
+/** Swatch and text nodes of the rows last rendered into a container, so the next render updates them in place. */
+const renderedRows = new WeakMap<HTMLElement, Array<[HTMLSpanElement, Text]>>();
+
+/**
+ * Render picked series values as text rows; formatter output is plain text, never HTML. While the item
+ * count stays the same (the usual case while the pointer moves) the existing nodes are updated in place, so a
+ * hover does not rebuild the container's subtree on every move.
+ */
 export function renderPickItems<TContext>(
   container: HTMLElement,
   items: readonly ChartPickItem[],
@@ -93,15 +100,27 @@ export function renderPickItems<TContext>(
   defaultFormatter: (item: ChartPickItem, context: TContext) => string,
 ): void {
   const pad = Math.max(1, ...items.map((item) => labelOfPickItem(item).length));
-  container.replaceChildren();
+  let rows = renderedRows.get(container);
+  // Reuse only while the container still holds exactly the nodes this function made (a custom render may have replaced them).
+  if (!rows || rows.length !== items.length || container.firstChild !== rows[0]?.[0] || container.lastChild !== rows[rows.length - 1]?.[1]) {
+    container.replaceChildren();
+    const doc = container.ownerDocument;
+    rows = items.map((_item, index) => {
+      if (index > 0) container.append(doc.createElement("br"));
+      const swatch = doc.createElement("span");
+      swatch.className = "blazeplot-pick-swatch";
+      swatch.textContent = "\u2588";
+      const text = doc.createTextNode("");
+      container.append(swatch, text);
+      return [swatch, text];
+    });
+    renderedRows.set(container, rows);
+  }
   items.forEach((item, index) => {
-    if (index > 0) container.append(container.ownerDocument.createElement("br"));
-    const swatch = container.ownerDocument.createElement("span");
-    swatch.className = "blazeplot-pick-swatch";
+    const [swatch, text] = rows![index]!;
     swatch.style.color = rgbaCss(item.series.style.color);
-    swatch.textContent = "\u2588";
     const value = formatter ? formatter(item, context) : defaultFormatter(item, context);
-    container.append(swatch, ` ${labelOfPickItem(item).padEnd(pad)}  ${value}`);
+    text.data = ` ${labelOfPickItem(item).padEnd(pad)}  ${value}`;
   });
 }
 

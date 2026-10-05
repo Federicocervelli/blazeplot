@@ -64,7 +64,7 @@ const sharedBudgets: SharedChunkBudget[] = [
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 6_400 },
   { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 2_600 },
   // Tooltip and crosshair helpers (pick markers, sync groups, long press), kept out of OverlayUtils so other plugins skip them.
-  { label: "shared PickOverlay chunk", pattern: /^PickOverlay-.*.js$/, maxBytes: 5_000 },
+  { label: "shared PickOverlay chunk", pattern: /^PickOverlay-.*.js$/, maxBytes: 5_300 },
 ];
 
 // The chart-only import graph: `import { Chart } from "blazeplot"` with no plugin, so it is what every consumer pays.
