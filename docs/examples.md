@@ -9,7 +9,7 @@ Use this table before reaching for a generic chart example. The dataset choice d
 | If you have | Use |
 |---|---|
 | Fixed X/Y arrays or object rows | `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` |
-| One-dimensional values that need a frequency distribution | `histogram(...)` or `HistogramDataset.from(...)` with `chart.addBar(...)` |
+| One-dimensional values that need a frequency distribution | `histogramBins(...)` or `HistogramDataset.from(...)` with `chart.addBar(...)` |
 | Irregular live samples | `RingBuffer` with `overflow: "wrap"` for a rolling window |
 | Fixed-rate telemetry | `UniformRingBuffer` with `series.append({ y })` so repeated X values are derived, not stored |
 | Historical OHLC data | `StaticOhlcDataset` with `chart.addOhlc(...)` or `chart.addCandlestick(...)` |
@@ -94,10 +94,11 @@ chart.start();
 Precompute or inspect bins with the pure helper:
 
 ```ts
-import { Chart, HistogramDataset, histogram } from "blazeplot";
+import { Chart, HistogramDataset } from "blazeplot";
+import { histogramBins } from "blazeplot/data";
 
 const values = [12, 15, 15, 18, 22, 22, 22, 30, 41];
-const bins = histogram(values, { binCount: 20, normalize: "density" });
+const bins = histogramBins(values, { binCount: 20, normalize: "density" });
 
 const chart = new Chart(element);
 chart.addBar({ name: "latency density", dataset: new HistogramDataset(bins) });
@@ -105,7 +106,7 @@ chart.fitToData({ includeZero: true });
 chart.start();
 ```
 
-Normalization modes are `"count"`, `"probability"`, `"percent"`, and `"density"`. Bins are configurable with one of `binSize`, `binCount` (capped at 512), or explicit `thresholds` (pick one), plus `min`, `max`, and `align`; fixed-size bins align to `0` by default, and the built-in tooltip presents interval-backed samples as bucket ranges rather than only midpoint coordinates. Use `histogram(...)` for one-dimensional value frequencies; use `binSamples(...)` when you already have X/Y samples and need to reduce Y values into fixed X intervals.
+Normalization modes are `"count"`, `"probability"`, `"percent"`, and `"density"`. Bins are configurable with one of `binSize`, `binCount` (capped at 512), or explicit `thresholds` (pick one), plus `min`, `max`, and `align`; fixed-size bins align to `0` by default, and the built-in tooltip presents interval-backed samples as bucket ranges rather than only midpoint coordinates. Use `histogramBins(...)` (from `blazeplot/data`) for one-dimensional value frequencies; use `binSamples(...)` when you already have X/Y samples and need to reduce Y values into fixed X intervals.
 
 ## Live line chart
 
