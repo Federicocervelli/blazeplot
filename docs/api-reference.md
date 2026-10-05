@@ -24,7 +24,7 @@ Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./example
 
 | Import | Contents |
 |---|---|
-| `blazeplot` | Chart, datasets, data contracts, theming, and the WebGL2 backend. |
+| `blazeplot` | Chart, datasets, data contracts, theming, and renderer selection. |
 | `blazeplot/linked` | Multi-panel layouts with shared X and per-panel plugins. |
 | `blazeplot/data` | Pure, chart-agnostic data transforms (binning, rolling mean). |
 | `blazeplot/export` | Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers. |
@@ -46,7 +46,7 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 15 KiB |
+| root entry | `dist/index.js` | 12 KiB |
 | linked entry | `dist/linked.js` | 2 KiB |
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
@@ -59,12 +59,12 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 17 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 170 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 175 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
 | shared PickOverlay chunk | `dist/PickOverlay-*.js` | 5 KiB |
-| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 198 KiB |
+| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 199 KiB |
 
 ### All public exports
 
@@ -88,7 +88,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `Camera2D` | class | `./interaction/Camera2D` | Camera that maps data domains to clip, screen, and plot coordinates. |
 | `canvas2dRenderer` | function | `./render/engines` | Renderer factory for Canvas 2D: no WebGL2 needed, lower throughput. Throws `Canvas2DUnavailableError` without a 2D context. Same as `renderer: "canvas2d"`. |
 | `Canvas2DUnavailableError` | class | `./render/canvas2d/Canvas2DRenderer` | Error thrown when a Canvas 2D renderer cannot be created. |
-| `Chart` | class | `./ui/Chart` | Imperative chart instance for rendering, interaction, and plugins. This file is intentionally the one large module (about 870 lines): it is the public facade, and most of its length is the documented public API (series, viewport, follow, fit, hover/pick, theme, lifecycle). The logic lives in focused collaborators (ChartPicker, ChartHover, ChartAccessibility, ChartSeriesStyles, ChartFit, FollowXController, ChartEmitter, PluginHost, SeriesPainter, ChartLayout) that this class wires. |
+| `Chart` | class | `./ui/Chart` | Imperative chart instance for rendering, interaction, and plugins. |
 | `ChartAccessibilityMessages` | type | `./ui/Chart` | — |
 | `ChartAccessibilityOptions` | type | `./ui/Chart` | — |
 | `ChartAutoFitYOptions` | type | `./ui/Chart` | — |
@@ -145,7 +145,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartSurface` | type | `./ui/PluginTypes` | Chart-owned element a plugin can listen on or decorate with `ctx.dom.listen` and `ctx.dom.decorate`. - `"plot"`: the interactive plot surface (it receives pointer, wheel, and touch input). - `"root"`: the chart root; it is focusable and receives keyboard input when accessibility is enabled. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters. They ignore pointer input until a plugin decorates them with `pointerEvents: "auto"`. |
 | `ChartSurfaceDecoration` | interface | `./ui/PluginTypes` | Styles, classes, and attributes applied to a chart surface by `ctx.dom.decorate`. |
 | `ChartSurfaceStyle` | interface | `./ui/PluginTypes` | Inline style properties a plugin may set on a chart surface. |
-| `ChartTheme` | interface | `./ui/theme` | Partial chart theme supplied by callers. |
+| `ChartTheme` | interface | `./ui/theme` | Partial chart theme supplied by callers. Every `*Color` field takes a CSS color string or an RGBA tuple (0-1 channels). `chart.theme` reports DOM colors as CSS strings and canvas colors as RGBA tuples. |
 | `ChartTitleConfig` | type | `./ui/Chart` | — |
 | `ChartViewportChangeEvent` | type | `./ui/Chart` | — |
 | `ChartViewportChangeSource` | type | `./ui/Chart` | — |
@@ -161,6 +161,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `HistogramNormalization` | type | `./core/histogramBins` | Histogram value normalization modes. |
 | `HistogramOptions` | interface | `./core/histogramBins` | Options for converting one-dimensional values into histogram bins. |
 | `HistogramResult` | interface | `./core/histogramBins` | Result of a histogram transform. |
+| `HistogramSeriesConfig` | type | `./ui/Chart` | — |
 | `InvalidOhlcSample` | interface | `./core/types` | An OHLC candle an `OhlcRingBuffer` skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSample` | interface | `./core/types` | A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSampleReason` | type | `./core/types` | Why a sample broke the dataset X rule (X finite and non-decreasing): `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the previous accepted X (or, for `update`, outside its neighbors). |
@@ -179,7 +180,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `RendererName` | type | `./render/ChartRenderer` | A built-in rendering engine: WebGL2, Canvas 2D, or WebGL2 through a context shared with other charts. |
 | `ResolvedChartTheme` | interface | `./ui/theme` | Fully resolved chart theme with concrete RGBA values. |
 | `RgbaColor` | type | `./core/types` | RGBA color tuple with 0-1 channel values. |
-| `RingBuffer` | class | `./core/RingBuffer` | Fixed-capacity sorted XY buffer for explicit X values. X must be finite and non-decreasing. A sample that breaks that rule is skipped (never thrown), counted in `rejectedSamples`, reported to `onInvalidSample`, and logged with one console warning per buffer when no callback is set. Non-finite Y is stored and drawn as a gap. |
+| `RingBuffer` | class | `./core/RingBuffer` | Fixed-capacity sorted XY buffer for explicit X values. X must be finite and non-decreasing. A sample that breaks that rule is skipped (never thrown), counted in `rejectedSamples`, reported to `onInvalidSample`, and logged with one console warning per buffer when no callback is set. Non-finite Y is stored and drawn as a gap. This differs from `StaticDataset`, `StaticOhlcDataset`, and `ServerSampledDataset`, which throw a `RangeError` on a non-finite or decreasing X: a live feed should not crash on one bad packet, but data you hand over in one piece should be fixed at the source. See "Data semantics" in the docs. |
 | `RingBufferOptions` | interface | `./core/RingBuffer` | Options for `RingBuffer`. |
 | `RingSeriesConfig` | type | `./ui/Chart` | — |
 | `SampleCopyLayout` | type | `./core/types` | Vertex layout requested when copying raw samples into a render buffer: `"points"` writes `[x, y]` pairs, `"area"` writes `[x, baseline, x, y]` strip pairs. |
@@ -224,6 +225,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `StaticOhlcDataset` | class | `./core/OhlcDataset` | Immutable OHLC dataset backed by parallel arrays. X must be finite and non-decreasing; the constructor checks it and throws a `RangeError` naming the first bad index. A candle with any non-finite price is a gap. |
 | `StaticOhlcDatasetOptions` | interface | `./core/OhlcDataset` | Options for `StaticOhlcDataset`. |
 | `StaticOhlcDatasetSortedOptions` | interface | `./core/OhlcDataset` | Options for `StaticOhlcDataset.sorted`. |
+| `StaticSeriesConfig` | type | `./ui/Chart` | — |
 | `TextOverlayConfig` | type | `./ui/Chart` | — |
 | `ThemeColor` | type | `./core/types` | Any CSS color string (`"#3b82f6"`, `"rgb(59 130 246)"`, `"var(--accent)"`) or an RGBA tuple. |
 | `TimeRange` | interface | `./core/types` | Inclusive data X range. |

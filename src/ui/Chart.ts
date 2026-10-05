@@ -20,7 +20,8 @@ import { chartInternals, registerChartInternals } from "./ChartInternals.js";
 import type { ChartLayoutReservation } from "./PluginTypes.js";
 import { FollowXController } from "./FollowX.js";
 import { ChartAccessibility } from "./ChartAccessibility.js";
-import { normalizeAxesConfig, createDefaultDataset, datasetBarWidth, rejectBufferOptions } from "./ChartConfig.js";
+import { normalizeAxesConfig, createDefaultDataset, datasetBarWidth, rejectBufferOptions, resolveSeriesSource } from "./ChartConfig.js";
+import type { RawSeriesConfig } from "./ChartConfig.js";
 import { ChartSeriesStyles } from "./ChartSeriesStyles.js";
 import { fitCameras } from "./ChartFit.js";
 import type { ResolvedAxesConfig } from "./ChartConfig.js";
@@ -32,23 +33,24 @@ const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "b
 const GRID_LINE_VERTEX_CAPACITY = (X_TICK_LIMIT + 2 + Y_TICK_LIMIT + 2) * 2;
 /** Smallest auto-sized gutter, so a short-label axis still leaves room for ticks. */
 const MIN_AUTO_GUTTER_PX = 16;
-export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartRenderLoop, ChartOptions, TypedSeriesConfig, DatasetSeriesConfig, RingSeriesConfig, UniformRingSeriesConfig, SeriesIdentityConfig, ChartScreenshotOptions } from "./ChartOptions.js";
+export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartRenderLoop, ChartOptions, TypedSeriesConfig, DatasetSeriesConfig, StaticSeriesConfig, HistogramSeriesConfig, RingSeriesConfig, UniformRingSeriesConfig, SeriesIdentityConfig, ChartScreenshotOptions } from "./ChartOptions.js";
 export type { ChartPickMode, ChartPickGroup, ChartPickOptions, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeEvent, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartFrameStats } from "./ChartEvents.js";
 export type { ChartViewportChangeSource, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
-import type { ChartOptions, TypedSeriesConfig, DatasetSeriesConfig, RingSeriesConfig, UniformRingSeriesConfig, ChartScreenshotOptions } from "./ChartOptions.js";
+import type { ChartOptions, TypedSeriesConfig, DatasetSeriesConfig, StaticSeriesConfig, HistogramSeriesConfig, RingSeriesConfig, UniformRingSeriesConfig, ChartScreenshotOptions } from "./ChartOptions.js";
 import type { RingBuffer } from "../core/RingBuffer.js";
+import type { StaticDataset } from "../core/StaticDataset.js";
+import type { HistogramDataset } from "../core/Histogram.js";
 import type { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import type { ChartPickOptions, ChartSeriesState, ChartHoverState, ChartEventMap, ChartEventName, ChartFrameStats } from "./ChartEvents.js";
 import type { ChartViewportChangeSource, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFitToDataOptions, ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
 
 
+// This file is intentionally the one large module (about 900 lines): it is the public facade, and most of
+// its length is the documented public API (series, viewport, follow, fit, hover/pick, theme, lifecycle).
+// The logic lives in focused collaborators (ChartPicker, ChartHover, ChartAccessibility, ChartSeriesStyles,
+// ChartFit, FollowXController, ChartEmitter, PluginHost, SeriesPainter, ChartLayout) that this class wires.
 /**
  * Imperative chart instance for rendering, interaction, and plugins.
- *
- * This file is intentionally the one large module (about 870 lines): it is the public facade, and most of
- * its length is the documented public API (series, viewport, follow, fit, hover/pick, theme, lifecycle).
- * The logic lives in focused collaborators (ChartPicker, ChartHover, ChartAccessibility, ChartSeriesStyles,
- * ChartFit, FollowXController, ChartEmitter, PluginHost, SeriesPainter, ChartLayout) that this class wires.
  */
 export class Chart {
   private series: SeriesStore[] = [];
@@ -392,10 +394,11 @@ export class Chart {
     return this.attachSeries(config, style);
   }
 
-  private attachSeries<D extends Dataset>(config: SeriesConfig & { readonly dataset?: D }, style: SeriesStyleOptions = {}): SeriesStore<D> {
-    if (!SERIES_MODES.has(config.mode)) {
-      throw new TypeError(`Chart.addSeries: unknown series mode ${JSON.stringify(config.mode)}. Expected one of ${[...SERIES_MODES].join(", ")}.`);
+  private attachSeries<D extends Dataset>(rawConfig: RawSeriesConfig & { readonly dataset?: D }, style: SeriesStyleOptions = {}): SeriesStore<D> {
+    if (!SERIES_MODES.has(rawConfig.mode)) {
+      throw new TypeError(`Chart.addSeries: unknown series mode ${JSON.stringify(rawConfig.mode)}. Expected one of ${[...SERIES_MODES].join(", ")}.`);
     }
+    const config = resolveSeriesSource(rawConfig);
     if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
@@ -415,6 +418,7 @@ export class Chart {
   /** Add a line series. Pass `dataset` for data you built, or `capacity` for a streaming buffer the chart creates. */
   addLine<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
   /** Add a line series. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addLine(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
   addLine(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
   /** Add a line series. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
   addLine(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
@@ -425,6 +429,7 @@ export class Chart {
   /** Add an area series filled from `style.baseline`. Pass `dataset` for data you built, or `capacity` for a streaming buffer the chart creates. */
   addArea<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
   /** Add an area series filled from `style.baseline`. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addArea(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
   addArea(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
   /** Add an area series filled from `style.baseline`. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
   addArea(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
@@ -435,6 +440,7 @@ export class Chart {
   /** Add a scatter series. Pass `dataset` for data you built, or `capacity` for a streaming buffer the chart creates. */
   addScatter<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
   /** Add a scatter series. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addScatter(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
   addScatter(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
   /** Add a scatter series. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
   addScatter(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
@@ -449,6 +455,9 @@ export class Chart {
    */
   addBar<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
   /** Add a bar series growing from `style.baseline`. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addBar(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
+  /** Add a histogram: bar series over raw values binned by `binSize`, `binCount`, or `thresholds`. */
+  addBar(config: HistogramSeriesConfig, style?: SeriesStyleOptions): SeriesStore<HistogramDataset>;
   addBar(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
   /** Add a bar series growing from `style.baseline`. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
   addBar(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
@@ -501,7 +510,7 @@ export class Chart {
   }
 
   /** Return metadata for all attached series. */
-  getSeriesState(): ChartSeriesState[] {
+  getSeriesState(): readonly ChartSeriesState[] {
     return this.series.map((series, index) => ({
       series,
       index,
@@ -562,7 +571,7 @@ export class Chart {
   }
 
   /** Copy the latest render metrics into `target` (allocation-free polling) and return it. */
-  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): ChartFrameStats {
+  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): Readonly<ChartFrameStats> {
     return Object.assign(target, this.stats);
   }
 

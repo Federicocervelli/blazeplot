@@ -121,13 +121,13 @@ export interface ChartPluginViewport {
 /** Read-only chart state. */
 export interface ChartPluginState {
   /** Metadata for every attached series, in draw order. */
-  getSeries(): ChartSeriesState[];
+  getSeries(): readonly ChartSeriesState[];
   /** The current hover state, or `null` when nothing is hovered. */
   getHover(): ChartHoverState | null;
   /** Hit-test a client point against visible series. */
   pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
   /** Copy the latest render metrics into `target` and return it. */
-  getFrameStats(target?: ChartFrameStats): ChartFrameStats;
+  getFrameStats(target?: ChartFrameStats): Readonly<ChartFrameStats>;
   /**
    * Show one sample as the chart's hover state, as if the pointer were on it, so the tooltip,
    * crosshair, and `hover` subscribers follow a keyboard cursor. The state has

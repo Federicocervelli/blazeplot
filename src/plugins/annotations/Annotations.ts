@@ -7,7 +7,12 @@ import { renderAnnotations } from "./svg.js";
 import { DEFAULT_ANNOTATIONS_MESSAGES } from "./types.js";
 import type { Annotation, AnnotationHitEvent, AnnotationHitEventType, AnnotationsMessages, AnnotationsPlugin, AnnotationsPluginOptions } from "./types.js";
 
-/** Create a plugin that renders lines, ranges, boxes, points, and labels. */
+/**
+ * Create a plugin that renders lines, ranges, boxes, points, and labels.
+ *
+ * Stateful: an instance serves one chart at a time. Installing it on a second chart while the first is
+ * alive throws; create one instance per chart (linked layouts: `panelPlugins`). Disposing the chart frees it.
+ */
 export function annotationsPlugin(options: AnnotationsPluginOptions = {}): AnnotationsPlugin {
   const messages: AnnotationsMessages = { ...DEFAULT_ANNOTATIONS_MESSAGES, ...options.messages };
   let annotations = [...(options.annotations ?? [])];

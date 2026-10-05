@@ -19,7 +19,7 @@ import type { FlameGraphModel, FlameGraphPick, FlameGraphPlugin, FlameGraphPlugi
 const DEFAULT_TOOLTIP_Z_INDEX = 10_000;
 
 /**
- * Create a plugin that renders flame graph or status chart models.
+ * Create a plugin that renders flame graph or status chart models. Stateful: one instance per chart.
  *
  * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */

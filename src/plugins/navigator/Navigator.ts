@@ -32,7 +32,8 @@ export interface NavigatorPluginOptions {
    * reads as dates instead of epoch milliseconds.
    */
   readonly formatValueText?: (range: { readonly xMin: number; readonly xMax: number }) => string;
-  readonly height?: number;
+  /** Overview height in CSS pixels (at least 24). Defaults to 56. */
+  readonly heightPx?: number;
   readonly placement?: "bottom" | "top";
   readonly series?: SeriesStore | readonly SeriesStore[];
   /** Series up to this many samples (default 512) draw as an exact polyline; denser series draw a min/max envelope. */
@@ -42,15 +43,19 @@ export interface NavigatorPluginOptions {
   readonly backgroundColor?: string;
   readonly borderColor?: string;
   readonly strokeColor?: string;
-  readonly strokeWidth?: number;
+  /** Overview line width in CSS pixels. Defaults to the series' `lineWidth`. */
+  readonly strokeWidthPx?: number;
   readonly fillColor?: string;
   readonly windowFillColor?: string;
   readonly windowStrokeColor?: string;
-  readonly handleWidth?: number;
-  readonly handleHitWidth?: number;
+  /** Drawn width of each window handle, in CSS pixels (at least 4). Defaults to 8. */
+  readonly handleWidthPx?: number;
+  /** Pointer hit width of each window handle, in CSS pixels. Defaults to 18. */
+  readonly handleHitWidthPx?: number;
   readonly zIndex?: number;
   readonly reserveSpace?: boolean;
-  readonly margin?: number;
+  /** Gap around the overview, in CSS pixels. Defaults to 8. */
+  readonly marginPx?: number;
   readonly align?: "plot" | "chart";
   readonly onRangeChange?: (range: { readonly xMin: number; readonly xMax: number }) => void;
 }
@@ -176,15 +181,20 @@ interface OverviewCache {
   readonly paths: readonly OverviewPath[];
 }
 
-/** Create a plugin that renders a draggable X-range overview. */
+/**
+ * Create a plugin that renders a draggable X-range overview.
+ *
+ * Stateful: an instance serves one chart at a time. Installing it on a second chart while the first is
+ * alive throws; create one instance per chart (linked layouts: `panelPlugins`). Disposing the chart frees it.
+ */
 export function navigatorPlugin(options: NavigatorPluginOptions = {}): NavigatorPlugin {
   const messages: NavigatorMessages = { ...DEFAULT_NAVIGATOR_MESSAGES, ...options.messages };
-  const height = Math.max(24, options.height ?? 56);
-  const margin = Math.max(0, options.margin ?? 8);
+  const height = Math.max(24, options.heightPx ?? 56);
+  const margin = Math.max(0, options.marginPx ?? 8);
   const placement = options.placement ?? "bottom";
   const maxSamplesPerSeries = Math.max(16, options.maxSamplesPerSeries ?? 512);
-  const handleWidth = Math.max(4, options.handleWidth ?? 8);
-  const handleHitWidth = Math.max(handleWidth, options.handleHitWidth ?? 18);
+  const handleWidth = Math.max(4, options.handleWidthPx ?? 8);
+  const handleHitWidth = Math.max(handleWidth, options.handleHitWidthPx ?? 18);
   let chartRef: ChartPluginContext | null = null;
   let root: HTMLDivElement | null = null;
   let overlay: SVGSVGElement | null = null;
@@ -268,7 +278,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       const color = rgbaCss(series.style.color);
       path.setAttribute("d", overview.d);
       path.setAttribute("stroke", options.strokeColor ?? color);
-      path.setAttribute("stroke-width", String(options.strokeWidth ?? Math.max(1, series.style.lineWidth)));
+      path.setAttribute("stroke-width", String(options.strokeWidthPx ?? Math.max(1, series.style.lineWidth)));
       path.setAttribute("fill", options.fillColor ?? (overview.envelope ? color : "none"));
       if (overview.envelope && options.fillColor === undefined) path.setAttribute("fill-opacity", "0.35");
       else path.removeAttribute("fill-opacity");

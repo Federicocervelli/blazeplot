@@ -70,8 +70,6 @@ Participation in this project is covered by the [Code of Conduct](CODE_OF_CONDUC
 
 ## Governance and continuity
 
-> Sections marked **Proposal** are drafts for the maintainer to confirm or change before they are treated as policy.
-
 **Current model.** BlazePlot is maintained by [Federico Cervelli](https://cervelli.dev), who is the sole maintainer and makes final decisions on scope, API design, and releases. Anyone can propose a change through an issue or pull request. There is no committee or voting process.
 
 **How decisions are made.**
@@ -84,12 +82,7 @@ Participation in this project is covered by the [Code of Conduct](CODE_OF_CONDUC
 
 **Continuity.** The code is MIT licensed, so anyone can fork and continue the project. Releases can be rebuilt from the repository and its CI workflows.
 
-**Proposal: reducing single-maintainer risk before 1.0.**
-
-1. Invite at least one additional trusted maintainer with merge rights on `main` and the ability to run the release workflow.
-2. Add a second owner to the npm package and a second admin to the repository, so publishing and administration survive the loss of one account.
-3. If the maintainer becomes unavailable for an extended period, the additional maintainer may announce it in the README and continue releases, or mark the package deprecated on npm with a pointer to a fork.
-4. Make sure a second person can receive and act on private vulnerability reports (see [`SECURITY.md`](SECURITY.md)).
+**Maintenance and bus factor.** BlazePlot currently has one maintainer, so one person holds merge rights, npm publishing through the release workflow, and private vulnerability reports (see [`SECURITY.md`](SECURITY.md)). Contributors who want to help sustain the project, for example by reviewing pull requests or triaging issues, are welcome to say so in an issue.
 
 ## Maintainer notes
 

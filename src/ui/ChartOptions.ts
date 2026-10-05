@@ -3,6 +3,7 @@
  * and screenshot options. Depends on the plugin contract, never the other way around.
  */
 import type { BufferOverflowStrategy, Dataset, DownsampleStrategy, InvalidSample, SeriesYAxis, ValuePrecision } from "../core/types.js";
+import type { HistogramOptions } from "../core/histogramBins.js";
 import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 import type { ChartRendererFactory, RendererChoice } from "../render/ChartRenderer.js";
 import type { AxisScaleOptions } from "../interaction/AxisController.js";
@@ -20,8 +21,10 @@ export interface TextOverlayConfig {
   readonly text: string;
   readonly color?: string;
   readonly font?: string;
-  readonly offsetX?: number;
-  readonly offsetY?: number;
+  /** Horizontal shift from the default position, in CSS pixels (positive moves right). */
+  readonly offsetXPx?: number;
+  /** Vertical shift from the default position, in CSS pixels (positive moves down). */
+  readonly offsetYPx?: number;
 }
 
 /** Chart title or subtitle text and alignment. */
@@ -31,7 +34,12 @@ export interface ChartTitleConfig extends TextOverlayConfig {
 
 /** Axis visibility, placement, scale, tick formatting, and title options. */
 export interface AxisConfig extends AxisScaleOptions {
-  /** Hide tick labels while keeping the scale. Pass `false` instead of a config to hide an axis with default scale. */
+  /**
+   * Whether the axis draws tick labels and its title. `{ visible: false }` hides them but keeps the
+   * axis' scale, `tickFormat`, and range behavior (and still reserves no gutter). Passing `axes: { x: false }`
+   * is the same as `{ x: { visible: false } }` with every other option at its default; use the object form
+   * when the hidden axis still needs a scale such as `"time"` or `"log"`. Defaults to true.
+   */
   readonly visible?: boolean;
   readonly position?: AxisPosition;
   readonly title?: string | TextOverlayConfig;
@@ -194,21 +202,56 @@ export type UniformRingSeriesConfig = SeriesIdentityConfig & {
 );
 
 /**
- * Series configuration used by the typed helpers such as `addLine`: an existing `dataset`
- * ({@link DatasetSeriesConfig}), or a `capacity` for a chart-owned streaming buffer
- * ({@link RingSeriesConfig}, or {@link UniformRingSeriesConfig} when `xStep` or `xStart` is given).
+ * Shorthand for the common case: X/Y arrays you already have. The chart wraps them in a
+ * `StaticDataset` (the series handle is a `SeriesStore<StaticDataset>`, so `series.replace({ x, y })`
+ * updates it). X must be finite and sorted ascending, or a `RangeError` names the first bad index;
+ * for unsorted rows build the dataset yourself with `StaticDataset.sorted` or `StaticDataset.fromObjects`.
+ * Non-finite Y is a gap. Both arrays are read once and must have the same length.
  */
-export type TypedSeriesConfig<D extends Dataset = Dataset> = DatasetSeriesConfig<D> | RingSeriesConfig | UniformRingSeriesConfig;
+export interface StaticSeriesConfig extends SeriesIdentityConfig {
+  /** X values, in X data units (epoch milliseconds for a time axis), sorted ascending. */
+  readonly x: ArrayLike<number>;
+  /** Y values, one per X. */
+  readonly y: ArrayLike<number>;
+  readonly dataset?: never;
+  readonly capacity?: never;
+  readonly values?: never;
+}
+
+/**
+ * Shorthand for a histogram: raw `values` are binned and drawn as bars, like
+ * `dataset: HistogramDataset.from(values, options)`. Pick the bin layout with one of `binSize`
+ * (bucket width in value units), `binCount`, or `thresholds`. Only `addBar` (and `addSeries` with
+ * `mode: "bar"`) accept it.
+ */
+export interface HistogramSeriesConfig extends SeriesIdentityConfig, HistogramOptions {
+  /** The one-dimensional values to count. Non-finite values are skipped and reported in `HistogramResult.invalid`. */
+  readonly values: ArrayLike<number>;
+  readonly dataset?: never;
+  readonly capacity?: never;
+  readonly x?: never;
+}
+
+/**
+ * Series configuration used by the typed helpers such as `addLine`: an existing `dataset`
+ * ({@link DatasetSeriesConfig}), `x`/`y` arrays ({@link StaticSeriesConfig}), or a `capacity` for a
+ * chart-owned streaming buffer ({@link RingSeriesConfig}, or {@link UniformRingSeriesConfig} when
+ * `xStep` or `xStart` is given). `addBar` also accepts raw `values` ({@link HistogramSeriesConfig}).
+ */
+export type TypedSeriesConfig<D extends Dataset = Dataset> = DatasetSeriesConfig<D> | StaticSeriesConfig | HistogramSeriesConfig | RingSeriesConfig | UniformRingSeriesConfig;
 
 /** Options for exporting the chart as an image blob. */
 export interface ChartScreenshotOptions {
   /** Image MIME type. Defaults to `"image/png"`. */
   readonly type?: string;
+  /** Encoder quality from 0 to 1 for lossy types such as `"image/jpeg"`. */
   readonly quality?: number;
   /** CSS background color, or `null` for transparent. Defaults to the theme background. */
   readonly background?: string | null;
   /** Device pixels per CSS pixel of the output image. Defaults to `devicePixelRatio`. */
   readonly pixelRatio?: number;
+  /** Output width in device pixels. Defaults to the chart's CSS width times `pixelRatio`. */
   readonly width?: number;
+  /** Output height in device pixels. Defaults to the chart's CSS height times `pixelRatio`. */
   readonly height?: number;
 }

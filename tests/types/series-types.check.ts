@@ -87,4 +87,25 @@ declare const anySeries: SeriesStore;
 anySeries.append({ y: 1 });
 anySeries.append({ x: 1, y: 1 });
 
-export const used = [fromDataset, fromRing, fromUniform, fromUniformStartOnly, bars, candles, ohlcSeries, viaAddSeries];
+// --- shorthands ------------------------------------------------------------------------------------
+
+const fromArrays: SeriesStore<StaticDataset> = chart.addLine({ x, y, name: "arrays" });
+const areaFromArrays: SeriesStore<StaticDataset> = chart.addArea({ x: [0, 1, 2], y: [1, 2, 3] });
+const histogramBars: SeriesStore<HistogramDataset> = chart.addBar({ values: [1, 2, 2, 3], binCount: 3, normalize: "density", name: "latency" });
+const sizedBars: SeriesStore<HistogramDataset> = chart.addBar({ values: y, binSize: 5 });
+fromArrays.replace({ x, y });
+
+// @ts-expect-error x without y
+chart.addLine({ x });
+// @ts-expect-error { x, y } cannot be combined with a dataset
+chart.addLine({ x, y, dataset: staticData });
+// @ts-expect-error { x, y } cannot be combined with a capacity
+chart.addLine({ x, y, capacity: 10 });
+// @ts-expect-error candlesticks need an OhlcDataset, not x/y arrays
+chart.addCandlestick({ x, y });
+// @ts-expect-error values (a histogram) only exist on bar series
+chart.addLine({ values: [1, 2, 3], binCount: 2 });
+// @ts-expect-error a series built from x/y arrays cannot be appended to
+fromArrays.append({ x: 1, y: 1 });
+
+export const used = [fromDataset, fromRing, fromUniform, fromUniformStartOnly, bars, candles, ohlcSeries, viaAddSeries, fromArrays, areaFromArrays, histogramBars, sizedBars];

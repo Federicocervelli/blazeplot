@@ -86,13 +86,13 @@ series.updateAt(42, { y: correctedValue });
 For spectra, waveforms, or any chart that redraws all of its points each frame, keep one series and swap its data instead of removing and re-adding the line. The series keeps its color, legend entry, and hover state.
 
 ```ts
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 const frequencies = new Float64Array([20, 100, 1_000, 10_000]);
 const magnitudes = new Float32Array([-60, -30, -10, -50]);
 
 const chart = new Chart(element);
-const spectrum = chart.addLine({ dataset: new StaticDataset(frequencies, magnitudes), name: "spectrum" }, { lineWidth: 2 });
+const spectrum = chart.addLine({ x: frequencies, y: magnitudes, name: "spectrum" }, { lineWidth: 2 });
 chart.setViewport({ xMin: frequencies[0]!, xMax: frequencies[frequencies.length - 1]!, yMin: -120, yMax: 0 });
 chart.start();
 

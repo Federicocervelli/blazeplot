@@ -1,7 +1,7 @@
 // Verifies the documented TypeScript floor (docs/versioning-and-migration.md): packs the built package,
 // installs the tarball into a throwaway consumer project per TypeScript version, and typechecks a file
-// importing every `package.json#exports` subpath with `skipLibCheck: false` under both `bundler` and
-// `node16` module resolution. Needs a fresh `bun run build` and network access to install TypeScript.
+// importing every `package.json#exports` subpath with `skipLibCheck: false` under `bundler`, `node16`, and legacy `node10`
+// module resolution. Needs a fresh `bun run build` and network access to install TypeScript.
 //
 // Usage: bun scripts/typescript-floor-test.ts [--ts 5.0.4,5] [--keep]
 //   --ts    comma-separated TypeScript versions or ranges (default: the floor 5.0.4 and the latest 5.x)
@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const FLOOR = "5.0.4";
 const DEFAULT_VERSIONS = [FLOOR, "5"];
-const RESOLUTIONS = ["bundler", "node16"] as const;
+const RESOLUTIONS = ["bundler", "node16", "node10"] as const;
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);

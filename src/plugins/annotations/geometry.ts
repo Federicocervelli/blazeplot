@@ -116,7 +116,7 @@ export function hitTestAnnotation(chart: ChartPluginContext, annotation: Annotat
     case "point": {
       const dx = plotX - xToPx(annotation.x);
       const dy = plotY - yToPx(annotation.y);
-      const radius = annotation.radius ?? 5;
+      const radius = annotation.radiusPx ?? 5;
       return dx * dx + dy * dy <= (radius + tolerance) * (radius + tolerance);
     }
     case "label": {
@@ -170,7 +170,7 @@ export function annotationFocusRect(chart: ChartPluginContext, annotation: Annot
     case "point": {
       const x = xToPx(annotation.x);
       const y = yToPx(annotation.y);
-      const radius = (annotation.radius ?? 5) + 2;
+      const radius = (annotation.radiusPx ?? 5) + 2;
       return isInsidePlot(x, y, width, height) ? { x: x - radius, y: y - radius, w: radius * 2, h: radius * 2 } : null;
     }
     case "label": {

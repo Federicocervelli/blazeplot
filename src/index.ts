@@ -33,6 +33,8 @@ export type {
   ChartViewportChangeSource,
   ChartViewportGestureOptions,
   DatasetSeriesConfig,
+  HistogramSeriesConfig,
+  StaticSeriesConfig,
   RingSeriesConfig,
   SeriesIdentityConfig,
   UniformRingSeriesConfig,

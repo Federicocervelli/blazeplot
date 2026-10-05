@@ -9,8 +9,10 @@ export interface AnnotationLabelOptions {
   readonly position?: "start" | "center" | "end" | "top" | "bottom" | "left" | "right";
   readonly color?: string;
   readonly font?: string;
-  readonly offsetX?: number;
-  readonly offsetY?: number;
+  /** Horizontal shift from the label's default position, in CSS pixels (positive moves right). */
+  readonly offsetXPx?: number;
+  /** Vertical shift from the label's default position, in CSS pixels (positive moves down). */
+  readonly offsetYPx?: number;
 }
 
 /** Common fields shared by all annotation types. */
@@ -33,7 +35,9 @@ export interface XLineAnnotation extends AnnotationBase {
   readonly type: "x-line";
   readonly x: number;
   readonly color?: string;
-  readonly width?: number;
+  /** Line width in CSS pixels. Defaults to 1. */
+  readonly widthPx?: number;
+  /** SVG `stroke-dasharray`, in CSS pixels (for example `"4 2"`). */
   readonly dash?: string;
 }
 
@@ -42,7 +46,9 @@ export interface YLineAnnotation extends AnnotationBase {
   readonly type: "y-line";
   readonly y: number;
   readonly color?: string;
-  readonly width?: number;
+  /** Line width in CSS pixels. Defaults to 1. */
+  readonly widthPx?: number;
+  /** SVG `stroke-dasharray`, in CSS pixels (for example `"4 2"`). */
   readonly dash?: string;
 }
 
@@ -53,7 +59,8 @@ export interface XRangeAnnotation extends AnnotationBase {
   readonly xMax: number;
   readonly fillColor?: string;
   readonly borderColor?: string;
-  readonly borderWidth?: number;
+  /** Border width in CSS pixels. Defaults to none. */
+  readonly borderWidthPx?: number;
 }
 
 /** Horizontal band annotation spanning a Y range. */
@@ -63,7 +70,8 @@ export interface YRangeAnnotation extends AnnotationBase {
   readonly yMax: number;
   readonly fillColor?: string;
   readonly borderColor?: string;
-  readonly borderWidth?: number;
+  /** Border width in CSS pixels. Defaults to none. */
+  readonly borderWidthPx?: number;
 }
 
 /** Rectangular annotation spanning X and Y ranges. */
@@ -75,7 +83,8 @@ export interface BoxAnnotation extends AnnotationBase {
   readonly yMax: number;
   readonly fillColor?: string;
   readonly borderColor?: string;
-  readonly borderWidth?: number;
+  /** Border width in CSS pixels. Defaults to none. */
+  readonly borderWidthPx?: number;
 }
 
 /** Point marker annotation at one data coordinate. */
@@ -83,10 +92,12 @@ export interface PointAnnotation extends AnnotationBase {
   readonly type: "point";
   readonly x: number;
   readonly y: number;
-  readonly radius?: number;
+  /** Marker radius in CSS pixels. Defaults to 5. */
+  readonly radiusPx?: number;
   readonly color?: string;
   readonly strokeColor?: string;
-  readonly strokeWidth?: number;
+  /** Marker outline width in CSS pixels. Defaults to 1. */
+  readonly strokeWidthPx?: number;
   readonly shape?: "circle" | "diamond" | "cross";
 }
 
@@ -175,6 +186,7 @@ export interface AnnotationsPluginOptions {
   readonly defaultFillColor?: string;
   readonly defaultFont?: string;
   readonly zIndex?: number;
+  /** Extra pointer hit area around thin annotations, in CSS pixels. */
   readonly hitTolerancePx?: number;
   readonly onHover?: (event: AnnotationHitEvent | null) => void;
   /** Called for a pointer click on an annotation, and for Enter or Space while it has keyboard focus. */

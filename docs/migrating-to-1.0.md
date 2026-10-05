@@ -482,8 +482,18 @@ Late 1.0 release candidates removed a few leaky or inconsistent names. There are
 | `chart.addLine({ xStep: 1 })`, `{ xStart }`, `{ name }` with neither `dataset` nor `capacity` | Compile error (and the existing `TypeError` for a missing `capacity`). |
 | `chart.addLine({ capacity, xStep, overflow: "drop-new" \| "error" })` and `{ capacity, xStep, onInvalidSample }` | Compile error (the uniform buffer only wraps and never rejects samples); `overflow` other than `"wrap"` already threw. `onInvalidSample` with `xStep` now throws too. |
 | `chart.addCandlestick({ capacity })`, `chart.addOhlc({ capacity })`, or an `XY` dataset | Compile error: they need `dataset: OhlcDataset` (`StaticOhlcDataset` or `OhlcRingBuffer`). |
+| `TextOverlayConfig` / `ChartTitleConfig` `offsetX`, `offsetY` (axis and chart titles) | `offsetXPx`, `offsetYPx` (CSS pixels) |
+| `tooltipPlugin({ offsetX, offsetY })` | `tooltipPlugin({ offsetXPx, offsetYPx })` |
+| Annotation `label: { offsetX, offsetY }` | `label: { offsetXPx, offsetYPx }` |
+| Annotation `width` (`x-line`, `y-line`), `borderWidth` (ranges, box), `radius` and `strokeWidth` (`point`) | `widthPx`, `borderWidthPx`, `radiusPx`, `strokeWidthPx` |
+| `crosshairPlugin({ width, markerSize, markerStrokeWidth })` | `crosshairPlugin({ widthPx, markerSizePx, markerStrokeWidthPx })` |
+| `navigatorPlugin({ height, strokeWidth, handleWidth, handleHitWidth, margin })` | `navigatorPlugin({ heightPx, strokeWidthPx, handleWidthPx, handleHitWidthPx, marginPx })` |
+| `ChartTheme` `axisColor`, `tooltipBackgroundColor` and the other DOM color tokens accepted only CSS strings | Every `*Color` token accepts a CSS string or an RGBA tuple (`ThemeColor`), like `backgroundColor`. `chart.theme` still reports CSS strings. |
+| `chart.getSeriesState()`, `ctx.state.getSeries()` returned a mutable array; `getFrameStats()` returned a mutable object | `readonly ChartSeriesState[]` and `Readonly<ChartFrameStats>` (the `target` you pass in stays mutable). |
 | `SeriesStore<D>.append` / `updateLast` / `updateAt` accepted any payload | Typed by the dataset: `{ x, y }` for `RingBuffer`, `{ y }` for `UniformRingBuffer`, OHLC objects for `OhlcRingBuffer`, and `never` for `StaticDataset`-backed series. The runtime `TypeError` stays. A bare `SeriesStore` (what `getSeriesState()` returns) keeps accepting every form. New exported types: `SeriesAppendFor`, `SeriesUpdateFor`, `SeriesYAppendData`, `SeriesXYExplicitAppendData`, `SeriesYUpdateData`. |
 | `chart.addLine(...)` returned `SeriesStore<Dataset>` for `{ capacity }` | Returns `SeriesStore<RingBuffer>` (or `SeriesStore<UniformRingBuffer>` with `xStep`/`xStart`), so `series.append({ x, y })` and `series.clear()` are typed without a cast. |
+
+Unit conventions after this pass: plugin options measured in CSS pixels end in `Px`; options in milliseconds end in `Ms`; series style `lineWidth` and `pointSize` are CSS pixels, and `barWidth` and `tickWidth` are data X units (not pixels). Every option's JSDoc states its unit; see [Theming and layout](./theming-and-layout.md#units).
 
 ## New in 1.0
 
@@ -494,6 +504,7 @@ Additive features that need no migration work but are easy to miss:
 - **Rendering engines:** Canvas 2D (also the `"auto"` fallback) and shared-context rendering through `ChartOptions.renderer`, `chart.rendererInfo`, and `ctx.renderer` (change 16).
 - **Gestures:** `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger", gestureHint, boxZoomModifier })`, `selectionPlugin({ modifier })`, `ctx.dom.claimPointer` (change 12), and the long-press tooltip and crosshair on touch.
 - **Layout:** `axes.*.size` (a number, or `"auto"` to size gutters from the measured tick labels), outside legend positions, the title row (change 15).
+- **Shorter series calls:** `chart.addLine({ x, y })` (and `addArea`, `addScatter`, `addBar`) builds a `StaticDataset` from your arrays (X sorted ascending, same `RangeError`s), and `chart.addBar({ values, binSize | binCount | thresholds })` builds a `HistogramDataset`. The `dataset` form stays for object rows, unsorted data, shared datasets, and live buffers (`StaticSeriesConfig`, `HistogramSeriesConfig`; the handle is `SeriesStore<StaticDataset>` / `SeriesStore<HistogramDataset>`).
 - **Series and data:** `series.setStyle(options)`, `HistogramDataset.from(values, options)`, `StaticDataset.sorted(...)`, `StaticOhlcDataset.sorted(...)`, and `rejectedSamples` / `onInvalidSample` on streaming buffers.
 - **Events and viewport:** `viewportchange.source`, `followxchange`, and the options argument of `chart.pan`, `zoom`, and `setViewport` (change 14).
 - **Plugin context:** `ctx.coords.format`, `clientToPlot`, `plotToClient`, `ctx.state.inspect`, `ctx.dom.document`, `view`, `create`, `createSvg`, and `claimPointer`.
@@ -503,7 +514,7 @@ Additive features that need no migration work but are easy to miss:
 
 ### ESM only
 
-The package declares `"type": "module"` and exposes only an `import` condition. `require("blazeplot")` throws `ERR_PACKAGE_PATH_NOT_EXPORTED`. There is no CommonJS or UMD build, and none is planned.
+The package declares `"type": "module"` and every export has `import` and `default` conditions. Use `import` or `await import("blazeplot")`; `require("blazeplot")` works only on Node.js 22.12+, which can `require()` ES modules. There is no CommonJS or UMD build, and none is planned.
 
 Before:
 
@@ -529,7 +540,7 @@ In a CommonJS project, use dynamic `import()` or move the chart code into an ES 
 
 ### TypeScript 5.0 or newer
 
-The declarations are checked against TypeScript 5.0 and newer. Your `moduleResolution` must understand package `exports` (`bundler`, `node16`, or `nodenext`); the legacy `node`/`node10` setting cannot resolve subpaths such as `blazeplot/plugins/tooltip`. Include `"DOM"` in `lib`. Details: [TypeScript support](./versioning-and-migration.md#typescript-support).
+The declarations are checked against TypeScript 5.0 and newer. Your `moduleResolution` must understand package `exports` (`bundler`, `node16`, or `nodenext`); the legacy `node`/`node10` setting also resolves every subpath through `typesVersions`. Include `"DOM"` in `lib`. Details: [TypeScript support](./versioning-and-migration.md#typescript-support).
 
 ```json
 {
@@ -585,5 +596,5 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 15. Check fixed-height containers and visual baselines for charts with a `title` or `subtitle` (the title row, change 15) and for the rendering differences in change 13 (translucent blending, round `pointSize` markers in CSS pixels, dense area peaks).
 16. Rendering engines (change 16): the default `renderer` is now `"auto"`, so code that relied on `new Chart(...)` throwing `WebGL2UnavailableError` needs `renderer: "webgl2"`. On a release candidate, replace imports from `blazeplot/renderers/canvas2d` and `blazeplot/renderers/shared` with root imports or renderer names, and `"webgl2-shared"` with `"shared"`. If you mount many charts on one page, consider `renderer: "shared"`.
 17. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-18. Apply the renames in change 17 (search for `AxisControllerAxisOptions`, `rendererchange`, `ChartRendererKind`, `dpr`, root imports of `histogram`, and `capacity` passed next to a `dataset`).
+18. Apply the renames in change 17 (search for `AxisControllerAxisOptions`, `rendererchange`, `ChartRendererKind`, `dpr`, root imports of `histogram`, `capacity` passed next to a `dataset`, and the option names in the table above such as `offsetX`, `markerSize`, `handleWidth`).
 19. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
