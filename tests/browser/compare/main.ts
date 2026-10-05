@@ -259,6 +259,8 @@ function initialViewport(spec: ChartSpec): ViewportRange {
 function recordSizes(mounted: Mounted, details: Record<string, DetailValue>): void {
   details.plotWidth = round(mounted.handle.plotWidth(), 1);
   details.plotHeight = round(mounted.handle.plotHeight(), 1);
+  // Time from the end of the constructor to the produced frame; ready = construct + this.
+  details.presentWaitMs = round(mounted.readyMs - mounted.constructMs);
 }
 
 // ----------------------------------------------------------------- scenarios
