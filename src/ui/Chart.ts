@@ -18,7 +18,8 @@ import { ChartPicker, insidePlot, plotToData } from "./ChartPicker.js";
 import { forcedColorsTheme, resolveChartTheme } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import { PluginHost } from "./PluginHost.js";
-import type { ChartLayoutReservation, ChartPlugin } from "./PluginTypes.js";
+import { chartInternals, registerChartInternals } from "./ChartInternals.js";
+import type { ChartLayoutReservation } from "./PluginTypes.js";
 import { FollowXController } from "./FollowX.js";
 import { ChartAccessibility } from "./ChartAccessibility.js";
 import { domainsAlmostEqual, normalizeAxesConfig, normalizeFitPadding, paddedAxisDomain, resolveSeriesStyle } from "./ChartConfig.js";
@@ -137,6 +138,9 @@ export class Chart {
 
   /** Create a chart inside `target`. Call `start()` to begin rendering. */
   constructor(target: HTMLElement, options: ChartOptions = {}) {
+    // The internals accessor reads private state through getters, so it needs a name for the instance.
+    // oxlint-disable-next-line typescript/no-this-alias
+    const chart = this;
     this.options = options;
     this.followXPolicy.configure(options.followX ? (options.followX === true ? {} : options.followX) : null);
     this.userTheme = options.theme;
@@ -178,7 +182,28 @@ export class Chart {
       this.resizeObserver.observe(this.layout.plot);
     }
 
-    this.plugins = new PluginHost(this, {
+    registerChartInternals(this, {
+      get canvas() {
+        return chart.canvas;
+      },
+      get plotElement() {
+        return chart.layout.plot;
+      },
+      get xAxisElement() {
+        return chart.layout.xAxis;
+      },
+      get yAxisElement() {
+        return chart.layout.yAxis;
+      },
+      get y2AxisElement() {
+        return chart.layout.y2Axis;
+      },
+      getWebGLContext: () => chart.getWebGLContext(),
+      createRenderSurface: (canvas) => chart.createRenderSurface(canvas),
+      getCamera: (yAxis) => chart.getCamera(yAxis),
+      installPlugin: (plugin) => chart.plugins.install(plugin),
+    });
+    this.plugins = new PluginHost(this, chartInternals(this), {
       emit: (event, payload) => this.events.emit(event, payload),
       setLayoutReservation: (id, reservation) => this.setLayoutReservation(id, reservation),
       inspect: (inspectTarget) => this.hover.inspect(inspectTarget),
@@ -193,14 +218,6 @@ export class Chart {
     }
   }
 
-  /**
-   * @internal Install a plugin on a live chart (tests and linked layouts). Returns a function
-   * that disposes just that plugin; `dispose()` also disposes it.
-   */
-  installPlugin(plugin: ChartPlugin): () => void {
-    return this.plugins.install(plugin);
-  }
-
   /** Rendering engine in use: `"webgl2"`, `"canvas2d"`, or `"shared"` (a WebGL2 context shared with other charts). */
   get renderer(): RendererName {
     return this.engine.info.name;
@@ -211,8 +228,7 @@ export class Chart {
     return this.engine.info;
   }
 
-  /** @internal WebGL canvas. Plugins use `ctx.dom`, `ctx.layout`, or `ctx.unstable.canvas`. */
-  get canvas(): HTMLCanvasElement {
+  private get canvas(): HTMLCanvasElement {
     return this.layout.canvas;
   }
 
@@ -221,43 +237,20 @@ export class Chart {
     return this.layout.root;
   }
 
-  /** @internal Plot-area element. Plugins mount into the `"plot"` slot with `ctx.dom.mount`. */
-  get plotElement(): HTMLElement {
-    return this.layout.plot;
-  }
-
-  /** @internal X-axis element. Plugins use the `"axis-x"` surface. */
-  get xAxisElement(): HTMLElement {
-    return this.layout.xAxis;
-  }
-
-  /** @internal Primary Y-axis element. Plugins use the `"axis-y"` surface. */
-  get yAxisElement(): HTMLElement {
-    return this.layout.yAxis;
-  }
-
-  /** @internal Secondary Y-axis element. Plugins use the `"axis-y2"` surface. */
-  get y2AxisElement(): HTMLElement {
-    return this.layout.y2Axis;
-  }
-
   /** Resolved theme currently used by the chart. */
   get theme(): ResolvedChartTheme {
     return this.resolvedTheme;
   }
 
-  /** @internal The engine's native WebGL2 context, when it owns one. Plugins use `ctx.unstable.getWebGLContext()`. */
-  getWebGLContext(): WebGL2RenderingContext | null {
+  private getWebGLContext(): WebGL2RenderingContext | null {
     return this.engine.webglContext?.() ?? null;
   }
 
-  /** @internal A drawing surface for a plugin-owned canvas, on this chart's engine. Plugins use `ctx.unstable.createRenderSurface()`. */
-  createRenderSurface(canvas: HTMLCanvasElement): ChartRenderSurface {
+  private createRenderSurface(canvas: HTMLCanvasElement): ChartRenderSurface {
     return toRenderSurface(this.engine.createSurface(canvas));
   }
 
-  /** @internal Camera for the requested Y axis. Plugins use `ctx.unstable.getCamera()`. */
-  getCamera(yAxis: SeriesYAxis = "left"): Camera2D {
+  private getCamera(yAxis: SeriesYAxis = "left"): Camera2D {
     return yAxis === "right" ? this.rightCamera : this.camera;
   }
 

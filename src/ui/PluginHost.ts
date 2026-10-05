@@ -1,25 +1,17 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
-import type { Camera2D } from "../interaction/Camera2D.js";
 import type { PanIntent, ZoomIntent } from "../interaction/types.js";
 import type { ChartEventMap, ChartEventName, ChartFrameStats, ChartHoverState, ChartInspectionTarget, ChartPickOptions, ChartSeriesState } from "./ChartEvents.js";
 import type { ChartFitToDataOptions, ChartFollowXOptions, ChartFollowXState, ChartSetViewportOptions, ChartViewportGestureOptions } from "./ChartViewportTypes.js";
-import type { ChartRenderSurface, ChartRendererInfo } from "../render/ChartRenderer.js";
+import type { ChartRendererInfo } from "../render/ChartRenderer.js";
 import type { ResolvedChartTheme } from "./theme.js";
+import type { ChartInternals } from "./ChartInternals.js";
 import type { ChartLayoutReservation, ChartMountSlot, ChartPlugin, ChartPluginContext, ChartPluginCoords, ChartPluginDom, ChartPluginEvents, ChartPluginHandle, ChartPluginLayout, ChartPluginState, ChartPluginUnstable, ChartPluginViewport, ChartRect, ChartSurface, ChartSurfaceStyle } from "./PluginTypes.js";
 
 /** @internal Chart capabilities the plugin host needs. */
 export interface PluginHostChart {
   readonly theme: ResolvedChartTheme;
-  readonly canvas: HTMLCanvasElement;
   readonly rootElement: HTMLElement;
-  readonly plotElement: HTMLElement;
-  readonly xAxisElement: HTMLElement;
-  readonly yAxisElement: HTMLElement;
-  readonly y2AxisElement: HTMLElement;
   readonly rendererInfo: ChartRendererInfo;
-  getWebGLContext(): WebGL2RenderingContext | null;
-  createRenderSurface(canvas: HTMLCanvasElement): ChartRenderSurface;
-  getCamera(yAxis?: SeriesYAxis): Camera2D;
   dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
   clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
   getViewport(yAxis?: SeriesYAxis): Viewport;
@@ -94,7 +86,7 @@ export class PluginHost {
   private readonly pointerClaims = new Map<number, InstalledPlugin>();
   private claimListening = false;
 
-  constructor(private readonly chart: PluginHostChart, private readonly internals: PluginHostInternals) {}
+  constructor(private readonly chart: PluginHostChart, private readonly access: ChartInternals, private readonly internals: PluginHostInternals) {}
 
   private readonly releaseClaim = (event: Event): void => {
     this.pointerClaims.delete((event as PointerEvent).pointerId);
@@ -214,22 +206,23 @@ export class PluginHost {
   private surfaceElement(slot: ChartMountSlot | ChartSurface): HTMLElement {
     const chart = this.chart;
     switch (slot) {
-      case "plot": return chart.plotElement;
+      case "plot": return this.access.plotElement;
       case "root": return chart.rootElement;
-      case "axis-x": return chart.xAxisElement;
-      case "axis-y": return chart.yAxisElement;
-      case "axis-y2": return chart.y2AxisElement;
+      case "axis-x": return this.access.xAxisElement;
+      case "axis-y": return this.access.yAxisElement;
+      case "axis-y2": return this.access.y2AxisElement;
       case "body": return chart.rootElement.ownerDocument.body ?? chart.rootElement;
     }
   }
 
   /** Input target for a surface: the plot surface is the canvas, which sits above the plot element. */
   private surfaceTarget(surface: ChartSurface): HTMLElement {
-    return surface === "plot" ? this.chart.canvas : this.surfaceElement(surface);
+    return surface === "plot" ? this.access.canvas : this.surfaceElement(surface);
   }
 
   private createContext(entry: InstalledPlugin): ChartPluginContext {
     const chart = this.chart;
+    const access = this.access;
     const internals = this.internals;
     const track = (cleanup: () => void): (() => void) => {
       let done = false;
@@ -243,7 +236,7 @@ export class PluginHost {
       entry.cleanups.push(once);
       return once;
     };
-    const plotClientRect = (): ChartRect => toRect(chart.canvas.getBoundingClientRect());
+    const plotClientRect = (): ChartRect => toRect(access.canvas.getBoundingClientRect());
 
     const coords: ChartPluginCoords = {
       dataToPlot: (x, y, yAxis) => chart.dataToPlot(x, y, yAxis),
@@ -266,7 +259,7 @@ export class PluginHost {
       zoom: (intent, yAxis, options) => chart.zoom(intent, yAxis, options),
       fitToData: (options) => chart.fitToData(options),
       isReversed: (axis, yAxis) => {
-        const camera = chart.getCamera(yAxis);
+        const camera = access.getCamera(yAxis);
         return axis === "x" ? camera.xReversed : camera.yReversed;
       },
       followX: (options) => chart.followX(options),
@@ -356,16 +349,16 @@ export class PluginHost {
 
     const unstable: ChartPluginUnstable = {
       get canvas() {
-        return chart.canvas;
+        return access.canvas;
       },
       element: (slot) => this.surfaceElement(slot),
-      getWebGLContext: () => chart.getWebGLContext(),
+      getWebGLContext: () => access.getWebGLContext(),
       createRenderSurface: (canvas) => {
-        const surface = chart.createRenderSurface(canvas);
+        const surface = access.createRenderSurface(canvas);
         track(() => surface.dispose());
         return surface;
       },
-      getCamera: (yAxis) => chart.getCamera(yAxis),
+      getCamera: (yAxis) => access.getCamera(yAxis),
     };
 
     return {

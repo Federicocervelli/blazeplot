@@ -1,3 +1,4 @@
+import { chartInternals } from "@/ui/ChartInternals.ts";
 import { Chart } from "@/index.ts";
 import type { SeriesStore } from "@/index.ts";
 
@@ -52,7 +53,7 @@ async function run(): Promise<void> {
     cell.className = "cell";
     grid.appendChild(cell);
     const chart = new Chart(cell, { axes: false, grid: false, renderer, followX: { window: 1000 } });
-    chart.canvas.addEventListener("webglcontextlost", () => contextsLost++);
+    chartInternals(chart).canvas.addEventListener("webglcontextlost", () => contextsLost++);
     chart.subscribe("render", () => {
       renderMsThisFrame += chart.getFrameStats().frameMs;
     });
@@ -98,7 +99,7 @@ async function run(): Promise<void> {
     frameWorkP50Ms: pct(work, 0.5),
     frameWorkP95Ms: pct(work, 0.95),
     contextsLost,
-    chartsWithLostContext: charts.filter((chart) => chart.getWebGLContext()?.isContextLost() === true).length,
+    chartsWithLostContext: charts.filter((chart) => chartInternals(chart).getWebGLContext()?.isContextLost() === true).length,
   };
   window.__multi.state = "done";
   for (const chart of charts) chart.dispose();

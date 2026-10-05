@@ -8,7 +8,7 @@
  *   bun run test:api              check dist against the snapshot (run `bun run build` first)
  *   bun run test:api -- --update  rewrite the snapshot after an intentional API change
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "@typescript/typescript6";
@@ -36,6 +36,22 @@ for (const entry of entries) {
     console.error(`Missing ${entry.dts}. Run \`bun run build\` first.`);
     process.exit(1);
   }
+}
+
+// `stripInternal` removes `@internal` declarations from the emitted typings. Any that survive would be
+// public API by accident, so fail instead of snapshotting them.
+const leaks: string[] = [];
+const scanDir = (dir: string): void => {
+  for (const name of readdirSync(dir)) {
+    const full = resolve(dir, name);
+    if (statSync(full).isDirectory()) scanDir(full);
+    else if (name.endsWith(".d.ts") && readFileSync(full, "utf8").includes("@internal")) leaks.push(full);
+  }
+};
+scanDir(resolve(root, "dist"));
+if (leaks.length > 0) {
+  console.error(`@internal declarations leaked into the published typings:\n${leaks.map((file) => `  ${file}`).join("\n")}`);
+  process.exit(1);
 }
 
 const program = ts.createProgram(entries.map((entry) => entry.dts), {

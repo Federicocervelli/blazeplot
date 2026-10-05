@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it } from "bun:test";
 import { selectionPlugin } from "../../src/plugins/selection.ts";
 import { interactionsPlugin } from "../../src/plugins/interactions.ts";
@@ -19,12 +20,12 @@ function make(options: SelectionPluginOptions = {}): { chart: Chart; plugin: Ret
 }
 
 function drag(chart: Chart, from: [number, number], to: [number, number]): void {
-  fire(chart.canvas, pointerEvent("pointerdown", from[0], from[1]));
-  fire(chart.canvas, pointerEvent("pointermove", to[0], to[1]));
-  fire(chart.canvas, pointerEvent("pointerup", to[0], to[1]));
+  fire(chartInternals(chart).canvas, pointerEvent("pointerdown", from[0], from[1]));
+  fire(chartInternals(chart).canvas, pointerEvent("pointermove", to[0], to[1]));
+  fire(chartInternals(chart).canvas, pointerEvent("pointerup", to[0], to[1]));
 }
 
-const overlayOf = (chart: Chart): HTMLElement => chart.plotElement.querySelector(".blazeplot-selection-brush") as HTMLElement;
+const overlayOf = (chart: Chart): HTMLElement => chartInternals(chart).plotElement.querySelector(".blazeplot-selection-brush") as HTMLElement;
 
 describe("selectionPlugin", () => {
   it("emits start, update, and commit and publishes the selection on the chart", () => {
@@ -32,12 +33,12 @@ describe("selectionPlugin", () => {
     const overlay = overlayOf(chart);
     expect(overlay.style.display).toBe("none");
 
-    fire(chart.canvas, pointerEvent("pointerdown", 100, 50));
-    fire(chart.canvas, pointerEvent("pointermove", 300, 150));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 300, 150));
     expect(overlay.style.display).toBe("block");
     expect(overlay.style.left).toBe("100px");
     expect(overlay.style.width).toBe("200px");
-    fire(chart.canvas, pointerEvent("pointerup", 300, 150));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 300, 150));
 
     expect(events.map((e) => e.type)).toEqual(["start", "update", "commit"]);
     const selection = plugin.getSelection()!;
@@ -86,18 +87,18 @@ describe("selectionPlugin", () => {
     expect(plugin.getSelection()).toBeNull();
     expect(overlayOf(chart).style.display).toBe("none");
 
-    fire(chart.canvas, pointerEvent("pointerdown", 100, 50));
-    fire(chart.canvas, pointerEvent("pointermove", 300, 150));
-    fire(chart.canvas, pointerEvent("pointercancel", 300, 150));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 300, 150));
+    fire(chartInternals(chart).canvas, pointerEvent("pointercancel", 300, 150));
     expect(plugin.getSelection()).toBeNull();
     expect(overlayOf(chart).style.display).toBe("none");
 
     const secondary = pointerEvent("pointerdown", 100, 50, { button: 2 });
-    fire(chart.canvas, secondary);
+    fire(chartInternals(chart).canvas, secondary);
     expect(secondary.defaultPrevented).toBe(false);
 
-    fire(chart.canvas, pointerEvent("pointerdown", 100, 50));
-    fire(chart.canvas, pointerEvent("pointerup", 300, 150, { pointerId: 7 }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 300, 150, { pointerId: 7 }));
     expect(plugin.getSelection()).toBeNull();
     expect(events.map((e) => e.type)).not.toContain("commit");
     expect(selects).toEqual([]);
@@ -123,8 +124,8 @@ describe("selectionPlugin", () => {
     drag(a.chart, [100, 50], [300, 150]);
     drag(b.chart, [100, 50], [300, 150]);
     // Pressing the canvas armed chart B; Escape clears B but not A.
-    fire(b.chart.canvas, pointerEvent("pointerdown", 10, 10));
-    fire(b.chart.canvas, pointerEvent("pointerup", 10, 10));
+    fire(chartInternals(b.chart).canvas, pointerEvent("pointerdown", 10, 10));
+    fire(chartInternals(b.chart).canvas, pointerEvent("pointerup", 10, 10));
     fire(globalThis as unknown as EventTarget, keyEvent("Escape"));
     expect(a.plugin.getSelection()).not.toBeNull();
     expect(b.plugin.getSelection()).toBeNull();
@@ -132,8 +133,8 @@ describe("selectionPlugin", () => {
     expect(b.events.at(-1)).toMatchObject({ type: "clear", selection: null });
     expect(overlayOf(b.chart).style.display).toBe("none");
 
-    fire(a.chart.canvas, pointerEvent("pointerdown", 10, 10));
-    fire(a.chart.canvas, pointerEvent("pointerup", 10, 10));
+    fire(chartInternals(a.chart).canvas, pointerEvent("pointerdown", 10, 10));
+    fire(chartInternals(a.chart).canvas, pointerEvent("pointerup", 10, 10));
     fire(globalThis as unknown as EventTarget, keyEvent("Escape"));
     expect(a.plugin.getSelection()).toBeNull();
     a.chart.dispose();
@@ -159,8 +160,8 @@ describe("selectionPlugin", () => {
   it("does not clear on Escape when clearOnEscape is false, but clear() still works", () => {
     const { chart, plugin, events } = make({ clearOnEscape: false });
     drag(chart, [100, 50], [300, 150]);
-    fire(chart.canvas, pointerEvent("pointerdown", 10, 10));
-    fire(chart.canvas, pointerEvent("pointerup", 10, 10));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 10, 10));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 10, 10));
     fire(globalThis as unknown as EventTarget, keyEvent("Escape"));
     expect(plugin.getSelection()).not.toBeNull();
     plugin.clear();
@@ -176,7 +177,7 @@ describe("selectionPlugin", () => {
     chart.dispose();
 
     const custom = make({ fillColor: "rgb(9, 9, 9)", strokeColor: "rgb(8, 8, 8)", className: "my-brush", zIndex: 3 });
-    const overlay = custom.chart.plotElement.querySelector(".my-brush") as HTMLElement;
+    const overlay = chartInternals(custom.chart).plotElement.querySelector(".my-brush") as HTMLElement;
     expect(overlay.style.background).toBe("rgb(9, 9, 9)");
     expect(overlay.style.border).toContain("rgb(8, 8, 8)");
     expect(overlay.style.zIndex).toBe("3");
@@ -217,7 +218,7 @@ describe("selectionPlugin keyboard", () => {
 
   it("extends a range from the plot center with Shift+Arrow, commits with Enter, and emits select", () => {
     const { chart, plugin, events, selects } = make({ mode: "x-range" });
-    chart.installPlugin(interactionsPlugin());
+    chartInternals(chart).installPlugin(interactionsPlugin());
     const right = press(chart, "ArrowRight", { shiftKey: true });
     expect(right.defaultPrevented).toBe(true);
     // The chart's own Shift+Arrow pan did not run.

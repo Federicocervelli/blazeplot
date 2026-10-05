@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { FakeResizeObserver, setupDom } from "./fakes.ts";
 import type { FakeRaf, TestEnv } from "./fakes.ts";
@@ -69,7 +70,7 @@ describe("Chart renderer option", () => {
     const chart = new Chart(target, { renderer: "canvas2d" });
     stubPlot(chart);
     expect(chart.renderer).toBe("canvas2d");
-    expect(chart.getWebGLContext()).toBeNull();
+    expect(chartInternals(chart).getWebGLContext()).toBeNull();
     expect(contexts).not.toContain("webgl2");
     chart.addLine({ capacity: 8 }).append({ x: [0, 1, 2], y: [0, 1, 0] });
     chart.start();

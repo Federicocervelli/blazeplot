@@ -1,3 +1,4 @@
+import { chartInternals } from "@/ui/ChartInternals.ts";
 import {
   BarController,
   BarElement,
@@ -104,7 +105,7 @@ function createBlazePlot(host: HTMLElement, spec: ChartSpec, data: LibraryData, 
   chart.start();
 
   const first = stores[0]!;
-  const canvas = chart.canvas;
+  const canvas = chartInternals(chart).canvas;
   return {
     setViewport: applyViewport,
     append: (startX, count, next) => {

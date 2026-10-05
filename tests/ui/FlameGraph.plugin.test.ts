@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { flameGraphPlugin } from "../../src/plugins/flamegraph.ts";
 import { buildFlameGraphModel } from "../../src/plugins/flamegraph/model.ts";
@@ -51,7 +52,7 @@ function make(options: FlameGraphPluginOptions = {}): { chart: Chart; plugin: Re
   return { chart, plugin };
 }
 
-const rectCanvas = (chart: Chart): HTMLCanvasElement => chart.plotElement.querySelector(".blazeplot-flamegraph-canvas") as HTMLCanvasElement;
+const rectCanvas = (chart: Chart): HTMLCanvasElement => chartInternals(chart).plotElement.querySelector(".blazeplot-flamegraph-canvas") as HTMLCanvasElement;
 /** The recording engine of the chart under test (the last one the harness built). */
 const engineOf = (): RecordingRenderer => h.backends().at(-1)!;
 /** What the flame graph asked its render surface to draw. */
@@ -65,8 +66,8 @@ const frame = (chart: Chart): void => {
 describe("flameGraphPlugin install and rendering", () => {
   it("mounts its canvases, hover marker, and tooltip and fits the viewport to the model", () => {
     const { chart } = make();
-    expect(chart.plotElement.querySelector(".blazeplot-flamegraph-labels")).not.toBeNull();
-    expect(chart.plotElement.querySelector(".blazeplot-flamegraph-hover")).not.toBeNull();
+    expect(chartInternals(chart).plotElement.querySelector(".blazeplot-flamegraph-labels")).not.toBeNull();
+    expect(chartInternals(chart).plotElement.querySelector(".blazeplot-flamegraph-hover")).not.toBeNull();
     const tip = tooltip()!;
     expect(tip.getAttribute("role")).toBe("tooltip");
     expect(tip.getAttribute("aria-hidden")).toBe("true");
@@ -144,8 +145,8 @@ describe("flameGraphPlugin install and rendering", () => {
   it("omits the tooltip and hover marker when disabled", () => {
     const { chart } = make({ tooltip: false, hoverHighlight: false });
     expect(tooltip()).toBeNull();
-    expect(chart.plotElement.querySelector(".blazeplot-flamegraph-hover")).toBeNull();
-    fire(chart.canvas, pointerEvent("pointermove", 100, 50));
+    expect(chartInternals(chart).plotElement.querySelector(".blazeplot-flamegraph-hover")).toBeNull();
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 100, 50));
     chart.dispose();
   });
 });
@@ -176,17 +177,17 @@ describe("flameGraphPlugin picking and pointer events", () => {
     const hovered: Array<FlameGraphPick | null> = [];
     const { chart } = make({ onFrameHover: (p) => hovered.push(p) });
     frame(chart);
-    fire(chart.canvas, pointerEvent("pointermove", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 100, 50));
     const tip = tooltip()!;
     expect(tip.style.display).toBe("block");
     expect(tip.getAttribute("aria-hidden")).toBe("false");
     expect(tip.textContent).toBe("a\n6 samples (60.00%)");
     expect(hovered.at(-1)!.frame.name).toBe("a");
-    const marker = chart.plotElement.querySelector(".blazeplot-flamegraph-hover") as HTMLElement;
+    const marker = chartInternals(chart).plotElement.querySelector(".blazeplot-flamegraph-hover") as HTMLElement;
     expect(marker.style.display).toBe("block");
     expect(marker.style.width).toBe("240px");
 
-    fire(chart.canvas, pointerEvent("pointerleave", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 100, 50));
     expect(tip.style.display).toBe("none");
     expect(tip.getAttribute("aria-hidden")).toBe("true");
     expect(marker.style.display).toBe("none");
@@ -196,7 +197,7 @@ describe("flameGraphPlugin picking and pointer events", () => {
 
   it("formats the tooltip with a custom formatter", () => {
     const { chart } = make({ tooltipFormatter: (pick, model) => `${pick.frame.name}/${model.total}`, tooltipClassName: "fg-tip" });
-    fire(chart.canvas, pointerEvent("pointermove", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 100, 50));
     expect(document.body.querySelector(".fg-tip")!.textContent).toBe("a/10");
     chart.dispose();
   });
@@ -205,36 +206,36 @@ describe("flameGraphPlugin picking and pointer events", () => {
     const clicks: string[] = [];
     const { chart } = make({ onFrameClick: (p) => clicks.push(p.frame.name) });
     const click = (x: number, y: number, shift = false): void => {
-      fire(chart.canvas, new window.MouseEvent("click", { bubbles: true, clientX: x, clientY: y, shiftKey: shift }));
+      fire(chartInternals(chart).canvas, new window.MouseEvent("click", { bubbles: true, clientX: x, clientY: y, shiftKey: shift }));
     };
 
-    fire(chart.canvas, pointerEvent("pointerdown", 100, 50));
-    fire(chart.canvas, pointerEvent("pointerup", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 100, 50));
     click(100, 50);
     expect(clicks).toEqual(["a"]);
 
-    fire(chart.canvas, pointerEvent("pointerdown", 100, 50, { shiftKey: true }));
-    fire(chart.canvas, pointerEvent("pointerup", 100, 50, { shiftKey: true }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50, { shiftKey: true }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 100, 50, { shiftKey: true }));
     click(100, 50, true);
     expect(clicks).toEqual(["a"]);
 
-    fire(chart.canvas, pointerEvent("pointerdown", 100, 50));
-    fire(chart.canvas, pointerEvent("pointermove", 130, 50));
-    fire(chart.canvas, pointerEvent("pointerup", 130, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 130, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 130, 50));
     click(130, 50);
     expect(clicks).toEqual(["a"]);
 
-    fire(chart.canvas, pointerEvent("pointerdown", 300, 50));
-    fire(chart.canvas, pointerEvent("pointercancel", 300, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 300, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointercancel", 300, 50));
     click(300, 50);
     expect(clicks).toEqual(["a"]);
 
-    fire(chart.canvas, pointerEvent("pointerdown", 300, 50, { button: 2 }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 300, 50, { button: 2 }));
     click(300, 50);
     expect(clicks).toEqual(["a", "b"]);
 
-    fire(chart.canvas, pointerEvent("pointerdown", 100, 50, { pointerType: "touch" }));
-    fire(chart.canvas, pointerEvent("pointerup", 100, 50, { pointerType: "touch" }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50, { pointerType: "touch" }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 100, 50, { pointerType: "touch" }));
     click(100, 50);
     expect(clicks).toEqual(["a", "b", "a"]);
     chart.dispose();
@@ -320,7 +321,7 @@ describe("flameGraphPlugin lifecycle", () => {
     h.raf.flush();
     const canvas = rectCanvas(chart);
     Object.defineProperty(canvas, "clientWidth", { configurable: true, value: 300 });
-    Object.defineProperty(chart.canvas, "clientWidth", { configurable: true, value: 300 });
+    Object.defineProperty(chartInternals(chart).canvas, "clientWidth", { configurable: true, value: 300 });
     const drawsBefore = rectDraws();
     chart.resize(1);
     h.raf.flush();

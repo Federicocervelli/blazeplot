@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it } from "bun:test";
 import { a11yPlugin } from "../../src/plugins/a11y.ts";
 import { annotationsPlugin } from "../../src/plugins/annotations.ts";
@@ -45,10 +46,10 @@ describe("DOM node growth while streaming with every plugin", () => {
     h.raf.flush();
     let ticks = 0;
     const hover = (): void => {
-      fire(chart.canvas, pointerEvent("pointermove", 200, 100));
-      fire(chart.canvas, pointerEvent("pointerdown", 200, 100, { button: 0, buttons: 1 }));
-      fire(chart.canvas, pointerEvent("pointerup", 200, 100, { button: 0, buttons: 0 }));
-      fire(chart.canvas, pointerEvent("pointerleave", 200, 100));
+      fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
+      fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 200, 100, { button: 0, buttons: 1 }));
+      fire(chartInternals(chart).canvas, pointerEvent("pointerup", 200, 100, { button: 0, buttons: 0 }));
+      fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 200, 100));
       for (const [key, shiftKey] of [["Enter", false], ["ArrowRight", false], ["Escape", false], ["ArrowRight", true], ["Escape", false]] as const) {
         fire(chart.rootElement, keyEvent(key, { shiftKey }));
       }

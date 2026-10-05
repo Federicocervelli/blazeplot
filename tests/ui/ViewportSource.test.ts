@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it } from "bun:test";
 import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import type { ChartViewportChangeSource } from "../../src/ui/Chart.ts";
@@ -63,7 +64,7 @@ describe("viewportchange source", () => {
     ctx.viewport.zoom({ factor: 1.1, cx: 0.5, cy: 0.5, axis: "xy" }, undefined, { source: "user" });
     expect(sources).toEqual(["user", "user", "user"]);
     sources.length = 0;
-    fire(chart.canvas, wheelEvent(200, 100, { deltaY: -100 }));
+    fire(chartInternals(chart).canvas, wheelEvent(200, 100, { deltaY: -100 }));
     expect(sources.length).toBeGreaterThan(0);
     expect(new Set(sources)).toEqual(new Set(["user"]));
     chart.dispose();

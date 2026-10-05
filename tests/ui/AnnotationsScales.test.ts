@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it } from "bun:test";
 import { annotationsPlugin } from "../../src/plugins/annotations.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
@@ -5,7 +6,7 @@ import type { Annotation } from "../../src/plugins/annotations/types.ts";
 import { installPlugin, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();
-const groups = (chart: Chart): Element[] => [...(chart.plotElement.querySelector(".blazeplot-annotations") as SVGSVGElement).children];
+const groups = (chart: Chart): Element[] => [...(chartInternals(chart).plotElement.querySelector(".blazeplot-annotations") as SVGSVGElement).children];
 
 describe("annotationsPlugin scales and node reuse", () => {
   it("projects through log and reversed axes", () => {

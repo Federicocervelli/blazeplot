@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
 import { chartRenderer, installEngineDoubles, uiEngine } from "./engines.ts";
 import { RecordingRenderer, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
@@ -28,10 +29,10 @@ export interface PlotStub {
  * `getBoundingClientRect`, `clientWidth`, and `clientHeight` on the chart canvas.
  */
 export function stubPlot(chart: ChartType, { width = 400, height = 200, left = 0, top = 0 }: PlotStub = {}): void {
-  chart.canvas.getBoundingClientRect = () =>
+  chartInternals(chart).canvas.getBoundingClientRect = () =>
     ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() {} }) as DOMRect;
-  Object.defineProperty(chart.canvas, "clientWidth", { configurable: true, value: width });
-  Object.defineProperty(chart.canvas, "clientHeight", { configurable: true, value: height });
+  Object.defineProperty(chartInternals(chart).canvas, "clientWidth", { configurable: true, value: width });
+  Object.defineProperty(chartInternals(chart).canvas, "clientHeight", { configurable: true, value: height });
 }
 
 /** Give an arbitrary element a fixed layout box. */
@@ -95,13 +96,13 @@ export function keyEvent(key: string, init: { shiftKey?: boolean; ctrlKey?: bool
  * normalizing the function, handle, and void return forms.
  */
 export function installPlugin(chart: ChartType, plugin: ChartPlugin): () => void {
-  return chart.installPlugin(plugin);
+  return chartInternals(chart).installPlugin(plugin);
 }
 
 /** Install a no-op plugin on a live chart and return its context, e.g. to emit plugin events. */
 export function pluginContext(chart: ChartType): ChartPluginContext {
   let captured: ChartPluginContext | null = null;
-  chart.installPlugin({ install: (ctx) => { captured = ctx; } });
+  chartInternals(chart).installPlugin({ install: (ctx) => { captured = ctx; } });
   return captured!;
 }
 

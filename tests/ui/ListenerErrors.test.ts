@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it, spyOn } from "bun:test";
 import { fire, installPlugin, pointerEvent, useChartHarness } from "./harness.ts";
 
@@ -22,7 +23,7 @@ describe("chart event listener isolation", () => {
       const seen: unknown[] = [];
       chart.subscribe("hover", () => { throw new Error("bad hover"); });
       chart.subscribe("hover", (state) => seen.push(state));
-      fire(chart.canvas, pointerEvent("pointermove", 200, 100));
+      fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
       h.raf.flush();
       expect(seen.length).toBeGreaterThan(0);
       expect(logged(error, "hover listener failed")).toBe(true);
@@ -36,7 +37,7 @@ describe("chart event listener isolation", () => {
     const chart = seeded();
     const error = spyOn(console, "error").mockImplementation(() => {});
     try {
-      fire(chart.canvas, pointerEvent("pointermove", 200, 100));
+      fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
       chart.start();
       h.raf.flush();
       const hovers: unknown[] = [];

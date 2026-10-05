@@ -37,7 +37,7 @@ export function downloadBlob(blob: Blob, filename = "blazeplot.png", doc: Docume
 export async function downloadChartScreenshot(chart: Chart, options: ChartDownloadOptions = {}): Promise<Blob> {
   const { filename = defaultScreenshotFilename(options.type), ...screenshotOptions } = options;
   const blob = await chart.screenshot(screenshotOptions);
-  downloadBlob(blob, filename, chart.canvas.ownerDocument);
+  downloadBlob(blob, filename, chart.rootElement.ownerDocument);
   return blob;
 }
 

@@ -1,3 +1,4 @@
+import { chartInternals } from "@/ui/ChartInternals.ts";
 import { Chart, StaticDataset } from "@/index.ts";
 import { createLinkedCharts } from "@/linked.ts";
 import type { ChartHoverState, ChartPlugin, Viewport } from "@/index.ts";
@@ -290,9 +291,9 @@ window.__blazeplotInteractionTest = {
     rightViewport: chart.getViewport("right"),
     initialViewport,
     initialRightViewport,
-    canvasRect: rectOf(chart.canvas),
-    xAxisRect: rectOf(chart.xAxisElement),
-    yAxisRect: rectOf(chart.yAxisElement),
+    canvasRect: rectOf(chartInternals(chart).canvas),
+    xAxisRect: rectOf(chartInternals(chart).xAxisElement),
+    yAxisRect: rectOf(chartInternals(chart).yAxisElement),
     hoverItems,
     hoverEvents,
     crosshairMoves,
@@ -311,7 +312,7 @@ window.__blazeplotInteractionTest = {
     error,
   }),
   colors: colorSnapshot,
-  panels: () => charts.map((item) => ({ viewport: item.getViewport(), canvasRect: rectOf(item.canvas) })),
+  panels: () => charts.map((item) => ({ viewport: item.getViewport(), canvasRect: rectOf(chartInternals(item).canvas) })),
   screenshotInk: async () => {
     const bitmap = await createImageBitmap(await chart.screenshot());
     const canvas = document.createElement("canvas");

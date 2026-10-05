@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { HistogramDataset } from "../../src/core/Histogram.ts";
 import { RingBuffer } from "../../src/core/RingBuffer.ts";
@@ -251,12 +252,12 @@ describe("ChartHover", () => {
     chart.start();
     h.raf.flush();
 
-    fire(chart.canvas, pointerEvent("pointermove", 200, 100, { offsetX: 200, offsetY: 100 }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100, { offsetX: 200, offsetY: 100 }));
     h.raf.flush();
     expect(chart.getHoverState()?.items[0]?.series).toBe(series);
     expect(chart.getHoverState()?.source).toBe("pointer");
 
-    fire(chart.canvas, pointerEvent("pointerleave", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 200, 100));
     expect(chart.getHoverState()).toBeNull();
     expect(states.length).toBe(2);
     chart.dispose();
@@ -266,7 +267,7 @@ describe("ChartHover", () => {
 describe("ChartAccessibility", () => {
   it("labels the root from title text, links a summary, and removes timers on dispose", () => {
     const chart = h.make({ title: "Latency", subtitle: "p99" });
-    const root = chart.canvas.closest(".blazeplot-root") as HTMLElement;
+    const root = chartInternals(chart).canvas.closest(".blazeplot-root") as HTMLElement;
     expect(root.getAttribute("role")).toBe("figure");
     expect(root.getAttribute("aria-label")).toBe("Latency — p99");
     const summary = root.ownerDocument.getElementById(root.getAttribute("aria-describedby")!);
@@ -278,7 +279,7 @@ describe("ChartAccessibility", () => {
 
   it("skips ARIA wiring when accessibility is disabled", () => {
     const chart = h.make({ accessibility: false });
-    const root = chart.canvas.closest(".blazeplot-root") as HTMLElement;
+    const root = chartInternals(chart).canvas.closest(".blazeplot-root") as HTMLElement;
     expect(root.hasAttribute("aria-label")).toBe(false);
     expect(root.querySelector("style.blazeplot-style")).toBeNull();
     // Keyboard events are inert without the a11y plugin.

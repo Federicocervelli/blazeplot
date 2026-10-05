@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it } from "bun:test";
 import { annotationsPlugin } from "../../src/plugins/annotations.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
@@ -18,10 +19,10 @@ function make(options: AnnotationsPluginOptions = {}): { chart: Chart; plugin: R
   return { chart, plugin };
 }
 
-const svgOf = (chart: Chart): SVGSVGElement => chart.plotElement.querySelector(".blazeplot-annotations") as SVGSVGElement;
+const svgOf = (chart: Chart): SVGSVGElement => chartInternals(chart).plotElement.querySelector(".blazeplot-annotations") as SVGSVGElement;
 const groups = (chart: Chart): Element[] => [...svgOf(chart).children];
 const click = (chart: Chart, x: number, y: number): void => {
-  fire(chart.canvas, new window.MouseEvent("click", { bubbles: true, clientX: x, clientY: y }));
+  fire(chartInternals(chart).canvas, new window.MouseEvent("click", { bubbles: true, clientX: x, clientY: y }));
 };
 
 describe("annotationsPlugin rendering", () => {
@@ -223,16 +224,16 @@ describe("annotationsPlugin hit testing and events", () => {
     const { chart, plugin } = make({ annotations: [{ id: "xl", type: "x-line", x: 50 }], onHover: (e) => options.push(e) });
     const off = plugin.subscribe("hover", (e) => subscribed.push(e));
 
-    fire(chart.canvas, pointerEvent("pointermove", 200, 100));
-    fire(chart.canvas, pointerEvent("pointermove", 201, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 201, 100));
     expect(options.map((e) => e?.annotation.id)).toEqual(["xl", "xl"]);
     expect(options[0]!.source?.type).toBe("pointermove");
-    fire(chart.canvas, pointerEvent("pointermove", 100, 100));
-    fire(chart.canvas, pointerEvent("pointermove", 110, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 100, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 110, 100));
     expect(options.map((e) => e?.annotation.id ?? null)).toEqual(["xl", "xl", null]);
     expect(subscribed).toHaveLength(3);
     off();
-    fire(chart.canvas, pointerEvent("pointermove", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
     expect(subscribed).toHaveLength(3);
     chart.dispose();
   });
@@ -266,7 +267,7 @@ describe("annotationsPlugin lifecycle", () => {
     dispose();
     expect(countNodes(chart.rootElement)).toBe(nodes);
     expect(h.ledger().reachable()).toBe(listeners);
-    fire(chart.canvas, pointerEvent("pointermove", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 200, 100));
     click(chart, 200, 100);
     expect(hits).toEqual([]);
     chart.dispose();
@@ -282,7 +283,7 @@ describe("annotationsPlugin lifecycle", () => {
         { type: "label", x: 80, y: 80, text: "Peak", focusable: false },
       ],
     });
-    const targets = (): HTMLElement[] => [...chart.plotElement.querySelectorAll<HTMLElement>(".blazeplot-annotation-focus")];
+    const targets = (): HTMLElement[] => [...chartInternals(chart).plotElement.querySelectorAll<HTMLElement>(".blazeplot-annotation-focus")];
     expect(targets().map((target) => target.getAttribute("aria-label"))).toEqual(["Deploy", "Horizontal line at y 50", "Incident window"]);
     const [line] = targets();
     expect(line!.tabIndex).toBe(0);
@@ -308,7 +309,7 @@ describe("annotationsPlugin lifecycle", () => {
     const first: Annotation = { type: "x-line", x: 25, id: "a", label: "A", removable: true };
     const second: Annotation = { type: "x-line", x: 75, id: "b", label: "B" };
     const { chart, plugin } = make({ annotations: [first, second], onClick: (event) => clicks.push(event), onRemove: (annotation) => removed.push(annotation) });
-    const targets = (): HTMLElement[] => [...chart.plotElement.querySelectorAll<HTMLElement>(".blazeplot-annotation-focus")];
+    const targets = (): HTMLElement[] => [...chartInternals(chart).plotElement.querySelectorAll<HTMLElement>(".blazeplot-annotation-focus")];
     const [a, b] = targets();
     for (const target of [a!, b!]) target.getBoundingClientRect = () => ({ left: 100, top: 0, width: 8, height: 200, right: 108, bottom: 200, x: 100, y: 0, toJSON() {} }) as DOMRect;
 
@@ -344,7 +345,7 @@ describe("annotationsPlugin lifecycle", () => {
 
   it("can opt out of focus targets plugin-wide", () => {
     const { chart } = make({ focusable: false, annotations: [{ type: "x-line", x: 50 }] });
-    expect(chart.plotElement.querySelector(".blazeplot-annotation-focus")).toBeNull();
+    expect(chartInternals(chart).plotElement.querySelector(".blazeplot-annotation-focus")).toBeNull();
     chart.dispose();
   });
 

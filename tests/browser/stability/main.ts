@@ -1,3 +1,4 @@
+import { chartInternals } from "@/ui/ChartInternals.ts";
 import { Chart } from "@/index.ts";
 import type { ChartPlugin, SeriesStore } from "@/index.ts";
 import { a11yPlugin } from "@/plugins/a11y.ts";
@@ -312,14 +313,14 @@ function addSampleSeries(chart: Chart, points = 200): SeriesStore[] {
 }
 
 function hover(chart: Chart): void {
-  const rect = chart.canvas.getBoundingClientRect();
+  const rect = chartInternals(chart).canvas.getBoundingClientRect();
   const clientX = rect.left + rect.width / 2;
   const clientY = rect.top + rect.height / 2;
   const init: PointerEventInit = { clientX, clientY, pointerId: 1, pointerType: "mouse", bubbles: true };
-  chart.canvas.dispatchEvent(new PointerEvent("pointermove", init));
-  chart.canvas.dispatchEvent(new PointerEvent("pointerdown", { ...init, button: 0, buttons: 1 }));
-  chart.canvas.dispatchEvent(new PointerEvent("pointerup", { ...init, button: 0, buttons: 0 }));
-  chart.canvas.dispatchEvent(new PointerEvent("pointerleave", init));
+  chartInternals(chart).canvas.dispatchEvent(new PointerEvent("pointermove", init));
+  chartInternals(chart).canvas.dispatchEvent(new PointerEvent("pointerdown", { ...init, button: 0, buttons: 1 }));
+  chartInternals(chart).canvas.dispatchEvent(new PointerEvent("pointerup", { ...init, button: 0, buttons: 0 }));
+  chartInternals(chart).canvas.dispatchEvent(new PointerEvent("pointerleave", init));
   // Keyboard paths: inspection cursor (a11y plugin) and keyboard selection, ending both.
   const root = chart.rootElement;
   for (const [key, shiftKey] of [["Enter", false], ["ArrowRight", false], ["Escape", false], ["ArrowRight", true], ["Escape", false]] as const) {
@@ -604,7 +605,7 @@ function stopStreaming(): StreamingStats {
 
 /** Count pixels in the current drawing buffer that differ from the clear color. Must run inside a render event. */
 function countLitPixels(chart: Chart): number {
-  const gl = chart.getWebGLContext();
+  const gl = chartInternals(chart).getWebGLContext();
   if (!gl) return 0;
   const { drawingBufferWidth: width, drawingBufferHeight: height } = gl;
   const pixels = new Uint8Array(width * height * 4);
@@ -629,7 +630,7 @@ async function contextLoss(cycles: number): Promise<ContextLossResult> {
   chart.start();
   await nextRender(chart);
 
-  const extension = chart.getWebGLContext()?.getExtension("WEBGL_lose_context");
+  const extension = chartInternals(chart).getWebGLContext()?.getExtension("WEBGL_lose_context");
   if (!extension) throw new Error("WEBGL_lose_context is unavailable in this browser");
 
   let rendersAfterRestore = 0;
@@ -681,7 +682,7 @@ async function contextLoss(cycles: number): Promise<ContextLossResult> {
   addSampleSeries(second);
   second.start();
   await nextRender(second);
-  const secondExtension = second.getWebGLContext()?.getExtension("WEBGL_lose_context");
+  const secondExtension = chartInternals(second).getWebGLContext()?.getExtension("WEBGL_lose_context");
   let disposedWhileLost = false;
   if (secondExtension) {
     const lost = secondWatcher.next("lost", 2_000);
@@ -705,9 +706,9 @@ async function contextLoss(cycles: number): Promise<ContextLossResult> {
 
 /** Pixels in the chart's own (2D) canvas that are not transparent. */
 function countBlittedPixels(chart: Chart): number {
-  const context = chart.canvas.getContext("2d");
+  const context = chartInternals(chart).canvas.getContext("2d");
   if (!context) return 0;
-  const { data } = context.getImageData(0, 0, chart.canvas.width, chart.canvas.height);
+  const { data } = context.getImageData(0, 0, chartInternals(chart).canvas.width, chartInternals(chart).canvas.height);
   let lit = 0;
   for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) lit++;
   return lit;

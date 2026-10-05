@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it } from "bun:test";
 import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
@@ -22,14 +23,14 @@ function make(options: CrosshairPluginOptions = {}): { chart: Chart; plugin: Ret
   return { chart, plugin, moves };
 }
 
-const rootOf = (chart: Chart): HTMLElement => chart.plotElement.querySelector(".blazeplot-crosshair") as HTMLElement;
+const rootOf = (chart: Chart): HTMLElement => chartInternals(chart).plotElement.querySelector(".blazeplot-crosshair") as HTMLElement;
 const lines = (chart: Chart): { v: HTMLElement; hz: HTMLElement; label: HTMLElement } => {
-  const layer = chart.plotElement.querySelector(".blazeplot-crosshair-lines") as HTMLElement;
-  const overlay = chart.plotElement.querySelector(".blazeplot-crosshair-overlay") as HTMLElement;
+  const layer = chartInternals(chart).plotElement.querySelector(".blazeplot-crosshair-lines") as HTMLElement;
+  const overlay = chartInternals(chart).plotElement.querySelector(".blazeplot-crosshair-overlay") as HTMLElement;
   return { v: layer.children[0] as HTMLElement, hz: layer.children[1] as HTMLElement, label: overlay.children[1] as HTMLElement };
 };
 const move = (chart: Chart, x: number, y: number): void => {
-  fire(chart.canvas, pointerEvent("pointermove", x, y));
+  fire(chartInternals(chart).canvas, pointerEvent("pointermove", x, y));
 };
 
 describe("crosshairPlugin crosshair mode", () => {
@@ -56,7 +57,7 @@ describe("crosshairPlugin crosshair mode", () => {
   it("hides when the pointer leaves or moves outside the plot and reports null", () => {
     const { chart, plugin, moves } = make();
     move(chart, 200, 100);
-    fire(chart.canvas, pointerEvent("pointerleave", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 200, 100));
     expect(rootOf(chart).style.display).toBe("none");
     expect(plugin.getPosition()).toBeNull();
     expect(moves.at(-1)).toBeNull();
@@ -103,7 +104,7 @@ describe("crosshairPlugin crosshair mode", () => {
     expect(position.dataY).toBe(50);
     expect(position.items).toHaveLength(1);
     expect(lines(chart).label.textContent).toContain("(5, 50)");
-    const markers = chart.plotElement.querySelector(".blazeplot-crosshair-markers") as HTMLElement;
+    const markers = chartInternals(chart).plotElement.querySelector(".blazeplot-crosshair-markers") as HTMLElement;
     expect(markers.children).toHaveLength(1);
     expect(lines(chart).v.style.left).toBe("200px");
     chart.dispose();
@@ -111,7 +112,7 @@ describe("crosshairPlugin crosshair mode", () => {
     const point = make({ snap: "nearest-point", highlight: false });
     move(point.chart, 190, 100);
     expect(point.plugin.getPosition()!.items).toHaveLength(1);
-    expect(point.chart.plotElement.querySelector(".blazeplot-crosshair-markers")!.children).toHaveLength(0);
+    expect(chartInternals(point.chart).plotElement.querySelector(".blazeplot-crosshair-markers")!.children).toHaveLength(0);
     point.chart.dispose();
   });
 
@@ -124,7 +125,7 @@ describe("crosshairPlugin crosshair mode", () => {
     });
     move(chart, 200, 100);
     expect(seen.length).toBeGreaterThan(0);
-    expect(chart.plotElement.querySelector(".blazeplot-crosshair-markers")!.textContent).toBe("hl");
+    expect(chartInternals(chart).plotElement.querySelector(".blazeplot-crosshair-markers")!.textContent).toBe("hl");
     expect(lines(chart).label.textContent).toContain("v=50");
     chart.dispose();
   });
@@ -135,7 +136,7 @@ describe("crosshairPlugin crosshair mode", () => {
     chart.addBar({ dataset: HistogramDataset.from([1, 1.2, 7], { binSize: 1, min: 0, max: 10 }) });
     chart.setViewport({ xMin: 0, xMax: 10, yMin: 0, yMax: 5 });
     move(chart, 60, 100);
-    const markers = chart.plotElement.querySelector(".blazeplot-crosshair-markers") as HTMLElement;
+    const markers = chartInternals(chart).plotElement.querySelector(".blazeplot-crosshair-markers") as HTMLElement;
     expect(markers.children).toHaveLength(1);
     expect((markers.children[0] as HTMLElement).style.width).toBe("40px");
     expect((markers.children[0] as HTMLElement).style.left).toBe("40px");
@@ -149,7 +150,7 @@ describe("crosshairPlugin crosshair mode", () => {
     chart.start();
     h.raf.flush();
     expect(plugin.getPosition()!.dataX).toBeCloseTo(10, 5);
-    fire(chart.canvas, pointerEvent("pointerleave", 200, 100));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 200, 100));
     const count = plugin.getPosition();
     chart.requestRender();
     h.raf.flush();
@@ -166,19 +167,19 @@ describe("crosshairPlugin crosshair mode", () => {
     expect(lines(b.chart).v.style.left).toBe("200px");
     expect(b.plugin.getPosition()!.dataX).toBeCloseTo(5, 5);
     expect(rootOf(c.chart).style.display).toBe("none");
-    fire(a.chart.canvas, pointerEvent("pointerleave", 200, 100));
+    fire(chartInternals(a.chart).canvas, pointerEvent("pointerleave", 200, 100));
     expect(rootOf(b.chart).style.display).toBe("none");
     for (const x of [a, b, c]) x.chart.dispose();
   });
 
   it("shows after a touch long press and ignores plain touch moves", async () => {
     const { chart, plugin } = make({ longPressMs: 1 });
-    fire(chart.canvas, pointerEvent("pointerdown", 200, 100, { pointerType: "touch" }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 200, 100, { pointerType: "touch" }));
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(plugin.getPosition()!.dataX).toBeCloseTo(5, 5);
-    fire(chart.canvas, pointerEvent("pointermove", 240, 100, { pointerType: "touch" }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointermove", 240, 100, { pointerType: "touch" }));
     expect(plugin.getPosition()!.dataX).toBeCloseTo(6, 5);
-    fire(chart.canvas, pointerEvent("pointerup", 240, 100, { pointerType: "touch" }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 240, 100, { pointerType: "touch" }));
     chart.dispose();
   });
 });
@@ -195,12 +196,12 @@ describe("crosshairPlugin ruler mode", () => {
       onMeasureEnd: (m) => ended.push(m),
     });
     const down = pointerEvent("pointerdown", 100, 50);
-    fire(chart.canvas, down);
+    fire(chartInternals(chart).canvas, down);
     expect(down.defaultPrevented).toBe(true);
     expect(started).toHaveLength(1);
 
     move(chart, 300, 150);
-    const svg = chart.plotElement.querySelector("svg") as SVGSVGElement;
+    const svg = chartInternals(chart).plotElement.querySelector("svg") as SVGSVGElement;
     expect(svg.style.display).toBe("block");
     const line = svg.querySelector("line")!;
     expect(line.getAttribute("x1")).toBe("100");
@@ -212,7 +213,7 @@ describe("crosshairPlugin ruler mode", () => {
     // x 2.5..7.5 covers samples 3..7.
     expect(change.sampleCount).toBe(5);
 
-    fire(chart.canvas, pointerEvent("pointerup", 300, 150));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 300, 150));
     expect(ended).toHaveLength(1);
     expect(plugin.getMeasurement()).toBe(ended[0]!);
     plugin.clearMeasurement();
@@ -223,10 +224,10 @@ describe("crosshairPlugin ruler mode", () => {
 
   it("keeps the ruler line when the pointer leaves mid-measure, and reports infinite slope for vertical drags", () => {
     const { chart, plugin } = make({ mode: "ruler" });
-    fire(chart.canvas, pointerEvent("pointerdown", 200, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 200, 50));
     move(chart, 200, 150);
     expect(plugin.getMeasurement()!.slope).toBe(Infinity);
-    fire(chart.canvas, pointerEvent("pointerleave", 200, 150));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerleave", 200, 150));
     expect(rootOf(chart).style.display).toBe("block");
     chart.dispose();
   });
@@ -234,19 +235,19 @@ describe("crosshairPlugin ruler mode", () => {
   it("starts a measurement only when the configured modifier is held", () => {
     const started: CrosshairPosition[] = [];
     const { chart } = make({ mode: "ruler", rulerModifier: "shift", onMeasureStart: (p) => started.push(p) });
-    fire(chart.canvas, pointerEvent("pointerdown", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50));
     expect(started).toHaveLength(0);
-    fire(chart.canvas, pointerEvent("pointerup", 100, 50));
-    fire(chart.canvas, pointerEvent("pointerdown", 100, 50, { shiftKey: true }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerup", 100, 50));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50, { shiftKey: true }));
     expect(started).toHaveLength(1);
     chart.dispose();
 
     for (const modifier of ["ctrl", "alt", "meta"] as const) {
       const n: CrosshairPosition[] = [];
       const m = make({ mode: "ruler", rulerModifier: modifier, onMeasureStart: (p) => n.push(p) });
-      fire(m.chart.canvas, pointerEvent("pointerdown", 100, 50));
+      fire(chartInternals(m.chart).canvas, pointerEvent("pointerdown", 100, 50));
       expect(n).toHaveLength(0);
-      fire(m.chart.canvas, pointerEvent("pointerdown", 100, 50, { [`${modifier}Key`]: true }));
+      fire(chartInternals(m.chart).canvas, pointerEvent("pointerdown", 100, 50, { [`${modifier}Key`]: true }));
       expect(n).toHaveLength(1);
       m.chart.dispose();
     }
@@ -255,7 +256,7 @@ describe("crosshairPlugin ruler mode", () => {
   it("does not start a measurement on a secondary button", () => {
     const started: CrosshairPosition[] = [];
     const { chart } = make({ mode: "ruler", onMeasureStart: (p) => started.push(p) });
-    fire(chart.canvas, pointerEvent("pointerdown", 100, 50, { button: 2 }));
+    fire(chartInternals(chart).canvas, pointerEvent("pointerdown", 100, 50, { button: 2 }));
     expect(started).toHaveLength(0);
     chart.dispose();
   });

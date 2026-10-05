@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { countNodes, RecordingRenderer, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
 import { chartRenderer, describeRecorded, installEngineDoubles, itRecorded } from "./engines.ts";
@@ -67,7 +68,7 @@ describe("Chart construct / dispose", () => {
     const chart = make({ title: "Hello" });
     expect(target.children).toHaveLength(1);
     expect(target.firstElementChild).toBe(chart.rootElement);
-    expect(chart.rootElement.contains(chart.canvas)).toBe(true);
+    expect(chart.rootElement.contains(chartInternals(chart).canvas)).toBe(true);
     expect(backends).toHaveLength(1);
     expect(backends[0]!.disposeCount).toBe(0);
     chart.dispose();
@@ -93,7 +94,7 @@ describe("Chart construct / dispose", () => {
 
   it("cancels a pending hover rAF on dispose", () => {
     const chart = make();
-    fire(chart.canvas, new window.MouseEvent("pointermove", { clientX: 5, clientY: 5 }));
+    fire(chartInternals(chart).canvas, new window.MouseEvent("pointermove", { clientX: 5, clientY: 5 }));
     chart.dispose();
     expect(raf.pending.size).toBe(0);
   });
@@ -193,22 +194,22 @@ describe("Chart resize", () => {
 
   it("resizes the drawing buffer by CSS size times dpr and reports whether it changed", () => {
     const chart = make();
-    stubSize(chart.canvas, 300, 150);
+    stubSize(chartInternals(chart).canvas, 300, 150);
     expect(chart.resize(2)).toBe(true);
-    expect(chart.canvas.width).toBe(600);
-    expect(chart.canvas.height).toBe(300);
+    expect(chartInternals(chart).canvas.width).toBe(600);
+    expect(chartInternals(chart).canvas.height).toBe(300);
     expect(chart.resize(2)).toBe(false);
     expect(chart.resize(1)).toBe(true);
-    expect(chart.canvas.width).toBe(300);
+    expect(chartInternals(chart).canvas.width).toBe(300);
     chart.dispose();
   });
 
   it("clamps degenerate sizes and non-finite dpr to at least 1x1", () => {
     const chart = make();
-    stubSize(chart.canvas, 0, 0);
+    stubSize(chartInternals(chart).canvas, 0, 0);
     chart.resize(Number.NaN);
-    expect(chart.canvas.width).toBe(1);
-    expect(chart.canvas.height).toBe(1);
+    expect(chartInternals(chart).canvas.width).toBe(1);
+    expect(chartInternals(chart).canvas.height).toBe(1);
     chart.dispose();
   });
 
@@ -216,11 +217,11 @@ describe("Chart resize", () => {
     const chart = make();
     chart.start();
     raf.flush();
-    stubSize(chart.canvas, 400, 200);
+    stubSize(chartInternals(chart).canvas, 400, 200);
     const observer = FakeResizeObserver.instances[0]!;
-    expect([...observer.observed]).toEqual([chart.plotElement]);
+    expect([...observer.observed]).toEqual([chartInternals(chart).plotElement]);
     observer.trigger();
-    expect(chart.canvas.width).toBe(Math.floor(400 * Math.max(1, globalThis.devicePixelRatio || 1)));
+    expect(chartInternals(chart).canvas.width).toBe(Math.floor(400 * Math.max(1, globalThis.devicePixelRatio || 1)));
     expect(raf.pending.size).toBe(1);
     chart.dispose();
   });
@@ -373,12 +374,12 @@ describe("Chart events", () => {
     const clicks: string[] = [];
     chart.subscribe("click", (e) => clicks.push(e.type));
     chart.subscribe("dblclick", (e) => clicks.push(e.type));
-    chart.canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON() {} }) as DOMRect;
-    fire(chart.canvas, new window.MouseEvent("click", { clientX: 50, clientY: 50 }));
-    fire(chart.canvas, new window.MouseEvent("dblclick", { clientX: 50, clientY: 50 }));
+    chartInternals(chart).canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    fire(chartInternals(chart).canvas, new window.MouseEvent("click", { clientX: 50, clientY: 50 }));
+    fire(chartInternals(chart).canvas, new window.MouseEvent("dblclick", { clientX: 50, clientY: 50 }));
     expect(clicks).toEqual(["click", "dblclick"]);
     chart.dispose();
-    fire(chart.canvas, new window.MouseEvent("click", { clientX: 50, clientY: 50 }));
+    fire(chartInternals(chart).canvas, new window.MouseEvent("click", { clientX: 50, clientY: 50 }));
     expect(clicks).toHaveLength(2);
   });
 });
@@ -430,8 +431,8 @@ describe("Chart plugins", () => {
     log.length = 0;
 
     chart.setTheme();
-    Object.defineProperty(chart.canvas, "clientWidth", { configurable: true, value: 320 });
-    Object.defineProperty(chart.canvas, "clientHeight", { configurable: true, value: 160 });
+    Object.defineProperty(chartInternals(chart).canvas, "clientWidth", { configurable: true, value: 320 });
+    Object.defineProperty(chartInternals(chart).canvas, "clientHeight", { configurable: true, value: 160 });
     chart.resize(1);
     backends[0]!.lose();
     backends[0]!.restore();
@@ -464,7 +465,7 @@ describe("Chart plugins", () => {
   it("does not call hooks on a plugin disposed individually", () => {
     const log: string[] = [];
     const chart = make();
-    const dispose = chart.installPlugin(recorder("a", log));
+    const dispose = chartInternals(chart).installPlugin(recorder("a", log));
     dispose();
     chart.setTheme();
     expect(log).toEqual(["install a", "dispose a"]);
@@ -555,18 +556,18 @@ describe("Chart plugins", () => {
     expect(contexts[0]).not.toBe(chart as unknown);
     expect(padding(chart)).toBe("0px 0px 12px 0px");
     expect(node.parentElement).toBe(chart.rootElement);
-    expect(chart.xAxisElement.style.cursor).toBe("ew-resize");
-    expect(chart.xAxisElement.classList.contains("my-axis")).toBe(true);
-    expect(chart.xAxisElement.getAttribute("data-plugin")).toBe("x");
-    fire(chart.canvas, new window.PointerEvent("pointermove", { clientX: 1, clientY: 1 }));
+    expect(chartInternals(chart).xAxisElement.style.cursor).toBe("ew-resize");
+    expect(chartInternals(chart).xAxisElement.classList.contains("my-axis")).toBe(true);
+    expect(chartInternals(chart).xAxisElement.getAttribute("data-plugin")).toBe("x");
+    fire(chartInternals(chart).canvas, new window.PointerEvent("pointermove", { clientX: 1, clientY: 1 }));
     expect(moves).toBe(1);
 
     chart.dispose();
     expect(padding(chart)).toBe("0px 0px 0px 0px");
     expect(node.parentElement).toBeNull();
-    expect(chart.xAxisElement.style.cursor).toBe("");
-    expect(chart.xAxisElement.classList.contains("my-axis")).toBe(false);
-    expect(chart.xAxisElement.hasAttribute("data-plugin")).toBe(false);
+    expect(chartInternals(chart).xAxisElement.style.cursor).toBe("");
+    expect(chartInternals(chart).xAxisElement.classList.contains("my-axis")).toBe(false);
+    expect(chartInternals(chart).xAxisElement.hasAttribute("data-plugin")).toBe(false);
     expect(renders).toBe(0);
     expect(ledger.net()).toBe(0);
   });
@@ -574,7 +575,7 @@ describe("Chart plugins", () => {
   it("decorations restore the previous values, so undoing in reverse order is exact", () => {
     let ctx = null as ChartPluginContext | null;
     const chart = make({ plugins: [{ install: (c) => { ctx = c; } }] });
-    const axis = chart.yAxisElement;
+    const axis = chartInternals(chart).yAxisElement;
     const before = axis.style.pointerEvents;
     const undoOuter = ctx!.dom.decorate("axis-y", { style: { pointerEvents: "auto", filter: "blur(1px)" } });
     const undoInner = ctx!.dom.decorate("axis-y", { style: { filter: "brightness(2)" } });
@@ -590,7 +591,7 @@ describe("Chart plugins", () => {
   it("exposes coordinates, viewport, state, geometry, and the unstable escape hatches", () => {
     let ctx = null as ChartPluginContext | null;
     const chart = make({ plugins: [{ install: (c) => { ctx = c; } }] });
-    chart.canvas.getBoundingClientRect = () => ({ left: 10, top: 20, width: 400, height: 200, right: 410, bottom: 220, x: 10, y: 20, toJSON() {} }) as DOMRect;
+    chartInternals(chart).canvas.getBoundingClientRect = () => ({ left: 10, top: 20, width: 400, height: 200, right: 410, bottom: 220, x: 10, y: 20, toJSON() {} }) as DOMRect;
     const c = ctx!;
     c.viewport.set({ xMin: 0, xMax: 100, yMin: 0, yMax: 10 });
     expect(c.viewport.get()).toMatchObject({ xMin: 0, xMax: 100, yMin: 0, yMax: 10 });
@@ -611,12 +612,12 @@ describe("Chart plugins", () => {
     expect(c.state.getHover()).toBeNull();
     expect(c.state.getFrameStats().renderMode).toBe("none");
     expect(c.theme).toBe(chart.theme);
-    expect(c.dom.contains(chart.canvas)).toBe(true);
+    expect(c.dom.contains(chartInternals(chart).canvas)).toBe(true);
     expect(c.dom.contains(document.body)).toBe(false);
-    expect(c.unstable.canvas).toBe(chart.canvas);
-    expect(c.unstable.element("plot")).toBe(chart.plotElement);
+    expect(c.unstable.canvas).toBe(chartInternals(chart).canvas);
+    expect(c.unstable.element("plot")).toBe(chartInternals(chart).plotElement);
     expect(c.unstable.element("body")).toBe(document.body);
-    expect(c.unstable.getCamera("right")).toBe(chart.getCamera("right"));
+    expect(c.unstable.getCamera("right")).toBe(chartInternals(chart).getCamera("right"));
     chart.dispose();
   });
 });
@@ -738,7 +739,7 @@ describe("Plugin access to the rendering engine", () => {
   /** Install a no-op plugin and return its context. */
   function contextOf(chart: ChartType): ChartPluginContext {
     let captured: ChartPluginContext | null = null;
-    chart.installPlugin({ install: (ctx) => void (captured = ctx) });
+    chartInternals(chart).installPlugin({ install: (ctx) => void (captured = ctx) });
     return captured!;
   }
 
@@ -791,7 +792,7 @@ describe("Chart overlays and screenshot", () => {
     chart.setViewport({ xMin: 0, xMax: 10, yMin: 0, yMax: 10 });
     chart.start();
     raf.flush();
-    expect(chart.xAxisElement.children.length + chart.yAxisElement.children.length).toBeGreaterThan(0);
+    expect(chartInternals(chart).xAxisElement.children.length + chartInternals(chart).yAxisElement.children.length).toBeGreaterThan(0);
     chart.dispose();
   });
 

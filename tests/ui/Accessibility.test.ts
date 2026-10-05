@@ -1,3 +1,4 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { describe, expect, it } from "bun:test";
 import type { Chart } from "../../src/ui/Chart.ts";
 import type { ChartOptions } from "../../src/ui/Chart.ts";
@@ -36,8 +37,8 @@ describe("chart accessibility attributes", () => {
     const summary = document.getElementById(root.getAttribute("aria-describedby")!);
     expect(summary?.textContent).toBe("Chart with no data series.");
     expect(summary?.className).toBe("blazeplot-visually-hidden");
-    expect(chart.plotElement.getAttribute("role")).toBe("presentation");
-    for (const hidden of [chart.canvas, chart.xAxisElement, chart.yAxisElement, chart.y2AxisElement]) {
+    expect(chartInternals(chart).plotElement.getAttribute("role")).toBe("presentation");
+    for (const hidden of [chartInternals(chart).canvas, chartInternals(chart).xAxisElement, chartInternals(chart).yAxisElement, chartInternals(chart).y2AxisElement]) {
       expect(hidden.getAttribute("aria-hidden")).toBe("true");
     }
     // The browser focus ring stays, offset so it remains inside the chart.
@@ -64,7 +65,7 @@ describe("chart accessibility attributes", () => {
     expect(root.hasAttribute("role")).toBe(false);
     expect(root.hasAttribute("aria-label")).toBe(false);
     expect(root.getAttribute("tabindex")).toBeNull();
-    expect(chart.canvas.hasAttribute("aria-hidden")).toBe(false);
+    expect(chartInternals(chart).canvas.hasAttribute("aria-hidden")).toBe(false);
     const event = press(chart, "ArrowRight");
     expect(event.defaultPrevented).toBe(false);
     expect(chart.getViewport().xMin).toBe(0);
