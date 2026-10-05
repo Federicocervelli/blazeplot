@@ -501,8 +501,8 @@ Unit conventions after this pass: plugin options measured in CSS pixels end in `
 Additive features that need no migration work but are easy to miss:
 
 - **Accessibility:** `blazeplot/plugins/a11y` (data table, keyboard inspection, live summary), `chart.getSummary()`, `LIGHT_CHART_THEME` (change 9, [Accessibility](./accessibility.md)).
-- **Localization:** `accessibility.locale` and `messages`, `a11yPlugin({ locale, messages })`, `legendPlugin({ messages })`, `selectionPlugin({ messages })`.
 - **Theme:** `theme: "auto"` follows `prefers-color-scheme` (dark by default, `LIGHT_CHART_THEME` when the user prefers light), also accepted by `chart.setTheme`.
+- **Localization:** `accessibility.locale` and `messages`, `a11yPlugin({ locale, messages })`, `legendPlugin({ messages })`, `selectionPlugin({ messages })`, `navigatorPlugin({ messages, label, formatValueText })`, `annotationsPlugin({ messages })`, `interactionsPlugin({ messages })`. The navigator's value text now formats the range with the X axis formatter (dates on a time axis) instead of raw numbers.
 - **Rendering engines:** Canvas 2D (also the `"auto"` fallback) and shared-context rendering through `ChartOptions.renderer`, `chart.rendererInfo`, and `ctx.renderer` (change 16).
 - **Gestures:** `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger", gestureHint, boxZoomModifier })`, `selectionPlugin({ modifier })`, `ctx.dom.claimPointer` (change 12), and the long-press tooltip and crosshair on touch.
 - **Layout:** `axes.*.size` (a number, or `"auto"` to size gutters from the measured tick labels), outside legend positions, the title row (change 15).
