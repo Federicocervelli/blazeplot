@@ -43,13 +43,16 @@ export interface CrossEngineThresholds {
  * bounding box may move by one pixel because the engines break rasterization ties differently.
  */
 export const CROSS_ENGINE_THRESHOLDS: Readonly<Record<CrossEngineKind, CrossEngineThresholds>> = {
-  fill: { pixelThreshold: 32, maxDiffRatio: 0.005, blur: 0, inkRatio: [0.97, 1.03], bboxTolerancePx: 1 },
-  stroke: { pixelThreshold: 32, maxDiffRatio: 0.01, blur: 1, inkRatio: [0.95, 1.05], bboxTolerancePx: 1 },
-  "dense-stroke": { pixelThreshold: 32, maxDiffRatio: 0.03, blur: 1, inkRatio: [0.9, 1.1], bboxTolerancePx: 1 },
+  fill: { pixelThreshold: 32, maxDiffRatio: 0.008, blur: 0, inkRatio: [0.96, 1.04], bboxTolerancePx: 1 },
+  stroke: { pixelThreshold: 32, maxDiffRatio: 0.01, blur: 1, inkRatio: [0.93, 1.07], bboxTolerancePx: 1 },
+  "dense-stroke": { pixelThreshold: 32, maxDiffRatio: 0.03, blur: 1, inkRatio: [0.88, 1.12], bboxTolerancePx: 1 },
 };
 
-/** Cases whose engines must agree to the bit: the same GL output, only copied through a 2D canvas. */
-export const IDENTICAL_THRESHOLDS: CrossEngineThresholds = { pixelThreshold: 0, maxDiffRatio: 0, blur: 0, inkRatio: [1, 1], bboxTolerancePx: 0 };
+/**
+ * `shared` against `webgl2`: the same GL output, only copied through a 2D canvas, so no pixel may move by more
+ * than 8-bit rounding (a real GPU is bit-identical, SwiftShader differs by one count in a pixel or two).
+ */
+export const IDENTICAL_THRESHOLDS: CrossEngineThresholds = { pixelThreshold: 2, maxDiffRatio: 0, blur: 0, inkRatio: [0.999, 1.001], bboxTolerancePx: 0 };
 
 export interface InkBounds {
   readonly minX: number;

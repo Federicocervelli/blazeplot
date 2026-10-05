@@ -12,6 +12,10 @@ import { selectionPlugin } from "@/plugins/selection.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import type { SelectionPlugin } from "@/plugins/selection.ts";
 import { runRobustnessProbes } from "./robustness.ts";
+import { testRenderer } from "../test-renderer.ts";
+
+/** Engine for every chart on the page: WebGL2 unless the driving script passes `?renderer=`. */
+const pageRenderer = testRenderer();
 
 interface RectSnapshot {
   readonly left: number;
@@ -185,6 +189,7 @@ if (caseName === "a11y") {
     onClick: () => { annotationClicks++; },
   });
   charts.push(new Chart(chartTarget, {
+    renderer: pageRenderer,
     title: "Accessible interaction chart",
     axes: { x: { position: "outside" }, y: { position: "outside" } },
     plugins: [a11yPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }), selection, annotations, legendPlugin(), navigatorPlugin({ height: 48 })],
@@ -195,6 +200,7 @@ if (caseName === "a11y") {
   // The website feature preview: synced time/log panels with default box zoom, shift pan, and a shared crosshair.
   const panelPlugins = (): ChartPlugin[] => [interactionsPlugin({ minDragDistancePx: 4, shiftDragPan: true }), crosshairPlugin({ syncGroup: "site-linked", snap: "nearest-x" })];
   const linked = createLinkedCharts(chartTarget, {
+    renderer: pageRenderer,
     rows: 2,
     spacing: 8,
     syncX: true,
@@ -206,6 +212,7 @@ if (caseName === "a11y") {
   charts.push(...linked.charts);
 } else if (caseName === "linked") {
   const linked = createLinkedCharts(chartTarget, {
+    renderer: pageRenderer,
     rows: 2,
     panels: [{}, {}],
     panelPlugins: (syncGroup) => [crosshairPlugin({ syncGroup }), tooltipPlugin({ syncGroup })],
@@ -252,6 +259,7 @@ if (caseName === "a11y") {
             crosshairPlugin({ snap: "none", label: true, onMove: () => { crosshairMoves++; } }),
           ];
   charts.push(new Chart(chartTarget, {
+    renderer: pageRenderer,
     axes: { x: { position: "outside" }, y: { position: "outside" }, y2: { position: "outside", reversed: true } },
     grid: true,
     plugins,
@@ -376,6 +384,8 @@ try {
       item.start();
     }
   }
+  // A requested engine must be the one in use, so a suite never passes by quietly measuring a fallback.
+  for (const item of charts) if (pageRenderer !== "auto" && item.renderer !== pageRenderer) throw new Error(`Expected the ${pageRenderer} engine, got ${item.renderer}.`);
   window.setTimeout(() => {
     state = "ready";
     renderStatus();
@@ -442,6 +452,7 @@ function createIframeChart(): Chart {
   host.style.cssText = "width:100%;height:100%";
   doc.body.appendChild(host);
   return new Chart(host, {
+    renderer: pageRenderer,
     title: "Chart in an iframe",
     axes: { x: { position: "outside" }, y: { position: "outside" } },
     grid: true,

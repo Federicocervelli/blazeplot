@@ -15,7 +15,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { ContextLossResult, PageProbe, StreamingConfig, StreamingStats, WorkloadResult } from "../tests/browser/stability/main.ts";
-import { CdpClient, closeTarget, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
+import { CdpClient, closeTarget, createTarget, evaluate, parseTestRenderer, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, testRendererFromEnv, waitForHttp, withTestRenderer } from "./browser-harness.js";
+import type { TestRenderer } from "./browser-harness.js";
 
 interface Options {
   long: boolean;
@@ -31,6 +32,8 @@ interface Options {
   url?: string;
   chrome?: string;
   keepBrowser: boolean;
+  /** Engine the mounted charts use (`--renderer` or `BLAZEPLOT_TEST_RENDERER`); WebGL2 when unset. */
+  renderer?: TestRenderer;
 }
 
 interface Sample {
@@ -85,6 +88,8 @@ const LONG_PROFILE: Profile = {
 
 const ALL_CASES = ["mount-unmount", "shared-context", "shared-context-loss", "resize-churn", "series-churn", "streaming", "context-loss", "detector-control"] as const;
 type CaseName = typeof ALL_CASES[number];
+/** Cases that exercise or count WebGL contexts and objects (the shared context, loss and restore, the leak-detector control), which a Canvas 2D run has none of. */
+const GL_CASES: readonly CaseName[] = ["shared-context", "shared-context-loss", "context-loss", "detector-control"];
 
 const MiB = 1024 * 1024;
 const KiB = 1024;
@@ -172,7 +177,7 @@ async function openSession(options: Options, serverUrl: string, caseName: string
     await closeTarget(options.debugPort, openTargetId).catch(() => undefined);
     openTargetId = null;
   }
-  const target = await createTarget(options.debugPort, new URL("/stability/", serverUrl).toString());
+  const target = await createTarget(options.debugPort, withTestRenderer(new URL("/stability/", serverUrl), options.renderer).toString());
   openTargetId = target.id;
   const cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
   const session: Session = { cdp, pageErrors: [], contextCapWarnings: 0, warnings: 0 };
@@ -619,7 +624,9 @@ function parseArgs(args: readonly string[]): Options {
     outDir: "build/stability",
     verbose: false,
     keepBrowser: false,
+    renderer: testRendererFromEnv(),
   };
+  let explicitCases = false;
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg) continue;
@@ -637,8 +644,10 @@ function parseArgs(args: readonly string[]): Options {
         const names = readValue().split(",").map((value) => value.trim()).filter(Boolean);
         for (const name of names) if (!(ALL_CASES as readonly string[]).includes(name)) throw new Error(`Unknown case ${name}. Cases: ${ALL_CASES.join(", ")}`);
         parsed.cases = names;
+        explicitCases = true;
         break;
       }
+      case "--renderer": parsed.renderer = parseTestRenderer(readValue()); break;
       case "--width": parsed.width = readPositiveInteger(flag, readValue()); break;
       case "--height": parsed.height = readPositiveInteger(flag, readValue()); break;
       case "--port": parsed.port = readPositiveInteger(flag, readValue()); break;
@@ -652,6 +661,11 @@ function parseArgs(args: readonly string[]): Options {
       case "--help": case "-h": printHelpAndExit(); break;
       default: throw new Error(`Unknown argument: ${arg}`);
     }
+  }
+  if (parsed.renderer === "canvas2d") {
+    const needsGl = parsed.cases.filter((name) => GL_CASES.includes(name as CaseName));
+    if (explicitCases && needsGl.length > 0) throw new Error(`Cases ${needsGl.join(", ")} exercise WebGL contexts and cannot run with --renderer canvas2d.`);
+    parsed.cases = parsed.cases.filter((name) => !GL_CASES.includes(name as CaseName));
   }
   return parsed;
 }

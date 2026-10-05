@@ -35,7 +35,7 @@ interface Options {
  * Renderer configurations. `webgl2` is the primary run and owns the committed pixel baselines.
  * `canvas2d` forces the Canvas 2D renderer. `shared` renders through the shared WebGL2 context (one hidden
  * context, blitted into each chart canvas). When `webgl2` runs in the same invocation, both are compared with
- * its render of the same case (see scripts/cross-engine.ts): `shared` must be bit-identical, `canvas2d` within the
+ * its render of the same case (see scripts/cross-engine.ts): `shared` must match to 8-bit rounding, `canvas2d` within the
  * per-kind parity thresholds. Without a `webgl2` run in the invocation they fall back to the committed baselines
  * (`canvas2d` with a looser tolerance, since antialiasing and pixel snapping differ).
  * `auto-no-webgl` launches Chrome with WebGL disabled and checks that the default `"auto"` renderer falls back.

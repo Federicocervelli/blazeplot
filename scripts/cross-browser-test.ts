@@ -5,11 +5,12 @@
  * The other browser scripts drive headless Chrome over CDP. This one is the lightweight
  * engine-coverage check: for each browser it loads the Vite-served visual and interaction
  * fixture pages and asserts WebGL2 availability, non-blank chart pixels, and basic
- * hover / wheel / pan / box-zoom / reset behavior.
+ * hover / wheel / pan / box-zoom / reset behavior, once on the WebGL2 engine and once on the Canvas 2D engine
+ * (which needs no WebGL, so it runs even where WebGL2 is allowlisted away).
  *
  * WebGL2 availability is never skipped silently. If a browser cannot create a WebGL2 context the
  * run fails, unless that browser is listed in --allow-no-webgl2 (or BLAZEPLOT_CROSS_BROWSER_ALLOW_NO_WEBGL2).
- * An allowlisted browser prints a loud SKIP line and its remaining checks are not run.
+ * An allowlisted browser prints a loud SKIP line, its WebGL2 checks are not run, and its Canvas 2D checks still are.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -20,6 +21,11 @@ import { readPositiveInteger, startVite, waitForHttp } from "./browser-harness.j
 const BROWSERS: Record<string, BrowserType> = { firefox, webkit, chromium };
 const DEFAULT_BROWSERS = ["firefox", "webkit"];
 const DEFAULT_VISUAL_CASES = ["line", "area", "scatter", "bar", "candlestick", "axes-title-grid", "crosshair", "flamegraph", "context-restore"];
+/** The Canvas 2D pass skips cases that need a WebGL context. */
+const WEBGL_ONLY_CASES = new Set(["context-restore"]);
+
+/** Engines the fixtures can be asked for with `?renderer=`. */
+type Engine = "webgl2" | "canvas2d";
 
 interface Options {
   browsers: string[];
@@ -160,11 +166,22 @@ function launchOptions(name: string): { args?: string[]; firefoxUserPrefs?: Reco
 }
 
 async function runChecks(name: string, browser: Browser, options: Options, serverUrl: string): Promise<void> {
-  const webgl2 = await checkWebGl2(name, browser, options);
-  console.log(`✓ WebGL2 available (${webgl2.version ?? "unknown version"}; renderer: ${webgl2.renderer ?? "unknown"})`);
+  let skippedWebGl: Skip | null = null;
+  try {
+    const webgl2 = await checkWebGl2(name, browser, options);
+    console.log(`✓ WebGL2 available (${webgl2.version ?? "unknown version"}; renderer: ${webgl2.renderer ?? "unknown"})`);
+    for (const caseName of options.visualCases) await runVisualCase(name, browser, options, serverUrl, caseName, "webgl2");
+    await runInteractionCase(name, browser, options, serverUrl, "webgl2");
+  } catch (error) {
+    if (!(error instanceof Skip)) throw error;
+    skippedWebGl = error;
+  }
 
-  for (const caseName of options.visualCases) await runVisualCase(name, browser, options, serverUrl, caseName);
-  await runInteractionCase(name, browser, options, serverUrl);
+  // The Canvas 2D engine is the fallback for exactly the browsers where WebGL2 is missing, so it is always checked.
+  console.log("  -- Canvas 2D engine --");
+  for (const caseName of options.visualCases.filter((value) => !WEBGL_ONLY_CASES.has(value))) await runVisualCase(name, browser, options, serverUrl, caseName, "canvas2d");
+  await runInteractionCase(name, browser, options, serverUrl, "canvas2d");
+  if (skippedWebGl) throw skippedWebGl;
 }
 
 async function newPage(browser: Browser, options: Options, caseName: string, label: string): Promise<{ page: Page; errors: string[]; close: () => Promise<void> }> {
@@ -211,10 +228,11 @@ async function checkWebGl2(name: string, browser: Browser, options: Options): Pr
   }
 }
 
-async function runVisualCase(name: string, browser: Browser, options: Options, serverUrl: string, caseName: string): Promise<void> {
+async function runVisualCase(name: string, browser: Browser, options: Options, serverUrl: string, caseName: string, engine: Engine): Promise<void> {
   const { page, errors, close } = await newPage(browser, options, caseName, name);
+  const tag = engine === "webgl2" ? "" : ` [${engine}]`;
   try {
-    await page.goto(new URL(`/visual/?case=${encodeURIComponent(caseName)}`, serverUrl).toString());
+    await page.goto(new URL(`/visual/?case=${encodeURIComponent(caseName)}${engine === "webgl2" ? "" : `&renderer=${engine}&expectRenderer=${engine}`}`, serverUrl).toString());
     const snapshot = await waitFor(page, options.timeoutMs, async () => {
       const value = await page.evaluate(() => (window as unknown as FixtureWindow).__blazeplotVisualTest?.snapshot() as VisualSnapshot | undefined);
       if (value?.state === "error") throw new Error(`visual case ${caseName} reported error: ${value.error ?? "unknown"}`);
@@ -229,25 +247,25 @@ async function runVisualCase(name: string, browser: Browser, options: Options, s
 
     // Browser-level screenshot of the plot area: proves the compositor shows non-blank WebGL output.
     const png = await page.locator("#chart").screenshot();
-    await writeFile(join(options.outDir, `${name}-${caseName}.png`), png);
+    await writeFile(join(options.outDir, `${name}-${caseName}${engine === "webgl2" ? "" : `-${engine}`}.png`), png);
     const pixels = await analyzePng(page, png);
     assert(pixels.distinctColors >= 3, `${caseName} screenshot has ${pixels.distinctColors} distinct colors (blank?)`);
     assert(pixels.nonBackgroundRatio > 0.002, `${caseName} screenshot is ${(pixels.nonBackgroundRatio * 100).toFixed(3)}% non-background pixels (blank?)`);
     // Re-check after the screenshots: late context-restore warnings must fail the case too.
     if (errors.length > 0) throw new Error(`page errors in ${caseName}: ${errors[0]}`);
-    console.log(`✓ visual ${caseName}: ${pixels.distinctColors} colors, ${(pixels.nonBackgroundRatio * 100).toFixed(2)}% drawn, screenshot ${screenshotBytes}B`);
+    console.log(`✓ visual ${caseName}${tag}: ${pixels.distinctColors} colors, ${(pixels.nonBackgroundRatio * 100).toFixed(2)}% drawn, screenshot ${screenshotBytes}B`);
   } catch (error) {
-    await page.screenshot({ path: join(options.outDir, `${name}-${caseName}-FAILED.png`) }).catch(() => undefined);
+    await page.screenshot({ path: join(options.outDir, `${name}-${caseName}${engine === "webgl2" ? "" : `-${engine}`}-FAILED.png`) }).catch(() => undefined);
     throw error;
   } finally {
     await close();
   }
 }
 
-async function runInteractionCase(name: string, browser: Browser, options: Options, serverUrl: string): Promise<void> {
+async function runInteractionCase(name: string, browser: Browser, options: Options, serverUrl: string, engine: Engine): Promise<void> {
   const { page, errors, close } = await newPage(browser, options, "interactions", name);
   try {
-    await page.goto(new URL("/interaction/?case=interactions", serverUrl).toString());
+    await page.goto(new URL(`/interaction/?case=interactions${engine === "webgl2" ? "" : `&renderer=${engine}`}`, serverUrl).toString());
     let snapshot = await waitForInteractionReady(page, options.timeoutMs);
     const read = async (): Promise<InteractionSnapshot> => page.evaluate(() => (window as unknown as FixtureWindow).__blazeplotInteractionTest!.snapshot() as InteractionSnapshot);
     const rect = snapshot.canvasRect;
@@ -299,9 +317,9 @@ async function runInteractionCase(name: string, browser: Browser, options: Optio
     }, "double-click to reset the viewport");
 
     if (errors.length > 0) throw new Error(`page errors in interactions: ${errors[0]}`);
-    console.log("✓ interactions: hover, crosshair, wheel zoom, shift pan, box zoom, double-click reset");
+    console.log(`✓ interactions${engine === "webgl2" ? "" : ` [${engine}]`}: hover, crosshair, wheel zoom, shift pan, box zoom, double-click reset`);
   } catch (error) {
-    await page.screenshot({ path: join(options.outDir, `${name}-interactions-FAILED.png`) }).catch(() => undefined);
+    await page.screenshot({ path: join(options.outDir, `${name}-interactions${engine === "webgl2" ? "" : `-${engine}`}-FAILED.png`) }).catch(() => undefined);
     throw error;
   } finally {
     await close();
