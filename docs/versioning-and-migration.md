@@ -24,11 +24,11 @@ BlazePlot follows npm semver. Use this page to decide whether a change is patch/
 BlazePlot ships its own `.d.ts` files; no `@types` package is needed.
 
 - **Minimum supported TypeScript: 5.0.** The published declarations were compiled and checked with `skipLibCheck: false` against a consumer importing every entry point and subpath, under `moduleResolution: "bundler"` and `"node16"`, with TypeScript 5.0.4, 5.4.5, 5.9.3, 6.0.2, and 7.0.2 (checked on 0.5.5). Older compilers are not tested; 4.9 also accepted the declarations under `node16` resolution during that check, but it is outside the support policy.
-- `moduleResolution` must understand package `exports` and subpath imports: `bundler`, `node16`, or `nodenext`. The legacy `node`/`node10` setting also resolves every subpath, through `typesVersions` in `package.json`, and is checked in CI.
+- Use `moduleResolution` `bundler`, `node16`, or `nodenext`, which read package `exports`. The legacy `node`/`node10` setting also resolves every subpath, through `typesVersions` in `package.json`, and is checked in CI.
 - The declarations reference DOM types (`HTMLElement`, `WebGL2RenderingContext`), so your `lib` must include `"DOM"`.
 - Raising the minimum TypeScript version happens only in a minor release (never in a patch) and is announced in the changelog; the new minimum will already be well past its release date.
 
-The minimum is enforced in CI: the `typescript-floor` job installs the packed package into a consumer project and typechecks every entry point with TypeScript 5.0.4 and the latest 5.x under both resolution modes (`bun run test:typescript-floor`).
+The minimum is enforced in CI: the `typescript-floor` job installs the packed package into a consumer project and typechecks every entry point with TypeScript 5.0.4 and the latest 5.x under all three resolution modes (`bundler`, `node16`, legacy `node10`) (`bun run test:typescript-floor`).
 
 ## Module format and runtime
 
