@@ -124,6 +124,7 @@
     "pages:preview": "vite preview --config vite.pages.config.ts",
     "bench": "bun scripts/benchmark.ts",
     "bench:compare": "bun scripts/benchmark-compare.ts",
+    "bench:compare:smoke": "bun scripts/benchmark-compare.ts --smoke",
     "bench:multi": "bun scripts/benchmark-multichart.ts",
     "bench:scatter": "bun scripts/scatter-profile.ts",
     "bench:report": "bun scripts/benchmark-report.ts",

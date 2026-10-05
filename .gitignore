@@ -12,6 +12,8 @@ benchmarks/*
 !benchmarks/README.md
 !benchmarks/latest.json
 !benchmarks/latest.md
+!benchmarks/baseline-before-perf-pass.json
+!benchmarks/baseline-before-perf-pass.md
 !benchmarks/thresholds.json
 
 # code coverage

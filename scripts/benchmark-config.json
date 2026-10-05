@@ -1,7 +1,50 @@
 {
   "libraries": ["blazeplot", "blazeplot-canvas2d", "uplot", "chartjs"],
-  "scenarios": ["line-100k-static", "line-1m-static", "line-1m-pan", "line-1m-stream", "line-10m-accelerated-pan"],
+  "runs": 7,
+  "minRuns": 5,
+  "frameBudgetMs": 16.7,
+  "noiseFloor": 0.05,
   "runtimeComparisons": [
-    { "primaryLibrary": "blazeplot", "referenceLibrary": "uplot" }
+    { "primaryLibrary": "blazeplot", "referenceLibrary": "uplot" },
+    { "primaryLibrary": "blazeplot", "referenceLibrary": "chartjs" }
+  ],
+  "metrics": {
+    "readyMs": { "label": "Ready (construct to first presented frame)", "short": "Ready", "unit": "ms", "direction": "min" },
+    "constructMs": { "label": "Synchronous construct call", "short": "Construct", "unit": "ms", "direction": "min" },
+    "heapMiB": { "label": "JS heap held after ready (data + chart)", "short": "Heap", "unit": "MiB", "direction": "min" },
+    "heapGrowthMiB": { "label": "JS heap growth during measurement (after GC)", "short": "Heap growth", "unit": "MiB", "direction": "min" },
+    "rafFps": { "label": "Sustained frames per second", "short": "FPS", "unit": "fps", "direction": "max" },
+    "rafP95Ms": { "label": "Frame interval p95", "short": "Frame p95", "unit": "ms", "direction": "min" },
+    "workP50Ms": { "label": "Main-thread frame cost p50", "short": "Work p50", "unit": "ms", "direction": "min" },
+    "workP95Ms": { "label": "Main-thread frame cost p95", "short": "Work p95", "unit": "ms", "direction": "min" },
+    "hoverP50Ms": { "label": "Pointer move to presented frame p50", "short": "Hover p50", "unit": "ms", "direction": "min" },
+    "hoverP95Ms": { "label": "Pointer move to presented frame p95", "short": "Hover p95", "unit": "ms", "direction": "min" },
+    "resizeP50Ms": { "label": "Container resize to presented frame p50", "short": "Resize p50", "unit": "ms", "direction": "min" },
+    "resizeP95Ms": { "label": "Container resize to presented frame p95", "short": "Resize p95", "unit": "ms", "direction": "min" },
+    "destroyMs": { "label": "Destroy all charts", "short": "Destroy", "unit": "ms", "direction": "min" },
+    "cycleP50Ms": { "label": "Mount + first frame + destroy p50", "short": "Cycle p50", "unit": "ms", "direction": "min" },
+    "cycleP95Ms": { "label": "Mount + first frame + destroy p95", "short": "Cycle p95", "unit": "ms", "direction": "min" },
+    "leakMiB": { "label": "JS heap retained after all cycles (after GC)", "short": "Retained", "unit": "MiB", "direction": "min" },
+    "maxSustainedKsps": { "label": "Max sustained append rate at 60 fps", "short": "Max rate", "unit": "k samples/s", "direction": "max" }
+  },
+  "scenarios": [
+    { "name": "line-100k-static", "group": "Setup", "title": "100k point line, initial render", "metrics": ["readyMs", "constructMs", "heapMiB"], "primary": "readyMs" },
+    { "name": "line-1m-static", "group": "Setup", "title": "1M point line, initial render", "metrics": ["readyMs", "constructMs", "heapMiB"], "primary": "readyMs" },
+    { "name": "cold-first-chart", "group": "Setup", "title": "100k point line, first chart on a cold page (no prewarm, no warmup run)", "metrics": ["readyMs", "constructMs"], "primary": "readyMs" },
+    { "name": "line-1m-pan", "group": "Line", "title": "1M point line, automated pan over 100k visible samples", "metrics": ["rafFps", "rafP95Ms", "workP50Ms", "workP95Ms", "readyMs", "heapMiB"], "primary": "rafFps" },
+    { "name": "line-1m-stream", "group": "Line", "title": "1M point line, live append while following latest 100k samples", "metrics": ["rafFps", "rafP95Ms", "workP50Ms", "workP95Ms", "readyMs", "heapMiB"], "primary": "rafFps" },
+    { "name": "line-10m-accelerated-pan", "group": "Line", "title": "10M point line, pan over 5M visible samples (BlazePlot uses its accelerated dataset path)", "metrics": ["rafFps", "rafP95Ms", "workP50Ms", "workP95Ms", "readyMs", "heapMiB"], "primary": "rafFps" },
+    { "name": "multi-10x100k-pan", "group": "Series types", "title": "10 line series of 100k samples, pan over 50k visible samples", "metrics": ["rafFps", "rafP95Ms", "workP50Ms", "workP95Ms", "readyMs", "heapMiB"], "primary": "rafFps" },
+    { "name": "multi-100x20k-pan", "group": "Series types", "title": "100 line series of 20k samples, pan over 10k visible samples", "metrics": ["rafFps", "rafP95Ms", "workP50Ms", "workP95Ms", "readyMs", "heapMiB"], "primary": "rafFps" },
+    { "name": "area-1m-pan", "group": "Series types", "title": "1M point area (filled line), pan over 100k visible samples", "metrics": ["rafFps", "rafP95Ms", "workP50Ms", "workP95Ms", "readyMs", "heapMiB"], "primary": "rafFps" },
+    { "name": "scatter-1m-pan", "group": "Series types", "title": "1M point scatter, pan over 100k visible samples", "metrics": ["rafFps", "rafP95Ms", "workP50Ms", "workP95Ms", "readyMs", "heapMiB"], "primary": "rafFps" },
+    { "name": "bar-100k-pan", "group": "Series types", "title": "100k bars, pan over 10k visible bars", "metrics": ["rafFps", "rafP95Ms", "workP50Ms", "workP95Ms", "readyMs", "heapMiB"], "primary": "rafFps" },
+    { "name": "dual-axis-1m-pan", "group": "Series types", "title": "Two 500k point lines on left and right Y axes, pan over 100k visible samples", "metrics": ["rafFps", "rafP95Ms", "workP50Ms", "workP95Ms", "readyMs", "heapMiB"], "primary": "rafFps" },
+    { "name": "hover-1m", "group": "Interaction", "title": "Pointer move over a 1M point line with crosshair, snapping marker and readout", "metrics": ["hoverP50Ms", "hoverP95Ms"], "primary": "hoverP50Ms" },
+    { "name": "resize-1m", "group": "Interaction", "title": "Container resize of a 1M point line", "metrics": ["resizeP50Ms", "resizeP95Ms"], "primary": "resizeP50Ms" },
+    { "name": "many-charts-50", "group": "Lifecycle", "title": "50 small charts (10k points each) mounted on one page", "metrics": ["readyMs", "heapMiB", "destroyMs"], "primary": "readyMs" },
+    { "name": "mount-destroy-cycle", "group": "Lifecycle", "title": "Mount, first frame and destroy of a 100k point chart, repeated 40 times", "metrics": ["cycleP50Ms", "cycleP95Ms", "leakMiB"], "primary": "cycleP50Ms" },
+    { "name": "heap-soak-1m-pan", "group": "Lifecycle", "title": "1M point line panned for 8 seconds; JS heap growth after GC", "metrics": ["heapGrowthMiB", "rafFps"], "primary": "heapGrowthMiB" },
+    { "name": "stream-throughput", "group": "Lifecycle", "title": "Highest live append rate that keeps 60 fps into a 100k-sample sliding window", "metrics": ["maxSustainedKsps"], "primary": "maxSustainedKsps" }
   ]
 }
