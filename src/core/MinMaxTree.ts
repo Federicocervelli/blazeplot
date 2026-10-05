@@ -78,7 +78,8 @@ export class MinMaxTree {
 
   /**
    * Write the Y extent of physical `[start, end)` into `out` and return whether it holds a finite
-   * value. Queries never allocate: callers keep one `out` slot per extraction pass.
+   * value. Queries never allocate: callers keep one `out` slot per extraction pass. The range must
+   * lie within `[0, capacity]`.
    */
   queryInto(start: number, end: number, out: MinMaxOut): boolean {
     out.minY = Infinity;
@@ -91,7 +92,6 @@ export class MinMaxTree {
   queryRingInto(physicalStart: number, count: number, out: MinMaxOut): boolean {
     out.minY = Infinity;
     out.maxY = -Infinity;
-    if (count <= 0) return false;
     const end = physicalStart + count;
     if (end <= this.capacity) {
       this.fold(physicalStart, end, out);
@@ -102,50 +102,59 @@ export class MinMaxTree {
     return out.minY <= out.maxY;
   }
 
-  /** Widen `out` by the extent of physical `[start, end)`: partial blocks by scanning, whole blocks through the tree. */
+  /**
+   * Widen `out` by the extent of physical `[start, end)`: partial blocks at either end by scanning,
+   * whole blocks through the tree. Written with local accumulators and no helper calls because it
+   * runs once per dense min/max bucket, every frame.
+   */
   private fold(start: number, end: number, out: MinMaxOut): void {
-    const blockSize = this.blockSize;
-    const from = Math.max(0, start);
-    const to = Math.min(this.capacity, end);
-    const firstFullBlock = Math.ceil(from / blockSize);
-    const lastFullBlock = Math.floor(to / blockSize);
-    if (firstFullBlock >= lastFullBlock) {
-      this.scan(from, to, out);
-      return;
-    }
-
-    this.scan(from, firstFullBlock * blockSize, out);
-    let left = this.base + firstFullBlock;
-    let right = this.base + lastFullBlock;
-    while (left < right) {
-      if (left & 1) this.take(left++, out);
-      if (right & 1) this.take(--right, out);
-      left >>= 1;
-      right >>= 1;
-    }
-    this.scan(lastFullBlock * blockSize, to, out);
-  }
-
-  /** Widen `out` by the finite values among `values[from, to)`. */
-  private scan(from: number, to: number, out: MinMaxOut): void {
     const values = this.values;
+    const blockSize = this.blockSize;
     let minY = out.minY;
     let maxY = out.maxY;
-    for (let i = from; i < to; i++) {
+    let i = start;
+    const to = end;
+    const firstFullBlock = Math.ceil(i / blockSize);
+    const lastFullBlock = Math.floor(to / blockSize);
+    // Short ranges are one scan; otherwise scan up to the first block edge, walk the tree, scan the tail.
+    const headEnd = firstFullBlock >= lastFullBlock ? to : firstFullBlock * blockSize;
+    for (; i < headEnd; i++) {
       const value = values[i]!;
       if (!Number.isFinite(value)) continue;
       if (value < minY) minY = value;
       if (value > maxY) maxY = value;
     }
+
+    if (firstFullBlock < lastFullBlock) {
+      const minTree = this.minTree;
+      const maxTree = this.maxTree;
+      let left = this.base + firstFullBlock;
+      let right = this.base + lastFullBlock;
+      while (left < right) {
+        if (left & 1) {
+          this.refresh(left);
+          if (minTree[left]! < minY) minY = minTree[left]!;
+          if (maxTree[left]! > maxY) maxY = maxTree[left]!;
+          left++;
+        }
+        if (right & 1) {
+          right--;
+          this.refresh(right);
+          if (minTree[right]! < minY) minY = minTree[right]!;
+          if (maxTree[right]! > maxY) maxY = maxTree[right]!;
+        }
+        left >>= 1;
+        right >>= 1;
+      }
+      for (i = lastFullBlock * blockSize; i < to; i++) {
+        const value = values[i]!;
+        if (!Number.isFinite(value)) continue;
+        if (value < minY) minY = value;
+        if (value > maxY) maxY = value;
+      }
+    }
     out.minY = minY;
     out.maxY = maxY;
-  }
-
-  /** Widen `out` by a node summary. */
-  private take(node: number, out: MinMaxOut): void {
-    this.refresh(node);
-    if (this.minTree[node]! < out.minY) out.minY = this.minTree[node]!;
-    if (this.maxTree[node]! > out.maxY) out.maxY = this.maxTree[node]!;
   }
 
   /** Bring a node summary up to date: children first, a leaf by scanning its block. */
@@ -156,7 +165,13 @@ export class MinMaxTree {
     own.maxY = -Infinity;
     if (node >= this.base) {
       const from = (node - this.base) * this.blockSize;
-      this.scan(from, Math.min(this.validEnd, from + this.blockSize), own);
+      const to = Math.min(this.validEnd, from + this.blockSize);
+      for (let i = from; i < to; i++) {
+        const value = this.values[i]!;
+        if (!Number.isFinite(value)) continue;
+        if (value < own.minY) own.minY = value;
+        if (value > own.maxY) own.maxY = value;
+      }
     } else {
       const left = node << 1;
       this.refresh(left);

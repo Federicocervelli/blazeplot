@@ -209,7 +209,7 @@ export class StaticDataset implements Dataset {
 
   /** Return min/max Y values for a logical index range. Summaries are built lazily, only for the blocks queried. */
   rangeMinMaxY(start: number, end: number): MinMaxY | null {
-    const out = { minY: Infinity, maxY: -Infinity };
+    const out = { minY: 0, maxY: 0 };
     return this.rangeMinMaxInto(start, end, out) ? out : null;
   }
 
