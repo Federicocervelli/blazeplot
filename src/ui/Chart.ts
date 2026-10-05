@@ -9,7 +9,7 @@ import { Renderer } from "../render/Renderer.js";
 import type { RenderProjection } from "../render/Renderer.js";
 import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
 import { WebGL2Backend } from "../render/WebGL2Backend.js";
-import type { GpuBackend, GpuBuffer } from "../render/types.js";
+import type { GpuBackend } from "../render/types.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
@@ -26,6 +26,7 @@ import { buildChartSummary } from "./ChartSummary.js";
 import type { ChartSummary } from "./ChartSummary.js";
 
 /** Vertices in the shared raw line/point/area upload buffer. */
+const BYTES_PER_VERTEX = 2 * Float32Array.BYTES_PER_ELEMENT;
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 /** Bars, min/max buckets, or candles expanded into triangles per draw. */
@@ -406,9 +407,6 @@ interface PlotRect {
 
 interface ChartGpuResources {
   readonly renderer: Renderer;
-  readonly rawLineBuffer: GpuBuffer;
-  readonly barTriangleBuffer: GpuBuffer;
-  readonly gridBuffer: GpuBuffer;
 }
 
 function normalizeAxisConfig(config: boolean | AxisConfig | undefined, defaultVisible: boolean): ResolvedAxisConfig {
@@ -485,12 +483,9 @@ export class Chart {
   private axis: AxisController;
   private rightAxis: AxisController;
   private renderer!: Renderer;
-  private rawLineBuffer!: GpuBuffer;
   private readonly rawLineData = new Float32Array(RAW_LINE_VERTEX_CAPACITY * 2);
   private readonly minMaxBucketData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_MINMAX_BUCKET);
-  private barTriangleBuffer!: GpuBuffer;
   private readonly barTriangleData = new Float32Array(BAR_TRIANGLE_CAPACITY * FLOATS_PER_BAR_TRIANGLES);
-  private gridBuffer!: GpuBuffer;
   private readonly gridData = new Float32Array(GRID_LINE_VERTEX_CAPACITY * 2);
   private readonly xTicks: number[] = [];
   private readonly yTicks: number[] = [];
@@ -1232,6 +1227,7 @@ export class Chart {
         series.rebuildPyramid();
         this.drawSeries(series);
       }
+      this.renderer.endFrame();
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
       this.emit("render", undefined);
@@ -1480,25 +1476,11 @@ export class Chart {
 
   private createGpuResources(): ChartGpuResources {
     const backend = this.options.backendFactory?.({ canvas: this.canvas }) ?? new WebGL2Backend(this.canvas);
-    const renderer = new Renderer(backend);
-    try {
-      return {
-        renderer,
-        rawLineBuffer: renderer.createFloatBuffer(this.rawLineData.length),
-        barTriangleBuffer: renderer.createFloatBuffer(this.barTriangleData.length),
-        gridBuffer: renderer.createFloatBuffer(this.gridData.length),
-      };
-    } catch (error) {
-      this.disposeRenderer(renderer);
-      throw error;
-    }
+    return { renderer: new Renderer(backend) };
   }
 
   private installGpuResources(resources: ChartGpuResources): void {
     this.renderer = resources.renderer;
-    this.rawLineBuffer = resources.rawLineBuffer;
-    this.barTriangleBuffer = resources.barTriangleBuffer;
-    this.gridBuffer = resources.gridBuffer;
   }
 
   private disposeRenderer(renderer: Renderer): void {
@@ -1797,8 +1779,8 @@ export class Chart {
     }
     if (vertexCount === 0) return;
 
-    this.uploadFloatData(this.gridBuffer, this.gridData, vertexCount * 2);
-    this.renderer.drawClipLines(this.gridBuffer, vertexCount, this.resolvedTheme.gridColor);
+    this.stats.uploadBytes += vertexCount * BYTES_PER_VERTEX;
+    this.renderer.drawClipLines(this.gridData, vertexCount, this.resolvedTheme.gridColor);
     this.stats.drawCalls++;
   }
 
@@ -1899,7 +1881,7 @@ export class Chart {
         this.barTriangleData[dst + 3] = this.rawLineData[src + 2]!;
       }
       this.uploadBarTriangleData(candleCount * 2, projection);
-      this.renderer.drawLines(this.barTriangleBuffer, candleCount * 2, style.wickColor, style.lineWidth, projection, "lines");
+      this.renderer.drawLines(this.barTriangleData, candleCount * 2, style.wickColor, style.lineWidth, projection, "lines");
       this.recordDraw("raw", candleCount * 2);
 
       this.drawCandlestickBodies(candleCount, style.barWidth, true, style.upColor, projection);
@@ -1926,8 +1908,7 @@ export class Chart {
 
   private drawBarSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const { style } = series;
-    const rawBarCapacity = this.renderer.supportsInstancing ? RAW_LINE_VERTEX_CAPACITY : BAR_TRIANGLE_CAPACITY;
-    if (series.downsampled && series.visibleSampleCount(viewport) > rawBarCapacity) {
+    if (series.downsampled && series.visibleSampleCount(viewport) > RAW_LINE_VERTEX_CAPACITY) {
       const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin);
       for (let i = 0; i < bucketCount; i++) {
         const offset = i * FLOATS_PER_MINMAX_BUCKET;
@@ -1939,44 +1920,47 @@ export class Chart {
     }
 
     const range = series.visibleIndexRange(viewport, 1);
-    const count = series.copyRawRange(range.start, range.end, this.rawLineData, rawBarCapacity, this.currentXOrigin);
+    const count = series.copyRawRange(range.start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
     if (count <= 0) return;
 
     const controller = this.controllerFor(series.config.yAxis);
-    if (this.renderer.supportsInstancing && !controller.isNonlinear("x") && !controller.isNonlinear("y")) {
+    if (!controller.isNonlinear("x") && !controller.isNonlinear("y")) {
       this.uploadRawLineData(count, projection);
-      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, style, projection);
+      this.renderer.drawBarsInstanced(this.rawLineData, count, style, projection);
       this.recordDraw("bars", count);
       return;
     }
 
-    const barCount = Math.min(count, BAR_TRIANGLE_CAPACITY);
+    // Nonlinear axes scale vertices on the CPU, so bars are expanded into transformed triangles.
     const halfWidth = style.barWidth * 0.5;
-    for (let i = 0; i < barCount; i++) {
-      const x = this.rawLineData[i * 2]!;
-      this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[i * 2 + 1]!);
+    for (let start = 0; start < count; start += BAR_TRIANGLE_CAPACITY) {
+      const batch = Math.min(BAR_TRIANGLE_CAPACITY, count - start);
+      for (let i = 0; i < batch; i++) {
+        const x = this.rawLineData[(start + i) * 2]!;
+        this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[(start + i) * 2 + 1]!);
+      }
+      this.drawTriangleBatch(batch * 6, style.color, projection, "bars");
     }
-    this.drawTriangleBatch(barCount * 6, style.color, projection, "bars");
   }
 
   private drawRawLine(vertexCount: number, style: SeriesStyle, projection: RenderProjection, mode: DrawMode): void {
     if (vertexCount < 2) return;
     this.uploadRawLineData(vertexCount, projection);
-    this.renderer.drawLines(this.rawLineBuffer, vertexCount, style.color, style.lineWidth, projection);
+    this.renderer.drawLines(this.rawLineData, vertexCount, style.color, style.lineWidth, projection);
     this.recordDraw(mode, vertexCount);
   }
 
   private drawAreaFill(vertexCount: number, style: SeriesStyle, projection: RenderProjection): void {
     if (vertexCount < 4) return;
     this.uploadRawLineData(vertexCount, projection);
-    this.renderer.drawTriangles(this.rawLineBuffer, vertexCount, style.fillColor, projection, "triangle_strip");
+    this.renderer.drawTriangles(this.rawLineData, vertexCount, style.fillColor, projection, "triangle_strip");
     this.recordDraw("area", vertexCount);
   }
 
   private drawPointBatch(count: number, style: SeriesStyle, projection: RenderProjection): void {
     if (count <= 0) return;
     this.uploadRawLineData(count, projection);
-    this.renderer.drawPoints(this.rawLineBuffer, count, style.color, style.pointSize, projection);
+    this.renderer.drawPoints(this.rawLineData, count, style.color, style.pointSize, projection);
     this.recordDraw("points", count);
   }
 
@@ -2059,7 +2043,7 @@ export class Chart {
 
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount, projection);
-    this.renderer.drawLines(this.barTriangleBuffer, vertexCount, color, lineWidth, projection, "lines");
+    this.renderer.drawLines(this.barTriangleData, vertexCount, color, lineWidth, projection, "lines");
     this.recordDraw("raw", vertexCount);
   }
 
@@ -2101,7 +2085,7 @@ export class Chart {
   private drawTriangleBatch(vertexCount: number, color: RgbaColor, projection: RenderProjection, mode: DrawMode): void {
     if (vertexCount <= 0) return;
     this.uploadBarTriangleData(vertexCount, projection);
-    this.renderer.drawTriangles(this.barTriangleBuffer, vertexCount, color, projection, "triangles");
+    this.renderer.drawTriangles(this.barTriangleData, vertexCount, color, projection, "triangles");
     this.recordDraw(mode, vertexCount);
   }
 
@@ -2122,18 +2106,12 @@ export class Chart {
 
   private uploadRawLineData(vertexCount: number, projection: RenderProjection): void {
     this.transformVertices(this.rawLineData, vertexCount, projection);
-    this.uploadFloatData(this.rawLineBuffer, this.rawLineData, vertexCount * 2);
+    this.stats.uploadBytes += vertexCount * BYTES_PER_VERTEX;
   }
 
   private uploadBarTriangleData(vertexCount: number, projection: RenderProjection): void {
     this.transformVertices(this.barTriangleData, vertexCount, projection);
-    this.uploadFloatData(this.barTriangleBuffer, this.barTriangleData, vertexCount * 2);
-  }
-
-  private uploadFloatData(buffer: GpuBuffer, data: Float32Array, floatCount: number): void {
-    const count = Math.max(0, Math.min(floatCount, data.length));
-    this.renderer.updateFloatBuffer(buffer, data, count);
-    this.stats.uploadBytes += count * Float32Array.BYTES_PER_ELEMENT;
+    this.stats.uploadBytes += vertexCount * BYTES_PER_VERTEX;
   }
 
   private recordDraw(mode: DrawMode, points: number): void {
