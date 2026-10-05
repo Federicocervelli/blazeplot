@@ -88,13 +88,13 @@ export default class Preview extends PreviewResources {
         {
           options: siteChartOptions({
             axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
-            plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
+            plugins: [interactionsPlugin({ shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
           }),
         },
         {
           options: siteChartOptions({
             axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside", scale: "log", logBase: 10 } },
-            plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
+            plugins: [interactionsPlugin({ shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
           }),
         },
       ],

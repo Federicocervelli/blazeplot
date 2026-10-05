@@ -523,6 +523,25 @@ describe("interactionsPlugin cooperative gestures", () => {
     chart.dispose();
   });
 
+  it('touchPan "two-finger" does not show the hint for pointercancel at the end of a two-finger gesture', () => {
+    const chart = make({ touchPan: "two-finger" });
+    fire(chart.canvas, touch("pointerdown", 150, 100, 1));
+    fire(chart.canvas, touch("pointerdown", 250, 100, 2));
+    fire(chart.canvas, touch("pointermove", 100, 100, 1));
+    fire(chart.canvas, touch("pointermove", 300, 100, 2));
+    expect(hintOf(chart)?.style.display ?? "none").not.toBe("flex");
+    // The browser cancels both pointers when it ends the touch sequence.
+    fire(chart.canvas, touch("pointercancel", 100, 100, 1));
+    fire(chart.canvas, touch("pointercancel", 300, 100, 2));
+    expect(hintOf(chart)?.style.display ?? "none").not.toBe("flex");
+
+    // A later one-finger scroll takeover still shows the hint.
+    fire(chart.canvas, touch("pointerdown", 200, 100, 3));
+    fire(chart.canvas, touch("pointercancel", 200, 100, 3));
+    expect(hintOf(chart)!.style.display).toBe("flex");
+    chart.dispose();
+  });
+
   it("two-finger mode still pans with one finger on an axis gutter", () => {
     const chart = make({ touchPan: "two-finger" });
     expect(chart.yAxisElement.style.touchAction).toBe("none");

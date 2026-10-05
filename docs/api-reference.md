@@ -63,7 +63,7 @@ Generated from `dist/` after the package build.
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
 | canvas2d renderer entry | `dist/renderers/canvas2d.js` | 5 KiB |
 | shared renderer entry | `dist/renderers/shared.js` | 4 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 137 KiB |
+| shared Chart chunk | `dist/Chart-*.js` | 139 KiB |
 | shared WebGL2 backend chunk | `dist/WebGL2Backend-*.js` | 12 KiB |
 | shared WebGL2 renderer chunk | `dist/webgl2Renderer-*.js` | 0 KiB |
 | shared WebGL context release chunk | `dist/releaseWebGLContext-*.js` | 0 KiB |

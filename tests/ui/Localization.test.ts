@@ -84,10 +84,40 @@ describe("localizable strings", () => {
   });
 
   it("replaces selection announcements", () => {
-    const chart = h.make({
-      plugins: [selectionPlugin({ messages: { cleared: "Auswahl geloescht" } })],
+    const selection = selectionPlugin({
+      mode: "xy",
+      messages: {
+        cleared: "Auswahl geloescht",
+        cancelled: "Auswahl abgebrochen",
+        selecting: (description, starting) => `Waehle ${description}${starting ? " (Enter bestaetigt)" : ""}`,
+        selected: (description) => `Gewaehlt ${description}`,
+        xRange: (from, to) => `X von ${from} bis ${to}`,
+        yRange: (from, to) => `Y von ${from} bis ${to}`,
+        join: (x, y) => `${x}; ${y}`,
+      },
     });
+    const chart = h.make({ plugins: [selection] });
+    chart.setViewport({ xMin: 0, xMax: 100, yMin: 0, yMax: 100 });
     expect(chart.rootElement.querySelector(".blazeplot-selection-brush")).not.toBeNull();
+    const status = (): string => (chart.rootElement.querySelector(".blazeplot-selection-status")?.textContent ?? "").replace(/[\s ]+$/, "");
+    const press = (key: string, shiftKey = false): void => { fire(chart.rootElement, keyEvent(key, { shiftKey })); };
+
+    press("ArrowRight", true);
+    expect(status()).toMatch(/^Waehle X von [\d.]+ bis [\d.]+; Y von [\d.]+ bis [\d.]+ \(Enter bestaetigt\)$/);
+    press("ArrowRight", true);
+    expect(status()).toMatch(/^Waehle X von .*; Y von .*$/);
+    expect(status()).not.toContain("Enter bestaetigt");
+    press("ArrowDown", true);
+    press("Enter");
+    expect(status()).toMatch(/^Gewaehlt X von [\d.]+ bis [\d.]+; Y von [\d.]+ bis [\d.]+$/);
+    // A pending keyboard range that is cancelled keeps the committed selection and announces the cancellation.
+    press("ArrowRight", true);
+    press("Escape");
+    expect(status()).toBe("Auswahl abgebrochen");
+    // Clearing the committed selection is announced too.
+    selection.clear();
+    expect(status()).toBe("Auswahl geloescht");
+    expect(status()).not.toMatch(/Selection|Selecting|Selected/);
     chart.dispose();
   });
 });
