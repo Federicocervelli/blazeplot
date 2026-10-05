@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { FakeResizeObserver, setupDom } from "./fakes.ts";
 import type { FakeRaf, TestEnv } from "./fakes.ts";
 import { stubPlot } from "./harness.ts";
+import { releaseWarm } from "../../src/render/webgl2/warm.ts";
 import type { Chart as ChartType } from "../../src/ui/Chart.ts";
 import type { createChartRenderContext as CreateContext, sharedRenderer as SharedRenderer } from "../../src/render/engines.ts";
 
@@ -90,6 +91,8 @@ beforeEach(() => {
   } as typeof HTMLCanvasElement.prototype.getContext;
 });
 afterEach(() => {
+  // A shared context whose last chart was disposed idles warm for a moment; end that before the next test.
+  releaseWarm();
   HTMLCanvasElement.prototype.getContext = savedGetContext;
   target.remove();
 });
@@ -120,6 +123,7 @@ describe("shared render context", () => {
     expect(charts.every((chart) => chart.rendererInfo.name === "shared" && chart.rendererInfo.requested === "shared")).toBe(true);
     expect(charts[0]!.rendererInfo.capabilities).toMatchObject({ gpu: true, shared: true });
     for (const chart of charts) chart.dispose();
+    releaseWarm();
     expect(glContexts[0]!.releases).toBe(1);
   });
 
@@ -161,20 +165,49 @@ describe("shared render context", () => {
     b.dispose();
   });
 
-  it("releases the shared context when the last chart is disposed and recreates it on demand", () => {
+  it("keeps the shared context warm after the last chart is disposed, releases it once idle, and recreates it on demand", () => {
     const context = createChartRenderContext();
     const charts = mountCharts(3, context);
     for (const chart of charts.slice(0, 2)) chart.dispose();
     expect(glContexts[0]!.releases).toBe(0);
     expect(context.chartCount).toBe(1);
     charts[2]!.dispose();
-    expect(glContexts[0]!.releases).toBe(1);
     expect(context.chartCount).toBe(0);
+    // Warm: the context is still alive for the next chart.
+    expect(glContexts[0]!.releases).toBe(0);
+
+    // The idle period ends (here: forced) and the context is released.
+    releaseWarm();
+    expect(glContexts[0]!.releases).toBe(1);
 
     const again = mountCharts(1, context);
     expect(glContexts).toHaveLength(2);
     again[0]!.dispose();
+    releaseWarm();
     expect(glContexts[1]!.releases).toBe(1);
+  });
+
+  it("hands the warm shared context, with its programs, to charts mounted right after the last one is disposed", () => {
+    const context = createChartRenderContext();
+    mountCharts(2, context).forEach((chart) => chart.dispose());
+    expect(glContexts).toHaveLength(1);
+    const next = mountCharts(2, context);
+    expect(glContexts).toHaveLength(1);
+    expect(context.chartCount).toBe(2);
+    // The pending idle release must not take the context away from the new charts.
+    releaseWarm();
+    expect(glContexts[0]!.releases).toBe(0);
+    raf.flush();
+    expect(next.every((chart) => chart.getFrameStats().drawCalls > 0)).toBe(true);
+    next.forEach((chart) => chart.dispose());
+  });
+
+  it("releases an idle context at once when asked with context.dispose()", () => {
+    const context = createChartRenderContext();
+    mountCharts(1, context).forEach((chart) => chart.dispose());
+    expect(glContexts[0]!.releases).toBe(0);
+    context.dispose();
+    expect(glContexts[0]!.releases).toBe(1);
   });
 
   it("separate contexts do not share a WebGL context", () => {
@@ -184,6 +217,7 @@ describe("shared render context", () => {
     const b = mountCharts(1, second)[0]!;
     expect(glContexts).toHaveLength(2);
     a.dispose();
+    first.dispose();
     expect(glContexts[0]!.releases).toBe(1);
     expect(glContexts[1]!.releases).toBe(0);
     b.dispose();
@@ -212,6 +246,7 @@ describe("shared render context", () => {
     expect(context.chartCount).toBe(3);
     for (const chart of charts) chart.dispose();
     expect(context.chartCount).toBe(0);
+    releaseWarm();
     expect(gl.releases).toBe(1);
   });
 
@@ -224,6 +259,7 @@ describe("shared render context", () => {
     expect(context.chartCount).toBe(6);
     linked.dispose();
     expect(context.chartCount).toBe(0);
+    releaseWarm();
     expect(glContexts[0]!.releases).toBe(1);
   });
 });
