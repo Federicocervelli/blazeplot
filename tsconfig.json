@@ -31,6 +31,7 @@
     "tests",
     "scripts",
     "vite.config.ts",
-    "vite.pages.config.ts"
+    "vite.pages.config.ts",
+    "vite.compare.config.ts"
   ]
 }
