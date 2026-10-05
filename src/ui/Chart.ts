@@ -1,4 +1,4 @@
-import type { SeriesConfig, SeriesStyle, SeriesStyleOptions, Dataset, SeriesSample, SeriesYAxis, Viewport, RgbaColor } from "../core/types.js";
+import type { SeriesConfig, SeriesStyle, SeriesStyleOptions, Dataset, SeriesYAxis, Viewport, RgbaColor } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
@@ -14,6 +14,8 @@ import type { AxisControllerAxisOptions } from "../interaction/AxisController.js
 import type { PanIntent, ZoomIntent } from "../interaction/types.js";
 import { AUTO_GUTTER_PADDING_PX, AxisOverlay, GutterTracker, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
+import { ChartPicker, hoverStatesEqual, insidePlot, plotToData } from "./ChartPicker.js";
+import type { PlotRect } from "./ChartPicker.js";
 import type { NormalizedAxisConfig } from "./ChartLayout.js";
 import { forcedColorsTheme, resolveChartTheme, resolveThemeColor } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
@@ -67,19 +69,6 @@ type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { r
 type ResolvedAxesConfig = { x: ResolvedAxisConfig; y: ResolvedAxisConfig; y2: ResolvedAxisConfig };
 
 type Listener<K extends ChartEventName> = (payload: ChartEventMap[K]) => void;
-
-interface PickCandidate {
-  readonly sample: SeriesSample;
-  readonly series: SeriesStore;
-  readonly seriesIndex: number;
-}
-
-interface PlotRect {
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
-  readonly height: number;
-}
 
 interface ChartGpuResources {
   readonly renderer: ChartRenderer;
@@ -169,6 +158,12 @@ export class Chart {
   private gridVisible: boolean;
   private layout: ChartLayout;
   private readonly stats: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" };
+  private readonly picker = new ChartPicker({
+    series: () => this.series,
+    camera: (yAxis) => this.getCamera(yAxis),
+    controller: (yAxis) => this.controllerFor(yAxis),
+    hoverDefaults: () => this.options.hover,
+  });
   private readonly painter = new SeriesPainter(this.stats, GRID_LINE_VERTEX_CAPACITY);
   private resizeObserver: ResizeObserver | null = null;
   private readonly plugins: PluginHost;
@@ -420,8 +415,8 @@ export class Chart {
     const rect = this.canvas.getBoundingClientRect();
     const plotX = clientX - rect.left;
     const plotY = clientY - rect.top;
-    if (!this.insidePlot(plotX, plotY, rect)) return null;
-    return this.plotToData(plotX, plotY, rect, this.controllerFor(yAxis));
+    if (!insidePlot(plotX, plotY, rect)) return null;
+    return plotToData(plotX, plotY, rect, this.controllerFor(yAxis));
   }
 
   /** Return the visible data domain for the requested Y axis. */
@@ -794,7 +789,7 @@ export class Chart {
   /** Hit-test a client-coordinate point against visible series. */
   pick(clientX: number, clientY: number, options: ChartPickOptions = {}): ChartHoverState | null {
     const rect = this.canvas.getBoundingClientRect();
-    return this.pickAtPlot(clientX - rect.left, clientY - rect.top, clientX, clientY, rect, options);
+    return this.picker.pickAtPlot(clientX - rect.left, clientY - rect.top, clientX, clientY, rect, options);
   }
 
   /** Render the chart, including DOM overlays under the chart root, to an image blob. */
@@ -1129,14 +1124,14 @@ export class Chart {
     const sample = seriesIndex === -1 || !series.visible ? null : series.sampleAt(target.index);
     if (!sample) return null;
     const rect = this.canvas.getBoundingClientRect();
-    const probe = this.createPickItem(sample, series, seriesIndex, 0, 0, rect);
-    if (!this.insidePlot(probe.plotX, probe.plotY, rect)) return null;
+    const probe = this.picker.createPickItem(sample, series, seriesIndex, 0, 0, rect);
+    if (!insidePlot(probe.plotX, probe.plotY, rect)) return null;
     const { clientX, clientY } = probe;
     const primary: ChartPickItem = { ...probe, distancePx: 0 };
     const group = this.options.hover?.group ?? "x";
     const items = group === "none"
       ? [primary]
-      : [primary, ...this.collectPickItems(sample.x, clientX, clientY, rect).filter((item) => item.series !== series)];
+      : [primary, ...this.picker.collectPickItems(sample.x, clientX, clientY, rect).filter((item) => item.series !== series)];
     return {
       clientX,
       clientY,
@@ -1401,17 +1396,6 @@ export class Chart {
     return yAxis === "right" ? this.rightAxis : this.axis;
   }
 
-  private insidePlot(plotX: number, plotY: number, rect: PlotRect): boolean {
-    return rect.width > 0 && rect.height > 0 && plotX >= 0 && plotY >= 0 && plotX <= rect.width && plotY <= rect.height;
-  }
-
-  private plotToData(plotX: number, plotY: number, rect: PlotRect, controller: AxisController): [number, number] {
-    return [
-      controller.clipToValue((plotX / rect.width) * 2 - 1, "x"),
-      controller.clipToValue(1 - (plotY / rect.height) * 2, "y"),
-    ];
-  }
-
   /** Whether both Y axes share a screen direction, so left-domain Y anchors map 1:1 onto the right axis. */
   private rightYDirectionMatchesLeft(): boolean {
     return this.camera.yReversed === this.rightCamera.yReversed;
@@ -1441,129 +1425,6 @@ export class Chart {
     else this.y2Ticks.length = 0;
   }
 
-  private pickAtPlot(
-    plotX: number,
-    plotY: number,
-    clientX: number,
-    clientY: number,
-    rect: PlotRect,
-    options: ChartPickOptions = {},
-  ): ChartHoverState | null {
-    if (!this.insidePlot(plotX, plotY, rect)) return null;
-
-    const [dataX, dataY] = this.plotToData(plotX, plotY, rect, this.axis);
-    const mode = options.mode ?? this.options.hover?.mode ?? "nearest-x";
-    const group = options.group ?? this.options.hover?.group ?? "x";
-    const maxDistancePx = options.maxDistancePx ?? this.options.hover?.maxDistancePx ?? Infinity;
-    const selected = mode === "nearest-point"
-      ? this.findNearestPointCandidate(dataX, plotY, rect, maxDistancePx)
-      : this.findNearestXCandidate(dataX, rect.width, maxDistancePx);
-    if (!selected) return null;
-
-    const anchorX = selected.sample.x;
-    const items = group === "none"
-      ? [this.createPickItem(selected.sample, selected.series, selected.seriesIndex, clientX, clientY, rect)]
-      : this.collectPickItems(anchorX, clientX, clientY, rect);
-    return { clientX, clientY, plotX, plotY, dataX, dataY, anchorX, mode, group, maxDistancePx, items, source: "pointer" };
-  }
-
-  private findNearestXCandidate(dataX: number, plotWidth: number, maxDistancePx: number): PickCandidate | null {
-    let best: PickCandidate | null = null;
-    let bestDistancePx = Infinity;
-
-    for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
-      const series = this.series[seriesIndex]!;
-      if (!series.visible) continue;
-      const viewport = this.getCamera(series.config.yAxis).viewport;
-      const controller = this.controllerFor(series.config.yAxis);
-      const sample = series.nearestSampleByX(dataX, viewport);
-      if (!sample) continue;
-      const xScale = plotWidth / (controller.scaleValue(viewport.xMax, "x") - controller.scaleValue(viewport.xMin, "x"));
-      const distancePx = Math.abs(controller.scaleValue(sample.x, "x") - controller.scaleValue(dataX, "x")) * xScale;
-      if (distancePx < bestDistancePx) {
-        best = { sample, series, seriesIndex };
-        bestDistancePx = distancePx;
-      }
-    }
-
-    return best && bestDistancePx <= maxDistancePx ? best : null;
-  }
-
-  private findNearestPointCandidate(dataX: number, plotY: number, rect: PlotRect, maxDistancePx: number): PickCandidate | null {
-    let best: PickCandidate | null = null;
-    for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
-      const series = this.series[seriesIndex]!;
-      if (!series.visible) continue;
-      const viewport = this.getCamera(series.config.yAxis).viewport;
-      const controller = this.controllerFor(series.config.yAxis);
-      const dataY = controller.clipToValue(1 - (plotY / rect.height) * 2, "y");
-      const sample = series.nearestSampleByPoint(
-        dataX,
-        dataY,
-        viewport,
-        rect.width,
-        rect.height,
-        maxDistancePx,
-        controller.isNonlinear("x") ? (value) => controller.scaleValue(value, "x") : undefined,
-        controller.isNonlinear("y") ? (value) => controller.scaleValue(value, "y") : undefined,
-      );
-      if (!sample) continue;
-      if (!best || (sample.distancePx ?? Infinity) < (best.sample.distancePx ?? Infinity)) {
-        best = { sample, series, seriesIndex };
-      }
-    }
-
-    return best && (best.sample.distancePx ?? Infinity) <= maxDistancePx ? best : null;
-  }
-
-  private collectPickItems(anchorX: number, clientX: number, clientY: number, rect: PlotRect): ChartPickItem[] {
-    const items: ChartPickItem[] = [];
-    for (let seriesIndex = 0; seriesIndex < this.series.length; seriesIndex++) {
-      const series = this.series[seriesIndex]!;
-      if (!series.visible) continue;
-      const sample = series.nearestSampleByX(anchorX, this.getCamera(series.config.yAxis).viewport);
-      if (sample) items.push(this.createPickItem(sample, series, seriesIndex, clientX, clientY, rect));
-    }
-    return items;
-  }
-
-  private createPickItem(
-    sample: SeriesSample,
-    series: SeriesStore,
-    seriesIndex: number,
-    clientX: number,
-    clientY: number,
-    rect: PlotRect,
-  ): ChartPickItem {
-    const yAxis = series.config.yAxis;
-    const controller = this.controllerFor(yAxis);
-    const [plotX, plotY] = this.getCamera(yAxis).toScreen(
-      controller.valueToClip(sample.x, "x"),
-      controller.valueToClip(sample.y, "y"),
-      rect.width,
-      rect.height,
-    );
-    const itemClientX = rect.left + plotX;
-    const itemClientY = rect.top + plotY;
-    const xRange = series.xRangeAt(sample.index);
-    return {
-      index: sample.index,
-      x: sample.x,
-      y: sample.y,
-      ...(xRange ? { xRange } : {}),
-      distancePx: Math.hypot(itemClientX - clientX, itemClientY - clientY),
-      series,
-      seriesIndex,
-      id: series.config.id,
-      name: series.config.name,
-      mode: series.config.mode,
-      plotX,
-      plotY,
-      clientX: itemClientX,
-      clientY: itemClientY,
-    };
-  }
-
   private scheduleHoverRefresh(): void {
     if (this.hoverRafId !== 0) return;
     this.hoverRafId = this.layout.view.requestAnimationFrame(() => {
@@ -1586,29 +1447,10 @@ export class Chart {
       height: this.canvas.clientHeight,
     };
     if (this.lastPointerButtons !== 0) {
-      this.setHover(this.reprojectHoverState(this.currentHover, rect));
+      this.setHover(this.picker.reprojectHoverState(this.currentHover, rect, { clientX: this.lastPointerClientX, clientY: this.lastPointerClientY, plotX: this.lastPointerPlotX, plotY: this.lastPointerPlotY }));
       return;
     }
-    this.setHover(this.pickAtPlot(this.lastPointerPlotX, this.lastPointerPlotY, this.lastPointerClientX, this.lastPointerClientY, rect));
-  }
-
-  private reprojectHoverState(state: ChartHoverState | null, rect: PlotRect): ChartHoverState | null {
-    if (!state || state.items.length === 0 || rect.width <= 0 || rect.height <= 0) return null;
-    const items: ChartPickItem[] = [];
-    for (const item of state.items) {
-      if (item.series.visible) items.push(this.createPickItem(item, item.series, item.seriesIndex, this.lastPointerClientX, this.lastPointerClientY, rect));
-    }
-    const anchor = items[0];
-    if (!anchor || !this.insidePlot(anchor.plotX, anchor.plotY, rect)) return null;
-
-    return {
-      ...state,
-      clientX: this.lastPointerClientX,
-      clientY: this.lastPointerClientY,
-      plotX: this.lastPointerPlotX,
-      plotY: this.lastPointerPlotY,
-      items,
-    };
+    this.setHover(this.picker.pickAtPlot(this.lastPointerPlotX, this.lastPointerPlotY, this.lastPointerClientX, this.lastPointerClientY, rect));
   }
 
   /** Emit `hover` only when the picked items or the anchor actually changed. */
@@ -1622,10 +1464,10 @@ export class Chart {
     const rect = this.canvas.getBoundingClientRect();
     const plotX = source.clientX - rect.left;
     const plotY = source.clientY - rect.top;
-    if (!this.insidePlot(plotX, plotY, rect)) return null;
+    if (!insidePlot(plotX, plotY, rect)) return null;
 
-    const [dataX, dataY] = this.plotToData(plotX, plotY, rect, this.axis);
-    const hover = this.pickAtPlot(plotX, plotY, source.clientX, source.clientY, rect, this.options.hover);
+    const [dataX, dataY] = plotToData(plotX, plotY, rect, this.axis);
+    const hover = this.picker.pickAtPlot(plotX, plotY, source.clientX, source.clientY, rect, this.options.hover);
     const event: ChartPointerEvent = {
       type,
       clientX: source.clientX,
@@ -1680,25 +1522,3 @@ export class Chart {
   }
 }
 
-/** Coordinates closer than this many CSS pixels count as unchanged. */
-const HOVER_EPSILON_PX = 1e-3;
-
-const near = (a: number, b: number): boolean => a === b || Math.abs(a - b) <= HOVER_EPSILON_PX;
-
-/** Whether two hover states show the same items at the same anchor (series, index, x, y, and position). */
-function hoverStatesEqual(a: ChartHoverState | null, b: ChartHoverState | null): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  if (a.source !== b.source || a.mode !== b.mode || a.group !== b.group || a.maxDistancePx !== b.maxDistancePx) return false;
-  if (a.items.length !== b.items.length) return false;
-  if (!near(a.plotX, b.plotX) || !near(a.plotY, b.plotY) || !near(a.clientX, b.clientX) || !near(a.clientY, b.clientY)) return false;
-  if (!Object.is(a.anchorX, b.anchorX) || !Object.is(a.dataX, b.dataX) || !Object.is(a.dataY, b.dataY)) return false;
-  for (let i = 0; i < a.items.length; i++) {
-    const p = a.items[i]!;
-    const q = b.items[i]!;
-    if (p.series !== q.series || p.index !== q.index || !Object.is(p.x, q.x) || !Object.is(p.y, q.y)) return false;
-    if (!near(p.plotX, q.plotX) || !near(p.plotY, q.plotY)) return false;
-    if (p.xRange?.xStart !== q.xRange?.xStart || p.xRange?.xEnd !== q.xRange?.xEnd) return false;
-  }
-  return true;
-}
