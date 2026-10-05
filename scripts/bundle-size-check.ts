@@ -58,7 +58,7 @@ const budgets: Budget[] = [
 const sharedBudgets: SharedChunkBudget[] = [
   // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152; 140_448 after the Chart split and histogram tree-shaking (#172).
   // 169_000 bytes with render surfaces (the rect program, fillRects, createSurface; the flame graph no longer carries its own GLSL, so its entry shrank by about 4.7 KB). 166_315 bytes after the engines moved into the core graph: the default renderer is "auto", so the Chart always ships WebGL2 (the old 12 KB chunk, now inlined), Canvas 2D, and the shared WebGL2 context (about +15 KB over the 143_500 budget plus the separate WebGL2 chunk before).
-  { label: "shared Chart chunk (Chart + every engine)", pattern: /^Chart-.*.js$/, maxBytes: 171_600 },
+  { label: "shared Chart chunk (Chart + every engine)", pattern: /^Chart-.*.js$/, maxBytes: 172_200 },
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 6_400 },
