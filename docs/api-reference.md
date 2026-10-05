@@ -59,12 +59,12 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 17 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 165 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 167 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
 | shared PickOverlay chunk | `dist/PickOverlay-*.js` | 5 KiB |
-| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 192 KiB |
+| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 194 KiB |
 
 ### All public exports
 
@@ -183,27 +183,27 @@ Generated from `dist/index.d.ts` after the package build.
 | `RingBuffer` | class | `./core/RingBuffer` | Fixed-capacity sorted XY buffer for explicit X values. X must be finite and non-decreasing. A sample that breaks that rule is skipped (never thrown), counted in `rejectedSamples`, reported to `onInvalidSample`, and logged with one console warning per buffer when no callback is set. Non-finite Y is stored and drawn as a gap. |
 | `RingBufferOptions` | interface | `./core/RingBuffer` | Options for `RingBuffer`. |
 | `SampleCopyLayout` | type | `./core/types` | Vertex layout requested when copying raw samples into a render buffer: `"points"` writes `[x, y]` pairs, `"area"` writes `[x, baseline, x, y]` strip pairs. |
-| `SeriesAppendData` | type | `./core/SeriesStore` | Any payload accepted by `SeriesStore.append`. |
-| `SeriesAppendRow` | type | `./core/SeriesStore` | Any supported object row for batched appends. |
+| `SeriesAppendData` | type | `./core/SeriesInput` | Any payload accepted by `SeriesStore.append`. |
+| `SeriesAppendRow` | type | `./core/SeriesInput` | Any supported object row for batched appends. |
 | `SeriesConfig` | interface | `./core/types` | Configuration for adding a series to a chart. |
 | `SeriesDataBoundsOptions` | interface | `./core/SeriesStore` | X-range filter for `SeriesStore.dataBounds`. |
 | `SeriesIdentityConfig` | type | `./ui/Chart` | — |
 | `SeriesMode` | type | `./core/types` | Built-in renderer mode for a series. |
-| `SeriesObjectAppendData` | type | `./core/SeriesStore` | Any object payload for appending one or more samples. |
-| `SeriesOhlcAppendData` | interface | `./core/SeriesStore` | Object form for appending one OHLC sample or a batch of OHLC arrays. |
-| `SeriesOhlcAppendRow` | interface | `./core/SeriesStore` | Convenient object-row form for appending one OHLC sample inside a row batch. |
+| `SeriesObjectAppendData` | type | `./core/SeriesInput` | Any object payload for appending one or more samples. |
+| `SeriesOhlcAppendData` | interface | `./core/SeriesInput` | Object form for appending one OHLC sample or a batch of OHLC arrays. |
+| `SeriesOhlcAppendRow` | interface | `./core/SeriesInput` | Convenient object-row form for appending one OHLC sample inside a row batch. |
 | `SeriesOhlcSample` | interface | `./core/SeriesStore` | OHLC sample returned by series queries. |
-| `SeriesOhlcUpdateData` | interface | `./core/SeriesStore` | Object form for updating one OHLC sample. |
-| `SeriesReplaceData` | type | `./core/SeriesStore` | Payload accepted by `series.replace(...)`: whatever the backing dataset's `replace` method takes. |
+| `SeriesOhlcUpdateData` | interface | `./core/SeriesInput` | Object form for updating one OHLC sample. |
+| `SeriesReplaceData` | type | `./core/SeriesInput` | Payload accepted by `series.replace(...)`: whatever the backing dataset's `replace` method takes. |
 | `SeriesSample` | interface | `./core/types` | One data sample returned by picking and dataset queries. |
-| `SeriesScalarOrArray` | type | `./core/SeriesStore` | Single numeric sample value or a batch of values. |
-| `SeriesStore` | class | `./core/SeriesStore` | Handle for one chart series: append or update its data, toggle visibility, and query samples. Create series with `chart.addLine(...)` and the other `chart.add*` helpers rather than constructing this class directly. |
+| `SeriesScalarOrArray` | type | `./core/SeriesInput` | Single numeric sample value or a batch of values. |
+| `SeriesStore` | class | `./core/SeriesStore` | Handle for one chart series: append or update its data, toggle visibility, and query samples. Create series with `chart.addLine(...)` and the other `chart.add*` helpers rather than constructing this class directly. The class owns the series' identity, style, visibility, and mutation API. Reading the data back for rendering and picking is delegated to the `SeriesSampler`, `ScatterSampler`, and `SeriesPicker` helpers, which share one `SeriesSource` view of the dataset. |
 | `SeriesStyle` | interface | `./core/types` | Fully resolved series style used by the renderer. |
 | `SeriesStyleOptions` | interface | `./core/types` | Series styling accepted by `chart.addLine(config, style)` and the other `add*` helpers. |
-| `SeriesUpdateData` | type | `./core/SeriesStore` | Any supported update payload for the last or indexed sample. |
-| `SeriesXYAppendData` | interface | `./core/SeriesStore` | Object form for appending one XY sample or a batch of X/Y arrays. Omit `x` for implicit-X series. |
-| `SeriesXYAppendRow` | interface | `./core/SeriesStore` | Convenient object-row form for appending one XY sample inside a row batch. |
-| `SeriesXYUpdateData` | interface | `./core/SeriesStore` | Object form for updating one XY sample. |
+| `SeriesUpdateData` | type | `./core/SeriesInput` | Any supported update payload for the last or indexed sample. |
+| `SeriesXYAppendData` | interface | `./core/SeriesInput` | Object form for appending one XY sample or a batch of X/Y arrays. Omit `x` for implicit-X series. |
+| `SeriesXYAppendRow` | interface | `./core/SeriesInput` | Convenient object-row form for appending one XY sample inside a row batch. |
+| `SeriesXYUpdateData` | interface | `./core/SeriesInput` | Object form for updating one XY sample. |
 | `SeriesYAxis` | type | `./core/types` | Y axis used to scale and render a series. |
 | `ServerSampledBuckets` | interface | `./core/ServerSampledDataset` | Server-provided min/max buckets, each covering `[xStart, xEnd]`. |
 | `ServerSampledData` | type | `./core/ServerSampledDataset` | Data accepted by `ServerSampledDataset` and `series.replace(...)`. |

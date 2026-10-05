@@ -65,14 +65,13 @@ export type { ChartTheme, ResolvedChartTheme } from "./ui/theme.js";
 
 // Series handle and data contracts
 export type { SeriesStore } from "./core/SeriesStore.js";
+export type { SeriesDataBoundsOptions, SeriesOhlcSample } from "./core/SeriesStore.js";
 export type {
   SeriesAppendData,
   SeriesAppendRow,
-  SeriesDataBoundsOptions,
   SeriesObjectAppendData,
   SeriesOhlcAppendData,
   SeriesOhlcAppendRow,
-  SeriesOhlcSample,
   SeriesOhlcUpdateData,
   SeriesReplaceData,
   SeriesScalarOrArray,
@@ -80,7 +79,7 @@ export type {
   SeriesXYAppendData,
   SeriesXYAppendRow,
   SeriesXYUpdateData,
-} from "./core/SeriesStore.js";
+} from "./core/SeriesInput.js";
 export type {
   AcceleratedDataset,
   AppendableDataset,

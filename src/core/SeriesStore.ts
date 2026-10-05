@@ -1,188 +1,14 @@
-import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRange, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, SampleCopyLayout, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesStyleOptions, SeriesSample } from "./types.js";
-import { MinMaxPyramid } from "./MinMaxPyramid.js";
-import type { MinMaxY } from "./MinMaxTree.js";
+import type { Dataset, XRange, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesStyleOptions, SeriesSample } from "./types.js";
+import { hasAppendXY, hasAppendY, hasOhlcAppend, hasUpdate, hasUpdateY, resolveCaps, unsupported } from "./datasetCaps.js";
+import type { DatasetCaps } from "./datasetCaps.js";
+import { isOhlcAppendData, isOhlcUpdateData, toArrayLike } from "./SeriesInput.js";
+import type { SeriesAppendData, SeriesAppendRow, SeriesObjectAppendData, SeriesOhlcUpdateData, SeriesReplaceData, SeriesUpdateData, SeriesXYUpdateData } from "./SeriesInput.js";
+import { ScatterSampler } from "./ScatterSampler.js";
+import { SeriesLod } from "./SeriesLod.js";
+import { SeriesPicker, identity } from "./SeriesPicker.js";
+import { SeriesSampler } from "./SeriesSampler.js";
+import { SeriesSource } from "./SeriesSource.js";
 
-function isOhlcDataset(dataset: Dataset): dataset is OhlcDataset {
-  return "getOpen" in dataset && "getHigh" in dataset && "getLow" in dataset && "getClose" in dataset;
-}
-
-interface AppendableOhlcDataset extends OhlcDataset {
-  append(
-    x: ArrayLike<number>,
-    open: ArrayLike<number>,
-    high: ArrayLike<number>,
-    low: ArrayLike<number>,
-    close: ArrayLike<number>,
-  ): void;
-  updateAt?(index: number, open: number, high: number, low: number, close: number): boolean;
-}
-
-function hasAppendXY(dataset: Dataset): dataset is AppendableDataset {
-  return "push" in dataset && "append" in dataset;
-}
-
-function hasAppendY(dataset: Dataset): dataset is YAppendableDataset {
-  return "appendY" in dataset;
-}
-
-function hasOhlcAppend(dataset: Dataset): dataset is AppendableOhlcDataset {
-  return isOhlcDataset(dataset) && "append" in dataset;
-}
-
-function hasUpdate(dataset: Dataset): dataset is UpdatableDataset {
-  return typeof (dataset as Partial<UpdatableDataset>).update === "function";
-}
-
-function hasUpdateY(dataset: Dataset): dataset is YUpdatableDataset {
-  return typeof (dataset as Partial<YUpdatableDataset>).updateY === "function";
-}
-
-/** Built-in datasets that bulk-read raw X/Y (gap = non-finite Y) into Float64 arrays. */
-interface XYRangeReader extends Dataset {
-  readXYRange(start: number, end: number, xOut: Float64Array, yOut: Float64Array): void;
-}
-
-/** Dataset with an explicit per-index gap predicate. */
-type GapDataset = Dataset & { isGap(index: number): boolean };
-
-/**
- * Optional dataset abilities, detected once when the series is created. A dataset's capabilities are
- * fixed for its lifetime: methods added to a dataset after construction are not picked up.
- */
-interface DatasetCaps {
-  readonly gaps: GapDataset | null;
-  readonly readXY: XYRangeReader | null;
-  readonly ohlc: OhlcDataset | null;
-  readonly xRange: XRangeDataset | null;
-  readonly rangeMinMax: RangeMinMaxDataset | null;
-  readonly minMaxSegments: MinMaxSegmentCopyDataset | null;
-  readonly copyVisibleSamples: VisibleSampleCopyDataset | null;
-  readonly copySamplesRange: RangeSampleCopyDataset | null;
-  readonly copyVisiblePoints: VisiblePointCopyDataset | null;
-}
-
-/**
- * Built-in datasets set this and accept a trailing `yOrigin` argument on their copy methods, so Y is
- * shifted in float64 before the float32 render-buffer write. Custom datasets keep the public
- * signatures and are shifted in place after the copy.
- */
-interface YOriginDataset {
-  readonly supportsYOrigin: true;
-  copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number, yOrigin: number): number;
-  copyVisibleSamples(viewport: Viewport, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number, yOrigin: number): number;
-  copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number, yOrigin: number): number;
-}
-
-function honorsYOrigin<T extends Dataset>(dataset: T): dataset is T & YOriginDataset {
-  return (dataset as Partial<YOriginDataset>).supportsYOrigin === true;
-}
-
-const POINT_Y_OFFSETS: readonly number[] = [1];
-const AREA_Y_OFFSETS: readonly number[] = [1, 3];
-const MINMAX_Y_OFFSETS: readonly number[] = [1, 2];
-
-/** Subtract `yOrigin` from the Y components of `count` packed samples (best effort, after the float32 write). */
-function shiftY(target: Float32Array, count: number, floatsPerSample: number, offsets: readonly number[], yOrigin: number): void {
-  if (yOrigin === 0) return;
-  for (let i = 0; i < count; i++) {
-    for (const offset of offsets) target[i * floatsPerSample + offset]! -= yOrigin;
-  }
-}
-
-function resolveCaps(dataset: Dataset): DatasetCaps {
-  return Object.freeze({
-    readXY: typeof (dataset as Partial<XYRangeReader>).readXYRange === "function" ? (dataset as XYRangeReader) : null,
-    gaps: typeof dataset.isGap === "function" ? (dataset as GapDataset) : null,
-    ohlc: isOhlcDataset(dataset) ? dataset : null,
-    xRange: "getXRange" in dataset ? (dataset as XRangeDataset) : null,
-    rangeMinMax: "rangeMinMaxY" in dataset ? (dataset as RangeMinMaxDataset) : null,
-    minMaxSegments: "copyMinMaxSegments" in dataset ? (dataset as MinMaxSegmentCopyDataset) : null,
-    copyVisibleSamples: "copyVisibleSamples" in dataset ? (dataset as VisibleSampleCopyDataset) : null,
-    copySamplesRange: "copySamplesRange" in dataset ? (dataset as RangeSampleCopyDataset) : null,
-    copyVisiblePoints: "copyVisiblePoints" in dataset ? (dataset as VisiblePointCopyDataset) : null,
-  });
-}
-
-/** Error for a series call the backing dataset does not support: `"<call> requires <requirement>."`. */
-function unsupported(call: string, requirement: string): TypeError {
-  return new TypeError(`${call} requires ${requirement}.`);
-}
-
-function toArrayLike(value: SeriesScalarOrArray): ArrayLike<number> {
-  return typeof value === "number" ? [value] : value;
-}
-
-function isOhlcAppendData(data: SeriesObjectAppendData | SeriesAppendRow): data is SeriesOhlcAppendData | SeriesOhlcAppendRow {
-  return typeof data === "object" && data !== null && "open" in data && "high" in data && "low" in data && "close" in data;
-}
-
-function isOhlcUpdateData(data: SeriesUpdateData): data is SeriesOhlcUpdateData {
-  return "open" in data && "high" in data && "low" in data && "close" in data;
-}
-
-const NEAREST_POINT_LEAF_SIZE = 64;
-const SCATTER_INTERVAL_LEAF_SIZE = 64;
-const SCATTER_BUCKET_RANGE_PRUNE_SIZE = 1024;
-const identity = (value: number): number => value;
-
-/** Single numeric sample value or a batch of values. */
-export type SeriesScalarOrArray = number | ArrayLike<number>;
-
-/** Object form for appending one XY sample or a batch of X/Y arrays. Omit `x` for implicit-X series. */
-export interface SeriesXYAppendData {
-  readonly x?: SeriesScalarOrArray;
-  readonly y: SeriesScalarOrArray;
-}
-
-/** Object form for appending one OHLC sample or a batch of OHLC arrays. */
-export interface SeriesOhlcAppendData {
-  readonly x: SeriesScalarOrArray;
-  readonly open: SeriesScalarOrArray;
-  readonly high: SeriesScalarOrArray;
-  readonly low: SeriesScalarOrArray;
-  readonly close: SeriesScalarOrArray;
-}
-
-/** Convenient object-row form for appending one XY sample inside a row batch. */
-export interface SeriesXYAppendRow {
-  readonly x?: number;
-  readonly y: number;
-}
-
-/** Convenient object-row form for appending one OHLC sample inside a row batch. */
-export interface SeriesOhlcAppendRow {
-  readonly x: number;
-  readonly open: number;
-  readonly high: number;
-  readonly low: number;
-  readonly close: number;
-}
-
-/** Object form for updating one XY sample. */
-export interface SeriesXYUpdateData {
-  readonly x?: number;
-  readonly y: number;
-}
-
-/** Object form for updating one OHLC sample. */
-export interface SeriesOhlcUpdateData {
-  readonly open: number;
-  readonly high: number;
-  readonly low: number;
-  readonly close: number;
-}
-
-/** Any supported update payload for the last or indexed sample. */
-export type SeriesUpdateData = SeriesXYUpdateData | SeriesOhlcUpdateData;
-/** Any supported object row for batched appends. */
-export type SeriesAppendRow = SeriesXYAppendRow | SeriesOhlcAppendRow;
-/** Any object payload for appending one or more samples. */
-export type SeriesObjectAppendData = SeriesXYAppendData | SeriesOhlcAppendData;
-/** Any payload accepted by `SeriesStore.append`. */
-export type SeriesAppendData = SeriesObjectAppendData | readonly SeriesAppendRow[];
-
-/** Payload accepted by `series.replace(...)`: whatever the backing dataset's `replace` method takes. */
-export type SeriesReplaceData<D extends Dataset> = D extends { replace(data: infer T): void } ? T : never;
 
 /** OHLC sample returned by series queries. */
 export interface SeriesOhlcSample extends SeriesSample {
@@ -201,26 +27,14 @@ export interface SeriesDataBoundsOptions {
 /** What changed when a series notifies its owner. */
 export type SeriesChange = "data" | "visibility";
 
-type PointSearchInterval = {
-  readonly start: number;
-  readonly end: number;
-  readonly lowerBoundSq: number;
-};
-
-const RAW_SCRATCH_BLOCK = 2048;
-const RAW_SCRATCH_X = new Float64Array(RAW_SCRATCH_BLOCK + 1);
-const RAW_SCRATCH_Y = new Float64Array(RAW_SCRATCH_BLOCK + 1);
-
-function interpolateY(x0: number, y0: number, x1: number, y1: number, x: number): number {
-  if (x1 === x0) return y0;
-  const t = (x - x0) / (x1 - x0);
-  return y0 + (y1 - y0) * t;
-}
-
 /**
  * Handle for one chart series: append or update its data, toggle visibility,
  * and query samples. Create series with `chart.addLine(...)` and the other
  * `chart.add*` helpers rather than constructing this class directly.
+ *
+ * The class owns the series' identity, style, visibility, and mutation API. Reading the data back
+ * for rendering and picking is delegated to the `SeriesSampler`, `ScatterSampler`, and
+ * `SeriesPicker` helpers, which share one `SeriesSource` view of the dataset.
  */
 export class SeriesStore<D extends Dataset = Dataset> {
   readonly config: SeriesConfig;
@@ -230,16 +44,15 @@ export class SeriesStore<D extends Dataset = Dataset> {
   private readonly caps: DatasetCaps;
   private readonly isDownsampled: boolean;
   private readonly isServerMinMax: boolean;
-  /** Only allocated for downsampled custom datasets that cannot answer `rangeMinMaxY` themselves. */
-  private readonly pyramid: MinMaxPyramid | null;
+  /** LOD pyramid state; only allocates the pyramid for downsampled custom datasets that cannot answer `rangeMinMaxY` themselves. */
+  private readonly lod: SeriesLod;
+  private readonly source: SeriesSource;
+  private readonly sampler: SeriesSampler;
+  private readonly scatter: ScatterSampler;
+  private readonly picker: SeriesPicker;
   private readonly onChange?: (change: SeriesChange) => void;
   private styleHandler?: (series: SeriesStore, options: SeriesStyleOptions) => void;
 
-  private _dirty: boolean = false;
-  private _forceFullPyramidRebuild: boolean = false;
-  private _useRawMinMaxScan: boolean = false;
-  private _lastBuildLength: number = 0;
-  private _lastBuildRangeStart: number = NaN;
   private _visible: boolean = true;
   private _dataVersion: number = 0;
 
@@ -254,10 +67,11 @@ export class SeriesStore<D extends Dataset = Dataset> {
     const mode = config.mode;
     this.isDownsampled = (mode === "line" || mode === "area" || mode === "bar" || mode === "scatter") && config.downsample !== "none";
     this.isServerMinMax = config.downsample === "server" && caps.minMaxSegments !== null;
-    this.pyramid = this.isDownsampled && !caps.rangeMinMax ? new MinMaxPyramid() : null;
-    if (this.pyramid && dataset.length > 0) this.pyramid.build(dataset);
-    this._lastBuildLength = dataset.length;
-    this._lastBuildRangeStart = dataset.range?.start ?? NaN;
+    this.lod = new SeriesLod(dataset, this.isDownsampled, caps.rangeMinMax !== null);
+    this.source = new SeriesSource(dataset, caps, this.lod);
+    this.sampler = new SeriesSampler(dataset, caps, this.lod, this.isDownsampled);
+    this.scatter = new ScatterSampler(dataset, caps, this.lod);
+    this.picker = new SeriesPicker(dataset, caps, this.lod);
   }
 
   /** @internal Whether dense views of this series are reduced to min/max buckets. */
@@ -450,13 +264,15 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   /** Replace all data in datasets that support wholesale replacement, such as `StaticDataset` or `ServerSampledDataset`. */
+
+  /** Replace all data in datasets that support wholesale replacement, such as `StaticDataset` or `ServerSampledDataset`. */
   replace(data: SeriesReplaceData<D>): void {
     const dataset = this.dataset as Dataset & { replace?: (data: unknown) => void };
     if (typeof dataset.replace !== "function") {
       throw unsupported("series.replace(...)", "a dataset with replace(...) support, such as StaticDataset or ServerSampledDataset");
     }
     dataset.replace(data);
-    this._useRawMinMaxScan = false;
+    this.lod.resetRawScan();
     this.markDataMutated(true);
   }
 
@@ -468,8 +284,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   private markDataMutated(forceFullPyramidRebuild: boolean): void {
     this._dataVersion++;
-    this._dirty = true;
-    this._forceFullPyramidRebuild ||= forceFullPyramidRebuild;
+    this.lod.markMutated(forceFullPyramidRebuild);
     this.onChange?.("data");
   }
 
@@ -480,38 +295,14 @@ export class SeriesStore<D extends Dataset = Dataset> {
     }
 
     (this.dataset.clear as () => void).call(this.dataset);
-    this._useRawMinMaxScan = false;
-    this._forceFullPyramidRebuild = false;
-    this.pyramid?.build(this.dataset);
-    this._lastBuildLength = this.dataset.length;
-    this._lastBuildRangeStart = this.dataset.range?.start ?? NaN;
+    this.lod.reset(this.dataset);
     this._dataVersion++;
-    this._dirty = false;
     this.onChange?.("data");
   }
 
   /** @internal Rebuild or extend LOD state after data changes. Called by the chart before drawing. */
   rebuildPyramid(): void {
-    if (!this._dirty) return;
-    if (this.pyramid) {
-      const length = this.dataset.length;
-      const rangeStart = this.dataset.range?.start ?? NaN;
-      const shiftedAtCapacity = length === this._lastBuildLength && rangeStart !== this._lastBuildRangeStart;
-      if (this._forceFullPyramidRebuild) {
-        this.pyramid.build(this.dataset);
-        this._useRawMinMaxScan = false;
-      } else if (shiftedAtCapacity) {
-        // A wrapping ring buffer shifted every logical index; scan raw ranges instead of rebuilding per frame.
-        this._useRawMinMaxScan = true;
-      } else {
-        this.pyramid.incrementalBuild(this.dataset);
-        this._useRawMinMaxScan = false;
-      }
-      this._lastBuildLength = length;
-      this._lastBuildRangeStart = rangeStart;
-    }
-    this._forceFullPyramidRebuild = false;
-    this._dirty = false;
+    this.lod.rebuild(this.dataset);
   }
 
   /** @internal Count samples whose X values overlap a viewport. */
@@ -528,10 +319,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /** Return the XY sample at a logical index, or `null` for gaps and out-of-range indexes. */
   sampleAt(index: number): SeriesSample | null {
-    if (index < 0 || index >= this.dataset.length) return null;
-    const y = this.dataset.getY(index);
-    if (this.isGap(index, y)) return null;
-    return { index, x: this.dataset.getX(index), y };
+    return this.source.sampleAt(index);
   }
 
   /** Return the OHLC sample at a logical index, or `null` when out of range or not an OHLC series. */
@@ -656,133 +444,9 @@ export class SeriesStore<D extends Dataset = Dataset> {
     }
   }
 
-  /** @internal Find the nearest non-gap sample by X value, optionally constrained to a viewport. */
-  nearestSampleByX(x: number, viewport?: Viewport): SeriesSample | null {
-    const range = this.visibleIndexRange(viewport);
-    if (range.start >= range.end) return null;
-
-    const lower = this.dataset.lowerBoundX(x);
-    let left = Math.min(lower - 1, range.end - 1);
-    let right = Math.max(lower, range.start);
-
-    while (left >= range.start || right < range.end) {
-      const leftDx = left >= range.start ? Math.abs(this.dataset.getX(left) - x) : Infinity;
-      const rightDx = right < range.end ? Math.abs(this.dataset.getX(right) - x) : Infinity;
-      if (leftDx <= rightDx) {
-        const sample = this.sampleAt(left);
-        if (sample) return sample;
-        left--;
-      } else {
-        const sample = this.sampleAt(right);
-        if (sample) return sample;
-        right++;
-      }
-    }
-
-    return null;
-  }
-
-  /** @internal Find the nearest non-gap sample in screen-space distance. */
-  nearestSampleByPoint(
-    x: number,
-    y: number,
-    viewport: Viewport,
-    plotWidth: number,
-    plotHeight: number,
-    maxDistancePx: number = Infinity,
-    xTransform: (value: number) => number = identity,
-    yTransform: (value: number) => number = identity,
-  ): SeriesSample | null {
-    const range = this.visibleIndexRange(viewport);
-    const transformedX = xTransform(x);
-    const transformedY = yTransform(y);
-    const xRange = xTransform(viewport.xMax) - xTransform(viewport.xMin);
-    const yRange = yTransform(viewport.yMax) - yTransform(viewport.yMin);
-    if (range.start >= range.end || plotWidth <= 0 || plotHeight <= 0 || xRange <= 0 || yRange <= 0) return null;
-
-    const xScale = plotWidth / xRange;
-    const yScale = plotHeight / yRange;
-    let bestIndex = -1;
-    let bestDistanceSq = maxDistancePx < 0
-      ? -1
-      : Number.isFinite(maxDistancePx)
-        ? maxDistancePx * maxDistancePx
-        : Infinity;
-
-    const visitSample = (index: number): void => {
-      const sampleY = this.dataset.getY(index);
-      if (this.isGap(index, sampleY)) return;
-      const dx = (xTransform(this.dataset.getX(index)) - transformedX) * xScale;
-      const dy = (yTransform(sampleY) - transformedY) * yScale;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestDistanceSq || (bestIndex < 0 && d2 <= bestDistanceSq)) {
-        bestDistanceSq = d2;
-        bestIndex = index;
-      }
-    };
-
-    const lower = this.dataset.lowerBoundX(x);
-    const nearest = Math.min(Math.max(lower, range.start), range.end - 1);
-    visitSample(nearest);
-    if (nearest > range.start) visitSample(nearest - 1);
-    if (nearest + 1 < range.end) visitSample(nearest + 1);
-
-    if (this.hasPointIntervalBounds() && range.end - range.start > NEAREST_POINT_LEAF_SIZE) {
-      const rootBound = this.pointIntervalDistanceSq(range.start, range.end, transformedX, transformedY, xScale, yScale, xTransform, yTransform);
-      const stack: PointSearchInterval[] = rootBound <= bestDistanceSq
-        ? [{ start: range.start, end: range.end, lowerBoundSq: rootBound }]
-        : [];
-
-      while (stack.length > 0) {
-        const interval = stack.pop()!;
-        if (interval.lowerBoundSq > bestDistanceSq) continue;
-
-        const length = interval.end - interval.start;
-        if (length <= NEAREST_POINT_LEAF_SIZE) {
-          for (let i = interval.start; i < interval.end; i++) visitSample(i);
-          continue;
-        }
-
-        const mid = interval.start + (length >> 1);
-        const leftBound = this.pointIntervalDistanceSq(interval.start, mid, transformedX, transformedY, xScale, yScale, xTransform, yTransform);
-        const rightBound = this.pointIntervalDistanceSq(mid, interval.end, transformedX, transformedY, xScale, yScale, xTransform, yTransform);
-        const left: PointSearchInterval = { start: interval.start, end: mid, lowerBoundSq: leftBound };
-        const right: PointSearchInterval = { start: mid, end: interval.end, lowerBoundSq: rightBound };
-
-        if (leftBound < rightBound) {
-          if (rightBound <= bestDistanceSq) stack.push(right);
-          if (leftBound <= bestDistanceSq) stack.push(left);
-        } else {
-          if (leftBound <= bestDistanceSq) stack.push(left);
-          if (rightBound <= bestDistanceSq) stack.push(right);
-        }
-      }
-    } else {
-      let left = Math.min(lower - 1, range.end - 1);
-      let right = Math.max(lower, range.start);
-      while (left >= range.start || right < range.end) {
-        const leftDxSq = left >= range.start ? this.pointXDistanceSq(left, transformedX, xScale, xTransform) : Infinity;
-        const rightDxSq = right < range.end ? this.pointXDistanceSq(right, transformedX, xScale, xTransform) : Infinity;
-        if (leftDxSq > bestDistanceSq && rightDxSq > bestDistanceSq) break;
-
-        if (leftDxSq <= rightDxSq) {
-          if (leftDxSq <= bestDistanceSq) visitSample(left);
-          left--;
-        } else {
-          if (rightDxSq <= bestDistanceSq) visitSample(right);
-          right++;
-        }
-      }
-    }
-
-    if (bestIndex < 0) return null;
-    const sample = this.sampleAt(bestIndex);
-    return sample ? { ...sample, distancePx: Math.sqrt(bestDistanceSq) } : null;
-  }
-
   /** @internal Copy stable, viewport-anchored XY samples into a render buffer. */
   copyRawVisible(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0, yOrigin: number = 0): number {
-    return this.copyVisibleSamples(viewport, target, maxPoints, "points", 0, xOrigin, yOrigin);
+    return this.sampler.copyRawVisible(viewport, target, maxPoints, xOrigin, yOrigin);
   }
 
   /** @internal Copy 2D-culled, screen-space sampled scatter points into a render buffer. */
@@ -796,7 +460,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     xOrigin: number = 0,
     yOrigin: number = 0,
   ): number {
-    return this.copyVisiblePoints(viewport, target, maxPoints, pixelWidth, pixelHeight, pointSize, xOrigin, yOrigin);
+    return this.scatter.copyScatterVisible(viewport, target, maxPoints, pixelWidth, pixelHeight, pointSize, xOrigin, yOrigin);
   }
 
   /** @internal Copy exact Y-culled scatter points for a logical index range. */
@@ -811,22 +475,12 @@ export class SeriesStore<D extends Dataset = Dataset> {
     pointSize: number = 0,
     yOrigin: number = 0,
   ): number {
-    if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
-
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this.dataset.length, Math.ceil(end));
-    if (to <= from) return 0;
-
-    const yRange = viewport.yMax - viewport.yMin;
-    const height = Math.max(0, Math.floor(pixelHeight));
-    const safePointSize = Number.isFinite(pointSize) ? Math.max(0, pointSize) : 0;
-    const yPad = yRange > 0 && height > 0 ? ((safePointSize * 0.5) / height) * yRange : 0;
-    return this.copyVisiblePointRange(from, to, viewport.yMin - yPad, viewport.yMax + yPad, target, maxPoints, xOrigin, yOrigin);
+    return this.scatter.copyScatterRange(start, end, viewport, target, maxPoints, xOrigin, pixelHeight, pointSize, yOrigin);
   }
 
   /** @internal Copy visible XY samples with the line clipped to the viewport's X edges. */
   copyRawVisibleClipped(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0, yOrigin: number = 0): number {
-    return this.copyRawClippedChunk(viewport, 0, target, maxPoints, xOrigin, yOrigin).count;
+    return this.sampler.copyRawVisibleClipped(viewport, target, maxPoints, xOrigin, yOrigin);
   }
 
   /**
@@ -842,598 +496,59 @@ export class SeriesStore<D extends Dataset = Dataset> {
     xOrigin: number = 0,
     yOrigin: number = 0,
   ): { count: number; next: number; done: boolean } {
-    if (maxPoints < 2 || target.length < maxPoints * 2) return { count: 0, next: start, done: true };
-
-    const range = this.visibleIndexRange(viewport, 1);
-    const from = Math.max(range.start, start);
-    const end = range.end;
-    if (end - from <= 0) return { count: 0, next: end, done: true };
-
-    if (range.end - range.start === 1) {
-      const x = this.dataset.getX(from);
-      const y = this.dataset.getY(from);
-      if (x < viewport.xMin || x > viewport.xMax || this.isGap(from, y)) return { count: 0, next: end, done: true };
-      target[0] = x - xOrigin;
-      target[1] = y - yOrigin;
-      return { count: 1, next: end, done: true };
-    }
-
-    // Segments are read in blocks into Float64 scratch arrays (bulk typed-array copies for built-in
-    // datasets) so the hot loop below makes no per-sample calls. Gap samples become NaN in the scratch.
-    const dataset = this.dataset;
-    const reader = this.caps.readXY;
-    const gaps = reader ? null : this.caps.gaps;
-    const xs = RAW_SCRATCH_X;
-    const ys = RAW_SCRATCH_Y;
-    const xMin = viewport.xMin;
-    const xMax = viewport.xMax;
-    let count = 0;
-    let lastX = NaN;
-    let lastY = NaN;
-    let lastWasGap = false;
-
-    let i = from;
-    while (i + 1 < end) {
-      const blockEnd = Math.min(end, i + RAW_SCRATCH_BLOCK + 1);
-      const n = blockEnd - i;
-      if (reader) {
-        reader.readXYRange(i, blockEnd, xs, ys);
-      } else {
-        for (let k = 0; k < n; k++) {
-          const index = i + k;
-          xs[k] = dataset.getX(index);
-          ys[k] = gaps !== null && gaps.isGap(index) ? NaN : dataset.getY(index);
-        }
-      }
-
-      let x0 = xs[0]!;
-      let y0 = ys[0]!;
-      for (let k = 0; k + 1 < n; k++, i++) {
-        // A segment emits at most two points; stop before the buffer could overflow.
-        if (count + 2 > maxPoints) return { count, next: i, done: false };
-        const x1 = xs[k + 1]!;
-        const y1 = ys[k + 1]!;
-        const sx0 = x0;
-        const sy0 = y0;
-        x0 = x1;
-        y0 = y1;
-        if (x1 < xMin || sx0 > xMax) continue;
-        if (!Number.isFinite(sy0) || !Number.isFinite(y1)) {
-          if (count !== 0 && !lastWasGap) {
-            const offset = count * 2;
-            target[offset] = NaN;
-            target[offset + 1] = NaN;
-            count++;
-            lastX = NaN;
-            lastY = NaN;
-            lastWasGap = true;
-          }
-          continue;
-        }
-
-        const clippedX0 = sx0 > xMin ? sx0 : xMin;
-        const clippedX1 = x1 < xMax ? x1 : xMax;
-        if (clippedX1 < clippedX0) continue;
-        const yA = interpolateY(sx0, sy0, x1, y1, clippedX0);
-        const yB = interpolateY(sx0, sy0, x1, y1, clippedX1);
-        const outX0 = clippedX0 - xOrigin;
-        if (lastWasGap || count === 0 || outX0 !== lastX || yA !== lastY) {
-          const offset = count * 2;
-          target[offset] = outX0;
-          target[offset + 1] = yA - yOrigin;
-          count++;
-          lastWasGap = false;
-        }
-        const outX1 = clippedX1 - xOrigin;
-        if (outX1 !== outX0 || yB !== yA) {
-          const offset = count * 2;
-          target[offset] = outX1;
-          target[offset + 1] = yB - yOrigin;
-          count++;
-        }
-        lastX = outX1;
-        lastY = yB;
-      }
-    }
-
-    return { count, next: i, done: true };
+    return this.sampler.copyRawClippedChunk(viewport, start, target, maxPoints, xOrigin, yOrigin);
   }
 
   /** @internal Copy a logical XY range into a render buffer; gaps are written as NaN. */
   copyRawRange(start: number, end: number, target: Float32Array, maxPoints: number, xOrigin: number = 0, yOrigin: number = 0): number {
-    return this.copySampleRange(start, end, target, maxPoints, "points", 0, xOrigin, yOrigin);
+    return this.sampler.copyRawRange(start, end, target, maxPoints, xOrigin, yOrigin);
   }
 
   /** @internal Copy stable, viewport-anchored area strip vertices; returns the vertex count. */
   copyAreaVisible(viewport: Viewport, target: Float32Array, maxPoints: number, baseline: number = 0, xOrigin: number = 0, yOrigin: number = 0): number {
-    return this.copyVisibleSamples(viewport, target, maxPoints, "area", baseline, xOrigin, yOrigin) * 2;
+    return this.sampler.copyAreaVisible(viewport, target, maxPoints, baseline, xOrigin, yOrigin);
   }
 
   /** @internal Copy an area strip for a logical index range; returns the vertex count. */
   copyAreaRange(start: number, end: number, target: Float32Array, maxPoints: number, baseline: number = 0, xOrigin: number = 0, yOrigin: number = 0): number {
-    return this.copySampleRange(start, end, target, maxPoints, "area", baseline, xOrigin, yOrigin) * 2;
+    return this.sampler.copyAreaRange(start, end, target, maxPoints, baseline, xOrigin, yOrigin);
   }
 
   /** @internal Copy visible `[x, minY, maxY]` bucket triples into a render buffer. */
   copyMinMaxInstanced(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number = 0, yOrigin: number = 0): number {
-    const segments = this.caps.minMaxSegments;
-    if (segments) {
-      if (honorsYOrigin(segments)) return segments.copyMinMaxSegments(viewport, target, maxSegments, xOrigin, yOrigin);
-      const written = segments.copyMinMaxSegments(viewport, target, maxSegments, xOrigin);
-      shiftY(target, written, 3, MINMAX_Y_OFFSETS, yOrigin);
-      return written;
-    }
-    if (!this.downsampled || maxSegments <= 0 || target.length < maxSegments * 3) return 0;
-
-    const start = this.dataset.lowerBoundX(viewport.xMin);
-    const end = this.dataset.upperBoundX(viewport.xMax);
-    if (end <= start) return 0;
-
-    const bucketWidth = this.stableSampleBucketWidthForViewport(viewport, maxSegments);
-    const alignedStart = this.alignBucketStart(start, bucketWidth);
-    let written = 0;
-    for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += bucketWidth) {
-      const bucketEnd = Math.min(this.dataset.length, bucketStart + bucketWidth);
-      const segmentStart = Math.max(0, bucketStart);
-      if (bucketEnd <= start || segmentStart >= end) continue;
-
-      const range = this.minMaxForRange(segmentStart, bucketEnd);
-      if (!range) continue;
-
-      const representative = Math.max(segmentStart, Math.min(bucketEnd - 1, bucketStart + (bucketWidth >> 1)));
-      const offset = written * 3;
-      target[offset] = this.dataset.getX(representative) - xOrigin;
-      target[offset + 1] = range.minY - yOrigin;
-      target[offset + 2] = range.maxY - yOrigin;
-      written++;
-    }
-
-    return written;
+    return this.sampler.copyMinMaxInstanced(viewport, target, maxSegments, xOrigin, yOrigin);
   }
 
   /** @internal Copy `[x, open, high, low, close]` tuples for a logical index range; gap candles are written as all-NaN tuples. */
   copyOhlcTuplesRange(start: number, end: number, target: Float32Array, maxCandles: number, xOrigin: number = 0, yOrigin: number = 0): number {
-    const ohlc = this.caps.ohlc;
-    if (!ohlc || maxCandles <= 0 || target.length < maxCandles * 5) return 0;
+    return this.sampler.copyOhlcTuplesRange(start, end, target, maxCandles, xOrigin, yOrigin);
+  }
 
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this.dataset.length, Math.ceil(end));
-    const count = Math.min(maxCandles, Math.max(0, to - from));
-    const gaps = this.caps.gaps;
-    for (let i = 0; i < count; i++) {
-      const index = from + i;
-      const offset = i * 5;
-      if (gaps && gaps.isGap(index)) {
-        target.fill(NaN, offset, offset + 5);
-        continue;
-      }
-      target[offset] = ohlc.getX(index) - xOrigin;
-      target[offset + 1] = ohlc.getOpen(index) - yOrigin;
-      target[offset + 2] = ohlc.getHigh(index) - yOrigin;
-      target[offset + 3] = ohlc.getLow(index) - yOrigin;
-      target[offset + 4] = ohlc.getClose(index) - yOrigin;
-    }
+  /** @internal Find the nearest non-gap sample by X value, optionally constrained to a viewport. */
+  nearestSampleByX(x: number, viewport?: Viewport): SeriesSample | null {
+    return this.picker.nearestSampleByX(x, viewport);
+  }
 
-    return count;
+  /** @internal Find the nearest non-gap sample in screen-space distance. */
+  nearestSampleByPoint(
+    x: number,
+    y: number,
+    viewport: Viewport,
+    plotWidth: number,
+    plotHeight: number,
+    maxDistancePx: number = Infinity,
+    xTransform: (value: number) => number = identity,
+    yTransform: (value: number) => number = identity,
+  ): SeriesSample | null {
+    return this.picker.nearestSampleByPoint(x, y, viewport, plotWidth, plotHeight, maxDistancePx, xTransform, yTransform);
   }
 
   /** @internal Return the logical index range overlapping a viewport's X span (all samples when omitted). */
   visibleIndexRange(viewport: Viewport | undefined, outerPadding: number = 0): { start: number; end: number } {
-    if (!viewport) return { start: 0, end: this.dataset.length };
-    const pad = Math.max(0, Math.floor(outerPadding));
-    return {
-      start: Math.max(0, this.dataset.lowerBoundX(viewport.xMin) - pad),
-      end: Math.min(this.dataset.length, this.dataset.upperBoundX(viewport.xMax) + pad),
-    };
+    return this.source.visibleIndexRange(viewport, outerPadding);
   }
 
   private isGap(index: number, y?: number): boolean {
-    const value = y ?? this.dataset.getY(index);
-    if (!Number.isFinite(value)) return true;
-    const gaps = this.caps.gaps;
-    return gaps !== null && gaps.isGap(index);
-  }
-
-  private pointXDistanceSq(index: number, x: number, xScale: number, xTransform: (value: number) => number): number {
-    const dx = (xTransform(this.dataset.getX(index)) - x) * xScale;
-    return dx * dx;
-  }
-
-  private pointIntervalDistanceSq(
-    start: number,
-    end: number,
-    x: number,
-    y: number,
-    xScale: number,
-    yScale: number,
-    xTransform: (value: number) => number,
-    yTransform: (value: number) => number,
-  ): number {
-    if (end <= start) return Infinity;
-
-    const x0 = xTransform(this.dataset.getX(start));
-    const x1 = xTransform(this.dataset.getX(end - 1));
-    const dx = x < x0 ? (x0 - x) * xScale : x > x1 ? (x - x1) * xScale : 0;
-
-    const range = this.pointIntervalMinMaxY(start, end);
-    if (!range) return Infinity;
-    const minY = yTransform(range.minY);
-    const maxY = yTransform(range.maxY);
-    const dy = y < minY ? (minY - y) * yScale : y > maxY ? (y - maxY) * yScale : 0;
-    return dx * dx + dy * dy;
-  }
-
-  /** Whether `pointIntervalMinMaxY` can answer without scanning raw samples. */
-  private hasPointIntervalBounds(): boolean {
-    return this.caps.rangeMinMax !== null || (this.pyramid !== null && !this._dirty && !this._useRawMinMaxScan);
-  }
-
-  private pointIntervalMinMaxY(start: number, end: number): MinMaxY | null {
-    const rangeMinMax = this.caps.rangeMinMax;
-    if (rangeMinMax) return rangeMinMax.rangeMinMaxY(start, end);
-    if (this.pyramid && !this._dirty && !this._useRawMinMaxScan) return this.pyramid.rangeMinMax(this.dataset, start, end);
-    return null;
-  }
-
-  private copyVisiblePoints(
-    viewport: Viewport,
-    target: Float32Array,
-    maxPoints: number,
-    pixelWidth: number,
-    pixelHeight: number,
-    pointSize: number,
-    xOrigin: number,
-    yOrigin: number,
-  ): number {
-    if (this.caps.copyVisiblePoints) {
-      const written = this.caps.copyVisiblePoints.copyVisiblePoints(viewport, target, maxPoints, xOrigin, pixelWidth, pixelHeight, pointSize);
-      shiftY(target, written, 2, POINT_Y_OFFSETS, yOrigin);
-      return written;
-    }
-
-    if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
-
-    const xRange = viewport.xMax - viewport.xMin;
-    const yRange = viewport.yMax - viewport.yMin;
-    const width = Math.max(1, Math.floor(pixelWidth));
-    const height = Math.max(1, Math.floor(pixelHeight));
-    if (xRange <= 0 || yRange <= 0) return 0;
-
-    const safePointSize = Number.isFinite(pointSize) ? Math.max(0, pointSize) : 0;
-    const pointRadius = safePointSize * 0.5;
-    const xPad = (pointRadius / width) * xRange;
-    const yPad = (pointRadius / height) * yRange;
-    const xMin = viewport.xMin - xPad;
-    const xMax = viewport.xMax + xPad;
-    const yMin = viewport.yMin - yPad;
-    const yMax = viewport.yMax + yPad;
-
-    const start = this.dataset.lowerBoundX(xMin);
-    const end = this.dataset.upperBoundX(xMax);
-    if (end <= start) return 0;
-
-    if (end - start <= maxPoints) {
-      return this.copyVisiblePointRange(start, end, yMin, yMax, target, maxPoints, xOrigin, yOrigin);
-    }
-
-    const hasIntervalBounds = this.hasPointIntervalBounds();
-    const fullRange = hasIntervalBounds ? this.pointIntervalMinMaxY(start, end) : null;
-    if (fullRange && (fullRange.maxY < yMin || fullRange.minY > yMax)) return 0;
-
-    if (end - start <= maxPoints * 4) {
-      const exact = this.copyVisiblePointsExact(start, end, yMin, yMax, target, maxPoints, xOrigin, yOrigin);
-      if (!exact.overflow) return exact.count;
-    }
-
-    const fullRangeInside = fullRange !== null && fullRange.minY >= yMin && fullRange.maxY <= yMax;
-    return this.copyVisiblePointBuckets(viewport, start, end, yMin, yMax, target, maxPoints, xOrigin, yOrigin, fullRangeInside, hasIntervalBounds);
-  }
-
-  private copyVisiblePointRange(
-    start: number,
-    end: number,
-    yMin: number,
-    yMax: number,
-    target: Float32Array,
-    maxPoints: number,
-    xOrigin: number,
-    yOrigin: number,
-  ): number {
-    let count = 0;
-    for (let i = start; i < end && count < maxPoints; i++) {
-      const y = this.dataset.getY(i);
-      if (this.isGap(i, y) || y < yMin || y > yMax) continue;
-
-      const offset = count * 2;
-      target[offset] = this.dataset.getX(i) - xOrigin;
-      target[offset + 1] = y - yOrigin;
-      count++;
-    }
-    return count;
-  }
-
-  private copyVisiblePointBuckets(
-    viewport: Viewport,
-    start: number,
-    end: number,
-    yMin: number,
-    yMax: number,
-    target: Float32Array,
-    maxPoints: number,
-    xOrigin: number,
-    yOrigin: number,
-    fullRangeInside: boolean,
-    hasIntervalBounds: boolean,
-  ): number {
-    const bucketWidth = this.stableSampleBucketWidthForViewport(viewport, maxPoints);
-    const alignedStart = this.alignBucketStart(start, bucketWidth);
-    let count = 0;
-
-    const writeIndex = (index: number): boolean => {
-      const y = this.dataset.getY(index);
-      if (this.isGap(index, y)) return false;
-      const offset = count * 2;
-      target[offset] = this.dataset.getX(index) - xOrigin;
-      target[offset + 1] = y - yOrigin;
-      count++;
-      return true;
-    };
-    const writeRepresentative = (representative: number, from: number, to: number): void => {
-      if (writeIndex(representative)) return;
-      for (let i = from; i < to; i++) {
-        if (writeIndex(i)) return;
-      }
-    };
-
-    for (let bucketStart = alignedStart; bucketStart < end && count < maxPoints; bucketStart += bucketWidth) {
-      const bucketEnd = Math.min(end, bucketStart + bucketWidth);
-      const visibleStart = Math.max(start, bucketStart);
-      if (bucketEnd <= visibleStart) continue;
-
-      const representative = Math.max(
-        visibleStart,
-        Math.min(bucketEnd - 1, bucketStart + (bucketWidth >> 1)),
-      );
-
-      if (fullRangeInside) {
-        writeRepresentative(representative, visibleStart, bucketEnd);
-        continue;
-      }
-
-      const range = hasIntervalBounds && bucketEnd - visibleStart >= SCATTER_BUCKET_RANGE_PRUNE_SIZE
-        ? this.pointIntervalMinMaxY(visibleStart, bucketEnd)
-        : null;
-      if (range && (range.maxY < yMin || range.minY > yMax)) continue;
-      if (range && range.minY >= yMin && range.maxY <= yMax) {
-        writeRepresentative(representative, visibleStart, bucketEnd);
-        continue;
-      }
-
-      for (let i = visibleStart; i < bucketEnd; i++) {
-        const y = this.dataset.getY(i);
-        if (this.isGap(i, y) || y < yMin || y > yMax) continue;
-        writeIndex(i);
-        break;
-      }
-    }
-
-    return count;
-  }
-
-  private estimatedVisibleSamplesForViewport(viewport: Viewport): number {
-    const xSpan = viewport.xMax - viewport.xMin;
-    const range = this.dataset.range;
-    if (!range || this.dataset.length <= 1 || !(xSpan > 0)) return Math.max(1, this.dataset.length);
-
-    const dataSpan = range.end - range.start;
-    if (!(dataSpan > 0)) return Math.max(1, this.dataset.length);
-
-    return Math.max(1, (xSpan / dataSpan) * (this.dataset.length - 1) + 1);
-  }
-
-  /**
-   * First bucket start at or before `start`, aligned to absolute sample ordinals when the
-   * dataset reports them (`Dataset.ordinalOffset`). Aligning to logical indexes instead
-   * would move every bucket edge each time a full ring buffer drops its oldest sample.
-   */
-  private alignBucketStart(start: number, width: number): number {
-    const ordinalOffset = this.dataset.ordinalOffset ?? 0;
-    // Only the remainder is needed, which stays exact even for very large ordinals.
-    return start - ((((start + ordinalOffset) % width) + width) % width);
-  }
-
-  private stableSampleBucketWidthForViewport(viewport: Viewport, maxPoints: number): number {
-    return Math.max(1, Math.ceil(this.estimatedVisibleSamplesForViewport(viewport) / Math.max(1, maxPoints)));
-  }
-
-  private copyVisiblePointsExact(
-    start: number,
-    end: number,
-    yMin: number,
-    yMax: number,
-    target: Float32Array,
-    maxPoints: number,
-    xOrigin: number,
-    yOrigin: number,
-  ): { count: number; overflow: boolean } {
-    let count = 0;
-    let overflow = false;
-    const hasIntervalBounds = this.hasPointIntervalBounds();
-
-    const writePoint = (index: number): boolean => {
-      const y = this.dataset.getY(index);
-      if (this.isGap(index, y) || y < yMin || y > yMax) return true;
-      if (count >= maxPoints) {
-        overflow = true;
-        return false;
-      }
-
-      const offset = count * 2;
-      target[offset] = this.dataset.getX(index) - xOrigin;
-      target[offset + 1] = y - yOrigin;
-      count++;
-      return true;
-    };
-
-    const visitInterval = (from: number, to: number): boolean => {
-      if (to <= from) return true;
-
-      const range = hasIntervalBounds ? this.pointIntervalMinMaxY(from, to) : null;
-      if (range && (range.maxY < yMin || range.minY > yMax)) return true;
-      if (to - from <= SCATTER_INTERVAL_LEAF_SIZE || !hasIntervalBounds) {
-        for (let i = from; i < to; i++) {
-          if (!writePoint(i)) return false;
-        }
-        return true;
-      }
-
-      const mid = from + ((to - from) >> 1);
-      return visitInterval(from, mid) && visitInterval(mid, to);
-    };
-
-    visitInterval(start, end);
-    return { count, overflow };
-  }
-
-  private copyVisibleSamples(
-    viewport: Viewport,
-    target: Float32Array,
-    maxPoints: number,
-    layout: "points" | "area",
-    baseline: number,
-    xOrigin: number,
-    yOrigin: number,
-  ): number {
-    const visible = this.caps.copyVisibleSamples;
-    if (visible) {
-      if (honorsYOrigin(visible)) return visible.copyVisibleSamples(viewport, target, maxPoints, layout, baseline, xOrigin, yOrigin);
-      const written = visible.copyVisibleSamples(viewport, target, maxPoints, layout, baseline, xOrigin);
-      shiftY(target, written, layout === "points" ? 2 : 4, layout === "points" ? POINT_Y_OFFSETS : AREA_Y_OFFSETS, yOrigin);
-      return written;
-    }
-
-    const floatsPerSample = layout === "points" ? 2 : 4;
-    if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
-
-    const start = this.dataset.lowerBoundX(viewport.xMin);
-    const end = this.dataset.upperBoundX(viewport.xMax);
-    if (end <= start) return 0;
-
-    const stride = this.stableSampleBucketWidthForViewport(viewport, maxPoints);
-    const alignedStart = this.alignBucketStart(start, stride);
-    let count = 0;
-    let lastIndex = -1;
-    let lastWasGap = false;
-    const writeGap = (): boolean => {
-      if (count === 0 || lastWasGap) return true;
-      if (count >= maxPoints) return false;
-      const offset = count * floatsPerSample;
-      for (let j = 0; j < floatsPerSample; j++) target[offset + j] = NaN;
-      count++;
-      lastWasGap = true;
-      return true;
-    };
-    const writeSample = (index: number): boolean => {
-      const x = this.dataset.getX(index) - xOrigin;
-      const y = this.dataset.getY(index);
-      if (this.isGap(index, y)) return writeGap();
-      if (count >= maxPoints) return false;
-      const offset = count * floatsPerSample;
-      if (layout === "points") {
-        target[offset] = x;
-        target[offset + 1] = y - yOrigin;
-      } else {
-        target[offset] = x;
-        target[offset + 1] = baseline - yOrigin;
-        target[offset + 2] = x;
-        target[offset + 3] = y - yOrigin;
-      }
-      count++;
-      lastWasGap = false;
-      return true;
-    };
-
-    for (let bucketStart = alignedStart; bucketStart < end; bucketStart += stride) {
-      const bucketEnd = Math.min(end, bucketStart + stride);
-      const index = Math.max(start, bucketStart);
-      if (bucketEnd <= index) continue;
-      if (lastIndex >= 0 && index > lastIndex + 1 && this.hasGapInRange(lastIndex + 1, index) && !writeGap()) break;
-      if (!writeSample(index)) break;
-      lastIndex = index;
-    }
-
-    return count;
-  }
-
-  private hasGapInRange(start: number, end: number): boolean {
-    const from = Math.max(0, start);
-    const to = Math.min(this.dataset.length, end);
-    for (let i = from; i < to; i++) {
-      if (this.isGap(i)) return true;
-    }
-    return false;
-  }
-
-  private copySampleRange(
-    start: number,
-    end: number,
-    target: Float32Array,
-    maxPoints: number,
-    layout: "points" | "area",
-    baseline: number,
-    xOrigin: number,
-    yOrigin: number,
-  ): number {
-    const range = this.caps.copySamplesRange;
-    if (range) {
-      if (honorsYOrigin(range)) return range.copySamplesRange(start, end, target, maxPoints, layout, baseline, xOrigin, yOrigin);
-      const written = range.copySamplesRange(start, end, target, maxPoints, layout, baseline, xOrigin);
-      shiftY(target, written, layout === "points" ? 2 : 4, layout === "points" ? POINT_Y_OFFSETS : AREA_Y_OFFSETS, yOrigin);
-      return written;
-    }
-
-    const floatsPerSample = layout === "points" ? 2 : 4;
-    if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
-
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this.dataset.length, Math.ceil(end));
-    const count = Math.min(maxPoints, Math.max(0, to - from));
-    for (let i = 0; i < count; i++) {
-      const index = from + i;
-      const x = this.dataset.getX(index) - xOrigin;
-      const y = this.dataset.getY(index);
-      const gap = this.isGap(index, y);
-      if (layout === "points") {
-        const offset = i * 2;
-        target[offset] = gap ? NaN : x;
-        target[offset + 1] = gap ? NaN : y - yOrigin;
-      } else {
-        const offset = i * 4;
-        target[offset] = gap ? NaN : x;
-        target[offset + 1] = gap ? NaN : baseline - yOrigin;
-        target[offset + 2] = gap ? NaN : x;
-        target[offset + 3] = gap ? NaN : y - yOrigin;
-      }
-    }
-
-    return count;
-  }
-
-  private minMaxForRange(start: number, end: number): MinMaxY | null {
-    const rangeMinMax = this.caps.rangeMinMax;
-    if (rangeMinMax) return rangeMinMax.rangeMinMaxY(start, end);
-    if (this.pyramid && !this._useRawMinMaxScan) return this.pyramid.rangeMinMax(this.dataset, start, end);
-
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this.dataset.length, Math.ceil(end));
-    let minY = Infinity;
-    let maxY = -Infinity;
-    for (let i = from; i < to; i++) {
-      const y = this.dataset.getY(i);
-      if (this.isGap(i, y)) continue;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-    }
-    return minY <= maxY ? { minY, maxY } : null;
+    return this.source.isGap(index, y);
   }
 }
