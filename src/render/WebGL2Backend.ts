@@ -36,10 +36,13 @@ export class WebGL2UnavailableError extends Error {
   }
 }
 
-/** Return whether the current environment can create a WebGL2 context. */
-export function isWebGL2Available(): boolean {
-  if (typeof document === "undefined") return false;
-  const gl = document.createElement("canvas").getContext("webgl2");
+/**
+ * Return whether the current environment can create a WebGL2 context. The probe canvas comes from
+ * `doc` (default: the global `document`); pass an iframe or popup document to probe that window.
+ */
+export function isWebGL2Available(doc: Document | undefined = globalThis.document): boolean {
+  if (!doc) return false;
+  const gl = doc.createElement("canvas").getContext("webgl2");
   // The probe context counts against the browser's live-context cap until GC unless it is released.
   releaseWebGLContext(gl);
   return gl !== null;

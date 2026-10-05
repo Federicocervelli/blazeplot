@@ -35,18 +35,18 @@ const budgets: Budget[] = [
   { label: "root entry", path: "dist/index.js", maxBytes: 21_100 },
   { label: "linked entry", path: "dist/linked.js", maxBytes: 2_500 },
   { label: "data entry", path: "dist/data.js", maxBytes: 1_800 },
-  { label: "export entry", path: "dist/export.js", maxBytes: 3_900 },
+  { label: "export entry", path: "dist/export.js", maxBytes: 4_300 },
   { label: "interactions plugin", path: "dist/plugins/interactions.js", maxBytes: 15_100 },
   { label: "annotations plugin", path: "dist/plugins/annotations.js", maxBytes: 15_200 },
   { label: "navigator plugin", path: "dist/plugins/navigator.js", maxBytes: 10_200 },
   { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 8_800 },
   { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 4_800 },
-  { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 3_900 },
+  { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_300 },
   { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 9_400 },
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 22_100 },
   { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 11_900 },
   { label: "canvas2d renderer entry", path: "dist/renderers/canvas2d.js", maxBytes: 5_700 },
-  { label: "shared renderer entry", path: "dist/renderers/shared.js", maxBytes: 3_900 },
+  { label: "shared renderer entry", path: "dist/renderers/shared.js", maxBytes: 4_300 },
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [

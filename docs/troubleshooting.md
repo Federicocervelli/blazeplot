@@ -82,7 +82,7 @@ const chart = new Chart(element, {
 });
 ```
 
-You can also enable it after construction with `chart.followX(...)`. For timestamped streams that arrive in batches, add `currentX: () => Date.now()` so the viewport scrolls smoothly between batch arrivals. If the user pans or zooms and `pauseOnInteraction` is enabled, call `chart.setFollowXPaused(false)` when they click your "live" button, or set `resumeAfterMs` to resume automatically. Any pan or zoom pauses follow, including Y-only gestures such as dragging the Y axis; read `chart.getFollowXState()` or subscribe to `followxchange` to show a "jump to live" button. See [Live data](./live-data.md#following-the-latest-x-value).
+You can also enable it after construction with `chart.followX(...)`. For timestamped streams that arrive in batches, add `currentX: () => Date.now()` so the viewport scrolls smoothly between batch arrivals. If the user pans or zooms and `pauseOnInteraction` is enabled, call `chart.setFollowXPaused(false)` when they click your "live" button, or set `resumeAfterMs` to resume automatically. A pan or zoom that moves X pauses follow; Y-only gestures such as dragging the Y axis do not. Read `chart.getFollowXState()` or subscribe to `followxchange` to show a "jump to live" button. See [Live data](./live-data.md#following-the-latest-x-value).
 
 ## Live data does not repaint until interaction
 

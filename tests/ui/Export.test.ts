@@ -44,6 +44,7 @@ afterEach(() => {
 function fakeChart(blob: Blob): { chart: Chart; options: ChartScreenshotOptions[] } {
   const options: ChartScreenshotOptions[] = [];
   const chart = {
+    canvas: document.createElement("canvas"),
     screenshot: async (opts: ChartScreenshotOptions = {}) => {
       options.push(opts);
       return blob;
@@ -128,5 +129,21 @@ describe("copyChartScreenshotToClipboard", () => {
       if (nav) Object.defineProperty(globalThis, "navigator", nav);
       else delete (globalThis as { navigator?: unknown }).navigator;
     }
+  });
+});
+
+describe("downloadBlob with an explicit document", () => {
+  it("creates and attaches the link in the given document, not the global one", () => {
+    const created: string[] = [];
+    const appended: unknown[] = [];
+    const anchor = { click() {}, remove() {}, style: {} } as unknown as HTMLAnchorElement;
+    const foreign = {
+      createElement: (tag: string) => { created.push(tag); return anchor; },
+      body: { appendChild: (node: unknown) => { appended.push(node); } },
+    } as unknown as Document;
+    downloadBlob(new Blob(["x"]), "foreign.png", foreign);
+    expect(created).toEqual(["a"]);
+    expect(appended).toEqual([anchor]);
+    expect(clicked).toEqual([]);
   });
 });
