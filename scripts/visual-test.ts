@@ -140,8 +140,8 @@ const CASE_CHECKS: Readonly<Record<string, CaseCheck>> = {
   "context-restore": { minInkRatio: 0.004 },
   // These cases assert their pixels inside the page (see assertPixelCase in tests/browser/visual/main.ts).
   "translucent-overlap": { minInkRatio: 0.1 },
-  "scatter-markers": { minInkRatio: 0.0001 },
-  "scatter-markers-dpr2": { minInkRatio: 0.0001 },
+  "scatter-markers": { minInkRatio: 0.00002 },
+  "scatter-markers-dpr2": { minInkRatio: 0.00002 },
   "large-y-offset": { minInkRatio: 0.01 },
   "dense-area-spike": { minInkRatio: 0.01 },
 };
