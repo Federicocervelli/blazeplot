@@ -1,4 +1,4 @@
-import type { RgbaColor } from "../core/types.js";
+import type { RgbaColor } from "../../core/types.js";
 
 /** Primitive topology for solid-color draws. */
 export type SolidPrimitive = "lines" | "line_strip" | "triangles" | "triangle_strip";
@@ -66,5 +66,7 @@ export interface GpuBackend {
   /** Upload the first `floatCount` floats of `stream` once, then issue every command against it in order. */
   submit(stream: Float32Array, floatCount: number, commands: readonly DrawCommand[]): void;
   getContext?(): WebGL2RenderingContext | null;
+  /** Pixels in the largest drawing buffer the context supports, when known. */
+  readonly maxDrawingBufferPixels?: number;
   destroy(): void;
 }

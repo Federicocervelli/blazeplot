@@ -50,14 +50,6 @@
       "types": "./dist/export.d.ts",
       "import": "./dist/export.js"
     },
-    "./renderers/canvas2d": {
-      "types": "./dist/renderers/canvas2d.d.ts",
-      "import": "./dist/renderers/canvas2d.js"
-    },
-    "./renderers/shared": {
-      "types": "./dist/renderers/shared.d.ts",
-      "import": "./dist/renderers/shared.js"
-    },
     "./plugins/legend": {
       "types": "./dist/plugins/legend.d.ts",
       "import": "./dist/plugins/legend.js"
@@ -111,7 +103,8 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:coverage": "bun scripts/coverage-check.ts",
-    "check": "bun run typecheck && bun run lint && bun run test:coverage && bun run build && bun run test:generated-docs && bun run test:docs-snippets && bun run test:exports && bun run test:package && bun run test:api && bun run test:bundle-size",
+    "test:ui-engines": "bun scripts/ui-engines-test.ts",
+    "check": "bun run typecheck && bun run lint && bun run test:coverage && bun run test:ui-engines && bun run build && bun run test:generated-docs && bun run test:docs-snippets && bun run test:exports && bun run test:package && bun run test:api && bun run test:bundle-size",
     "test:browser": "bun run test:browser:perf && bun run test:visual && bun run test:browser:ui && bun run test:stability && bun run test:website",
     "test:browser:perf": "bun run bench:ci && bun run bench:gate",
     "test:browser:visual-gl": "bun scripts/visual-test.ts --renderer webgl2,shared",

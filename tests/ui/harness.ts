@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
-import { FakeBackend, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
+import { chartRenderer, installEngineDoubles, uiEngine } from "./engines.ts";
+import { RecordingRenderer, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
 import type { FakeRaf, ListenerLedger, TestEnv } from "./fakes.ts";
 import type { Chart as ChartType, ChartOptions } from "../../src/ui/Chart.ts";
 import type { ChartPlugin, ChartPluginContext } from "../../src/ui/PluginHost.ts";
@@ -10,7 +11,7 @@ export interface ChartHarness {
   readonly ledger: () => ListenerLedger;
   /** The host element charts are mounted into. */
   readonly target: () => HTMLDivElement;
-  readonly backends: () => readonly FakeBackend[];
+  readonly backends: () => readonly RecordingRenderer[];
   /** Create a chart on the FakeBackend with a 400x200 plot at the client origin. */
   make(options?: ChartOptions, plot?: PlotStub): ChartType;
 }
@@ -116,13 +117,15 @@ export function useChartHarness(): ChartHarness {
   let env: TestEnv;
   let Chart: typeof ChartType;
   let target: HTMLDivElement;
-  let backends: FakeBackend[] = [];
+  let backends: RecordingRenderer[] = [];
   let ledger: ListenerLedger;
+  let restoreEngineDoubles = (): void => {};
   const raf = { current: null as unknown as FakeRaf };
 
   beforeAll(async () => {
     env = setupDom();
     raf.current = env.raf;
+    restoreEngineDoubles = installEngineDoubles();
     // Give every canvas a default 400x200 plot so plugins that measure at install time see a real size.
     const canvasProto = window.HTMLCanvasElement.prototype;
     canvasProto.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 200, right: 400, bottom: 200, x: 0, y: 0, toJSON() {} }) as DOMRect;
@@ -131,6 +134,7 @@ export function useChartHarness(): ChartHarness {
     ({ Chart } = await import("../../src/ui/Chart.ts"));
   });
   afterAll(() => {
+    restoreEngineDoubles();
     // happy-dom classes can outlive the window; do not leak the default plot size into other files.
     const canvasProto = window.HTMLCanvasElement.prototype as unknown as Record<string, unknown>;
     delete canvasProto.getBoundingClientRect;
@@ -161,12 +165,9 @@ export function useChartHarness(): ChartHarness {
     make(options: ChartOptions = {}, plot?: PlotStub): ChartType {
       const chart = new Chart(target, {
         ...options,
-        backendFactory: (ctx) => {
-          const backend = new FakeBackend(ctx.canvas);
-          backends.push(backend);
-          return backend;
-        },
+        renderer: chartRenderer(backends),
       });
+      if (uiEngine !== "fake" && !options.renderer && chart.renderer !== uiEngine) throw new Error(`Harness expected the ${uiEngine} engine, got ${chart.renderer}.`);
       stubPlot(chart, plot);
       return chart;
     },

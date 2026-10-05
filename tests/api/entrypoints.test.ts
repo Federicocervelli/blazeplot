@@ -13,6 +13,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 /** Exact runtime (value) exports per entry. Types are erased and are covered by `bun run test:api`. */
 const expectedExports: Record<string, readonly string[]> = {
   ".": [
+    "Canvas2DUnavailableError",
     "Chart",
     "DEFAULT_CHART_THEME",
     "HistogramDataset",
@@ -24,8 +25,13 @@ const expectedExports: Record<string, readonly string[]> = {
     "StaticOhlcDataset",
     "UniformRingBuffer",
     "WebGL2UnavailableError",
+    "autoRenderer",
+    "canvas2dRenderer",
+    "createChartRenderContext",
     "histogram",
     "isWebGL2Available",
+    "sharedRenderer",
+    "webgl2Renderer",
   ],
   "./linked": ["createLinkedCharts"],
   "./data": ["binSamples", "rollingMean"],
@@ -39,8 +45,6 @@ const expectedExports: Record<string, readonly string[]> = {
   "./plugins/navigator": ["navigatorPlugin"],
   "./plugins/flamegraph": ["buildStatusChartModel", "flameGraphPlugin", "parseFoldedStacks"],
   "./plugins/a11y": ["a11yPlugin"],
-  "./renderers/canvas2d": ["Canvas2DUnavailableError", "autoRenderer", "canvas2dRenderer"],
-  "./renderers/shared": ["createChartRenderContext", "sharedRenderer"],
 };
 
 interface PackageJson {

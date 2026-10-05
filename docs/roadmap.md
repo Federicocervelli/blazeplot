@@ -8,7 +8,7 @@ BlazePlot is a fast WebGL2 plotting engine for dense browser time-series charts.
 - **Rendering:** a native WebGL2 backend (one stream upload per frame) covers line, area, scatter, bar, OHLC, candlestick, dense min/max paths, screenshots, and context loss/restore, with DOM/SVG overlays for axes and plugins. An opt-in Canvas 2D renderer works without WebGL2, and an opt-in shared WebGL context lets many charts share one context. Charts work in iframes and popup windows.
 - **Plugins:** pan, zoom, box zoom, keyboard and touch gestures (with cooperative modes for scrolling pages), crosshair, tooltip, legend, annotations, selection, navigator, flamegraph, and accessibility, all built on a stable, documented plugin contract that third-party plugins can use too.
 - **Accessibility:** chart semantics with a generated summary, a hidden data table, a keyboard inspection cursor, keyboard selection and annotations, focus rings, and forced-colors support.
-- **Packaging:** tree-shakable entry points (`blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, `blazeplot/renderers/*`, `blazeplot/plugins/*`), ESM only, with bundle-size budgets and a public API snapshot.
+- **Packaging:** tree-shakable entry points (`blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, `blazeplot/plugins/*`), ESM only, with bundle-size budgets and a public API snapshot.
 - **Quality gates in CI:** typecheck, lint, unit and property tests with coverage floors, the TypeScript 5.0 floor, export and package checks, typechecked docs snippets, a performance regression gate, pixel-baseline visual tests, browser interaction and keyboard tests, axe-core and forced-colors checks, a leak/stability suite, and a Firefox/WebKit smoke job.
 
 ## After 1.0
@@ -45,7 +45,7 @@ These are additive and can ship in 1.x minor releases.
 
 ## Non-goals for now
 
-- An SVG renderer for core plot drawing (a Canvas 2D fallback ships as `blazeplot/renderers/canvas2d`).
+- An SVG renderer for core plot drawing (a Canvas 2D engine ships in the core package).
 - Large chart-type expansion that bloats the time-series core.
 - Bundling timezone databases or heavyweight data-processing libraries.
 - Breaking synchronous chart construction for optional feature splitting.

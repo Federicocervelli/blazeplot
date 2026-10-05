@@ -38,7 +38,7 @@ function setup(viewport = { xMin: 100, xMax: 110, yMin: 0, yMax: 10 }) {
   rightCamera.setViewport(viewport);
   const axis = new AxisController(camera);
   const rightAxis = new AxisController(rightCamera);
-  const stats: PaintStats = { pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" };
+  const stats: PaintStats = { pointsRendered: 0, renderMode: "none" };
   const calls: Call[] = [];
   const painter = new SeriesPainter(stats, 64);
   painter.beginFrame({
@@ -59,23 +59,20 @@ function lineSeries(mode: "line" | "scatter" | "bar", points: Array<[number, num
 }
 
 describe("SeriesPainter", () => {
-  it("draws grid lines in clip space and counts one upload and one draw call", () => {
-    const { painter, stats, calls } = setup();
+  it("draws grid lines in clip space and in a single draw call", () => {
+    const { painter, calls } = setup();
     painter.drawGrid([100, 105, 110], [0, 5, 10], [1, 1, 1, 0.2]);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.method).toBe("drawClipLines");
     expect(calls[0]!.count).toBe(12);
     // The first vertical line sits on the left clip edge, spanning the full height.
     expect(calls[0]!.data.slice(0, 4)).toEqual([-1, -1, -1, 1]);
-    expect(stats.drawCalls).toBe(1);
-    expect(stats.uploadBytes).toBe(12 * 8);
   });
 
   it("skips the draw when there are no ticks", () => {
-    const { painter, calls, stats } = setup();
+    const { painter, calls } = setup();
     painter.drawGrid([], [], [1, 1, 1, 1]);
     expect(calls).toHaveLength(0);
-    expect(stats.drawCalls).toBe(0);
   });
 
   it("subtracts the camera origin before upload and projects with a linear scale", () => {
@@ -99,7 +96,6 @@ describe("SeriesPainter", () => {
     painter.drawSeries(lineSeries("scatter", [[105, 5]]));
     expect(calls.map((call) => call.method)).toEqual(["drawLines", "drawPoints"]);
     expect(stats.renderMode).toBe("mixed");
-    expect(stats.drawCalls).toBe(2);
   });
 
   it("draws exact bars as instances on linear axes", () => {
@@ -113,7 +109,7 @@ describe("SeriesPainter", () => {
     const camera = new Camera2D();
     camera.setViewport({ xMin: 0, xMax: 10, yMin: 1, yMax: 1000 });
     const rightCamera = new Camera2D();
-    const stats: PaintStats = { pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" };
+    const stats: PaintStats = { pointsRendered: 0, renderMode: "none" };
     const calls: Call[] = [];
     const painter = new SeriesPainter(stats, 64);
     painter.beginFrame({

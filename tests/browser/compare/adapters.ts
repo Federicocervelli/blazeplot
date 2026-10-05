@@ -16,9 +16,7 @@ import {
 } from "chart.js";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import { Chart, LIGHT_CHART_THEME, StaticDataset } from "@/index.ts";
-import { canvas2dRenderer } from "@/renderers/canvas2d.ts";
-import { sharedRenderer } from "@/renderers/shared.ts";
+import { Chart, LIGHT_CHART_THEME, StaticDataset, sharedRenderer } from "@/index.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import type { SeriesStore } from "@/index.ts";
@@ -62,7 +60,7 @@ function createBlazePlot(host: HTMLElement, spec: ChartSpec, data: LibraryData, 
     },
     grid: false,
     renderLoop: "auto",
-    renderer: backend === "canvas2d" ? canvas2dRenderer() : backend === "shared" ? sharedRenderer() : "webgl2",
+    renderer: backend === "canvas2d" ? "canvas2d" : backend === "shared" ? sharedRenderer() : "webgl2",
     plugins: spec.hover ? [crosshairPlugin(), tooltipPlugin()] : [],
   });
   let draws = 0;

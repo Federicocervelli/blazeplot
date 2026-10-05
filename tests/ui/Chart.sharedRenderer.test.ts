@@ -3,7 +3,7 @@ import { FakeResizeObserver, setupDom } from "./fakes.ts";
 import type { FakeRaf, TestEnv } from "./fakes.ts";
 import { stubPlot } from "./harness.ts";
 import type { Chart as ChartType } from "../../src/ui/Chart.ts";
-import type { createChartRenderContext as CreateContext, sharedRenderer as SharedRenderer } from "../../src/renderers/shared.ts";
+import type { createChartRenderContext as CreateContext, sharedRenderer as SharedRenderer } from "../../src/render/engines.ts";
 
 let env: TestEnv;
 let raf: FakeRaf;
@@ -15,7 +15,7 @@ beforeAll(async () => {
   env = setupDom();
   raf = env.raf;
   ({ Chart } = await import("../../src/ui/Chart.ts"));
-  ({ createChartRenderContext, sharedRenderer } = await import("../../src/renderers/shared.ts"));
+  ({ createChartRenderContext, sharedRenderer } = await import("../../src/render/engines.ts"));
 });
 afterAll(() => env.teardown());
 
@@ -109,12 +109,25 @@ function mountCharts(count: number, context: ReturnType<typeof createChartRender
 }
 
 describe("shared render context", () => {
+  it('the "shared" renderer name puts every chart on the document\'s one context', () => {
+    const charts = [0, 1, 2].map(() => {
+      const host = document.createElement("div");
+      target.appendChild(host);
+      return new Chart(host, { renderer: "shared" });
+    });
+    expect(glContexts).toHaveLength(1);
+    expect(charts.every((chart) => chart.rendererInfo.name === "shared" && chart.rendererInfo.requested === "shared")).toBe(true);
+    expect(charts[0]!.rendererInfo.capabilities).toMatchObject({ gpu: true, shared: true });
+    for (const chart of charts) chart.dispose();
+    expect(glContexts[0]!.releases).toBe(1);
+  });
+
   it("serves many charts from a single WebGL2 context and blits into each chart canvas", () => {
     const context = createChartRenderContext();
     const charts = mountCharts(20, context);
     expect(glContexts).toHaveLength(1);
     expect(context.chartCount).toBe(20);
-    expect(charts.every((chart) => chart.renderer === "webgl2-shared")).toBe(true);
+    expect(charts.every((chart) => chart.renderer === "shared")).toBe(true);
     expect(charts.every((chart) => chart.getWebGLContext() === null)).toBe(true);
 
     raf.flush();
@@ -206,7 +219,7 @@ describe("shared render context", () => {
     const context = createChartRenderContext();
     const linked = createLinkedCharts(target, { panels: Array.from({ length: 6 }, () => ({})), rows: 3, columns: 2, renderer: sharedRenderer(context) });
     expect(glContexts).toHaveLength(1);
-    expect(linked.charts.every((chart) => chart.renderer === "webgl2-shared")).toBe(true);
+    expect(linked.charts.every((chart) => chart.renderer === "shared")).toBe(true);
     expect(context.chartCount).toBe(6);
     linked.dispose();
     expect(context.chartCount).toBe(0);

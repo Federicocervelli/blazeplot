@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { createLinkedCharts } from "../../src/linked.ts";
 import type { Chart, ChartFollowXState } from "../../src/ui/Chart.ts";
-import { FakeBackend } from "./fakes.ts";
+import { recordingRenderer } from "./fakes.ts";
 import { useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();
@@ -50,7 +50,7 @@ describe("latest-X follow and per-axis gestures", () => {
   it("keeps every linked panel following through a Y-only gesture", () => {
     const linked = createLinkedCharts(h.target(), {
       panels: Array.from({ length: 2 }, () => ({
-        options: { followX: { window: 10 }, backendFactory: (ctx: { canvas: HTMLCanvasElement }) => new FakeBackend(ctx.canvas) },
+        options: { followX: { window: 10 }, renderer: recordingRenderer() },
       })),
     });
     const [a, b] = linked.charts as [Chart, Chart];

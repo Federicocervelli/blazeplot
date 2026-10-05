@@ -17,7 +17,7 @@ BlazePlot is for datasets that outgrow general-purpose charting libraries: milli
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **178 KiB raw**. Plugins and helpers ship as separate subpath entries.
+The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **190 KiB raw**. Plugins and helpers ship as separate subpath entries.
 
 Headline numbers from the manual headed comparison against uPlot and Chart.js, one primary metric per scenario (median of fresh-page runs; bold marks the winner among BlazePlot WebGL, uPlot and Chart.js):
 
@@ -84,8 +84,8 @@ For streaming data, pass `capacity` to `addLine` and append samples; see [Live d
 
 ## Features
 
-- **WebGL2 rendering with a Canvas 2D fallback.** GPU-accelerated plots by default; opt into `autoRenderer()` from `blazeplot/renderers/canvas2d` to keep drawing when WebGL2 is unavailable. Axis labels and grid use lightweight DOM layers and DPR-aware sizing.
-- **Many charts on one page.** `sharedRenderer()` from `blazeplot/renderers/shared` draws every chart through one WebGL context, so dashboards are not limited by the browser's per-page context cap.
+- **WebGL2 rendering with a Canvas 2D fallback.** GPU-accelerated plots by default, falling back to Canvas 2D when WebGL2 is unavailable (`renderer: "auto"`, the default). Axis labels and grid use lightweight DOM layers and DPR-aware sizing.
+- **Many charts on one page.** `renderer: "shared"` draws every chart through one WebGL context, so dashboards are not limited by the browser's per-page context cap.
 - **Series types.** Line, area, scatter, bar, histogram (`addBar` with `HistogramDataset`), OHLC, and candlestick, each with independent data, style (`series.setStyle`), and visibility.
 - **Live and large data.** Streaming ring buffers (including fixed-rate `UniformRingBuffer`), static typed arrays, and a custom dataset contract for remote or procedural sources.
 - **Level-of-detail downsampling.** Min/max extraction keeps dense views accurate and cheap at any zoom; `ServerSampledDataset` renders server-reduced buckets directly.
@@ -107,8 +107,6 @@ Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](doc
 | `blazeplot/linked` | Multi-panel layouts with shared X and per-panel plugins. |
 | `blazeplot/data` | Pure, chart-agnostic data transforms (binning, rolling mean). |
 | `blazeplot/export` | Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers. |
-| `blazeplot/renderers/canvas2d` | Canvas 2D renderer and WebGL2-with-Canvas-2D-fallback renderer factories. |
-| `blazeplot/renderers/shared` | Shared WebGL2 render context: many charts, one WebGL context. |
 | `blazeplot/plugins/legend` | Built-in legend plugin. |
 | `blazeplot/plugins/tooltip` | Built-in tooltip plugin. |
 | `blazeplot/plugins/interactions` | Built-in pan, zoom, axis interaction, and reset plugin. |

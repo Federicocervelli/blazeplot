@@ -9,7 +9,7 @@ The short version: **constructors, static data, and explicit configuration throw
 | Error | Thrown by | When |
 |---|---|---|
 | `WebGL2UnavailableError` (extends `Error`, `name === "WebGL2UnavailableError"`) | `new Chart(...)`, `createLinkedCharts(...)` | The canvas cannot create a WebGL2 context (default `renderer: "webgl2"` and `sharedRenderer()`). Not thrown with `autoRenderer()`, which falls back to Canvas 2D. |
-| `Canvas2DUnavailableError` (from `blazeplot/renderers/canvas2d`, extends `Error`) | `new Chart(..., { renderer: canvas2dRenderer() })` | The canvas cannot create a 2D context. Also what `autoRenderer()` throws when both backends fail. |
+| `Canvas2DUnavailableError` (from `blazeplot`, extends `Error`) | `new Chart(..., { renderer: "canvas2d" })` | The canvas cannot create a 2D context. Also what `autoRenderer()` throws when both backends fail. |
 | `RangeError` | Datasets, `Camera2D`, axes, histogram and data helpers | A number is out of range: non-positive capacity, `xStep <= 0`, index out of range, `xMax <= xMin`, non-finite viewport edge, capacity exceeded with `overflow: "error"`, `binSize <= 0`, invalid histogram bins, mismatched array lengths in dataset input, and a non-finite or decreasing X in static data (`StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`, `fromObjects`, `series.replace`). |
 | `TypeError` | `Chart` constructor, `Chart.addSeries`/`add*`, `SeriesStore` mutators, `histogram` | The call does not fit the dataset or option shape: appending `{ y }` to a dataset without implicit X, mixing OHLC and XY rows, OHLC series without an `OhlcDataset`, an unknown series mode, `series.setStyle` on a series that is not attached to a chart, a `renderer` option that is neither `"webgl2"` nor a factory, conflicting histogram options. |
 | `Error` | `blazeplot/export`, `chart.screenshot()`, built-in stateful plugins, flame graph plugin, `sharedRenderer()`, WebGL internals | Browser feature missing (`ClipboardItem`, Clipboard API, 2D canvas), a plugin instance installed on a second chart, a shared render context without a DOM, or a shader/program failed to compile or link. |
@@ -22,7 +22,7 @@ The short version: **constructors, static data, and explicit configuration throw
 
 If a plugin's `install()` throws, the chart disposes everything already set up and rethrows that error from the constructor. That includes installing one stateful built-in plugin instance (annotations, crosshair, selection, navigator, a11y, flame graph) on a second chart: create one instance per chart.
 
-To keep drawing without WebGL2, use the built-in Canvas 2D fallback (`renderer: autoRenderer()` from `blazeplot/renderers/canvas2d`; see [Browser support](./browser-support.md#canvas-2d-renderer)). Check availability first when you want your own fallback UI instead of a `try`/`catch`:
+To keep drawing without WebGL2, use the built-in Canvas 2D fallback (`renderer: "auto"`; see [Browser support](./browser-support.md#canvas-2d-renderer)). Check availability first when you want your own fallback UI instead of a `try`/`catch`:
 
 ```ts
 import { Chart, WebGL2UnavailableError, isWebGL2Available } from "blazeplot";

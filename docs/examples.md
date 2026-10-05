@@ -16,8 +16,8 @@ Use this table before reaching for a generic chart example. The dataset choice d
 | Server-reduced min/max buckets | `ServerSampledDataset` with `downsample: "server"` |
 | React ownership of the DOM | Create and dispose `Chart` in an effect |
 | Multiple charts sharing an X range | `createLinkedCharts` from `blazeplot/linked` |
-| Browsers that may lack WebGL2 | `renderer: autoRenderer()` from `blazeplot/renderers/canvas2d` |
-| Dozens of charts on one page | `renderer: sharedRenderer()` from `blazeplot/renderers/shared` |
+| Browsers that may lack WebGL2 | `renderer: "auto"` |
+| Dozens of charts on one page | `renderer: "shared"` |
 
 All built-in datasets require finite, non-decreasing X values: static datasets throw a `RangeError` for unsorted input and streaming buffers skip out-of-order samples. If source data arrives out of order, build the dataset with `StaticDataset.sorted(x, y)` or write a custom dataset that exposes sorted logical access. See [Data semantics](./data-semantics.md#the-x-rule).
 
@@ -351,19 +351,17 @@ The default renderer needs WebGL2. `autoRenderer()` falls back to Canvas 2D when
 
 ```ts
 import { Chart } from "blazeplot";
-import { autoRenderer } from "blazeplot/renderers/canvas2d";
-import { sharedRenderer } from "blazeplot/renderers/shared";
 
-const fallbackChart = new Chart(element, { renderer: autoRenderer() });
+const fallbackChart = new Chart(element, { renderer: "auto" });
 console.log(fallbackChart.renderer); // "webgl2" or "canvas2d"
 
-const dashboardChart = new Chart(container, { renderer: sharedRenderer() });
+const dashboardChart = new Chart(container, { renderer: "shared" });
 
 fallbackChart.dispose();
 dashboardChart.dispose();
 ```
 
-See [Browser support](./browser-support.md#canvas-2d-renderer) for the differences between renderers and [Performance recipes](./performance-recipes.md#many-charts-on-one-page) for when to share a context. `createLinkedCharts(element, { renderer: sharedRenderer(), panels })` applies one renderer to every panel.
+See [Browser support](./browser-support.md#canvas-2d-renderer) for the differences between renderers and [Performance recipes](./performance-recipes.md#many-charts-on-one-page) for when to share a context. `createLinkedCharts(element, { renderer: "shared", panels })` applies one renderer to every panel.
 
 ## Annotations
 

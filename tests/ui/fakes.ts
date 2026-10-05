@@ -1,46 +1,81 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import type { DrawCommand, GpuBackend } from "../../src/render/types.ts";
+import { describeRenderer } from "../../src/render/ChartRenderer.ts";
+import type { ChartRenderer, ChartRendererInfo, FrameReport, RendererLossState } from "../../src/render/ChartRenderer.ts";
 
-/** GPU backend that records submitted frames so tests can assert on draw and upload counts. */
-export class FakeBackend implements GpuBackend {
-  /** Every draw command received, in submission order. */
-  draws: DrawCommand[] = [];
-  /** Number of `submit` calls, i.e. stream uploads. */
-  submits = 0;
-  /** Floats uploaded across all submits. */
-  uploadedFloats = 0;
-  destroyCount = 0;
-  contextLost = false;
-  /** Times `WEBGL_lose_context.loseContext()` was called on this backend's context. */
-  contextReleases = 0;
-  readonly canvas: HTMLCanvasElement | null;
-  private readonly gl = {
-    isContextLost: () => this.contextLost,
-    getExtension: (name: string) => (name === "WEBGL_lose_context" ? { loseContext: () => { this.contextReleases++; } } : null),
-  } as unknown as WebGL2RenderingContext;
+/** One draw call a chart made on a {@link RecordingRenderer}. */
+export interface RecordedDraw {
+  readonly method: "drawLines" | "drawClipLines" | "drawPoints" | "drawBarsInstanced" | "drawTriangles";
+  readonly count: number;
+}
 
-  constructor(canvas: HTMLCanvasElement | null = null) {
-    this.canvas = canvas;
+/** Fake engine that records what a chart asks it to draw and lets tests simulate context loss. */
+export class RecordingRenderer implements ChartRenderer {
+  readonly kind = "webgl2" as const;
+  readonly info: ChartRendererInfo = describeRenderer("webgl2", { gpu: true, contextLoss: true, shared: false, maxDrawingBufferPixels: 1 << 24 });
+  /** Every draw call since the last reset, in order. */
+  draws: RecordedDraw[] = [];
+  /** Number of `endFrame` calls, i.e. frames the chart finished. */
+  frames = 0;
+  disposeCount = 0;
+  lost = false;
+  private listener: ((state: RendererLossState) => void) | null = null;
+  private frameDraws = 0;
+
+  get isLost(): boolean {
+    return this.lost;
+  }
+  setLossListener(listener: ((state: RendererLossState) => void) | null): void {
+    this.listener = listener;
+  }
+  /** Simulate the engine losing its context and telling the chart. */
+  lose(): void {
+    this.lost = true;
+    this.listener?.("lost");
+  }
+  /** Simulate the engine restoring its context and telling the chart. */
+  restore(): void {
+    this.lost = false;
+    this.listener?.("restored");
   }
 
-  /** 1 while the backend holds its GPU objects, 0 once destroyed. */
-  get liveResourceCount(): number {
-    return this.destroyCount > 0 ? 0 : 1;
+  beginFrame(): void {
+    this.frameDraws = 0;
   }
+  endFrame(): FrameReport {
+    this.frames++;
+    return { uploadBytes: 0, drawCalls: this.frameDraws };
+  }
+  drawLines(_data: Float32Array, count: number): void {
+    this.record("drawLines", count);
+  }
+  drawClipLines(_data: Float32Array, count: number): void {
+    this.record("drawClipLines", count);
+  }
+  drawPoints(_data: Float32Array, count: number): void {
+    this.record("drawPoints", count);
+  }
+  drawBarsInstanced(_data: Float32Array, count: number): void {
+    this.record("drawBarsInstanced", count);
+  }
+  drawTriangles(_data: Float32Array, count: number): void {
+    this.record("drawTriangles", count);
+  }
+  dispose(): void {
+    this.disposeCount++;
+  }
+  private record(method: RecordedDraw["method"], count: number): void {
+    this.frameDraws++;
+    this.draws.push({ method, count });
+  }
+}
 
-  submit(_stream: Float32Array, floatCount: number, commands: readonly DrawCommand[]): void {
-    this.submits++;
-    this.uploadedFloats += floatCount;
-    this.draws.push(...commands);
-  }
-  clear(): void {}
-  viewport(): void {}
-  getContext(): WebGL2RenderingContext | null {
-    return this.gl;
-  }
-  destroy(): void {
-    this.destroyCount++;
-  }
+/** Renderer option that builds a {@link RecordingRenderer} and hands it to `sink`. */
+export function recordingRenderer(sink?: RecordingRenderer[]): (context: { canvas: HTMLCanvasElement }) => RecordingRenderer {
+  return () => {
+    const renderer = new RecordingRenderer();
+    sink?.push(renderer);
+    return renderer;
+  };
 }
 
 export class FakeResizeObserver {

@@ -31,8 +31,6 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 | `blazeplot/linked` | Stable | `createLinkedCharts` and its option/handle types. |
 | `blazeplot/data` | Stable | `binSamples`, `rollingMean`, and their types (pure, chart-agnostic transforms). |
 | `blazeplot/export` | Stable | `exportChartData`, `chartDataToCsv`, `downloadBlob`, `downloadChartScreenshot`, `copyChartScreenshotToClipboard`, and their types. |
-| `blazeplot/renderers/canvas2d` | Stable | `canvas2dRenderer`, `autoRenderer`, `Canvas2DUnavailableError`. The factories are the contract; the renderer they return is opaque. |
-| `blazeplot/renderers/shared` | Stable | `sharedRenderer`, `createChartRenderContext`, `ChartRenderContext`. Same: the factories and the context handle are the contract. |
 | `blazeplot/plugins/legend` | Stable | Options may grow; existing option names are kept. |
 | `blazeplot/plugins/tooltip` | Stable | Same. |
 | `blazeplot/plugins/interactions` | Stable | Same. |
@@ -49,7 +47,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 
 | Area | Exports | Tier |
 |---|---|---|
-| Chart | `Chart` (constructor, `add*` helpers, `addSeries`, viewport/pan/zoom/fit methods, latest-X follow methods (`followX`, `stopFollowX`, `setFollowXPaused`, `getFollowXState`), `pick`, `subscribe` for the events in `ChartEventMap` (including `viewportchange` with its `source` and `followxchange`), `screenshot`, `start`, `stop`, `dispose`, `resize`, `setTheme`, `setAxes`, `setGridVisible`, and the `rootElement`, `theme`, and `renderer` getters) and the option/result types it uses (`ChartOptions`, `AxisConfig`, `ChartPickItem`, `ChartHoverState`, and friends). `ChartOptions.renderer` takes `"webgl2"` or a factory from `blazeplot/renderers/*` | Stable |
+| Chart | `Chart` (constructor, `add*` helpers, `addSeries`, viewport/pan/zoom/fit methods, latest-X follow methods (`followX`, `stopFollowX`, `setFollowXPaused`, `getFollowXState`), `pick`, `subscribe` for the events in `ChartEventMap` (including `viewportchange` with its `source` and `followxchange`), `screenshot`, `start`, `stop`, `dispose`, `resize`, `setTheme`, `setAxes`, `setGridVisible`, and the `rootElement`, `theme`, and `renderer` getters) and the option/result types it uses (`ChartOptions`, `AxisConfig`, `ChartPickItem`, `ChartHoverState`, and friends). `ChartOptions.renderer` takes a name (`"auto"`, `"webgl2"`, `"canvas2d"`, `"shared"`) or a factory from the `blazeplot` root | Stable |
 | Series handles | `SeriesStore` public methods (`append`, `updateAt`, `updateLast`, `replace`, `clear`, `setVisible`, `setStyle`, `sampleAt`, `markDirty`, and so on) | Stable |
 | Datasets | `RingBuffer`, `UniformRingBuffer`, `StaticDataset`, `OhlcRingBuffer`, `StaticOhlcDataset`, `ServerSampledDataset`, `HistogramDataset`, `histogram` | Stable |
 | Dataset contract | `Dataset`, `AppendableDataset`, `YAppendableDataset`, `UpdatableDataset`, `YUpdatableDataset`, `OhlcDataset`, `SeriesConfig`, `SeriesStyle`, `Viewport`, `TimeRange`, `XRange`, `BufferOverflowStrategy`, `ValuePrecision`, `DownsampleStrategy`, `SeriesMode` | Stable. See [Data semantics](./data-semantics.md). |
@@ -81,7 +79,6 @@ These are not an API for application code. The GPU backend types (`GpuBackend`, 
 
 | Item | Notes |
 |---|---|
-| `ChartOptions.backendFactory` and the backend types it takes | Marked `@internal` and stripped from published declarations. It exists for test fakes; shaders are written for the built-in renderer. Not covered by semver promises. |
 | `ChartPluginContext.unstable.getWebGLContext()` (`@experimental`) | Escape hatch to the raw `WebGL2RenderingContext`; `null` with the Canvas 2D and shared WebGL renderers. The chart may recreate GPU state after context loss. State you change on it can interfere with rendering. |
 | The `ChartRenderer` drawing interface and the renderer classes behind the factories | `ChartRenderer` is marked `@internal` and stripped from published declarations. Only the opaque `ChartRendererHandle` (`kind`), `ChartRendererFactory`, `ChartRendererFactoryContext`, and `ChartRendererKind` are public; custom renderers are not supported. |
 | `/** @internal */` members | Stripped from published declarations. If you reach them through casts, expect breakage in patch releases. |

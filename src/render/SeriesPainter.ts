@@ -2,10 +2,8 @@ import type { RgbaColor, SeriesStyle, SeriesYAxis, Viewport } from "../core/type
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { Camera2D } from "../interaction/Camera2D.js";
 import type { AxisController } from "../interaction/AxisController.js";
-import type { ChartRenderer } from "./ChartRenderer.js";
-import type { RenderProjection } from "./Renderer.js";
+import type { ChartRenderer, RenderProjection } from "./ChartRenderer.js";
 
-const BYTES_PER_VERTEX = 2 * Float32Array.BYTES_PER_ELEMENT;
 /** Vertices in the shared raw line/point/area upload buffer. */
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
@@ -23,8 +21,6 @@ type DrawMode = PaintMode;
 /** Mutable per-frame draw counters the painter accumulates into. */
 export interface PaintStats {
   pointsRendered: number;
-  drawCalls: number;
-  uploadBytes: number;
   renderMode: "none" | PaintMode | "mixed";
 }
 
@@ -136,9 +132,7 @@ export class SeriesPainter {
     }
     if (vertexCount === 0) return;
 
-    this.stats.uploadBytes += vertexCount * BYTES_PER_VERTEX;
     this.renderer.drawClipLines(this.gridData, vertexCount, color);
-    this.stats.drawCalls++;
   }
 
   drawSeries(series: SeriesStore): void {
@@ -510,17 +504,14 @@ export class SeriesPainter {
 
   private uploadRawLineData(vertexCount: number, projection: RenderProjection): void {
     this.transformVertices(this.rawLineData, vertexCount, projection);
-    this.stats.uploadBytes += vertexCount * BYTES_PER_VERTEX;
   }
 
   private uploadBarTriangleData(vertexCount: number, projection: RenderProjection): void {
     this.transformVertices(this.barTriangleData, vertexCount, projection);
-    this.stats.uploadBytes += vertexCount * BYTES_PER_VERTEX;
   }
 
   private recordDraw(mode: DrawMode, points: number): void {
     this.stats.renderMode = this.stats.renderMode === "none" || this.stats.renderMode === mode ? mode : "mixed";
     this.stats.pointsRendered += points;
-    this.stats.drawCalls++;
   }
 }

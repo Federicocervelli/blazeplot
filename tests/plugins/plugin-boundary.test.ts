@@ -23,7 +23,7 @@ const src = resolve(root, "src");
 /** Pure, chart-independent helpers a plugin may import at runtime. Third parties can copy them. */
 const runtimeHelpers: Record<string, readonly string[]> = {
   "src/ui/theme.ts": ["rgbaCss"],
-  "src/render/releaseWebGLContext.ts": ["releaseWebGLContext"],
+  "src/render/webgl2/releaseWebGLContext.ts": ["releaseWebGLContext"],
 };
 
 /** Shared plugin-side helper modules that are not themselves package entries. */

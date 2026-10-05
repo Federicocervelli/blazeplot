@@ -1,13 +1,33 @@
-import { describe, expect, it } from "bun:test";
-import { Renderer } from "../../src/render/Renderer.ts";
+import { describe, expect, it, spyOn } from "bun:test";
+import { WebGL2Renderer } from "../../src/render/webgl2/WebGL2Renderer.ts";
 import { testStyle } from "../helpers.ts";
-import type { DrawCommand, GpuBackend } from "../../src/render/types.ts";
+import type { DrawCommand, GpuBackend } from "../../src/render/webgl2/types.ts";
 
 class MockBackend implements GpuBackend {
   readonly submits: Array<{ stream: Float32Array; floatCount: number; commands: readonly DrawCommand[] }> = [];
   readonly clears: Array<readonly [number, number, number, number]> = [];
   readonly viewports: Array<readonly [number, number, number, number]> = [];
   destroyed = false;
+  destroyCount = 0;
+  /** Times `WEBGL_lose_context.loseContext()` was called on this backend's context. */
+  contextReleases = 0;
+  releaseThrows = false;
+  private readonly gl = {
+    isContextLost: () => false,
+    getExtension: (name: string) =>
+      name === "WEBGL_lose_context"
+        ? {
+            loseContext: () => {
+              this.contextReleases++;
+              if (this.releaseThrows) throw new Error("context is gone");
+            },
+          }
+        : null,
+  } as unknown as WebGL2RenderingContext;
+
+  getContext(): WebGL2RenderingContext {
+    return this.gl;
+  }
 
   submit(stream: Float32Array, floatCount: number, commands: readonly DrawCommand[]): void {
     this.submits.push({ stream: stream.slice(0, floatCount), floatCount, commands: [...commands] });
@@ -23,6 +43,7 @@ class MockBackend implements GpuBackend {
 
   destroy(): void {
     this.destroyed = true;
+    this.destroyCount++;
   }
 
   get commands(): readonly DrawCommand[] {
@@ -30,14 +51,15 @@ class MockBackend implements GpuBackend {
   }
 }
 
-function makeRenderer(): { renderer: Renderer; backend: MockBackend } {
+function makeRenderer(): { renderer: WebGL2Renderer; backend: MockBackend } {
   const backend = new MockBackend();
-  return { renderer: new Renderer(backend), backend };
+  const canvas = new EventTarget() as unknown as HTMLCanvasElement;
+  return { renderer: new WebGL2Renderer(canvas, { createBackend: () => backend }), backend };
 }
 
 const positions = new Float32Array([0, 0, 1, 1, 2, 0, 3, 1, 4, 0, 5, 1, 6, 0, 7, 1]);
 
-describe("Renderer", () => {
+describe("WebGL2Renderer", () => {
   const projection = { scaleX: 2, scaleY: 3, offsetX: -1, offsetY: 1 };
 
   it("begins frames with a viewport and transparent clear, and destroys the backend on dispose", () => {
@@ -160,5 +182,86 @@ describe("Renderer", () => {
     }
     expect(backend.submits.map((s) => s.floatCount)).toEqual([16, 16]);
     expect(backend.submits[1]!.commands[0]!.first).toBe(0);
+  });
+});
+
+describe("WebGL2Renderer context ownership", () => {
+  function setup() {
+    const backends: MockBackend[] = [];
+    const canvas = new EventTarget() as unknown as HTMLCanvasElement;
+    let failRebuild = false;
+    const renderer = new WebGL2Renderer(canvas, {
+      createBackend: () => {
+        if (failRebuild) throw new Error("no WebGL2");
+        const backend = new MockBackend();
+        backends.push(backend);
+        return backend;
+      },
+    });
+    return {
+      renderer,
+      backends,
+      lose: () => canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true })),
+      restore: () => canvas.dispatchEvent(new Event("webglcontextrestored")),
+      failNextRebuild: () => {
+        failRebuild = true;
+      },
+    };
+  }
+
+  it("releases its WebGL context on dispose instead of leaving it to GC, once", () => {
+    const { renderer, backends } = setup();
+    expect(backends[0]!.contextReleases).toBe(0);
+    renderer.dispose();
+    renderer.dispose();
+    expect(backends[0]!.destroyCount).toBe(1);
+    expect(backends[0]!.contextReleases).toBe(1);
+  });
+
+  it("still disposes cleanly when the context cannot be released", () => {
+    const { renderer, backends } = setup();
+    backends[0]!.releaseThrows = true;
+    expect(() => renderer.dispose()).not.toThrow();
+    expect(backends[0]!.destroyCount).toBe(1);
+  });
+
+  it("rebuilds the backend on restore, destroys the old one, and only releases the context on final dispose", () => {
+    const { renderer, backends, lose, restore } = setup();
+    lose();
+    restore();
+
+    expect(backends).toHaveLength(2);
+    expect(backends[0]!.destroyCount).toBe(1);
+    expect(backends[1]!.destroyCount).toBe(0);
+    // The restored backend reuses the old backend's context, so only dispose may release it.
+    expect(backends[0]!.contextReleases + backends[1]!.contextReleases).toBe(0);
+
+    renderer.beginFrame(100, 50, 1);
+    renderer.drawLines(positions, 4, [1, 1, 1, 1], 1, { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 });
+    renderer.endFrame();
+    expect(backends[1]!.submits).toHaveLength(1);
+
+    renderer.dispose();
+    expect(backends[1]!.destroyCount).toBe(1);
+    expect(backends[1]!.contextReleases).toBe(1);
+    expect(backends[0]!.destroyCount).toBe(1);
+  });
+
+  it("stays lost and logs once when restoration cannot rebuild the backend", () => {
+    const { renderer, backends, lose, restore, failNextRebuild } = setup();
+    const states: string[] = [];
+    renderer.setLossListener((state) => states.push(state));
+    const errors = spyOn(console, "error").mockImplementation(() => {});
+    lose();
+    failNextRebuild();
+    expect(restore).not.toThrow();
+    expect(errors).toHaveBeenCalledTimes(1);
+    errors.mockRestore();
+
+    expect(states).toEqual(["lost"]);
+    expect(renderer.isLost).toBe(true);
+    expect(backends[0]!.destroyCount).toBe(0);
+    renderer.dispose();
+    expect(backends[0]!.destroyCount).toBe(1);
   });
 });

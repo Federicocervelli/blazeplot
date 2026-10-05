@@ -1,6 +1,6 @@
 # Shared render context design note
 
-Status: shipped as an opt-in renderer in 1.0 (`blazeplot/renderers/shared`, public API `sharedRenderer()` and `createChartRenderContext()`). `createLinkedCharts` keeps per-chart contexts by default and takes a `renderer` option to opt in; see [Open questions](#open-questions).
+Status: shipped as an opt-in renderer in 1.0 (`renderer: "shared"`, public API `sharedRenderer()` and `createChartRenderContext()` from `blazeplot`). `createLinkedCharts` keeps per-chart contexts by default and takes a `renderer` option to opt in; see [Open questions](#open-questions).
 
 ## Problem
 
@@ -20,10 +20,10 @@ Option (a) was implemented. It is the only one that fixes the general case, and 
 
 ## Design
 
-- `SharedWebGLContext` (`src/render/SharedWebGL.ts`) owns one detached `<canvas>` with a normal `Renderer` + `WebGL2Backend`. It is reference counted: the first attached chart creates it, the last chart to dispose releases the WebGL context (`WEBGL_lose_context`) and drops the drawing buffer, so unmounting everything leaves zero live contexts.
+- `SharedWebGLContext` (`src/render/webgl2/SharedWebGL.ts`) owns one detached `<canvas>` with a normal `WebGL2Renderer` + `WebGL2Backend`. It is reference counted: the first attached chart creates it, the last chart to dispose releases the WebGL context (`WEBGL_lose_context`) and drops the drawing buffer, so unmounting everything leaves zero live contexts.
 - `SharedWebGLRenderer` is the per-chart `ChartRenderer`. `beginFrame` sizes the shared canvas to the chart's plot canvas (device pixels) and starts a frame; draw calls forward to the shared `Renderer`, which records them into its per-frame stream; `endFrame` submits the stream and does `clearRect` + `drawImage(sharedCanvas)` into the chart canvas's 2D context. Frames are strictly sequential (one chart's `render()` runs from `beginFrame` to `endFrame` synchronously), so one shared stream and program set serves every chart. Programs, vertex arrays, and the stream buffer exist once.
 - API: `sharedRenderer()` (one document-wide context) or `sharedRenderer(createChartRenderContext())` to group charts. `new Chart(el, { renderer: sharedRenderer() })`; `createLinkedCharts(el, { renderer: sharedRenderer(), panels })`.
-- `chart.renderer` is `"webgl2-shared"`; `getWebGLContext()` is `null` so no chart or plugin can keep or release the shared context.
+- `chart.renderer` is `"shared"`; `getWebGLContext()` is `null` so no chart or plugin can keep or release the shared context.
 
 ### Blit cost per frame
 

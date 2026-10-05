@@ -1,7 +1,7 @@
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { placeFixedWithinViewport, singleChartPlugin } from "./OverlayUtils.js";
 import type { RgbaColor } from "../core/types.js";
-import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
+import { releaseWebGLContext } from "../render/webgl2/releaseWebGLContext.js";
 import { rgbaCss } from "./theme.js";
 
 const DEFAULT_FRAME_HEIGHT = 1;

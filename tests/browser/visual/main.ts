@@ -10,8 +10,6 @@ import { legendPlugin } from "@/plugins/legend.ts";
 import { navigatorPlugin } from "@/plugins/navigator.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
-import { autoRenderer, canvas2dRenderer } from "@/renderers/canvas2d.ts";
-import { sharedRenderer } from "@/renderers/shared.ts";
 
 interface VisualTestSnapshot {
   readonly state: "booting" | "ready" | "error";
@@ -107,7 +105,7 @@ const rendererParam = params.get("renderer") ?? "webgl2";
 const expectedRenderer = params.get("expectRenderer");
 const chart = new Chart(chartTarget, {
   ...optionsForCase(caseName),
-  renderer: rendererParam === "canvas2d" ? canvas2dRenderer() : rendererParam === "auto" ? autoRenderer() : rendererParam === "shared" ? sharedRenderer() : "webgl2",
+  renderer: rendererParam === "canvas2d" || rendererParam === "auto" || rendererParam === "shared" ? rendererParam : "webgl2",
 });
 /** Last rendered frame, copied while the drawing buffer is still valid (it is cleared after compositing). */
 let lastFrame: ImageData | null = null;

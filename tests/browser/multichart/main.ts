@@ -1,7 +1,5 @@
 import { Chart } from "@/index.ts";
 import type { SeriesStore } from "@/index.ts";
-import { canvas2dRenderer } from "@/renderers/canvas2d.ts";
-import { sharedRenderer } from "@/renderers/shared.ts";
 
 /**
  * Many small live charts on one page, for `bun run bench:multi`. Query parameters:
@@ -41,7 +39,7 @@ const charts: Chart[] = [];
 const series: SeriesStore[] = [];
 let contextsLost = 0;
 let renderMsThisFrame = 0;
-const renderer = rendererName === "shared" ? sharedRenderer() : rendererName === "canvas2d" ? canvas2dRenderer() : "webgl2";
+const renderer = rendererName === "shared" || rendererName === "canvas2d" ? rendererName : "webgl2";
 
 void run().catch((caught: unknown) => {
   window.__multi.state = "error";

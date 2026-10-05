@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { minifyGlsl } from "../../scripts/glsl-minify.ts";
 
-const SHADER_DIR = join(import.meta.dir, "../../src/render/shaders");
+const SHADER_DIR = join(import.meta.dir, "../../src/render/webgl2/shaders");
 
 /** Token stream used to compare shaders: identifiers, numbers, and single punctuation characters. */
 function tokens(source: string): string[] {

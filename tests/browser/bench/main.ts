@@ -301,6 +301,7 @@ const chartPlugins = flameChartModel
     : [];
 
 const chart = new Chart(chartTarget, {
+  renderer: "webgl2",
   renderLoop: "continuous",
   axes: { x: { position: "outside" }, y: { position: "outside" } },
   hover: config.interaction === "hover" ? { mode: "nearest-x", group: "x" } : undefined,

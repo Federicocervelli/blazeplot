@@ -28,8 +28,8 @@ export interface LinkedChartsOptions {
    */
   readonly panelPlugins?: (syncGroup: string) => readonly ChartPlugin[];
   /**
-   * Renderer for every panel that does not set its own `options.renderer`, for example
-   * `sharedRenderer()` from `blazeplot/renderers/shared` so all panels use one WebGL context.
+   * Renderer for every panel that does not set its own `options.renderer`: the same names and
+   * factories as `ChartOptions.renderer`, for example `"shared"` so all panels use one WebGL context.
    */
   readonly renderer?: ChartOptions["renderer"];
 }

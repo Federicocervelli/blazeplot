@@ -28,8 +28,6 @@ Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./example
 | `blazeplot/linked` | Multi-panel layouts with shared X and per-panel plugins. |
 | `blazeplot/data` | Pure, chart-agnostic data transforms (binning, rolling mean). |
 | `blazeplot/export` | Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers. |
-| `blazeplot/renderers/canvas2d` | Canvas 2D renderer and WebGL2-with-Canvas-2D-fallback renderer factories. |
-| `blazeplot/renderers/shared` | Shared WebGL2 render context: many charts, one WebGL context. |
 | `blazeplot/plugins/legend` | Built-in legend plugin. |
 | `blazeplot/plugins/tooltip` | Built-in tooltip plugin. |
 | `blazeplot/plugins/interactions` | Built-in pan, zoom, axis interaction, and reset plugin. |
@@ -48,7 +46,7 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 20 KiB |
+| root entry | `dist/index.js` | 21 KiB |
 | linked entry | `dist/linked.js` | 2 KiB |
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
@@ -61,11 +59,7 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| canvas2d renderer entry | `dist/renderers/canvas2d.js` | 5 KiB |
-| shared renderer entry | `dist/renderers/shared.js` | 4 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 140 KiB |
-| shared WebGL2 backend chunk | `dist/WebGL2Backend-*.js` | 12 KiB |
-| shared WebGL2 renderer chunk | `dist/webgl2Renderer-*.js` | 0 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 162 KiB |
 | shared WebGL context release chunk | `dist/releaseWebGLContext-*.js` | 0 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
@@ -80,6 +74,7 @@ Generated from `dist/index.d.ts` after the package build.
 |---|---|---|---|
 | `AcceleratedDataset` | interface | `./core/types` | Convenience contract for maximum-performance custom datasets. Implement this when a dataset can provide fast exact sample copies, stable viewport sampling, range min/max queries, and renderer-ready min/max buckets. |
 | `AppendableDataset` | interface | `./core/types` | Dataset that accepts appended X/Y samples; implementations may store X values explicitly or use them to seed implicit X spacing. |
+| `autoRenderer` | function | `./render/engines` | Renderer factory that uses WebGL2 and falls back to Canvas 2D when WebGL2 is unavailable or its context cannot be created. `chart.rendererInfo.fallbackFrom` says when the fallback happened. Same as `renderer: "auto"`, the default. |
 | `AxisConfig` | type | `./ui/Chart` | — |
 | `AxisControllerAxisOptions` | interface | `./interaction/AxisController` | Scale and formatting options for one axis. |
 | `AxisPosition` | type | `./ui/ChartLayout` | Placement for chart axis labels and ticks. |
@@ -91,7 +86,9 @@ Generated from `dist/index.d.ts` after the package build.
 | `BufferOverflowStrategy` | type | `./core/types` | Behavior when a fixed-capacity streaming buffer is full. |
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | Built-in axis scale names. |
 | `Camera2D` | class | `./interaction/Camera2D` | Camera that maps data domains to clip, screen, and plot coordinates. |
-| `Chart` | class | `./ui/Chart` | Imperative WebGL chart instance for rendering, interaction, and plugins. |
+| `canvas2dRenderer` | function | `./render/engines` | Renderer factory for Canvas 2D: no WebGL2 needed, lower throughput. Throws `Canvas2DUnavailableError` without a 2D context. Same as `renderer: "canvas2d"`. |
+| `Canvas2DUnavailableError` | class | `./render/canvas2d/Canvas2DRenderer` | Error thrown when a Canvas 2D renderer cannot be created. |
+| `Chart` | class | `./ui/Chart` | Imperative chart instance for rendering, interaction, and plugins. |
 | `ChartAccessibilityMessages` | type | `./ui/Chart` | — |
 | `ChartAccessibilityOptions` | type | `./ui/Chart` | — |
 | `ChartAutoFitYOptions` | type | `./ui/Chart` | — |
@@ -128,9 +125,12 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartPointerEvent` | type | `./ui/Chart` | — |
 | `ChartPointerEventType` | type | `./ui/Chart` | — |
 | `ChartRect` | interface | `./ui/PluginHost` | A rectangle in CSS pixels. |
-| `ChartRendererFactory` | type | `./render/ChartRenderer` | Creates the renderer for a chart. It may throw when its backend is unavailable. Use `canvas2dRenderer()` / `autoRenderer()` from `blazeplot/renderers/canvas2d`. |
+| `ChartRenderContext` | type | `./render/engines` | — |
+| `ChartRendererCapabilities` | interface | `./render/ChartRenderer` | Static facts about the engine a chart draws with. |
+| `ChartRendererFactory` | type | `./render/ChartRenderer` | Creates the renderer for a chart. It may throw when its backend is unavailable. The built-in factories are `webgl2Renderer()`, `canvas2dRenderer()`, `sharedRenderer()`, and `autoRenderer()`. |
 | `ChartRendererFactoryContext` | interface | `./render/ChartRenderer` | Context passed to a renderer factory when a chart (re)creates its renderer. |
 | `ChartRendererHandle` | interface | `./render/ChartRenderer` | Opaque renderer instance returned by a renderer factory. Only the built-in renderers implement it. |
+| `ChartRendererInfo` | interface | `./render/ChartRenderer` | Which engine a chart ended up with, what was asked for, and what that engine can do. |
 | `ChartRendererKind` | type | `./render/ChartRenderer` | Rendering backend a chart is drawn with. |
 | `ChartRenderLoop` | type | `./ui/Chart` | — |
 | `ChartScreenshotOptions` | type | `./ui/Chart` | — |
@@ -150,6 +150,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartViewportChangeEvent` | type | `./ui/Chart` | — |
 | `ChartViewportChangeSource` | type | `./ui/Chart` | — |
 | `ChartViewportGestureOptions` | type | `./ui/Chart` | — |
+| `createChartRenderContext` | function | `./render/engines` | Create a render context: one hidden WebGL2 context shared by every chart that uses `context.renderer()`. Charts keep their own visible canvas, so the page holds a single WebGL context however many charts it mounts. |
 | `CustomAxisScale` | interface | `./interaction/AxisController` | Custom scale hooks for tick generation, formatting, and coordinate mapping. |
 | `Dataset` | interface | `./core/types` | Sorted XY data source consumed by chart series. |
 | `DEFAULT_CHART_THEME` | const | `./ui/theme` | Default dark chart theme. |
@@ -163,7 +164,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `InvalidOhlcSample` | interface | `./core/types` | An OHLC candle an `OhlcRingBuffer` skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSample` | interface | `./core/types` | A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSampleReason` | type | `./core/types` | Why a sample broke the dataset X rule (X finite and non-decreasing): `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the previous accepted X (or, for `update`, outside its neighbors). |
-| `isWebGL2Available` | function | `./render/WebGL2Backend` | Return whether the current environment can create a WebGL2 context. The probe canvas comes from `doc` (default: the global `document`); pass an iframe or popup document to probe that window. |
+| `isWebGL2Available` | function | `./render/webgl2/availability` | Return whether the current environment can create a WebGL2 context. The probe canvas comes from `doc` (default: the global `document`); pass an iframe or popup document to probe that window. |
 | `LIGHT_CHART_THEME` | const | `./ui/theme` | Light chart theme. Pass it as `theme`, or spread it and override a few tokens. Text tokens meet a 4.5:1 and series, selection, crosshair, and focus colors a 3:1 contrast ratio against its background. |
 | `MinMaxSegmentCopyDataset` | interface | `./core/types` | Optional high-performance min/max extraction capability for dense rendering. Implementations can use pyramids, segment trees, database aggregates, or analytic/procedural envelopes. Write up to `maxSegments` `[x - xOrigin, minY, maxY]` triples into `target` and return how many were written. |
 | `MinMaxY` | interface | `./core/MinMaxTree` | Inclusive Y extent of a sample range. |
@@ -173,6 +174,8 @@ Generated from `dist/index.d.ts` after the package build.
 | `PanIntent` | interface | `./interaction/types` | Pan request expressed in data units or screen pixels. |
 | `RangeMinMaxDataset` | interface | `./core/types` | Dataset that can answer min/max Y queries for index ranges. |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
+| `RendererChoice` | type | `./render/ChartRenderer` | What `ChartOptions.renderer` can ask for: an engine by name, or `"auto"` (WebGL2, else Canvas 2D). |
+| `RendererName` | type | `./render/ChartRenderer` | A built-in rendering engine: WebGL2, Canvas 2D, or WebGL2 through a context shared with other charts. |
 | `ResolvedChartTheme` | interface | `./ui/theme` | Fully resolved chart theme with concrete RGBA values. |
 | `RgbaColor` | type | `./core/types` | RGBA color tuple with 0-1 channel values. |
 | `RingBuffer` | class | `./core/RingBuffer` | Fixed-capacity sorted XY buffer for explicit X values. X must be finite and non-decreasing. A sample that breaks that rule is skipped (never thrown), counted in `rejectedSamples`, reported to `onInvalidSample`, and logged with one console warning per buffer when no callback is set. Non-finite Y is stored and drawn as a gap. |
@@ -204,6 +207,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ServerSampledData` | type | `./core/ServerSampledDataset` | Data accepted by `ServerSampledDataset` and `series.replace(...)`. |
 | `ServerSampledDataset` | class | `./core/ServerSampledDataset` | Mutable dataset for viewport samples that were already reduced by a server. Use point data with `downsample: "none"`, or min/max buckets with `downsample: "server"` so BlazePlot renders the supplied buckets directly instead of applying another client-side sampler. Swap in fresh data after each fetch with `series.replace(data)`. Point X, bucket `xStart`, and bucket `xEnd` must each be finite and non-decreasing, and every bucket needs `xEnd >= xStart` (buckets may overlap). The constructor and `replace` throw a `RangeError` naming the first bad index and keep the current data. |
 | `ServerSampledPoints` | interface | `./core/ServerSampledDataset` | Server-provided point samples. |
+| `sharedRenderer` | function | `./render/engines` | Renderer factory backed by a WebGL2 context shared between charts. Without an argument every chart on the document shares one context; pass a context from `createChartRenderContext()` to group charts. Throws `WebGL2UnavailableError` when WebGL2 is unavailable. Same as `renderer: "shared"`. |
 | `StaticDataset` | class | `./core/StaticDataset` | Sorted XY dataset backed by typed arrays, which are read in place rather than copied. X must be finite and non-decreasing: the constructor and `replace` check it in one pass and throw a `RangeError` naming the first bad index. Use `StaticDataset.sorted(x, y)` for unsorted input, or `{ assumeSorted: true }` to skip the check. Non-finite Y is a gap. Change the data with `series.replace({ y })`, or overwrite the arrays and call `series.markDirty()` (in-place edits are not re-checked). |
 | `StaticDatasetData` | interface | `./core/StaticDataset` | Data accepted by `StaticDataset.replace` and `series.replace(...)`. |
 | `StaticDatasetField` | type | `./core/StaticDataset` | Object-row field selector used by `StaticDataset.fromObjects`. |
@@ -225,7 +229,8 @@ Generated from `dist/index.d.ts` after the package build.
 | `ViewportPolicy` | interface | `./interaction/types` | Optional hooks that can constrain or react to viewport changes. |
 | `VisiblePointCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for point/scatter datasets. Implementations should cull against the full 2D viewport and may sample in screen space so dense point clouds respond to both X and Y zoom. |
 | `VisibleSampleCopyDataset` | interface | `./core/types` | Optional high-performance stable visible sampling capability. Unlike copySamplesRange, this method may stride/downsample, but should choose samples anchored to data coordinates so streamed appends do not make existing sampled points jitter. |
-| `WebGL2UnavailableError` | class | `./render/WebGL2Backend` | Error thrown when a WebGL2 backend cannot be created. |
+| `webgl2Renderer` | function | `./render/engines` | Renderer factory for WebGL2. Throws `WebGL2UnavailableError` when WebGL2 is unavailable. Same as `renderer: "webgl2"`. |
+| `WebGL2UnavailableError` | class | `./render/webgl2/availability` | Error thrown when a WebGL2 backend cannot be created. |
 | `XRange` | interface | `./core/types` | Data-domain X interval represented by one dataset sample. |
 | `XRangeDataset` | interface | `./core/types` | Dataset whose sample X values represent intervals rather than points. |
 | `YAppendableDataset` | interface | `./core/types` | Dataset that accepts appended Y samples with implicit X values. |

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { FakeBackend, setupDom } from "./fakes.ts";
+import { recordingRenderer, setupDom } from "./fakes.ts";
 import type { TestEnv } from "./fakes.ts";
 import type { Chart as ChartType } from "../../src/ui/Chart.ts";
 import type { InvalidSample } from "../../src/core/types.ts";
@@ -22,7 +22,7 @@ afterEach(() => target.remove());
 
 describe("chart-owned series input validation", () => {
   it("throws a TypeError for an unknown series mode", () => {
-    const chart = new Chart(target, { backendFactory: (ctx) => new FakeBackend(ctx.canvas) });
+    const chart = new Chart(target, { renderer: recordingRenderer() });
     for (const mode of ["envelope", "", undefined]) {
       expect(() => chart.addSeries({ mode: mode as never, capacity: 8 })).toThrow(TypeError);
     }
@@ -31,7 +31,7 @@ describe("chart-owned series input validation", () => {
   });
 
   it("passes SeriesConfig.onInvalidSample to the RingBuffer it creates", () => {
-    const chart = new Chart(target, { backendFactory: (ctx) => new FakeBackend(ctx.canvas) });
+    const chart = new Chart(target, { renderer: recordingRenderer() });
     const reported: InvalidSample[] = [];
     const series = chart.addLine({ capacity: 8, onInvalidSample: (sample) => reported.push(sample) });
     series.append({ x: [1, 2, NaN, 0, 3], y: [1, 2, 3, 4, 5] });

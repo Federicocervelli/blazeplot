@@ -3,11 +3,9 @@ import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
-import type { ChartRenderer, ChartRendererKind } from "../render/ChartRenderer.js";
-import { Renderer } from "../render/Renderer.js";
+import type { ChartRenderer, ChartRendererInfo, RendererLossState, RendererName } from "../render/ChartRenderer.js";
+import { createEngine } from "../render/engines.js";
 import { SeriesPainter } from "../render/SeriesPainter.js";
-import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
-import { webgl2Renderer } from "../render/webgl2Renderer.js";
 import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { PanIntent, ZoomIntent } from "../interaction/types.js";
@@ -36,18 +34,14 @@ export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartPickMode, Ch
 import type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartPickMode, ChartPickGroup, ChartPickOptions, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeSource, ChartViewportChangeEvent, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartScreenshotOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState, ChartFrameStats } from "./ChartTypes.js";
 
 
-interface ChartGpuResources {
-  readonly renderer: ChartRenderer;
-}
-
-/** Imperative WebGL chart instance for rendering, interaction, and plugins. */
+/** Imperative chart instance for rendering, interaction, and plugins. */
 export class Chart {
   private series: SeriesStore[] = [];
   private camera: Camera2D;
   private rightCamera: Camera2D;
   private axis: AxisController;
   private rightAxis: AxisController;
-  private rendererImpl!: ChartRenderer;
+  private engine!: ChartRenderer;
   private readonly xTicks: number[] = [];
   private readonly yTicks: number[] = [];
   private readonly y2Ticks: number[] = [];
@@ -95,7 +89,7 @@ export class Chart {
   private restoreRenderRafId: number = 0;
   private running: boolean = false;
   private disposed: boolean = false;
-  private webglContextLost: boolean = false;
+  private rendererLost: boolean = false;
   private domainErrorLogged: boolean = false;
   private readonly options: ChartOptions;
   /** Caller theme before forced-colors substitution; `setTheme` replaces it. */
@@ -117,30 +111,20 @@ export class Chart {
   private readonly handleRootFocusIn = (): void => {
     this.a11y.flushIfDirty();
   };
-  private readonly handleWebGLContextLost = (event: Event): void => {
-    event.preventDefault();
-    this.webglContextLost = true;
-    if (this.restoreRenderRafId !== 0) {
-      this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
-      this.restoreRenderRafId = 0;
-    }
-    this.resetFrameStats();
-    this.plugins.notify("onContextLost");
-  };
-  private readonly handleWebGLContextRestored = (): void => {
-    const oldRenderer = this.rendererImpl;
-    let nextResources: ChartGpuResources;
-    try {
-      nextResources = this.createGpuResources();
-    } catch (error) {
-      this.webglContextLost = true;
-      console.error("BlazePlot failed to restore WebGL resources after context restoration.", error);
+  /** The one place the engine's context state lands: stop drawing while lost, resume after restore. */
+  private readonly onRendererState = (state: RendererLossState): void => {
+    if (this.disposed) return;
+    if (state === "lost") {
+      this.rendererLost = true;
+      if (this.restoreRenderRafId !== 0) {
+        this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
+        this.restoreRenderRafId = 0;
+      }
+      this.resetFrameStats();
+      this.plugins.notify("onContextLost");
       return;
     }
-
-    this.installGpuResources(nextResources);
-    this.disposeRenderer(oldRenderer);
-    this.webglContextLost = false;
+    this.rendererLost = false;
     this.applyCanvasSize();
     this.plugins.notify("onContextRestored");
     this.scheduleRenderAfterRestore();
@@ -169,9 +153,10 @@ export class Chart {
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     try {
-      this.installGpuResources(this.createGpuResources());
+      this.engine = createEngine(options.renderer, this.canvas);
+      this.engine.setLossListener(this.onRendererState);
     } catch (error) {
-      // E.g. no WebGL2: remove the half-built DOM and hand back a caller-supplied canvas.
+      // E.g. the chosen engine is unavailable: remove the half-built DOM and hand back a caller-supplied canvas.
       this.a11y.unwatchForcedColors();
       this.layout.dispose();
       throw error;
@@ -211,9 +196,14 @@ export class Chart {
     return this.plugins.install(plugin);
   }
 
-  /** Rendering backend in use: `"webgl2"`, `"webgl2-shared"` (via `sharedRenderer()`), or `"canvas2d"`. */
-  get renderer(): ChartRendererKind {
-    return this.rendererImpl.kind;
+  /** Rendering engine in use: `"webgl2"`, `"canvas2d"`, or `"shared"` (a WebGL2 context shared with other charts). */
+  get renderer(): RendererName {
+    return this.engine.info.name;
+  }
+
+  /** The engine in use, what was requested, whether `"auto"` fell back, and the engine's capabilities. */
+  get rendererInfo(): ChartRendererInfo {
+    return this.engine.info;
   }
 
   /** @internal WebGL canvas. Plugins use `ctx.dom`, `ctx.layout`, or `ctx.unstable.canvas`. */
@@ -251,9 +241,9 @@ export class Chart {
     return this.resolvedTheme;
   }
 
-  /** @internal WebGL2 context when the default backend is used. Plugins use `ctx.unstable.getWebGLContext()`. */
+  /** @internal The engine's native WebGL2 context, when it owns one. Plugins use `ctx.unstable.getWebGLContext()`. */
   getWebGLContext(): WebGL2RenderingContext | null {
-    return this.rendererImpl.getWebGLContext();
+    return this.engine.webglContext?.() ?? null;
   }
 
   /** @internal Camera for the requested Y axis. Plugins use `ctx.unstable.getCamera()`. */
@@ -690,9 +680,11 @@ export class Chart {
     // Reverse registration order; plugin cleanup errors never block chart-owned cleanup.
     this.plugins?.disposeAll();
     this.axisOverlay?.dispose();
-    const gl = this.rendererImpl.getWebGLContext();
-    this.disposeRenderer(this.rendererImpl);
-    releaseWebGLContext(gl);
+    try {
+      this.engine.dispose();
+    } catch {
+      // Engines release their own resources; a browser may still reject cleanup while a context is lost.
+    }
     this.layout.dispose();
   }
 
@@ -704,8 +696,8 @@ export class Chart {
     this.lastFrameAt = frameStartedAt;
     this.resetFrameStats();
 
-    if (this.webglContextLost || this.rendererImpl.getWebGLContext()?.isContextLost() === true) {
-      this.webglContextLost = true;
+    if (this.rendererLost || this.engine.isLost) {
+      this.rendererLost = true;
       return;
     }
 
@@ -727,8 +719,8 @@ export class Chart {
 
     try {
       const pixelRatio = this.canvas.width / Math.max(1, this.canvas.clientWidth);
-      this.rendererImpl.beginFrame(this.canvas.width, this.canvas.height, pixelRatio);
-      this.painter.beginFrame({ renderer: this.rendererImpl, canvas: this.canvas, camera: this.camera, rightCamera: this.rightCamera, axis: this.axis, rightAxis: this.rightAxis });
+      this.engine.beginFrame(this.canvas.width, this.canvas.height, pixelRatio);
+      this.painter.beginFrame({ renderer: this.engine, canvas: this.canvas, camera: this.camera, rightCamera: this.rightCamera, axis: this.axis, rightAxis: this.rightAxis });
       this.updateTicks();
       if (this.gridVisible) this.painter.drawGrid(this.xTicks, this.yTicks, this.resolvedTheme.gridColor);
 
@@ -737,14 +729,16 @@ export class Chart {
         series.rebuildPyramid();
         this.painter.drawSeries(series);
       }
-      this.rendererImpl.endFrame();
+      const report = this.engine.endFrame();
+      this.stats.drawCalls = report.drawCalls;
+      this.stats.uploadBytes = report.uploadBytes;
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
       this.updateAutoGutters();
       this.events.emit("render", undefined);
     } catch (error) {
-      if (this.rendererImpl.getWebGLContext()?.isContextLost() === true) {
-        this.webglContextLost = true;
+      if (this.engine.isLost) {
+        this.rendererLost = true;
         this.resetFrameStats();
         return;
       }
@@ -864,30 +858,6 @@ export class Chart {
     this.fitToData({ ...(option === true ? {} : option), x: false, xMin: this.camera.xMin, xMax: this.camera.xMax });
   }
 
-  private createGpuResources(): ChartGpuResources {
-    const { backendFactory } = this.options;
-    const option = this.options.renderer;
-    if (option !== undefined && option !== "webgl2" && typeof option !== "function") {
-      throw new TypeError('ChartOptions.renderer must be "webgl2" or a factory such as canvas2dRenderer() from "blazeplot/renderers/canvas2d".');
-    }
-    const factory = typeof option === "function" ? option : webgl2Renderer();
-    return { renderer: backendFactory ? new Renderer(backendFactory({ canvas: this.canvas })) : (factory({ canvas: this.canvas }) as ChartRenderer) };
-  }
-
-  private installGpuResources(resources: ChartGpuResources): void {
-    this.rendererImpl = resources.renderer;
-  }
-
-  private disposeRenderer(renderer: ChartRenderer): void {
-    try {
-      renderer.dispose();
-    } catch {
-      // A browser may reject cleanup calls while the WebGL context is lost. The
-      // context-restored path recreates all GPU objects, so cleanup failures here
-      // should not tear down chart state.
-    }
-  }
-
   private resetFrameStats(): void {
     this.stats.pointsRendered = 0;
     this.stats.drawCalls = 0;
@@ -906,8 +876,6 @@ export class Chart {
       [canvas, "pointerleave", this.hover.onPointerLeave],
       [canvas, "click", this.hover.onClick],
       [canvas, "dblclick", this.hover.onDoubleClick],
-      [canvas, "webglcontextlost", this.handleWebGLContextLost],
-      [canvas, "webglcontextrestored", this.handleWebGLContextRestored],
     ];
     if (this.a11y.hasSummary) listeners.push([root, "focusin", this.handleRootFocusIn]);
     for (const [target, type, listener] of listeners) target[method](type, listener as EventListener);

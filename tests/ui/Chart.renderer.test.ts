@@ -1,10 +1,10 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { FakeResizeObserver, setupDom } from "./fakes.ts";
 import type { FakeRaf, TestEnv } from "./fakes.ts";
 import { stubPlot } from "./harness.ts";
 import type { Chart as ChartType } from "../../src/ui/Chart.ts";
-import type { autoRenderer as AutoRenderer, canvas2dRenderer as Canvas2dRenderer } from "../../src/renderers/canvas2d.ts";
-import type { WebGL2UnavailableError as UnavailableErrorType } from "../../src/render/WebGL2Backend.ts";
+import type { autoRenderer as AutoRenderer, canvas2dRenderer as Canvas2dRenderer, Canvas2DUnavailableError as Canvas2DErrorType, webgl2Renderer as Webgl2Renderer } from "../../src/render/engines.ts";
+import type { WebGL2UnavailableError as UnavailableErrorType } from "../../src/render/webgl2/availability.ts";
 
 let env: TestEnv;
 let raf: FakeRaf;
@@ -12,13 +12,15 @@ let Chart: typeof ChartType;
 let canvas2dRenderer: typeof Canvas2dRenderer;
 let autoRenderer: typeof AutoRenderer;
 let WebGL2UnavailableError: typeof UnavailableErrorType;
+let Canvas2DUnavailableError: typeof Canvas2DErrorType;
+let webgl2Renderer: typeof Webgl2Renderer;
 
 beforeAll(async () => {
   env = setupDom();
   raf = env.raf;
   ({ Chart } = await import("../../src/ui/Chart.ts"));
-  ({ canvas2dRenderer, autoRenderer } = await import("../../src/renderers/canvas2d.ts"));
-  ({ WebGL2UnavailableError } = await import("../../src/render/WebGL2Backend.ts"));
+  ({ canvas2dRenderer, autoRenderer, webgl2Renderer, Canvas2DUnavailableError } = await import("../../src/render/engines.ts"));
+  ({ WebGL2UnavailableError } = await import("../../src/render/webgl2/availability.ts"));
 });
 afterAll(() => env.teardown());
 
@@ -55,9 +57,16 @@ afterEach(() => {
   target.remove();
 });
 
+/** Make `canvas.getContext` return nothing, so no engine can start. */
+function installNoContextCanvas(): void {
+  HTMLCanvasElement.prototype.getContext = function () {
+    return null;
+  } as typeof HTMLCanvasElement.prototype.getContext;
+}
+
 describe("Chart renderer option", () => {
-  it("renders with the Canvas 2D renderer when requested", () => {
-    const chart = new Chart(target, { renderer: canvas2dRenderer() });
+  it("renders with the Canvas 2D renderer when requested by name", () => {
+    const chart = new Chart(target, { renderer: "canvas2d" });
     stubPlot(chart);
     expect(chart.renderer).toBe("canvas2d");
     expect(chart.getWebGLContext()).toBeNull();
@@ -70,20 +79,69 @@ describe("Chart renderer option", () => {
     chart.dispose();
   });
 
-  it("autoRenderer falls back to Canvas 2D when WebGL2 is unavailable", () => {
-    const chart = new Chart(target, { renderer: autoRenderer() });
+  it("treats a name and its factory the same", () => {
+    const byName = new Chart(target, { renderer: "canvas2d" });
+    const byFactory = new Chart(target, { renderer: canvas2dRenderer() });
+    expect(byFactory.rendererInfo).toEqual(byName.rendererInfo);
+    byName.dispose();
+    byFactory.dispose();
+  });
+
+  it("defaults to auto: falls back to Canvas 2D without WebGL2, quietly, and says so", () => {
+    const logs = [spyOn(console, "warn"), spyOn(console, "error"), spyOn(console, "log")].map((spy) => spy.mockImplementation(() => {}));
+    const chart = new Chart(target, {});
     expect(chart.renderer).toBe("canvas2d");
     expect(contexts[0]).toBe("webgl2");
+    expect(chart.rendererInfo).toMatchObject({ name: "canvas2d", requested: "auto", fallbackFrom: "webgl2" });
+    expect(chart.rendererInfo.capabilities).toMatchObject({ gpu: false, shared: false });
+    for (const log of logs) {
+      expect(log).not.toHaveBeenCalled();
+      log.mockRestore();
+    }
     chart.dispose();
   });
 
-  it("the default renderer still throws WebGL2UnavailableError without WebGL2", () => {
+  it("auto and its factory agree", () => {
+    const chart = new Chart(target, { renderer: autoRenderer() });
+    expect(chart.rendererInfo).toMatchObject({ name: "canvas2d", requested: "auto", fallbackFrom: "webgl2" });
+    chart.dispose();
+  });
+
+  it("an engine chosen directly reports itself as requested and never as a fallback", () => {
+    const chart = new Chart(target, { renderer: "canvas2d" });
+    expect(chart.rendererInfo).toMatchObject({ name: "canvas2d", requested: "canvas2d" });
+    expect(chart.rendererInfo.fallbackFrom).toBeUndefined();
+    chart.dispose();
+  });
+
+  it('"webgl2" is strict: it throws WebGL2UnavailableError instead of falling back', () => {
+    expect(() => new Chart(target, { renderer: "webgl2" })).toThrow(WebGL2UnavailableError);
+    expect(() => new Chart(target, { renderer: webgl2Renderer() })).toThrow(WebGL2UnavailableError);
+    expect(target.children).toHaveLength(0);
+  });
+
+  it('"shared" is strict as well', () => {
+    expect(() => new Chart(target, { renderer: "shared" })).toThrow(WebGL2UnavailableError);
+    expect(target.children).toHaveLength(0);
+  });
+
+  it('"canvas2d" throws Canvas2DUnavailableError when there is no 2D context', () => {
+    installNoContextCanvas();
+    expect(() => new Chart(target, { renderer: "canvas2d" })).toThrow(Canvas2DUnavailableError);
+    expect(target.children).toHaveLength(0);
+  });
+
+  it("auto reports the WebGL2 reason when neither engine can start", () => {
+    installNoContextCanvas();
     expect(() => new Chart(target, {})).toThrow(WebGL2UnavailableError);
     expect(target.children).toHaveLength(0);
   });
 
-  it("rejects unknown renderer strings", () => {
-    expect(() => new Chart(target, { renderer: "canvas2d" as never })).toThrow(TypeError);
+  it("rejects unknown renderer values with the valid names", () => {
+    expect(() => new Chart(target, { renderer: "canvas" as never })).toThrow(TypeError);
+    expect(() => new Chart(target, { renderer: "canvas" as never })).toThrow(/"auto", "webgl2", "canvas2d", "shared"/);
+    expect(() => new Chart(target, { renderer: 5 as never })).toThrow(TypeError);
+    expect(() => new Chart(target, { renderer: "toString" as never })).toThrow(TypeError);
     expect(target.children).toHaveLength(0);
   });
 });

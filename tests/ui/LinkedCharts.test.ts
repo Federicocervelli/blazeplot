@@ -4,27 +4,23 @@ import type { LinkedChartsOptions, LinkedChartsHandle } from "../../src/linked.t
 import type { ChartOptions } from "../../src/ui/Chart.ts";
 import type { ChartPlugin } from "../../src/ui/PluginHost.ts";
 import type { SelectionState } from "../../src/ui/Selection.ts";
-import { countNodes, FakeBackend } from "./fakes.ts";
+import { countNodes, RecordingRenderer, recordingRenderer } from "./fakes.ts";
 import { pluginContext, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();
 
 interface Built {
   readonly linked: LinkedChartsHandle;
-  readonly backends: FakeBackend[];
+  readonly backends: RecordingRenderer[];
 }
 
 function build(count: number, options: Partial<LinkedChartsOptions> = {}, panelOptions: ChartOptions = {}): Built {
-  const backends: FakeBackend[] = [];
+  const backends: RecordingRenderer[] = [];
   const linked = createLinkedCharts(h.target(), {
     panels: Array.from({ length: count }, () => ({
       options: {
         ...panelOptions,
-        backendFactory: (ctx) => {
-          const backend = new FakeBackend(ctx.canvas);
-          backends.push(backend);
-          return backend;
-        },
+        renderer: recordingRenderer(backends),
       },
     })),
     ...options,
@@ -78,7 +74,7 @@ describe("createLinkedCharts layout", () => {
     odd.linked.dispose();
 
     const named = createLinkedCharts(h.target(), {
-      panels: [{ className: "custom-cell", options: { backendFactory: (ctx) => new FakeBackend(ctx.canvas) } }],
+      panels: [{ className: "custom-cell", options: { renderer: recordingRenderer() } }],
     });
     expect(named.root.querySelector(".custom-cell")).not.toBeNull();
     named.dispose();
@@ -195,7 +191,7 @@ describe("createLinkedCharts lifecycle", () => {
     expect(h.target().children).toHaveLength(0);
     expect(countNodes(document.body)).toBe(nodes);
     expect(h.ledger().reachable()).toBe(0);
-    for (const backend of backends) expect(backend.destroyCount).toBe(1);
+    for (const backend of backends) expect(backend.disposeCount).toBe(1);
     expect(linked.charts).toHaveLength(0);
     expect(() => linked.dispose()).not.toThrow();
     expect(() => linked.setXRange(0, 1)).not.toThrow();
@@ -211,25 +207,23 @@ describe("createLinkedCharts lifecycle", () => {
   });
 
   it("releases already-built panels and the root when a later panel fails to construct", () => {
-    const backends: FakeBackend[] = [];
+    const backends: RecordingRenderer[] = [];
     let calls = 0;
     const nodes = countNodes(document.body);
     expect(() =>
       createLinkedCharts(h.target(), {
         panels: Array.from({ length: 3 }, () => ({
           options: {
-            backendFactory: (ctx) => {
+            renderer: (ctx) => {
               if (++calls === 3) throw new Error("no WebGL2");
-              const backend = new FakeBackend(ctx.canvas);
-              backends.push(backend);
-              return backend;
+              return recordingRenderer(backends)(ctx);
             },
           },
         })),
       }),
     ).toThrow("no WebGL2");
     expect(backends).toHaveLength(2);
-    for (const backend of backends) expect(backend.destroyCount).toBe(1);
+    for (const backend of backends) expect(backend.disposeCount).toBe(1);
     expect(h.target().children).toHaveLength(0);
     expect(countNodes(document.body)).toBe(nodes);
     expect(h.ledger().reachable()).toBe(0);
