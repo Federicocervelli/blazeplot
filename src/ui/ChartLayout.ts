@@ -1,3 +1,18 @@
+import type { ResolvedChartTheme } from "./theme.js";
+import type { ChartTitleConfig, TextOverlayConfig } from "./ChartTypes.js";
+
+const TITLE_TOP_PX = 6;
+/** Height of the subtitle line, reserved below the title. */
+const SUBTITLE_ROW_PX = 20;
+const SUBTITLE_TOP_PX = 26;
+const TITLE_SIDE_INSET_PX = 8;
+const AXIS_TITLE_INSET_PX = 4;
+
+/** Plain text of a title given as a string or overlay config. */
+export function titleText(config: string | TextOverlayConfig | undefined): string {
+  return typeof config === "string" ? config : config?.text ?? "";
+}
+
 /** Placement for chart axis labels and ticks. */
 export type AxisPosition = "inside" | "outside";
 
@@ -154,6 +169,68 @@ export class ChartLayout implements ChartLayoutElements {
 
     this.mount(target);
     this.update(config);
+  }
+
+  /** Set title, subtitle, and axis-title text, theme styling, and placement; reserves the title row. */
+  applyTitles(input: { readonly title: string | ChartTitleConfig | undefined; readonly subtitle: string | ChartTitleConfig | undefined; readonly axes: ChartLayoutConfig; readonly theme: ResolvedChartTheme }): void {
+    const { theme } = input;
+    const hasTitle = titleText(input.title) !== "";
+    const hasSubtitle = titleText(input.subtitle) !== "";
+    this.applyChartTitle(this.title, input.title, theme.titleColor, theme.titleFont, TITLE_TOP_PX);
+    this.applyChartTitle(this.subtitle, input.subtitle, theme.subtitleColor, theme.subtitleFont, hasTitle ? SUBTITLE_TOP_PX : TITLE_TOP_PX);
+    // Title and subtitle get their own grid row, so they never sit on top of the plot.
+    this.setTitleInset((hasTitle ? SUBTITLE_TOP_PX : 0) + (hasSubtitle ? SUBTITLE_ROW_PX : 0));
+    this.applyAxisTitle(this.xAxisTitle, input.axes.x.title as string | TextOverlayConfig | undefined, "x", theme);
+    this.applyAxisTitle(this.yAxisTitle, input.axes.y.title as string | TextOverlayConfig | undefined, "y", theme);
+    this.applyAxisTitle(this.y2AxisTitle, input.axes.y2.title as string | TextOverlayConfig | undefined, "y2", theme);
+  }
+
+  /** Set text and theme styling on a title element; returns the custom config when visible. */
+  private applyTitleText(el: HTMLElement, config: string | TextOverlayConfig | undefined, color: string, font: string): TextOverlayConfig | null {
+    const text = titleText(config);
+    el.textContent = text;
+    el.style.display = text ? "block" : "none";
+    if (!text) return null;
+    const custom = typeof config === "string" ? { text } : config!;
+    el.style.color = custom.color ?? color;
+    el.style.font = custom.font ?? font;
+    return custom;
+  }
+
+  private applyChartTitle(el: HTMLElement, config: string | ChartTitleConfig | undefined, color: string, font: string, top: number): void {
+    const custom = this.applyTitleText(el, config, color, font) as ChartTitleConfig | null;
+    if (!custom) return;
+
+    const align = custom.align ?? "center";
+    const offsetX = custom.offsetX ?? 0;
+    const style = el.style;
+    style.top = `${top + (custom.offsetY ?? 0)}px`;
+    style.left = align === "left" ? `${TITLE_SIDE_INSET_PX + offsetX}px` : align === "right" ? "auto" : `calc(50% + ${offsetX}px)`;
+    style.right = align === "right" ? `${TITLE_SIDE_INSET_PX - offsetX}px` : "auto";
+    style.transform = align === "center" ? "translateX(-50%)" : "none";
+    style.textAlign = align;
+  }
+
+  private applyAxisTitle(el: HTMLElement, config: string | TextOverlayConfig | undefined, axis: "x" | "y" | "y2", theme: ResolvedChartTheme): void {
+    const custom = this.applyTitleText(el, config, theme.axisTitleColor, theme.axisTitleFont);
+    if (!custom) return;
+
+    const offsetX = custom.offsetX ?? 0;
+    const offsetY = custom.offsetY ?? 0;
+    const style = el.style;
+    if (axis === "x") {
+      style.left = `calc(50% + ${offsetX}px)`;
+      style.bottom = `${AXIS_TITLE_INSET_PX - offsetY}px`;
+      style.transform = "translateX(-50%)";
+    } else if (axis === "y") {
+      style.left = `${AXIS_TITLE_INSET_PX + offsetX}px`;
+      style.top = `calc(50% + ${offsetY}px)`;
+      style.transform = "translateY(-50%) rotate(-90deg)";
+    } else {
+      style.right = `${AXIS_TITLE_INSET_PX - offsetX}px`;
+      style.top = `calc(50% + ${offsetY}px)`;
+      style.transform = "translateY(-50%) rotate(90deg)";
+    }
   }
 
   /** Reserve a top row for the chart title and subtitle so they never cover the plot. */

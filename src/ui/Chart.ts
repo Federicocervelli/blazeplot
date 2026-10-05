@@ -1,4 +1,4 @@
-import type { SeriesConfig, SeriesStyle, SeriesStyleOptions, Dataset, SeriesYAxis, Viewport, RgbaColor } from "../core/types.js";
+import type { SeriesConfig, SeriesStyle, SeriesStyleOptions, Dataset, SeriesYAxis, Viewport } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
@@ -21,45 +21,15 @@ import { forcedColorsTheme, resolveChartTheme, resolveThemeColor } from "./theme
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import { PluginHost } from "./PluginHost.js";
 import type { ChartLayoutReservation, ChartPlugin } from "./PluginHost.js";
+import { ChartAccessibility, withAlpha } from "./ChartAccessibility.js";
 import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
 import type { ChartSummary } from "./ChartSummary.js";
 
 const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "bar", "ohlc", "candlestick"]);
 /** Two vertices per grid line; tick generators may add one extra tick at each edge. */
 const GRID_LINE_VERTEX_CAPACITY = (X_TICK_LIMIT + 2 + Y_TICK_LIMIT + 2) * 2;
-const TITLE_TOP_PX = 6;
-/** Height of the subtitle line, reserved below the title. */
-const SUBTITLE_ROW_PX = 20;
 /** Smallest auto-sized gutter, so a short-label axis still leaves room for ticks. */
 const MIN_AUTO_GUTTER_PX = 16;
-const SUBTITLE_TOP_PX = 26;
-const TITLE_SIDE_INSET_PX = 8;
-const AXIS_TITLE_INSET_PX = 4;
-/** Minimum delay between regenerated accessibility summaries while data changes. */
-const SUMMARY_THROTTLE_MS = 1_000;
-/** Class for content that is read by assistive technology but not drawn. */
-const VISUALLY_HIDDEN_CLASS = "blazeplot-visually-hidden";
-/**
- * Shared chart stylesheet: theme-aware `:focus-visible` rings for the root and every focusable
- * plugin control inside it, the visually-hidden utility, and forced-colors (high-contrast) rules
- * for DOM overlays. Selectors are global so the body-mounted tooltip is covered too.
- */
-const CHART_STYLESHEET = [
-  ".blazeplot-root:focus-visible{outline:2px solid var(--blazeplot-focus-ring,Highlight);outline-offset:-2px}",
-  ".blazeplot-root :focus-visible{outline:2px solid var(--blazeplot-focus-ring,Highlight);outline-offset:2px}",
-  `.${VISUALLY_HIDDEN_CLASS}{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;border:0!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;clip-path:inset(50%)!important;white-space:nowrap!important}`,
-  "@media (forced-colors:active){",
-  ".blazeplot-root:focus-visible,.blazeplot-root :focus-visible{outline-color:Highlight}",
-  ".blazeplot-tooltip,.blazeplot-legend{border:1px solid CanvasText}",
-  // Series swatches and markers carry series identity: keep their (already system) colors.
-  ".blazeplot-legend-swatch,.blazeplot-pick-swatch,.blazeplot-pick-marker{forced-color-adjust:none}",
-  ".blazeplot-selection-brush{border-color:Highlight!important}",
-  // The navigator window is outlined; a filled wash would tint the overview series.
-  ".blazeplot-navigator-window{fill:transparent}",
-  "}",
-].join("");
-let nextSummaryId = 1;
-
 export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartPickMode, ChartPickGroup, ChartPickOptions, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartBackendFactoryContext, ChartBackendFactory, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeSource, ChartViewportChangeEvent, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartScreenshotOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState, ChartFrameStats };
 import type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartPickMode, ChartPickGroup, ChartPickOptions, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartBackendFactoryContext, ChartBackendFactory, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeSource, ChartViewportChangeEvent, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartScreenshotOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState, ChartFrameStats } from "./ChartTypes.js";
 
@@ -132,14 +102,6 @@ function paddedDomain(min: number, max: number, padding: number, includeZero: bo
   return { min: nextMin - amount, max: nextMax + amount };
 }
 
-function titleText(config: string | TextOverlayConfig | undefined): string {
-  return typeof config === "string" ? config : config?.text ?? "";
-}
-
-function withAlpha(color: RgbaColor, factor: number): RgbaColor {
-  return [color[0], color[1], color[2], color[3] * factor];
-}
-
 /** Imperative WebGL chart instance for rendering, interaction, and plugins. */
 export class Chart {
   private series: SeriesStore[] = [];
@@ -193,25 +155,21 @@ export class Chart {
   private userTheme: ChartTheme | undefined;
   /** Resolved caller theme; differs from `resolvedTheme` while forced colors are active. */
   private baseTheme: ResolvedChartTheme;
-  private forcedColorsQuery: MediaQueryList | null = null;
-  private forcedColorsActive: boolean = false;
-  /** Series styles saved while forced colors replace them. */
-  private readonly forcedOriginalStyles = new Map<SeriesStore, SeriesStyle>();
+  private readonly a11y: ChartAccessibility = new ChartAccessibility({
+    options: () => this.options.accessibility,
+    titles: () => ({ title: this.options.title, subtitle: this.options.subtitle }),
+    layout: () => this.layout,
+    getSummary: () => this.getSummary(),
+    disposed: () => this.disposed,
+    series: () => this.series,
+    seriesColors: () => this.resolvedTheme.seriesColors,
+    onForcedColorsChange: () => this.applyTheme(),
+  });
   /** Caller style options per series, plus the theme palette slot it follows (`null` once a color is pinned). */
   private readonly seriesStyleState = new WeakMap<SeriesStore, { options: SeriesStyleOptions; paletteIndex: number | null }>();
-  private summaryElement: HTMLElement | null = null;
-  private summaryTimer: ReturnType<typeof setTimeout> | null = null;
-  private summaryDirty: boolean = false;
   private inspection: ChartInspectionTarget | null = null;
-  private readonly handleForcedColorsChange = (): void => {
-    this.applyTheme();
-  };
   private readonly handleRootFocusIn = (): void => {
-    if (this.summaryDirty) this.updateSummary();
-  };
-  private readonly flushSummary = (): void => {
-    this.summaryTimer = null;
-    this.updateSummary();
+    this.a11y.flushIfDirty();
   };
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (event.pointerType !== "touch") {
@@ -293,11 +251,11 @@ export class Chart {
     this.gridVisible = options.grid !== false;
 
     this.layout = new ChartLayout(target, this.normalizedAxes);
-    this.watchForcedColors();
-    if (this.forcedColorsActive) this.resolvedTheme = forcedColorsTheme(this.baseTheme, this.layout.root);
+    this.a11y.watchForcedColors();
+    if (this.a11y.forcedColorsActive) this.resolvedTheme = forcedColorsTheme(this.baseTheme, this.layout.root);
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
     this.layout.root.style.setProperty("--blazeplot-focus-ring", this.resolvedTheme.focusRingColor);
-    this.applyAccessibility();
+    this.a11y.install();
     this.applyCanvasSize();
     this.camera = new Camera2D();
     this.rightCamera = new Camera2D();
@@ -308,13 +266,13 @@ export class Chart {
       this.installGpuResources(this.createGpuResources());
     } catch (error) {
       // E.g. no WebGL2: remove the half-built DOM and hand back a caller-supplied canvas.
-      this.unwatchForcedColors();
+      this.a11y.unwatchForcedColors();
       this.layout.dispose();
       throw error;
     }
     this.rebuildAxisOverlay();
-    this.updateTextOverlays();
-    this.updateSummary();
+    this.updateTitles();
+    this.a11y.updateSummary();
 
     this.toggleDomListeners("addEventListener");
 
@@ -510,7 +468,7 @@ export class Chart {
     this.seriesStyleState.set(series, { options: { ...style }, paletteIndex: style.color ? null : slot });
     series.bindStyleHandler((target, options) => this.setSeriesStyle(target, options));
     this.series.push(series);
-    if (this.forcedColorsActive) this.applyForcedSeriesStyles();
+    if (this.a11y.forcedColorsActive) this.a11y.applyForcedSeriesStyles();
     this.emitSeriesChange();
     return series;
   }
@@ -552,11 +510,11 @@ export class Chart {
 
     this.series.splice(index, 1);
     if (this.inspection?.series === series) this.inspection = null;
-    const original = this.forcedOriginalStyles.get(series);
+    const original = this.a11y.originalStyles.get(series);
     if (original) {
       series.applyResolvedStyle(original);
-      this.forcedOriginalStyles.delete(series);
-      this.applyForcedSeriesStyles();
+      this.a11y.originalStyles.delete(series);
+      this.a11y.applyForcedSeriesStyles();
     }
     this.emitSeriesChange();
     return true;
@@ -752,14 +710,14 @@ export class Chart {
   private applyTheme(): void {
     const root = this.layout.root;
     this.baseTheme = resolveChartTheme(this.userTheme, root);
-    this.forcedColorsActive = this.forcedColorsQuery?.matches === true;
-    this.resolvedTheme = this.forcedColorsActive ? forcedColorsTheme(this.baseTheme, root) : this.baseTheme;
+    const forcedColorsActive = this.a11y.refreshForcedColors();
+    this.resolvedTheme = forcedColorsActive ? forcedColorsTheme(this.baseTheme, root) : this.baseTheme;
     root.style.background = this.resolvedTheme.backgroundCssColor;
     root.style.setProperty("--blazeplot-focus-ring", this.resolvedTheme.focusRingColor);
     this.refreshSeriesStyles();
-    this.applyForcedSeriesStyles();
+    this.a11y.applyForcedSeriesStyles();
     this.axisOverlay?.setOptions({ color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont });
-    this.updateTextOverlays();
+    this.updateTitles();
     this.plugins.notify("onThemeChange", this.resolvedTheme);
     this.emit("themechange", undefined);
     this.requestRender();
@@ -781,7 +739,7 @@ export class Chart {
     this.rightAxis.setOptions({ x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     this.layout.update(this.normalizedAxes);
     this.rebuildAxisOverlay();
-    this.updateTextOverlays();
+    this.updateTitles();
     this.resize();
     this.refreshHover();
   }
@@ -846,9 +804,7 @@ export class Chart {
     if (this.restoreRenderRafId !== 0) this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
     this.restoreRenderRafId = 0;
     this.toggleDomListeners("removeEventListener");
-    this.unwatchForcedColors();
-    if (this.summaryTimer !== null) clearTimeout(this.summaryTimer);
-    this.summaryTimer = null;
+    this.a11y.dispose();
     this.inspection = null;
     // Reverse registration order; plugin cleanup errors never block chart-owned cleanup.
     this.plugins?.disposeAll();
@@ -972,9 +928,9 @@ export class Chart {
     state.options = merged as SeriesStyleOptions;
     if (options.color) state.paletteIndex = null;
     const resolved = this.resolveSeriesStyle(state.options, state.paletteIndex ?? this.nextPaletteIndex());
-    if (this.forcedColorsActive || this.forcedOriginalStyles.has(series)) {
-      this.forcedOriginalStyles.set(series, resolved);
-      this.applyForcedSeriesStyles();
+    if (this.a11y.forcedColorsActive || this.a11y.originalStyles.has(series)) {
+      this.a11y.originalStyles.set(series, resolved);
+      this.a11y.applyForcedSeriesStyles();
     } else {
       series.applyResolvedStyle(resolved);
     }
@@ -987,10 +943,10 @@ export class Chart {
       const state = this.seriesStyleState.get(series);
       if (!state) continue;
       const resolved = this.resolveSeriesStyle(state.options, state.paletteIndex ?? this.nextPaletteIndex());
-      if (this.forcedColorsActive) this.forcedOriginalStyles.set(series, resolved);
+      if (this.a11y.forcedColorsActive) this.a11y.originalStyles.set(series, resolved);
       else series.applyResolvedStyle(resolved);
     }
-    if (!this.forcedColorsActive) this.forcedOriginalStyles.clear();
+    if (!this.a11y.forcedColorsActive) this.a11y.originalStyles.clear();
   }
 
   private resolveSeriesStyle(style: SeriesStyleOptions, paletteIndex: number): SeriesStyle {
@@ -1019,70 +975,8 @@ export class Chart {
       this.emitSeriesChange();
     } else {
       this.requestRender();
-      this.markSummaryDirty();
+      this.a11y.markSummaryDirty();
     }
-  }
-
-  /** Watch `(forced-colors: active)` unless accessibility or `forcedColors` is turned off. */
-  private watchForcedColors(): void {
-    const option = this.options.accessibility;
-    if (option === false || (typeof option === "object" && option.forcedColors === false)) return;
-    const view = this.layout.view;
-    if (typeof view.matchMedia !== "function") return;
-    const query = view.matchMedia("(forced-colors: active)");
-    this.forcedColorsQuery = query;
-    this.forcedColorsActive = query.matches;
-    query.addEventListener?.("change", this.handleForcedColorsChange);
-  }
-
-  private unwatchForcedColors(): void {
-    this.forcedColorsQuery?.removeEventListener?.("change", this.handleForcedColorsChange);
-    this.forcedColorsQuery = null;
-  }
-
-  /**
-   * While forced colors are active, draw every series in the system palette (by series order)
-   * and keep the caller styles to restore afterwards. Otherwise restore any saved styles.
-   */
-  private applyForcedSeriesStyles(): void {
-    if (!this.forcedColorsActive) {
-      for (const [series, style] of this.forcedOriginalStyles) series.applyResolvedStyle(style);
-      this.forcedOriginalStyles.clear();
-      return;
-    }
-    const palette = this.resolvedTheme.seriesColors;
-    for (let index = 0; index < this.series.length; index++) {
-      const series = this.series[index]!;
-      let original = this.forcedOriginalStyles.get(series);
-      if (!original) {
-        original = series.style;
-        this.forcedOriginalStyles.set(series, original);
-      }
-      const color = palette[index % palette.length]!;
-      const contrast = palette[(index + 1) % palette.length]!;
-      series.applyResolvedStyle({ ...original, color, fillColor: withAlpha(color, 0.35), upColor: color, downColor: contrast, wickColor: color });
-    }
-  }
-
-  private markSummaryDirty(): void {
-    if (!this.summaryElement || this.disposed) return;
-    const option = this.options.accessibility;
-    if (typeof option === "object" && typeof option.description === "string") return;
-    this.summaryDirty = true;
-    if (this.summaryTimer === null) this.summaryTimer = setTimeout(this.flushSummary, SUMMARY_THROTTLE_MS);
-  }
-
-  /** Write the `aria-describedby` text: the caller's string, or the (optionally reworded) generated summary. */
-  private updateSummary(): void {
-    const element = this.summaryElement;
-    if (!element) return;
-    this.summaryDirty = false;
-    const option = this.options.accessibility;
-    const description = typeof option === "object" ? option.description : undefined;
-    const text = typeof description === "string"
-      ? description
-      : description ? description(this.getSummary()) : this.getSummary().text;
-    if (element.textContent !== text) element.textContent = text;
   }
 
   /** Format a value the way the axis labels it; never throws. */
@@ -1249,7 +1143,7 @@ export class Chart {
       [canvas, "webglcontextlost", this.handleWebGLContextLost],
       [canvas, "webglcontextrestored", this.handleWebGLContextRestored],
     ];
-    if (this.summaryElement) listeners.push([root, "focusin", this.handleRootFocusIn]);
+    if (this.a11y.hasSummary) listeners.push([root, "focusin", this.handleRootFocusIn]);
     for (const [target, type, listener] of listeners) target[method](type, listener as EventListener);
   }
 
@@ -1259,36 +1153,6 @@ export class Chart {
       this.restoreRenderRafId = 0;
       this.render();
     });
-  }
-
-  private applyAccessibility(): void {
-    const option = this.options.accessibility;
-    if (option === false) return;
-
-    const config = typeof option === "object" ? option : undefined;
-    const title = [titleText(this.options.title), titleText(this.options.subtitle)].filter(Boolean).join(" — ");
-    const root = this.layout.root;
-    const doc = root.ownerDocument;
-    if (root.tabIndex < 0) root.tabIndex = 0;
-    root.setAttribute("role", config?.role ?? "figure");
-    root.setAttribute("aria-label", config?.label ?? (title || config?.messages?.defaultLabel || "BlazePlot chart"));
-    this.layout.plot.setAttribute("role", "presentation");
-    for (const element of [this.canvas, this.xAxisElement, this.yAxisElement, this.y2AxisElement]) {
-      element.setAttribute("aria-hidden", "true");
-    }
-
-    const style = doc.createElement("style");
-    style.className = "blazeplot-style";
-    style.textContent = CHART_STYLESHEET;
-    root.appendChild(style);
-
-    if (config?.description === "") return;
-    const summary = doc.createElement("div");
-    summary.id = `blazeplot-summary-${nextSummaryId++}`;
-    summary.className = VISUALLY_HIDDEN_CLASS;
-    root.appendChild(summary);
-    root.setAttribute("aria-describedby", summary.id);
-    this.summaryElement = summary;
   }
 
   /** Resize `size: "auto"` gutters from the labels measured this frame. */
@@ -1310,6 +1174,10 @@ export class Chart {
     }
   }
 
+  private updateTitles(): void {
+    this.layout.applyTitles({ title: this.options.title, subtitle: this.options.subtitle, axes: this.normalizedAxes, theme: this.resolvedTheme });
+  }
+
   private rebuildAxisOverlay(): void {
     this.axisOverlay?.dispose();
     this.gutterTrackers = { x: new GutterTracker(), y: new GutterTracker(), y2: new GutterTracker() };
@@ -1318,67 +1186,6 @@ export class Chart {
     this.axisOverlay = axes.x.visible || axes.y.visible || axes.y2.visible
       ? new AxisOverlay(this.layout, axes, { color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont })
       : null;
-  }
-
-  private updateTextOverlays(): void {
-    const theme = this.resolvedTheme;
-    const hasTitle = titleText(this.options.title) !== "";
-    const hasSubtitle = titleText(this.options.subtitle) !== "";
-    this.applyChartTitle(this.layout.title, this.options.title, theme.titleColor, theme.titleFont, TITLE_TOP_PX);
-    this.applyChartTitle(this.layout.subtitle, this.options.subtitle, theme.subtitleColor, theme.subtitleFont, hasTitle ? SUBTITLE_TOP_PX : TITLE_TOP_PX);
-    // Title and subtitle get their own grid row, so they never sit on top of the plot.
-    this.layout.setTitleInset((hasTitle ? SUBTITLE_TOP_PX : 0) + (hasSubtitle ? SUBTITLE_ROW_PX : 0));
-    this.applyAxisTitle(this.layout.xAxisTitle, this.normalizedAxes.x.title, "x");
-    this.applyAxisTitle(this.layout.yAxisTitle, this.normalizedAxes.y.title, "y");
-    this.applyAxisTitle(this.layout.y2AxisTitle, this.normalizedAxes.y2.title, "y2");
-  }
-
-  /** Set text and theme styling on a title element; returns the custom config when visible. */
-  private applyTitleText(el: HTMLElement, config: string | TextOverlayConfig | undefined, color: string, font: string): TextOverlayConfig | null {
-    const text = titleText(config);
-    el.textContent = text;
-    el.style.display = text ? "block" : "none";
-    if (!text) return null;
-    const custom = typeof config === "string" ? { text } : config!;
-    el.style.color = custom.color ?? color;
-    el.style.font = custom.font ?? font;
-    return custom;
-  }
-
-  private applyChartTitle(el: HTMLElement, config: string | ChartTitleConfig | undefined, color: string, font: string, top: number): void {
-    const custom = this.applyTitleText(el, config, color, font) as ChartTitleConfig | null;
-    if (!custom) return;
-
-    const align = custom.align ?? "center";
-    const offsetX = custom.offsetX ?? 0;
-    const style = el.style;
-    style.top = `${top + (custom.offsetY ?? 0)}px`;
-    style.left = align === "left" ? `${TITLE_SIDE_INSET_PX + offsetX}px` : align === "right" ? "auto" : `calc(50% + ${offsetX}px)`;
-    style.right = align === "right" ? `${TITLE_SIDE_INSET_PX - offsetX}px` : "auto";
-    style.transform = align === "center" ? "translateX(-50%)" : "none";
-    style.textAlign = align;
-  }
-
-  private applyAxisTitle(el: HTMLElement, config: string | TextOverlayConfig | undefined, axis: "x" | "y" | "y2"): void {
-    const custom = this.applyTitleText(el, config, this.resolvedTheme.axisTitleColor, this.resolvedTheme.axisTitleFont);
-    if (!custom) return;
-
-    const offsetX = custom.offsetX ?? 0;
-    const offsetY = custom.offsetY ?? 0;
-    const style = el.style;
-    if (axis === "x") {
-      style.left = `calc(50% + ${offsetX}px)`;
-      style.bottom = `${AXIS_TITLE_INSET_PX - offsetY}px`;
-      style.transform = "translateX(-50%)";
-    } else if (axis === "y") {
-      style.left = `${AXIS_TITLE_INSET_PX + offsetX}px`;
-      style.top = `calc(50% + ${offsetY}px)`;
-      style.transform = "translateY(-50%) rotate(-90deg)";
-    } else {
-      style.right = `${AXIS_TITLE_INSET_PX - offsetX}px`;
-      style.top = `calc(50% + ${offsetY}px)`;
-      style.transform = "translateY(-50%) rotate(90deg)";
-    }
   }
 
   private applyCanvasSize(dpr: number = this.layout.view.devicePixelRatio): boolean {
@@ -1498,7 +1305,7 @@ export class Chart {
   }
 
   private emitSeriesChange(): void {
-    this.markSummaryDirty();
+    this.a11y.markSummaryDirty();
     this.emit("serieschange", undefined);
     this.refreshHover();
     this.requestRender();
