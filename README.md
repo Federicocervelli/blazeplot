@@ -77,7 +77,7 @@ For streaming data, pass `capacity` to `addLine` and append samples; see [Live d
 
 ## Features
 
-- **WebGL2 rendering.** GPU-accelerated plots with no Canvas2D fallback; axis labels and grid use lightweight DOM layers and DPR-aware sizing.
+- **WebGL2 rendering with a Canvas 2D fallback.** GPU-accelerated plots by default; opt into `autoRenderer()` from `blazeplot/renderers/canvas2d` to keep drawing when WebGL2 is unavailable. Axis labels and grid use lightweight DOM layers and DPR-aware sizing.
 - **Series types.** Line, area, scatter, bar, histogram, OHLC, and candlestick, each with independent data, style, and visibility.
 - **Live and large data.** Streaming ring buffers (including fixed-rate `UniformRingBuffer`), static typed arrays, and a custom dataset contract for remote or procedural sources.
 - **Level-of-detail downsampling.** Min/max extraction keeps dense views accurate and cheap at any zoom; `ServerSampledDataset` renders server-reduced buckets directly.
