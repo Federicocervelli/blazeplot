@@ -230,11 +230,34 @@ function annotationBounds(annotation: Annotation): AnnotationHitBounds {
   }
 }
 
+/** Trim sub-millipixel float noise from projected coordinates. */
+const roundPx = (value: number): number => Math.round(value * 1000) / 1000;
+
+/**
+ * Data-to-plot projectors that honor log/symlog/custom scales and reversed axes via `ctx.coords`.
+ * Non-finite inputs (open-ended bands) map to the matching plot edge direction so rect clamping works.
+ */
+function annotationProjectors(chart: ChartPluginContext, annotation: Annotation): { xToPx: (x: number) => number; yToPx: (y: number) => number } {
+  const yAxis = annotation.yAxis ?? "left";
+  const vp = chart.viewport.get(yAxis);
+  const mid = [(vp.xMin + vp.xMax) / 2, (vp.yMin + vp.yMax) / 2] as const;
+  return {
+    xToPx: (x) => {
+      if (x === Infinity || x === -Infinity) return x;
+      const px = roundPx(chart.coords.dataToPlot(x, mid[1], yAxis)[0]);
+      return Number.isNaN(px) ? -Infinity : px;
+    },
+    yToPx: (y) => {
+      if (y === Infinity || y === -Infinity) return -y;
+      const py = roundPx(chart.coords.dataToPlot(mid[0], y, yAxis)[1]);
+      return Number.isNaN(py) ? Infinity : py;
+    },
+  };
+}
+
 function hitTestAnnotation(chart: ChartPluginContext, annotation: Annotation, plotX: number, plotY: number, width: number, height: number, tolerance: number): boolean {
   if (annotation.visible === false) return false;
-  const viewport = chart.viewport.get(annotation.yAxis ?? "left");
-  const xToPx = (x: number): number => ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * width;
-  const yToPx = (y: number): number => ((viewport.yMax - y) / (viewport.yMax - viewport.yMin)) * height;
+  const { xToPx, yToPx } = annotationProjectors(chart, annotation);
 
   switch (annotation.type) {
     case "x-line":
@@ -290,9 +313,7 @@ function createHitEvent(chart: ChartPluginContext, annotation: Annotation, clien
 
 /** Plot-space box a keyboard focus target covers for one annotation, or `null` when it is off-screen. */
 function annotationFocusRect(chart: ChartPluginContext, annotation: Annotation, width: number, height: number): { x: number; y: number; w: number; h: number } | null {
-  const viewport = chart.viewport.get(annotation.yAxis ?? "left");
-  const xToPx = (x: number): number => ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * width;
-  const yToPx = (y: number): number => ((viewport.yMax - y) / (viewport.yMax - viewport.yMin)) * height;
+  const { xToPx, yToPx } = annotationProjectors(chart, annotation);
   const band = 4;
   switch (annotation.type) {
     case "x-line": {
@@ -347,6 +368,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
   let annotations = [...(options.annotations ?? [])];
   let chartRef: ChartPluginContext | null = null;
   let overlay: SVGSVGElement | null = null;
+  const groupCache = new Map<Annotation, SVGGElement>();
   const color = options.defaultColor ?? "rgba(255,255,255,0.85)";
   const fillColor = options.defaultFillColor ?? "rgba(255,255,255,0.12)";
   const font = options.defaultFont ?? "12px system-ui, sans-serif";
@@ -402,7 +424,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
   };
 
   const requestRender = (): void => {
-    if (chartRef && overlay) render(chartRef, overlay, annotations, color, fillColor, font);
+    if (chartRef && overlay) render(chartRef, overlay, annotations, groupCache, color, fillColor, font);
     if (chartRef && focusLayer) syncFocusTargets(chartRef, focusLayer);
   };
 
@@ -498,6 +520,7 @@ export function annotationsPlugin(options: AnnotationsPluginOptions = {}): Annot
         focusLayer = null;
         focusTargets.clear();
         overlay = null;
+        groupCache.clear();
         chartRef = null;
       };
     },
@@ -545,6 +568,7 @@ function render(
   chart: ChartPluginContext,
   overlay: SVGSVGElement,
   annotations: readonly Annotation[],
+  cache: Map<Annotation, SVGGElement>,
   defaultColor: string,
   defaultFillColor: string,
   defaultFont: string,
@@ -553,34 +577,70 @@ function render(
   const width = Math.max(1, plot.width);
   const height = Math.max(1, plot.height);
   overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  overlay.replaceChildren();
 
+  // Keep one SVG group per annotation and sync attributes in place, so a pan or live frame
+  // does not create or remove DOM nodes unless the annotation list or visibility changes.
+  const ordered: SVGGElement[] = [];
+  const live = new Set<Annotation>();
   for (const annotation of annotations) {
     if (annotation.visible === false) continue;
-    drawAnnotation(chart, overlay, annotation, width, height, defaultColor, defaultFillColor, defaultFont);
+    const fresh = drawAnnotation(chart, annotation, width, height, defaultColor, defaultFillColor, defaultFont);
+    const existing = cache.get(annotation);
+    if (!fresh) continue;
+    live.add(annotation);
+    if (existing && syncSvg(existing, fresh)) {
+      ordered.push(existing);
+    } else {
+      cache.set(annotation, fresh);
+      ordered.push(fresh);
+    }
   }
+  for (const [annotation, group] of cache) {
+    if (live.has(annotation)) continue;
+    group.remove();
+    cache.delete(annotation);
+  }
+  let same = overlay.childNodes.length === ordered.length;
+  for (let i = 0; same && i < ordered.length; i++) same = overlay.childNodes[i] === ordered[i];
+  if (!same) overlay.replaceChildren(...ordered);
+}
+
+/** Copy `fresh` onto `existing` in place when both have the same structure. Returns false when they differ structurally. */
+function syncSvg(existing: Element, fresh: Element): boolean {
+  if (existing.tagName !== fresh.tagName || existing.children.length !== fresh.children.length) return false;
+  for (let i = 0; i < fresh.children.length; i++) {
+    if (existing.children[i]!.tagName !== fresh.children[i]!.tagName) return false;
+  }
+  for (const attr of Array.from(existing.attributes)) {
+    if (!fresh.hasAttribute(attr.name)) existing.removeAttribute(attr.name);
+  }
+  for (const attr of Array.from(fresh.attributes)) {
+    if (existing.getAttribute(attr.name) !== attr.value) existing.setAttribute(attr.name, attr.value);
+  }
+  if (fresh.children.length === 0 && existing.textContent !== fresh.textContent) existing.textContent = fresh.textContent;
+  for (let i = 0; i < fresh.children.length; i++) {
+    if (!syncSvg(existing.children[i]!, fresh.children[i]!)) return false;
+  }
+  return true;
 }
 
 function drawAnnotation(
   chart: ChartPluginContext,
-  overlay: SVGSVGElement,
   annotation: Annotation,
   width: number,
   height: number,
   defaultColor: string,
   defaultFillColor: string,
   defaultFont: string,
-): void {
-  const viewport = chart.viewport.get(annotation.yAxis ?? "left");
-  const xToPx = (x: number): number => ((x - viewport.xMin) / (viewport.xMax - viewport.xMin)) * width;
-  const yToPx = (y: number): number => ((viewport.yMax - y) / (viewport.yMax - viewport.yMin)) * height;
+): SVGGElement | null {
+  const { xToPx, yToPx } = annotationProjectors(chart, annotation);
   const group = createSvgElement("g");
   if (annotation.className) group.classList.add(annotation.className);
 
   switch (annotation.type) {
     case "x-line": {
       const x = xToPx(annotation.x);
-      if (x < 0 || x > width) return;
+      if (x < 0 || x > width) return null;
       const line = createSvgElement("line");
       line.setAttribute("x1", String(x));
       line.setAttribute("x2", String(x));
@@ -593,7 +653,7 @@ function drawAnnotation(
     }
     case "y-line": {
       const y = yToPx(annotation.y);
-      if (y < 0 || y > height) return;
+      if (y < 0 || y > height) return null;
       const line = createSvgElement("line");
       line.setAttribute("x1", "0");
       line.setAttribute("x2", String(width));
@@ -606,21 +666,21 @@ function drawAnnotation(
     }
     case "x-range": {
       const rect = clampRect(xToPx(annotation.xMin), 0, xToPx(annotation.xMax), height, width, height);
-      if (!rect) return;
+      if (!rect) return null;
       appendRect(group, rect, annotation.fillColor ?? defaultFillColor, annotation.borderColor, annotation.borderWidth);
       appendLabel(group, annotation.label, rect.x + rect.w * 0.5, 6, "middle", defaultColor, defaultFont);
       break;
     }
     case "y-range": {
       const rect = clampRect(0, yToPx(annotation.yMax), width, yToPx(annotation.yMin), width, height);
-      if (!rect) return;
+      if (!rect) return null;
       appendRect(group, rect, annotation.fillColor ?? defaultFillColor, annotation.borderColor, annotation.borderWidth);
       appendLabel(group, annotation.label, width - 4, rect.y + rect.h * 0.5, "end", defaultColor, defaultFont);
       break;
     }
     case "box": {
       const rect = clampRect(xToPx(annotation.xMin), yToPx(annotation.yMax), xToPx(annotation.xMax), yToPx(annotation.yMin), width, height);
-      if (!rect) return;
+      if (!rect) return null;
       appendRect(group, rect, annotation.fillColor ?? defaultFillColor, annotation.borderColor, annotation.borderWidth);
       appendLabel(group, annotation.label, rect.x + rect.w * 0.5, rect.y + 6, "middle", defaultColor, defaultFont);
       break;
@@ -629,7 +689,7 @@ function drawAnnotation(
       const x = xToPx(annotation.x);
       const y = yToPx(annotation.y);
       const radius = annotation.radius ?? 5;
-      if (!isInsidePlot(x, y, width, height)) return;
+      if (!isInsidePlot(x, y, width, height)) return null;
       appendMarker(group, x, y, radius, annotation);
       appendLabel(group, annotation.label, x + radius + 4, y - radius - 2, "start", defaultColor, defaultFont);
       break;
@@ -637,13 +697,13 @@ function drawAnnotation(
     case "label": {
       const x = xToPx(annotation.x);
       const y = yToPx(annotation.y);
-      if (!isInsidePlot(x, y, width, height)) return;
+      if (!isInsidePlot(x, y, width, height)) return null;
       appendStandaloneLabel(group, annotation, x, y, defaultColor, defaultFont);
       break;
     }
   }
 
-  overlay.appendChild(group);
+  return group;
 }
 
 function styleStroke(el: SVGElement, color: string, width: number = 1, dash?: string): void {
