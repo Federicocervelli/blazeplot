@@ -55,6 +55,8 @@ By default every script launches Chrome with software WebGL (SwiftShader) so res
 | `series-churn` | One chart, repeatedly adding and removing line/area/scatter/bar series. | Same baseline checks, including live WebGL buffers. |
 | `streaming` | Multi-series stream into ring buffers at capacity with plugins and hover. | Buffers hold exactly their capacity, heap does not grow with samples streamed (bounded growth, plus a trend check in `--long`), no new DOM, listeners, or GL objects. |
 | `context-loss` | `WEBGL_lose_context` lose/restore cycles, including appends and hover while lost and dispose while lost. | Chart renders non-blank frames after every restore; no renders while lost; nothing left behind. |
+| `shared-context` | Mounts and disposes batches of 25 charts that share one `sharedRenderer()` context (200 charts in the CI profile, 1,000 with `--long`). | Same baseline checks, and no more than one live WebGL context at any time. |
+| `shared-context-loss` | Loses and restores the shared context repeatedly with three charts attached, then disposes them while it is lost. | Every chart paints again after each restore; nothing left behind. |
 | `detector-control` | Retains charts on purpose. | The same counters must move, then return to baseline after release. Proves the checks can fail. |
 
 Any page exception, `console.error`, or browser "Too many active WebGL contexts" warning also fails a case.
@@ -125,8 +127,8 @@ Screenshots and `summary.json` go to `build/cross-browser/` (failures add `*-FAI
 CI runs the same groups as separate jobs. Locally:
 
 ```bash
-bun run check          # typecheck, unit tests, build, docs freshness, package checks
-bun run test:browser   # benchmark smoke, perf gate, visual, interaction, stability, website (needs Chrome)
+bun run check          # typecheck, lint, unit tests + coverage floors, build, docs freshness and snippets, package checks, API snapshot, bundle budgets
+bun run test:browser   # benchmark smoke, perf gate, visual, interaction, axe a11y, stability, website (needs Chrome)
 bun run ci             # both (cross-browser is a separate CI job: bun run test:cross-browser)
 ```
 

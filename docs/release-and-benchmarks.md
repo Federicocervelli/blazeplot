@@ -49,7 +49,7 @@ GitHub Pages publishes two builds into one site:
 - Unreleased integrated previews: <https://blazeplot.cervelli.dev/next/previews>
 - Legacy `previews.html` index is not generated; use the app preview routes directly.
 
-The release workflow deploys Pages once per push to `main`: immediately for ordinary merges, and after the new tag exists for releases. The Pages workflow builds the latest `v*` tag and `main` with the correct Vite `base`, then deploys a combined artifact. Legacy preview routes redirect to the integrated `#previews` view.
+The release workflow deploys Pages once per push to `main`: immediately for ordinary merges, and after the new tag exists for releases. The Pages workflow builds the latest stable `vX.Y.Z` tag (release candidate `-rc.N` tags are ignored, so the stable site stays on the last stable release until 1.0 ships) and `main` with the correct Vite `base`, then deploys a combined artifact. Legacy preview routes redirect to the integrated `#previews` view.
 
 Feature branch browser previews can be requested by maintainers with the `Cloudflare Pages Preview` manual GitHub Actions workflow. The workflow deploys the selected feature branch's website build to the `blazeplot` Pages project and exposes a branch alias:
 
@@ -106,16 +106,20 @@ On every push to `main` or `v1` and on manual dispatch, `.github/workflows/relea
 - `bun run bundle:analyze`: reports built chunk raw/gzip sizes and source-map generated-byte contributors for investigating bundle growth. Hidden source maps remain in local `dist/` builds for this command, but `.map` files are excluded from the published npm package to keep tarballs small.
 - `bun run bench:ci`: fast smoke benchmark used by CI. It only checks that the scene renders; it asserts no timings.
 - `bun run bench:gate`: performance regression gate used by CI (see [Performance regression gate](#performance-regression-gate)).
-- `bun run bench:compare`: manual-only headed comparison benchmark for BlazePlot, uPlot, and Chart.js. It runs automatically after launch and overwrites `benchmarks/latest.json` plus `benchmarks/latest.md`.
-- `bun run test:visual`: browser visual chart tests used by CI; fails on blank canvases and on pixel differences from the committed baselines in `tests/browser/visual/baselines/`; writes PNGs, diffs, and `summary.json` to `build/visual-tests/`. Regenerate baselines with `-- --update-baselines` using the CI procedure in [Local development](./internal/local-development.md#visual-pixel-baselines).
-- `bun run test:interaction`: browser input automation used by CI for hover, crosshair, zoom, pan, reset, selection, keyboard accessibility, and forced colors (high-contrast emulation).
+- `bun run bench:compare`: manual-only headed comparison benchmark for BlazePlot (WebGL2 and Canvas 2D), uPlot, and Chart.js. It runs automatically after launch and overwrites `benchmarks/latest.json` plus `benchmarks/latest.md`. The result is only publishable from a headed browser on a real GPU.
+- `bun run bench:multi [--charts 50] [--renderers webgl2,shared,canvas2d]`: many-live-charts benchmark comparing one WebGL context per chart, a shared context, and Canvas 2D (see [Shared render context](./internal/shared-render-context.md)). `bun run bench:scatter` is a Node-side profile of scatter sampling.
+- `bun run test:visual`: browser visual chart tests used by CI; runs each case with the WebGL2, shared-context, Canvas 2D, and `autoRenderer()`-without-WebGL renderers, fails on blank canvases and on pixel differences from the committed baselines in `tests/browser/visual/baselines/`; writes PNGs, diffs, and `summary.json` to `build/visual-tests/`. Regenerate baselines with `-- --update-baselines` using the CI procedure in [Local development](./internal/local-development.md#visual-pixel-baselines).
+- `bun run test:interaction`: browser input automation used by CI for hover, crosshair, zoom, pan, reset, selection, keyboard accessibility, forced colors (high-contrast emulation), drag arbitration, `touch-action`, cooperative gestures, linked charts, charts in iframes, mobile long press, lifecycle, render loops, and live follow. `bun run test:forced-colors` runs just the forced-colors case.
+- `bun run test:a11y`: axe-core checks of every built-in plugin's DOM; fails on serious or critical violations (part of `test:browser`).
 - `bun run test:cross-browser`: Playwright Firefox and WebKit smoke test (WebGL2, non-blank render, basic interaction) used by the `cross-browser` CI job. See [Browser support](./browser-support.md#tested-browsers).
 - `bun run test:stability`: real-browser leak and stability tests used by CI (chart mount/unmount, resize and series churn, streaming memory at ring-buffer capacity, WebGL context loss/restore). Add `--long` for the local soak. See `docs/internal/local-development.md`.
 - `bun run bench -- --scenario <name>`: run one benchmark scenario and print JSON.
 - `bun run bench:report`: append benchmark tables to `docs/internal/benchmark-results.md` or a path passed with `--out-md`.
 - `bun run release:benchmarks`: append benchmark tables to `changelogs/v<package.version>.md` (the release workflow runs this; rarely needed locally).
 
-Browser detection checks `BLAZEPLOT_BENCH_CHROME`, `CHROME_PATH`, then common Chrome/Chromium/Brave binaries.
+Package and API checks that run in `bun run check`: `bun run lint`, `bun run test:coverage` (coverage floors), `bun run test:docs-snippets`, `bun run test:exports`, `bun run test:package`, `bun run test:api` (compares `dist/**/*.d.ts` with `api/public-api.md`; after an intentional API change run `bun run build && bun run test:api -- --update`), and `bun run test:bundle-size`. `bun run test:typescript-floor` is a separate CI job.
+
+Browser detection checks `BLAZEPLOT_BENCH_CHROME`, `CHROME_PATH`, then common Chrome/Chromium/Brave binaries. The benchmark scripts launch Chrome with software WebGL (SwiftShader) so results match CI; set `BLAZEPLOT_REAL_GPU=1` to use the real GPU instead (the SwiftShader flags are dropped and the frame-rate limit is disabled), and `BLAZEPLOT_CHROME_FLAGS` to append browser flags. Real-GPU numbers are not comparable with CI numbers and must not be used to update `benchmarks/thresholds.json`.
 
 ## Performance regression gate
 
@@ -191,7 +195,7 @@ Update `benchmarks/thresholds.json` only when a change intentionally alters perf
 
 Public comparison numbers are intentionally separate from CI smoke benchmarks. `bun run bench:compare` defaults to a headed browser, prewarms each selected library with a dense chart after module load, runs one discarded setup warmup per library/scenario, drives every measured scenario through Chrome DevTools Protocol, and requires no user interaction after the command starts. The latest run is stored in `benchmarks/latest.json` and summarized in `benchmarks/latest.md`; historical comparison artifacts are not kept in-repo.
 
-The comparison suite currently covers BlazePlot, uPlot, and Chart.js across 100k/1M static line setup, 1M pan over a 100k visible window, 1M live streaming append while following the latest 100k samples, and a 10M dense-pan stress case with 5M visible samples. The 10M case intentionally uses BlazePlot's best-practice accelerated dataset path while competitors use their recommended array inputs. Results are marked non-publishable when the browser is headless, the detected WebGL renderer appears to be software-rendered, the run omits any official scenario/library, or any library/scenario run fails.
+The comparison suite currently covers BlazePlot (WebGL2 and Canvas 2D), uPlot, and Chart.js across 100k/1M static line setup, 1M pan over a 100k visible window, 1M live streaming append while following the latest 100k samples, and a 10M dense-pan stress case with 5M visible samples. The 10M case intentionally uses BlazePlot's best-practice accelerated dataset path while competitors use their recommended array inputs. Results are marked non-publishable when the browser is headless, the detected WebGL renderer appears to be software-rendered, the run omits any official scenario/library, or any library/scenario run fails.
 
 When a publishable `benchmarks/latest.json` exists, `bun run docs:readme` generates the README performance section from that file. If that file is missing, the README only documents how to run the manual benchmark and avoids public competitor numbers. If the file exists but is non-publishable, docs generation fails instead of silently promoting bad data.
 
@@ -200,10 +204,10 @@ When a publishable `benchmarks/latest.json` exists, `bun run docs:readme` genera
 The changelog benchmark table is intentionally compact:
 
 - **RAF FPS / RAF p95 ms**: browser animation-frame cadence during the benchmark window.
+- **Renderer**: the render mode the chart reported in its frame stats (`ChartFrameStats.renderMode`, for example `mixed`).
 - **Chart p50/p95 ms**: `Chart` frame time from internal frame stats.
 - **Points**: median rendered primitives/points from `ChartFrameStats.pointsRendered`.
 - **Draws**: median draw call count.
-- **Batched**: median draw calls avoided by compatible internal batching.
 - **Upload KB**: median GPU upload size per frame.
 
 The CPU hot-spot table comes from the Chrome DevTools Protocol profiler. It is useful for spotting large regressions, but exact timings vary by runner/browser and should not be treated as strict performance budgets yet.

@@ -8,18 +8,19 @@ The short version: **constructors, static data, and explicit configuration throw
 
 | Error | Thrown by | When |
 |---|---|---|
-| `WebGL2UnavailableError` (extends `Error`, `name === "WebGL2UnavailableError"`) | `new Chart(...)`, `createLinkedCharts(...)` | The canvas cannot create a WebGL2 context. |
-| `RangeError` | Datasets, `Camera2D`, axes, histogram and data helpers | A number is out of range: non-positive capacity, `xStep <= 0`, index out of range, `xMax <= xMin`, non-finite viewport edge, capacity exceeded with `overflow: "error"`, `binSize <= 0`, invalid histogram bins, and a non-finite or decreasing X in static data (`StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`, `fromObjects`, `series.replace`). |
-| `TypeError` | `Chart.addSeries`/`add*`, `SeriesStore` mutators, `histogram` | The call does not fit the dataset or option shape: appending `{ y }` to a dataset without implicit X, mixing OHLC and XY rows, OHLC series without an `OhlcDataset`, conflicting histogram options. |
-| `Error` | `blazeplot/export`, `chart.screenshot()`, flame graph plugin, WebGL internals | Browser feature missing (`ClipboardItem`, Clipboard API, 2D canvas), or a shader/program failed to compile or link. |
+| `WebGL2UnavailableError` (extends `Error`, `name === "WebGL2UnavailableError"`) | `new Chart(...)`, `createLinkedCharts(...)` | The canvas cannot create a WebGL2 context (default `renderer: "webgl2"` and `sharedRenderer()`). Not thrown with `autoRenderer()`, which falls back to Canvas 2D. |
+| `Canvas2DUnavailableError` (from `blazeplot/renderers/canvas2d`, extends `Error`) | `new Chart(..., { renderer: canvas2dRenderer() })` | The canvas cannot create a 2D context. Also what `autoRenderer()` throws when both backends fail. |
+| `RangeError` | Datasets, `Camera2D`, axes, histogram and data helpers | A number is out of range: non-positive capacity, `xStep <= 0`, index out of range, `xMax <= xMin`, non-finite viewport edge, capacity exceeded with `overflow: "error"`, `binSize <= 0`, invalid histogram bins, mismatched array lengths in dataset input, and a non-finite or decreasing X in static data (`StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`, `fromObjects`, `series.replace`). |
+| `TypeError` | `Chart` constructor, `Chart.addSeries`/`add*`, `SeriesStore` mutators, `histogram` | The call does not fit the dataset or option shape: appending `{ y }` to a dataset without implicit X, mixing OHLC and XY rows, OHLC series without an `OhlcDataset`, an unknown series mode, `series.setStyle` on a series that is not attached to a chart, a `renderer` option that is neither `"webgl2"` nor a factory, conflicting histogram options. |
+| `Error` | `blazeplot/export`, `chart.screenshot()`, built-in stateful plugins, flame graph plugin, `sharedRenderer()`, WebGL internals | Browser feature missing (`ClipboardItem`, Clipboard API, 2D canvas), a plugin instance installed on a second chart, a shared render context without a DOM, or a shader/program failed to compile or link. |
 
-Only `WebGL2UnavailableError` is a named class. Match other failures with `instanceof RangeError` / `instanceof TypeError`, not by message text; messages are for humans and can be reworded in any release.
+`WebGL2UnavailableError` and `Canvas2DUnavailableError` are the only named classes. Match other failures with `instanceof RangeError` / `instanceof TypeError`, not by message text; messages are for humans and can be reworded in any release.
 
 ## Creating a chart
 
-`new Chart(target, options)` throws `WebGL2UnavailableError` when no WebGL2 context is available. Before it throws it removes the DOM it created and hands back any canvas you supplied, so a failed construction leaves your container as it was. `createLinkedCharts(...)` behaves the same way.
+`new Chart(target, options)` throws `WebGL2UnavailableError` when no WebGL2 context is available (or `Canvas2DUnavailableError` when you chose `canvas2dRenderer()` and no 2D context is available). Before it throws it removes the DOM it created and hands back any canvas you supplied, so a failed construction leaves your container as it was. `createLinkedCharts(...)` behaves the same way.
 
-If a plugin's `install()` throws, the chart disposes everything already set up and rethrows that error from the constructor.
+If a plugin's `install()` throws, the chart disposes everything already set up and rethrows that error from the constructor. That includes installing one stateful built-in plugin instance (annotations, crosshair, selection, navigator, a11y, flame graph) on a second chart: create one instance per chart.
 
 To keep drawing without WebGL2, use the built-in Canvas 2D fallback (`renderer: autoRenderer()` from `blazeplot/renderers/canvas2d`; see [Browser support](./browser-support.md#canvas-2d-renderer)). Check availability first when you want your own fallback UI instead of a `try`/`catch`:
 
@@ -103,7 +104,7 @@ chart.dispose();
 
 ## Listeners and plugins
 
-Errors thrown by chart event listeners (`chart.subscribe`, `ctx.events.subscribe`) and plugin lifecycle hooks are caught, logged with `console.error`, and never break the chart. A throwing listener does not stop later listeners for the same event, and it does not abort `render()`, `pan`, `zoom`, or `setViewport`. Errors from a plugin's `dispose` and cleanups are logged too, while the remaining resources are still released. Only `install()` errors propagate (from the constructor or `installPlugin`).
+Errors thrown by chart event listeners (`chart.subscribe`, `ctx.events.subscribe`) and plugin lifecycle hooks are caught, logged with `console.error`, and never break the chart. A throwing listener does not stop later listeners for the same event (which run in subscription order), and it does not abort `render()`, `pan`, `zoom`, or `setViewport`. Errors from a plugin's `dispose` and cleanups are logged too, while the remaining resources are still released. Only `install()` errors propagate (from the constructor).
 
 ## Viewport and axes
 
@@ -152,7 +153,7 @@ Helper functions are stricter than datasets because they are pure and run once:
 ## Rendering errors and context loss
 
 - **Render-loop errors.** `chart.start()` schedules frames with `requestAnimationFrame`. A domain error (see above) is caught, logged once, and the frame is skipped. Any other exception inside a frame propagates out of the animation-frame callback, so it shows up in `window.onerror` and the console like any uncaught error. With `renderLoop: "continuous"` the loop keeps running after a thrown frame.
-- **WebGL context loss.** The chart calls `preventDefault()` on `webglcontextlost`, stops drawing, and recreates GPU resources on `webglcontextrestored`. Data and viewport are untouched. If recreation fails, the chart logs `BlazePlot failed to restore WebGL resources after context restoration.` with `console.error` and stays blank; recreate the chart.
+- **WebGL context loss.** The chart calls `preventDefault()` on `webglcontextlost`, stops drawing, and recreates GPU resources on `webglcontextrestored`. Data and viewport are untouched. If recreation fails, the chart logs `BlazePlot failed to restore WebGL resources after context restoration.` with `console.error` and stays blank; recreate the chart. With `sharedRenderer()` the shared canvas handles loss once for every attached chart and logs `BlazePlot failed to restore the shared WebGL2 context.` if it cannot rebuild. The Canvas 2D renderer has no context to lose, so plugins' `onContextLost` / `onContextRestored` hooks never run for it.
 - **After `dispose()`.** Disposal releases DOM, listeners, plugins, and GPU resources. Calling `start()`, `resize()`, or series methods on a disposed chart is unsupported and has no defined behavior. Plugin `dispose` and cleanup functions that throw are logged and do not stop the rest of disposal.
 - **Resize.** `ResizeObserver` is optional. Without it, call `chart.resize()` yourself. `resize()` returns whether the canvas size changed.
 
@@ -188,6 +189,6 @@ export async function copyOrDownload(chart: Chart): Promise<void> {
 | `BlazePlot skipped rendering:` | `error` (once until fixed) | Viewport invalid for an axis scale. |
 | `BlazePlot <event> listener failed:` | `error` | A chart event listener threw. The remaining listeners still ran. |
 | `BlazePlot plugin <hook> hook failed:` / `plugin dispose failed:` / `plugin cleanup failed:` | `error` | A plugin hook, dispose, or tracked cleanup threw. Other plugins and resources were still released. |
-| `BlazePlot failed to restore WebGL resources after context restoration.` | `error` | GPU resources could not be rebuilt after context loss. |
+| `BlazePlot failed to restore WebGL resources after context restoration.` / `BlazePlot failed to restore the shared WebGL2 context.` | `error` | GPU resources could not be rebuilt after context loss (per-chart or shared context). |
 
 BlazePlot has no other runtime logging. There is no debug flag. Deprecated APIs, once any exist, log a single development-only `BlazePlot: ... is deprecated` warning per API per page load; production builds are silent. See the [deprecation process](./versioning-and-migration.md#deprecation-process).

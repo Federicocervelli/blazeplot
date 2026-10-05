@@ -73,7 +73,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   {
     slug: "built-in-plugins",
     title: "Plugins",
-    description: "Use optional interaction, tooltip, legend, annotation, selection, crosshair, and navigator plugins.",
+    description: "Use the optional interaction, tooltip, legend, annotation, selection, crosshair, navigator, accessibility, and flame graph plugins.",
     sourcePath: "docs/built-in-plugins.md",
     loadMarkdown: () => import("../../docs/built-in-plugins.md?raw").then((module) => module.default),
   },
@@ -87,7 +87,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   {
     slug: "plugin-authoring",
     title: "Author plugins",
-    description: "Build lightweight chart plugins without coupling them to the core renderer.",
+    description: "Build chart plugins on the stable plugin context: mount slots, pointer claims, lifecycle hooks, and typed events.",
     sourcePath: "docs/plugin-authoring.md",
     loadMarkdown: () => import("../../docs/plugin-authoring.md?raw").then((module) => module.default),
   },
@@ -108,7 +108,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   {
     slug: "migrating-to-1.0",
     title: "Migrating to 1.0",
-    description: "Breaking changes from 0.x to 1.0 with before and after code and an upgrade checklist.",
+    description: "Breaking changes and new features from 0.x to 1.0 with before and after code and an upgrade checklist.",
     sourcePath: "docs/migrating-to-1.0.md",
     loadMarkdown: () => import("../../docs/migrating-to-1.0.md?raw").then((module) => module.default),
   },
@@ -129,7 +129,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   {
     slug: "error-handling",
     title: "Errors",
-    description: "Errors thrown, console output, and how invalid data and viewports are handled.",
+    description: "Errors thrown, console output, and how invalid data, viewports, and renderer failures are handled.",
     sourcePath: "docs/error-handling.md",
     loadMarkdown: () => import("../../docs/error-handling.md?raw").then((module) => module.default),
   },

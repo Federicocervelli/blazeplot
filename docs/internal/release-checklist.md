@@ -18,7 +18,7 @@ This bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since 
 
 ## 2. Open the release PR
 
-Push the branch and open a PR to `main`. CI runs the typecheck, unit tests, build, generated-docs check, package contents and exports checks, bundle budgets, and the browser suites, so there is no need to repeat them locally. Mention any known risk areas, especially rendering, package exports, or release workflow changes.
+Push the branch and open a PR to `main`. CI runs `bun run check` (typecheck, lint, unit tests with coverage floors, build, generated-docs and snippet checks, package contents and exports checks, the public API snapshot, bundle budgets), the TypeScript 5.0 floor check, the browser suites (`bun run test:browser`), and the Firefox/WebKit smoke job, so there is no need to repeat them locally. If the release changes the public API, the PR must already contain the regenerated `api/public-api.md` (`bun run build && bun run test:api -- --update`). Mention any known risk areas, especially rendering, package exports, or release workflow changes.
 
 ## 3. Merge and monitor
 

@@ -29,11 +29,11 @@ export function examplePlugin(): ChartPlugin {
 |---|---|---|
 | `ctx.theme` | The current `ResolvedChartTheme` (read-only). | Colors and fonts for plugin UI. Re-read it in `onThemeChange`. |
 | `ctx.coords` | `dataToPlot(x, y, yAxis?)`, `clientToData(clientX, clientY, yAxis?)`, `clientToPlot(clientX, clientY)`, `plotToClient(plotX, plotY)`, `format(value, axis, yAxis?)` | Converting between data, plot-local CSS pixels, and pointer (client) coordinates, and formatting values like the axis labels. Data conversions honor log and custom axis scales. |
-| `ctx.viewport` | `get(yAxis?)`, `set(viewport, yAxis?)`, `pan(intent, yAxis?)`, `zoom(intent, yAxis?)`, `fitToData(options?)`, `isReversed(axis, yAxis?)`, `followX(options?)`, `stopFollowX()`, `setFollowXPaused(paused)`, `getFollowXState()` | Reading and changing the visible domain. Changes go through the chart's `ViewportPolicy` and pause latest-X following like a user gesture. |
+| `ctx.viewport` | `get(yAxis?)`, `set(viewport, yAxis?, options?)`, `pan(intent, yAxis?, options?)`, `zoom(intent, yAxis?, options?)`, `fitToData(options?)`, `isReversed(axis, yAxis?)`, `followX(options?)`, `stopFollowX()`, `setFollowXPaused(paused)`, `getFollowXState()` | Reading and changing the visible domain. Changes go through the chart's `ViewportPolicy` and pause latest-X following like a user gesture (`set` accepts `{ pauseFollow: false }` to opt out). Pass `{ source: "user" }` from gesture handlers: it is reported as `viewportchange.source` (`"user" \| "follow" \| "fit" \| "api" \| "linked"`, `"api"` by default). |
 | `ctx.state` | `getSeries()`, `getHover()`, `pick(clientX, clientY, options?)`, `getFrameStats(target?)`, `inspect(target)`, `getInspection()` | Series metadata, the current hover hit, hit-testing, render metrics, and keyboard inspection (see below). |
 | `ctx.layout` | `plotRect()`, `rootRect()`, `reserve(reservation)` | Plot and chart geometry in client coordinates, and space around the plot for plugin UI. `reserve` returns a release function. |
 | `ctx.dom` | `document`, `view`, `create(tag)`, `createSvg(tag)`, `mount(slot, element)`, `listen(surface, type, listener, options?)`, `decorate(surface, decoration)`, `contains(target)`, `claimPointer(event)` | Claiming pointer gestures, creating plugin elements in the chart's own document (an iframe, popup, or Document Picture-in-Picture window may differ from the global one), attaching them, listening to input on chart-owned elements, and styling them. `mount`, `listen`, and `decorate` return undo functions. Create elements with `ctx.dom.create` instead of the global `document`, and read `devicePixelRatio`, `matchMedia`, and animation frames from `ctx.dom.view`. |
-| `ctx.events` | `subscribe(event, callback)`, `emit(event, payload)` | Chart events (`render`, `hover`, `viewportchange`, `serieschange`, pointer events, ...) and typed plugin events. |
+| `ctx.events` | `subscribe(event, callback)`, `emit(event, payload)` | Chart events (`render`, `hover`, `viewportchange`, `followxchange`, `serieschange`, pointer events, ...) and typed plugin events. A listener that throws is logged and never stops the others. |
 | `ctx.requestRender()` | | Schedule a frame after changing something the chart draws. Chart-owned changes already request one. |
 | `ctx.unstable` | `canvas`, `element(slot)`, `getWebGLContext()`, `getCamera(yAxis?)` | Experimental escape hatches. Prefer the groups above. |
 
@@ -79,8 +79,7 @@ export const brushPlugin: ChartPlugin = {
 
 - Call it from `pointerdown`, only when your gesture would actually start (check the button and modifier keys first).
 - It returns `true` when your plugin now owns the pointer and `false` when another plugin claimed it first. Calling it again from the same plugin returns `true`.
-- The first claimer wins, and listeners on a surface run in plugin install order. A listener registered with `{ capture: true }` runs before non-capture listeners on the same surface, which is how `selectionPlugin` takes a plain drag ahead of box zoom whatever the install order.
-- A claim lasts until that `pointerId` is released (`pointerup` or `pointercancel`) or the plugin is disposed.
+- The first claimer wins, and listeners on a surface run in plugin install order. A listener registered with `{ capture: true }` runs before non-capture listeners on the same surface, which is how `selectionPlugin` takes a plain drag ahead of box zoom whatever the install order.- A claim lasts until that `pointerId` is released (`pointerup` or `pointercancel`) or the plugin is disposed.
 - The built-in drag plugins (box zoom, shift and axis pan, touch pan and pinch, selection, ruler measurement) claim before they start and skip pointers claimed by others, so a third-party drag plugin that claims first keeps them out of its way. Give your gesture a modifier option so users can resolve genuine conflicts, as `selectionPlugin({ modifier })` and `interactionsPlugin({ boxZoomModifier })` do.
 
 ## Lifecycle
@@ -93,13 +92,13 @@ export const brushPlugin: ChartPlugin = {
 | `dispose()` | `chart.dispose()` runs, or a later plugin throws during install. Runs once. |
 | `onResize(size)` | The plot area changes size (including device-pixel-ratio changes). `size` is `{ width, height }` in CSS pixels. |
 | `onThemeChange(theme)` | `chart.setTheme(...)` replaces the theme. Runs before the public `themechange` event. |
-| `onContextLost()` | The chart's WebGL context is lost. The chart stops drawing until it is restored. |
+| `onContextLost()` | The chart's WebGL context is lost (also the shared context behind `sharedRenderer()`). The chart stops drawing until it is restored. Never called with the Canvas 2D renderer. |
 | `onContextRestored()` | The context is restored and the chart's GPU resources are rebuilt. |
 
 - Hooks run in **registration order**. Disposal runs in **reverse registration order**, so a plugin can rely on plugins installed before it still being alive during its own cleanup.
 - A hook that throws is reported with `console.error` and does not stop other plugins. A `dispose` or cleanup that throws is logged and never prevents chart-owned resources from being released.
 - If `install` throws, the context releases what it handed out, the plugins already installed are disposed in reverse order, and the chart constructor rethrows.
-- **One plugin instance per chart.** Keep per-chart state inside `install` (or throw if your instance is already installed). The built-in stateful plugins (a11y, annotations, crosshair, flame graph, navigator, selection) keep state in the factory closure and throw `one plugin instance per chart` when the same instance is installed on a second chart, so call the factory once per chart instead of sharing a `plugins` array of instances. The legend, tooltip, and interactions plugins keep their state inside `install`, so one instance may be installed on several charts.
+- **One plugin instance per chart.** Keep per-chart state inside `install` (or throw if your instance is already installed). The built-in stateful plugins (a11y, annotations, crosshair, flame graph, navigator, selection) keep state in the factory closure and throw `<name> plugin instance is already installed on a chart. Create one plugin instance per chart.` when the same instance is installed on a second chart, so call the factory once per chart instead of sharing a `plugins` array of instances. Disposing the chart (or the plugin) frees the instance. The legend, tooltip, and interactions plugins keep their state inside `install`, so one instance may be installed on several charts.
 
 The app that owns the chart controls `chart.start()` and `chart.stop()`. Plugin code should update plugin-owned DOM or state from chart events and hooks.
 
@@ -209,7 +208,7 @@ chart.dispose();
 
 `ctx.state.inspect({ series, index })` shows one sample as the chart's hover state, as if the pointer were on it. The tooltip, crosshair, and every `hover` subscriber follow it: the state has `source: "inspection"`, the inspected sample is `items[0]` (other visible series at the same X follow when hover grouping is `"x"`), and its client, plot, and data coordinates are the sample's. The chart re-projects it on every frame, so it stays on the sample through pans, zooms, and resizes; while the sample is hidden, a gap, or outside the plot, the hover state is `null` but the target is kept. `ctx.state.inspect(null)` ends it, and so does a pointer moving over the plot (check `ctx.state.getInspection()` in a `hover` subscriber to notice). A series that is not on the chart, or an index outside it, throws a `RangeError`.
 
-Keyboard handlers on the `"root"` surface should act only when the root itself has focus (`event.target === event.currentTarget`), so keys typed into controls inside the chart stay with those controls. The chart's own arrow-key pan listens on the root in the bubble phase; listen with `{ capture: true }` and call `preventDefault()` to take a key before it, and skip events that are already `defaultPrevented`.
+Keyboard handlers on the `"root"` surface should act only when the root itself has focus (`event.target === event.currentTarget`), so keys typed into controls inside the chart stay with those controls. The arrow-key pan and zoom of `interactionsPlugin` listens on the root in the bubble phase (the chart itself handles no keys); listen with `{ capture: true }` and call `preventDefault()` to take a key before it, and skip events that are already `defaultPrevented`.
 
 ```ts
 import type { ChartPlugin } from "blazeplot";
@@ -259,11 +258,13 @@ export function footerPlugin(): ChartPlugin {
 }
 ```
 
+Plugins that need CSS (for example forced-colors rules) can mount a `<style>` element in the `"root"` slot, which is removed with the plugin and works inside shadow roots. The built-in plugins use an internal helper that injects one deduplicated `<style data-blazeplot-plugin-style>` per plugin per document or shadow root and removes it with the last chart that uses it, so the core stylesheet stays free of plugin rules. Do not rely on that helper or on those attributes; they are not public API.
+
 See [Theming and layout](./theming-and-layout.md).
 
 ## Escape hatches
 
-`ctx.unstable` exposes the raw plot canvas, the raw element behind a slot or surface, the chart's `WebGL2RenderingContext`, and the `Camera2D` for each Y axis. They are `@experimental`: they may change in a minor release, and they bypass guarantees the stable groups give you (camera changes skip `ViewportPolicy`; GL state you change can interfere with rendering and is rebuilt after context loss). Use them for prototypes, and open an issue describing what the stable groups are missing.
+`ctx.unstable` exposes the raw plot canvas (a WebGL canvas, or the 2D canvas with the Canvas 2D renderer), the raw element behind a slot or surface, the chart's `WebGL2RenderingContext` (`null` with the Canvas 2D renderer and with `sharedRenderer()`, where the context is not the chart's), and the `Camera2D` for each Y axis. They are `@experimental`: they may change in a minor release, and they bypass guarantees the stable groups give you (camera changes skip `ViewportPolicy`; GL state you change can interfere with rendering and is rebuilt after context loss). Use them for prototypes, and open an issue describing what the stable groups are missing.
 
 ## Importing built-in plugins
 
