@@ -2,8 +2,30 @@ import type { ChartSeriesState } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { rgbaCss } from "./theme.js";
 
+/** Every user-facing string of `legendPlugin`. Unset keys keep their English defaults. */
+export interface LegendMessages {
+  /** Accessible name of the legend group. */
+  readonly ariaLabel: string;
+  /** Tooltip (`title`) of a visible series' toggle button. */
+  readonly hide: (name: string) => string;
+  /** Tooltip (`title`) of a hidden series' toggle button. */
+  readonly show: (name: string) => string;
+  /** Fallback series name when it has neither `name` nor `id`. */
+  readonly seriesName: (mode: string, index: number) => string;
+}
+
+/** English defaults for `LegendMessages`. */
+export const DEFAULT_LEGEND_MESSAGES: LegendMessages = {
+  ariaLabel: "Chart series legend",
+  hide: (name) => `Hide ${name}`,
+  show: (name) => `Show ${name}`,
+  seriesName: (mode, index) => `${mode} ${index + 1}`,
+};
+
 /** Options for the built-in series legend plugin. */
 export interface LegendPluginOptions {
+  /** Override legend strings, for localization. */
+  readonly messages?: Partial<LegendMessages>;
   readonly className?: string;
   readonly position?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
   readonly toggleOnClick?: boolean;
@@ -43,6 +65,7 @@ function renderDefaultLegend(
   options: LegendPluginOptions,
   rows: Map<ChartSeriesState["series"], LegendRow>,
 ): void {
+  const messages: LegendMessages = { ...DEFAULT_LEGEND_MESSAGES, ...options.messages };
   const current = new Set(state.map((item) => item.series));
   for (const [series, row] of rows) {
     if (!current.has(series)) { row.element.remove(); rows.delete(series); }
@@ -73,11 +96,11 @@ function renderDefaultLegend(
       rows.set(item.series, entry);
     }
     const { element, swatch, label } = entry;
-    const name = item.name ?? item.id ?? `${item.mode} ${item.index + 1}`;
+    const name = item.name ?? item.id ?? messages.seriesName(item.mode, item.index);
     if (toggleOnClick) {
       element.setAttribute("aria-pressed", String(item.visible));
       element.setAttribute("aria-label", name);
-      element.title = `${item.visible ? "Hide" : "Show"} ${name}`;
+      element.title = item.visible ? messages.hide(name) : messages.show(name);
     }
     element.style.color = item.visible
       ? options.textColor ?? chart.theme.legendTextColor
@@ -97,6 +120,7 @@ function renderDefaultLegend(
 export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {
+      const messages: LegendMessages = { ...DEFAULT_LEGEND_MESSAGES, ...options.messages };
       const container = chart.dom.document.createElement("div");
       container.className = options.className ?? "blazeplot-legend";
       container.style.position = "absolute";
@@ -111,7 +135,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.style.userSelect = "none";
       container.setAttribute("data-blazeplot-screenshot-box", "");
       container.setAttribute("role", "group");
-      container.setAttribute("aria-label", "Chart series legend");
+      container.setAttribute("aria-label", messages.ariaLabel);
       applyPosition(container, options.position ?? "top-right");
       const unmount = chart.dom.mount("root", container);
 

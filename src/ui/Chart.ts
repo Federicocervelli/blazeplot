@@ -22,8 +22,8 @@ import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import type { SelectionState } from "./Selection.js";
 import { PluginHost } from "./PluginHost.js";
 import type { ChartLayoutReservation, ChartPlugin, ChartPluginEventMap } from "./PluginHost.js";
-import { buildChartSummary } from "./ChartSummary.js";
-import type { ChartSummary } from "./ChartSummary.js";
+import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
+import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 
 /** Vertices in the shared raw line/point/area upload buffer. */
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
@@ -99,8 +99,20 @@ export interface ChartPickOptions {
   readonly maxDistancePx?: number;
 }
 
+/** Overridable core accessibility strings. Unset keys keep their English defaults. */
+export interface ChartAccessibilityMessages {
+  /** Accessible name when the chart has no title. Defaults to `"BlazePlot chart"`. */
+  readonly defaultLabel?: string;
+  /** Wording of the generated summary (`aria-describedby`). */
+  readonly summary?: Partial<ChartSummaryMessages>;
+}
+
 /** ARIA, keyboard-navigation, and high-contrast options for the chart root. */
 export interface ChartAccessibilityOptions {
+  /** BCP 47 locale for counts in generated text. Defaults to `"en-US"`. */
+  readonly locale?: string;
+  /** Override the generated core strings, for localization. */
+  readonly messages?: ChartAccessibilityMessages;
   /** Accessible name. Defaults to the chart title and subtitle, then `"BlazePlot chart"`. */
   readonly label?: string;
   /**
@@ -913,7 +925,13 @@ export class Chart {
    * most once a second from the same data.
    */
   getSummary(): ChartSummary {
-    return buildChartSummary(this.series, (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis));
+    const option = this.options.accessibility;
+    const config = typeof option === "object" ? option : undefined;
+    return buildChartSummary(
+      this.series,
+      (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis),
+      createSummaryMessages(config?.locale ?? "en-US", config?.messages?.summary),
+    );
   }
 
   /** Return metadata for all attached series. */
@@ -1558,7 +1576,7 @@ export class Chart {
     const doc = root.ownerDocument;
     if (root.tabIndex < 0) root.tabIndex = 0;
     root.setAttribute("role", config?.role ?? "figure");
-    root.setAttribute("aria-label", config?.label ?? (title || "BlazePlot chart"));
+    root.setAttribute("aria-label", config?.label ?? (title || config?.messages?.defaultLabel || "BlazePlot chart"));
     this.layout.plot.setAttribute("role", "presentation");
     for (const element of [this.canvas, this.xAxisElement, this.yAxisElement, this.y2AxisElement]) {
       element.setAttribute("aria-hidden", "true");
