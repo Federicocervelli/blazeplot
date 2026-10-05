@@ -147,6 +147,9 @@ describe("shared render context", () => {
   it("only resizes the shared canvas when consecutive charts differ in size", () => {
     const context = createChartRenderContext();
     const [a, b] = mountCharts(2, context) as [ChartType, ChartType];
+    // Charts size their canvas on the first frame or an explicit resize; settle that, then set the test sizes.
+    a.resize();
+    b.resize();
     chartInternals(a).canvas.width = 300;
     chartInternals(a).canvas.height = 100;
     chartInternals(b).canvas.width = 300;
