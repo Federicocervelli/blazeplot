@@ -380,6 +380,7 @@ export class Chart {
     this.seriesStyles.track(series, style, slot);
     series.bindStyleHandler((target, options) => this.seriesStyles.set(target, options));
     this.series.push(series);
+    this.engine.prepare?.(config.mode, series.style.lineWidth);
     if (this.a11y.forcedColorsActive) this.a11y.applyForcedSeriesStyles();
     this.emitSeriesChange();
     return series;

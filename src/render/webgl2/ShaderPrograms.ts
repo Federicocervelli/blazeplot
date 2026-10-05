@@ -15,3 +15,6 @@ export const ShaderPrograms = {
   bar: { vert: barVert, frag: solidFrag },
   rect: { vert: rectVert, frag: rectFrag },
 } as const;
+
+/** A built-in program: the key into {@link ShaderPrograms}. */
+export type ProgramName = keyof typeof ShaderPrograms;

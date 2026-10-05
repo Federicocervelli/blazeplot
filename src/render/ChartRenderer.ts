@@ -1,4 +1,4 @@
-import type { RgbaColor, SeriesStyle } from "../core/types.js";
+import type { RgbaColor, SeriesMode, SeriesStyle } from "../core/types.js";
 
 /** Linear projection uniforms used by renderer draw calls. */
 export interface RenderProjection {
@@ -123,6 +123,11 @@ export interface ChartRenderer extends ChartRendererHandle {
   setLossListener(listener: ((state: RendererLossState) => void) | null): void;
   /** Filled rectangles with per-rectangle colors; see {@link ChartRenderSurface.fillRects}. */
   fillRects(rects: Float32Array, count: number): void;
+  /**
+   * Hint that a series of `mode` with `lineWidth` CSS pixel lines is about to be drawn, so a GPU engine
+   * can start building the programs it will need before the first frame. Optional and purely advisory.
+   */
+  prepare?(mode: SeriesMode, lineWidth: number): void;
   /** A second drawing surface on `canvas` that uses this same engine, for layers a plugin owns. Dispose it separately. */
   createSurface(canvas: HTMLCanvasElement): ChartRenderer;
   /** @internal Escape hatch for plugins that draw with their own GL: the engine's exclusive WebGL2 context, if it owns one. */
