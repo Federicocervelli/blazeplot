@@ -82,7 +82,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `AxisScale` | type | `./interaction/AxisController` | Built-in scale name or custom scale implementation. |
 | `AxisTickFormat` | type | `./interaction/AxisController` | Built-in format string or custom tick formatter. |
 | `AxisTickFormatter` | type | `./interaction/AxisController` | Function form for formatting axis tick values. |
-| `AxisTimeZone` | type | `./interaction/AxisController` | Time zone used for built-in time tick formatting. |
+| `AxisTimeZone` | type | `./interaction/timeAxis` | Time axis math: the tick interval ladder, flooring and advancing dates in local or UTC time, and tick label formatting (patterns and the automatic two-level labels). Pure functions, no camera. Time zone used for built-in time tick formatting. |
 | `BufferOverflowStrategy` | type | `./core/types` | Behavior when a fixed-capacity streaming buffer is full. |
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | Built-in axis scale names. |
 | `Camera2D` | class | `./interaction/Camera2D` | Camera that maps data domains to clip, screen, and plot coordinates. |
