@@ -187,8 +187,8 @@ class SharedWebGLRenderer implements ChartRenderer {
     this.shared.active.drawPoints(data, pointCount, color, pointSize, projection);
   }
 
-  drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection): void {
-    this.shared.active.drawBarsInstanced(data, barCount, style, projection);
+  drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection, yOrigin: number = 0): void {
+    this.shared.active.drawBarsInstanced(data, barCount, style, projection, yOrigin);
   }
 
   drawTriangles(data: Float32Array, vertexCount: number, color: RgbaColor, projection: RenderProjection, primitive?: "triangles" | "triangle_strip"): void {
