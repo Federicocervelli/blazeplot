@@ -23,26 +23,26 @@ Headline numbers from the manual headed comparison against uPlot and Chart.js, o
 
 | Scenario | Metric | BlazePlot | BlazePlot (Canvas 2D) | uPlot | Chart.js | Winner | BlazePlot vs uPlot | BlazePlot vs Chart.js |
 |---|---|---:|---:|---:|---:|---|---:|---:|
-| line-100k-static | Ready (ms) | 6.50 | 4.21 | 3.22 | 3.68 | tie (uPlot, Chart.js) | 0.50× | 0.57× |
-| line-1m-static | Ready (ms) | 9.78 | 7.86 | 10.44 | 16.02 | tie (BlazePlot, uPlot, Chart.js) | 1.07× | 1.64× |
-| cold-first-chart | Ready (ms) | 15.53 | 13.04 | **10.31** | 18.45 | uPlot | 0.66× | 1.19× |
-| line-1m-pan | FPS (fps, higher is better) | **1008** | 630 | 694 | 521 | BlazePlot | 1.45× | 1.93× |
-| line-1m-stream | FPS (fps, higher is better) | **999** | 630 | 690 | 504 | BlazePlot | 1.45× | 1.98× |
-| line-10m-accelerated-pan | FPS (fps, higher is better) | **1904** | 934 | 26.0 | 23.8 | BlazePlot | 73.2× | 80.1× |
-| multi-10x100k-pan | FPS (fps, higher is better) | **235** | 98.3 | 137 | 110 | BlazePlot | 1.72× | 2.14× |
-| multi-100x20k-pan | FPS (fps, higher is better) | **132** | 13.0 | 30.4 | 18.5 | BlazePlot | 4.36× | 7.16× |
-| area-1m-pan | FPS (fps, higher is better) | **1296** | 886 | 676 | 464 | BlazePlot | 1.92× | 2.80× |
-| scatter-1m-pan | FPS (fps, higher is better) | **1489** | 283 | 34.8 | 3.1 | BlazePlot | 42.8× | 478.9× |
-| bar-100k-pan | FPS (fps, higher is better) | **1785** | 473 | 768 | 3.9 | BlazePlot | 2.33× | 460.0× |
-| dual-axis-1m-pan | FPS (fps, higher is better) | **621** | 358 | 373 | 296 | BlazePlot | 1.66× | 2.09× |
-| hover-1m | Hover p50 (ms) | 0.45 | 0.45 | **0.22** | 0.34 | uPlot | 0.49× | 0.76× |
-| resize-1m | Resize p50 (ms) | **37.55** | 37.08 | 43.06 | 43.54 | BlazePlot | 1.15× | 1.16× |
-| many-charts-50 | Ready (ms) | 40.16 | 46.91 | **21.02** | 47.62 | uPlot | 0.52× | 1.19× |
-| mount-destroy-cycle | Cycle p50 (ms) | 4.70 | 2.48 | **1.67** | 2.18 | uPlot | 0.36× | 0.46× |
-| heap-soak-1m-pan | Heap growth (MiB) | 0.4 | 0.3 | 0.2 | 0.4 | tie (uPlot, BlazePlot) | 0.45× | 1.11× |
+| line-100k-static | Ready (ms) | 6.71 | 4.38 | 3.13 | 3.79 | tie (uPlot, Chart.js) | 0.47× | 0.56× |
+| line-1m-static | Ready (ms) | 9.93 | 8.12 | 10.90 | 15.69 | tie (BlazePlot, uPlot, Chart.js) | 1.10× | 1.58× |
+| cold-first-chart | Ready (ms) | 16.29 | 13.81 | **10.82** | 19.32 | uPlot | 0.66× | 1.19× |
+| line-1m-pan | FPS (fps, higher is better) | **993** | 622 | 680 | 514 | BlazePlot | 1.46× | 1.93× |
+| line-1m-stream | FPS (fps, higher is better) | **1000** | 623 | 691 | 497 | BlazePlot | 1.45× | 2.01× |
+| line-10m-accelerated-pan | FPS (fps, higher is better) | **1809** | 904 | 26.5 | 23.9 | BlazePlot | 68.2× | 75.6× |
+| multi-10x100k-pan | FPS (fps, higher is better) | **236** | 97.2 | 136 | 108 | BlazePlot | 1.73× | 2.18× |
+| multi-100x20k-pan | FPS (fps, higher is better) | **134** | 12.1 | 29.7 | 17.9 | BlazePlot | 4.51× | 7.48× |
+| area-1m-pan | FPS (fps, higher is better) | **1246** | 861 | 669 | 459 | BlazePlot | 1.86× | 2.71× |
+| scatter-1m-pan | FPS (fps, higher is better) | **1493** | 286 | 33.0 | 3.3 | BlazePlot | 45.3× | 459.2× |
+| bar-100k-pan | FPS (fps, higher is better) | **1774** | 475 | 755 | 3.8 | BlazePlot | 2.35× | 468.1× |
+| dual-axis-1m-pan | FPS (fps, higher is better) | **594** | 350 | 365 | 251 | BlazePlot | 1.63× | 2.36× |
+| hover-1m | Hover p50 (ms) | 0.47 | 0.47 | **0.23** | 0.35 | uPlot | 0.48× | 0.76× |
+| resize-1m | Resize p50 (ms) | **37.58** | 37.55 | 43.40 | 44.05 | BlazePlot | 1.16× | 1.17× |
+| many-charts-50 | Ready (ms) | 42.16 | 49.19 | **21.80** | 51.01 | uPlot | 0.52× | 1.21× |
+| mount-destroy-cycle | Cycle p50 (ms) | 4.83 | 2.62 | **1.76** | 2.33 | uPlot | 0.36× | 0.48× |
+| heap-soak-1m-pan | Heap growth (MiB) | 0.4 | 0.3 | 0.2 | 0.4 | tie (uPlot, BlazePlot) | 0.46× | 1.12× |
 | stream-throughput | Max rate (k samples/s, higher is better) | 102400 | 102400 | 51200 | 3200 | tie (BlazePlot, uPlot) | 2.00× | 32.0× |
 
-Across 18 scenarios and 150 metric comparisons against uPlot and Chart.js, BlazePlot (WebGL) clearly wins 109, is within noise on 10, and loses 31.
+Across 18 scenarios and 150 metric comparisons against uPlot and Chart.js, BlazePlot (WebGL) clearly wins 109, is within noise on 11, and loses 30.
 
 Measured 2026-10-05 on AMD Ryzen 7 7800X3D 8-Core Processor (16 logical CPUs), AMD Radeon RX 9070 (0x00007550) Direct3D11 vs_5_0 ps_5_0, Chrome/153.0.8010.12, 1280x720 CSS px chart, 7 fresh-page runs per cell. Every metric, spread, and the full list of scenarios where BlazePlot does not clearly win: [docs/benchmarks.md](docs/benchmarks.md). Reproduce with `bun run bench:compare`.
 <!-- README_PERFORMANCE_END -->
