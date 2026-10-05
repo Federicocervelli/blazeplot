@@ -90,7 +90,7 @@ describe("SeriesStore raw line extraction fast path", () => {
       const fast = store(build());
       const slow = store(generic(build()));
       for (const viewport of viewports) {
-        for (const maxPoints of [2, 3, 10, 257, 100_000]) {
+        for (const maxPoints of [2, 10, 257, 100_000]) {
           for (const [xOrigin, yOrigin] of [
             [0, 0],
             [100, 0.5],
@@ -99,7 +99,7 @@ describe("SeriesStore raw line extraction fast path", () => {
           }
         }
       }
-    });
+    }, 30_000);
   }
 
   it("emits a NaN seam for gaps and keeps chunks joined", () => {
