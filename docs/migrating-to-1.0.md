@@ -271,7 +271,7 @@ import type { ChartPlugin } from "blazeplot";
 
 const footerPlugin: ChartPlugin = {
   install(ctx) {
-    const footer = document.createElement("div");
+    const footer = ctx.dom.create("div");
     ctx.dom.mount("root", footer);
     ctx.layout.reserve({ bottom: 28 });
     ctx.events.subscribe("render", () => {
@@ -295,6 +295,7 @@ See [Plugin authoring](./plugin-authoring.md) for the full contract, mount slots
 | No focus styles of its own | A `<style class="blazeplot-style">` element inside the chart root adds 2px `:focus-visible` rings (theme token `focusRingColor`) and forced-colors rules. Tests that count `<style>` elements in the root should skip `.blazeplot-style`. |
 | Canvas ignored OS high-contrast mode | In `forced-colors: active`, the canvas and series use system colors, and switch back when the mode ends. Opt out with `accessibility.forcedColors: false`. |
 | `ResolvedChartTheme` | Has a new required `focusRingColor` token. Objects you build as a full `ResolvedChartTheme` (rather than a partial `ChartTheme`) need it. |
+| Arrow, `+`/`-`, PageUp/PageDown, and Home/`0` keys panned, zoomed, and fitted every focused chart (`accessibility.keyboard`, `ChartKeyboardOptions`) | Only charts with `interactionsPlugin()` navigate by keyboard, so a chart without it keeps its viewport. Tune with `interactionsPlugin({ keyboard: { panFraction, zoomFactor } })` or turn off with `keyboard: false`. `accessibility.keyboard` and `ChartKeyboardOptions` are removed. |
 | Shift + Arrow keys always panned 2.5x | With `selectionPlugin` installed (and `keyboard` not `false`), Shift + Arrow extends a keyboard selection instead, and Enter commits it. |
 | Escape always cleared the selection | The selection's Escape handler ignores events that another handler already `preventDefault()`ed (for example leaving keyboard inspection). |
 | Annotations were not focusable | Each visible annotation is a Tab stop with `role="button"`. Pass `focusable: false` to `annotationsPlugin` to keep the old Tab order. |
@@ -368,6 +369,22 @@ chart.dispose();
 - **Default series colors no longer repeat after `removeSeries`.** A new series takes the first palette color that no attached palette-colored series uses (it used `series.length % palette.length`). Palette-colored series now follow `chart.setTheme(...)`; series with an explicit `color` do not. New: `series.setStyle(options)` merges style options after creation.
 - **The navigator overview uses `series.dataBounds()` and a min/max envelope for dense series.** Spikes between samples now show up in the overview and its Y domain, and series that start or end with a gap are no longer dropped. `maxSamplesPerSeries` now sets the size up to which a series draws as an exact polyline.
 - **`downsample: "none"` line and bar series draw every visible sample.** Past 16,384 visible samples (4,096 bars on the non-instanced path) they used to stop drawing partway across the plot. No code change is needed.
+
+### 12. Gesture handling
+
+- **`touch-action` is no longer forced.** A chart without `interactionsPlugin` (or another plugin that asks for it) no longer sets `touch-action: none`, so one-finger swipes scroll the page. `interactionsPlugin` and `selectionPlugin` set it themselves, and the tooltip and crosshair long press use `pan-y`. If you relied on the old default for your own touch handling, request it with `ctx.dom.decorate("plot", { style: { touchAction: "none" } })`. `touchAction` decorations now combine by intersection.
+- **Touch input uses Pointer Events only.** The built-in plugins no longer register `touchstart`, `touchmove`, `touchend`, or `touchcancel` listeners. If a custom plugin listens for those on the plot, listen for `pointerdown`, `pointermove`, `pointerup`, and `pointercancel` and check `event.pointerType === "touch"`.
+- **Pointer gestures are arbitrated.** Plugins claim a drag with `ctx.dom.claimPointer(event)`. With `interactionsPlugin` and `selectionPlugin` both at their defaults, a plain drag now selects and no longer also box-zooms; use `interactionsPlugin({ boxZoomModifier: "alt" })` to keep box zoom. `selectionPlugin` now ignores presses with Shift, Alt, or Ctrl/Cmd held unless you set `modifier`.
+- **New cooperative options.** `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger" })` leaves plain wheel and one-finger input to the page. See [Built-in plugins](./built-in-plugins.md#cooperative-gestures-on-scrolling-pages).
+
+### 13. Rendering fixes that change how charts look
+
+| 0.5 | 1.0 |
+|---|---|
+| Translucent colors replaced the pixel underneath. An area fill erased the grid lines, and the later of two overlapping translucent series hid the earlier one. | Colors with alpha blend over what is already drawn. Charts that used translucent fills, grid colors, or series colors may look different where shapes overlap. |
+| `pointSize` was a diameter in device pixels, so scatter markers were half as large on a 2x display. Markers were squares. | `pointSize` is a diameter in CSS pixels, like `lineWidth`, and markers are round. Scale `pointSize` down if you compensated for the old behavior. |
+| Dense area series (more than 8,192 visible samples) kept one sample per stride bucket, so spikes could disappear. | Dense area series render from min/max buckets, so peaks and dips survive at every zoom level. |
+| Lines drawn at a large Y offset (for example `1e6 + 0.01`) were quantized to float32 and rendered as a staircase. | Y is shifted by the viewport origin before upload, so they render smoothly. No API change. |
 
 ## Platform requirements
 
@@ -449,5 +466,6 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 9. If you write custom plugins, port them to the grouped plugin context with the table in change 8 (search for `install(`, `setLayoutReservation`, `rootElement`, `plotElement`, `getCamera`, and `render:` callbacks of the legend, tooltip, and crosshair plugins). The new contract is stable. If you implement custom fast-path datasets or use `ctx.unstable`, note they are experimental: pin a 1.x range and read each minor changelog.
 10. Apply the renames in change 10: search for `followLatestX`, `stopFollowingLatestX`, `setXFollowPaused`, `getXFollowState`, `ChartXFollowState`, `ChartPointerEventState`, `LODStrategy`, `chartDataToCSV`, `sharedX`, `labelBackground`, the `fill`/`stroke`/`background`/`window*` options of `selectionPlugin` and `navigatorPlugin`, and `chart.getCamera`, `chart.getWebGLContext`, `chart.canvas`, `chart.plotElement`, and the `*AxisElement` getters.
 11. Check change 9 if you style or test the chart root: search for `role="img"`, `aria-description`, `querySelector("style")` on the chart root, and full `ResolvedChartTheme` objects (add `focusRingColor`). Give each chart an `accessibility.label`, and consider `a11yPlugin()` for charts whose values users need.
-12. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-13. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
+12. If you use `interactionsPlugin` with `selectionPlugin`, or write custom touch or drag plugins, read change 12: check `touch-action`, touch listeners, and which plugin owns a plain drag.
+13. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
+14. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.

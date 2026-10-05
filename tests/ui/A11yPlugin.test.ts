@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, jest } from "bun:test";
 import { OhlcRingBuffer } from "../../src/index.ts";
 import { a11yPlugin } from "../../src/plugins/a11y.ts";
 import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
+import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import { tooltipPlugin } from "../../src/plugins/tooltip.ts";
 import { sampleTableIndices } from "../../src/ui/A11y.ts";
 import type { A11yPluginOptions } from "../../src/ui/A11y.ts";
@@ -16,7 +17,8 @@ afterEach(() => {
 
 function make(options: A11yPluginOptions = {}, chartOptions: ChartOptions = {}): { chart: Chart; plugin: ReturnType<typeof a11yPlugin> } {
   const plugin = a11yPlugin(options);
-  const chart = h.make({ ...chartOptions, plugins: [plugin, ...(chartOptions.plugins ?? [])] });
+  // interactionsPlugin supplies the chart keys (arrows, +/-) that inspection takes priority over.
+  const chart = h.make({ ...chartOptions, plugins: [plugin, interactionsPlugin(), ...(chartOptions.plugins ?? [])] });
   chart.setViewport({ xMin: 0, xMax: 10, yMin: 0, yMax: 100 });
   return { chart, plugin };
 }

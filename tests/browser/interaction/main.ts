@@ -116,7 +116,7 @@ declare global {
   }
 }
 
-type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow" | "robustness" | "a11y";
+type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow" | "robustness" | "a11y" | "arbitration" | "plain" | "cooperative";
 
 const params = new URLSearchParams(window.location.search);
 const rawCase = params.get("case");
@@ -130,6 +130,9 @@ const caseName: InteractionCase = rawCase === "selection"
   || rawCase === "continuous-render-loop"
   || rawCase === "live-follow"
   || rawCase === "robustness"
+  || rawCase === "arbitration"
+  || rawCase === "plain"
+  || rawCase === "cooperative"
   ? rawCase
   : "interactions";
 const chartTarget = requireElement<HTMLElement>("chart");
@@ -187,7 +190,22 @@ if (caseName === "a11y") {
   });
   charts.push(...linked.charts);
 } else {
-  const plugins: ChartPlugin[] = caseName === "selection"
+  const plugins: ChartPlugin[] = caseName === "plain"
+    ? []
+    : caseName === "cooperative"
+    ? [interactionsPlugin({ minDragDistancePx: 4, wheelZoom: "modifier", touchPan: "two-finger" })]
+    : caseName === "arbitration"
+    // Both plugins at their defaults: one plain drag must do exactly one thing.
+    ? [interactionsPlugin({ minDragDistancePx: 4 }), selection = selectionPlugin({
+        mode: "xy",
+        minDragDistancePx: 4,
+        onChange: (event) => {
+          if (event.type !== "commit") return;
+          selectionCommits++;
+          selectionBounds = event.selection?.bounds ?? null;
+        },
+      })]
+    : caseName === "selection"
     ? [selection = selectionPlugin({
         mode: "xy",
         minDragDistancePx: 4,

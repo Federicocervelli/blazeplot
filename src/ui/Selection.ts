@@ -1,6 +1,6 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { ChartPlugin, ChartPluginContext, ChartRect } from "./PluginHost.js";
-import { clamp, createOverlayLayer } from "./OverlayUtils.js";
+import { asElement, clamp, createOverlayLayer, dragModifierMatches, singleChartPlugin } from "./OverlayUtils.js";
 
 /** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
@@ -34,14 +34,50 @@ export interface SelectionEvent {
   readonly sourceEvent?: PointerEvent | KeyboardEvent;
 }
 
+/** Every user-facing string of `selectionPlugin`. Unset keys keep their English defaults. */
+export interface SelectionMessages {
+  /** Announced when a selection is cleared. */
+  readonly cleared: string;
+  /** Announced when a keyboard selection is cancelled with Escape. */
+  readonly cancelled: string;
+  /** Announced while extending a keyboard selection. `starting` is true for the first step. */
+  readonly selecting: (description: string, starting: boolean) => string;
+  /** Announced when a keyboard selection is committed. */
+  readonly selected: (description: string) => string;
+  readonly xRange: (from: string, to: string) => string;
+  readonly yRange: (from: string, to: string) => string;
+  /** Joins the X and Y descriptions of an `"xy"` selection. */
+  readonly join: (x: string, y: string) => string;
+}
+
+/** English defaults for `SelectionMessages`. */
+export const DEFAULT_SELECTION_MESSAGES: SelectionMessages = {
+  cleared: "Selection cleared.",
+  cancelled: "Selection cancelled.",
+  selecting: (description, starting) => `Selecting ${description}.${starting ? " Enter commits, Escape cancels." : ""}`,
+  selected: (description) => `Selected ${description}.`,
+  xRange: (from, to) => `X from ${from} to ${to}`,
+  yRange: (from, to) => `Y from ${from} to ${to}`,
+  join: (x, y) => `${x}, ${y}`,
+};
+
 /** Options for drag-to-select chart interaction. */
 export interface SelectionPluginOptions {
+  /** Override announcement strings, for localization. */
+  readonly messages?: Partial<SelectionMessages>;
   /** Defaults to `"xy"`. */
   readonly mode?: SelectionMode;
   /** Y axis whose domain the selection measures. Defaults to `"left"`. */
   readonly yAxis?: SeriesYAxis;
   /** Drags shorter than this are ignored. Defaults to 4. */
   readonly minDragDistancePx?: number;
+  /**
+   * Modifier that starts a selection drag. Defaults to `"none"`: a plain drag with no Shift,
+   * Alt, or Ctrl/Cmd held. Pick another key when a plain drag belongs to another plugin.
+   * The plugin claims the pointer through `ctx.dom.claimPointer`, so another plugin's drag on
+   * the same pointer never runs twice.
+   */
+  readonly modifier?: "none" | "shift" | "alt" | "ctrl";
   readonly className?: string;
   /** Rectangle fill. Defaults to `theme.selectionFillColor`. */
   readonly fillColor?: string;
@@ -124,6 +160,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
   /** Keyboard range being extended: data coordinates on `yAxis`. */
   let keyDrag: { readonly anchor: [number, number]; current: [number, number] } | null = null;
   let announce: ((text: string) => void) | null = null;
+  const messages: SelectionMessages = { ...DEFAULT_SELECTION_MESSAGES, ...options.messages };
 
   const emit = (type: SelectionEventType, selection: SelectionState | null, sourceEvent?: PointerEvent | KeyboardEvent): void => {
     options.onChange?.({ type, selection, sourceEvent });
@@ -163,27 +200,29 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     setOverlay(null);
     chartRef?.events.emit("select", { selection: null });
     emit("clear", null, sourceEvent);
-    if (hadSelection) announce?.("Selection cleared.");
+    if (hadSelection) announce?.(messages.cleared);
   };
 
-  return {
+  return singleChartPlugin("selection", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
       // Pointer capture goes to the element that received the press (the plot surface).
       let captureTarget: Element | null = null;
-      overlay = createOverlayLayer(options.className ?? "blazeplot-selection-brush", { zIndex: options.zIndex ?? 26 });
+      overlay = createOverlayLayer(chart.dom.document, options.className ?? "blazeplot-selection-brush", { zIndex: options.zIndex ?? 26 });
       const applyTheme = (): void => {
         if (!overlay) return;
         overlay.style.border = `1px solid ${options.strokeColor ?? chart.theme.selectionStrokeColor}`;
         overlay.style.background = options.fillColor ?? chart.theme.selectionFillColor;
       };
       applyTheme();
-      const unmount = chart.dom.mount("plot", overlay);
+      chart.dom.mount("plot", overlay);
+      // A touch drag selects instead of scrolling the page.
+      chart.dom.decorate("plot", { style: { touchAction: "none" } });
 
       const onPointerDown = (event: PointerEvent): void => {
-        if (drag || event.button !== 0) return;
+        if (drag || event.button !== 0 || !dragModifierMatches(event, options.modifier) || !chart.dom.claimPointer(event)) return;
         event.preventDefault();
-        captureTarget = event.currentTarget instanceof Element ? event.currentTarget : null;
+        captureTarget = asElement(event.currentTarget);
         captureTarget?.setPointerCapture(event.pointerId);
         drag = {
           pointerId: event.pointerId,
@@ -248,7 +287,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
       const keyStep = typeof keyboard?.step === "number" && Number.isFinite(keyboard.step) && keyboard.step > 0 ? Math.min(1, keyboard.step) : 0.05;
       let liveRegion: HTMLDivElement | null = null;
       if (keyboard) {
-        liveRegion = document.createElement("div");
+        liveRegion = chart.dom.document.createElement("div");
         liveRegion.className = "blazeplot-visually-hidden blazeplot-selection-status";
         liveRegion.setAttribute("role", "status");
         liveRegion.setAttribute("aria-live", "polite");
@@ -262,9 +301,9 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         };
       }
       const describe = (bounds: Viewport): string => {
-        const x = `X from ${chart.coords.format(bounds.xMin, "x", yAxis)} to ${chart.coords.format(bounds.xMax, "x", yAxis)}`;
-        const y = `Y from ${chart.coords.format(bounds.yMin, "y", yAxis)} to ${chart.coords.format(bounds.yMax, "y", yAxis)}`;
-        return mode === "x-range" ? x : mode === "y-range" ? y : `${x}, ${y}`;
+        const x = messages.xRange(chart.coords.format(bounds.xMin, "x", yAxis), chart.coords.format(bounds.xMax, "x", yAxis));
+        const y = messages.yRange(chart.coords.format(bounds.yMin, "y", yAxis), chart.coords.format(bounds.yMax, "y", yAxis));
+        return mode === "x-range" ? x : mode === "y-range" ? y : messages.join(x, y);
       };
       const keySelection = (): SelectionState | null => {
         if (!keyDrag) return null;
@@ -299,7 +338,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         const selection = keySelection();
         setOverlay(selection?.plotBounds ?? null);
         emit(starting ? "start" : "update", selection, event);
-        if (selection) announce?.(`Selecting ${describe(selection.bounds)}.${starting ? " Enter commits, Escape cancels." : ""}`);
+        if (selection) announce?.(messages.selecting(describe(selection.bounds), starting));
       };
       const commitKeySelection = (event: KeyboardEvent): boolean => {
         const selection = keySelection();
@@ -309,7 +348,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         setOverlay(selection.plotBounds);
         chart.events.emit("select", { selection });
         emit("commit", selection, event);
-        announce?.(`Selected ${describe(selection.bounds)}.`);
+        announce?.(messages.selected(describe(selection.bounds)));
         return true;
       };
       const onRootKeyDown = (event: KeyboardEvent): void => {
@@ -334,7 +373,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
             if (!keyDrag) return;
             keyDrag = null;
             setOverlay(committedSelection?.plotBounds ?? null);
-            announce?.("Selection cancelled.");
+            announce?.(messages.cancelled);
             break;
           default:
             handled = false;
@@ -359,28 +398,24 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         setOverlay(committedSelection.plotBounds);
       };
 
-      const unlisten = [
-        chart.dom.listen("plot", "pointerdown", onPointerDown),
-        chart.dom.listen("plot", "pointermove", onPointerMove),
-        chart.dom.listen("plot", "pointerup", onPointerUp),
-        chart.dom.listen("plot", "pointercancel", onPointerCancel),
-        // Capture runs before the chart's own Shift+Arrow pan on the same root element.
-        chart.dom.listen("root", "keydown", onRootKeyDown, { capture: true }),
-      ];
-      globalThis.addEventListener("pointerdown", armEscape, { capture: true });
-      globalThis.addEventListener("focusin", armEscape, { capture: true });
-      globalThis.addEventListener("keydown", onKeyDown);
-      const unsubscribeRender = chart.events.subscribe("render", onRender);
+      // Capture phase: with default options a plain drag selects instead of box-zooming,
+      // whichever plugin was installed first.
+      chart.dom.listen("plot", "pointerdown", onPointerDown, { capture: true });
+      chart.dom.listen("plot", "pointermove", onPointerMove);
+      chart.dom.listen("plot", "pointerup", onPointerUp);
+      chart.dom.listen("plot", "pointercancel", onPointerCancel);
+      chart.dom.listen("root", "keydown", onRootKeyDown, { capture: true });
+      chart.dom.view.addEventListener("pointerdown", armEscape, { capture: true });
+      chart.dom.view.addEventListener("focusin", armEscape, { capture: true });
+      chart.dom.view.addEventListener("keydown", onKeyDown);
+      chart.events.subscribe("render", onRender);
 
       return {
         onThemeChange: applyTheme,
         dispose() {
-          for (const off of unlisten) off();
-          globalThis.removeEventListener("pointerdown", armEscape, { capture: true });
-          globalThis.removeEventListener("focusin", armEscape, { capture: true });
-          globalThis.removeEventListener("keydown", onKeyDown);
-          unsubscribeRender();
-          unmount();
+          chart.dom.view.removeEventListener("pointerdown", armEscape, { capture: true });
+          chart.dom.view.removeEventListener("focusin", armEscape, { capture: true });
+          chart.dom.view.removeEventListener("keydown", onKeyDown);
           overlay = null;
           chartRef = null;
           drag = null;
@@ -398,5 +433,5 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     getSelection(): SelectionState | null {
       return committedSelection;
     },
-  };
+  });
 }

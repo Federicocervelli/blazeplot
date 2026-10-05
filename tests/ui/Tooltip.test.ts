@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { tooltipPlugin } from "../../src/plugins/tooltip.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
 import { countNodes } from "./fakes.ts";
-import { fire, installPlugin, pointerEvent, stubBox, touchEvent, useChartHarness } from "./harness.ts";
+import { fire, installPlugin, pointerEvent, stubBox, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();
 
@@ -197,38 +197,49 @@ describe("tooltipPlugin", () => {
     off.dispose();
   });
 
-  it("supports touch events: shows after a still long press, then follows the finger", async () => {
+  it("long press shows after a still hold, follows the finger, and cancels on drift or a second finger", async () => {
+    const touch = (type: string, x: number, y: number, pointerId = 1): PointerEvent => pointerEvent(type, x, y, { pointerType: "touch", pointerId });
     const chart = h.make({ plugins: [tooltipPlugin({ longPressMs: 1 })] });
     seed(chart);
     const tip = tooltipOf();
-    fire(chart.canvas, touchEvent("touchstart", [{ clientX: 200, clientY: 100 }]));
+    fire(chart.canvas, touch("pointerdown", 200, 100));
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(tip.getAttribute("aria-hidden")).toBe("false");
     expect(tip.textContent).toContain("(5, 50)");
-    // Once active, moves are claimed so the page does not scroll, and the tooltip follows.
-    const move = touchEvent("touchmove", [{ clientX: 240, clientY: 100 }]);
+    // Once active, moves are claimed so other gesture handlers skip them, and the tooltip follows.
+    const move = touch("pointermove", 240, 100);
     fire(chart.canvas, move);
     expect(move.defaultPrevented).toBe(true);
     expect(tip.textContent).toContain("(6, 60)");
-    fire(chart.canvas, touchEvent("touchend", [], [{ clientX: 240, clientY: 100 }]));
+    fire(chart.canvas, touch("pointerup", 240, 100));
     chart.dispose();
 
     const moved = h.make({ plugins: [tooltipPlugin({ longPressMs: 20 })] });
     seed(moved);
     const movedTip = tooltipOf();
-    fire(moved.canvas, touchEvent("touchstart", [{ clientX: 200, clientY: 100 }]));
+    fire(moved.canvas, touch("pointerdown", 200, 100));
     // Moving more than the threshold before the delay cancels the press.
-    fire(moved.canvas, touchEvent("touchmove", [{ clientX: 260, clientY: 100 }]));
+    fire(moved.canvas, touch("pointermove", 260, 100));
     await new Promise((resolve) => setTimeout(resolve, 40));
     expect(movedTip.getAttribute("aria-hidden")).toBe("true");
     moved.dispose();
 
     const multi = h.make({ plugins: [tooltipPlugin({ longPressMs: 1 })] });
     seed(multi);
-    fire(multi.canvas, touchEvent("touchstart", [{ clientX: 200, clientY: 100 }, { clientX: 220, clientY: 100 }]));
+    fire(multi.canvas, touch("pointerdown", 200, 100, 1));
+    fire(multi.canvas, touch("pointerdown", 220, 100, 2));
     await new Promise((resolve) => setTimeout(resolve, 15));
     expect(tooltipOf().getAttribute("aria-hidden")).toBe("true");
     multi.dispose();
+  });
+
+  it("lets the page scroll vertically but keeps sideways long-press drags", () => {
+    const chart = h.make({ plugins: [tooltipPlugin()] });
+    expect(chart.canvas.style.touchAction).toBe("pan-y");
+    chart.dispose();
+    const off = h.make({ plugins: [tooltipPlugin({ longPressMs: false })] });
+    expect(off.canvas.style.touchAction).toBe("");
+    off.dispose();
   });
 
   it("removes its DOM, listeners, and pending frames on dispose", () => {

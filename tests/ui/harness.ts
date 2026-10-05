@@ -90,22 +90,6 @@ export function keyEvent(key: string, init: { shiftKey?: boolean; ctrlKey?: bool
 }
 
 /**
- * Build a touch event whose `touches` list exposes `item()` like a real `TouchList`
- * (happy-dom exposes a plain array).
- */
-export function touchEvent(type: string, points: ReadonlyArray<{ clientX: number; clientY: number }>, changed: ReadonlyArray<{ clientX: number; clientY: number }> = points): TouchEvent {
-  const list = (items: ReadonlyArray<{ clientX: number; clientY: number }>): TouchList => {
-    const copy = [...items] as unknown as TouchList & Array<unknown>;
-    (copy as unknown as { item(index: number): unknown }).item = (index: number) => items[index] ?? null;
-    return copy;
-  };
-  const event = new window.Event(type, { bubbles: true, cancelable: true }) as unknown as TouchEvent;
-  Object.defineProperty(event, "touches", { value: list(points) });
-  Object.defineProperty(event, "changedTouches", { value: list(changed) });
-  return event;
-}
-
-/**
  * Install `plugin` on a live chart and return a function that disposes just that plugin,
  * normalizing the function, handle, and void return forms.
  */

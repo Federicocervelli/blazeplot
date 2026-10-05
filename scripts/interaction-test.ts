@@ -105,6 +105,9 @@ async function main(): Promise<void> {
     const cases: ReadonlyArray<readonly [string, (options: Options, serverUrl: string) => Promise<void>]> = [
       ["interactions", runInteractionsCase],
       ["selection", runSelectionCase],
+      ["arbitration", runArbitrationCase],
+      ["touch-action", runTouchActionCase],
+      ["cooperative", runCooperativeCase],
       ["linked", runLinkedCase],
       ["mobile", runMobileCase],
       ["mobile-longpress", runMobileLongPressCase],
@@ -396,6 +399,89 @@ async function runLinkedCase(options: Options, serverUrl: string): Promise<void>
     assert(after.visibleCrosshairs >= 2, "linked crosshairs are visible on both charts");
     assert(after.visibleTooltips >= 2, "linked tooltips are visible on both charts");
     console.log("✓ linked: synchronized crosshair and tooltip");
+  } finally {
+    cdp.close();
+  }
+}
+
+/** Interactions and selection at their defaults share the plain drag: it must select once and not zoom. */
+async function runArbitrationCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "arbitration");
+  try {
+    const snapshot = await waitForReady(cdp, options.timeoutMs);
+    const rect = snapshot.canvasRect;
+    await drag(cdp, rect.left + rect.width * 0.2, rect.top + rect.height * 0.2, rect.left + rect.width * 0.7, rect.top + rect.height * 0.65, 0);
+    await sleep(200);
+    const after = await getRequiredSnapshot(cdp);
+    assert(after.selectionCommits === 1, "plain drag commits exactly one selection");
+    assert(close(spanX(after.viewport), spanX(snapshot.viewport), 1e-6), "plain drag does not also box-zoom x");
+    assert(close(spanY(after.viewport), spanY(snapshot.viewport), 1e-6), "plain drag does not also box-zoom y");
+    console.log("✓ arbitration: one plain drag, one action");
+  } finally {
+    cdp.close();
+  }
+}
+
+/** `wheelZoom: "modifier"` and `touchPan: "two-finger"` leave one-finger and plain-wheel input to the page. */
+async function runCooperativeCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "cooperative");
+  try {
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
+    let snapshot = await waitForReady(cdp, options.timeoutMs);
+    const center = centerOf(snapshot.canvasRect);
+    const initialSpan = spanX(snapshot.viewport);
+    await evaluate(cdp, "window.__wheelPrevented = []; window.addEventListener('wheel', (e) => window.__wheelPrevented.push(e.defaultPrevented)); true", false);
+
+    await wheel(cdp, center.x, center.y, -300);
+    await sleep(150);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(close(spanX(snapshot.viewport), initialSpan, 1e-6), "plain wheel does not zoom a cooperative chart");
+    assert(JSON.stringify(await evaluate(cdp, "window.__wheelPrevented", false)) === "[false]", "plain wheel is left for the page to scroll");
+    const hint = await evaluate(cdp, "(() => { const h = document.querySelector('.blazeplot-gesture-hint'); return h ? { display: getComputedStyle(h).display, hidden: h.getAttribute('aria-hidden') } : null; })()", false) as { display: string; hidden: string } | null;
+    assert(hint !== null && hint.display !== "none" && hint.hidden === "true", "plain wheel shows the aria-hidden hint");
+
+    await wheel(cdp, center.x, center.y, -300, 2);
+    await sleep(150);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(spanX(snapshot.viewport) < initialSpan * 0.95, "Ctrl+wheel zooms a cooperative chart");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(100);
+    snapshot = await getRequiredSnapshot(cdp);
+    const touchAction = await evaluate(cdp, "getComputedStyle(document.querySelector('#chart canvas')).touchAction", false);
+    assert(touchAction === "pan-x pan-y", `cooperative touch-action leaves scrolling to the browser (got ${String(touchAction)})`);
+    await touchDrag(cdp, center.x, center.y, center.x + 120, center.y);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(Math.abs(snapshot.viewport.xMin - snapshot.initialViewport.xMin) < 1e-6, "one finger does not pan a two-finger chart");
+
+    await pinch(cdp, center.x, center.y, 40, 120);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(spanX(snapshot.viewport) < spanX(snapshot.initialViewport) * 0.8, "two-finger pinch zooms a cooperative chart");
+    console.log("✓ cooperative: modifier wheel and two-finger touch");
+  } finally {
+    cdp.close();
+  }
+}
+
+/** `touch-action` is only set when a plugin needs exclusive touch input. */
+async function runTouchActionCase(options: Options, serverUrl: string): Promise<void> {
+  const touchActions = "[...document.querySelectorAll('#chart, #chart *')].map((el) => getComputedStyle(el).touchAction)";
+  let cdp = await openCase(options, serverUrl, "plain");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    const values = await evaluate(cdp, `${touchActions}.filter((v) => v !== 'auto')`, false) as string[];
+    assert(values.length === 0, `a chart without plugins leaves touch-action alone (found ${values.join(", ")})`);
+  } finally {
+    cdp.close();
+  }
+  cdp = await openCase(options, serverUrl, "arbitration");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    const canvas = await evaluate(cdp, "getComputedStyle(document.querySelector('#chart canvas')).touchAction", false);
+    assert(canvas === "none", `interactionsPlugin requests exclusive touch input (got ${String(canvas)})`);
+    console.log("✓ touch-action: auto without plugins, none with interactions");
   } finally {
     cdp.close();
   }
@@ -904,8 +990,8 @@ async function mouseMove(cdp: CdpClient, x: number, y: number, modifiers = 0): P
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, modifiers, pointerType: "mouse" });
 }
 
-async function wheel(cdp: CdpClient, x: number, y: number, deltaY: number): Promise<void> {
-  await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY, pointerType: "mouse" });
+async function wheel(cdp: CdpClient, x: number, y: number, deltaY: number, modifiers = 0): Promise<void> {
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY, modifiers, pointerType: "mouse" });
 }
 
 async function drag(cdp: CdpClient, x0: number, y0: number, x1: number, y1: number, modifiers: number): Promise<void> {

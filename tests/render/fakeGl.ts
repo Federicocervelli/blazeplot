@@ -26,6 +26,12 @@ export class FakeGl {
   readonly LINES = 16;
   readonly LINE_STRIP = 17;
   readonly TRIANGLES = 18;
+  readonly BLEND = 19;
+  readonly ONE = 20;
+  readonly ONE_MINUS_SRC_ALPHA = 21;
+  /** Capabilities currently enabled; a context restore resets them. */
+  readonly enabled = new Set<number>();
+  blendFunc: number[] | null = null;
 
   count(name: string): number {
     return this.calls[name] ?? 0;
@@ -60,8 +66,11 @@ export class FakeGl {
   bufferSubData(): void { this.hit("bufferSubData"); }
   drawArrays(): void { this.hit("drawArrays"); }
   drawArraysInstanced(): void { this.hit("drawArraysInstanced"); }
-  disable(): void {}
-  enable(): void {}
+  disable(cap: number): void { this.enabled.delete(cap); }
+  enable(cap: number): void { this.enabled.add(cap); }
+  blendFuncSeparate(...args: number[]): void { this.blendFunc = args; }
+  clearColor(): void {}
+  clear(): void {}
   scissor(): void {}
   viewport(): void {}
   bindBuffer(): void {}
@@ -94,6 +103,8 @@ export function setupFakeGl(): { gl: FakeGl; backend: () => WebGL2Backend; fireL
     restore: () => {
       gl.lost = false;
       gl.generation++;
+      gl.enabled.clear();
+      gl.blendFunc = null;
     },
   };
 }

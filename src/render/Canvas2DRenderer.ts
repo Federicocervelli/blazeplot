@@ -116,23 +116,26 @@ export class Canvas2DRenderer implements ChartRenderer {
     const d = data;
     const n = Math.min(pointCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
-    const size = Math.max(1, Math.round(pointSize));
-    const half = size * 0.5;
-    this.ctx.fillStyle = css(color);
+    const radius = Math.max(0.5, pointSize * this.pixelRatio * 0.5);
+    const ctx = this.ctx;
+    ctx.fillStyle = css(color);
+    ctx.beginPath();
     for (let i = 0; i < n; i++) {
-      const x = d[i * 2]!;
-      const y = d[i * 2 + 1]!;
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      this.ctx.fillRect(Math.round(x * sx + ox - half), Math.round(y * sy + oy - half), size, size);
+      const x = d[i * 2]! * sx + ox;
+      const y = d[i * 2 + 1]! * sy + oy;
+      if (!Number.isFinite(x + y)) continue;
+      ctx.moveTo(x + radius, y);
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
     }
+    ctx.fill();
   }
 
-  drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection): void {
+  drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection, yOrigin: number = 0): void {
     const d = data;
     const n = Math.min(barCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
     const half = style.barWidth * 0.5;
-    const base = style.baseline * sy + oy;
+    const base = (style.baseline - yOrigin) * sy + oy;
     this.ctx.fillStyle = css(style.color);
     for (let i = 0; i < n; i++) {
       const x = d[i * 2]!;

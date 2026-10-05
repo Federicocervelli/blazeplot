@@ -23,6 +23,21 @@ describe("WebGL2Backend context loss", () => {
     expect(gl.validDeletes).toContain("vertexArray");
   });
 
+  it("enables premultiplied-alpha blending and re-applies it after a context restore", () => {
+    const { gl, backend, fireLost, restore } = setupFakeGl();
+    const b = backend();
+    const expected = [gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA];
+    expect(gl.enabled.has(gl.BLEND)).toBe(true);
+    expect(gl.blendFunc).toEqual(expected);
+
+    fireLost();
+    restore();
+    expect(gl.enabled.has(gl.BLEND)).toBe(false);
+    b.clear(0, 0, 0, 0);
+    expect(gl.enabled.has(gl.BLEND)).toBe(true);
+    expect(gl.blendFunc).toEqual(expected);
+  });
+
   it("does not delete objects from a lost context after it is restored", () => {
     const { gl, backend, fireLost, restore } = setupFakeGl();
     const old = backend();

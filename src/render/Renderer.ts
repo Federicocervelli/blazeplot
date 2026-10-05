@@ -91,14 +91,14 @@ export class Renderer implements ChartRenderer {
     this.drawSolid(data, vertexCount, color, { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 }, "lines");
   }
 
-  /** Draw scatter points `pointSize` device pixels across. */
+  /** Draw round scatter markers `pointSize` CSS pixels in diameter. */
   drawPoints(data: Float32Array, pointCount: number, color: RgbaColor, pointSize: number, projection: RenderProjection): void {
     if (pointCount <= 0) return;
     this.commands.push({
       kind: "point",
       first: this.stage(data, pointCount),
       instances: pointCount,
-      pointSize,
+      pointSize: pointSize * this.pixelRatio,
       canvasWidth: this.canvasWidth,
       canvasHeight: this.canvasHeight,
       color,
@@ -106,15 +106,15 @@ export class Renderer implements ChartRenderer {
     });
   }
 
-  /** Draw one instanced bar per `[x, y]` vertex, `style.barWidth` wide, from `style.baseline`. */
-  drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection): void {
+  /** Draw one instanced bar per `[x, y]` vertex, `style.barWidth` wide, from `style.baseline - yOrigin`. */
+  drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection, yOrigin: number = 0): void {
     if (barCount <= 0) return;
     this.commands.push({
       kind: "bar",
       first: this.stage(data, barCount),
       instances: barCount,
       barWidth: style.barWidth,
-      baseline: style.baseline,
+      baseline: style.baseline - yOrigin,
       color: style.color,
       ...projection,
     });

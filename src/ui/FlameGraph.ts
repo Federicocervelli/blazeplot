@@ -1,5 +1,5 @@
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { placeFixedWithinViewport } from "./OverlayUtils.js";
+import { placeFixedWithinViewport, singleChartPlugin } from "./OverlayUtils.js";
 import type { RgbaColor } from "../core/types.js";
 import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
 import { rgbaCss } from "./theme.js";
@@ -374,8 +374,8 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
     install(nextChart) {
       chart = nextChart;
       disposed = false;
-      rectCanvas = createOverlayCanvas("blazeplot-flamegraph-canvas", options.zIndex ?? 6);
-      labelCanvas = createOverlayCanvas("blazeplot-flamegraph-labels", (options.zIndex ?? 6) + 1);
+      rectCanvas = createOverlayCanvas(nextChart.dom.document, "blazeplot-flamegraph-canvas", options.zIndex ?? 6);
+      labelCanvas = createOverlayCanvas(nextChart.dom.document, "blazeplot-flamegraph-labels", (options.zIndex ?? 6) + 1);
       glState = createWebGLState(rectCanvas);
       if (!glState) {
         rectContext2d = rectCanvas.getContext("2d");
@@ -383,7 +383,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       }
       subscriptionDisposers.push(nextChart.dom.mount("plot", rectCanvas), nextChart.dom.mount("plot", labelCanvas));
       if (options.hoverHighlight !== false) {
-        hoverHighlightElement = document.createElement("div");
+        hoverHighlightElement = nextChart.dom.document.createElement("div");
         hoverHighlightElement.className = "blazeplot-flamegraph-hover";
         hoverHighlightElement.style.position = "absolute";
         hoverHighlightElement.style.pointerEvents = "none";
@@ -394,7 +394,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
         subscriptionDisposers.push(nextChart.dom.mount("plot", hoverHighlightElement));
       }
       if (options.tooltip !== false) {
-        tooltip = document.createElement("div");
+        tooltip = nextChart.dom.document.createElement("div");
         tooltip.className = options.tooltipClassName ?? "blazeplot-flamegraph-tooltip";
         tooltip.style.position = "fixed";
         tooltip.style.left = "0";
@@ -453,7 +453,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       if (!chart) return;
       const xMin = model.minX;
       const xMax = model.maxX > model.minX ? model.maxX : model.minX + 1;
-      chart.viewport.set({ xMin, xMax, yMin: 0, yMax: Math.max(1, model.maxDepth + 1) });
+      chart.viewport.set({ xMin, xMax, yMin: 0, yMax: Math.max(1, model.maxDepth + 1) }, undefined, { source: "fit" });
     },
     pick(clientX, clientY) {
       if (!chart) return null;
@@ -482,7 +482,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
     dispose() {
       if (disposed) return;
       disposed = true;
-      if (rafId !== 0) cancelAnimationFrame(rafId);
+      if (rafId !== 0) (chart?.dom.view ?? globalThis).cancelAnimationFrame(rafId);
       rafId = 0;
       // Listeners, subscriptions, and mounted elements registered through the plugin context.
       for (const disposeSubscription of subscriptionDisposers.splice(0)) disposeSubscription();
@@ -503,7 +503,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
 
   function scheduleRender(): void {
     if (disposed || rafId !== 0) return;
-    rafId = requestAnimationFrame(() => {
+    rafId = (chart?.dom.view ?? globalThis).requestAnimationFrame(() => {
       rafId = 0;
       render();
     });
@@ -648,7 +648,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
     scheduleRender();
   }
 
-  return plugin;
+  return singleChartPlugin("flameGraph", plugin);
 }
 
 function pickVisibleFrame<T>(visible: readonly VisibleFrame<T>[], plotX: number, plotY: number): VisibleFrame<T> | null {
@@ -759,8 +759,14 @@ function defaultSort(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function createOverlayCanvas(className: string, zIndex: number): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
+/** Device pixel ratio of the window that owns `canvas` (an iframe or popup may differ from the global). */
+function canvasDpr(canvas: HTMLCanvasElement | OffscreenCanvas): number {
+  const view = "ownerDocument" in canvas ? canvas.ownerDocument.defaultView : null;
+  return Math.max(1, (view ?? globalThis).devicePixelRatio || 1);
+}
+
+function createOverlayCanvas(doc: Document, className: string, zIndex: number): HTMLCanvasElement {
+  const canvas = doc.createElement("canvas");
   canvas.className = className;
   canvas.style.position = "absolute";
   canvas.style.inset = "0";
@@ -853,7 +859,7 @@ function disposeWebGLState(state: WebGLState | null): void {
 }
 
 function resizeCanvases(rectCanvas: HTMLCanvasElement, labelCanvas: HTMLCanvasElement): boolean {
-  const dpr = Math.max(1, globalThis.devicePixelRatio || 1);
+  const dpr = canvasDpr(rectCanvas);
   const width = Math.max(1, Math.round(rectCanvas.clientWidth * dpr));
   const height = Math.max(1, Math.round(rectCanvas.clientHeight * dpr));
   const changed = rectCanvas.width !== width || rectCanvas.height !== height;
@@ -1005,7 +1011,7 @@ function drawRectangles2d<T>(
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, width, height);
   if (visible.length === 0) return;
-  const { bounds, colors } = layoutRectangles(width, height, visible, xMin, xMax, yMin, yMax, options, search);
+  const { bounds, colors } = layoutRectangles(ctx.canvas, visible, xMin, xMax, yMin, yMax, options, search);
   const sx = width / Math.max(1e-30, xMax - xMin);
   const sy = height / Math.max(1e-30, yMax - yMin);
   for (let i = 0; i < visible.length; i++) {
@@ -1034,7 +1040,7 @@ function drawRectangles<T>(
   gl.clearColor(0, 0, 0, 0);
   gl.clear(gl.COLOR_BUFFER_BIT);
   if (visible.length === 0) return;
-  const { bounds, colors } = layoutRectangles(gl.canvas.width, gl.canvas.height, visible, xMin, xMax, yMin, yMax, options, search);
+  const { bounds, colors } = layoutRectangles(gl.canvas as HTMLCanvasElement, visible, xMin, xMax, yMin, yMax, options, search);
   gl.useProgram(state.program);
   gl.bindVertexArray(state.vao);
   gl.uniform4f(state.viewportLocation, xMin, xMax, yMin, yMax);
@@ -1048,8 +1054,7 @@ function drawRectangles<T>(
 
 /** Data-space `[x0, x1, y0, y1]` bounds and RGBA colors for each visible frame, with gaps and minimum widths applied. */
 function layoutRectangles<T>(
-  canvasWidth: number,
-  canvasHeight: number,
+  canvas: HTMLCanvasElement,
   visible: readonly VisibleFrame<T>[],
   xMin: number,
   xMax: number,
@@ -1058,10 +1063,10 @@ function layoutRectangles<T>(
   options: FlameGraphPluginOptions<T>,
   search: string | RegExp | null,
 ): { bounds: Float32Array; colors: Float32Array } {
-  const dpr = Math.max(1, globalThis.devicePixelRatio || 1);
-  const cssHeight = Math.max(1, canvasHeight / dpr);
+  const dpr = canvasDpr(canvas);
+  const cssHeight = Math.max(1, canvas.height / dpr);
   const gapPx = options.frameGapPx ?? DEFAULT_FRAME_GAP_PX;
-  const minWidthData = ((options.minFrameWidthPx ?? DEFAULT_MIN_FRAME_WIDTH_PX) * (xMax - xMin)) / Math.max(1, canvasWidth / dpr);
+  const minWidthData = ((options.minFrameWidthPx ?? DEFAULT_MIN_FRAME_WIDTH_PX) * (xMax - xMin)) / Math.max(1, canvas.width / dpr);
   const bounds = new Float32Array(visible.length * FLOATS_PER_FRAME);
   const colors = new Float32Array(visible.length * FLOATS_PER_FRAME);
   for (let i = 0; i < visible.length; i++) {
@@ -1094,7 +1099,7 @@ function drawLabels<T>(
 ): void {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  const dpr = Math.max(1, globalThis.devicePixelRatio || 1);
+  const dpr = canvasDpr(canvas);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.save();
   ctx.scale(dpr, dpr);

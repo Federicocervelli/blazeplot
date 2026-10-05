@@ -2,6 +2,13 @@ import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { a11yPlugin } from "../../src/plugins/a11y.ts";
+import { annotationsPlugin } from "../../src/plugins/annotations.ts";
+import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
+import { navigatorPlugin } from "../../src/plugins/navigator.ts";
+import { selectionPlugin } from "../../src/plugins/selection.ts";
+import { useChartHarness } from "../ui/harness.ts";
+import type { ChartPlugin } from "../../src/ui/PluginHost.ts";
 
 /**
  * The built-in plugins are the proof that third parties can write equivalent plugins, so they may
@@ -116,6 +123,30 @@ describe("built-in plugin boundary", () => {
       const source = readFileSync(resolve(root, module), "utf8");
       expect(source.match(/\.unstable\b/g) ?? []).toEqual([]);
       expect(source.match(/\bas\s+Chart\b/g) ?? []).toEqual([]);
+    });
+  }
+});
+
+describe("plugin instances are per chart", () => {
+  const h = useChartHarness();
+  // flameGraph shares the same guard but needs a WebGL2 context, so it is not constructed here.
+  const factories: Record<string, () => ChartPlugin> = {
+    a11y: () => a11yPlugin(),
+    annotations: () => annotationsPlugin(),
+    crosshair: () => crosshairPlugin(),
+    navigator: () => navigatorPlugin(),
+    selection: () => selectionPlugin(),
+  };
+
+  for (const [name, create] of Object.entries(factories)) {
+    it(`${name} throws a descriptive error when one instance is installed on a second chart`, () => {
+      const plugin = create();
+      const first = h.make({ plugins: [plugin] });
+      expect(() => h.make({ plugins: [plugin] })).toThrow(/one plugin instance per chart/);
+      // The failed install left the first chart untouched, and disposing it frees the instance.
+      first.dispose();
+      const again = h.make({ plugins: [plugin] });
+      again.dispose();
     });
   }
 });

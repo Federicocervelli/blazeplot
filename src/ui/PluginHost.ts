@@ -5,6 +5,8 @@ import type {
   ChartEventMap,
   ChartEventName,
   ChartFitToDataOptions,
+  ChartSetViewportOptions,
+  ChartViewportGestureOptions,
   ChartFollowXOptions,
   ChartFrameStats,
   ChartHoverState,
@@ -126,12 +128,12 @@ export interface ChartPluginCoords {
 export interface ChartPluginViewport {
   /** Visible data domain for the requested Y axis (defaults to `"left"`). */
   get(yAxis?: SeriesYAxis): Viewport;
-  /** Set any viewport edges. X is shared by both Y axes; changing X pauses latest-X following. */
-  set(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
+  /** Set any viewport edges. X is shared by both Y axes; changing X pauses latest-X following unless `options.pauseFollow` is false. Pass `{ source: "user" }` for gestures. */
+  set(viewport: Partial<Viewport>, yAxis?: SeriesYAxis, options?: ChartSetViewportOptions): void;
   /** Pan in scale space. Omit `yAxis` to pan Y on both axes like a plot gesture. */
-  pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
+  pan(intent: PanIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
   /** Zoom in scale space around a normalized anchor. Omit `yAxis` to zoom Y on both axes. */
-  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
+  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
   /** Fit the viewport to data bounds; returns `false` when nothing changed. */
   fitToData(options?: ChartFitToDataOptions): boolean;
   /** Whether an axis runs right-to-left (`"x"`) or top-to-bottom (`"y"`) on screen. */
@@ -180,6 +182,14 @@ export interface ChartPluginLayout {
 
 /** DOM attachment and input on chart-owned elements. Everything is released when the plugin is disposed. */
 export interface ChartPluginDom {
+  /** The document that owns the chart. Differs from the global `document` inside an iframe, popup, or Document Picture-in-Picture window. */
+  readonly document: Document;
+  /** The window that owns the chart (`document.defaultView`, else the global). Use it for `devicePixelRatio`, `matchMedia`, and animation frames. */
+  readonly view: Window & typeof globalThis;
+  /** Create an HTML element in the chart's document. Plugins should use this instead of the global `document`. */
+  create<K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K];
+  /** Create an SVG element in the chart's document. */
+  createSvg<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K];
   /** Append `element` to a mount slot. Returns a function that removes it. */
   mount(slot: ChartMountSlot, element: Element): () => void;
   /** Listen for a DOM event on a chart surface. Returns a function that removes the listener. */
@@ -196,6 +206,15 @@ export interface ChartPluginDom {
   decorate(surface: ChartSurface, decoration: ChartSurfaceDecoration): () => void;
   /** Whether `target` is inside the chart (its root element or a descendant). */
   contains(target: EventTarget | null | undefined): boolean;
+  /**
+   * Claim the pointer behind a `pointerdown` event for this plugin's gesture (a drag, a pan, a
+   * brush). Returns `true` when this plugin now owns the pointer and `false` when another plugin
+   * already claimed it; in that case do not start the gesture. The first plugin to claim wins, and
+   * listeners run in plugin install order. Claiming again from the same plugin returns `true`.
+   * A claim ends when the pointer is released or cancelled, or when the plugin is disposed.
+   * Built-in plugins claim their drags and skip pointers claimed by others.
+   */
+  claimPointer(event: PointerEvent): boolean;
 }
 
 /** Chart event subscription and typed plugin events. */
@@ -283,9 +302,9 @@ export interface PluginHostChart {
   dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
   clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
   getViewport(yAxis?: SeriesYAxis): Viewport;
-  setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
-  pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
-  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
+  setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis, options?: ChartSetViewportOptions): void;
+  pan(intent: PanIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
+  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
   fitToData(options?: ChartFitToDataOptions): boolean;
   followX(options?: ChartFollowXOptions): void;
   stopFollowX(): void;
@@ -323,6 +342,26 @@ function toRect(rect: DOMRect): ChartRect {
   return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
 }
 
+const TOUCH_GESTURES = ["pan-x", "pan-y", "pinch-zoom"] as const;
+
+/** Intersect CSS `touch-action` values: only gestures every value allows stay with the browser. */
+function intersectTouchActions(values: readonly string[]): string {
+  let allowed: Set<string> = new Set(TOUCH_GESTURES);
+  for (const value of values) {
+    const own = new Set<string>();
+    for (const token of value.trim().split(/\s+/)) {
+      if (token === "auto" || token === "manipulation") for (const t of TOUCH_GESTURES) own.add(t);
+      else if (token === "pan-left" || token === "pan-right") own.add("pan-x");
+      else if (token === "pan-up" || token === "pan-down") own.add("pan-y");
+      else if ((TOUCH_GESTURES as readonly string[]).includes(token)) own.add(token);
+    }
+    allowed = new Set([...allowed].filter((t) => own.has(t)));
+  }
+  if (allowed.size === 0) return "none";
+  if (allowed.size === TOUCH_GESTURES.length) return "auto";
+  return TOUCH_GESTURES.filter((t) => allowed.has(t)).join(" ");
+}
+
 /**
  * @internal Installs plugins, builds their contexts, runs lifecycle hooks in registration order,
  * and disposes in reverse order.
@@ -330,7 +369,60 @@ function toRect(rect: DOMRect): ChartRect {
 export class PluginHost {
   private readonly installed: InstalledPlugin[] = [];
 
+  private readonly touchActions = new Map<HTMLElement, { readonly base: string; readonly values: string[] }>();
+  private readonly pointerClaims = new Map<number, InstalledPlugin>();
+  private claimListening = false;
+
   constructor(private readonly chart: PluginHostChart, private readonly internals: PluginHostInternals) {}
+
+  private readonly releaseClaim = (event: Event): void => {
+    this.pointerClaims.delete((event as PointerEvent).pointerId);
+    this.syncClaimListeners();
+  };
+
+  /** Listen for pointer release only while some pointer is claimed. */
+  private syncClaimListeners(): void {
+    const wanted = this.pointerClaims.size > 0;
+    if (wanted === this.claimListening) return;
+    this.claimListening = wanted;
+    const root = this.chart.rootElement;
+    for (const type of ["pointerup", "pointercancel"]) {
+      if (wanted) root.addEventListener(type, this.releaseClaim, true);
+      else root.removeEventListener(type, this.releaseClaim, true);
+    }
+  }
+
+  /**
+   * `touch-action` decorations combine by intersection, so the most restrictive plugin wins
+   * whatever the install order: `none` beats `pan-y`, and `pan-y` beats `auto`.
+   */
+  private claimTouchAction(target: HTMLElement, value: string): () => void {
+    let entry = this.touchActions.get(target);
+    if (!entry) {
+      entry = { base: target.style.touchAction, values: [] };
+      this.touchActions.set(target, entry);
+    }
+    const state = entry;
+    state.values.push(value);
+    const apply = (): void => {
+      target.style.touchAction = state.values.length === 0 ? state.base : intersectTouchActions(state.values);
+    };
+    apply();
+    return () => {
+      const index = state.values.indexOf(value);
+      if (index !== -1) state.values.splice(index, 1);
+      apply();
+      if (state.values.length === 0) this.touchActions.delete(target);
+    };
+  }
+
+  private claimPointer(entry: InstalledPlugin, event: PointerEvent): boolean {
+    const owner = this.pointerClaims.get(event.pointerId);
+    if (owner && owner !== entry && !owner.disposed) return false;
+    this.pointerClaims.set(event.pointerId, entry);
+    this.syncClaimListeners();
+    return true;
+  }
 
   /** Install one plugin. Returns a function that disposes just this plugin. */
   install(plugin: ChartPlugin): () => void {
@@ -378,18 +470,22 @@ export class PluginHost {
     try {
       if (entry.disposeFn) entry.disposeFn();
       else entry.handle?.dispose?.();
-    } catch {
+    } catch (error) {
       // Plugin cleanup must not prevent other plugins or chart-owned resources from being released.
+      console.error("BlazePlot plugin dispose failed:", error);
     }
     this.runCleanups(entry);
+    for (const [pointerId, owner] of this.pointerClaims) if (owner === entry) this.pointerClaims.delete(pointerId);
+    this.syncClaimListeners();
   }
 
   private runCleanups(entry: InstalledPlugin): void {
     for (const cleanup of entry.cleanups.splice(0).reverse()) {
       try {
         cleanup();
-      } catch {
+      } catch (error) {
         // Keep releasing the remaining resources.
+        console.error("BlazePlot plugin cleanup failed:", error);
       }
     }
   }
@@ -444,9 +540,9 @@ export class PluginHost {
 
     const viewport: ChartPluginViewport = {
       get: (yAxis) => chart.getViewport(yAxis),
-      set: (next, yAxis) => chart.setViewport(next, yAxis),
-      pan: (intent, yAxis) => chart.pan(intent, yAxis),
-      zoom: (intent, yAxis) => chart.zoom(intent, yAxis),
+      set: (next, yAxis, options) => chart.setViewport(next, yAxis, options),
+      pan: (intent, yAxis, options) => chart.pan(intent, yAxis, options),
+      zoom: (intent, yAxis, options) => chart.zoom(intent, yAxis, options),
       fitToData: (options) => chart.fitToData(options),
       isReversed: (axis, yAxis) => {
         const camera = chart.getCamera(yAxis);
@@ -477,7 +573,12 @@ export class PluginHost {
       },
     };
 
+    const ownerDocument = chart.rootElement.ownerDocument;
     const dom: ChartPluginDom = {
+      document: ownerDocument,
+      view: ownerDocument.defaultView ?? (globalThis as Window & typeof globalThis),
+      create: (tag) => ownerDocument.createElement(tag),
+      createSvg: (tag) => ownerDocument.createElementNS("http://www.w3.org/2000/svg", tag),
       mount: (slot, element) => {
         this.surfaceElement(slot).appendChild(element);
         return track(() => element.remove());
@@ -493,6 +594,10 @@ export class PluginHost {
         const restore: Array<() => void> = [];
         for (const [property, value] of Object.entries(decoration.style ?? {}) as Array<[keyof ChartSurfaceStyle, string | undefined]>) {
           if (value === undefined) continue;
+          if (property === "touchAction") {
+            restore.push(this.claimTouchAction(target, value));
+            continue;
+          }
           const previous = target.style[property];
           target.style[property] = value;
           restore.push(() => {
@@ -516,9 +621,10 @@ export class PluginHost {
           for (const undo of restore.reverse()) undo();
         });
       },
+      claimPointer: (event) => this.claimPointer(entry, event),
       contains: (target) => {
         const root = chart.rootElement;
-        return target === root || (typeof Node !== "undefined" && target instanceof Node && root.contains(target));
+        return target === root || (target !== null && target !== undefined && (target as Node).nodeType !== undefined && root.contains(target as Node));
       },
     };
 

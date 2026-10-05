@@ -121,6 +121,11 @@ const DEFAULT_CASES = [
   "overlay-layering",
   "context-restore",
   "gaps",
+  "translucent-overlap",
+  "scatter-markers",
+  "scatter-markers-dpr2",
+  "large-y-offset",
+  "dense-area-spike",
 ];
 
 /**
@@ -150,6 +155,12 @@ const CASE_CHECKS: Readonly<Record<string, CaseCheck>> = {
   "overlay-layering": { minInkRatio: 0.003 },
   "context-restore": { minInkRatio: 0.004 },
   gaps: { minInkRatio: 0.004 },
+  // These cases assert their pixels inside the page (see assertPixelCase in tests/browser/visual/main.ts).
+  "translucent-overlap": { minInkRatio: 0.1 },
+  "scatter-markers": { minInkRatio: 0.00002 },
+  "scatter-markers-dpr2": { minInkRatio: 0.00002 },
+  "large-y-offset": { minInkRatio: 0.01 },
+  "dense-area-spike": { minInkRatio: 0.01 },
 };
 const DEFAULT_CASE_CHECK: CaseCheck = { minInkRatio: 0.004 };
 

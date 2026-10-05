@@ -101,6 +101,10 @@ try {
 chart.dispose();
 ```
 
+## Listeners and plugins
+
+Errors thrown by chart event listeners (`chart.subscribe`, `ctx.events.subscribe`) and plugin lifecycle hooks are caught, logged with `console.error`, and never break the chart. A throwing listener does not stop later listeners for the same event, and it does not abort `render()`, `pan`, `zoom`, or `setViewport`. Errors from a plugin's `dispose` and cleanups are logged too, while the remaining resources are still released. Only `install()` errors propagate (from the constructor or `installPlugin`).
+
 ## Viewport and axes
 
 | Situation | Behavior |
@@ -149,7 +153,7 @@ Helper functions are stricter than datasets because they are pure and run once:
 
 - **Render-loop errors.** `chart.start()` schedules frames with `requestAnimationFrame`. A domain error (see above) is caught, logged once, and the frame is skipped. Any other exception inside a frame propagates out of the animation-frame callback, so it shows up in `window.onerror` and the console like any uncaught error. With `renderLoop: "continuous"` the loop keeps running after a thrown frame.
 - **WebGL context loss.** The chart calls `preventDefault()` on `webglcontextlost`, stops drawing, and recreates GPU resources on `webglcontextrestored`. Data and viewport are untouched. If recreation fails, the chart logs `BlazePlot failed to restore WebGL resources after context restoration.` with `console.error` and stays blank; recreate the chart.
-- **After `dispose()`.** Disposal releases DOM, listeners, plugins, and GPU resources. Calling `start()`, `resize()`, or series methods on a disposed chart is unsupported and has no defined behavior. Plugin cleanup functions that throw are swallowed so the rest of disposal still runs.
+- **After `dispose()`.** Disposal releases DOM, listeners, plugins, and GPU resources. Calling `start()`, `resize()`, or series methods on a disposed chart is unsupported and has no defined behavior. Plugin `dispose` and cleanup functions that throw are logged and do not stop the rest of disposal.
 - **Resize.** `ResizeObserver` is optional. Without it, call `chart.resize()` yourself. `resize()` returns whether the canvas size changed.
 
 ## Screenshots, downloads, clipboard
@@ -182,6 +186,8 @@ export async function copyOrDownload(chart: Chart): Promise<void> {
 | `RingBuffer skipped a sample ...` / `OhlcRingBuffer skipped a sample ...` | `warn` (once per buffer, not logged when `onInvalidSample` is set) | A sample had a non-finite X or an X below the last accepted one and was skipped. Read `rejectedSamples` or pass `onInvalidSample` to track later ones. |
 | `UniformRingBuffer received non-finite X ...` | `warn` (once per buffer) | A non-finite seed X was ignored; the Y sample was kept. |
 | `BlazePlot skipped rendering:` | `error` (once until fixed) | Viewport invalid for an axis scale. |
+| `BlazePlot <event> listener failed:` | `error` | A chart event listener threw. The remaining listeners still ran. |
+| `BlazePlot plugin <hook> hook failed:` / `plugin dispose failed:` / `plugin cleanup failed:` | `error` | A plugin hook, dispose, or tracked cleanup threw. Other plugins and resources were still released. |
 | `BlazePlot failed to restore WebGL resources after context restoration.` | `error` | GPU resources could not be rebuilt after context loss. |
 
 BlazePlot has no other runtime logging. There is no debug flag. Deprecated APIs, once any exist, log a single development-only `BlazePlot: ... is deprecated` warning per API per page load; production builds are silent. See the [deprecation process](./versioning-and-migration.md#deprecation-process).

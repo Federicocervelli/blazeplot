@@ -13,6 +13,9 @@ class FakePath {
   lineTo(x: number, y: number): void {
     this.calls.push(["lineTo", x, y]);
   }
+  arc(...args: number[]): void {
+    this.calls.push(["arc", ...args]);
+  }
   closePath(): void {
     this.calls.push(["closePath"]);
   }
@@ -127,10 +130,12 @@ describe("Canvas2DRenderer", () => {
     ]);
   });
 
-  it("draws points as pixel-snapped squares", () => {
+  it("draws round markers whose diameter is pointSize CSS pixels", () => {
     const { renderer, ctx } = setup();
+    renderer.beginFrame(100, 50, 2);
+    ctx.calls.length = 0;
     renderer.drawPoints(upload(renderer, [5, 2.5, NaN, 1]), 2, [0, 1, 0, 0.5], 4, projection);
-    expect(ctx.calls.filter((c) => c[0] === "fillRect")).toEqual([["fillRect", "rgba(0,255,0,0.5)", 48, 23, 4, 4]]);
+    expect(ctx.calls.filter((c) => c[0] === "arc")).toEqual([["arc", 50, 25, 4, 0, Math.PI * 2]]);
   });
 
   it("draws bars from the baseline and enforces a 1px minimum width", () => {

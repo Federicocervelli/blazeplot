@@ -678,14 +678,14 @@ describe("SeriesStore no-LOD", () => {
     expect(series.downsampled).toBe(false);
   });
 
-  it("skips pyramid for area series when downsample is omitted", () => {
+  it("treats area series as downsampled when downsample is omitted", () => {
     const series = new SeriesStore(
       new RingBuffer(8),
       { mode: "area", capacity: 8 },
       testStyle({ color: [1, 1, 1, 1], lineWidth: 1 }),
     );
 
-    expect(series.downsampled).toBe(false);
+    expect(series.downsampled).toBe(true);
   });
 
   it("copyMinMaxInstanced returns 0 without LOD", () => {
@@ -777,5 +777,115 @@ describe("SeriesStore no-LOD", () => {
       expect(range).toBe(before.get(x)!);
     }
     expect(shared).toBeGreaterThan(after.size - 3);
+  });
+});
+
+describe("SeriesStore Y origin", () => {
+  const viewport = { xMin: 0, xMax: 63, yMin: 999_999.98, yMax: 1_000_000.02 };
+
+  function offsetValues(): number[] {
+    return Array.from({ length: 64 }, (_, i) => 1_000_000 + Math.sin(i / 5) * 0.01);
+  }
+
+  function maxError(out: Float32Array, count: number, stride: number, offset: number, values: number[], origin: number): number {
+    let worst = 0;
+    for (let i = 0; i < count; i++) worst = Math.max(worst, Math.abs(out[i * stride + offset]! - (values[i]! - origin)));
+    return worst;
+  }
+
+  it("keeps large-offset Y precise for RingBuffer line, area, and scatter copies", () => {
+    const values = offsetValues();
+    const buffer = new RingBuffer(64, { valuePrecision: "float64" });
+    buffer.append(values.map((_, i) => i), values);
+    const origin = viewport.yMin;
+    for (const mode of ["line", "area", "scatter"] as const) {
+      const series = new SeriesStore(buffer, { mode, capacity: 64 }, testStyle({ baseline: 1_000_000 }));
+      const out = new Float32Array(64 * 4);
+      if (mode === "area") {
+        const count = series.copyAreaRange(0, 64, out, 64, 1_000_000, 0, origin) / 2;
+        expect(count).toBe(64);
+        expect(maxError(out, count, 4, 3, values, origin)).toBeLessThan(1e-6);
+        expect(out[1]).toBeCloseTo(1_000_000 - origin, 6);
+      } else if (mode === "scatter") {
+        const count = series.copyScatterRange(0, 64, viewport, out, 64, 0, 0, 0, origin);
+        expect(count).toBeGreaterThan(0);
+        expect(out[1]).toBeCloseTo(values[0]! - origin, 6);
+      } else {
+        const count = series.copyRawRange(0, 64, out, 64, 0, origin);
+        expect(maxError(out, count, 2, 1, values, origin)).toBeLessThan(1e-6);
+        const clipped = series.copyRawVisibleClipped(viewport, out, 64, 0, origin);
+        expect(clipped).toBeGreaterThan(0);
+        expect(Math.abs(out[1]! - (values[0]! - origin))).toBeLessThan(1e-6);
+      }
+    }
+  });
+
+  it("keeps large-offset Y precise for UniformRingBuffer copies and min/max buckets", () => {
+    const values = offsetValues();
+    const buffer = new UniformRingBuffer(64, { xStep: 1, valuePrecision: "float64" });
+    buffer.appendY(values);
+    const origin = viewport.yMin;
+    const series = new SeriesStore(buffer, { mode: "area", capacity: 64 }, testStyle({ baseline: 1_000_000 }));
+    const out = new Float32Array(64 * 4);
+    const points = series.copyRawVisible(viewport, out, 64, 0, origin);
+    expect(maxError(out, points, 2, 1, values, origin)).toBeLessThan(1e-6);
+    const area = series.copyAreaVisible(viewport, out, 64, 1_000_000, 0, origin) / 2;
+    expect(maxError(out, area, 4, 3, values, origin)).toBeLessThan(1e-6);
+    const buckets = series.copyMinMaxInstanced(viewport, out, 8, 0, origin);
+    expect(buckets).toBeGreaterThan(0);
+    for (let i = 0; i < buckets; i++) {
+      expect(out[i * 3 + 1]!).toBeGreaterThan(-0.05);
+      expect(out[i * 3 + 2]!).toBeLessThan(0.05);
+      expect(out[i * 3 + 1]!).toBeLessThanOrEqual(out[i * 3 + 2]!);
+    }
+  });
+
+  it("shifts custom fast-path datasets after their own copy", () => {
+    const values = offsetValues();
+    const inner = new UniformRingBuffer(64, { xStep: 1, valuePrecision: "float64" });
+    inner.appendY(values);
+    // Hides supportsYOrigin and ignores the trailing argument, like a user-implemented dataset.
+    const custom: Dataset & Record<string, unknown> = {
+      get length() { return inner.length; },
+      get range() { return inner.range; },
+      getX: (i: number) => inner.getX(i),
+      getY: (i: number) => inner.getY(i),
+      lowerBoundX: (x: number) => inner.lowerBoundX(x),
+      upperBoundX: (x: number) => inner.upperBoundX(x),
+      copySamplesRange: (start: number, end: number, target: Float32Array, max: number, layout: "points" | "area", baseline: number, xOrigin: number) =>
+        inner.copySamplesRange(start, end, target, max, layout, baseline, xOrigin),
+      copyMinMaxSegments: (vp: typeof viewport, target: Float32Array, max: number, xOrigin: number) => inner.copyMinMaxSegments(vp, target, max, xOrigin),
+    };
+    const series = new SeriesStore(custom as Dataset, { mode: "line", capacity: 64 }, testStyle());
+    const out = new Float32Array(64 * 3);
+    const origin = 1_000_000;
+    const count = series.copyRawRange(0, 64, out, 64, 0, origin);
+    expect(count).toBe(64);
+    expect(Math.abs(out[1]! - 0)).toBeLessThan(0.02);
+    const buckets = series.copyMinMaxInstanced(viewport, out, 8, 0, origin);
+    expect(buckets).toBeGreaterThan(0);
+    expect(Math.abs(out[1]!)).toBeLessThan(0.02);
+  });
+
+  it("treats area series as downsampled unless downsample is none", () => {
+    const dataset = new RingBuffer(8);
+    const area = new SeriesStore(dataset, { mode: "area", capacity: 8 }, testStyle());
+    const exact = new SeriesStore(dataset, { mode: "area", capacity: 8, downsample: "none" }, testStyle());
+    expect(area.downsampled).toBe(true);
+    expect(exact.downsampled).toBe(false);
+  });
+
+  it("keeps an isolated spike in dense area min/max buckets", () => {
+    const n = 40_000;
+    const buffer = new RingBuffer(n);
+    buffer.append(Array.from({ length: n }, (_, i) => i), Array.from({ length: n }, (_, i) => (i === 12_345 ? 100 : 1)));
+    const series = new SeriesStore(buffer, { mode: "area", capacity: n }, testStyle());
+    for (const view of [{ xMin: 0, xMax: n, yMin: 0, yMax: 100 }, { xMin: 10_000, xMax: 15_000, yMin: 0, yMax: 100 }]) {
+      const out = new Float32Array(3 * 1024);
+      const count = series.copyMinMaxInstanced(view, out, 1024);
+      let max = -Infinity;
+      for (let i = 0; i < count; i++) max = Math.max(max, out[i * 3 + 2]!);
+      expect(max).toBe(100);
+    }
   });
 });

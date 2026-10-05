@@ -15,7 +15,7 @@ import { Camera2D } from "../interaction/Camera2D.js";
 import { AxisController } from "../interaction/AxisController.js";
 import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { PanIntent, ViewportPolicy, ZoomIntent } from "../interaction/types.js";
-import { AxisOverlay, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
+import { AUTO_GUTTER_PADDING_PX, AxisOverlay, GutterTracker, X_TICK_LIMIT, Y_TICK_LIMIT } from "./AxisOverlay.js";
 import { ChartLayout } from "./ChartLayout.js";
 import type { AxisPosition, NormalizedAxisConfig } from "./ChartLayout.js";
 import { forcedColorsTheme, resolveChartTheme, resolveThemeColor } from "./theme.js";
@@ -23,8 +23,8 @@ import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import type { SelectionState } from "./Selection.js";
 import { PluginHost } from "./PluginHost.js";
 import type { ChartLayoutReservation, ChartPlugin, ChartPluginEventMap } from "./PluginHost.js";
-import { buildChartSummary } from "./ChartSummary.js";
-import type { ChartSummary } from "./ChartSummary.js";
+import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
+import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 
 /** Vertices in the shared raw line/point/area upload buffer. */
 const BYTES_PER_VERTEX = 2 * Float32Array.BYTES_PER_ELEMENT;
@@ -40,6 +40,10 @@ const FLOATS_PER_OHLC_TUPLE = 5;
 const GRID_LINE_VERTEX_CAPACITY = (X_TICK_LIMIT + 2 + Y_TICK_LIMIT + 2) * 2;
 const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
 const TITLE_TOP_PX = 6;
+/** Height of the subtitle line, reserved below the title. */
+const SUBTITLE_ROW_PX = 20;
+/** Smallest auto-sized gutter, so a short-label axis still leaves room for ticks. */
+const MIN_AUTO_GUTTER_PX = 16;
 const SUBTITLE_TOP_PX = 26;
 const TITLE_SIDE_INSET_PX = 8;
 const AXIS_TITLE_INSET_PX = 4;
@@ -88,6 +92,13 @@ export interface AxisConfig extends AxisControllerAxisOptions {
   readonly visible?: boolean;
   readonly position?: AxisPosition;
   readonly title?: string | TextOverlayConfig;
+  /**
+   * Gutter size in CSS pixels for an `"outside"` axis, not counting room for the axis title.
+   * Pass `"auto"` to size it from the widest (Y, Y2) or tallest (X) measured tick label; it
+   * grows at once and shrinks only after the smaller size holds for about a second.
+   * Defaults to 52 for Y and Y2 and 28 for X.
+   */
+  readonly size?: number | "auto";
 }
 
 /** Strategy used to find data points near a pointer location. */
@@ -102,8 +113,20 @@ export interface ChartPickOptions {
   readonly maxDistancePx?: number;
 }
 
-/** ARIA, keyboard-navigation, and high-contrast options for the chart root. */
+/** Overridable core accessibility strings. Unset keys keep their English defaults. */
+export interface ChartAccessibilityMessages {
+  /** Accessible name when the chart has no title. Defaults to `"BlazePlot chart"`. */
+  readonly defaultLabel?: string;
+  /** Wording of the generated summary (`aria-describedby`). */
+  readonly summary?: Partial<ChartSummaryMessages>;
+}
+
+/** ARIA and high-contrast options for the chart root. Keyboard pan and zoom come from `interactionsPlugin`. */
 export interface ChartAccessibilityOptions {
+  /** BCP 47 locale for counts in generated text. Defaults to `"en-US"`. */
+  readonly locale?: string;
+  /** Override the generated core strings, for localization. */
+  readonly messages?: ChartAccessibilityMessages;
   /** Accessible name. Defaults to the chart title and subtitle, then `"BlazePlot chart"`. */
   readonly label?: string;
   /**
@@ -115,22 +138,12 @@ export interface ChartAccessibilityOptions {
   readonly description?: string | ((summary: ChartSummary) => string);
   /** ARIA role for the chart root. Defaults to `"figure"`. */
   readonly role?: string;
-  /** Arrow-key pan, +/- zoom, and Home to fit. Pass `false` to disable. */
-  readonly keyboard?: boolean | ChartKeyboardOptions;
   /**
    * Follow the operating system's forced-colors (high-contrast) mode: the canvas switches to
    * system colors and DOM overlays get forced-colors styles, updating when the mode changes.
    * Defaults to true.
    */
   readonly forcedColors?: boolean;
-}
-
-/** Keyboard pan and zoom behavior for accessible charts. */
-export interface ChartKeyboardOptions {
-  /** Fraction of the viewport moved per arrow key. Defaults to 0.1. */
-  readonly panFraction?: number;
-  /** Zoom factor per +/- key. Defaults to 1.25. */
-  readonly zoomFactor?: number;
 }
 
 /** @internal Context passed to a custom GPU backend factory. */
@@ -251,10 +264,36 @@ export interface ChartSeriesClickEvent extends ChartPointerEvent {
   readonly item: ChartPickItem;
 }
 
+/**
+ * What changed the viewport: a user gesture (`"user"`, passed by the interaction, navigator, and
+ * keyboard plugins), latest-X following (`"follow"`), `fitToData`/`autoFitY` (`"fit"`), a linked
+ * chart mirroring another panel (`"linked"`), or app code (`"api"`, the default).
+ */
+export type ChartViewportChangeSource = "user" | "follow" | "fit" | "api" | "linked";
+
 /** Emitted after the visible domain changes. */
 export interface ChartViewportChangeEvent {
   readonly viewport: Viewport;
   readonly rightViewport: Viewport;
+  /** What changed the viewport. */
+  readonly source: ChartViewportChangeSource;
+}
+
+/** Options for `chart.pan` and `chart.zoom`. */
+export interface ChartViewportGestureOptions {
+  /** Reported as `viewportchange.source`. Defaults to `"api"`. */
+  readonly source?: ChartViewportChangeSource;
+}
+
+/** Options for `chart.setViewport`. */
+export interface ChartSetViewportOptions extends ChartViewportGestureOptions {
+  /** Pause latest-X following when X changes. Defaults to true. Linked charts pass false for mirrored updates. */
+  readonly pauseFollow?: boolean;
+}
+
+/** Latest-X follow state change, emitted when following starts, stops, pauses, or resumes. */
+export interface ChartFollowXChangeEvent {
+  readonly state: ChartFollowXState;
 }
 
 /** Selection event payload emitted by selection plugins or custom code. `null` means the selection was cleared. */
@@ -303,6 +342,8 @@ export interface ChartEventMap extends ChartPluginEventMap {
   /** A frame finished drawing. */
   render: void;
   viewportchange: ChartViewportChangeEvent;
+  /** Latest-X following started, stopped, paused, or resumed. */
+  followxchange: ChartFollowXChangeEvent;
   seriesclick: ChartSeriesClickEvent;
   click: ChartPointerEvent;
   dblclick: ChartPointerEvent;
@@ -349,6 +390,8 @@ export interface ChartFitToDataOptions {
   readonly xMin?: number;
   /** Only consider samples at or before this X. */
   readonly xMax?: number;
+  /** Reported as `viewportchange.source`. Defaults to `"fit"`. */
+  readonly source?: ChartViewportChangeSource;
 }
 
 /** Options for automatically refitting Y as the X viewport changes. */
@@ -499,6 +542,7 @@ export class Chart {
   private readonly yTicks: number[] = [];
   private readonly y2Ticks: number[] = [];
   private axisOverlay: AxisOverlay | null = null;
+  private gutterTrackers = { x: new GutterTracker(), y: new GutterTracker(), y2: new GutterTracker() };
   private normalizedAxes: ResolvedAxesConfig;
   private resolvedTheme: ResolvedChartTheme;
   private gridVisible: boolean;
@@ -520,6 +564,9 @@ export class Chart {
   private pointerInPlot: boolean = false;
   private lastFrameAt: number = 0;
   private currentXOrigin: number = 0;
+  /** Per-frame Y origin of each Y axis (its camera `yMin` when linear, else 0), subtracted in float64 before upload. */
+  private leftYOrigin: number = 0;
+  private rightYOrigin: number = 0;
   private followXConfig: ChartFollowXOptions | null = null;
   private xFollowPaused: boolean = false;
   private xFollowResumeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -595,14 +642,11 @@ export class Chart {
     this.lastPointerButtons = 0;
     this.setHover(this.inspectionHoverState());
   };
-  private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    this.handleKeyboardNavigation(event);
-  };
   private readonly handleWebGLContextLost = (event: Event): void => {
     event.preventDefault();
     this.webglContextLost = true;
     if (this.restoreRenderRafId !== 0) {
-      cancelAnimationFrame(this.restoreRenderRafId);
+      this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
       this.restoreRenderRafId = 0;
     }
     this.resetFrameStats();
@@ -663,8 +707,9 @@ export class Chart {
 
     this.toggleDomListeners("addEventListener");
 
-    if (typeof ResizeObserver !== "undefined") {
-      this.resizeObserver = new ResizeObserver(() => this.resize());
+    const ResizeObserverCtor = this.layout.view.ResizeObserver ?? globalThis.ResizeObserver;
+    if (typeof ResizeObserverCtor !== "undefined") {
+      this.resizeObserver = new ResizeObserverCtor(() => this.resize());
       this.resizeObserver.observe(this.layout.plot);
     }
 
@@ -772,16 +817,16 @@ export class Chart {
    * Set any viewport edges. X is shared by both Y axes; Y edges apply to `yAxis`.
    * Changing X pauses latest-X following like a user pan would.
    */
-  setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left"): void {
+  setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left", options: ChartSetViewportOptions = {}): void {
     if (viewport.xMin !== undefined || viewport.xMax !== undefined) {
-      this.pauseXFollowForInteraction();
+      if (options.pauseFollow !== false) this.pauseXFollowForInteraction();
       this.camera.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax });
       this.syncRightCameraX();
     }
     if (viewport.yMin !== undefined || viewport.yMax !== undefined) {
       this.getCamera(yAxis).setViewport({ yMin: viewport.yMin, yMax: viewport.yMax });
     }
-    this.emitViewportChange();
+    this.emitViewportChange(options.source ?? "api");
     this.refreshHover();
   }
 
@@ -790,11 +835,11 @@ export class Chart {
    * Y pans only `yAxis` when given; omitted, Y pans both axes like a plot-area gesture.
    * The intent is normalized to the left axis domain (or `yAxis` when given).
    */
-  pan(intent: PanIntent, yAxis?: SeriesYAxis): void {
+  pan(intent: PanIntent, yAxis?: SeriesYAxis, options: ChartViewportGestureOptions = {}): void {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.applyGesture(() => {
+    this.applyGesture(options.source ?? "api", () => {
       if (yAxis === "right") {
         return (next.dx === 0 || this.axis.pan({ dx: next.dx, dy: 0 })) && (next.dy === 0 || this.rightAxis.pan({ dx: 0, dy: next.dy }));
       }
@@ -808,11 +853,11 @@ export class Chart {
    * Y zooms only `yAxis` when given; omitted, Y zooms both axes like a plot-area gesture.
    * The anchor is normalized to the left axis domain (or `yAxis` when given).
    */
-  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void {
+  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options: ChartViewportGestureOptions = {}): void {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.applyGesture(() => {
+    this.applyGesture(options.source ?? "api", () => {
       if (yAxis === "right") {
         return (next.axis === "y" || this.axis.zoom({ ...next, axis: "x" })) && (next.axis === "x" || this.rightAxis.zoom({ ...next, axis: "y" }));
       }
@@ -825,7 +870,7 @@ export class Chart {
    * Run a pan/zoom that moves one or both cameras. If any step is rejected (invalid scale
    * domain or a span beyond float precision), restore both so the axes never drift apart.
    */
-  private applyGesture(move: () => boolean): void {
+  private applyGesture(source: ChartViewportChangeSource, move: () => boolean): void {
     const left = this.camera.viewport;
     const right = this.rightCamera.viewport;
     if (!move()) {
@@ -835,7 +880,7 @@ export class Chart {
     }
     this.pauseXFollowForInteraction();
     this.syncRightCameraX();
-    this.emitViewportChange();
+    this.emitViewportChange(source);
     this.scheduleHoverRefresh();
   }
 
@@ -928,7 +973,13 @@ export class Chart {
    * most once a second from the same data.
    */
   getSummary(): ChartSummary {
-    return buildChartSummary(this.series, (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis));
+    const option = this.options.accessibility;
+    const config = typeof option === "object" ? option : undefined;
+    return buildChartSummary(
+      this.series,
+      (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis),
+      createSummaryMessages(config?.locale ?? "en-US", config?.messages?.summary),
+    );
   }
 
   /** Return metadata for all attached series. */
@@ -950,6 +1001,7 @@ export class Chart {
     this.followXConfig = options;
     this.clearXFollowResumeTimer();
     this.xFollowPaused = false;
+    this.emitFollowXChange();
     this.applyFollowXPolicy();
     this.requestRender();
   }
@@ -960,6 +1012,7 @@ export class Chart {
     this.followXConfig = null;
     this.xFollowPaused = false;
     this.clearXFollowResumeTimer();
+    this.emitFollowXChange();
     this.requestRender();
   }
 
@@ -968,6 +1021,7 @@ export class Chart {
     this.clearXFollowResumeTimer();
     if (this.xFollowPaused === paused) return;
     this.xFollowPaused = paused;
+    this.emitFollowXChange();
     if (!paused) this.applyFollowXPolicy();
     this.requestRender();
   }
@@ -1031,14 +1085,14 @@ export class Chart {
 
     if (changed) {
       this.syncRightCameraX();
-      this.emitViewportChange();
+      this.emitViewportChange(options.source ?? "fit");
       this.refreshHover();
     }
     return changed;
   }
 
   /** Resize the canvas to match its layout size and device pixel ratio. */
-  resize(dpr: number = globalThis.devicePixelRatio): boolean {
+  resize(dpr: number = this.layout.view.devicePixelRatio): boolean {
     const resized = this.applyCanvasSize(dpr);
     if (resized) {
       // `plugins` is unset while the constructor sizes the canvas, before any plugin exists.
@@ -1145,8 +1199,10 @@ export class Chart {
 
   /** Render the chart, including DOM overlays under the chart root, to an image blob. */
   async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
-    this.render();
+    // Load the chunk first, then render synchronously right before the compose step reads the
+    // (non-preserved) drawing buffer, so a presented frame cannot clear it in between.
     const { composeChartScreenshot } = await import("./screenshot.js");
+    this.render();
     return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
@@ -1163,7 +1219,7 @@ export class Chart {
   stop(): void {
     this.running = false;
     if (this.rafId !== 0) {
-      cancelAnimationFrame(this.rafId);
+      this.layout.view.cancelAnimationFrame(this.rafId);
       this.rafId = 0;
     }
   }
@@ -1171,7 +1227,7 @@ export class Chart {
   /** Schedule a frame. Chart-owned changes call this automatically. */
   requestRender(): void {
     if (!this.running || this.rafId !== 0) return;
-    this.rafId = requestAnimationFrame(() => {
+    this.rafId = this.layout.view.requestAnimationFrame(() => {
       this.rafId = 0;
       if (!this.running) return;
       try {
@@ -1190,9 +1246,9 @@ export class Chart {
     this.stop();
     this.clearXFollowResumeTimer();
     this.resizeObserver?.disconnect();
-    if (this.hoverRafId !== 0) cancelAnimationFrame(this.hoverRafId);
+    if (this.hoverRafId !== 0) this.layout.view.cancelAnimationFrame(this.hoverRafId);
     this.hoverRafId = 0;
-    if (this.restoreRenderRafId !== 0) cancelAnimationFrame(this.restoreRenderRafId);
+    if (this.restoreRenderRafId !== 0) this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
     this.restoreRenderRafId = 0;
     this.toggleDomListeners("removeEventListener");
     this.unwatchForcedColors();
@@ -1241,6 +1297,8 @@ export class Chart {
       const pixelRatio = this.canvas.width / Math.max(1, this.canvas.clientWidth);
       this.rendererImpl.beginFrame(this.canvas.width, this.canvas.height, pixelRatio);
       this.currentXOrigin = this.camera.xMin;
+      this.leftYOrigin = this.axis.isNonlinear("y") ? 0 : this.camera.yMin;
+      this.rightYOrigin = this.rightAxis.isNonlinear("y") ? 0 : this.rightCamera.yMin;
       this.updateTicks();
       if (this.gridVisible) this.drawGrid();
 
@@ -1252,6 +1310,7 @@ export class Chart {
       this.rendererImpl.endFrame();
 
       this.axisOverlay?.update(this.axis, this.rightAxis, this.xTicks, this.yTicks, this.y2Ticks);
+      this.updateAutoGutters();
       this.emit("render", undefined);
     } catch (error) {
       if (this.rendererImpl.getWebGLContext()?.isContextLost() === true) {
@@ -1264,7 +1323,7 @@ export class Chart {
 
     this.stats.frameMs = performance.now() - frameStartedAt;
     if (this.hoverRafId !== 0) {
-      cancelAnimationFrame(this.hoverRafId);
+      this.layout.view.cancelAnimationFrame(this.hoverRafId);
       this.hoverRafId = 0;
     }
     this.refreshHover();
@@ -1365,7 +1424,7 @@ export class Chart {
   private watchForcedColors(): void {
     const option = this.options.accessibility;
     if (option === false || (typeof option === "object" && option.forcedColors === false)) return;
-    const view = this.layout.root.ownerDocument.defaultView ?? globalThis;
+    const view = this.layout.view;
     if (typeof view.matchMedia !== "function") return;
     const query = view.matchMedia("(forced-colors: active)");
     this.forcedColorsQuery = query;
@@ -1495,8 +1554,10 @@ export class Chart {
   private pauseXFollowForInteraction(): void {
     const config = this.followXConfig;
     if (!config || config.pauseOnInteraction === false) return;
+    const wasPaused = this.xFollowPaused;
     this.xFollowPaused = true;
     this.clearXFollowResumeTimer();
+    if (!wasPaused) this.emitFollowXChange();
     const resumeAfterMs = config.resumeAfterMs;
     if (typeof resumeAfterMs !== "number" || !Number.isFinite(resumeAfterMs) || resumeAfterMs <= 0) return;
     this.xFollowResumeTimer = setTimeout(() => {
@@ -1531,7 +1592,7 @@ export class Chart {
     if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax) || !this.axis.isValidDomain("x", xMin, xMax)) return;
     this.camera.setViewport({ xMin, xMax });
     this.syncRightCameraX();
-    this.emitViewportChange();
+    this.emitViewportChange("follow");
   }
 
   private applyAutoFitYPolicy(): void {
@@ -1584,7 +1645,6 @@ export class Chart {
       [canvas, "dblclick", this.handleDoubleClick],
       [canvas, "webglcontextlost", this.handleWebGLContextLost],
       [canvas, "webglcontextrestored", this.handleWebGLContextRestored],
-      [root, "keydown", this.handleKeyDown],
     ];
     if (this.summaryElement) listeners.push([root, "focusin", this.handleRootFocusIn]);
     for (const [target, type, listener] of listeners) target[method](type, listener as EventListener);
@@ -1592,7 +1652,7 @@ export class Chart {
 
   private scheduleRenderAfterRestore(): void {
     if (this.restoreRenderRafId !== 0) return;
-    this.restoreRenderRafId = requestAnimationFrame(() => {
+    this.restoreRenderRafId = this.layout.view.requestAnimationFrame(() => {
       this.restoreRenderRafId = 0;
       this.render();
     });
@@ -1608,7 +1668,7 @@ export class Chart {
     const doc = root.ownerDocument;
     if (root.tabIndex < 0) root.tabIndex = 0;
     root.setAttribute("role", config?.role ?? "figure");
-    root.setAttribute("aria-label", config?.label ?? (title || "BlazePlot chart"));
+    root.setAttribute("aria-label", config?.label ?? (title || config?.messages?.defaultLabel || "BlazePlot chart"));
     this.layout.plot.setAttribute("role", "presentation");
     for (const element of [this.canvas, this.xAxisElement, this.yAxisElement, this.y2AxisElement]) {
       element.setAttribute("aria-hidden", "true");
@@ -1628,71 +1688,29 @@ export class Chart {
     this.summaryElement = summary;
   }
 
-  private keyboardOptions(): Required<ChartKeyboardOptions> | null {
-    const accessibility = this.options.accessibility;
-    if (accessibility === false) return null;
-    const keyboard = typeof accessibility === "object" ? accessibility.keyboard : undefined;
-    if (keyboard === false) return null;
-    const config = typeof keyboard === "object" ? keyboard : undefined;
-    const panFraction = config?.panFraction;
-    const zoomFactor = config?.zoomFactor;
-    return {
-      panFraction: typeof panFraction === "number" && Number.isFinite(panFraction) ? Math.max(0, panFraction) : 0.1,
-      zoomFactor: typeof zoomFactor === "number" && Number.isFinite(zoomFactor) && zoomFactor > 1 ? zoomFactor : 1.25,
-    };
-  }
-
-  private handleKeyboardNavigation(event: KeyboardEvent): void {
-    const keyboard = this.keyboardOptions();
-    if (!keyboard || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-    const target = event.target;
-    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
-
-    const panStep = keyboard.panFraction * (event.shiftKey ? 2.5 : 1);
-    const zoomAtCenter = (factor: number, axis: ZoomIntent["axis"]): void => this.zoom({ factor, cx: 0.5, cy: 0.5, axis });
-    let handled = true;
-
-    switch (event.key) {
-      case "ArrowLeft":
-        this.pan({ dx: -panStep, dy: 0 });
-        break;
-      case "ArrowRight":
-        this.pan({ dx: panStep, dy: 0 });
-        break;
-      case "ArrowUp":
-        this.pan({ dx: 0, dy: panStep });
-        break;
-      case "ArrowDown":
-        this.pan({ dx: 0, dy: -panStep });
-        break;
-      case "+":
-      case "=":
-        zoomAtCenter(keyboard.zoomFactor, "xy");
-        break;
-      case "-":
-      case "_":
-        zoomAtCenter(1 / keyboard.zoomFactor, "xy");
-        break;
-      case "PageUp":
-        zoomAtCenter(keyboard.zoomFactor, "y");
-        break;
-      case "PageDown":
-        zoomAtCenter(1 / keyboard.zoomFactor, "y");
-        break;
-      case "Home":
-      case "0":
-        handled = this.fitToData({ padding: 0.05 });
-        break;
-      default:
-        handled = false;
-        break;
+  /** Resize `size: "auto"` gutters from the labels measured this frame. */
+  private updateAutoGutters(): void {
+    const overlay = this.axisOverlay;
+    if (!overlay) return;
+    let changed = false;
+    for (const axis of ["x", "y", "y2"] as const) {
+      const config = this.normalizedAxes[axis];
+      if (config.size !== "auto" || !config.visible || config.position !== "outside") continue;
+      const extent = overlay.measuredExtent(axis);
+      if (extent <= 0) continue;
+      const next = this.gutterTrackers[axis].next(Math.max(MIN_AUTO_GUTTER_PX, extent + AUTO_GUTTER_PADDING_PX));
+      if (next !== null && this.layout.setAutoSize(axis, next)) changed = true;
     }
-
-    if (handled) event.preventDefault();
+    if (changed) {
+      this.resize();
+      this.requestRender();
+    }
   }
 
   private rebuildAxisOverlay(): void {
     this.axisOverlay?.dispose();
+    this.gutterTrackers = { x: new GutterTracker(), y: new GutterTracker(), y2: new GutterTracker() };
+    for (const axis of ["x", "y", "y2"] as const) this.layout.setAutoSize(axis, null);
     const axes = this.normalizedAxes;
     this.axisOverlay = axes.x.visible || axes.y.visible || axes.y2.visible
       ? new AxisOverlay(this.layout, axes, { color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont })
@@ -1701,8 +1719,12 @@ export class Chart {
 
   private updateTextOverlays(): void {
     const theme = this.resolvedTheme;
+    const hasTitle = titleText(this.options.title) !== "";
+    const hasSubtitle = titleText(this.options.subtitle) !== "";
     this.applyChartTitle(this.layout.title, this.options.title, theme.titleColor, theme.titleFont, TITLE_TOP_PX);
-    this.applyChartTitle(this.layout.subtitle, this.options.subtitle, theme.subtitleColor, theme.subtitleFont, SUBTITLE_TOP_PX);
+    this.applyChartTitle(this.layout.subtitle, this.options.subtitle, theme.subtitleColor, theme.subtitleFont, hasTitle ? SUBTITLE_TOP_PX : TITLE_TOP_PX);
+    // Title and subtitle get their own grid row, so they never sit on top of the plot.
+    this.layout.setTitleInset((hasTitle ? SUBTITLE_TOP_PX : 0) + (hasSubtitle ? SUBTITLE_ROW_PX : 0));
     this.applyAxisTitle(this.layout.xAxisTitle, this.normalizedAxes.x.title, "x");
     this.applyAxisTitle(this.layout.yAxisTitle, this.normalizedAxes.y.title, "y");
     this.applyAxisTitle(this.layout.y2AxisTitle, this.normalizedAxes.y2.title, "y2");
@@ -1756,7 +1778,7 @@ export class Chart {
     }
   }
 
-  private applyCanvasSize(dpr: number = globalThis.devicePixelRatio): boolean {
+  private applyCanvasSize(dpr: number = this.layout.view.devicePixelRatio): boolean {
     const scale = Number.isFinite(dpr) ? Math.max(1, dpr) : 1;
     const width = Math.max(1, Math.floor(this.canvas.clientWidth * scale));
     const height = Math.max(1, Math.floor(this.canvas.clientHeight * scale));
@@ -1790,13 +1812,18 @@ export class Chart {
     const scaledOrigin = controller.scaleValue(this.currentXOrigin, "x");
     const xMin = controller.scaleValue(camera.xMin, "x") - scaledOrigin;
     const xMax = controller.scaleValue(camera.xMax, "x") - scaledOrigin;
-    const yMin = controller.scaleValue(camera.yMin, "y");
-    const yMax = controller.scaleValue(camera.yMax, "y");
+    const scaledYOrigin = controller.isNonlinear("y") ? 0 : this.yOriginFor(yAxis);
+    const yMin = controller.scaleValue(camera.yMin, "y") - scaledYOrigin;
+    const yMax = controller.scaleValue(camera.yMax, "y") - scaledYOrigin;
     projection.scaleX = (camera.xReversed ? -2 : 2) / (xMax - xMin);
     projection.scaleY = (camera.yReversed ? -2 : 2) / (yMax - yMin);
     projection.offsetX = (camera.xReversed ? 1 : -1) * (xMin + xMax) / (xMax - xMin);
     projection.offsetY = (camera.yReversed ? 1 : -1) * (yMin + yMax) / (yMax - yMin);
     return projection;
+  }
+
+  private yOriginFor(yAxis: SeriesYAxis | undefined): number {
+    return yAxis === "right" ? this.rightYOrigin : this.leftYOrigin;
   }
 
   /** Whether both Y axes share a screen direction, so left-domain Y anchors map 1:1 onto the right axis. */
@@ -1880,16 +1907,17 @@ export class Chart {
   }
 
   private drawLineSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
+    const yOrigin = this.yOriginFor(series.config.yAxis);
     const dense = series.hasServerMinMax || (series.downsampled && series.visibleSampleCount(viewport) > RAW_LINE_VERTEX_CAPACITY - 2);
     if (dense) {
-      const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin);
+      const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin, yOrigin);
       this.padBucketsToLineWidth(bucketCount, viewport, series);
       this.drawBucketColumns(bucketCount, viewport, series.style.color, projection, "minmax");
       return;
     }
 
     for (let start = 0, done = false; !done;) {
-      const chunk = series.copyRawClippedChunk(viewport, start, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+      const chunk = series.copyRawClippedChunk(viewport, start, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin, yOrigin);
       this.drawRawLine(chunk.count, series.style, projection, "raw");
       // Resume at the last segment's end so consecutive chunks share a vertex and the seam stays closed.
       start = chunk.next;
@@ -1902,34 +1930,58 @@ export class Chart {
     if (range.end - range.start < 2) return;
 
     const { style } = series;
-    if (range.end - range.start > AREA_POINT_CAPACITY) {
-      this.drawAreaFill(series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, style.baseline, this.currentXOrigin), style, projection);
-      this.drawRawLine(series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin), style, projection, "area");
+    const yOrigin = this.yOriginFor(series.config.yAxis);
+    const visibleSamples = range.end - range.start;
+    if (series.hasServerMinMax || (series.downsampled && visibleSamples > AREA_POINT_CAPACITY)) {
+      this.drawDenseArea(series, viewport, projection, yOrigin);
+      return;
+    }
+
+    if (visibleSamples > AREA_POINT_CAPACITY) {
+      // `downsample: "none"`: stable stride decimation keeps the strip within the buffer.
+      this.drawAreaFill(series.copyAreaVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, style.baseline, this.currentXOrigin, yOrigin), style, projection);
+      this.drawRawLine(series.copyRawVisible(viewport, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin, yOrigin), style, projection, "area");
       return;
     }
 
     for (let start = range.start; start < range.end;) {
-      const vertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, style.baseline, this.currentXOrigin);
+      const vertexCount = series.copyAreaRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, style.baseline, this.currentXOrigin, yOrigin);
       if (vertexCount < 4) break;
       this.drawAreaFill(vertexCount, style, projection);
       start += Math.max(1, (vertexCount >> 1) - 1);
     }
 
     for (let start = range.start; start < range.end;) {
-      const vertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin);
+      const vertexCount = series.copyRawRange(start, range.end, this.rawLineData, AREA_POINT_CAPACITY, this.currentXOrigin, yOrigin);
       if (vertexCount < 2) break;
       this.drawRawLine(vertexCount, style, projection, "area");
       start += Math.max(1, vertexCount - 1);
     }
   }
 
+  /**
+   * Dense area: min/max buckets rendered as full-width columns. The fill spans each bucket from the
+   * baseline to its extreme, and the outline is the min/max envelope, so isolated spikes survive.
+   */
+  private drawDenseArea(series: SeriesStore, viewport: Viewport, projection: RenderProjection, yOrigin: number): void {
+    const { style } = series;
+    // At most one bucket per drawing-buffer column: narrower buckets can miss every pixel center and drop a spike.
+    const maxBuckets = Math.max(1, Math.min(BAR_TRIANGLE_CAPACITY, this.canvas.width));
+    const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, maxBuckets, this.currentXOrigin, yOrigin);
+    if (bucketCount <= 0) return;
+    this.drawBucketColumns(bucketCount, viewport, style.fillColor, projection, "area", style.baseline - yOrigin);
+    this.padBucketsToLineWidth(bucketCount, viewport, series);
+    this.drawBucketColumns(bucketCount, viewport, style.color, projection, "area");
+  }
+
   private drawOhlcSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport);
     const maxCandles = Math.min(Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE), BAR_TRIANGLE_CAPACITY);
     const { style } = series;
+    const yOrigin = this.yOriginFor(series.config.yAxis);
 
     for (let start = range.start; start < range.end;) {
-      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin);
+      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin, yOrigin);
       if (candleCount <= 0) break;
 
       this.drawOhlcTicks(candleCount, style.tickWidth, true, style.upColor, style.lineWidth, projection);
@@ -1942,9 +1994,10 @@ export class Chart {
     const range = series.visibleIndexRange(viewport, 1);
     const maxCandles = Math.min(Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE), BAR_TRIANGLE_CAPACITY);
     const { style } = series;
+    const yOrigin = this.yOriginFor(series.config.yAxis);
 
     for (let start = range.start; start < range.end;) {
-      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin);
+      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin, yOrigin);
       if (candleCount <= 0) break;
 
       for (let i = 0; i < candleCount; i++) {
@@ -1968,28 +2021,33 @@ export class Chart {
 
   private drawScatterSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const { style } = series;
+    const yOrigin = this.yOriginFor(series.config.yAxis);
+    // Culling padding is measured in drawing-buffer pixels, so scale the CSS-pixel point size.
+    const pointSizePx = style.pointSize * (this.canvas.width / Math.max(1, this.canvas.clientWidth));
     if (series.config.downsample === "none" && series.visibleSampleCount(viewport) <= MAX_EXACT_SCATTER_POINTS) {
       const range = series.visibleIndexRange(viewport);
       for (let start = range.start; start < range.end; start += RAW_LINE_VERTEX_CAPACITY) {
         const end = Math.min(range.end, start + RAW_LINE_VERTEX_CAPACITY);
-        const count = series.copyScatterRange(start, end, viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin, this.canvas.height, style.pointSize);
+        const count = series.copyScatterRange(start, end, viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin, this.canvas.height, pointSizePx, yOrigin);
         this.drawPointBatch(count, style, projection);
       }
       return;
     }
 
-    const count = series.copyScatterVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.canvas.width, this.canvas.height, style.pointSize, this.currentXOrigin);
+    const count = series.copyScatterVisible(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.canvas.width, this.canvas.height, pointSizePx, this.currentXOrigin, yOrigin);
     this.drawPointBatch(count, style, projection);
   }
 
   private drawBarSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const { style } = series;
+    const yOrigin = this.yOriginFor(series.config.yAxis);
+    const baseline = style.baseline - yOrigin;
     if (series.downsampled && series.visibleSampleCount(viewport) > RAW_LINE_VERTEX_CAPACITY) {
-      const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin);
+      const bucketCount = series.copyMinMaxInstanced(viewport, this.minMaxBucketData, BAR_TRIANGLE_CAPACITY, this.currentXOrigin, yOrigin);
       for (let i = 0; i < bucketCount; i++) {
         const offset = i * FLOATS_PER_MINMAX_BUCKET;
-        this.minMaxBucketData[offset + 1] = Math.min(style.baseline, this.minMaxBucketData[offset + 1]!);
-        this.minMaxBucketData[offset + 2] = Math.max(style.baseline, this.minMaxBucketData[offset + 2]!);
+        this.minMaxBucketData[offset + 1] = Math.min(baseline, this.minMaxBucketData[offset + 1]!);
+        this.minMaxBucketData[offset + 2] = Math.max(baseline, this.minMaxBucketData[offset + 2]!);
       }
       this.drawBucketColumns(bucketCount, viewport, style.color, projection, "bars");
       return;
@@ -2002,13 +2060,13 @@ export class Chart {
 
     // Draw every visible bar in upload-buffer sized chunks so exact series are never truncated.
     for (let start = range.start; start < range.end;) {
-      const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+      const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin, yOrigin);
       if (count <= 0) break;
       start += count;
 
       if (instanced) {
         this.uploadRawLineData(count, projection);
-        this.rendererImpl.drawBarsInstanced(this.rawLineData, count, style, projection);
+        this.rendererImpl.drawBarsInstanced(this.rawLineData, count, style, projection, yOrigin);
         this.recordDraw("bars", count);
         continue;
       }
@@ -2018,7 +2076,7 @@ export class Chart {
         const batch = Math.min(BAR_TRIANGLE_CAPACITY, count - offset);
         for (let i = 0; i < batch; i++) {
           const x = this.rawLineData[(offset + i) * 2]!;
-          this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[(offset + i) * 2 + 1]!);
+          this.writeBarTriangles(i, x - halfWidth, x + halfWidth, baseline, this.rawLineData[(offset + i) * 2 + 1]!);
         }
         this.drawTriangleBatch(batch * 6, style.color, projection, "bars");
       }
@@ -2064,8 +2122,11 @@ export class Chart {
     }
   }
 
-  /** Expand `[x, minY, maxY]` buckets into columns spanning the full bucket width so dense data has no gaps. */
-  private drawBucketColumns(bucketCount: number, viewport: Viewport, color: RgbaColor, projection: RenderProjection, mode: DrawMode): void {
+  /**
+   * Expand `[x, minY, maxY]` buckets into columns spanning the full bucket width so dense data has no gaps.
+   * With `baseline`, each column is extended to include it (dense bars and area fills).
+   */
+  private drawBucketColumns(bucketCount: number, viewport: Viewport, color: RgbaColor, projection: RenderProjection, mode: DrawMode, baseline?: number): void {
     const count = Math.min(bucketCount, BAR_TRIANGLE_CAPACITY);
     if (count <= 0) return;
 
@@ -2091,7 +2152,9 @@ export class Chart {
           x1 = i + 1 === count ? viewportXMax : x0 + bucketWidth;
         }
       }
-      this.writeBarTriangles(i, Math.max(viewportXMin, x0), Math.min(viewportXMax, x1), data[i * 3 + 1]!, data[i * 3 + 2]!);
+      const low = data[i * 3 + 1]!;
+      const high = data[i * 3 + 2]!;
+      this.writeBarTriangles(i, Math.max(viewportXMin, x0), Math.min(viewportXMax, x1), baseline === undefined ? low : Math.min(baseline, low), baseline === undefined ? high : Math.max(baseline, high));
     }
     this.drawTriangleBatch(count * 6, color, projection, mode);
   }
@@ -2327,7 +2390,7 @@ export class Chart {
 
   private scheduleHoverRefresh(): void {
     if (this.hoverRafId !== 0) return;
-    this.hoverRafId = requestAnimationFrame(() => {
+    this.hoverRafId = this.layout.view.requestAnimationFrame(() => {
       this.hoverRafId = 0;
       this.refreshHover();
     });
@@ -2372,7 +2435,9 @@ export class Chart {
     };
   }
 
+  /** Emit `hover` only when the picked items or the anchor actually changed. */
   private setHover(state: ChartHoverState | null): void {
+    if (hoverStatesEqual(this.currentHover, state)) return;
     this.currentHover = state;
     this.emit("hover", state);
   }
@@ -2405,9 +2470,13 @@ export class Chart {
     return event;
   }
 
-  private emitViewportChange(): void {
-    this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport });
+  private emitViewportChange(source: ChartViewportChangeSource): void {
+    this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source });
     this.requestRender();
+  }
+
+  private emitFollowXChange(): void {
+    if (this.hasListeners("followxchange")) this.emit("followxchange", { state: this.getFollowXState() });
   }
 
   private emitSeriesChange(): void {
@@ -2424,6 +2493,36 @@ export class Chart {
   private emit<K extends ChartEventName>(event: K, payload: ChartEventMap[K]): void {
     const listeners = this.listeners.get(event);
     if (!listeners) return;
-    for (const listener of listeners) (listener as Listener<K>)(payload);
+    // One throwing listener never stops the rest.
+    for (const listener of listeners) {
+      try {
+        (listener as Listener<K>)(payload);
+      } catch (error) {
+        console.error(`BlazePlot ${event} listener failed:`, error);
+      }
+    }
   }
+}
+
+/** Coordinates closer than this many CSS pixels count as unchanged. */
+const HOVER_EPSILON_PX = 1e-3;
+
+const near = (a: number, b: number): boolean => a === b || Math.abs(a - b) <= HOVER_EPSILON_PX;
+
+/** Whether two hover states show the same items at the same anchor (series, index, x, y, and position). */
+function hoverStatesEqual(a: ChartHoverState | null, b: ChartHoverState | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.source !== b.source || a.mode !== b.mode || a.group !== b.group || a.maxDistancePx !== b.maxDistancePx) return false;
+  if (a.items.length !== b.items.length) return false;
+  if (!near(a.plotX, b.plotX) || !near(a.plotY, b.plotY) || !near(a.clientX, b.clientX) || !near(a.clientY, b.clientY)) return false;
+  if (!Object.is(a.anchorX, b.anchorX) || !Object.is(a.dataX, b.dataX) || !Object.is(a.dataY, b.dataY)) return false;
+  for (let i = 0; i < a.items.length; i++) {
+    const p = a.items[i]!;
+    const q = b.items[i]!;
+    if (p.series !== q.series || p.index !== q.index || !Object.is(p.x, q.x) || !Object.is(p.y, q.y)) return false;
+    if (!near(p.plotX, q.plotX) || !near(p.plotY, q.plotY)) return false;
+    if (p.xRange?.xStart !== q.xRange?.xStart || p.xRange?.xEnd !== q.xRange?.xEnd) return false;
+  }
+  return true;
 }

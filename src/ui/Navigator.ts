@@ -1,6 +1,6 @@
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createSvgElement } from "./OverlayUtils.js";
+import { createSvgElement, singleChartPlugin } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 
 /** Options for the overview navigator plugin. */
@@ -222,7 +222,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     overlay.setAttribute("preserveAspectRatio", "none");
 
     while (paths.length < selectedSeries.length) {
-      const path = createSvgElement("path");
+      const path = createSvgElement(chart.dom.document, "path");
       path.setAttribute("fill", "none");
       path.setAttribute("vector-effect", "non-scaling-stroke");
       overlay.insertBefore(path, windowRect);
@@ -249,7 +249,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     const viewport = chart.viewport.get();
     if (follow && options.followLive !== false && wasAtRightEdge && domain.xMax > viewport.xMax) {
       const span = viewport.xMax - viewport.xMin;
-      chart.viewport.set({ xMin: domain.xMax - span, xMax: domain.xMax });
+      chart.viewport.set({ xMin: domain.xMax - span, xMax: domain.xMax }, undefined, { source: "follow", pauseFollow: false });
     }
 
     const current = chart.viewport.get();
@@ -294,15 +294,15 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       xMax = domain.xMax;
       xMin = xMax - span;
     }
-    chart.viewport.set({ xMin, xMax });
+    chart.viewport.set({ xMin, xMax }, undefined, { source: "user" });
     options.onRangeChange?.({ xMin, xMax });
     render(false);
   };
 
-  return {
+  return singleChartPlugin("navigator", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
-      root = document.createElement("div");
+      root = chart.dom.document.createElement("div");
       root.className = options.className ?? "blazeplot-navigator";
       root.style.position = "absolute";
       root.style.left = "0";
@@ -322,17 +322,17 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         ? null
         : chart.layout.reserve(placement === "top" ? { top: height + margin * 2 } : { bottom: height + margin * 2 });
 
-      overlay = createSvgElement("svg");
+      overlay = createSvgElement(chart.dom.document, "svg");
       overlay.style.width = "100%";
       overlay.style.height = "100%";
       overlay.setAttribute("aria-hidden", "true");
       overlay.style.display = "block";
-      windowRect = createSvgElement("rect");
+      windowRect = createSvgElement(chart.dom.document, "rect");
       windowRect.setAttribute("class", "blazeplot-navigator-window");
-      leftHandle = createSvgElement("rect");
-      rightHandle = createSvgElement("rect");
-      leftHandleHit = createSvgElement("rect");
-      rightHandleHit = createSvgElement("rect");
+      leftHandle = createSvgElement(chart.dom.document, "rect");
+      rightHandle = createSvgElement(chart.dom.document, "rect");
+      leftHandleHit = createSvgElement(chart.dom.document, "rect");
+      rightHandleHit = createSvgElement(chart.dom.document, "rect");
       for (const handle of [leftHandle, rightHandle]) {
         handle.style.cursor = "ew-resize";
         handle.style.pointerEvents = "none";
@@ -348,11 +348,12 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       overlay.appendChild(leftHandleHit);
       overlay.appendChild(rightHandleHit);
       root.appendChild(overlay);
-      const unmount = chart.dom.mount("root", root);
+      chart.dom.mount("root", root);
 
       const applyTheme = (): void => {
         if (!root || !windowRect || !leftHandle || !rightHandle) return;
         const windowStroke = options.windowStrokeColor ?? chart.theme.axisColor;
+        root.setAttribute("data-blazeplot-screenshot-box", "");
         root.style.background = options.backgroundColor ?? chart.theme.legendBackgroundColor;
         root.style.outline = `1px solid ${options.borderColor ?? chart.theme.legendBorderColor}`;
         windowRect.setAttribute("fill", options.windowFillColor ?? rgbaCss(chart.theme.gridColor));
@@ -362,8 +363,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       };
 
       const onRender = (): void => render();
-      const unsubscribeRender = chart.events.subscribe("render", onRender);
-      const unsubscribeViewport = chart.events.subscribe("viewportchange", () => render(false));
+      chart.events.subscribe("render", onRender);
+      chart.events.subscribe("viewportchange", () => render(false));
       applyTheme();
 
       const onPointerDown = (event: PointerEvent): void => {
@@ -452,8 +453,6 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           render();
         },
         dispose() {
-          unsubscribeRender();
-          unsubscribeViewport();
           root?.removeEventListener("pointerdown", onPointerDown);
           root?.removeEventListener("pointermove", onPointerMove);
           root?.removeEventListener("pointerup", onPointerUp);
@@ -461,7 +460,6 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           root?.removeEventListener("dblclick", onDoubleClick);
           root?.removeEventListener("keydown", onKeyDown);
           releaseSpace?.();
-          unmount();
           root = null;
           overlay = null;
           windowRect = null;
@@ -481,5 +479,5 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       overviewCache = null;
       render();
     },
-  };
+  });
 }

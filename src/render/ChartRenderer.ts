@@ -27,10 +27,10 @@ export interface ChartRenderer extends ChartRendererHandle {
   drawLines(data: Float32Array, vertexCount: number, color: RgbaColor, lineWidth: number, projection: RenderProjection, primitive?: "line_strip" | "lines"): void;
   /** 1px segments from clip-space vertices (grid lines). */
   drawClipLines(data: Float32Array, vertexCount: number, color: RgbaColor): void;
-  /** Square points `pointSize` device pixels across. */
+  /** Round markers `pointSize` CSS pixels in diameter. */
   drawPoints(data: Float32Array, pointCount: number, color: RgbaColor, pointSize: number, projection: RenderProjection): void;
-  /** One bar per `[x, y]` vertex, `style.barWidth` data units wide, from `style.baseline`. */
-  drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection): void;
+  /** One bar per `[x, y]` vertex, `style.barWidth` data units wide, from `style.baseline - yOrigin`. */
+  drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection, yOrigin?: number): void;
   /** Solid triangles (axis-aligned rectangles are emitted as two triangles) or a triangle strip (area fills). */
   drawTriangles(data: Float32Array, vertexCount: number, color: RgbaColor, projection: RenderProjection, primitive?: "triangles" | "triangle_strip"): void;
   /** Release everything the renderer owns. */

@@ -23,7 +23,7 @@ export interface SeriesStyleOptions {
   readonly color?: ThemeColor;
   /** Line width in CSS pixels for line, area outline, and OHLC series. Defaults to 1. */
   readonly lineWidth?: number;
-  /** Scatter point diameter in device pixels. Defaults to 4. */
+  /** Scatter point diameter in CSS pixels. Defaults to 4. */
   readonly pointSize?: number;
   /** Bar and candlestick body width in data X units. Defaults to 0.8. */
   readonly barWidth?: number;
