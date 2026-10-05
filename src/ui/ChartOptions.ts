@@ -3,6 +3,7 @@
  * and screenshot options. Depends on the plugin contract, never the other way around.
  */
 import type { BufferOverflowStrategy, Dataset, DownsampleStrategy, InvalidSample, SeriesYAxis, ValuePrecision } from "../core/types.js";
+import type { HistogramOptions } from "../core/Histogram.js";
 import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 import type { ChartRendererFactory, RendererChoice } from "../render/ChartRenderer.js";
 import type { AxisScaleOptions } from "../interaction/AxisController.js";
@@ -194,11 +195,43 @@ export type UniformRingSeriesConfig = SeriesIdentityConfig & {
 );
 
 /**
- * Series configuration used by the typed helpers such as `addLine`: an existing `dataset`
- * ({@link DatasetSeriesConfig}), or a `capacity` for a chart-owned streaming buffer
- * ({@link RingSeriesConfig}, or {@link UniformRingSeriesConfig} when `xStep` or `xStart` is given).
+ * Shorthand for the common case: X/Y arrays you already have. The chart wraps them in a
+ * `StaticDataset` (the series handle is a `SeriesStore<StaticDataset>`, so `series.replace({ x, y })`
+ * updates it). X must be finite and sorted ascending, or a `RangeError` names the first bad index;
+ * for unsorted rows build the dataset yourself with `StaticDataset.sorted` or `StaticDataset.fromObjects`.
+ * Non-finite Y is a gap. Both arrays are read once and must have the same length.
  */
-export type TypedSeriesConfig<D extends Dataset = Dataset> = DatasetSeriesConfig<D> | RingSeriesConfig | UniformRingSeriesConfig;
+export interface StaticSeriesConfig extends SeriesIdentityConfig {
+  /** X values, in X data units (epoch milliseconds for a time axis), sorted ascending. */
+  readonly x: ArrayLike<number>;
+  /** Y values, one per X. */
+  readonly y: ArrayLike<number>;
+  readonly dataset?: never;
+  readonly capacity?: never;
+  readonly values?: never;
+}
+
+/**
+ * Shorthand for a histogram: raw `values` are binned and drawn as bars, like
+ * `dataset: HistogramDataset.from(values, options)`. Pick the bin layout with one of `binSize`
+ * (bucket width in value units), `binCount`, or `thresholds`. Only `addBar` (and `addSeries` with
+ * `mode: "bar"`) accept it.
+ */
+export interface HistogramSeriesConfig extends SeriesIdentityConfig, HistogramOptions {
+  /** The one-dimensional values to count. Non-finite values are skipped and reported in `HistogramResult.invalid`. */
+  readonly values: ArrayLike<number>;
+  readonly dataset?: never;
+  readonly capacity?: never;
+  readonly x?: never;
+}
+
+/**
+ * Series configuration used by the typed helpers such as `addLine`: an existing `dataset`
+ * ({@link DatasetSeriesConfig}), `x`/`y` arrays ({@link StaticSeriesConfig}), or a `capacity` for a
+ * chart-owned streaming buffer ({@link RingSeriesConfig}, or {@link UniformRingSeriesConfig} when
+ * `xStep` or `xStart` is given). `addBar` also accepts raw `values` ({@link HistogramSeriesConfig}).
+ */
+export type TypedSeriesConfig<D extends Dataset = Dataset> = DatasetSeriesConfig<D> | StaticSeriesConfig | HistogramSeriesConfig | RingSeriesConfig | UniformRingSeriesConfig;
 
 /** Options for exporting the chart as an image blob. */
 export interface ChartScreenshotOptions {
