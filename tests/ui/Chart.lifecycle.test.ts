@@ -213,6 +213,19 @@ describe("Chart resize", () => {
     chart.dispose();
   });
 
+  it("rejects buffer options next to a dataset, and an OHLC series without one", async () => {
+    const { StaticDataset } = await import("../../src/core/StaticDataset.ts");
+    const chart = make();
+    const dataset = new StaticDataset([0, 1], [1, 2]);
+    const loose = chart as unknown as { addLine(config: object): unknown; addCandlestick(config: object): unknown };
+    expect(() => loose.addLine({ dataset, capacity: 10 })).toThrow('"capacity" configure a buffer the chart creates');
+    expect(() => loose.addLine({ dataset, xStep: 1, overflow: "wrap" })).toThrow('"xStep", "overflow"');
+    expect(() => loose.addLine({ capacity: 4, xStep: 1, onInvalidSample: () => {} })).toThrow("onInvalidSample does not apply");
+    expect(() => loose.addCandlestick({ capacity: 10 })).toThrow("require an OhlcDataset");
+    expect(chart.getSeriesState()).toHaveLength(0);
+    chart.dispose();
+  });
+
   it("resizes when the ResizeObserver fires on the plot element and requests a render", () => {
     const chart = make();
     chart.start();

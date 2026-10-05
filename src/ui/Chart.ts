@@ -1,4 +1,4 @@
-import type { SeriesConfig, SeriesStyleOptions, Dataset, SeriesYAxis, Viewport } from "../core/types.js";
+import type { SeriesConfig, SeriesStyleOptions, Dataset, OhlcDataset, SeriesYAxis, Viewport } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { toRenderSurface } from "../render/ChartRenderer.js";
@@ -20,7 +20,7 @@ import { chartInternals, registerChartInternals } from "./ChartInternals.js";
 import type { ChartLayoutReservation } from "./PluginTypes.js";
 import { FollowXController } from "./FollowX.js";
 import { ChartAccessibility } from "./ChartAccessibility.js";
-import { normalizeAxesConfig, createDefaultDataset, datasetBarWidth } from "./ChartConfig.js";
+import { normalizeAxesConfig, createDefaultDataset, datasetBarWidth, rejectBufferOptions } from "./ChartConfig.js";
 import { ChartSeriesStyles } from "./ChartSeriesStyles.js";
 import { fitCameras } from "./ChartFit.js";
 import type { ResolvedAxesConfig } from "./ChartConfig.js";
@@ -32,10 +32,12 @@ const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "b
 const GRID_LINE_VERTEX_CAPACITY = (X_TICK_LIMIT + 2 + Y_TICK_LIMIT + 2) * 2;
 /** Smallest auto-sized gutter, so a short-label axis still leaves room for ticks. */
 const MIN_AUTO_GUTTER_PX = 16;
-export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartScreenshotOptions } from "./ChartOptions.js";
+export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartRenderLoop, ChartOptions, TypedSeriesConfig, DatasetSeriesConfig, RingSeriesConfig, UniformRingSeriesConfig, SeriesIdentityConfig, ChartScreenshotOptions } from "./ChartOptions.js";
 export type { ChartPickMode, ChartPickGroup, ChartPickOptions, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeEvent, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartFrameStats } from "./ChartEvents.js";
 export type { ChartViewportChangeSource, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
-import type { ChartOptions, TypedSeriesConfig, ChartScreenshotOptions } from "./ChartOptions.js";
+import type { ChartOptions, TypedSeriesConfig, DatasetSeriesConfig, RingSeriesConfig, UniformRingSeriesConfig, ChartScreenshotOptions } from "./ChartOptions.js";
+import type { RingBuffer } from "../core/RingBuffer.js";
+import type { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import type { ChartPickOptions, ChartSeriesState, ChartHoverState, ChartEventMap, ChartEventName, ChartFrameStats } from "./ChartEvents.js";
 import type { ChartViewportChangeSource, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFitToDataOptions, ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
 
@@ -378,14 +380,26 @@ export class Chart {
     this.hover.schedule();
   }
 
-  /** Add a series with an explicit mode. Prefer the typed helpers such as `addLine`. */
-  addSeries<D extends Dataset = Dataset>(config: SeriesConfig & { readonly dataset?: D }, style: SeriesStyleOptions = {}): SeriesStore<D> {
+  /**
+   * Add a series with an explicit mode. Prefer the typed helpers such as `addLine`. The config is
+   * the same union the helpers take: a `dataset`, or a `capacity` for a streaming buffer.
+   */
+  addSeries<D extends OhlcDataset>(config: DatasetSeriesConfig<D> & { readonly mode: "ohlc" | "candlestick" }, style?: SeriesStyleOptions): SeriesStore<D>;
+  addSeries<D extends Dataset>(config: DatasetSeriesConfig<D> & { readonly mode: "line" | "area" | "scatter" | "bar" }, style?: SeriesStyleOptions): SeriesStore<D>;
+  addSeries(config: UniformRingSeriesConfig & { readonly mode: "line" | "area" | "scatter" | "bar" }, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+  addSeries(config: RingSeriesConfig & { readonly mode: "line" | "area" | "scatter" | "bar" }, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+  addSeries(config: SeriesConfig, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries(config, style);
+  }
+
+  private attachSeries<D extends Dataset>(config: SeriesConfig & { readonly dataset?: D }, style: SeriesStyleOptions = {}): SeriesStore<D> {
     if (!SERIES_MODES.has(config.mode)) {
       throw new TypeError(`Chart.addSeries: unknown series mode ${JSON.stringify(config.mode)}. Expected one of ${[...SERIES_MODES].join(", ")}.`);
     }
     if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
+    if (config.dataset) rejectBufferOptions(config);
     const dataset = (config.dataset ?? createDefaultDataset(config)) as D;
     if (config.mode === "bar" && style.barWidth === undefined) style = datasetBarWidth(dataset, style);
     const slot = this.seriesStyles.nextPaletteIndex();
@@ -398,35 +412,60 @@ export class Chart {
     this.emitSeriesChange();
     return series;
   }
-
-  /** Add a line series. */
-  addLine<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "line" }, style);
+  /** Add a line series. Pass `dataset` for data you built, or `capacity` for a streaming buffer the chart creates. */
+  addLine<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  /** Add a line series. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addLine(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+  /** Add a line series. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
+  addLine(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+  addLine(config: TypedSeriesConfig, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "line" }, style);
   }
 
-  /** Add an area series filled from `style.baseline`. */
-  addArea<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "area" }, style);
+  /** Add an area series filled from `style.baseline`. Pass `dataset` for data you built, or `capacity` for a streaming buffer the chart creates. */
+  addArea<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  /** Add an area series filled from `style.baseline`. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addArea(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+  /** Add an area series filled from `style.baseline`. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
+  addArea(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+  addArea(config: TypedSeriesConfig, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "area" }, style);
   }
 
-  /** Add a scatter series. */
-  addScatter<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "scatter" }, style);
+  /** Add a scatter series. Pass `dataset` for data you built, or `capacity` for a streaming buffer the chart creates. */
+  addScatter<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  /** Add a scatter series. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addScatter(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+  /** Add a scatter series. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
+  addScatter(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+  addScatter(config: TypedSeriesConfig, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "scatter" }, style);
   }
 
-  /** Add a bar series growing from `style.baseline`. For a histogram of raw values, pass `dataset: HistogramDataset.from(values, { binSize | binCount })`. */
-  addBar<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "bar" }, style);
+  /**
+   * Add a bar series growing from `style.baseline`. Pass `dataset` for data you built (for a histogram of
+   * raw values: `HistogramDataset.from(values, { binSize | binCount })`), or `capacity` for a streaming
+   * buffer the chart creates.
+   */
+  addBar<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  /** Add a bar series growing from `style.baseline`. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addBar(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+  /** Add a bar series growing from `style.baseline`. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
+  addBar(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+  addBar(config: TypedSeriesConfig, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "bar" }, style);
   }
 
-  /** Add an OHLC bar series backed by an `OhlcDataset`. */
-  addOhlc<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "ohlc" }, style);
+  /** Add an OHLC bar series. Requires an `OhlcDataset` (`StaticOhlcDataset` or `OhlcRingBuffer`).  */
+  addOhlc<D extends OhlcDataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  addOhlc(config: DatasetSeriesConfig<OhlcDataset>, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "ohlc" }, style);
   }
 
-  /** Add a candlestick series backed by an `OhlcDataset`. */
-  addCandlestick<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "candlestick" }, style);
+  /** Add a candlestick series. Requires an `OhlcDataset` (`StaticOhlcDataset` or `OhlcRingBuffer`).  */
+  addCandlestick<D extends OhlcDataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  addCandlestick(config: DatasetSeriesConfig<OhlcDataset>, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "candlestick" }, style);
   }
 
   /** Remove a series from the chart; returns `false` when it is not attached. */

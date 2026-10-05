@@ -1,7 +1,7 @@
 import { chartInternals } from "@/ui/ChartInternals.ts";
 import { Chart, StaticDataset } from "@/index.ts";
 import { createLinkedCharts } from "@/linked.ts";
-import type { ChartHoverState, ChartPlugin, Viewport } from "@/index.ts";
+import type { ChartHoverState, ChartPlugin, SeriesStore, Viewport } from "@/index.ts";
 import { a11yPlugin } from "@/plugins/a11y.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import type { AnnotationsPlugin } from "@/plugins/annotations.ts";
@@ -166,7 +166,7 @@ let selectionCommits = 0;
 let selectionBounds: InteractionSnapshot["selectionBounds"] = null;
 
 const charts: Chart[] = [];
-const seriesHandles: Array<ReturnType<Chart["addLine"]>> = [];
+const seriesHandles: SeriesStore[] = [];
 let themeChanges = 0;
 let selection: SelectionPlugin | null = null;
 let annotations: AnnotationsPlugin | null = null;

@@ -114,7 +114,20 @@ export function createDefaultDataset(config: SeriesConfig): Dataset {
     if (config.overflow !== undefined && config.overflow !== "wrap") {
       throw new TypeError("Series shorthand { capacity, xStep } uses UniformRingBuffer, which supports only wrap overflow.");
     }
+    if (config.onInvalidSample !== undefined) {
+      throw new TypeError("Series shorthand { capacity, xStep } uses UniformRingBuffer, which derives X and never rejects samples, so onInvalidSample does not apply.");
+    }
     return new UniformRingBuffer(capacity, { xStart: config.xStart, xStep: config.xStep, valuePrecision: config.valuePrecision });
   }
   return new RingBuffer(capacity, { overflow: config.overflow, valuePrecision: config.valuePrecision, onInvalidSample: config.onInvalidSample });
+}
+
+const BUFFER_ONLY_OPTIONS = ["capacity", "xStart", "xStep", "overflow", "valuePrecision", "onInvalidSample"] as const;
+
+/** A series that brings its own `dataset` cannot also configure the buffer BlazePlot would have created. */
+export function rejectBufferOptions(config: SeriesConfig): void {
+  const given = BUFFER_ONLY_OPTIONS.filter((key) => config[key] !== undefined);
+  if (given.length > 0) {
+    throw new TypeError(`Series option${given.length > 1 ? "s" : ""} ${given.map((key) => `"${key}"`).join(", ")} configure a buffer the chart creates and cannot be combined with "dataset". Configure the dataset itself, or drop "dataset".`);
+  }
 }
