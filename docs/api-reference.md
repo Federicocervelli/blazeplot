@@ -64,15 +64,12 @@ Generated from `dist/` after the package build.
 | canvas2d renderer entry | `dist/renderers/canvas2d.js` | 5 KiB |
 | shared renderer entry | `dist/renderers/shared.js` | 4 KiB |
 | shared Chart chunk | `dist/Chart-*.js` | 139 KiB |
+| shared WebGL2 engine chunk | `dist/WebGL2Renderer-*.js` | 12 KiB |
 | shared WebGL context release chunk | `dist/releaseWebGLContext-*.js` | 0 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
 | shared PickOverlay chunk | `dist/PickOverlay-*.js` | 5 KiB |
-
-> Expected exactly one shared WebGL2 backend chunk, found 0.
-
-> Expected exactly one shared WebGL2 renderer chunk, found 0.
 
 ### All public exports
 
