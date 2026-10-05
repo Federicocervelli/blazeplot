@@ -1,4 +1,4 @@
-import { releaseWebGLContext } from "./releaseWebGLContext.js";
+import { destroyBackend } from "./releaseWebGLContext.js";
 import type { GpuBackend } from "./types.js";
 import { keepWarm } from "./warm.js";
 
@@ -46,12 +46,7 @@ function unpark(entry: Parked): void {
 
 function release(entry: Parked): void {
   unpark(entry);
-  const gl = entry.backend.getContext?.();
-  try {
-    entry.backend.destroy();
-  } finally {
-    releaseWebGLContext(gl);
-  }
+  destroyBackend(entry.backend);
 }
 
 function usable(backend: GpuBackend): boolean {

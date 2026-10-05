@@ -4,7 +4,7 @@ import type { DrawCommand, GpuBackend, SolidPrimitive } from "./types.js";
 import type { RgbaColor, SeriesMode, SeriesStyle } from "../../core/types.js";
 import { WebGL2Backend } from "./WebGL2Backend.js";
 import type { ProgramName } from "./ShaderPrograms.js";
-import { releaseWebGLContext } from "./releaseWebGLContext.js";
+import { destroyBackend } from "./releaseWebGLContext.js";
 import { adoptWarmBackend, parkPlotCanvas } from "./WarmCanvasPool.js";
 
 /** The frame stream starts small and doubles on demand, so a sparse chart does not hold the 256 KiB a dense one needs. */
@@ -200,13 +200,7 @@ export class WebGL2Renderer implements ChartRenderer {
     this.commands = [];
     // A healthy chart canvas stays warm for the next chart instead of paying for a context release now and a new context later.
     if (this.poolable && !this.lost && parkPlotCanvas(this.canvas, this.backend)) return;
-    const gl = this.backend.getContext?.();
-    try {
-      this.backend.destroy();
-    } finally {
-      // Browsers cap live contexts (~16) and evict the oldest, so release now instead of waiting for GC.
-      releaseWebGLContext(gl);
-    }
+    destroyBackend(this.backend);
   }
 
   private readonly handleContextLost = (event: Event): void => {
