@@ -1,7 +1,7 @@
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { placeFixedWithinViewport, singleChartPlugin } from "./OverlayUtils.js";
-import type { RgbaColor } from "../core/types.js";
-import { rgbaCss } from "./theme.js";
+import type { ChartPlugin, ChartPluginContext } from "../../ui/PluginTypes.js";
+import { placeFixedWithinViewport, singleChartPlugin } from "../common/OverlayUtils.js";
+import type { RgbaColor } from "../../core/types.js";
+import { rgbaCss } from "../../ui/theme.js";
 
 const DEFAULT_FRAME_HEIGHT = 1;
 const DEFAULT_MIN_FRAME_WIDTH_PX = 0.5;

@@ -1,7 +1,7 @@
-import type { SeriesStore } from "../core/SeriesStore.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createSvgElement, installPluginStyle, singleChartPlugin } from "./OverlayUtils.js";
-import { rgbaCss } from "./theme.js";
+import type { SeriesStore } from "../../core/SeriesStore.js";
+import type { ChartPlugin, ChartPluginContext } from "../../ui/PluginTypes.js";
+import { createSvgElement, installPluginStyle, singleChartPlugin } from "../common/OverlayUtils.js";
+import { rgbaCss } from "../../ui/theme.js";
 
 // The navigator window is outlined; a filled wash would tint the overview series.
 const NAVIGATOR_CSS = "@media (forced-colors:active){.blazeplot-navigator-window{fill:transparent}}";

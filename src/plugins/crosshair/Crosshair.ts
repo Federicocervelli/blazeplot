@@ -1,9 +1,9 @@
-import type { SeriesYAxis } from "../core/types.js";
-import type { ChartPickItem, ChartPickMode } from "./Chart.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createOverlayLayer, createSvgElement, installPluginStyle, singleChartPlugin } from "./OverlayUtils.js";
-import { PICK_FORCED_COLORS_CSS, createPickMarker, createPickMarkerPool, createSyncRegistry, formatCompactNumber, installLongPress, pickAtDataX, placeAbsoluteWithinBox, renderPickItems } from "./PickOverlay.js";
-import type { PickMarkerPool, SyncMembership } from "./PickOverlay.js";
+import type { SeriesYAxis } from "../../core/types.js";
+import type { ChartPickItem, ChartPickMode } from "../../ui/ChartEvents.js";
+import type { ChartPlugin, ChartPluginContext } from "../../ui/PluginTypes.js";
+import { createOverlayLayer, createSvgElement, installPluginStyle, singleChartPlugin } from "../common/OverlayUtils.js";
+import { PICK_FORCED_COLORS_CSS, createPickMarker, createPickMarkerPool, createSyncRegistry, formatCompactNumber, installLongPress, pickAtDataX, placeAbsoluteWithinBox, renderPickItems } from "../common/PickOverlay.js";
+import type { PickMarkerPool, SyncMembership } from "../common/PickOverlay.js";
 
 /** Axis drawn by the crosshair overlay. */
 export type CrosshairAxis = "x" | "y" | "xy";

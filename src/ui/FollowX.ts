@@ -2,7 +2,7 @@ import type { Camera2D } from "../interaction/Camera2D.js";
 import type { AxisController } from "../interaction/AxisController.js";
 import type { SeriesStore } from "../core/SeriesStore.js";
 import { domainsAlmostEqual } from "./ChartConfig.js";
-import type { ChartFollowXOptions, ChartFollowXState } from "./ChartTypes.js";
+import type { ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
 
 /** What the follow-X policy reads from and writes to the chart. */
 export interface FollowXHost {

@@ -1,7 +1,7 @@
-import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./Chart.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createOverlayLayer, installPluginStyle, placeFixedWithinViewport } from "./OverlayUtils.js";
-import { PICK_FORCED_COLORS_CSS, createPickMarkerPool, createSyncRegistry, formatCompactNumber, installLongPress, pickAtDataX, renderPickItems } from "./PickOverlay.js";
+import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "../../ui/ChartEvents.js";
+import type { ChartPlugin, ChartPluginContext } from "../../ui/PluginTypes.js";
+import { createOverlayLayer, installPluginStyle, placeFixedWithinViewport } from "../common/OverlayUtils.js";
+import { PICK_FORCED_COLORS_CSS, createPickMarkerPool, createSyncRegistry, formatCompactNumber, installLongPress, pickAtDataX, renderPickItems } from "../common/PickOverlay.js";
 
 const TOOLTIP_CSS = "@media (forced-colors:active){.blazeplot-tooltip{border:1px solid CanvasText}}";
 

@@ -4,8 +4,8 @@ import { a11yPlugin } from "../../src/plugins/a11y.ts";
 import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import { tooltipPlugin } from "../../src/plugins/tooltip.ts";
-import { sampleTableIndices } from "../../src/ui/A11y.ts";
-import type { A11yPluginOptions } from "../../src/ui/A11y.ts";
+import { sampleTableIndices } from "../../src/plugins/a11y/A11y.ts";
+import type { A11yPluginOptions } from "../../src/plugins/a11y/A11y.ts";
 import type { Chart, ChartOptions } from "../../src/ui/Chart.ts";
 import { fire, keyEvent, pluginContext, pointerEvent, useChartHarness } from "./harness.ts";
 

@@ -8,7 +8,7 @@ import type {
   ChartPickOptions,
   ChartPointerEvent,
   ChartPointerEventType,
-} from "./ChartTypes.js";
+} from "./ChartEvents.js";
 import { ChartPicker, hoverStatesEqual, insidePlot, plotToData } from "./ChartPicker.js";
 import type { PlotRect } from "./ChartPicker.js";
 

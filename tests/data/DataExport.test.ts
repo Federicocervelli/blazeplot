@@ -5,7 +5,7 @@ import { StaticOhlcDataset } from "../../src/core/OhlcDataset.ts";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
 import type { SeriesMode, SeriesYAxis, Viewport } from "../../src/core/types.ts";
 import type { Chart, ChartSeriesState } from "../../src/ui/Chart.ts";
-import type { SelectionState } from "../../src/ui/Selection.ts";
+import type { SelectionState } from "../../src/plugins/selection/Selection.ts";
 import { binSamples, rollingMean } from "../../src/data.ts";
 import { chartDataToCsv, exportChartData } from "../../src/export.ts";
 

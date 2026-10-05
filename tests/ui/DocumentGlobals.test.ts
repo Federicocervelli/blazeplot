@@ -2,7 +2,9 @@ import { describe, expect, it } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const UI_DIR = join(import.meta.dir, "../../src/ui");
+const SRC = join(import.meta.dir, "../../src");
+// Everything that builds chart DOM: the chart itself, every built-in plugin, and linked charts.
+const UI_DIRS = ["ui", "plugins", "linked"];
 
 // Charts can live in an iframe, popup, or Document Picture-in-Picture window, so UI code must use
 // the chart's own document and window (`layout.doc`, `ctx.dom.document`, `ctx.dom.view`).
@@ -14,11 +16,14 @@ const FORBIDDEN: readonly RegExp[] = [
   /\binstanceof (HTML\w*Element|SVG\w*Element|Element|Node)\b/,
 ];
 
-describe("src/ui avoids global document/window", () => {
+describe("src/ui, src/plugins, and src/linked avoid global document/window", () => {
   it("has no global DOM access outside documented fallbacks", () => {
     const offenders: string[] = [];
-    for (const file of readdirSync(UI_DIR).filter((name) => name.endsWith(".ts"))) {
-      const lines = readFileSync(join(UI_DIR, file), "utf8").split("\n");
+    const uiFiles = UI_DIRS.flatMap((dir) => (readdirSync(join(SRC, dir), { recursive: true }) as string[]).filter((name) => name.endsWith(".ts")).map((name) => `${dir}/${name.replaceAll("\\", "/")}`));
+    expect(uiFiles.some((file) => file.startsWith("plugins/flamegraph/"))).toBe(true);
+    expect(uiFiles).toContain("linked/LinkedCharts.ts");
+    for (const file of uiFiles) {
+      const lines = readFileSync(join(SRC, file), "utf8").split("\n");
       lines.forEach((line, index) => {
         const trimmed = line.trim();
         if (line.includes("ownerDocument ?? globalThis")) return; // documented fallback

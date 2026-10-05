@@ -1,8 +1,8 @@
-import type { SeriesStore } from "../core/SeriesStore.js";
-import type { SeriesSample } from "../core/types.js";
-import type { ChartSeriesState } from "./Chart.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { singleChartPlugin } from "./OverlayUtils.js";
+import type { SeriesStore } from "../../core/SeriesStore.js";
+import type { SeriesSample } from "../../core/types.js";
+import type { ChartSeriesState } from "../../ui/ChartEvents.js";
+import type { ChartPlugin, ChartPluginContext } from "../../ui/PluginTypes.js";
+import { singleChartPlugin } from "../common/OverlayUtils.js";
 
 /** Data table options for `a11yPlugin`. */
 export interface A11yTableOptions {

@@ -1,7 +1,7 @@
 import { Chart } from "@/index.ts";
 import type { ChartFrameStats, SeriesStore } from "@/index.ts";
 import { flameGraphPlugin } from "@/plugins/flamegraph.ts";
-import { buildFlameGraphModel } from "@/ui/FlameGraph.ts";
+import { buildFlameGraphModel } from "@/plugins/flamegraph/FlameGraph.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { ProceduralLineDataset } from "../../../website/src/ProceduralLineDataset.ts";
 

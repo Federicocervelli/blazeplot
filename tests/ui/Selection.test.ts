@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { selectionPlugin } from "../../src/plugins/selection.ts";
 import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
-import type { SelectionEvent, SelectionPluginOptions, SelectionState } from "../../src/ui/Selection.ts";
+import type { SelectionEvent, SelectionPluginOptions, SelectionState } from "../../src/plugins/selection/Selection.ts";
 import { countNodes } from "./fakes.ts";
 import { fire, installPlugin, keyEvent, pluginContext, pointerEvent, useChartHarness } from "./harness.ts";
 

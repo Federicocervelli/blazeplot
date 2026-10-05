@@ -1,33 +1,14 @@
-import type { SeriesYAxis, Viewport } from "../core/types.js";
-import type { ChartPlugin, ChartPluginContext, ChartRect } from "./PluginHost.js";
-import { asElement, clamp, createOverlayLayer, dragModifierMatches, installPluginStyle, singleChartPlugin } from "./OverlayUtils.js";
+import type { SeriesYAxis, Viewport } from "../../core/types.js";
+import type { ChartPlugin, ChartPluginContext, ChartRect } from "../../ui/PluginTypes.js";
+import type { SelectionMode, SelectionPlotBounds, SelectionState } from "../../ui/ChartEvents.js";
+
+export type { SelectionMode, SelectionPlotBounds, SelectionState };
+import { asElement, clamp, createOverlayLayer, dragModifierMatches, installPluginStyle, singleChartPlugin } from "../common/OverlayUtils.js";
 
 const SELECTION_CSS = "@media (forced-colors:active){.blazeplot-selection-brush{border-color:Highlight!important}}";
 
-/** Geometry captured by the selection plugin. */
-export type SelectionMode = "x-range" | "y-range" | "xy";
 /** Lifecycle event emitted by a selection plugin. */
 export type SelectionEventType = "start" | "update" | "commit" | "clear";
-
-/** Selected plot-coordinate bounds in CSS pixels. */
-export interface SelectionPlotBounds {
-  readonly left: number;
-  readonly top: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-/**
- * Current or committed selection. Pass it to `exportChartData(chart, { range: selection })`
- * from `blazeplot/export` to collect the selected samples.
- */
-export interface SelectionState {
-  readonly mode: SelectionMode;
-  readonly yAxis: SeriesYAxis;
-  /** Selected data-domain bounds; unselected dimensions span the current viewport. */
-  readonly bounds: Viewport;
-  readonly plotBounds: SelectionPlotBounds;
-}
 
 /** Event payload emitted during selection changes. */
 export interface SelectionEvent {

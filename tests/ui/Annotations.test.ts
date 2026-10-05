@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { annotationsPlugin } from "../../src/plugins/annotations.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
-import type { Annotation, AnnotationHitEvent, AnnotationsPluginOptions } from "../../src/ui/Annotations.ts";
+import type { Annotation, AnnotationHitEvent, AnnotationsPluginOptions } from "../../src/plugins/annotations/Annotations.ts";
 import { countNodes } from "./fakes.ts";
 import { fire, installPlugin, pointerEvent, useChartHarness } from "./harness.ts";
 

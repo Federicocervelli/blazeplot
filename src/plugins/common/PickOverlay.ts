@@ -1,8 +1,8 @@
-import type { SeriesYAxis } from "../core/types.js";
-import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./Chart.js";
-import type { ChartPluginContext } from "./PluginHost.js";
+import type { SeriesYAxis } from "../../core/types.js";
+import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "../../ui/ChartEvents.js";
+import type { ChartPluginContext } from "../../ui/PluginTypes.js";
 import { clamp } from "./OverlayUtils.js";
-import { rgbaCss } from "./theme.js";
+import { rgbaCss } from "../../ui/theme.js";
 
 // Helpers shared by the tooltip and crosshair plugins: pick markers, pick rows, X sync groups, and
 // long-press touch tracking. Kept apart from OverlayUtils so other plugins do not bundle them.

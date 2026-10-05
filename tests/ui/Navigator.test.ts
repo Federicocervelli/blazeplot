@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { navigatorPlugin } from "../../src/plugins/navigator.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
-import type { NavigatorPluginOptions } from "../../src/ui/Navigator.ts";
+import type { NavigatorPluginOptions } from "../../src/plugins/navigator/Navigator.ts";
 import { countNodes } from "./fakes.ts";
 import { fire, installPlugin, keyEvent, pointerEvent, useChartHarness } from "./harness.ts";
 

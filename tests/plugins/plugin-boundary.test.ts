@@ -8,7 +8,7 @@ import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
 import { navigatorPlugin } from "../../src/plugins/navigator.ts";
 import { selectionPlugin } from "../../src/plugins/selection.ts";
 import { useChartHarness } from "../ui/harness.ts";
-import type { ChartPlugin } from "../../src/ui/PluginHost.ts";
+import type { ChartPlugin } from "../../src/ui/PluginTypes.ts";
 
 /**
  * The built-in plugins are the proof that third parties can write equivalent plugins, so they may
@@ -27,11 +27,12 @@ const runtimeHelpers: Record<string, readonly string[]> = {
 
 /** `ctx.unstable` members a built-in plugin may use; everything else must stay on the stable context. */
 const unstableAllowance: Record<string, readonly string[]> = {
-  "src/ui/FlameGraph.ts": ["createRenderSurface"],
+  "src/plugins/flamegraph/FlameGraph.ts": ["createRenderSurface"],
 };
 
-/** Shared plugin-side helper modules that are not themselves package entries. */
-const pluginHelpers = ["src/ui/OverlayUtils.ts", "src/ui/PickOverlay.ts"];
+/** Leaf type modules every plugin may import types from (public plugin and chart-state types). */
+const typeModules: readonly string[] = ["src/ui/PluginTypes.ts", "src/ui/ChartEvents.ts", "src/ui/ChartViewportTypes.ts"];
+
 
 interface ImportRecord {
   readonly specifier: string;
@@ -76,16 +77,11 @@ function publicRootNames(): Set<string> {
   return names;
 }
 
-/** Plugin entries plus the implementation modules they re-export and the shared helpers. */
+/** Every module under src/plugins: the package entries, each plugin's implementation folder, and the shared helpers. */
 function pluginModules(): Set<string> {
-  const modules = new Set<string>(pluginHelpers);
-  const entriesDir = resolve(src, "plugins");
-  for (const entry of readdirSync(entriesDir).filter((name) => name.endsWith(".ts"))) {
-    const file = resolve(entriesDir, entry);
-    modules.add(rel(file));
-    for (const record of parseImports(file)) if (record.resolved) modules.add(record.resolved);
-  }
-  return modules;
+  const dir = resolve(src, "plugins");
+  const files = (readdirSync(dir, { recursive: true }) as string[]).filter((name) => name.endsWith(".ts"));
+  return new Set(files.map((name) => rel(resolve(dir, name))));
 }
 
 const modules = pluginModules();
@@ -94,7 +90,7 @@ const publicNames = publicRootNames();
 describe("built-in plugin boundary", () => {
   it("covers every built-in plugin implementation", () => {
     for (const name of ["A11y", "Annotations", "Crosshair", "FlameGraph", "Interactions", "Legend", "Navigator", "Selection", "Tooltip"]) {
-      expect(modules.has(`src/ui/${name}.ts`)).toBe(true);
+      expect(modules.has(`src/plugins/${name.toLowerCase()}/${name}.ts`)).toBe(true);
     }
   });
 
@@ -108,6 +104,7 @@ describe("built-in plugin boundary", () => {
           continue;
         }
         if (modules.has(target)) continue;
+        if (typeModules.includes(target) && (record.typeOnly || record.names.every((n) => n.typeOnly))) continue;
 
         const helperNames = runtimeHelpers[target];
         for (const { name, typeOnly } of record.names) {

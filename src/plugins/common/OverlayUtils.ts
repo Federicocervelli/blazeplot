@@ -1,4 +1,4 @@
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
+import type { ChartPlugin, ChartPluginContext } from "../../ui/PluginTypes.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 

@@ -1,4 +1,4 @@
-import type { ChartEventMap, ChartEventName } from "./ChartTypes.js";
+import type { ChartEventMap, ChartEventName } from "./ChartEvents.js";
 
 type Listener<K extends ChartEventName> = (payload: ChartEventMap[K]) => void;
 

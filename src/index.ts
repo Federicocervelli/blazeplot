@@ -36,10 +36,11 @@ export type {
   TextOverlayConfig,
   TypedSeriesConfig,
 } from "./ui/Chart.js";
-export type { AxisPosition } from "./ui/ChartLayout.js";
+export type { AxisPosition } from "./ui/ChartOptions.js";
 export type { ChartSeriesSummary, ChartSummary, ChartSummaryMessages, ChartSummaryRange } from "./ui/ChartSummary.js";
 
 // Plugin contract
+export type { ChartPluginEventMap, ChartPluginEventName } from "./ui/ChartEvents.js";
 export type {
   ChartLayoutReservation,
   ChartMountSlot,
@@ -48,8 +49,6 @@ export type {
   ChartPluginContext,
   ChartPluginCoords,
   ChartPluginDom,
-  ChartPluginEventMap,
-  ChartPluginEventName,
   ChartPluginEvents,
   ChartPluginHandle,
   ChartPluginLayout,
@@ -60,7 +59,7 @@ export type {
   ChartSurface,
   ChartSurfaceDecoration,
   ChartSurfaceStyle,
-} from "./ui/PluginHost.js";
+} from "./ui/PluginTypes.js";
 export { DEFAULT_CHART_THEME, LIGHT_CHART_THEME } from "./ui/theme.js";
 export type { ChartTheme, ResolvedChartTheme } from "./ui/theme.js";
 
@@ -133,7 +132,8 @@ export type { HistogramBin, HistogramNormalization, HistogramOptions, HistogramR
 
 // Viewport and axes
 export type { Camera2D } from "./interaction/Camera2D.js";
-export type { PanIntent, ViewportPolicy, ZoomAxis, ZoomIntent } from "./interaction/types.js";
+export type { PanIntent, ZoomAxis, ZoomIntent } from "./interaction/types.js";
+export type { ViewportPolicy } from "./interaction/ViewportPolicy.js";
 export type { AxisControllerAxisOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
 
 // Rendering engines: the `renderer` option takes a name or one of these factories

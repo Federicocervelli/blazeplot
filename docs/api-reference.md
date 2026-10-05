@@ -77,7 +77,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `autoRenderer` | function | `./render/engines` | Renderer factory that uses WebGL2 and falls back to Canvas 2D when WebGL2 is unavailable or its context cannot be created. `chart.rendererInfo.fallbackFrom` says when the fallback happened. Same as `renderer: "auto"`, the default. |
 | `AxisConfig` | type | `./ui/Chart` | — |
 | `AxisControllerAxisOptions` | interface | `./interaction/AxisController` | Scale and formatting options for one axis. |
-| `AxisPosition` | type | `./ui/ChartLayout` | Placement for chart axis labels and ticks. |
+| `AxisPosition` | type | `./ui/ChartOptions` | Whether an axis draws its tick labels inside the plot or in a gutter outside it. |
 | `AxisRenderTarget` | type | `./interaction/AxisController` | Axis dimension targeted by axis helpers. |
 | `AxisScale` | type | `./interaction/AxisController` | Built-in scale name or custom scale implementation. |
 | `AxisTickFormat` | type | `./interaction/AxisController` | Built-in format string or custom tick formatter. |
@@ -102,29 +102,29 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartFrameStats` | type | `./ui/Chart` | — |
 | `ChartHoverState` | type | `./ui/Chart` | — |
 | `ChartInspectionTarget` | type | `./ui/Chart` | — |
-| `ChartLayoutReservation` | interface | `./ui/PluginHost` | Extra CSS-pixel space reserved around the plot by a plugin, e.g. for a navigator or toolbar. Reservations from every plugin add up. |
-| `ChartMountSlot` | type | `./ui/PluginHost` | Where a plugin can attach its own DOM with `ctx.dom.mount(slot, element)`. - `"plot"`: the plot area, above the WebGL canvas. Coordinates match `ctx.coords` plot coordinates (CSS pixels from the plot's top-left). Overlays here should keep `pointer-events: none` unless they handle their own input. - `"root"`: the whole chart box, including axis gutters and space reserved with `ctx.layout.reserve(...)`. Use it for legends, toolbars, and navigators. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters (bottom, left, right). - `"body"`: the owning document's `<body>`, for `position: fixed` UI such as tooltips that must escape the chart's `overflow: hidden`. |
+| `ChartLayoutReservation` | interface | `./ui/PluginTypes` | Extra CSS-pixel space reserved around the plot by a plugin, e.g. for a navigator or toolbar. Reservations from every plugin add up. |
+| `ChartMountSlot` | type | `./ui/PluginTypes` | Where a plugin can attach its own DOM with `ctx.dom.mount(slot, element)`. - `"plot"`: the plot area, above the WebGL canvas. Coordinates match `ctx.coords` plot coordinates (CSS pixels from the plot's top-left). Overlays here should keep `pointer-events: none` unless they handle their own input. - `"root"`: the whole chart box, including axis gutters and space reserved with `ctx.layout.reserve(...)`. Use it for legends, toolbars, and navigators. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters (bottom, left, right). - `"body"`: the owning document's `<body>`, for `position: fixed` UI such as tooltips that must escape the chart's `overflow: hidden`. |
 | `ChartOptions` | type | `./ui/Chart` | — |
 | `ChartPickGroup` | type | `./ui/Chart` | — |
 | `ChartPickItem` | type | `./ui/Chart` | — |
 | `ChartPickMode` | type | `./ui/Chart` | — |
 | `ChartPickOptions` | type | `./ui/Chart` | — |
-| `ChartPlotSize` | interface | `./ui/PluginHost` | Plot-area size in CSS pixels, passed to `ChartPluginHandle.onResize`. |
-| `ChartPlugin` | interface | `./ui/PluginHost` | Plugin installer for extending chart behavior. |
-| `ChartPluginContext` | interface | `./ui/PluginHost` | The API a plugin receives in `install(ctx)`. Each plugin gets its own context; listeners, subscriptions, mounted elements, decorations, and layout reservations created through it are released automatically after the plugin is disposed. |
-| `ChartPluginCoords` | interface | `./ui/PluginHost` | Coordinate conversions between data, plot, and client (viewport) space. |
-| `ChartPluginDom` | interface | `./ui/PluginHost` | DOM attachment and input on chart-owned elements. Everything is released when the plugin is disposed. |
-| `ChartPluginEventMap` | interface | `./ui/PluginHost` | Events plugins may emit with `ctx.events.emit(...)`. Chart users receive them through `chart.subscribe(...)`, because `ChartEventMap` extends this map. Third-party plugins add their own events with declaration merging. Prefix names with your plugin name to avoid collisions: ```ts declare module "blazeplot" { interface ChartPluginEventMap { "my-plugin:change": { readonly value: number }; } } ``` |
-| `ChartPluginEventName` | type | `./ui/PluginHost` | Name of an event a plugin may emit. |
-| `ChartPluginEvents` | interface | `./ui/PluginHost` | Chart event subscription and typed plugin events. |
-| `ChartPluginHandle` | interface | `./ui/PluginHost` | Object a plugin's `install` may return. Every member is optional. Hooks run in plugin registration order; `dispose` runs in reverse registration order. |
-| `ChartPluginLayout` | interface | `./ui/PluginHost` | Layout geometry and space reservations. |
-| `ChartPluginState` | interface | `./ui/PluginHost` | Read-only chart state. |
-| `ChartPluginUnstable` | interface | `./ui/PluginHost` | Escape hatches outside the stable plugin contract. |
-| `ChartPluginViewport` | interface | `./ui/PluginHost` | Viewport reads, changes, and latest-X follow control. Changes go through the chart's `ViewportPolicy`. |
+| `ChartPlotSize` | interface | `./ui/PluginTypes` | Plot-area size in CSS pixels, passed to `ChartPluginHandle.onResize`. |
+| `ChartPlugin` | interface | `./ui/PluginTypes` | Plugin installer for extending chart behavior. |
+| `ChartPluginContext` | interface | `./ui/PluginTypes` | The API a plugin receives in `install(ctx)`. Each plugin gets its own context; listeners, subscriptions, mounted elements, decorations, and layout reservations created through it are released automatically after the plugin is disposed. |
+| `ChartPluginCoords` | interface | `./ui/PluginTypes` | Coordinate conversions between data, plot, and client (viewport) space. |
+| `ChartPluginDom` | interface | `./ui/PluginTypes` | DOM attachment and input on chart-owned elements. Everything is released when the plugin is disposed. |
+| `ChartPluginEventMap` | interface | `./ui/ChartEvents` | Events plugins may emit with `ctx.events.emit(...)`. Chart users receive them through `chart.subscribe(...)`, because `ChartEventMap` extends this map. Third-party plugins add their own events with declaration merging. Prefix names with your plugin name to avoid collisions: ```ts declare module "blazeplot" { interface ChartPluginEventMap { "my-plugin:change": { readonly value: number }; } } ``` |
+| `ChartPluginEventName` | type | `./ui/ChartEvents` | Name of an event a plugin may emit. |
+| `ChartPluginEvents` | interface | `./ui/PluginTypes` | Chart event subscription and typed plugin events. |
+| `ChartPluginHandle` | interface | `./ui/PluginTypes` | Object a plugin's `install` may return. Every member is optional. Hooks run in plugin registration order; `dispose` runs in reverse registration order. |
+| `ChartPluginLayout` | interface | `./ui/PluginTypes` | Layout geometry and space reservations. |
+| `ChartPluginState` | interface | `./ui/PluginTypes` | Read-only chart state. |
+| `ChartPluginUnstable` | interface | `./ui/PluginTypes` | Escape hatches outside the stable plugin contract. |
+| `ChartPluginViewport` | interface | `./ui/PluginTypes` | Viewport reads, changes, and latest-X follow control. Changes go through the chart's `ViewportPolicy`. |
 | `ChartPointerEvent` | type | `./ui/Chart` | — |
 | `ChartPointerEventType` | type | `./ui/Chart` | — |
-| `ChartRect` | interface | `./ui/PluginHost` | A rectangle in CSS pixels. |
+| `ChartRect` | interface | `./ui/PluginTypes` | A rectangle in CSS pixels. |
 | `ChartRenderContext` | type | `./render/engines` | — |
 | `ChartRendererCapabilities` | interface | `./render/ChartRenderer` | Static facts about the engine a chart draws with. |
 | `ChartRendererFactory` | type | `./render/ChartRenderer` | Creates the renderer for a chart. It may throw when its backend is unavailable. The built-in factories are `webgl2Renderer()`, `canvas2dRenderer()`, `sharedRenderer()`, and `autoRenderer()`. |
@@ -143,9 +143,9 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartSummary` | interface | `./ui/ChartSummary` | Data summary the chart exposes to assistive technology through `aria-describedby`. Pass `accessibility.description` as a function to turn it into your own text. |
 | `ChartSummaryMessages` | interface | `./ui/ChartSummary` | Strings and formatters behind the generated chart summary. Override any key through `accessibility.messages.summary`; unset keys keep the English default. |
 | `ChartSummaryRange` | interface | `./ui/ChartSummary` | Inclusive numeric range used by `ChartSummary`. |
-| `ChartSurface` | type | `./ui/PluginHost` | Chart-owned element a plugin can listen on or decorate with `ctx.dom.listen` and `ctx.dom.decorate`. - `"plot"`: the interactive plot surface (it receives pointer, wheel, and touch input). - `"root"`: the chart root; it is focusable and receives keyboard input when accessibility is enabled. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters. They ignore pointer input until a plugin decorates them with `pointerEvents: "auto"`. |
-| `ChartSurfaceDecoration` | interface | `./ui/PluginHost` | Styles, classes, and attributes applied to a chart surface by `ctx.dom.decorate`. |
-| `ChartSurfaceStyle` | interface | `./ui/PluginHost` | Inline style properties a plugin may set on a chart surface. |
+| `ChartSurface` | type | `./ui/PluginTypes` | Chart-owned element a plugin can listen on or decorate with `ctx.dom.listen` and `ctx.dom.decorate`. - `"plot"`: the interactive plot surface (it receives pointer, wheel, and touch input). - `"root"`: the chart root; it is focusable and receives keyboard input when accessibility is enabled. - `"axis-x"`, `"axis-y"`, `"axis-y2"`: the outside axis gutters. They ignore pointer input until a plugin decorates them with `pointerEvents: "auto"`. |
+| `ChartSurfaceDecoration` | interface | `./ui/PluginTypes` | Styles, classes, and attributes applied to a chart surface by `ctx.dom.decorate`. |
+| `ChartSurfaceStyle` | interface | `./ui/PluginTypes` | Inline style properties a plugin may set on a chart surface. |
 | `ChartTheme` | interface | `./ui/theme` | Partial chart theme supplied by callers. |
 | `ChartTitleConfig` | type | `./ui/Chart` | — |
 | `ChartViewportChangeEvent` | type | `./ui/Chart` | — |
@@ -228,7 +228,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `UpdatableDataset` | interface | `./core/types` | Dataset that supports updating existing X/Y samples. |
 | `ValuePrecision` | type | `./core/types` | Storage for Y and OHLC price values. `"float32"` (the default) halves memory and keeps about 7 significant digits; `"float64"` stores values exactly, for large prices, counters, or timestamps where float32 rounding would show in tooltips and picks. |
 | `Viewport` | interface | `./core/types` | Visible data-domain bounds for one chart camera. |
-| `ViewportPolicy` | interface | `./interaction/types` | Optional hooks that can constrain or react to viewport changes. |
+| `ViewportPolicy` | interface | `./interaction/ViewportPolicy` | Optional hooks that can constrain or react to viewport changes. |
 | `VisiblePointCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for point/scatter datasets. Implementations should cull against the full 2D viewport and may sample in screen space so dense point clouds respond to both X and Y zoom. |
 | `VisibleSampleCopyDataset` | interface | `./core/types` | Optional high-performance stable visible sampling capability. Unlike copySamplesRange, this method may stride/downsample, but should choose samples anchored to data coordinates so streamed appends do not make existing sampled points jitter. |
 | `webgl2Renderer` | function | `./render/engines` | Renderer factory for WebGL2. Throws `WebGL2UnavailableError` when WebGL2 is unavailable. Same as `renderer: "webgl2"`. |

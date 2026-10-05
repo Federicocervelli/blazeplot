@@ -1,5 +1,5 @@
 import type { ResolvedChartTheme } from "./theme.js";
-import type { ChartTitleConfig, TextOverlayConfig } from "./ChartTypes.js";
+import type { AxisPosition, ChartTitleConfig, TextOverlayConfig } from "./ChartOptions.js";
 
 const TITLE_TOP_PX = 6;
 /** Height of the subtitle line, reserved below the title. */
@@ -14,7 +14,6 @@ export function titleText(config: string | TextOverlayConfig | undefined): strin
 }
 
 /** Placement for chart axis labels and ticks. */
-export type AxisPosition = "inside" | "outside";
 
 /** Normalized visibility and placement for one axis. */
 export interface NormalizedAxisConfig {

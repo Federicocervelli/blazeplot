@@ -2,7 +2,8 @@ import type { RgbaColor, SeriesStyle, SeriesStyleOptions } from "../core/types.j
 import type { AxisController, AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { NormalizedAxisConfig } from "./ChartLayout.js";
 import { resolveThemeColor } from "./theme.js";
-import type { AxisConfig, ChartFitToDataPadding, ChartOptions, TextOverlayConfig } from "./ChartTypes.js";
+import type { AxisConfig, ChartOptions, TextOverlayConfig } from "./ChartOptions.js";
+import type { ChartFitToDataPadding } from "./ChartViewportTypes.js";
 
 /** Copy of `color` with its alpha multiplied by `factor`. */
 export function withAlpha(color: RgbaColor, factor: number): RgbaColor {

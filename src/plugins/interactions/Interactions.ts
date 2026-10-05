@@ -1,8 +1,8 @@
-import type { SeriesYAxis, Viewport } from "../core/types.js";
-import type { PanIntent, ZoomAxis, ZoomIntent } from "../interaction/types.js";
-import { dragModifierMatches } from "./OverlayUtils.js";
-import type { ChartPlugin, ChartPluginContext, ChartRect, ChartSurface } from "./PluginHost.js";
-import { asElement } from "./OverlayUtils.js";
+import type { SeriesYAxis, Viewport } from "../../core/types.js";
+import type { PanIntent, ZoomAxis, ZoomIntent } from "../../interaction/types.js";
+import { dragModifierMatches } from "../common/OverlayUtils.js";
+import type { ChartPlugin, ChartPluginContext, ChartRect, ChartSurface } from "../../ui/PluginTypes.js";
+import { asElement } from "../common/OverlayUtils.js";
 
 /** Static or dynamic axis choice for wheel and drag interactions. */
 export type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
