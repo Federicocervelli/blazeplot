@@ -133,7 +133,8 @@ export type { HistogramBin, HistogramNormalization, HistogramOptions, HistogramR
 export type { Camera2D } from "./interaction/Camera2D.js";
 export type { PanIntent, ZoomAxis, ZoomIntent } from "./interaction/types.js";
 export type { ViewportPolicy } from "./interaction/ViewportPolicy.js";
-export type { AxisControllerAxisOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, AxisTimeZone, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
+export type { AxisControllerAxisOptions, AxisRenderTarget, AxisScale, AxisTickFormat, AxisTickFormatter, BuiltInAxisScale, CustomAxisScale } from "./interaction/AxisController.js";
+export type { AxisTimeZone } from "./interaction/timeAxis.js";
 
 // Rendering engines: the `renderer` option takes a name or one of these factories
 export type { ChartRenderSurface, ChartRendererCapabilities, ChartRendererFactory, ChartRendererFactoryContext, ChartRendererHandle, ChartRendererInfo, ChartRendererKind, RendererChoice, RendererLossState, RendererName } from "./render/ChartRenderer.js";
