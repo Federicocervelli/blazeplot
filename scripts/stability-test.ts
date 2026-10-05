@@ -45,6 +45,8 @@ interface Sample {
 
 interface Profile {
   mountIterations: number;
+  /** Batches of 25 charts sharing one render context. */
+  sharedIterations: number;
   resizeIterations: number;
   seriesIterations: number;
   contextCycles: number;
@@ -57,6 +59,7 @@ interface Profile {
 
 const CI_PROFILE: Profile = {
   mountIterations: 200,
+  sharedIterations: 8,
   resizeIterations: 300,
   seriesIterations: 200,
   contextCycles: 5,
@@ -69,6 +72,7 @@ const CI_PROFILE: Profile = {
 
 const LONG_PROFILE: Profile = {
   mountIterations: 1_000,
+  sharedIterations: 40,
   resizeIterations: 2_000,
   seriesIterations: 1_000,
   contextCycles: 25,
@@ -79,7 +83,7 @@ const LONG_PROFILE: Profile = {
   streamSampleEveryS: 5,
 };
 
-const ALL_CASES = ["mount-unmount", "resize-churn", "series-churn", "streaming", "context-loss", "detector-control"] as const;
+const ALL_CASES = ["mount-unmount", "shared-context", "shared-context-loss", "resize-churn", "series-churn", "streaming", "context-loss", "detector-control"] as const;
 type CaseName = typeof ALL_CASES[number];
 
 const MiB = 1024 * 1024;
@@ -273,6 +277,9 @@ async function runCase(name: CaseName, options: Options, profile: Profile, serve
       case "mount-unmount":
         await runChurnCase(name, session, options, profile.mountIterations, (n) => `mountUnmount(${n})`, "chart mount/unmount");
         break;
+      case "shared-context":
+        await runChurnCase(name, session, options, profile.sharedIterations, (n) => `sharedContextChurn(${n})`, "shared-context batches of 25 charts");
+        break;
       case "resize-churn":
         await runChurnCase(name, session, options, profile.resizeIterations, (n) => `resizeChurn(${n})`, "resize");
         break;
@@ -281,6 +288,9 @@ async function runCase(name: CaseName, options: Options, profile: Profile, serve
         break;
       case "streaming":
         await runStreamingCase(session, options, profile);
+        break;
+      case "shared-context-loss":
+        await runContextLossCase(session, options, profile, name, "sharedContextLoss");
         break;
       case "context-loss":
         await runContextLossCase(session, options, profile);
@@ -488,14 +498,13 @@ function slopeBytesPerSecond(points: ReadonlyArray<readonly [number, number]>): 
   return denominator === 0 ? 0 : numerator / denominator;
 }
 
-async function runContextLossCase(session: Session, options: Options, profile: Profile): Promise<void> {
-  const name = "context-loss";
+async function runContextLossCase(session: Session, options: Options, profile: Profile, name = "context-loss", fn = "contextLoss"): Promise<void> {
   // Warm up once so the baseline already contains shader caches and the first restore path.
-  await page<ContextLossResult>(session, "contextLoss(1)", 60_000);
+  await page<ContextLossResult>(session, `${fn}(1)`, 60_000);
   const baseProbe = await probe(session);
   const baseline = await settle(session.cdp);
 
-  const result = await page<ContextLossResult>(session, `contextLoss(${profile.contextCycles})`, Math.max(options.timeoutMs, profile.contextCycles * 10_000));
+  const result = await page<ContextLossResult>(session, `${fn}(${profile.contextCycles})`, Math.max(options.timeoutMs, profile.contextCycles * 10_000));
   const finalProbe = await probe(session);
   const final = await settle(session.cdp);
 

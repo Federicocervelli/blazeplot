@@ -664,7 +664,7 @@ interface ChartRendererHandle {
 #### type ChartRendererKind
 
 ```ts
-type ChartRendererKind = "webgl2" | "canvas2d";
+type ChartRendererKind = "webgl2" | "webgl2-shared" | "canvas2d";
 ```
 
 #### interface ChartScreenshotOptions
@@ -1800,6 +1800,7 @@ interface LinkedChartsOptions {
     readonly spacing?: number | string;
     readonly className?: string;
     readonly panelPlugins?: (syncGroup: string) => readonly ChartPlugin[];
+    readonly renderer?: ChartOptions["renderer"];
 }
 ```
 
@@ -2022,6 +2023,32 @@ function autoRenderer(): ChartRendererFactory;
 
 ```ts
 function canvas2dRenderer(): ChartRendererFactory;
+```
+
+### `blazeplot/renderers/shared`
+
+3 exports.
+
+#### interface ChartRenderContext
+
+```ts
+interface ChartRenderContext {
+    renderer(): ChartRendererFactory;
+    readonly chartCount: number;
+    dispose(): void;
+}
+```
+
+#### function createChartRenderContext
+
+```ts
+function createChartRenderContext(): ChartRenderContext;
+```
+
+#### function sharedRenderer
+
+```ts
+function sharedRenderer(context?: ChartRenderContext): ChartRendererFactory;
 ```
 
 ### `blazeplot/plugins/legend`

@@ -9,6 +9,7 @@ import { legendPlugin } from "@/plugins/legend.ts";
 import { navigatorPlugin } from "@/plugins/navigator.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
+import { sharedRenderer } from "@/renderers/shared.ts";
 
 /**
  * Page-side workloads for `scripts/stability-test.ts`.
@@ -86,6 +87,8 @@ export interface StabilityController {
   ready: boolean;
   probe(): PageProbe;
   mountUnmount(count: number): Promise<WorkloadResult>;
+  /** Mounts `count` batches of 25 simultaneous charts that share one WebGL context, then disposes them. */
+  sharedContextChurn(count: number): Promise<WorkloadResult>;
   /** Negative control: mounts charts and keeps them alive so the harness can prove it detects growth. */
   mountRetained(count: number): Promise<WorkloadResult>;
   releaseRetained(): number;
@@ -95,6 +98,8 @@ export interface StabilityController {
   streamingStats(): StreamingStats;
   stopStreaming(): StreamingStats;
   contextLoss(cycles: number): Promise<ContextLossResult>;
+  /** Context loss and restore of the single WebGL context behind a group of charts sharing a render context. */
+  sharedContextLoss(cycles: number): Promise<ContextLossResult>;
 }
 
 declare global {
@@ -117,6 +122,7 @@ window.__blazeplotStability = {
   ready: true,
   probe,
   mountUnmount,
+  sharedContextChurn,
   mountRetained,
   releaseRetained,
   resizeChurn,
@@ -125,6 +131,7 @@ window.__blazeplotStability = {
   streamingStats,
   stopStreaming,
   contextLoss,
+  sharedContextLoss,
 };
 setStatus("ready");
 
@@ -349,6 +356,37 @@ async function mountUnmount(count: number): Promise<WorkloadResult> {
   const startedAt = performance.now();
   let renders = 0;
   for (let i = 0; i < count; i++) renders += await mountOnce();
+  return { iterations: count, renders, ms: performance.now() - startedAt };
+}
+
+const SHARED_BATCH = 25;
+
+async function sharedContextChurn(count: number): Promise<WorkloadResult> {
+  const startedAt = performance.now();
+  let renders = 0;
+  for (let i = 0; i < count; i++) {
+    const mounted: Array<{ chart: Chart; host: HTMLElement; renders: () => number }> = [];
+    for (let j = 0; j < SHARED_BATCH; j++) {
+      const host = createHost(240, 140);
+      host.style.left = `${(j % 5) * 20}px`;
+      const chart = new Chart(host, { axes: { x: true, y: true }, plugins: j % 5 === 0 ? fullPlugins() : [], renderer: sharedRenderer() });
+      const counter = countRenders(chart);
+      addSampleSeries(chart);
+      chart.fitToData({ padding: 0.05 });
+      chart.start();
+      mounted.push({ chart, host, renders: counter });
+    }
+    await Promise.all(mounted.map(({ chart }) => nextRender(chart)));
+    const live = countLiveContexts();
+    if (live > 1) throw new Error(`${SHARED_BATCH} charts share a render context but ${live} WebGL contexts are live`);
+    hover(mounted[0]!.chart);
+    await frames(1);
+    for (const { chart, host, renders: counter } of mounted) {
+      renders += counter();
+      chart.dispose();
+      host.remove();
+    }
+  }
   return { iterations: count, renders, ms: performance.now() - startedAt };
 }
 
@@ -636,6 +674,84 @@ async function contextLoss(cycles: number): Promise<ContextLossResult> {
   host.remove();
   await frames(2);
   return { cycles, lostEvents: lostDuringCycles, restoredEvents: restoredDuringCycles, rendersAfterRestore, drawCallsAfterRestore, litPixelsAfterRestore, disposedWhileLost };
+}
+
+/** Pixels in the chart's own (2D) canvas that are not transparent. */
+function countBlittedPixels(chart: Chart): number {
+  const context = chart.canvas.getContext("2d");
+  if (!context) return 0;
+  const { data } = context.getImageData(0, 0, chart.canvas.width, chart.canvas.height);
+  let lit = 0;
+  for (let i = 3; i < data.length; i += 4) if (data[i] !== 0) lit++;
+  return lit;
+}
+
+/** Context loss and restore of the one WebGL context behind several charts that share a render context. */
+async function sharedContextLoss(cycles: number): Promise<ContextLossResult> {
+  const mounted: Array<{ chart: Chart; host: HTMLElement; renders: () => number }> = [];
+  for (let i = 0; i < 3; i++) {
+    const host = createHost(320, 200);
+    host.style.left = `${i * 10}px`;
+    const chart = new Chart(host, { axes: { x: true, y: true }, renderer: sharedRenderer() });
+    const renders = countRenders(chart);
+    addSampleSeries(chart);
+    chart.fitToData({ padding: 0.05 });
+    chart.start();
+    mounted.push({ chart, host, renders });
+  }
+  await Promise.all(mounted.map(({ chart }) => nextRender(chart)));
+
+  const gl = contextRefs.map((ref) => ref.deref()).find((context) => context && !context.isContextLost());
+  const extension = gl?.getExtension("WEBGL_lose_context");
+  if (!extension) throw new Error("WEBGL_lose_context is unavailable in this browser");
+
+  let lostEvents = 0;
+  let restoredEvents = 0;
+  const first = mounted[0]!.chart;
+  first.canvas.addEventListener("webglcontextlost", () => lostEvents++);
+  first.canvas.addEventListener("webglcontextrestored", () => restoredEvents++);
+
+  let rendersAfterRestore = 0;
+  let drawCallsAfterRestore = 0;
+  let litPixelsAfterRestore = 0;
+  for (let cycle = 0; cycle < cycles; cycle++) {
+    const lost = waitForCanvasEvent(first.canvas, "webglcontextlost", 2_000);
+    extension.loseContext();
+    await lost;
+    for (const { chart } of mounted) chart.requestRender();
+    hover(first);
+    await frames(3);
+
+    const restored = waitForCanvasEvent(first.canvas, "webglcontextrestored", 3_000);
+    extension.restoreContext();
+    await restored;
+    await Promise.all(mounted.map(({ chart }) => {
+      chart.requestRender();
+      return nextRender(chart);
+    }));
+    for (const { chart } of mounted) {
+      const lit = countBlittedPixels(chart);
+      if (lit === 0) throw new Error(`cycle ${cycle}: a chart on the shared context rendered a blank frame after restore`);
+      litPixelsAfterRestore += lit;
+      drawCallsAfterRestore += chart.getFrameStats().drawCalls;
+    }
+    rendersAfterRestore += mounted.length;
+  }
+
+  // Disposing every chart while the shared context is lost must release it cleanly; a later restore is harmless.
+  const lostDuringCycles = lostEvents;
+  const restoredDuringCycles = restoredEvents;
+  const lost = waitForCanvasEvent(first.canvas, "webglcontextlost", 2_000);
+  extension.loseContext();
+  await lost;
+  for (const { chart, host } of mounted) {
+    chart.dispose();
+    host.remove();
+  }
+  extension.restoreContext();
+  await delay(100);
+  await frames(2);
+  return { cycles, lostEvents: lostDuringCycles, restoredEvents: restoredDuringCycles, rendersAfterRestore, drawCallsAfterRestore, litPixelsAfterRestore, disposedWhileLost: true };
 }
 
 function requireElement(id: string): HTMLElement {

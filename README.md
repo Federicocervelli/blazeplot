@@ -100,6 +100,7 @@ Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](doc
 | `blazeplot/data` | Pure, chart-agnostic data transforms (binning, rolling mean). |
 | `blazeplot/export` | Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers. |
 | `blazeplot/renderers/canvas2d` | Canvas 2D renderer and WebGL2-with-Canvas-2D-fallback renderer factories. |
+| `blazeplot/renderers/shared` | Shared WebGL2 render context: many charts, one WebGL context. |
 | `blazeplot/plugins/legend` | Built-in legend plugin. |
 | `blazeplot/plugins/tooltip` | Built-in tooltip plugin. |
 | `blazeplot/plugins/interactions` | Built-in pan, zoom, axis interaction, and reset plugin. |

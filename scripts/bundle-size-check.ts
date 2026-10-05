@@ -45,13 +45,17 @@ const budgets: Budget[] = [
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 22_100 },
   { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 11_900 },
   { label: "canvas2d renderer entry", path: "dist/renderers/canvas2d.js", maxBytes: 5_700 },
+  { label: "shared renderer entry", path: "dist/renderers/shared.js", maxBytes: 3_900 },
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
   // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152.
-  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 148_500 },
+  { label: "shared Chart chunk", pattern: /^Chart-.*.js$/, maxBytes: 148_600 },
+  // WebGL2 renderer, backend, and shaders: the default renderer, shared by the core and the auto fallback entry.
+  { label: "shared WebGL2 backend chunk", pattern: /^WebGL2Backend-.*.js$/, maxBytes: 12_000 },
+  { label: "shared WebGL2 renderer chunk", pattern: /^webgl2Renderer-.*.js$/, maxBytes: 300 },
+  { label: "shared WebGL context release chunk", pattern: /^releaseWebGLContext-.*.js$/, maxBytes: 300 },
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
-  { label: "shared WebGL2 renderer chunk", pattern: /^webgl2Renderer-.*.js$/, maxBytes: 12_100 },
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 6_400 },
   { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 5_600 },

@@ -53,6 +53,26 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 - Dispose charts on unmount with `chart.dispose()`.
 - Keep optional features in subpath imports, for example `blazeplot/plugins/tooltip`, so chart-only bundles stay smaller.
 
+## Many charts on one page
+
+Browsers cap live WebGL contexts per page (about 16 in Chromium) and evict the oldest, so a dashboard with dozens of charts can end up with blank charts. Render them through one shared context instead:
+
+```ts
+import { Chart } from "blazeplot";
+import { sharedRenderer } from "blazeplot/renderers/shared";
+
+const charts = Array.from(document.querySelectorAll<HTMLElement>(".sparkline"), (host) => {
+  const chart = new Chart(host, { renderer: sharedRenderer() });
+  chart.start();
+  return chart;
+});
+
+// On unmount: dispose every chart; the shared WebGL context is released with the last one.
+for (const chart of charts) chart.dispose();
+```
+
+Every chart that uses `sharedRenderer()` draws into one hidden WebGL2 canvas and copies the result into its own canvas, so the page holds a single context for any number of charts. Keep charts in a group the same size where you can: the shared canvas only reallocates when consecutive charts differ in size. `createLinkedCharts(el, { renderer: sharedRenderer(), panels })` puts every linked panel on the shared context. The design and trade-offs are in [Shared render context](./internal/shared-render-context.md); measure your page with `bun run bench:multi`.
+
 ## Browser budgets
 
 GPU upload size, draw calls, and DOM overlays all matter. Large legends, many annotation labels, or very frequent layout changes can hurt performance even when the WebGL plot is fast.

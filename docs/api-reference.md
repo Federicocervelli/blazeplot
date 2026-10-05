@@ -29,6 +29,7 @@ Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./example
 | `blazeplot/data` | Pure, chart-agnostic data transforms (binning, rolling mean). |
 | `blazeplot/export` | Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers. |
 | `blazeplot/renderers/canvas2d` | Canvas 2D renderer and WebGL2-with-Canvas-2D-fallback renderer factories. |
+| `blazeplot/renderers/shared` | Shared WebGL2 render context: many charts, one WebGL context. |
 | `blazeplot/plugins/legend` | Built-in legend plugin. |
 | `blazeplot/plugins/tooltip` | Built-in tooltip plugin. |
 | `blazeplot/plugins/interactions` | Built-in pan, zoom, axis interaction, and reset plugin. |
@@ -61,8 +62,11 @@ Generated from `dist/` after the package build.
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
 | canvas2d renderer entry | `dist/renderers/canvas2d.js` | 5 KiB |
+| shared renderer entry | `dist/renderers/shared.js` | 4 KiB |
 | shared Chart chunk | `dist/Chart-*.js` | 143 KiB |
-| shared WebGL2 renderer chunk | `dist/webgl2Renderer-*.js` | 12 KiB |
+| shared WebGL2 backend chunk | `dist/WebGL2Backend-*.js` | 12 KiB |
+| shared WebGL2 renderer chunk | `dist/webgl2Renderer-*.js` | 0 KiB |
+| shared WebGL context release chunk | `dist/releaseWebGLContext-*.js` | 0 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 5 KiB |

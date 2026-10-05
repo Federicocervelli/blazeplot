@@ -2,7 +2,7 @@ import type { RenderProjection } from "./Renderer.js";
 import type { RgbaColor, SeriesStyle } from "../core/types.js";
 
 /** Rendering backend a chart is drawn with. */
-export type ChartRendererKind = "webgl2" | "canvas2d";
+export type ChartRendererKind = "webgl2" | "webgl2-shared" | "canvas2d";
 
 /** Opaque renderer instance returned by a renderer factory. Only the built-in renderers implement it. */
 export interface ChartRendererHandle {
