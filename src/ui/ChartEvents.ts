@@ -5,7 +5,6 @@
  */
 import type { SeriesMode, SeriesSample, SeriesYAxis, Viewport, XRange, RgbaColor } from "../core/types.js";
 import type { SeriesStore } from "../core/SeriesStore.js";
-import type { ChartRendererInfo } from "../render/ChartRenderer.js";
 import type { ChartFollowXState, ChartViewportChangeSource } from "./ChartViewportTypes.js";
 
 /** Strategy used to find data points near a pointer location. */
@@ -182,8 +181,6 @@ export interface ChartEventMap extends ChartPluginEventMap {
   /** A frame finished drawing. */
   render: void;
   viewportchange: ChartViewportChangeEvent;
-  /** Reserved for a chart that switches engine while running. Nothing emits it yet; read `chart.rendererInfo` for the current engine. */
-  rendererchange: ChartRendererInfo;
   /** Latest-X following started, stopped, paused, or resumed. */
   followxchange: ChartFollowXChangeEvent;
   seriesclick: ChartSeriesClickEvent;

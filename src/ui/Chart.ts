@@ -425,7 +425,7 @@ export class Chart {
     return this.addSeries({ ...config, mode: "scatter" }, style);
   }
 
-  /** Add a bar series growing from `style.baseline`. */
+  /** Add a bar series growing from `style.baseline`. For a histogram of raw values, pass `dataset: HistogramDataset.from(values, { binSize | binCount })`. */
   addBar<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
     return this.addSeries({ ...config, mode: "bar" }, style);
   }
@@ -521,9 +521,9 @@ export class Chart {
     return changed;
   }
 
-  /** Resize the canvas to match its layout size and device pixel ratio. */
-  resize(dpr: number = this.layout.view.devicePixelRatio): boolean {
-    const resized = this.applyCanvasSize(dpr);
+  /** Resize the canvas to match its layout size. `pixelRatio` is device pixels per CSS pixel (default `devicePixelRatio`, clamped to at least 1). Returns whether the drawing buffer changed. */
+  resize(pixelRatio: number = this.layout.view.devicePixelRatio): boolean {
+    const resized = this.applyCanvasSize(pixelRatio);
     if (resized) {
       // `plugins` is unset while the constructor sizes the canvas, before any plugin exists.
       this.plugins?.notify("onResize", { width: this.canvas.clientWidth, height: this.canvas.clientHeight });
@@ -875,8 +875,8 @@ export class Chart {
       : null;
   }
 
-  private applyCanvasSize(dpr: number = this.layout.view.devicePixelRatio): boolean {
-    const scale = Number.isFinite(dpr) ? Math.max(1, dpr) : 1;
+  private applyCanvasSize(pixelRatio: number = this.layout.view.devicePixelRatio): boolean {
+    const scale = Number.isFinite(pixelRatio) ? Math.max(1, pixelRatio) : 1;
     const size = this.plotSize;
     size.width = this.canvas.clientWidth;
     size.height = this.canvas.clientHeight;
