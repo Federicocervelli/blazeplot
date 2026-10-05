@@ -73,6 +73,17 @@ for (const chart of charts) chart.dispose();
 
 Every chart that uses `sharedRenderer()` draws into one hidden WebGL2 canvas and copies the result into its own canvas, so the page holds a single context for any number of charts. Keep charts in a group the same size where you can: the shared canvas only reallocates when consecutive charts differ in size. `createLinkedCharts(el, { renderer: sharedRenderer(), panels })` puts every linked panel on the shared context. The design and trade-offs are in [Shared render context](./internal/shared-render-context.md); measure your page with `bun run bench:multi`.
 
+Measured with `bun run bench:multi` on a real GPU (AMD Radeon RX 9070, Chrome 153, Windows/ANGLE D3D11, 1700x1100 window, every chart redrawing every frame):
+
+| Charts | Own context per chart | Shared context | Canvas 2D |
+|---:|---|---|---|
+| 10 | 0 lost, rAF p95 0.9 ms | 0 lost, 461 fps, rAF p95 2.9 ms | 0 lost, rAF p95 0.3 ms |
+| 25 | 9 contexts lost | 0 lost, 150 fps, rAF p95 7.6 ms | 0 lost, rAF p95 0.6 ms |
+| 50 | 34 contexts lost | 0 lost, 75 fps, rAF p95 15.3 ms | 0 lost, rAF p95 2.2 ms |
+| 100 | 84 contexts lost | 0 lost, 36 fps, rAF p95 30.6 ms | 0 lost, 158 fps, rAF p95 8.0 ms |
+
+The shared path costs about 0.3 ms of main-thread time per chart per redraw (the `drawImage` blit), so it holds 60 fps for roughly 50 charts that all redraw every frame, and further when most charts are idle. With the default per-chart context, pages lose contexts past about 16 charts and the evicted charts go blank, so the per-chart frame numbers above that count only measure submission and are not comparable. Below the cap, per-chart contexts are cheaper than the shared blit, which is why `createLinkedCharts` keeps them by default and `sharedRenderer()` stays opt-in. These numbers come from one machine; rerun `bench:multi` for yours.
+
 ## Browser budgets
 
 GPU upload size, draw calls, and DOM overlays all matter. Large legends, many annotation labels, or very frequent layout changes can hurt performance even when the WebGL plot is fast.

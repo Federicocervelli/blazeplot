@@ -48,7 +48,7 @@ The chart canvas is already sized in device pixels by `Chart` (`clientWidth * de
 
 ## Open questions
 
-- 60 fps with 50 charts on a mid-range laptop is unverified here (no real GPU in the authoring environment). The prototype removes context loss; the frame-rate claim needs a run on real hardware.
-- `LinkedCharts` keeps the per-chart context by default. Switch it to the shared path when `bench:multi` on a real GPU shows shared is faster or equal for typical panel counts. `createLinkedCharts({ renderer: sharedRenderer() })` already opts in.
+- Measured on a real GPU (RX 9070, Windows/ANGLE): about 0.3 ms of main-thread time per chart per redraw, so 50 always-redrawing charts hold roughly 75 fps and 100 charts about 36 fps, with no contexts lost at any count. Mid-range laptops are still unmeasured. See the table in [Performance recipes](../performance-recipes.md#many-charts-on-one-page).
+- `LinkedCharts` keeps the per-chart context by default. Real-GPU data shows shared is slower than per-chart contexts below the context cap (about 3x the per-frame cost at 10 charts, still under 3 ms), so it stays opt-in; revisit if panel counts above 16 become typical. `createLinkedCharts({ renderer: sharedRenderer() })` already opts in.
 - The flame graph plugin still creates its own WebGL context (and falls back to Canvas 2D without WebGL2). A flame graph on a shared-context page costs one extra context; routing its rectangle layer through the shared renderer is future work.
 - Blit alternatives: `ImageBitmap` transfer or `transferToImageBitmap` can avoid a copy on some browsers but make DOM sizing and screenshots harder; revisit if the blit shows up in profiles.

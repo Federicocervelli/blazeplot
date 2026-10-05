@@ -24,6 +24,10 @@ interface ScenarioConfig {
   readonly flameChartPan?: boolean;
   readonly flameMinFrameWidthPx?: number;
   readonly interaction?: "hover" | "pan";
+  /** Extra independent line series (each with its own dataset and downsample pass) on top of the main wave. */
+  readonly extraLineSeries?: number;
+  /** Replace the sparse scatter with a dense scatter that uses the default 2D viewport-aware sampler. */
+  readonly denseScatter?: boolean;
 }
 
 interface NumericSummary {
@@ -122,6 +126,42 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     measureMs: 3_000,
     warmupMs: 500,
     interaction: "pan",
+  },
+  // Many independent line series (#179): per-series LOD, buffer upload, and draw overhead dominates.
+  "many-series-100x20k-pan": {
+    name: "many-series-100x20k-pan",
+    initialSamples: 20_000,
+    viewportSamples: 10_000,
+    capacity: 20_000,
+    fillBatchSize: 20_000,
+    liveBatchSize: 0,
+    sparseInterval: 256,
+    includeScatter: false,
+    includeBars: false,
+    yMin: -1.5,
+    yMax: 1.5,
+    measureMs: 3_000,
+    warmupMs: 500,
+    interaction: "pan",
+    extraLineSeries: 99,
+  },
+  // Dense scatter (#179): default 2D viewport-aware point sampler, well past the point budget.
+  "scatter-1m-sampled-pan": {
+    name: "scatter-1m-sampled-pan",
+    initialSamples: 1_000_000,
+    viewportSamples: 500_000,
+    capacity: 1_000_000,
+    fillBatchSize: 65_536,
+    liveBatchSize: 0,
+    sparseInterval: 256,
+    includeScatter: true,
+    includeBars: false,
+    yMin: -1.5,
+    yMax: 1.5,
+    measureMs: 3_000,
+    warmupMs: 500,
+    interaction: "pan",
+    denseScatter: true,
   },
   "mixed-1m-live": {
     name: "mixed-1m-live",
@@ -283,11 +323,23 @@ const lineSeries = chart.addSeries(
   { color: [0.3, 0.6, 1.0, 1.0], lineWidth: 1 },
 );
 
+const extraLines: SeriesStore[] = [];
+for (let i = 0; i < (config.extraLineSeries ?? 0); i++) {
+  extraLines.push(
+    chart.addSeries(
+      { mode: "line", capacity: config.capacity, downsample: "minmax", name: `Benchmark wave ${i + 2}` },
+      { color: [0.3 + (i % 7) * 0.09, 0.9 - (i % 5) * 0.12, 0.4 + (i % 3) * 0.2, 1.0], lineWidth: 1 },
+    ),
+  );
+}
+
 const scatterSeries = config.includeScatter
-  ? chart.addSeries(
-      { mode: "scatter", capacity: Math.ceil(config.capacity / config.sparseInterval) + 1, downsample: "none", name: "Benchmark spikes" },
-      { color: [0.95, 0.35, 0.35, 1.0], pointSize: 5 },
-    )
+  ? config.denseScatter
+    ? chart.addSeries({ mode: "scatter", capacity: config.capacity, name: "Benchmark dense scatter" }, { color: [0.95, 0.35, 0.35, 0.6], pointSize: 3 })
+    : chart.addSeries(
+        { mode: "scatter", capacity: Math.ceil(config.capacity / config.sparseInterval) + 1, downsample: "none", name: "Benchmark spikes" },
+        { color: [0.95, 0.35, 0.35, 1.0], pointSize: 5 },
+      )
   : null;
 
 const barSeries = config.includeBars
@@ -473,6 +525,20 @@ function appendRange(startX: number, count: number): void {
     yValues[i] = Math.sin((x / period) * tau) * 0.25 + 0.8 + noise01(x) * 0.01;
   }
   lineSeries.append({ x: xValues, y: yValues });
+
+  for (let s = 0; s < extraLines.length; s++) {
+    const y = new Float32Array(count);
+    const phase = (s + 1) * 0.37;
+    for (let i = 0; i < count; i++) y[i] = Math.sin((xValues[i]! / period) * tau + phase) * 0.25 + 0.8 - (s % 10) * 0.15 + noise01(xValues[i]! + s) * 0.01;
+    extraLines[s]!.append({ x: xValues, y });
+  }
+
+  if (config.denseScatter && scatterSeries) {
+    const y = new Float32Array(count);
+    for (let i = 0; i < count; i++) y[i] = (noise01(xValues[i]! * 31 + 7) - 0.5) * 2.4;
+    scatterSeries.append({ x: xValues, y });
+    return;
+  }
 
   if (!scatterSeries && !barSeries) return;
   appendSparseSeries(startX, count, period, tau, scatterSeries, barSeries);
