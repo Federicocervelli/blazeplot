@@ -6,8 +6,22 @@ import { asElement } from "./OverlayUtils.js";
 /** Static or dynamic axis choice for wheel and drag interactions. */
 export type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
 
+/** Keyboard pan and zoom step sizes for `interactionsPlugin({ keyboard })`. */
+export interface InteractionsKeyboardOptions {
+  /** Fraction of the viewport moved per arrow key. Defaults to 0.1. */
+  readonly panFraction?: number;
+  /** Zoom factor per +/- key. Defaults to 1.25. */
+  readonly zoomFactor?: number;
+}
+
 /** Options for mouse, wheel, touch, and keyboard chart interactions. */
 export interface InteractionsPluginOptions {
+  /**
+   * Arrow-key pan, +/- zoom, PageUp/PageDown Y zoom, and Home or 0 to fit, from the focused chart root.
+   * Enabled by default; pass `false` to turn it off or an object to tune the step sizes.
+   * The chart does not navigate by keyboard without this plugin.
+   */
+  readonly keyboard?: boolean | InteractionsKeyboardOptions;
   readonly axis?: InteractionAxisOption;
   readonly boxZoom?: boolean;
   readonly wheelZoom?: boolean;
@@ -39,6 +53,8 @@ type AxisSurface = Exclude<ChartSurface, "plot" | "root">;
 type GestureSurface = "plot" | AxisSurface;
 
 const AXIS_SURFACES: readonly AxisSurface[] = ["axis-x", "axis-y", "axis-y2"];
+/** Gestures from this plugin report `viewportchange.source === "user"`. */
+const USER_VIEWPORT = { source: "user" } as const;
 
 function axisGestureConfig(surface: AxisSurface): { axis: ZoomAxis; yAxis?: SeriesYAxis } {
   if (surface === "axis-x") return { axis: "x" };
@@ -182,7 +198,6 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       const selection = chart.dom.document.createElement("div");
       const axisHoverClass = `blazeplot-axis-hover-${nextInteractionsPluginId++}`;
       const axisHoverStyle = chart.dom.document.createElement("style");
-      const cleanups: Array<() => void> = [];
       const hoverUndo = new Map<AxisSurface, () => void>();
       let drag: DragState | null = null;
       let touchGesture: TouchGestureState | null = null;
@@ -199,23 +214,23 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       selection.style.zIndex = "24";
       selection.style.border = `1px solid ${chart.theme.selectionStrokeColor}`;
       selection.style.background = chart.theme.selectionFillColor;
-      cleanups.push(chart.dom.mount("plot", selection));
+      chart.dom.mount("plot", selection);
 
       axisHoverStyle.textContent = `.${axisHoverClass} > div { color: ${options.axisHoverColor ?? chart.theme.titleColor} !important; }`;
       if (axisInteractions && options.axisHover !== false) {
-        cleanups.push(chart.dom.mount("root", axisHoverStyle));
+        chart.dom.mount("root", axisHoverStyle);
       }
 
       if (options.touchPan !== false || options.pinchZoom !== false) {
-        cleanups.push(chart.dom.decorate("plot", { style: { touchAction: "none" } }));
+        chart.dom.decorate("plot", { style: { touchAction: "none" } });
         if (axisInteractions) {
-          for (const surface of AXIS_SURFACES) cleanups.push(chart.dom.decorate(surface, { style: { touchAction: "none" } }));
+          for (const surface of AXIS_SURFACES) chart.dom.decorate(surface, { style: { touchAction: "none" } });
         }
       }
 
       if (axisInteractions) {
         for (const surface of AXIS_SURFACES) {
-          cleanups.push(chart.dom.decorate(surface, { style: { pointerEvents: "auto", cursor: surface === "axis-x" ? "ew-resize" : "ns-resize" } }));
+          chart.dom.decorate(surface, { style: { pointerEvents: "auto", cursor: surface === "axis-x" ? "ew-resize" : "ns-resize" } });
         }
       }
 
@@ -327,7 +342,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           const rect = chart.layout.plotRect();
           const dx = rect.width > 0 ? (drag.lastX - event.clientX) / rect.width : 0;
           const dy = rect.height > 0 ? (event.clientY - drag.lastY) / rect.height : 0;
-          chart.viewport.pan(directPan({ dx, dy }, drag.axis, drag.yAxis ?? "left"), drag.yAxis);
+          chart.viewport.pan(directPan({ dx, dy }, drag.axis, drag.yAxis ?? "left"), drag.yAxis, USER_VIEWPORT);
           drag.lastX = event.clientX;
           drag.lastY = event.clientY;
           return;
@@ -369,7 +384,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         if (!rightStart || !rightEnd) return;
         const rightYMin = Math.min(rightStart[1], rightEnd[1]);
         const rightYMax = Math.max(rightStart[1], rightEnd[1]);
-        if (rightYMax > rightYMin) chart.viewport.set({ yMin: rightYMin, yMax: rightYMax }, "right");
+        if (rightYMax > rightYMin) chart.viewport.set({ yMin: rightYMin, yMax: rightYMax }, "right", USER_VIEWPORT);
       };
 
       const onPointerCancel = (event: PointerEvent): void => {
@@ -393,7 +408,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
             dy: rect.height > 0 && zoomAxis !== "x" ? (-event.deltaY * sensitivity) / rect.height : 0,
           }, zoomAxis, targetYAxis ?? "left");
           if ((Math.abs(panIntent.dx) < 1e-6 && Math.abs(panIntent.dy) < 1e-6)) return;
-          chart.viewport.pan(panIntent, targetYAxis);
+          chart.viewport.pan(panIntent, targetYAxis, USER_VIEWPORT);
           return;
         }
 
@@ -406,13 +421,13 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         const cx = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
         const cy = rect.height > 0 ? 1 - (event.clientY - rect.top) / rect.height : 0.5;
         if (Math.abs(1 - factor) < 1e-4) return;
-        chart.viewport.zoom(directZoom({ factor, cx, cy, axis: zoomAxis }, targetYAxis ?? "left"), targetYAxis);
+        chart.viewport.zoom(directZoom({ factor, cx, cy, axis: zoomAxis }, targetYAxis ?? "left"), targetYAxis, USER_VIEWPORT);
       };
 
       const resetToCapturedViewport = (): void => {
         const target = options.resetViewport?.() ?? resetViewport ?? normalizeViewport(chart.viewport.get());
-        chart.viewport.set(target);
-        if (resetRightViewport) chart.viewport.set({ yMin: resetRightViewport.yMin, yMax: resetRightViewport.yMax }, "right");
+        chart.viewport.set(target, undefined, USER_VIEWPORT);
+        if (resetRightViewport) chart.viewport.set({ yMin: resetRightViewport.yMin, yMax: resetRightViewport.yMax }, "right", USER_VIEWPORT);
         if (options.resumeFollowOnReset !== false) chart.viewport.setFollowXPaused(false);
       };
 
@@ -457,7 +472,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
           const factor = distance / touchGesture.lastDistance;
           const cx = rect.width > 0 ? (center.x - rect.left) / rect.width : 0.5;
           const cy = rect.height > 0 ? 1 - (center.y - rect.top) / rect.height : 0.5;
-          chart.viewport.zoom(directZoom({ factor, cx, cy, axis: touchGesture.axis }, touchGesture.yAxis ?? "left"), touchGesture.yAxis);
+          chart.viewport.zoom(directZoom({ factor, cx, cy, axis: touchGesture.axis }, touchGesture.yAxis ?? "left"), touchGesture.yAxis, USER_VIEWPORT);
           touchGesture = { mode: "pinch", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastDistance: distance };
           return;
         }
@@ -467,7 +482,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         event.preventDefault();
         const dx = rect.width > 0 ? (touchGesture.lastX - touch.clientX) / rect.width : 0;
         const dy = rect.height > 0 ? (touch.clientY - touchGesture.lastY) / rect.height : 0;
-        chart.viewport.pan(directPan({ dx, dy }, touchGesture.axis, touchGesture.yAxis ?? "left"), touchGesture.yAxis);
+        chart.viewport.pan(directPan({ dx, dy }, touchGesture.axis, touchGesture.yAxis ?? "left"), touchGesture.yAxis, USER_VIEWPORT);
         touchGesture = { mode: "pan", axis: touchGesture.axis, yAxis: touchGesture.yAxis, lastX: touch.clientX, lastY: touch.clientY };
       };
 
@@ -500,50 +515,66 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       const listenTouch = (surface: GestureSurface): void => {
-        cleanups.push(
-          chart.dom.listen(surface, "touchstart", (event) => onTouchStart(event, surface), { passive: false }),
-          chart.dom.listen(surface, "touchmove", onTouchMove, { passive: false }),
-          chart.dom.listen(surface, "touchend", (event) => onTouchEnd(event, surface), { passive: false }),
-          chart.dom.listen(surface, "touchcancel", (event) => onTouchEnd(event, surface), { passive: false }),
-        );
+        chart.dom.listen(surface, "touchstart", (event) => onTouchStart(event, surface), { passive: false });
+        chart.dom.listen(surface, "touchmove", onTouchMove, { passive: false });
+        chart.dom.listen(surface, "touchend", (event) => onTouchEnd(event, surface), { passive: false });
+        chart.dom.listen(surface, "touchcancel", (event) => onTouchEnd(event, surface), { passive: false });
       };
 
-      cleanups.push(
-        chart.dom.listen("plot", "pointerdown", onPlotPointerDown),
-        chart.dom.listen("plot", "wheel", (event) => wheelOnAxis(event, resolveAxis(options.axis)), { passive: false }),
-        chart.dom.listen("plot", "dblclick", onDoubleClick),
-      );
+      chart.dom.listen("plot", "pointerdown", onPlotPointerDown);
+      chart.dom.listen("plot", "wheel", (event) => wheelOnAxis(event, resolveAxis(options.axis)), { passive: false });
+      chart.dom.listen("plot", "dblclick", onDoubleClick);
       listenTouch("plot");
 
       if (axisInteractions) {
         for (const surface of AXIS_SURFACES) {
           const config = axisGestureConfig(surface);
-          cleanups.push(
-            chart.dom.listen(surface, "pointerdown", (event) => onAxisPointerDown(event, surface)),
-            chart.dom.listen(surface, "pointerenter", () => setAxisHovered(surface, true)),
-            chart.dom.listen(surface, "pointerleave", () => setAxisHovered(surface, false)),
-            chart.dom.listen(surface, "wheel", (event) => wheelOnAxis(event, config.axis, config.yAxis), { passive: false }),
-            chart.dom.listen(surface, "dblclick", onDoubleClick),
-          );
+          chart.dom.listen(surface, "pointerdown", (event) => onAxisPointerDown(event, surface));
+          chart.dom.listen(surface, "pointerenter", () => setAxisHovered(surface, true));
+          chart.dom.listen(surface, "pointerleave", () => setAxisHovered(surface, false));
+          chart.dom.listen(surface, "wheel", (event) => wheelOnAxis(event, config.axis, config.yAxis), { passive: false });
+          chart.dom.listen(surface, "dblclick", onDoubleClick);
           listenTouch(surface);
         }
       }
 
       for (const surface of ["plot", ...AXIS_SURFACES] as const) {
-        cleanups.push(
-          chart.dom.listen(surface, "pointermove", onPointerMove),
-          chart.dom.listen(surface, "pointerup", onPointerUp),
-          chart.dom.listen(surface, "pointercancel", onPointerCancel),
-        );
+        chart.dom.listen(surface, "pointermove", onPointerMove);
+        chart.dom.listen(surface, "pointerup", onPointerUp);
+        chart.dom.listen(surface, "pointercancel", onPointerCancel);
       }
 
-      return () => {
-        for (const undo of hoverUndo.values()) undo();
-        hoverUndo.clear();
-        for (const cleanup of cleanups.splice(0).reverse()) cleanup();
-        drag = null;
-        touchGesture = null;
-      };
+      if (options.keyboard !== false) {
+        const config = typeof options.keyboard === "object" ? options.keyboard : undefined;
+        const panFraction = typeof config?.panFraction === "number" && Number.isFinite(config.panFraction) ? Math.max(0, config.panFraction) : 0.1;
+        const zoomFactor = typeof config?.zoomFactor === "number" && Number.isFinite(config.zoomFactor) && config.zoomFactor > 1 ? config.zoomFactor : 1.25;
+        const zoomAtCenter = (factor: number, axis: ZoomAxis): void => chart.viewport.zoom({ factor, cx: 0.5, cy: 0.5, axis }, undefined, USER_VIEWPORT);
+        // Bubble phase: the a11y plugin's inspection keys (capture) and any child handler run first.
+        chart.dom.listen("root", "keydown", (event) => {
+          if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+          const target = event.target;
+          const tag = (target as { tagName?: unknown } | null)?.tagName;
+          if ((typeof tag === "string" && /^(INPUT|TEXTAREA|SELECT)$/i.test(tag)) || (target as { isContentEditable?: unknown } | null)?.isContentEditable === true) return;
+          const panStep = panFraction * (event.shiftKey ? 2.5 : 1);
+          let handled = true;
+          switch (event.key) {
+            case "ArrowLeft": chart.viewport.pan({ dx: -panStep, dy: 0 }, undefined, USER_VIEWPORT); break;
+            case "ArrowRight": chart.viewport.pan({ dx: panStep, dy: 0 }, undefined, USER_VIEWPORT); break;
+            case "ArrowUp": chart.viewport.pan({ dx: 0, dy: panStep }, undefined, USER_VIEWPORT); break;
+            case "ArrowDown": chart.viewport.pan({ dx: 0, dy: -panStep }, undefined, USER_VIEWPORT); break;
+            case "+":
+            case "=": zoomAtCenter(zoomFactor, "xy"); break;
+            case "-":
+            case "_": zoomAtCenter(1 / zoomFactor, "xy"); break;
+            case "PageUp": zoomAtCenter(zoomFactor, "y"); break;
+            case "PageDown": zoomAtCenter(1 / zoomFactor, "y"); break;
+            case "Home":
+            case "0": handled = chart.viewport.fitToData({ padding: 0.05, source: "user" }); break;
+            default: handled = false; break;
+          }
+          if (handled) event.preventDefault();
+        });
+      }
     },
   };
 }

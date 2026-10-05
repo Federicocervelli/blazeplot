@@ -38,6 +38,19 @@ Theme values are merged with the default theme, so you can override only the tok
 
 Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(config, { color: "#f97316", lineWidth: 2 })`.
 
+Series without an explicit `color` take the first theme palette color no other attached series uses, so removing a series and adding another never repeats a color that is still on screen. Those palette-colored series follow `chart.setTheme(...)`; series with an explicit `color` keep it.
+
+Restyle a series after creation with `series.setStyle(...)`. It merges the fields you pass, resolves CSS colors, updates the legend and the next frame, and survives forced-colors mode. Setting `color` pins it, so later theme changes leave that series alone.
+
+```ts
+import { Chart } from "blazeplot";
+
+const chart = new Chart(document.body);
+const series = chart.addLine({ capacity: 1_000, name: "cpu" });
+series.setStyle({ color: "#f97316", lineWidth: 2 });
+chart.dispose();
+```
+
 ## Sizing
 
 - The chart root fills its host element. Give the host an explicit width and height.

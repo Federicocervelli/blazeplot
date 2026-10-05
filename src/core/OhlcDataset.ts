@@ -1,7 +1,7 @@
 import { lowerBound, upperBound } from "./search.js";
 import { createValueArray } from "./valueArray.js";
 import type { BufferOverflowStrategy, InvalidOhlcSample, OhlcDataset, TimeRange, ValuePrecision } from "./types.js";
-import { MAX_X, MIN_X, assertSortedFiniteX, firstInvalidX, invalidSampleWarning, invalidXReason, stableFiniteXOrder } from "./validation.js";
+import { assertEqualLengths, MAX_X, MIN_X, assertSortedFiniteX, firstInvalidX, invalidSampleWarning, invalidXReason, stableFiniteXOrder } from "./validation.js";
 
 const STATIC_OHLC_HINT =
   "Use StaticOhlcDataset.sorted(x, open, high, low, close) to sort and drop non-finite X, or pass { assumeSorted: true } to skip this check for data you trust.";
@@ -48,7 +48,8 @@ export class StaticOhlcDataset implements OhlcDataset {
     close: ArrayLike<number>,
     options: StaticOhlcDatasetSortedOptions = {},
   ): StaticOhlcDataset {
-    const count = Math.min(x.length, open.length, high.length, low.length, close.length);
+    assertEqualLengths("StaticOhlcDataset.sorted", { x, open, high, low, close });
+    const count = x.length;
     const order = stableFiniteXOrder(x, count);
     const n = order.length;
     const xs = new Float64Array(n);
@@ -79,7 +80,8 @@ export class StaticOhlcDataset implements OhlcDataset {
     close: ArrayLike<number>,
     options: StaticOhlcDatasetOptions = {},
   ) {
-    this.length = Math.min(x.length, open.length, high.length, low.length, close.length);
+    assertEqualLengths("StaticOhlcDataset", { x, open, high, low, close });
+    this.length = x.length;
     if (options.assumeSorted !== true) assertSortedFiniteX("StaticOhlcDataset", x, this.length, STATIC_OHLC_HINT);
     this.xs = x;
     this.opens = open;
@@ -255,7 +257,8 @@ export class OhlcRingBuffer implements OhlcDataset {
     low: ArrayLike<number>,
     close: ArrayLike<number>,
   ): void {
-    const requested = Math.min(x.length, open.length, high.length, low.length, close.length);
+    assertEqualLengths("OhlcRingBuffer.append", { x, open, high, low, close });
+    const requested = x.length;
     if (requested <= 0) return;
 
     // drop-new stores at most `limit` candles; later valid candles are dropped without

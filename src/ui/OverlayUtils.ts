@@ -1,6 +1,6 @@
 import type { SeriesYAxis } from "../core/types.js";
 import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./Chart.js";
-import type { ChartPluginContext } from "./PluginHost.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { rgbaCss } from "./theme.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -305,4 +305,47 @@ export function createLongPressTouchTracker(options: LongPressTouchTrackerOption
       if (event.pointerType === "touch") clear();
     },
   };
+}
+
+/**
+ * Make a stateful plugin instance installable on one chart at a time. These plugins keep per-chart
+ * state in their factory closure, so a second install would silently corrupt the first chart.
+ * Installing an instance that is still installed throws; disposing the chart (or the plugin) frees it.
+ */
+export function singleChartPlugin<P extends ChartPlugin>(name: string, plugin: P): P {
+  const install = plugin.install.bind(plugin);
+  let installed = false;
+  plugin.install = (ctx) => {
+    if (installed) {
+      throw new Error(`${name} plugin instance is already installed on a chart. Create one plugin instance per chart.`);
+    }
+    installed = true;
+    const release = (): void => {
+      installed = false;
+    };
+    let result: ReturnType<ChartPlugin["install"]>;
+    try {
+      result = install(ctx);
+    } catch (error) {
+      release();
+      throw error;
+    }
+    if (typeof result === "function") {
+      const dispose = result;
+      return () => {
+        release();
+        dispose();
+      };
+    }
+    if (result && typeof result === "object") {
+      const dispose = result.dispose?.bind(result);
+      result.dispose = () => {
+        release();
+        dispose?.();
+      };
+      return result;
+    }
+    return release;
+  };
+  return plugin;
 }

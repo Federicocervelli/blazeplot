@@ -1,6 +1,6 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { ChartPlugin, ChartPluginContext, ChartRect } from "./PluginHost.js";
-import { asElement, clamp, createOverlayLayer } from "./OverlayUtils.js";
+import { asElement, clamp, createOverlayLayer, singleChartPlugin } from "./OverlayUtils.js";
 
 /** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
@@ -196,7 +196,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     if (hadSelection) announce?.(messages.cleared);
   };
 
-  return {
+  return singleChartPlugin("selection", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
       // Pointer capture goes to the element that received the press (the plot surface).
@@ -208,7 +208,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         overlay.style.background = options.fillColor ?? chart.theme.selectionFillColor;
       };
       applyTheme();
-      const unmount = chart.dom.mount("plot", overlay);
+      chart.dom.mount("plot", overlay);
 
       const onPointerDown = (event: PointerEvent): void => {
         if (drag || event.button !== 0) return;
@@ -389,28 +389,22 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
         setOverlay(committedSelection.plotBounds);
       };
 
-      const unlisten = [
-        chart.dom.listen("plot", "pointerdown", onPointerDown),
-        chart.dom.listen("plot", "pointermove", onPointerMove),
-        chart.dom.listen("plot", "pointerup", onPointerUp),
-        chart.dom.listen("plot", "pointercancel", onPointerCancel),
-        // Capture runs before the chart's own Shift+Arrow pan on the same root element.
-        chart.dom.listen("root", "keydown", onRootKeyDown, { capture: true }),
-      ];
+      chart.dom.listen("plot", "pointerdown", onPointerDown);
+      chart.dom.listen("plot", "pointermove", onPointerMove);
+      chart.dom.listen("plot", "pointerup", onPointerUp);
+      chart.dom.listen("plot", "pointercancel", onPointerCancel);
+      chart.dom.listen("root", "keydown", onRootKeyDown, { capture: true });
       chart.dom.view.addEventListener("pointerdown", armEscape, { capture: true });
       chart.dom.view.addEventListener("focusin", armEscape, { capture: true });
       chart.dom.view.addEventListener("keydown", onKeyDown);
-      const unsubscribeRender = chart.events.subscribe("render", onRender);
+      chart.events.subscribe("render", onRender);
 
       return {
         onThemeChange: applyTheme,
         dispose() {
-          for (const off of unlisten) off();
           chart.dom.view.removeEventListener("pointerdown", armEscape, { capture: true });
           chart.dom.view.removeEventListener("focusin", armEscape, { capture: true });
           chart.dom.view.removeEventListener("keydown", onKeyDown);
-          unsubscribeRender();
-          unmount();
           overlay = null;
           chartRef = null;
           drag = null;
@@ -428,5 +422,5 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     getSelection(): SelectionState | null {
       return committedSelection;
     },
-  };
+  });
 }

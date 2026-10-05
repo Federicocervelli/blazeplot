@@ -2,9 +2,9 @@
 
 This page states what BlazePlot does for keyboard and assistive-technology users, and what it does not. Charts are drawn on a WebGL canvas, so a screen reader cannot read pixels. BlazePlot exposes the chart through three layers:
 
-1. **The chart itself** (always on): a named, focusable `figure` with a generated text summary, keyboard pan and zoom, visible focus rings, and forced-colors (high-contrast) support.
+1. **The chart itself** (always on): a named, focusable `figure` with a generated text summary, visible focus rings, and forced-colors (high-contrast) support.
 2. **`blazeplot/plugins/a11y`** (opt in): a visually hidden data table of the visible data, a keyboard inspection cursor that drives the tooltip and crosshair, and an optional live summary for streaming charts.
-3. **Keyboard support in the built-in plugins**: legend buttons, the navigator slider, keyboard range selection, and focusable annotations.
+3. **Keyboard support in the built-in plugins**: arrow-key pan and zoom (`interactionsPlugin`), legend buttons, the navigator slider, keyboard range selection, and focusable annotations.
 
 Everything below is checked against the source in `src/ui/` and verified by unit tests in `tests/ui/`, keyboard-only browser tests (`bun run test:interaction`), automated axe-core checks of every built-in plugin (`bun run test:a11y`, which fails on serious or critical violations), and an automated forced-colors check in headless Chrome (`bun run test:forced-colors`, part of `bun run test:interaction`). BlazePlot has not been tested manually with screen readers. Nothing here is a claim of conformance with WCAG or any other standard: BlazePlot has not been audited against one.
 
@@ -21,7 +21,7 @@ These apply to every chart unless you pass `accessibility: false`.
 | Focus ring | A 2px `:focus-visible` outline on the chart root and on every focusable control inside it (legend buttons, navigator, annotations), colored by the `focusRingColor` theme token. Pointer clicks do not show it. |
 | Hidden decoration | The WebGL canvas and the axis tick containers get `aria-hidden="true"`; the plot layer gets `role="presentation"`. |
 | Forced colors | When the OS forces a high-contrast palette (`forced-colors: active`, e.g. Windows Contrast themes), the canvas switches to CSS system colors (`Canvas`, `CanvasText`, `Highlight`, `LinkText`, ...), every series is drawn in the system palette, overlays get forced-colors styles, and it switches back when the mode ends. Opt out with `accessibility.forcedColors: false`. |
-| Keyboard navigation | Enabled by default; see the key map. |
+| Keyboard navigation | Not part of the chart itself: arrow-key pan and zoom come from `interactionsPlugin` (on by default there). Without it, a focused chart does not change its viewport. See the key map. |
 
 ```ts
 import { Chart } from "blazeplot";
@@ -84,13 +84,15 @@ All chart keys work while the **chart root itself** has focus (Tab to it). Keys 
 
 ### Navigation mode (default)
 
+These keys need `interactionsPlugin()`; without it the chart ignores them.
+
 | Key | Action | From |
 |---|---|---|
-| Arrow keys | Pan by 10% of the viewport. | Chart |
-| Shift + Arrow keys | Pan by 25%. With `selectionPlugin` installed, Shift + Left/Right (x-range and xy modes) and Shift + Up/Down (y-range and xy modes) extend a selection instead. | Chart / selection |
-| `+` or `=` / `-` or `_` | Zoom in / out on both axes around the plot center. | Chart |
-| PageUp / PageDown | Zoom the Y axis in / out. | Chart |
-| Home or `0` | Fit the viewport to the data (5% padding). | Chart |
+| Arrow keys | Pan by 10% of the viewport. | Interactions |
+| Shift + Arrow keys | Pan by 25%. With `selectionPlugin` installed, Shift + Left/Right (x-range and xy modes) and Shift + Up/Down (y-range and xy modes) extend a selection instead. | Interactions / selection |
+| `+` or `=` / `-` or `_` | Zoom in / out on both axes around the plot center. | Interactions |
+| PageUp / PageDown | Zoom the Y axis in / out. | Interactions |
+| Home or `0` | Fit the viewport to the data (5% padding). | Interactions |
 | Enter | Commit a pending keyboard selection; otherwise start the inspection cursor. | Selection / a11y plugin |
 | Escape | Cancel a pending keyboard selection, else clear the committed selection. | Selection |
 
@@ -114,16 +116,17 @@ All chart keys work while the **chart root itself** has focus (Tab to it). Keys 
 | Navigator (`navigatorPlugin`) | Left/Right pan by 10% of the visible span (Shift: 25%); Home/End jump to the start/end of the domain. |
 | Annotation (`annotationsPlugin`) | Tab between visible annotations; Enter or Space activates it (calls `onClick` and `click` subscribers); Delete or Backspace removes it when it is `removable`. |
 
-Tune the chart's own step sizes or turn the chart keys off:
+Tune the keyboard step sizes or turn the keys off on the interactions plugin:
 
 ```ts
 import { Chart } from "blazeplot";
+import { interactionsPlugin } from "blazeplot/plugins/interactions";
 
 const element = document.getElementById("chart")!;
 const chart = new Chart(element, {
-  accessibility: { keyboard: { panFraction: 0.2, zoomFactor: 1.5 } },
+  plugins: [interactionsPlugin({ keyboard: { panFraction: 0.2, zoomFactor: 1.5 } })],
 });
-// accessibility: { keyboard: false } disables the chart keys but keeps ARIA and plugin keys.
+// interactionsPlugin({ keyboard: false }) turns the chart keys off but keeps pointer interaction.
 // accessibility: false disables the chart's ARIA, keys, summary, focus styles, and forced colors.
 chart.dispose();
 ```
@@ -141,7 +144,7 @@ Keyboard pan and zoom pass through `ViewportPolicy.beforePan` and `beforeZoom`, 
 | `crosshairPlugin` | Follows the pointer or the keyboard inspection cursor (`onMove` fires for both). Decorative for assistive technology. |
 | `selectionPlugin` | Pointer drag, or Shift + Arrow keys from the chart root (`keyboard: { step }`, default 5% of the plot per press; `keyboard: false` turns it off). The range being extended, the committed range, cancelling, and clearing are announced through a polite live region. Emits the same `select` event and `onChange` events (`sourceEvent` is the `KeyboardEvent`). |
 | `annotationsPlugin` | The SVG stays `aria-hidden`; each visible annotation gets a focus target with `role="button"`, `aria-roledescription="annotation"`, and an accessible name from `ariaLabel`, the label text, or a generated description ("Vertical line at x 50"). Opt out with `focusable: false` (per plugin or per annotation). Removal by keyboard needs `removable: true` and calls `onRemove`. |
-| `interactionsPlugin` | Pointer, wheel, and touch only; the keyboard equivalents come from the chart itself. |
+| `interactionsPlugin` | Pointer, wheel, and touch, plus keyboard pan, zoom, and fit from the focused chart root (`keyboard: { panFraction, zoomFactor }`, `keyboard: false` turns it off). Inspection keys from `a11yPlugin` take priority while inspecting. |
 | `flameGraphPlugin` | Its tooltip uses the same `role="tooltip"` / `aria-hidden` toggling. Frames are not keyboard focusable. |
 
 ## Localization

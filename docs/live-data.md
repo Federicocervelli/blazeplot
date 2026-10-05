@@ -143,6 +143,22 @@ chart.followX({
 
 Y-axis interactions do not pause X follow. X pan/zoom operations through the chart/plugin APIs do pause when `pauseOnInteraction` is enabled.
 
+### Telling user changes from automatic ones
+
+Every `viewportchange` event carries a `source`: `"user"` (gestures from the interactions, navigator, and a11y plugins), `"follow"` (latest-X following), `"fit"` (`fitToData` and `autoFitY`), `"linked"` (a linked panel mirroring another), or `"api"` (your own `setViewport`, `pan`, or `zoom` call). Filter on it to persist "the user zoomed to ..." or to show a "jump to live" button without reacting to the stream of follow updates. `chart.subscribe("followxchange", ({ state }) => ...)` fires when following starts, stops, pauses, or resumes.
+
+```ts
+chart.subscribe("viewportchange", ({ viewport, source }) => {
+  if (source === "user") localStorage.setItem("range", `${viewport.xMin},${viewport.xMax}`);
+});
+```
+
+Plugins pass the source through the viewport API, for example `ctx.viewport.pan(intent, yAxis, { source: "user" })`. `chart.setViewport(viewport, yAxis, { pauseFollow: false })` changes X without pausing latest-X following.
+
+### Linked charts and live follow
+
+With `createLinkedCharts`, panels that all use `followX` stay in sync and keep following while data streams: mirrored updates do not pause the receiving panel. Pausing and resuming follow is shared, so a user pan on one panel pauses every following panel, and `setFollowXPaused(false)` on any panel resumes them all.
+
 ## Direct dataset mutation
 
 If you intentionally mutate a dataset directly, call `series.markDirty()` afterward:

@@ -1,6 +1,6 @@
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createSvgElement } from "./OverlayUtils.js";
+import { createSvgElement, singleChartPlugin } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 
 /** Options for the overview navigator plugin. */
@@ -8,6 +8,7 @@ export interface NavigatorPluginOptions {
   readonly height?: number;
   readonly placement?: "bottom" | "top";
   readonly series?: SeriesStore | readonly SeriesStore[];
+  /** Series up to this many samples (default 512) draw as an exact polyline; denser series draw a min/max envelope. */
   readonly maxSamplesPerSeries?: number;
   readonly followLive?: boolean;
   readonly className?: string;
@@ -53,26 +54,20 @@ function seriesList(chart: ChartPluginContext, option: NavigatorPluginOptions["s
   return chart.state.getSeries().filter((state) => state.visible).map((state) => state.series);
 }
 
-function computeDomain(series: readonly SeriesStore[], maxSamplesPerSeries: number): Domain | null {
+/** Union of the series' data bounds. `dataBounds()` skips gaps and includes OHLC high/low and bar/area baselines. */
+function computeDomain(series: readonly SeriesStore[]): Domain | null {
   let xMin = Infinity;
   let xMax = -Infinity;
   let yMin = Infinity;
   let yMax = -Infinity;
 
   for (const s of series) {
-    if (s.length <= 0) continue;
-    const first = s.sampleAt(0);
-    const last = s.sampleAt(s.length - 1);
-    if (!first || !last) continue;
-    xMin = Math.min(xMin, first.x, last.x);
-    xMax = Math.max(xMax, first.x, last.x);
-    const stride = Math.max(1, Math.ceil(s.length / maxSamplesPerSeries));
-    for (let i = 0; i < s.length; i += stride) {
-      const sample = s.sampleAt(i);
-      if (!sample) continue;
-      yMin = Math.min(yMin, sample.y);
-      yMax = Math.max(yMax, sample.y);
-    }
+    const bounds = s.dataBounds();
+    if (!bounds) continue;
+    xMin = Math.min(xMin, bounds.xMin);
+    xMax = Math.max(xMax, bounds.xMax);
+    yMin = Math.min(yMin, bounds.yMin);
+    yMax = Math.max(yMax, bounds.yMax);
   }
 
   if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || xMax <= xMin || !Number.isFinite(yMin) || !Number.isFinite(yMax)) return null;
@@ -83,29 +78,75 @@ function computeDomain(series: readonly SeriesStore[], maxSamplesPerSeries: numb
   return { xMin, xMax, yMin, yMax };
 }
 
-function pathForSeries(series: SeriesStore, domain: Domain, width: number, height: number, maxSamples: number): string {
-  if (series.length <= 0 || width <= 0 || height <= 0) return "";
-  const stride = Math.max(1, Math.ceil(series.length / maxSamples));
-  const xRange = domain.xMax - domain.xMin;
-  const yRange = domain.yMax - domain.yMin;
-  const xScale = (width - 1) / xRange;
-  const yScale = (height - 1) / yRange;
-  let path = "";
-  let lastIndex = -1;
-  const appendSample = (index: number): void => {
-    if (index === lastIndex) return;
-    const sample = series.sampleAt(index);
-    if (!sample) return;
-    const x = (sample.x - domain.xMin) * xScale;
-    const y = (height - 1) - (sample.y - domain.yMin) * yScale;
-    path += path ? ` L ${x.toFixed(2)} ${y.toFixed(2)}` : `M ${x.toFixed(2)} ${y.toFixed(2)}`;
-    lastIndex = index;
-  };
+interface OverviewPath {
+  readonly d: string;
+  /** True for a closed min/max envelope that should be filled. */
+  readonly envelope: boolean;
+}
 
-  appendSample(0);
-  for (let i = stride; i < series.length - 1; i += stride) appendSample(i);
-  appendSample(series.length - 1);
-  return path;
+/**
+ * Build the overview geometry for one series. Series with at most `maxSamples` samples draw as an
+ * exact polyline (gaps break it). Denser series draw a closed min/max envelope with one bucket per
+ * CSS pixel, so spikes between samples survive.
+ */
+function pathForSeries(series: SeriesStore, domain: Domain, width: number, height: number, maxSamples: number, scratch: { buckets: Float64Array }): OverviewPath {
+  if (series.length <= 0 || width <= 0 || height <= 0) return { d: "", envelope: false };
+  const xScale = (width - 1) / (domain.xMax - domain.xMin);
+  const yScale = (height - 1) / (domain.yMax - domain.yMin);
+  const toY = (y: number): number => (height - 1) - (y - domain.yMin) * yScale;
+
+  if (series.length <= maxSamples) {
+    let path = "";
+    let penDown = false;
+    for (let i = 0; i < series.length; i++) {
+      const sample = series.sampleAt(i);
+      if (!sample) {
+        penDown = false;
+        continue;
+      }
+      const x = (sample.x - domain.xMin) * xScale;
+      path += `${penDown ? " L" : path ? " M" : "M"} ${x.toFixed(2)} ${toY(sample.y).toFixed(2)}`;
+      penDown = true;
+    }
+    return { d: path, envelope: false };
+  }
+
+  const bucketCount = Math.max(1, Math.floor(width));
+  if (scratch.buckets.length < bucketCount * 2) scratch.buckets = new Float64Array(bucketCount * 2);
+  const buckets = scratch.buckets;
+  series.copyXBucketBounds(domain.xMin, domain.xMax, bucketCount, buckets);
+  const bucketWidth = (width - 1) / bucketCount;
+
+  let path = "";
+  let run: number[] = [];
+  const flush = (): void => {
+    if (run.length === 0) return;
+    // Top edge left to right, bottom edge right to left, then close.
+    let top = "";
+    let bottom = "";
+    for (const b of run) {
+      const x = ((b + 0.5) * bucketWidth).toFixed(2);
+      top += `${top ? " L" : "M"} ${x} ${toY(buckets[b * 2 + 1]!).toFixed(2)}`;
+      bottom = ` L ${x} ${toY(buckets[b * 2]!).toFixed(2)}${bottom}`;
+    }
+    path += `${path ? " " : ""}${top}${bottom} Z`;
+    run = [];
+  };
+  for (let b = 0; b < bucketCount; b++) {
+    if (Number.isNaN(buckets[b * 2]!)) flush();
+    else run.push(b);
+  }
+  flush();
+  return { d: path, envelope: true };
+}
+
+interface OverviewCache {
+  readonly width: number;
+  readonly series: readonly SeriesStore[];
+  readonly versions: readonly number[];
+  readonly lengths: readonly number[];
+  readonly domain: Domain | null;
+  readonly paths: readonly OverviewPath[];
 }
 
 /** Create a plugin that renders a draggable X-range overview. */
@@ -126,6 +167,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
   let rightHandleHit: SVGRectElement | null = null;
   let paths: SVGPathElement[] = [];
   let domain: Domain | null = null;
+  let overviewCache: OverviewCache | null = null;
+  const scratch = { buckets: new Float64Array(0) };
   let drag: DragState | null = null;
   let wasAtRightEdge = true;
 
@@ -147,7 +190,26 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     if (!chart || !root || !overlay || !windowRect || !leftHandle || !rightHandle || !leftHandleHit || !rightHandleHit) return;
     updateRootPosition();
     const selectedSeries = seriesList(chart, options.series);
-    domain = computeDomain(selectedSeries, maxSamplesPerSeries);
+    const width = Math.max(1, root.clientWidth);
+
+    // The overview depends only on the data and the track size, so viewport-only renders reuse it.
+    const cacheValid = overviewCache !== null
+      && overviewCache.width === width
+      && overviewCache.series.length === selectedSeries.length
+      && selectedSeries.every((s, i) => overviewCache!.series[i] === s && overviewCache!.versions[i] === s.dataVersion && overviewCache!.lengths[i] === s.length);
+    if (!cacheValid) {
+      const nextDomain = computeDomain(selectedSeries);
+      overviewCache = {
+        width,
+        series: selectedSeries,
+        versions: selectedSeries.map((s) => s.dataVersion),
+        lengths: selectedSeries.map((s) => s.length),
+        domain: nextDomain,
+        paths: nextDomain ? selectedSeries.map((s) => pathForSeries(s, nextDomain, width, height, maxSamplesPerSeries, scratch)) : [],
+      };
+    }
+    const cache = overviewCache!;
+    domain = cache.domain;
     if (!domain) {
       root.style.display = "none";
       return;
@@ -156,7 +218,6 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     root.style.display = "block";
     root.setAttribute("aria-valuemin", String(domain.xMin));
     root.setAttribute("aria-valuemax", String(domain.xMax));
-    const width = Math.max(1, root.clientWidth);
     overlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
     overlay.setAttribute("preserveAspectRatio", "none");
 
@@ -175,16 +236,20 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         continue;
       }
       path.style.display = "block";
-      path.setAttribute("d", pathForSeries(series, domain, width, height, maxSamplesPerSeries));
-      path.setAttribute("stroke", options.strokeColor ?? rgbaCss(series.style.color));
+      const overview = cache.paths[i]!;
+      const color = rgbaCss(series.style.color);
+      path.setAttribute("d", overview.d);
+      path.setAttribute("stroke", options.strokeColor ?? color);
       path.setAttribute("stroke-width", String(options.strokeWidth ?? Math.max(1, series.style.lineWidth)));
-      path.setAttribute("fill", options.fillColor ?? "none");
+      path.setAttribute("fill", options.fillColor ?? (overview.envelope ? color : "none"));
+      if (overview.envelope && options.fillColor === undefined) path.setAttribute("fill-opacity", "0.35");
+      else path.removeAttribute("fill-opacity");
     }
 
     const viewport = chart.viewport.get();
     if (follow && options.followLive !== false && wasAtRightEdge && domain.xMax > viewport.xMax) {
       const span = viewport.xMax - viewport.xMin;
-      chart.viewport.set({ xMin: domain.xMax - span, xMax: domain.xMax });
+      chart.viewport.set({ xMin: domain.xMax - span, xMax: domain.xMax }, undefined, { source: "follow", pauseFollow: false });
     }
 
     const current = chart.viewport.get();
@@ -229,12 +294,12 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       xMax = domain.xMax;
       xMin = xMax - span;
     }
-    chart.viewport.set({ xMin, xMax });
+    chart.viewport.set({ xMin, xMax }, undefined, { source: "user" });
     options.onRangeChange?.({ xMin, xMax });
     render(false);
   };
 
-  return {
+  return singleChartPlugin("navigator", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
       root = chart.dom.document.createElement("div");
@@ -283,7 +348,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       overlay.appendChild(leftHandleHit);
       overlay.appendChild(rightHandleHit);
       root.appendChild(overlay);
-      const unmount = chart.dom.mount("root", root);
+      chart.dom.mount("root", root);
 
       const applyTheme = (): void => {
         if (!root || !windowRect || !leftHandle || !rightHandle) return;
@@ -298,8 +363,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       };
 
       const onRender = (): void => render();
-      const unsubscribeRender = chart.events.subscribe("render", onRender);
-      const unsubscribeViewport = chart.events.subscribe("viewportchange", () => render(false));
+      chart.events.subscribe("render", onRender);
+      chart.events.subscribe("viewportchange", () => render(false));
       applyTheme();
 
       const onPointerDown = (event: PointerEvent): void => {
@@ -388,8 +453,6 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           render();
         },
         dispose() {
-          unsubscribeRender();
-          unsubscribeViewport();
           root?.removeEventListener("pointerdown", onPointerDown);
           root?.removeEventListener("pointermove", onPointerMove);
           root?.removeEventListener("pointerup", onPointerUp);
@@ -397,7 +460,6 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           root?.removeEventListener("dblclick", onDoubleClick);
           root?.removeEventListener("keydown", onKeyDown);
           releaseSpace?.();
-          unmount();
           root = null;
           overlay = null;
           windowRect = null;
@@ -407,13 +469,15 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           rightHandleHit = null;
           paths = [];
           domain = null;
+          overviewCache = null;
           drag = null;
           chartRef = null;
         },
       };
     },
     refresh(): void {
+      overviewCache = null;
       render();
     },
-  };
+  });
 }

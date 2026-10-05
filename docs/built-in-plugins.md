@@ -15,7 +15,7 @@ const chart = new Chart(element, {
 
 ## Interactions
 
-`interactionsPlugin` adds wheel zoom, shift-drag plot pan, axis drag pan, plot box zoom, double-click reset, touch pan, and pinch zoom. Touch pan and pinch zoom are enabled by default unless you set them to `false`.
+`interactionsPlugin` adds wheel zoom, shift-drag plot pan, axis drag pan, plot box zoom, double-click reset, touch pan, and pinch zoom. Touch pan and pinch zoom are enabled by default unless you set them to `false`. With the focused chart root it also pans, zooms, and fits by keyboard (arrows, `+`/`-`, PageUp/PageDown, Home or `0`); tune with `keyboard: { panFraction, zoomFactor }` or pass `keyboard: false`. A chart without this plugin does not navigate by keyboard.
 
 Use it when users should control the viewport directly. If your app owns all camera changes, leave it out and call chart camera/viewport APIs yourself.
 
@@ -142,6 +142,8 @@ const chart = new Chart(element, { plugins: [navigator] });
 // Call after replacing the dataset or changing which series the navigator follows.
 navigator.refresh();
 ```
+
+The overview takes its X and Y domain from each series' `dataBounds()`, so gaps, OHLC highs and lows, and bar or area baselines are included, and a series that starts or ends with a gap still appears. Series with up to `maxSamplesPerSeries` samples (default 512) draw as an exact polyline. Denser series draw a filled min/max envelope with one bucket per CSS pixel of navigator width, so isolated spikes stay visible. The overview is rebuilt only when the data or the navigator width changes, not on every viewport change.
 
 ## Flame graphs and status spans
 

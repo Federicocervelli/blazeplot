@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-149 exports.
+152 exports.
 
 #### interface AcceleratedDataset
 
@@ -159,9 +159,9 @@ class Chart {
         number
     ] | null;
     getViewport(yAxis?: SeriesYAxis): Viewport;
-    setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
-    pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
-    zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
+    setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis, options?: ChartSetViewportOptions): void;
+    pan(intent: PanIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
+    zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
     addSeries<D extends Dataset = Dataset>(config: SeriesConfig & {
         readonly dataset?: D;
     }, style?: SeriesStyleOptions): SeriesStore<D>;
@@ -226,7 +226,6 @@ interface ChartAccessibilityOptions {
     readonly label?: string;
     readonly description?: string | ((summary: ChartSummary) => string);
     readonly role?: string;
-    readonly keyboard?: boolean | ChartKeyboardOptions;
     readonly forcedColors?: boolean;
 }
 ```
@@ -246,6 +245,7 @@ interface ChartEventMap extends ChartPluginEventMap {
     themechange: void;
     render: void;
     viewportchange: ChartViewportChangeEvent;
+    followxchange: ChartFollowXChangeEvent;
     seriesclick: ChartSeriesClickEvent;
     click: ChartPointerEvent;
     dblclick: ChartPointerEvent;
@@ -274,6 +274,7 @@ interface ChartFitToDataOptions {
     readonly includeZero?: boolean;
     readonly xMin?: number;
     readonly xMax?: number;
+    readonly source?: ChartViewportChangeSource;
 }
 ```
 
@@ -283,6 +284,14 @@ interface ChartFitToDataOptions {
 interface ChartFitToDataPadding {
     readonly x?: number;
     readonly y?: number;
+}
+```
+
+#### interface ChartFollowXChangeEvent
+
+```ts
+interface ChartFollowXChangeEvent {
+    readonly state: ChartFollowXState;
 }
 ```
 
@@ -343,15 +352,6 @@ interface ChartHoverState {
 interface ChartInspectionTarget {
     readonly series: SeriesStore;
     readonly index: number;
-}
-```
-
-#### interface ChartKeyboardOptions
-
-```ts
-interface ChartKeyboardOptions {
-    readonly panFraction?: number;
-    readonly zoomFactor?: number;
 }
 ```
 
@@ -580,9 +580,9 @@ interface ChartPluginUnstable {
 ```ts
 interface ChartPluginViewport {
     get(yAxis?: SeriesYAxis): Viewport;
-    set(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
-    pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
-    zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
+    set(viewport: Partial<Viewport>, yAxis?: SeriesYAxis, options?: ChartSetViewportOptions): void;
+    pan(intent: PanIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
+    zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
     fitToData(options?: ChartFitToDataOptions): boolean;
     isReversed(axis: "x" | "y", yAxis?: SeriesYAxis): boolean;
     followX(options?: ChartFollowXOptions): void;
@@ -697,6 +697,14 @@ interface ChartSeriesSummary {
 }
 ```
 
+#### interface ChartSetViewportOptions
+
+```ts
+interface ChartSetViewportOptions extends ChartViewportGestureOptions {
+    readonly pauseFollow?: boolean;
+}
+```
+
 #### interface ChartSummary
 
 ```ts
@@ -808,6 +816,21 @@ interface ChartTitleConfig extends TextOverlayConfig {
 interface ChartViewportChangeEvent {
     readonly viewport: Viewport;
     readonly rightViewport: Viewport;
+    readonly source: ChartViewportChangeSource;
+}
+```
+
+#### type ChartViewportChangeSource
+
+```ts
+type ChartViewportChangeSource = "user" | "follow" | "fit" | "api" | "linked";
+```
+
+#### interface ChartViewportGestureOptions
+
+```ts
+interface ChartViewportGestureOptions {
+    readonly source?: ChartViewportChangeSource;
 }
 ```
 
@@ -1191,7 +1214,7 @@ type SeriesIdentityConfig = Pick<SeriesConfig, "id" | "name" | "yAxis" | "downsa
 #### type SeriesMode
 
 ```ts
-type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar" | "ohlc" | "candlestick";
+type SeriesMode = "line" | "area" | "scatter" | "bar" | "ohlc" | "candlestick";
 ```
 
 #### type SeriesObjectAppendData
@@ -1280,6 +1303,7 @@ class SeriesStore<D extends Dataset = Dataset> {
     get length(): number;
     get visible(): boolean;
     get xRange(): TimeRange | null;
+    setStyle(options: SeriesStyleOptions): void;
     setVisible(visible: boolean): void;
     append(data: SeriesAppendData): void;
     updateLast(data: SeriesUpdateData): boolean;
@@ -2019,7 +2043,7 @@ function tooltipPlugin(options?: TooltipPluginOptions): ChartPlugin;
 
 ### `blazeplot/plugins/interactions`
 
-3 exports.
+4 exports.
 
 #### type InteractionAxisOption
 
@@ -2027,10 +2051,20 @@ function tooltipPlugin(options?: TooltipPluginOptions): ChartPlugin;
 type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
 ```
 
+#### interface InteractionsKeyboardOptions
+
+```ts
+interface InteractionsKeyboardOptions {
+    readonly panFraction?: number;
+    readonly zoomFactor?: number;
+}
+```
+
 #### interface InteractionsPluginOptions
 
 ```ts
 interface InteractionsPluginOptions {
+    readonly keyboard?: boolean | InteractionsKeyboardOptions;
     readonly axis?: InteractionAxisOption;
     readonly boxZoom?: boolean;
     readonly wheelZoom?: boolean;

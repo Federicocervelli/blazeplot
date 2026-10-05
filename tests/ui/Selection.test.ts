@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { selectionPlugin } from "../../src/plugins/selection.ts";
+import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
 import type { SelectionEvent, SelectionPluginOptions, SelectionState } from "../../src/ui/Selection.ts";
 import { countNodes } from "./fakes.ts";
@@ -216,6 +217,7 @@ describe("selectionPlugin keyboard", () => {
 
   it("extends a range from the plot center with Shift+Arrow, commits with Enter, and emits select", () => {
     const { chart, plugin, events, selects } = make({ mode: "x-range" });
+    chart.installPlugin(interactionsPlugin());
     const right = press(chart, "ArrowRight", { shiftKey: true });
     expect(right.defaultPrevented).toBe(true);
     // The chart's own Shift+Arrow pan did not run.

@@ -163,7 +163,7 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
       container.setAttribute("aria-label", messages.ariaLabel);
       const position = options.position ?? "top-right";
       applyPosition(container, position);
-      const unmount = chart.dom.mount("root", container);
+      chart.dom.mount("root", container);
 
       // Outside placements reserve the legend's measured size so the plot shrinks instead of being covered.
       let releaseReservation: (() => void) | null = null;
@@ -198,17 +198,15 @@ export function legendPlugin(options: LegendPluginOptions = {}): ChartPlugin {
         syncReservation();
       };
 
-      const unsubscribeSeries = chart.events.subscribe("serieschange", render);
+      chart.events.subscribe("serieschange", render);
       render();
 
       return {
         onThemeChange: render,
         dispose() {
-          unsubscribeSeries();
           releaseReservation?.();
           releaseReservation = null;
           rows.clear();
-          unmount();
         },
       };
     },

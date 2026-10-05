@@ -106,8 +106,16 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
 
   for (const chart of charts) {
     if (options.syncX !== false) {
+      // Mirrored updates must not pause the receiving panel's live follow; the pause itself is mirrored
+      // through `followxchange`, so a user pan pauses every panel and resuming resumes them all.
       disposers.push(chart.subscribe("viewportchange", ({ viewport }) => {
-        syncOthers(chart, (other) => other.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax }));
+        syncOthers(chart, (other) => other.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax }, "left", { source: "linked", pauseFollow: false }));
+      }));
+      disposers.push(chart.subscribe("followxchange", ({ state }) => {
+        if (state === "off") return;
+        syncOthers(chart, (other) => {
+          if (other.getFollowXState() !== "off") other.setFollowXPaused(state === "paused");
+        });
       }));
     }
     if (options.syncSelections) {
