@@ -1,4 +1,4 @@
-import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRange, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRange, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesStyleOptions, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 import type { MinMaxY } from "./MinMaxTree.js";
 
@@ -188,6 +188,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   /** Only allocated for downsampled custom datasets that cannot answer `rangeMinMaxY` themselves. */
   private readonly pyramid: MinMaxPyramid | null;
   private readonly onChange?: (change: SeriesChange) => void;
+  private styleHandler?: (series: SeriesStore, options: SeriesStyleOptions) => void;
 
   private _dirty: boolean = false;
   private _forceFullPyramidRebuild: boolean = false;
@@ -235,8 +236,24 @@ export class SeriesStore<D extends Dataset = Dataset> {
     return this.dataset.range;
   }
 
-  /** @internal Replace the resolved style, e.g. while the OS forces high-contrast colors. The chart re-renders. */
-  setStyle(style: SeriesStyle): void {
+  /**
+   * Merge style options into the series' style and redraw on the next frame. Omitted (or
+   * `undefined`) fields keep their current value; CSS colors resolve against the chart root.
+   * Setting `color` pins it, so later theme changes no longer recolor this series. Updates
+   * survive forced-colors mode being turned off.
+   */
+  setStyle(options: SeriesStyleOptions): void {
+    if (!this.styleHandler) throw new TypeError("series.setStyle(...) is only available on series attached through a chart.");
+    this.styleHandler(this as SeriesStore, options);
+  }
+
+  /** @internal Route `setStyle` through the owning chart, which resolves colors and forced-colors state. */
+  bindStyleHandler(handler: (series: SeriesStore, options: SeriesStyleOptions) => void): void {
+    this.styleHandler = handler;
+  }
+
+  /** @internal Replace the resolved style, e.g. while the OS forces high-contrast colors. */
+  applyResolvedStyle(style: SeriesStyle): void {
     (this as { style: SeriesStyle }).style = style;
   }
 

@@ -537,6 +537,8 @@ export class Chart {
   private forcedColorsActive: boolean = false;
   /** Series styles saved while forced colors replace them. */
   private readonly forcedOriginalStyles = new Map<SeriesStore, SeriesStyle>();
+  /** Caller style options per series, plus the theme palette slot it follows (`null` once a color is pinned). */
+  private readonly seriesStyleState = new WeakMap<SeriesStore, { options: SeriesStyleOptions; paletteIndex: number | null }>();
   private summaryElement: HTMLElement | null = null;
   private summaryTimer: ReturnType<typeof setTimeout> | null = null;
   private summaryDirty: boolean = false;
@@ -839,7 +841,10 @@ export class Chart {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
     const dataset = (config.dataset ?? this.createDefaultDataset(config)) as D;
-    const series = new SeriesStore(dataset, config, this.resolveSeriesStyle(style), (change) => this.handleSeriesChange(change));
+    const slot = this.nextPaletteIndex();
+    const series = new SeriesStore(dataset, config, this.resolveSeriesStyle(style, slot), (change) => this.handleSeriesChange(change));
+    this.seriesStyleState.set(series, { options: { ...style }, paletteIndex: style.color ? null : slot });
+    series.bindStyleHandler((target, options) => this.setSeriesStyle(target, options));
     this.series.push(series);
     if (this.forcedColorsActive) this.applyForcedSeriesStyles();
     this.emitSeriesChange();
@@ -902,7 +907,7 @@ export class Chart {
     if (this.inspection?.series === series) this.inspection = null;
     const original = this.forcedOriginalStyles.get(series);
     if (original) {
-      series.setStyle(original);
+      series.applyResolvedStyle(original);
       this.forcedOriginalStyles.delete(series);
       this.applyForcedSeriesStyles();
     }
@@ -1095,6 +1100,7 @@ export class Chart {
     this.resolvedTheme = this.forcedColorsActive ? forcedColorsTheme(this.baseTheme, root) : this.baseTheme;
     root.style.background = this.resolvedTheme.backgroundCssColor;
     root.style.setProperty("--blazeplot-focus-ring", this.resolvedTheme.focusRingColor);
+    this.refreshSeriesStyles();
     this.applyForcedSeriesStyles();
     this.axisOverlay?.setOptions({ color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont });
     this.updateTextOverlays();
@@ -1273,11 +1279,55 @@ export class Chart {
     return new RingBuffer(capacity, { overflow: config.overflow, valuePrecision: config.valuePrecision, onInvalidSample: config.onInvalidSample });
   }
 
-  private resolveSeriesStyle(style: SeriesStyleOptions): SeriesStyle {
+  /** First theme palette slot no attached palette-colored series uses (the next slot in order when all are taken). */
+  private nextPaletteIndex(): number {
+    const size = this.baseTheme.seriesColors.length;
+    const used = new Set<number>();
+    for (const series of this.series) {
+      const slot = this.seriesStyleState.get(series)?.paletteIndex;
+      if (slot !== null && slot !== undefined) used.add(slot);
+    }
+    for (let slot = 0; slot < size; slot++) if (!used.has(slot)) return slot;
+    return this.series.length % size;
+  }
+
+  /** Merge `options` into a series' style: pin an explicit color, resolve, and respect forced colors. */
+  private setSeriesStyle(series: SeriesStore, options: SeriesStyleOptions): void {
+    const state = this.seriesStyleState.get(series);
+    if (!state) return;
+    const merged: Record<string, unknown> = { ...state.options };
+    for (const [key, value] of Object.entries(options)) {
+      if (value !== undefined) merged[key] = value;
+    }
+    state.options = merged as SeriesStyleOptions;
+    if (options.color) state.paletteIndex = null;
+    const resolved = this.resolveSeriesStyle(state.options, state.paletteIndex ?? this.nextPaletteIndex());
+    if (this.forcedColorsActive || this.forcedOriginalStyles.has(series)) {
+      this.forcedOriginalStyles.set(series, resolved);
+      this.applyForcedSeriesStyles();
+    } else {
+      series.applyResolvedStyle(resolved);
+    }
+    this.emitSeriesChange();
+  }
+
+  /** Re-resolve every series style from its stored options, so palette-colored series follow the theme. */
+  private refreshSeriesStyles(): void {
+    for (const series of this.series) {
+      const state = this.seriesStyleState.get(series);
+      if (!state) continue;
+      const resolved = this.resolveSeriesStyle(state.options, state.paletteIndex ?? this.nextPaletteIndex());
+      if (this.forcedColorsActive) this.forcedOriginalStyles.set(series, resolved);
+      else series.applyResolvedStyle(resolved);
+    }
+    if (!this.forcedColorsActive) this.forcedOriginalStyles.clear();
+  }
+
+  private resolveSeriesStyle(style: SeriesStyleOptions, paletteIndex: number): SeriesStyle {
     // The caller palette, not the forced-colors one: forced styles are applied on top and undone later.
     const palette = this.baseTheme.seriesColors;
     const root = this.layout.root;
-    const color = resolveThemeColor(style.color, palette[this.series.length % palette.length]!, root);
+    const color = resolveThemeColor(style.color, palette[paletteIndex % palette.length]!, root);
     const fillColor = resolveThemeColor(style.fillColor, withAlpha(color, 0.25), root);
     const barWidth = style.barWidth ?? 0.8;
     return {
@@ -1326,7 +1376,7 @@ export class Chart {
    */
   private applyForcedSeriesStyles(): void {
     if (!this.forcedColorsActive) {
-      for (const [series, style] of this.forcedOriginalStyles) series.setStyle(style);
+      for (const [series, style] of this.forcedOriginalStyles) series.applyResolvedStyle(style);
       this.forcedOriginalStyles.clear();
       return;
     }
@@ -1340,7 +1390,7 @@ export class Chart {
       }
       const color = palette[index % palette.length]!;
       const contrast = palette[(index + 1) % palette.length]!;
-      series.setStyle({ ...original, color, fillColor: withAlpha(color, 0.35), upColor: color, downColor: contrast, wickColor: color });
+      series.applyResolvedStyle({ ...original, color, fillColor: withAlpha(color, 0.35), upColor: color, downColor: contrast, wickColor: color });
     }
   }
 
