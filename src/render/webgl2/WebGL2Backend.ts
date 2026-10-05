@@ -1,4 +1,4 @@
-import type { BarDraw, DrawCommand, GpuBackend, PointDraw, SolidDraw, SolidPrimitive, ThickLineDraw } from "./types.js";
+import type { BarDraw, DrawCommand, GpuBackend, PointDraw, RectsDraw, SolidDraw, SolidPrimitive, ThickLineDraw } from "./types.js";
 import { ShaderPrograms } from "./ShaderPrograms.js";
 import { WebGL2UnavailableError } from "./availability.js";
 
@@ -8,6 +8,8 @@ const BYTES_PER_VERTEX = 2 * Float32Array.BYTES_PER_ELEMENT;
 const SEGMENT_CORNERS = [0, -1, 0, 1, 1, -1, 1, 1];
 const POINT_CORNERS = [-1, -1, 1, -1, -1, 1, 1, 1];
 const BAR_CORNERS = [-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1];
+const RECT_CORNERS = [0, 0, 1, 0, 0, 1, 1, 1];
+const BYTES_PER_RECT = 8 * Float32Array.BYTES_PER_ELEMENT;
 
 /** A linked program with its fixed vertex array object and uniform locations. */
 interface ProgramState {
@@ -113,9 +115,11 @@ export class WebGL2Backend implements GpuBackend {
         gl.bindVertexArray(state.vao);
         active = state;
       }
-      gl.uniform2f(state.uScale, command.scaleX, command.scaleY);
-      gl.uniform2f(state.uOffset, command.offsetX, command.offsetY);
-      gl.uniform4f(state.uColor, command.color[0], command.color[1], command.color[2], command.color[3]);
+      if (command.kind !== "rects") {
+        gl.uniform2f(state.uScale, command.scaleX, command.scaleY);
+        gl.uniform2f(state.uOffset, command.offsetX, command.offsetY);
+        gl.uniform4f(state.uColor, command.color[0], command.color[1], command.color[2], command.color[3]);
+      }
       switch (command.kind) {
         case "solid":
           this.drawSolid(command);
@@ -128,6 +132,9 @@ export class WebGL2Backend implements GpuBackend {
           break;
         case "bar":
           this.drawBars(state, command);
+          break;
+        case "rects":
+          this.drawRects(state, command);
           break;
       }
     }
@@ -183,9 +190,18 @@ export class WebGL2Backend implements GpuBackend {
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, command.instances);
   }
 
+  private drawRects(state: ProgramState, command: RectsDraw): void {
+    const gl = this.gl;
+    gl.uniform2f(state.uCanvasSize, command.canvasWidth, command.canvasHeight);
+    // Bounds and color are interleaved per rectangle; first counts four two-float vertices per rectangle.
+    this.pointInstanceAttribute(state.aStart, BYTES_PER_RECT, command.first * BYTES_PER_VERTEX, 4);
+    this.pointInstanceAttribute(state.aEnd, BYTES_PER_RECT, command.first * BYTES_PER_VERTEX + 4 * Float32Array.BYTES_PER_ELEMENT, 4);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, command.instances);
+  }
+
   /** Re-aim a per-instance attribute of the bound VAO at the frame stream (WebGL2 has no base instance). */
-  private pointInstanceAttribute(location: number, stride: number, byteOffset: number): void {
-    this.gl.vertexAttribPointer(location, 2, this.gl.FLOAT, false, stride, byteOffset);
+  private pointInstanceAttribute(location: number, stride: number, byteOffset: number, size = 2): void {
+    this.gl.vertexAttribPointer(location, size, this.gl.FLOAT, false, stride, byteOffset);
   }
 
   private programFor(command: DrawCommand): ProgramState {
@@ -198,6 +214,8 @@ export class WebGL2Backend implements GpuBackend {
         return (this.programs.point ??= this.createProgram("point", "aPosition", null, POINT_CORNERS));
       case "bar":
         return (this.programs.bar ??= this.createProgram("bar", "aPosition", null, BAR_CORNERS));
+      case "rects":
+        return (this.programs.rect ??= this.createProgram("rect", "aRect", "aColor", RECT_CORNERS));
     }
   }
 

@@ -105,14 +105,14 @@ On every push to `main` or `v1` and on manual dispatch, `.github/workflows/relea
 - `bun run docs:bundle-size`: prints the bundle-size markdown summary for the current `dist/` build.
 - `bun run bundle:analyze`: reports built chunk raw/gzip sizes and source-map generated-byte contributors for investigating bundle growth. Hidden source maps remain in local `dist/` builds for this command, but `.map` files are excluded from the published npm package to keep tarballs small.
 - `bun run bench:ci`: fast smoke benchmark used by CI. It only checks that the scene renders; it asserts no timings.
-- `bun run bench:gate`: performance regression gate used by CI (see [Performance regression gate](#performance-regression-gate)).
+- `bun run bench:gate` and `bun run bench:gate:canvas2d`: performance regression gates used by CI, one per engine (see [Performance regression gate](#performance-regression-gate)).
 - `bun run bench:compare`: manual-only headed comparison benchmark for BlazePlot (WebGL2 and Canvas 2D), uPlot, and Chart.js (18 scenarios, median of 7 fresh-page runs per scenario and library, at least 5 required). It runs automatically after launch and overwrites `benchmarks/latest.json` plus `benchmarks/latest.md`. The result is only publishable from a headed browser on a real GPU. `bun run bench:compare:smoke` is a headless software-GL self-test of the harness that writes to `build/compare-smoke/`.
 - `bun run bench:multi [--charts 50] [--renderers webgl2,shared,canvas2d]`: many-live-charts benchmark comparing one WebGL context per chart, a shared context, and Canvas 2D (see [Shared render context](./internal/shared-render-context.md)). `bun run bench:scatter` is a Node-side profile of scatter sampling.
-- `bun run test:visual`: browser visual chart tests used by CI; runs each case with the WebGL2, shared-context, Canvas 2D, and `autoRenderer()`-without-WebGL renderers, fails on blank canvases and on pixel differences from the committed baselines in `tests/browser/visual/baselines/`; writes PNGs, diffs, and `summary.json` to `build/visual-tests/`. Regenerate baselines with `-- --update-baselines` using the CI procedure in [Local development](./internal/local-development.md#visual-pixel-baselines).
-- `bun run test:interaction`: browser input automation used by CI for hover, crosshair, zoom, pan, reset, selection, keyboard accessibility, forced colors (high-contrast emulation), drag arbitration, `touch-action`, cooperative gestures, linked charts, charts in iframes, mobile long press, lifecycle, render loops, and live follow. `bun run test:forced-colors` runs just the forced-colors case.
+- `bun run test:visual`: browser visual chart tests used by CI; runs each case with the WebGL2, shared-context, Canvas 2D, and default-`"auto"`-without-WebGL renderers, fails on blank canvases, on pixel differences from the committed baselines in `tests/browser/visual/baselines/`, and on cross-engine parity differences (see [Local development](./internal/local-development.md#cross-engine-parity)); writes PNGs, diffs, and `summary.json` to `build/visual-tests/`. Regenerate baselines with `-- --update-baselines` using the CI procedure in [Local development](./internal/local-development.md#visual-pixel-baselines).
+- `bun run test:interaction` and `bun run test:interaction:canvas2d` (also `bun run test:a11y:canvas2d`): browser input automation used by CI, on both engines, for hover, crosshair, zoom, pan, reset, selection, keyboard accessibility, forced colors (high-contrast emulation), drag arbitration, `touch-action`, cooperative gestures, linked charts, charts in iframes, mobile long press, lifecycle, render loops, and live follow. `bun run test:forced-colors` runs just the forced-colors case.
 - `bun run test:a11y`: axe-core checks of every built-in plugin's DOM; fails on serious or critical violations (part of `test:browser`).
-- `bun run test:cross-browser`: Playwright Firefox and WebKit smoke test (WebGL2, non-blank render, basic interaction) used by the `cross-browser` CI job. See [Browser support](./browser-support.md#tested-browsers).
-- `bun run test:stability`: real-browser leak and stability tests used by CI (chart mount/unmount, resize and series churn, streaming memory at ring-buffer capacity, WebGL context loss/restore). Add `--long` for the local soak. See `docs/internal/local-development.md`.
+- `bun run test:cross-browser`: Playwright Firefox and WebKit smoke test (WebGL2, non-blank render, basic interaction, then the same on the Canvas 2D engine, which needs no WebGL) used by the `cross-browser` CI job. See [Browser support](./browser-support.md#tested-browsers).
+- `bun run test:stability` and `bun run test:stability:canvas2d`: real-browser leak and stability tests used by CI (chart mount/unmount, resize and series churn, streaming memory at ring-buffer capacity, WebGL context loss/restore; the Canvas 2D run skips the WebGL-only cases). Add `--long` for the local soak. See `docs/internal/local-development.md`.
 - `bun run bench -- --scenario <name>`: run one benchmark scenario and print JSON.
 - `bun run bench:report`: append benchmark tables to `docs/internal/benchmark-results.md` or a path passed with `--out-md`.
 - `bun run release:benchmarks`: append benchmark tables to `changelogs/v<package.version>.md` (the release workflow runs this; rarely needed locally).
@@ -164,6 +164,20 @@ Each repetition opens a fresh page in one headless Chrome session (SwiftShader s
 | `uploadBytesP95` | 226,752 | 1.15 | 260,765 |
 
 `ingestRatio` includes the benchmark's own sample generation, so it is a coarse guard on ingest cost rather than a sensitive one. Note that `drawCallsP95` fails on one extra draw call per frame in this scene; that is intended, because draw call count is a direct architectural cost.
+
+### Canvas 2D gate
+
+`bun run bench:gate:canvas2d` (`--renderer canvas2d`) runs the same scenario with `?renderer=canvas2d` and the thresholds under `renderers.canvas2d` in `benchmarks/thresholds.json`, which override the top-level (WebGL2) metrics. The page asserts that the chart ran on the requested engine, and the gate refuses to record numbers from a different one. The Canvas 2D engine uploads nothing, so it has no `uploadBytesP95` metric. Measured on CI runners (10 repetitions, SwiftShader; Canvas 2D is software-rasterized there):
+
+| Metric | Baseline | Headroom | Limit |
+|---|---|---|---|
+| `frameP50Ratio` | 0.1713 | 1.7 | 0.291 |
+| `frameP95Ratio` | 0.585 | 1.8 | 1.053 |
+| `ingestRatio` | 5.7 | 1.8 | 10.3 |
+| `drawCallsP95` | 4 | 1.2 | 4.8 |
+| `pointsRenderedP95` | 28,306 | 1.15 | 32,552 |
+
+A Canvas 2D frame costs about twice the WebGL2 frame on this scene (p50 ratio 0.17 versus 0.087), and its p95 is noisy (0.26 to 0.73 across repetitions) because the page draws only about ten frames per measurement window, so the p95 limit is deliberately loose. Update both gates from CI numbers with `--renderer <name> --update`; the update writes back only that engine's section.
 
 ### Hardware assumptions
 

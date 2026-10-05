@@ -24,6 +24,8 @@ export interface EngineHarness {
   /** Simulate the browser losing the context; returns the dispatched event so tests can check `preventDefault`. */
   lose(): Event;
   restore(): void;
+  /** A second surface on this engine's own kind of canvas, plus what it drew since creation. */
+  createSurface(): { readonly surface: ChartRenderer; draws(): DrawObs[] };
   /** How many times the engine (re)built its GPU resources, or `null` for engines that have none. */
   rebuilds(): number | null;
   readonly expected: { readonly name: RendererName; readonly gpu: boolean; readonly shared: boolean };
@@ -63,7 +65,7 @@ class GlRecorder {
   }
 
   observe(): DrawObs[] {
-    return this.commands.map(({ command, stream }) => this.observeCommand(command, stream));
+    return this.commands.flatMap(({ command, stream }) => this.observeCommand(command, stream));
   }
 
   private px(command: { scaleX: number; scaleY: number; offsetX: number; offsetY: number }, stream: Float32Array, vertex: number): [number, number] {
@@ -72,7 +74,7 @@ class GlRecorder {
     return [(x * command.scaleX + command.offsetX + 1) * this.width * 0.5, (1 - (y * command.scaleY + command.offsetY)) * this.height * 0.5];
   }
 
-  private observeCommand(command: DrawCommand, stream: Float32Array): DrawObs {
+  private observeCommand(command: DrawCommand, stream: Float32Array): DrawObs[] {
     switch (command.kind) {
       case "thickLine": {
         const pairs = command.layout === "pairs";
@@ -82,7 +84,7 @@ class GlRecorder {
           const b = this.px(command, stream, command.first + (pairs ? s * 2 + 1 : s + 1));
           if (Number.isFinite(a[0] + a[1] + b[0] + b[1])) segments.push([a[0], a[1], b[0], b[1]]);
         }
-        return { kind: "stroke", widthPx: command.lineWidth, segments };
+        return [{ kind: "stroke", widthPx: command.lineWidth, segments }];
       }
       case "point": {
         const centers: Array<[number, number]> = [];
@@ -90,7 +92,7 @@ class GlRecorder {
           const c = this.px(command, stream, command.first + i);
           if (Number.isFinite(c[0] + c[1])) centers.push(c);
         }
-        return { kind: "marker", diameterPx: command.pointSize, centers };
+        return [{ kind: "marker", diameterPx: command.pointSize, centers }];
       }
       case "bar": {
         const rects: Rect[] = [];
@@ -102,7 +104,16 @@ class GlRecorder {
           const b = this.px(command, new Float32Array([x + command.barWidth / 2, y]), 0);
           rects.push([Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]);
         }
-        return { kind: "rect", rects };
+        return [{ kind: "rect", rects }];
+      }
+      case "rects": {
+        const rects: Rect[] = [];
+        for (let i = 0; i < command.instances; i++) {
+          const o = (command.first + i * 4) * 2;
+          const [x, y, w, h] = [stream[o]!, stream[o + 1]!, stream[o + 2]!, stream[o + 3]!];
+          if (Number.isFinite(x + y + w + h)) rects.push([x, y, x + w, y + h]);
+        }
+        return [{ kind: "rect", rects }];
       }
       case "solid": {
         if (command.primitive === "lines" || command.primitive === "line_strip") {
@@ -114,7 +125,24 @@ class GlRecorder {
             const b = this.px(command, stream, command.first + (strip ? s + 1 : s * 2 + 1));
             if (Number.isFinite(a[0] + a[1] + b[0] + b[1])) segments.push([a[0], a[1], b[0], b[1]]);
           }
-          return { kind: "stroke", widthPx: 1, segments };
+          return [{ kind: "stroke", widthPx: 1, segments }];
+        }
+        if (command.primitive === "triangle_strip") {
+          // A pair with a non-finite vertex breaks the strip; each run of complete pairs is one ribbon.
+          const runs: DrawObs[] = [];
+          let run: Array<[number, number]> = [];
+          const flush = (): void => {
+            if (run.length >= 4) runs.push({ kind: "polygon", bbox: bbox(run) });
+            run = [];
+          };
+          for (let pair = 0; pair < command.count >> 1; pair++) {
+            const top = this.px(command, stream, command.first + pair * 2);
+            const bottom = this.px(command, stream, command.first + pair * 2 + 1);
+            if (Number.isFinite(top[0] + top[1] + bottom[0] + bottom[1])) run.push(top, bottom);
+            else flush();
+          }
+          flush();
+          return runs;
         }
         const points: Array<[number, number]> = [];
         for (let i = 0; i < command.count; i++) {
@@ -128,9 +156,9 @@ class GlRecorder {
             const b = this.px(command, stream, command.first + v + 5);
             rects.push([Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]);
           }
-          return { kind: "rect", rects };
+          return [{ kind: "rect", rects }];
         }
-        return { kind: "polygon", bbox: bbox(points) };
+        return [{ kind: "polygon", bbox: bbox(points) }];
       }
     }
   }
@@ -234,6 +262,10 @@ export const webgl2Fixture: EngineFixture = {
       clears: () => log.clearLog,
       lose: () => loseEvent(canvas, "webglcontextlost"),
       restore: () => void canvas.dispatchEvent(new Event("webglcontextrestored")),
+      createSurface: () => {
+        log.commands.length = 0;
+        return { surface: renderer.createSurface(new EventTarget() as unknown as HTMLCanvasElement), draws: () => log.observe() };
+      },
       rebuilds: () => log.builds,
       expected: { name: "webgl2", gpu: true, shared: false },
     };
@@ -267,6 +299,10 @@ export const canvas2dFixture: EngineFixture = {
         ctx.lost = false;
         canvas.dispatchEvent(new Event("contextrestored"));
       },
+      createSurface: () => {
+        const surfaceCtx = new FakeContext2D();
+        return { surface: renderer.createSurface(fakeCanvas2d(surfaceCtx)), draws: () => observe2d(surfaceCtx.calls) };
+      },
       rebuilds: () => null,
       expected: { name: "canvas2d", gpu: false, shared: false },
     };
@@ -292,6 +328,10 @@ export const sharedFixture: EngineFixture = {
       clears: () => log.clearLog,
       lose: () => loseEvent(hidden, "webglcontextlost"),
       restore: () => void hidden.dispatchEvent(new Event("webglcontextrestored")),
+      createSurface: () => {
+        log.commands.length = 0;
+        return { surface: renderer.createSurface(fakeCanvas2d(new FakeContext2D())), draws: () => log.observe() };
+      },
       rebuilds: () => log.builds,
       expected: { name: "shared", gpu: true, shared: true },
     };

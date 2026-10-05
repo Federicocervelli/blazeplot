@@ -242,3 +242,25 @@ function drain(stream: ReadableStream<Uint8Array> | null, label: string): void {
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/** Engines a browser suite can be pointed at with `--renderer` or `BLAZEPLOT_TEST_RENDERER`. */
+export const TEST_RENDERERS = ["webgl2", "canvas2d", "shared", "auto"] as const;
+export type TestRenderer = (typeof TEST_RENDERERS)[number];
+
+/** Validate an engine name from the command line or the environment. */
+export function parseTestRenderer(value: string): TestRenderer {
+  if (!(TEST_RENDERERS as readonly string[]).includes(value)) throw new Error(`Unknown renderer "${value}"; expected one of ${TEST_RENDERERS.join(", ")}.`);
+  return value as TestRenderer;
+}
+
+/** The engine requested through `BLAZEPLOT_TEST_RENDERER`, or `undefined` for each fixture's own default. */
+export function testRendererFromEnv(): TestRenderer | undefined {
+  const value = process.env.BLAZEPLOT_TEST_RENDERER;
+  return value ? parseTestRenderer(value) : undefined;
+}
+
+/** Add `?renderer=` to a fixture URL so the page builds its charts on that engine. */
+export function withTestRenderer(url: URL, renderer: TestRenderer | undefined): URL {
+  if (renderer) url.searchParams.set("renderer", renderer);
+  return url;
+}

@@ -9,6 +9,10 @@ import { legendPlugin } from "@/plugins/legend.ts";
 import { navigatorPlugin } from "@/plugins/navigator.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
+import { testRenderer } from "../test-renderer.ts";
+
+/** Engine for the charts these workloads mount: WebGL2 unless the driving script passes `?renderer=`. */
+const pageRenderer = testRenderer();
 
 /**
  * Page-side workloads for `scripts/stability-test.ts`.
@@ -249,7 +253,7 @@ function newChart(host: HTMLElement, plugins: boolean, extra: ChartPlugin[] = []
   return new Chart(host, {
     axes: { x: true, y: true, y2: true },
     title: "stability",
-    renderer: "webgl2",
+    renderer: pageRenderer,
     plugins: [...(plugins ? fullPlugins() : []), ...extra],
   });
 }
@@ -375,7 +379,7 @@ async function mountOnce(): Promise<number> {
   const flame = ++mountCounter % 4 === 0;
   const host = createHost(480, 280);
   const chart = flame
-    ? new Chart(host, { renderer: "webgl2", axes: { x: true, y: false }, plugins: [flameGraphPlugin({ foldedStacks: FLAME_STACKS })] })
+    ? new Chart(host, { renderer: pageRenderer, axes: { x: true, y: false }, plugins: [flameGraphPlugin({ foldedStacks: FLAME_STACKS })] })
     : newChart(host, true);
   const renders = countRenders(chart);
   if (!flame) {
@@ -408,7 +412,7 @@ async function sharedContextChurn(count: number): Promise<WorkloadResult> {
     for (let j = 0; j < SHARED_BATCH; j++) {
       const host = createHost(240, 140);
       host.style.left = `${(j % 5) * 20}px`;
-      const chart = new Chart(host, { axes: { x: true, y: true }, plugins: j % 5 === 0 ? fullPlugins() : [], renderer: "shared" });
+      const chart = new Chart(host, { axes: { x: true, y: true }, plugins: j % 5 === 0 ? fullPlugins() : j === 1 ? [flameGraphPlugin({ foldedStacks: FLAME_STACKS })] : [], renderer: "shared" });
       const counter = countRenders(chart);
       addSampleSeries(chart);
       chart.fitToData({ padding: 0.05 });
@@ -530,7 +534,7 @@ async function startStreaming(config: StreamingConfig): Promise<StreamingStats> 
   if (stream) stopStreaming();
   const host = createHost(640, 360);
   const chart = new Chart(host, {
-    renderer: "webgl2",
+    renderer: pageRenderer,
     axes: { x: true, y: true },
     followX: { window: 20_000 },
     autoFitY: true,

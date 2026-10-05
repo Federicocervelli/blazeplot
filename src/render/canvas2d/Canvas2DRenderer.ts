@@ -181,28 +181,20 @@ export class Canvas2DRenderer implements ChartRenderer {
     ctx.fillStyle = css(color);
 
     if (primitive === "triangle_strip") {
-      // A strip is a ribbon: even vertices run along one edge, odd vertices along the other.
-      if (n < 3) return;
-      ctx.beginPath();
-      let started = false;
-      for (let i = 0; i < n; i += 2) {
-        const x = d[i * 2]! * sx + ox;
-        const y = d[i * 2 + 1]! * sy + oy;
-        if (!Number.isFinite(x + y)) continue;
-        if (started) ctx.lineTo(x, y);
-        else {
-          ctx.moveTo(x, y);
-          started = true;
+      // A strip is a ribbon: even vertices run along one edge, odd vertices along the other. A pair with a
+      // non-finite vertex breaks the strip, as the triangles that touch it vanish on a GPU, so each run of
+      // complete pairs is filled on its own instead of bridging the gap.
+      const pairs = n >> 1;
+      let runStart = -1;
+      for (let pair = 0; pair <= pairs; pair++) {
+        const complete = pair < pairs && Number.isFinite(d[pair * 4]! + d[pair * 4 + 1]! + d[pair * 4 + 2]! + d[pair * 4 + 3]!);
+        if (complete) {
+          if (runStart < 0) runStart = pair;
+          continue;
         }
+        if (runStart >= 0 && pair - runStart >= 2) this.fillRibbon(d, runStart, pair, sx, ox, sy, oy);
+        runStart = -1;
       }
-      for (let i = (n - 1) | 1; i >= 1; i -= 2) {
-        if (i >= n) continue;
-        const x = d[i * 2]! * sx + ox;
-        const y = d[i * 2 + 1]! * sy + oy;
-        if (Number.isFinite(x + y)) ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-      ctx.fill();
       return;
     }
 
@@ -235,6 +227,29 @@ export class Canvas2DRenderer implements ChartRenderer {
     if (generic) ctx.fill(generic);
   }
 
+  fillRects(rects: Float32Array, count: number): void {
+    this.drawCalls++;
+    const n = Math.min(count, rects.length >> 3);
+    const ctx = this.ctx;
+    let style = "";
+    for (let i = 0; i < n; i++) {
+      const o = i * 8;
+      const x = rects[o]!;
+      const y = rects[o + 1]!;
+      const w = rects[o + 2]!;
+      const h = rects[o + 3]!;
+      if (!Number.isFinite(x + y + w + h)) continue;
+      if (x + w < 0 || y + h < 0 || x > this.width || y > this.height) continue;
+      const next = css([rects[o + 4]!, rects[o + 5]!, rects[o + 6]!, rects[o + 7]!]);
+      if (next !== style) ctx.fillStyle = style = next;
+      ctx.fillRect(x, y, w, h);
+    }
+  }
+
+  createSurface(canvas: HTMLCanvasElement): ChartRenderer {
+    return new Canvas2DRenderer(canvas);
+  }
+
   dispose(): void {
     this.canvas.removeEventListener("contextlost", this.handleContextLost);
     this.canvas.removeEventListener("contextrestored", this.handleContextRestored);
@@ -254,6 +269,21 @@ export class Canvas2DRenderer implements ChartRenderer {
     this.lost = false;
     this.lossListener?.("restored");
   };
+
+  /** Fill the ribbon through vertex pairs `[from, to)`: along the even vertices, then back along the odd ones. */
+  private fillRibbon(d: Float32Array, from: number, to: number, sx: number, ox: number, sy: number, oy: number): void {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    for (let pair = from; pair < to; pair++) {
+      const x = d[pair * 4]! * sx + ox;
+      const y = d[pair * 4 + 1]! * sy + oy;
+      if (pair === from) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    for (let pair = to - 1; pair >= from; pair--) ctx.lineTo(d[pair * 4 + 2]! * sx + ox, d[pair * 4 + 3]! * sy + oy);
+    ctx.closePath();
+    ctx.fill();
+  }
 
   private project(p: RenderProjection): PixelMap {
     const m = this.map;

@@ -23,7 +23,11 @@ const src = resolve(root, "src");
 /** Pure, chart-independent helpers a plugin may import at runtime. Third parties can copy them. */
 const runtimeHelpers: Record<string, readonly string[]> = {
   "src/ui/theme.ts": ["rgbaCss"],
-  "src/render/webgl2/releaseWebGLContext.ts": ["releaseWebGLContext"],
+};
+
+/** `ctx.unstable` members a built-in plugin may use; everything else must stay on the stable context. */
+const unstableAllowance: Record<string, readonly string[]> = {
+  "src/ui/FlameGraph.ts": ["createRenderSurface"],
 };
 
 /** Shared plugin-side helper modules that are not themselves package entries. */
@@ -121,7 +125,11 @@ describe("built-in plugin boundary", () => {
 
     it(`${module} stays on the stable context surface`, () => {
       const source = readFileSync(resolve(root, module), "utf8");
-      expect(source.match(/\.unstable\b/g) ?? []).toEqual([]);
+      // The flame graph is the first customer of the experimental render surface, so its rectangle layer follows the chart's engine.
+      const allowed = unstableAllowance[module] ?? [];
+      const unstableUses = [...source.matchAll(/\.unstable\.(\w+)/g)].map((match) => match[1]!).filter((name) => !allowed.includes(name));
+      expect(unstableUses).toEqual([]);
+      expect(source.match(/\.unstable\b(?!\.\w)/g) ?? []).toEqual([]);
       expect(source.match(/\bas\s+Chart\b/g) ?? []).toEqual([]);
     });
   }

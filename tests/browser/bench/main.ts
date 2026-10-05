@@ -40,6 +40,8 @@ interface NumericSummary {
 
 interface BenchmarkResult {
   readonly scenario: string;
+  /** The rendering engine the chart ran on (`chart.renderer`). */
+  readonly engine: string;
   readonly renderer: ChartFrameStats["renderMode"];
   readonly durationMs: number;
   readonly initialSamples: number;
@@ -300,8 +302,12 @@ const chartPlugins = flameChartModel
     ? [tooltipPlugin({ mode: "nearest-x", group: "x", highlight: true, formatter: (item) => `${item.x}, ${item.y}` })]
     : [];
 
+// `?renderer=canvas2d` (or shared) benchmarks another engine; the default stays WebGL2 so the main gate never silently measures a fallback.
+const rendererParam = params.get("renderer") ?? "webgl2";
+if (rendererParam !== "webgl2" && rendererParam !== "canvas2d" && rendererParam !== "shared") throw new Error(`Unknown renderer '${rendererParam}'. Use webgl2, canvas2d, or shared.`);
+
 const chart = new Chart(chartTarget, {
-  renderer: "webgl2",
+  renderer: rendererParam,
   renderLoop: "continuous",
   axes: { x: { position: "outside" }, y: { position: "outside" } },
   hover: config.interaction === "hover" ? { mode: "nearest-x", group: "x" } : undefined,
@@ -478,6 +484,7 @@ async function measure(): Promise<BenchmarkResult> {
   chart.getFrameStats(frameStats);
   result = {
     scenario: config.name,
+    engine: chart.renderer,
     renderer: frameStats.renderMode,
     durationMs: measuredMs,
     initialSamples: config.initialSamples,

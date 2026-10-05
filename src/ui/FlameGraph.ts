@@ -1,7 +1,6 @@
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
 import { placeFixedWithinViewport, singleChartPlugin } from "./OverlayUtils.js";
 import type { RgbaColor } from "../core/types.js";
-import { releaseWebGLContext } from "../render/webgl2/releaseWebGLContext.js";
 import { rgbaCss } from "./theme.js";
 
 const DEFAULT_FRAME_HEIGHT = 1;
@@ -10,32 +9,8 @@ const DEFAULT_MIN_FRAME_HEIGHT_PX = 1;
 const DEFAULT_LABEL_MIN_WIDTH_PX = 28;
 const DEFAULT_FRAME_GAP_PX = 1;
 const DEFAULT_TOOLTIP_Z_INDEX = 10_000;
-const FLOATS_PER_FRAME = 4;
-const VERT_SHADER = `#version 300 es
-precision highp float;
-in vec2 aCorner;
-in vec4 aBounds;
-in vec4 aColor;
-uniform vec4 uViewport;
-out vec4 vColor;
-void main() {
-  vec2 minPoint = vec2(aBounds.x, aBounds.z);
-  vec2 maxPoint = vec2(aBounds.y, aBounds.w);
-  vec2 data = mix(minPoint, maxPoint, aCorner);
-  float spanX = max(1e-30, uViewport.y - uViewport.x);
-  float spanY = max(1e-30, uViewport.w - uViewport.z);
-  float clipX = ((data.x - uViewport.x) / spanX) * 2.0 - 1.0;
-  float clipY = ((data.y - uViewport.z) / spanY) * 2.0 - 1.0;
-  gl_Position = vec4(clipX, clipY, 0.0, 1.0);
-  vColor = aColor;
-}`;
-const FRAG_SHADER = `#version 300 es
-precision mediump float;
-in vec4 vColor;
-out vec4 outColor;
-void main() {
-  outColor = vColor;
-}`;
+/** Floats per rectangle handed to a render surface: x, y, width, height, then r, g, b, a. */
+const FLOATS_PER_RECT = 8;
 
 /**
  * Input frame for building a flame graph model.
@@ -225,16 +200,8 @@ interface TinyBucketCache<T> {
   byDepth: Map<number, Map<number, FlameGraphRenderableFrame<T> | null>>;
 }
 
-interface WebGLState {
-  gl: WebGL2RenderingContext;
-  program: WebGLProgram;
-  vao: WebGLVertexArrayObject;
-  cornerBuffer: WebGLBuffer;
-  boundsBuffer: WebGLBuffer;
-  colorBuffer: WebGLBuffer;
-  viewportLocation: WebGLUniformLocation;
-  capacity: number;
-}
+/** The chart engine's drawing surface for the rectangle layer (WebGL2, Canvas 2D, or the shared context). */
+type RenderSurface = ReturnType<ChartPluginContext["unstable"]["createRenderSurface"]>;
 
 /**
  * Parse folded stack text into stack samples.
@@ -356,9 +323,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
   let labelCanvas: HTMLCanvasElement | null = null;
   let tooltip: HTMLDivElement | null = null;
   let hoverHighlightElement: HTMLDivElement | null = null;
-  let glState: WebGLState | null = null;
-  /** Canvas 2D fallback for the rectangle layer when WebGL2 is unavailable. */
-  let rectContext2d: CanvasRenderingContext2D | null = null;
+  let surface: RenderSurface | null = null;
   let rafId = 0;
   let disposed = false;
   const subscriptionDisposers: Array<() => void> = [];
@@ -376,11 +341,9 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       disposed = false;
       rectCanvas = createOverlayCanvas(nextChart.dom.document, "blazeplot-flamegraph-canvas", options.zIndex ?? 6);
       labelCanvas = createOverlayCanvas(nextChart.dom.document, "blazeplot-flamegraph-labels", (options.zIndex ?? 6) + 1);
-      glState = createWebGLState(rectCanvas);
-      if (!glState) {
-        rectContext2d = rectCanvas.getContext("2d");
-        if (!rectContext2d) throw new Error("Flame graph plugin requires WebGL2 or Canvas 2D.");
-      }
+      // The rectangle layer follows the chart's engine, so it joins a shared context instead of opening its own.
+      surface = nextChart.unstable.createRenderSurface(rectCanvas);
+      surface.setLossListener(handleSurfaceState);
       subscriptionDisposers.push(nextChart.dom.mount("plot", rectCanvas), nextChart.dom.mount("plot", labelCanvas));
       if (options.hoverHighlight !== false) {
         hoverHighlightElement = nextChart.dom.document.createElement("div");
@@ -412,8 +375,6 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
         subscriptionDisposers.push(nextChart.dom.mount("body", tooltip));
       }
 
-      rectCanvas.addEventListener("webglcontextlost", handleContextLost);
-      rectCanvas.addEventListener("webglcontextrestored", handleContextRestored);
       subscriptionDisposers.push(
         nextChart.dom.listen("plot", "pointerdown", handlePointerDown),
         nextChart.dom.listen("plot", "pointermove", handlePointerMove),
@@ -486,13 +447,8 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
       rafId = 0;
       // Listeners, subscriptions, and mounted elements registered through the plugin context.
       for (const disposeSubscription of subscriptionDisposers.splice(0)) disposeSubscription();
-      rectCanvas?.removeEventListener("webglcontextlost", handleContextLost);
-      rectCanvas?.removeEventListener("webglcontextrestored", handleContextRestored);
-      const releasedContext = glState?.gl;
-      disposeWebGLState(glState);
-      glState = null;
-      rectContext2d = null;
-      releaseWebGLContext(releasedContext);
+      surface?.dispose();
+      surface = null;
       rectCanvas = null;
       labelCanvas = null;
       tooltip = null;
@@ -510,10 +466,9 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
   }
 
   function render(): void {
-    if (!chart || !rectCanvas || !labelCanvas || (!glState && !rectContext2d)) return;
+    if (!chart || !rectCanvas || !labelCanvas || !surface || surface.isLost) return;
     const viewport = chart.viewport.get();
-    const resized = resizeCanvases(rectCanvas, labelCanvas);
-    if (resized) glState?.gl.viewport(0, 0, rectCanvas.width, rectCanvas.height);
+    resizeCanvases(rectCanvas, labelCanvas);
     const signature = [
       modelVersion,
       viewport.xMin,
@@ -530,8 +485,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
     if (signature === lastRenderSignature) return;
     lastRenderSignature = signature;
     const visible = collectVisibleFrames(model, viewport.xMin, viewport.xMax, viewport.yMin, viewport.yMax, rectCanvas.clientWidth, rectCanvas.clientHeight, options, tinyBucketCache, `${modelVersion}|${options.minFrameWidthPx ?? DEFAULT_MIN_FRAME_WIDTH_PX}|${viewport.xMax - viewport.xMin}`, visibleFrameScratch);
-    if (glState) drawRectangles(glState, visible, viewport.xMin, viewport.xMax, viewport.yMin, viewport.yMax, options, search);
-    else if (rectContext2d) drawRectangles2d(rectContext2d, visible, viewport.xMin, viewport.xMax, viewport.yMin, viewport.yMax, options, search);
+    drawRectangles(surface, rectCanvas, visible, viewport.xMin, viewport.xMax, viewport.yMin, viewport.yMax, options, search);
     drawLabels(labelCanvas, visible, model, options, search);
     updateHoverHighlight(lastHover);
   }
@@ -636,15 +590,10 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
     placeFixedWithinViewport(tooltip, pick.clientX, pick.clientY, { offsetX: 12, offsetY: 12 });
   }
 
-  function handleContextLost(event: Event): void {
-    event.preventDefault();
-    // Objects from the lost context are invalid; deleting them after restore logs INVALID_OPERATION.
-    glState = null;
-  }
-
-  function handleContextRestored(): void {
-    if (!rectCanvas) return;
-    glState = createWebGLState(rectCanvas);
+  /** A restored context starts blank, so draw the rectangles again; while lost, `render` skips them. */
+  function handleSurfaceState(state: "lost" | "restored"): void {
+    if (state !== "restored") return;
+    lastRenderSignature = "";
     scheduleRender();
   }
 
@@ -776,86 +725,6 @@ function createOverlayCanvas(doc: Document, className: string, zIndex: number): 
   canvas.style.pointerEvents = "none";
   canvas.style.zIndex = String(zIndex);
   return canvas;
-}
-
-/** Create the WebGL2 rectangle renderer, or `null` when the canvas cannot provide a WebGL2 context. */
-function createWebGLState(canvas: HTMLCanvasElement): WebGLState | null {
-  const gl = canvas.getContext("webgl2", { alpha: true, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false });
-  if (!gl) return null;
-  const program = createProgram(gl, VERT_SHADER, FRAG_SHADER);
-  const vao = requireGlObject(gl.createVertexArray(), "vertex array");
-  const cornerBuffer = requireGlObject(gl.createBuffer(), "corner buffer");
-  const boundsBuffer = requireGlObject(gl.createBuffer(), "bounds buffer");
-  const colorBuffer = requireGlObject(gl.createBuffer(), "color buffer");
-  const viewportLocation = requireGlObject(gl.getUniformLocation(program, "uViewport"), "uViewport uniform");
-  gl.bindVertexArray(vao);
-  bindStaticCorners(gl, program, cornerBuffer);
-  bindInstancedAttribute(gl, program, boundsBuffer, "aBounds", 4);
-  bindInstancedAttribute(gl, program, colorBuffer, "aColor", 4);
-  gl.bindVertexArray(null);
-  gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-  return { gl, program, vao, cornerBuffer, boundsBuffer, colorBuffer, viewportLocation, capacity: 0 };
-}
-
-function createProgram(gl: WebGL2RenderingContext, vertSource: string, fragSource: string): WebGLProgram {
-  const vert = compileShader(gl, gl.VERTEX_SHADER, vertSource);
-  const frag = compileShader(gl, gl.FRAGMENT_SHADER, fragSource);
-  const program = requireGlObject(gl.createProgram(), "program");
-  gl.attachShader(program, vert);
-  gl.attachShader(program, frag);
-  gl.linkProgram(program);
-  gl.deleteShader(vert);
-  gl.deleteShader(frag);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const log = gl.getProgramInfoLog(program) ?? "unknown error";
-    gl.deleteProgram(program);
-    throw new Error(`Unable to link flame graph shader program: ${log}`);
-  }
-  return program;
-}
-
-function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
-  const shader = requireGlObject(gl.createShader(type), "shader");
-  gl.shaderSource(shader, source);
-  gl.compileShader(shader);
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(shader) ?? "unknown error";
-    gl.deleteShader(shader);
-    throw new Error(`Unable to compile flame graph shader: ${log}`);
-  }
-  return shader;
-}
-
-function requireGlObject<T>(value: T | null, label: string): T {
-  if (!value) throw new Error(`Unable to create flame graph ${label}.`);
-  return value;
-}
-
-function bindStaticCorners(gl: WebGL2RenderingContext, program: WebGLProgram, buffer: WebGLBuffer): void {
-  const location = gl.getAttribLocation(program, "aCorner");
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([0, 0, 1, 0, 0, 1, 1, 1]), gl.STATIC_DRAW);
-  gl.enableVertexAttribArray(location);
-  gl.vertexAttribPointer(location, 2, gl.FLOAT, false, 0, 0);
-}
-
-function bindInstancedAttribute(gl: WebGL2RenderingContext, program: WebGLProgram, buffer: WebGLBuffer, name: string, size: number): void {
-  const location = gl.getAttribLocation(program, name);
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.enableVertexAttribArray(location);
-  gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
-  gl.vertexAttribDivisor(location, 1);
-}
-
-function disposeWebGLState(state: WebGLState | null): void {
-  if (!state) return;
-  const { gl } = state;
-  gl.deleteBuffer(state.cornerBuffer);
-  gl.deleteBuffer(state.boundsBuffer);
-  gl.deleteBuffer(state.colorBuffer);
-  gl.deleteVertexArray(state.vao);
-  gl.deleteProgram(state.program);
 }
 
 function resizeCanvases(rectCanvas: HTMLCanvasElement, labelCanvas: HTMLCanvasElement): boolean {
@@ -997,37 +866,9 @@ function collectVisibleFrames<T>(
   return visible;
 }
 
-function drawRectangles2d<T>(
-  ctx: CanvasRenderingContext2D,
-  visible: readonly VisibleFrame<T>[],
-  xMin: number,
-  xMax: number,
-  yMin: number,
-  yMax: number,
-  options: FlameGraphPluginOptions<T>,
-  search: string | RegExp | null,
-): void {
-  const { width, height } = ctx.canvas;
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, width, height);
-  if (visible.length === 0) return;
-  const { bounds, colors } = layoutRectangles(ctx.canvas, visible, xMin, xMax, yMin, yMax, options, search);
-  const sx = width / Math.max(1e-30, xMax - xMin);
-  const sy = height / Math.max(1e-30, yMax - yMin);
-  for (let i = 0; i < visible.length; i++) {
-    const o = i * FLOATS_PER_FRAME;
-    const left = (bounds[o]! - xMin) * sx;
-    const right = (bounds[o + 1]! - xMin) * sx;
-    const top = height - (bounds[o + 3]! - yMin) * sy;
-    const bottom = height - (bounds[o + 2]! - yMin) * sy;
-    if (right < 0 || left > width || bottom < 0 || top > height) continue;
-    ctx.fillStyle = rgbaCss([colors[o]!, colors[o + 1]!, colors[o + 2]!, colors[o + 3]!]);
-    ctx.fillRect(left, top, right - left, bottom - top);
-  }
-}
-
 function drawRectangles<T>(
-  state: WebGLState,
+  surface: RenderSurface,
+  canvas: HTMLCanvasElement,
   visible: readonly VisibleFrame<T>[],
   xMin: number,
   xMax: number,
@@ -1036,23 +877,12 @@ function drawRectangles<T>(
   options: FlameGraphPluginOptions<T>,
   search: string | RegExp | null,
 ): void {
-  const { gl } = state;
-  gl.clearColor(0, 0, 0, 0);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  if (visible.length === 0) return;
-  const { bounds, colors } = layoutRectangles(gl.canvas as HTMLCanvasElement, visible, xMin, xMax, yMin, yMax, options, search);
-  gl.useProgram(state.program);
-  gl.bindVertexArray(state.vao);
-  gl.uniform4f(state.viewportLocation, xMin, xMax, yMin, yMax);
-  gl.bindBuffer(gl.ARRAY_BUFFER, state.boundsBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, bounds, gl.STREAM_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER, state.colorBuffer);
-  gl.bufferData(gl.ARRAY_BUFFER, colors, gl.STREAM_DRAW);
-  gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, visible.length);
-  gl.bindVertexArray(null);
+  surface.beginFrame(canvas.width, canvas.height, canvasDpr(canvas));
+  if (visible.length > 0) surface.fillRects(layoutRectangles(canvas, visible, xMin, xMax, yMin, yMax, options, search), visible.length);
+  surface.endFrame();
 }
 
-/** Data-space `[x0, x1, y0, y1]` bounds and RGBA colors for each visible frame, with gaps and minimum widths applied. */
+/** Device-pixel rectangles (x, y, width, height, r, g, b, a) for each visible frame, with gaps and minimum widths applied. */
 function layoutRectangles<T>(
   canvas: HTMLCanvasElement,
   visible: readonly VisibleFrame<T>[],
@@ -1062,32 +892,40 @@ function layoutRectangles<T>(
   yMax: number,
   options: FlameGraphPluginOptions<T>,
   search: string | RegExp | null,
-): { bounds: Float32Array; colors: Float32Array } {
+): Float32Array {
   const dpr = canvasDpr(canvas);
   const cssHeight = Math.max(1, canvas.height / dpr);
   const gapPx = options.frameGapPx ?? DEFAULT_FRAME_GAP_PX;
   const minWidthData = ((options.minFrameWidthPx ?? DEFAULT_MIN_FRAME_WIDTH_PX) * (xMax - xMin)) / Math.max(1, canvas.width / dpr);
-  const bounds = new Float32Array(visible.length * FLOATS_PER_FRAME);
-  const colors = new Float32Array(visible.length * FLOATS_PER_FRAME);
+  const sx = canvas.width / Math.max(1e-30, xMax - xMin);
+  const sy = canvas.height / Math.max(1e-30, yMax - yMin);
+  const rects = new Float32Array(visible.length * FLOATS_PER_RECT);
   for (let i = 0; i < visible.length; i++) {
     const item = visible[i]!;
     const frame = item.frame;
-    const offset = i * FLOATS_PER_FRAME;
+    const offset = i * FLOATS_PER_RECT;
     const rawWidth = item.x1 - item.x0;
     const padded = rawWidth > 0 && rawWidth < minWidthData;
     const centerX = (item.x0 + item.x1) * 0.5;
-    bounds[offset] = padded ? Math.max(xMin, centerX - minWidthData * 0.5) : item.x0;
-    bounds[offset + 1] = padded ? Math.min(xMax, centerX + minWidthData * 0.5) : item.x1;
+    const x0 = padded ? Math.max(xMin, centerX - minWidthData * 0.5) : item.x0;
+    const x1 = padded ? Math.min(xMax, centerX + minWidthData * 0.5) : item.x1;
     const rawHeightPx = ((item.y1 - item.y0) / Math.max(1e-30, yMax - yMin)) * cssHeight;
     const gapY = rawHeightPx > gapPx + 1 ? (gapPx / cssHeight) * (yMax - yMin) : 0;
-    bounds[offset + 2] = item.y0 + gapY * 0.5;
-    bounds[offset + 3] = Math.max(item.y0 + gapY * 0.5, item.y1 - gapY * 0.5);
+    const y0 = item.y0 + gapY * 0.5;
+    const y1 = Math.max(y0, item.y1 - gapY * 0.5);
+    // Data space has Y up; device pixels have Y down from the top edge.
+    const left = (x0 - xMin) * sx;
+    const top = canvas.height - (y1 - yMin) * sy;
+    rects[offset] = left;
+    rects[offset + 1] = top;
+    rects[offset + 2] = (x1 - xMin) * sx - left;
+    rects[offset + 3] = canvas.height - (y0 - yMin) * sy - top;
     const color = matchesSearch(frame.name, search)
       ? options.highlightColor ?? [0.9, 0.05, 0.75, 0.95]
       : frame.color ?? colorForName(frame.name);
-    colors.set(color, offset);
+    rects.set(color, offset + 4);
   }
-  return { bounds, colors };
+  return rects;
 }
 
 function drawLabels<T>(

@@ -57,10 +57,9 @@ Generated from `dist/` after the package build.
 | legend plugin | `dist/plugins/legend.js` | 5 KiB |
 | tooltip plugin | `dist/plugins/tooltip.js` | 4 KiB |
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
-| flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
+| flamegraph plugin | `dist/plugins/flamegraph.js` | 17 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 162 KiB |
-| shared WebGL context release chunk | `dist/releaseWebGLContext-*.js` | 0 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 165 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
@@ -133,6 +132,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartRendererInfo` | interface | `./render/ChartRenderer` | Which engine a chart ended up with, what was asked for, and what that engine can do. |
 | `ChartRendererKind` | type | `./render/ChartRenderer` | Rendering backend a chart is drawn with. |
 | `ChartRenderLoop` | type | `./ui/Chart` | — |
+| `ChartRenderSurface` | interface | `./render/ChartRenderer` | A drawing surface a plugin owns, drawn with the chart's rendering engine: WebGL2, Canvas 2D, or the shared WebGL2 context. Get one from `ctx.unstable.createRenderSurface(canvas)`. A frame is `beginFrame`, any number of `fillRects`, then `endFrame`. Everything is in device pixels with the origin at the canvas's top-left corner, so size the canvas in device pixels first. |
 | `ChartScreenshotOptions` | type | `./ui/Chart` | — |
 | `ChartSelectEvent` | type | `./ui/Chart` | — |
 | `ChartSeriesClickEvent` | type | `./ui/Chart` | — |
@@ -175,6 +175,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `RangeMinMaxDataset` | interface | `./core/types` | Dataset that can answer min/max Y queries for index ranges. |
 | `RangeSampleCopyDataset` | interface | `./core/types` | Optional high-performance extraction capability for datasets that can copy raw samples without going through repeated getX/getY calls. Implement this for very large datasets, implicit-X datasets, or remote/memory-mapped sources. |
 | `RendererChoice` | type | `./render/ChartRenderer` | What `ChartOptions.renderer` can ask for: an engine by name, or `"auto"` (WebGL2, else Canvas 2D). |
+| `RendererLossState` | type | `./render/ChartRenderer` | Context state transitions an engine reports to the chart that owns it. |
 | `RendererName` | type | `./render/ChartRenderer` | A built-in rendering engine: WebGL2, Canvas 2D, or WebGL2 through a context shared with other charts. |
 | `ResolvedChartTheme` | interface | `./ui/theme` | Fully resolved chart theme with concrete RGBA values. |
 | `RgbaColor` | type | `./core/types` | RGBA color tuple with 0-1 channel values. |

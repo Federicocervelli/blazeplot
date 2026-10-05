@@ -3,7 +3,8 @@ import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
-import type { ChartRenderer, ChartRendererInfo, RendererLossState, RendererName } from "../render/ChartRenderer.js";
+import { toRenderSurface } from "../render/ChartRenderer.js";
+import type { ChartRenderSurface, ChartRenderer, ChartRendererInfo, RendererLossState, RendererName } from "../render/ChartRenderer.js";
 import { createEngine } from "../render/engines.js";
 import { SeriesPainter } from "../render/SeriesPainter.js";
 import { Camera2D } from "../interaction/Camera2D.js";
@@ -244,6 +245,11 @@ export class Chart {
   /** @internal The engine's native WebGL2 context, when it owns one. Plugins use `ctx.unstable.getWebGLContext()`. */
   getWebGLContext(): WebGL2RenderingContext | null {
     return this.engine.webglContext?.() ?? null;
+  }
+
+  /** @internal A drawing surface for a plugin-owned canvas, on this chart's engine. Plugins use `ctx.unstable.createRenderSurface()`. */
+  createRenderSurface(canvas: HTMLCanvasElement): ChartRenderSurface {
+    return toRenderSurface(this.engine.createSurface(canvas));
   }
 
   /** @internal Camera for the requested Y axis. Plugins use `ctx.unstable.getCamera()`. */

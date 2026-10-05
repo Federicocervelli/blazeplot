@@ -131,6 +131,54 @@ export function defineEngineContract(fixture: EngineFixture): void {
       close(polygons[0]!.bbox, [0, 0, 120, 50]);
     });
 
+    it("breaks triangle strips at a non-finite vertex pair instead of bridging the gap", () => {
+      const h = frame();
+      // Three runs of (x, y) / (x, baseline) pairs: x 0-2, a NaN pair at x = 3, then x 4-6 and x 8-9.
+      const nan = Number.NaN;
+      h.renderer.drawTriangles(new Float32Array([0, 4, 0, 0, 1, 4, 1, 0, 2, 4, 2, 0, 3, nan, 3, 0, 4, 3, 4, 0, 5, 3, 5, 0, 6, 3, 6, 0, nan, nan, 7, 0, 8, 2, 8, 0, 9, 2, 9, 0]), 20, white, projection, "triangle_strip");
+      h.renderer.endFrame();
+      const boxes = only(h.draws(), "polygon").map((p) => p.bbox);
+      expect(boxes).toHaveLength(3);
+      close(boxes[0]!, [0, 10, 20, 50], 0.01);
+      close(boxes[1]!, [40, 20, 60, 50], 0.01);
+      close(boxes[2]!, [80, 30, 90, 50], 0.01);
+    });
+
+    it("fills device-pixel rectangles with their own colors and skips non-finite ones", () => {
+      const h = frame();
+      const rects = new Float32Array([
+        10, 5, 20, 10, 1, 0, 0, 1,
+        Number.NaN, 0, 5, 5, 0, 1, 0, 1,
+        0, 0, 100, 50, 0, 0, 1, 0.5,
+      ]);
+      h.renderer.fillRects(rects, 3);
+      h.renderer.endFrame();
+      const drawn = only(h.draws(), "rect").flatMap((r) => r.rects);
+      expect(drawn).toHaveLength(2);
+      close(drawn[0]!, [10, 5, 30, 15], 0.01);
+      close(drawn[1]!, [0, 0, 100, 50], 0.01);
+    });
+
+    it("draws a surface on another canvas with the same engine, independent of the chart's frame", () => {
+      const h = frame();
+      const { surface, draws } = h.createSurface();
+      expect(surface.kind).toBe(h.expected.name);
+      surface.beginFrame(60, 30, 2);
+      surface.fillRects(new Float32Array([6, 3, 12, 9, 1, 1, 1, 1]), 1);
+      surface.endFrame();
+      const rects = only(draws(), "rect").flatMap((r) => r.rects);
+      expect(rects).toHaveLength(1);
+      close(rects[0]!, [6, 3, 18, 12], 0.01);
+
+      surface.dispose();
+      expect(() => surface.dispose()).not.toThrow();
+      h.renderer.beginFrame(WIDTH, HEIGHT, 1);
+      h.resetDraws();
+      h.renderer.drawLines(new Float32Array([0, 0, 10, 5]), 2, white, 2, projection);
+      h.renderer.endFrame();
+      expect(only(h.draws(), "stroke")).toHaveLength(1);
+    });
+
     it("reports what a frame cost", () => {
       const h = fixture.create();
       h.renderer.beginFrame(WIDTH, HEIGHT, 1);
@@ -140,10 +188,11 @@ export function defineEngineContract(fixture: EngineFixture): void {
       h.renderer.drawLines(new Float32Array([0, 0, 1, 1, 2, 0, 3, 1]), 4, white, 2, projection);
       h.renderer.drawClipLines(new Float32Array([0, -1, 0, 1]), 2, white);
       h.renderer.drawPoints(new Float32Array([1, 1, 2, 2]), 2, white, 4, projection);
+      h.renderer.fillRects(new Float32Array([0, 0, 5, 5, 1, 1, 1, 1]), 1);
       const report = h.renderer.endFrame();
-      expect(report.drawCalls).toBe(3);
-      // Eight vertices of two floats each are staged for a GPU; Canvas 2D draws immediately.
-      expect(report.uploadBytes).toBe(h.expected.gpu ? 8 * 2 * 4 : 0);
+      expect(report.drawCalls).toBe(4);
+      // Eight vertices of two floats each and one eight-float rectangle are staged for a GPU; Canvas 2D draws immediately.
+      expect(report.uploadBytes).toBe(h.expected.gpu ? (8 * 2 + 8) * 4 : 0);
 
       h.renderer.beginFrame(WIDTH, HEIGHT, 1);
       expect(h.renderer.endFrame()).toEqual({ uploadBytes: 0, drawCalls: 0 });

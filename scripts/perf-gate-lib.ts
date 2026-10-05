@@ -111,9 +111,22 @@ export function withBaselines(thresholds: PerfThresholds, runs: readonly MetricV
   return { ...thresholds, metrics };
 }
 
-export function parseThresholds(raw: unknown): PerfThresholds {
+/** Engines the gate can measure; `webgl2` is the file's top level, the others live under `renderers`. */
+export const GATE_RENDERERS = ["webgl2", "canvas2d"] as const;
+export type GateRenderer = (typeof GATE_RENDERERS)[number];
+
+/**
+ * Parse the thresholds for one engine. The top level of the file is the WebGL2 gate; `renderers.<name>`
+ * overrides any of its fields (typically `metrics`: a CPU-drawn engine has its own timings and uploads nothing).
+ */
+export function parseThresholds(raw: unknown, renderer: GateRenderer = "webgl2"): PerfThresholds {
   if (!raw || typeof raw !== "object") throw new Error("thresholds file must contain a JSON object");
-  const value = raw as Record<string, unknown>;
+  let value = raw as Record<string, unknown>;
+  if (renderer !== "webgl2") {
+    const variant = (value.renderers as Record<string, unknown> | undefined)?.[renderer];
+    if (!variant || typeof variant !== "object") throw new Error(`thresholds.renderers.${renderer} is missing`);
+    value = { ...value, ...(variant as Record<string, unknown>) };
+  }
   const positive = (key: string, allowZero = false): number => {
     const n = value[key];
     if (typeof n !== "number" || !Number.isFinite(n) || n < 0 || (!allowZero && n === 0)) throw new Error(`thresholds.${key} must be a ${allowZero ? "non-negative" : "positive"} number`);
@@ -161,4 +174,11 @@ function fmt(value: number): string {
   if (!Number.isFinite(value)) return String(value);
   if (Math.abs(value) >= 1000) return Math.round(value).toLocaleString("en-US");
   return Number(value.toPrecision(4)).toString();
+}
+
+/** Write refreshed thresholds back into the raw file object: the top level for WebGL2, `renderers.<name>` otherwise. */
+export function withUpdatedThresholds(raw: Record<string, unknown>, renderer: GateRenderer, next: PerfThresholds): Record<string, unknown> {
+  if (renderer === "webgl2") return { ...raw, ...next, ...(raw.renderers ? { renderers: raw.renderers } : {}) };
+  const renderers = (raw.renderers ?? {}) as Record<string, Record<string, unknown>>;
+  return { ...raw, renderers: { ...renderers, [renderer]: { ...renderers[renderer], metrics: next.metrics } } };
 }

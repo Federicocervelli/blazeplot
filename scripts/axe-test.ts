@@ -7,7 +7,8 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CdpClient, closeTarget, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
+import { CdpClient, closeTarget, createTarget, evaluate, parseTestRenderer, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, testRendererFromEnv, waitForHttp, withTestRenderer } from "./browser-harness.js";
+import type { TestRenderer } from "./browser-harness.js";
 
 interface Options {
   port: number;
@@ -15,6 +16,8 @@ interface Options {
   timeoutMs: number;
   url?: string;
   chrome?: string;
+  /** Engine the fixture charts use (`--renderer` or `BLAZEPLOT_TEST_RENDERER`); the fixture's WebGL2 default when unset. */
+  renderer?: TestRenderer;
 }
 
 interface AxePage {
@@ -88,7 +91,7 @@ async function main(): Promise<void> {
 }
 
 async function checkPage(options: Options, serverUrl: string, page: AxePage, axeSource: string): Promise<AxeViolation[]> {
-  const target = await createTarget(options.debugPort, new URL(page.path, serverUrl).toString());
+  const target = await createTarget(options.debugPort, withTestRenderer(new URL(page.path, serverUrl), options.renderer).toString());
   const cdp = await CdpClient.connect(target.webSocketDebuggerUrl);
   try {
     await cdp.send("Page.enable");
@@ -141,7 +144,7 @@ async function waitForReady(cdp: CdpClient, page: AxePage, timeoutMs: number): P
 }
 
 function parseArgs(args: readonly string[]): Options {
-  const parsed: Options = { port: 41739, debugPort: 9231, timeoutMs: 30_000 };
+  const parsed: Options = { port: 41739, debugPort: 9231, timeoutMs: 30_000, renderer: testRendererFromEnv() };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg) continue;
@@ -158,9 +161,10 @@ function parseArgs(args: readonly string[]): Options {
       case "--timeout-ms": parsed.timeoutMs = readPositiveInteger(flag, readValue()); break;
       case "--url": parsed.url = readValue(); break;
       case "--chrome": parsed.chrome = readValue(); break;
+      case "--renderer": parsed.renderer = parseTestRenderer(readValue()); break;
       case "--help":
       case "-h":
-        console.log("Usage: bun run test:a11y [--chrome <path>] [--url <fixture server>]\n\nRuns axe-core on the chart DOM of the browser fixtures and fails on serious or critical violations.");
+        console.log("Usage: bun run test:a11y [--chrome <path>] [--url <fixture server>] [--renderer webgl2|canvas2d|shared|auto]\n\nRuns axe-core on the chart DOM of the browser fixtures and fails on serious or critical violations.");
         process.exit(0);
         break;
       default: throw new Error(`Unknown argument: ${arg}`);

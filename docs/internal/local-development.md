@@ -66,6 +66,7 @@ bun run test:stability                      # CI mode, about a minute
 bun run test:stability --long               # local soak: 1,000+ iterations, 90s streaming run
 bun run test:stability --long --duration-s 300   # longer streaming window
 bun run test:stability --case streaming --verbose  # one case, print every heap/DOM sample
+bun run test:stability:canvas2d             # the same suite on the Canvas 2D engine (skips the WebGL-only cases)
 ```
 
 `--verbose` prints each post-GC sample; `build/stability/report.json` records all measurements. Tolerances live in `scripts/stability-test.ts` (`toleranceFor`, the streaming limits). When the suite fails, read the message first: it names the counter that moved and the baseline and final values. Reproduce with `--case <name> --verbose`, then bisect by removing plugins from `fullPlugins()` in the fixture. Do not loosen a tolerance to make a failure pass; a real leak grows with iterations, so run `--long` and check whether the number scales.
@@ -86,11 +87,20 @@ Artifacts land in `build/visual-tests/`: `<case>.png` (full page), `actual/<case
 `bun run test:visual` runs the case list once per renderer configuration (`--renderer webgl2,shared,canvas2d,auto-no-webgl` selects a subset):
 
 - `webgl2`: the default renderer; owns the committed baselines and the `build/visual-tests/` root (including `actual/`).
-- `shared`: `?renderer=shared`, output in `build/visual-tests/shared/`. Renders through `sharedRenderer()` (one hidden WebGL context blitted into each chart canvas) and is compared against the WebGL baselines with the normal tolerance; locally it is pixel-identical. See [Shared render context](./shared-render-context.md).
-- `canvas2d`: `?renderer=canvas2d`, output in `build/visual-tests/canvas2d/`. It runs the same cases and blank-canvas guard and is compared against the same WebGL baselines, but with 15x the allowed differing-pixel ratio (3% for plot-only cases, 15% for the DOM-text cases). Canvas 2D antialiases lines and snaps rectangles to whole pixels, so a few percent of pixels differ at the edges; locally measured differences against WebGL renders were about 0.05% to 1.5% per case. Never update baselines from this run (`--update-baselines` only writes the WebGL ones).
-- `auto-no-webgl`: launches Chrome with `--disable-3d-apis` and constructs the chart with `autoRenderer()`, asserting it ended up on Canvas 2D. Blank-canvas guard only; the `context-restore` case is skipped because it needs a real WebGL context.
+- `shared`: `?renderer=shared`, output in `build/visual-tests/shared/`. Renders through the shared WebGL2 context (one hidden WebGL context blitted into each chart canvas). See [Shared render context](./shared-render-context.md).
+- `canvas2d`: `?renderer=canvas2d`, output in `build/visual-tests/canvas2d/`. It runs the same cases and blank-canvas guard. Never update baselines from this run (`--update-baselines` only writes the WebGL ones).
+- `auto-no-webgl`: launches Chrome with `--disable-3d-apis` and constructs the chart with the default `"auto"` renderer, asserting it ended up on Canvas 2D. Blank-canvas guard only; the `context-restore` case is skipped because it needs a real WebGL context.
 
-The `gaps` case (NaN gaps in a line and an area series) has no pixel baseline and exists so every renderer has to break paths at missing samples.
+#### Cross-engine parity
+
+When `webgl2` runs in the same invocation (the `visual-gl` shard runs `webgl2,shared`; the `visual-fallback` shard runs `webgl2,canvas2d,auto-no-webgl`), every case's plot-area crop (grid hidden) from `shared` and `canvas2d` is compared with the `webgl2` crop of the same case (`scripts/cross-engine.ts`, unit tests in `tests/scripts/crossEngine.test.ts`). Without a `webgl2` run in the invocation the other renderers are only checked against the committed baselines.
+
+- `shared` must match `webgl2` to 8-bit rounding: a real GPU is bit-identical, SwiftShader differs by one count in a pixel or two.
+- `canvas2d` is compared by kind (`CROSS_ENGINE_KINDS` in `scripts/visual-test.ts`; thresholds in `CROSS_ENGINE_THRESHOLDS`). Rectangles (`fill`: bars, histogram bins, translucent overlap) are compared per pixel (more than 32/255 on any channel counts, up to 0.8% of pixels). Everything with antialiased edges (`stroke`) is compared after a 3x3 box blur (up to 1%), because Canvas 2D antialiases lines where WebGL does not and pixel dilation does not forgive that. `dense-stroke` (the 100k-sample sine) allows 3%.
+- Every kind also checks the coverage-weighted ink ratio (Canvas 2D over WebGL, within about 4% to 12% depending on the kind) and that the ink bounding boxes agree to one pixel (the engines break rasterization ties differently).
+- A failure writes both crops to `build/visual-tests/cross-engine/<renderer>/`; every run writes `build/visual-tests/cross-engine.json`. `--cross-engine-report` prints the numbers without failing, for recalibration. The thresholds sit at roughly twice the worst case measured on a real GPU and on CI's SwiftShader; recalibrate them from CI logs, not a laptop alone.
+
+Parity is not a promise of identical pixels: the supported contract is the feature set and the documented differences in [Browser support](../browser-support.md#canvas-2d-renderer). The `gaps` case (NaN gaps in a line and an area series) exists so every renderer has to break paths at missing samples; the first cross-engine run found Canvas 2D bridging area fills across gaps, which the engine contract suite now pins.
 
 GPU, driver, and OS differences change anti-aliasing and text, so baselines must be generated in the CI environment (headless Chrome on `ubuntu-latest` with SwiftShader/ANGLE software GL), not on a laptop. For that reason the pixel comparison only runs on Linux by default; on other platforms it is skipped with a note and only the blank-canvas guard runs. `--compare-baselines` forces the comparison and `--skip-baselines` disables it.
 
@@ -128,7 +138,7 @@ CI runs the same groups as separate jobs. Locally:
 
 ```bash
 bun run check          # typecheck, lint, unit tests + coverage floors, build, docs freshness and snippets, package checks, API snapshot, bundle budgets
-bun run test:browser   # benchmark smoke, perf gate, visual, interaction, axe a11y, stability, website (needs Chrome)
+bun run test:browser   # benchmark smoke, perf gates (WebGL2 and Canvas 2D), visual, interaction and axe a11y on both engines, stability on both engines, website (needs Chrome)
 bun run ci             # both (cross-browser is a separate CI job: bun run test:cross-browser)
 ```
 
