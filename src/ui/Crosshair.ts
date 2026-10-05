@@ -1,7 +1,7 @@
 import type { SeriesYAxis } from "../core/types.js";
 import type { ChartPickItem, ChartPickMode } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
+import { createLongPressTouchTracker, createOverlayLayer, createPickMarker, createSvgElement, createSyncRegistry, formatCompactNumber, pickAtDataX, singleChartPlugin, placeAbsoluteWithinBox, renderPickItems } from "./OverlayUtils.js";
 import type { SyncMembership } from "./OverlayUtils.js";
 
 /** Axis drawn by the crosshair overlay. */
@@ -308,7 +308,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     emitMeasureChange(measurementFrom(rulerStart, end, chart));
   };
 
-  return {
+  return singleChartPlugin("crosshair", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
       const color = options.color ?? chart.theme.crosshairColor;
@@ -513,5 +513,5 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       rulerStart = null;
       if (rulerSvg) rulerSvg.style.display = "none";
     },
-  };
+  });
 }

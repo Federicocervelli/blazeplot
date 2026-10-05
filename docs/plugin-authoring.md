@@ -74,8 +74,9 @@ Plugins never receive raw chart elements. They attach DOM to named **mount slots
 | `onContextRestored()` | The context is restored and the chart's GPU resources are rebuilt. |
 
 - Hooks run in **registration order**. Disposal runs in **reverse registration order**, so a plugin can rely on plugins installed before it still being alive during its own cleanup.
-- A hook that throws is reported with `console.error` and does not stop other plugins. A cleanup that throws never prevents chart-owned resources from being released.
+- A hook that throws is reported with `console.error` and does not stop other plugins. A `dispose` or cleanup that throws is logged and never prevents chart-owned resources from being released.
 - If `install` throws, the context releases what it handed out, the plugins already installed are disposed in reverse order, and the chart constructor rethrows.
+- **One plugin instance per chart.** Keep per-chart state inside `install` (or throw if your instance is already installed). The built-in stateful plugins (a11y, annotations, crosshair, flame graph, navigator, selection) keep state in the factory closure and throw `one plugin instance per chart` when the same instance is installed on a second chart, so call the factory once per chart instead of sharing a `plugins` array of instances. The legend, tooltip, and interactions plugins keep their state inside `install`, so one instance may be installed on several charts.
 
 The app that owns the chart controls `chart.start()` and `chart.stop()`. Plugin code should update plugin-owned DOM or state from chart events and hooks.
 

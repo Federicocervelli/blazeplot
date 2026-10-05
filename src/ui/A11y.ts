@@ -2,6 +2,7 @@ import type { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesSample } from "../core/types.js";
 import type { ChartSeriesState } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
+import { singleChartPlugin } from "./OverlayUtils.js";
 
 /** Data table options for `a11yPlugin`. */
 export interface A11yTableOptions {
@@ -136,7 +137,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
   let rebuildTable: (() => void) | null = null;
   let inspecting = false;
 
-  return {
+  return singleChartPlugin("a11y", {
     install(chart: ChartPluginContext) {
       const formatX = options.formatX ?? ((value: number) => chart.coords.format(value, "x"));
       const formatY = options.formatY ?? ((value: number, state: ChartSeriesState) => chart.coords.format(value, "y", state.yAxis));
@@ -464,7 +465,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
     isInspecting(): boolean {
       return inspecting;
     },
-  };
+  });
 }
 
 function defaultLiveText(

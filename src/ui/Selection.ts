@@ -1,6 +1,6 @@
 import type { SeriesYAxis, Viewport } from "../core/types.js";
 import type { ChartPlugin, ChartPluginContext, ChartRect } from "./PluginHost.js";
-import { clamp, createOverlayLayer } from "./OverlayUtils.js";
+import { clamp, createOverlayLayer, singleChartPlugin } from "./OverlayUtils.js";
 
 /** Geometry captured by the selection plugin. */
 export type SelectionMode = "x-range" | "y-range" | "xy";
@@ -166,7 +166,7 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     if (hadSelection) announce?.("Selection cleared.");
   };
 
-  return {
+  return singleChartPlugin("selection", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
       // Pointer capture goes to the element that received the press (the plot surface).
@@ -398,5 +398,5 @@ export function selectionPlugin(options: SelectionPluginOptions = {}): Selection
     getSelection(): SelectionState | null {
       return committedSelection;
     },
-  };
+  });
 }

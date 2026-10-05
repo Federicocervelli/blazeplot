@@ -1,6 +1,6 @@
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createSvgElement } from "./OverlayUtils.js";
+import { createSvgElement, singleChartPlugin } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 
 /** Options for the overview navigator plugin. */
@@ -234,7 +234,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     render(false);
   };
 
-  return {
+  return singleChartPlugin("navigator", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
       root = document.createElement("div");
@@ -414,5 +414,5 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     refresh(): void {
       render();
     },
-  };
+  });
 }

@@ -1,5 +1,5 @@
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { placeFixedWithinViewport } from "./OverlayUtils.js";
+import { placeFixedWithinViewport, singleChartPlugin } from "./OverlayUtils.js";
 import type { RgbaColor } from "../core/types.js";
 import { releaseWebGLContext } from "../render/releaseWebGLContext.js";
 import { rgbaCss } from "./theme.js";
@@ -640,7 +640,7 @@ export function flameGraphPlugin<T = unknown>(options: FlameGraphPluginOptions<T
     scheduleRender();
   }
 
-  return plugin;
+  return singleChartPlugin("flameGraph", plugin);
 }
 
 function pickVisibleFrame<T>(visible: readonly VisibleFrame<T>[], plotX: number, plotY: number): VisibleFrame<T> | null {
