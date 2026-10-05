@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { posix } from "node:path";
 
 interface Budget {
@@ -23,14 +23,21 @@ interface SharedChunkResult {
   readonly entries: BundleSizeEntry[];
 }
 
+/** A budget for everything a consumer downloads to use one entry: the entry plus every chunk it imports statically. */
+interface GraphBudget {
+  readonly label: string;
+  readonly entry: string;
+  readonly maxBytes: number;
+}
+
 interface BundleSizeReport {
   readonly entryChunks: BundleSizeEntry[];
   readonly sharedChunks: SharedChunkResult[];
+  readonly graphs: BundleSizeEntry[];
 }
 
 // Budgets are the built size plus about 1.5% (at least 100 bytes), rounded up to 100 bytes.
 // Tighten them when a change shrinks a chunk; raise one only with a reason in the PR.
-// Engine-owned context loss (listeners, backend rebuild, capabilities, frame reports) grew the WebGL2 engine chunk by about 1.8 KB and the Canvas 2D entry by about 0.8 KB; the Chart chunk did not grow.
 // Legend, navigator, and selection grew a little (+130 to +220 bytes) because each now ships its own forced-colors CSS; the core chunk shrank by the same rules.
 const budgets: Budget[] = [
   { label: "root entry", path: "dist/index.js", maxBytes: 21_100 },
@@ -60,6 +67,25 @@ const sharedBudgets: SharedChunkBudget[] = [
   { label: "shared PickOverlay chunk", pattern: /^PickOverlay-.*.js$/, maxBytes: 5_000 },
 ];
 
+// The chart-only import graph: `import { Chart } from "blazeplot"` with no plugin, so it is what every consumer pays.
+// It holds the root entry, the Chart chunk (Chart, every rendering engine, the data engine), and the theme module.
+// 196_943 bytes (rc.8: 182_613 = index 20_845 + Chart 142_844 + WebGL2 11_955 + release 176 + theme 6_793). The engines moved into the core graph (WebGL2, Canvas 2D, and the shared context ship in the
+// root because the default renderer is "auto"), which is the whole +14.3 KB (+7.8%): Canvas 2D, the shared context, render surfaces, and engine-owned context loss.
+const graphBudgets: GraphBudget[] = [{ label: "chart-only import graph (index + Chart + engines + theme)", entry: "dist/index.js", maxBytes: 199_900 }];
+
+/** Files `entry` imports statically, transitively (dynamic `import()` is excluded: it is not downloaded up front). */
+function staticGraph(entry: string): string[] {
+  const seen = new Set<string>();
+  const visit = (path: string): void => {
+    if (seen.has(path)) return;
+    seen.add(path);
+    const source = readFileSync(path, "utf8");
+    for (const match of source.matchAll(/(?:from|import)\s*"(\.\/[^"]+\.js)"/g)) visit(posix.join(posix.dirname(path), match[1]!));
+  };
+  visit(entry);
+  return [...seen];
+}
+
 export async function collectBundleSizeReport(): Promise<BundleSizeReport> {
   const entryChunks = budgets.map((budget) => ({
     ...budget,
@@ -77,12 +103,19 @@ export async function collectBundleSizeReport(): Promise<BundleSizeReport> {
       }),
   }));
 
-  return { entryChunks, sharedChunks };
+  const graphs = graphBudgets.map((budget) => ({
+    label: budget.label,
+    path: budget.entry,
+    maxBytes: budget.maxBytes,
+    sizeBytes: staticGraph(budget.entry).reduce((total, file) => total + statSync(file).size, 0),
+  }));
+
+  return { entryChunks, sharedChunks, graphs };
 }
 
 export function bundleSizeFailures(report: BundleSizeReport): string[] {
   const failures: string[] = [];
-  for (const entry of [...report.entryChunks, ...report.sharedChunks.flatMap((chunk) => chunk.entries)]) {
+  for (const entry of [...report.entryChunks, ...report.sharedChunks.flatMap((chunk) => chunk.entries), ...report.graphs]) {
     if (entry.sizeBytes > entry.maxBytes) {
       failures.push(`${entry.label} exceeds budget: ${entry.sizeBytes} > ${entry.maxBytes} bytes (${entry.path})`);
     }
@@ -96,7 +129,7 @@ export function bundleSizeFailures(report: BundleSizeReport): string[] {
 }
 
 export function renderBundleSizeMarkdown(report: BundleSizeReport): string {
-  const rows = [...report.entryChunks, ...report.sharedChunks.flatMap((chunk) => chunk.entries)]
+  const rows = [...report.entryChunks, ...report.sharedChunks.flatMap((chunk) => chunk.entries), ...report.graphs]
     .map((entry) => `| ${markdownEscape(entry.label)} | \`${displayPath(entry.path)}\` | ${formatBytes(entry.sizeBytes)} |`);
 
   const lines = [

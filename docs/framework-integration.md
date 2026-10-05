@@ -397,12 +397,12 @@ The `dispose` indirection matters: the dynamic import resolves after `onMount` r
 
 ## No-WebGL2 fallback
 
-By default a browser without WebGL2 cannot draw a chart. The simplest fix is the built-in Canvas 2D fallback: pass `renderer: "auto"` and read `chart.renderer` (see [Browser support](./browser-support.md#canvas-2d-renderer)). If you would rather show your own UI (a static image, a table, a message), decide what those users see. There are two ways to detect it, and they behave differently:
+By default (`renderer: "auto"`) a browser without WebGL2 draws the chart with Canvas 2D; read `chart.renderer` or `chart.rendererInfo` to see which engine you got (see [Browser support](./browser-support.md#rendering-engines)). If you would rather show your own UI (a static image, a table, a message), decide what those users see. There are two ways to detect it, and they behave differently:
 
 | Check | What it tells you | Behavior |
 |---|---|---|
 | `isWebGL2Available()` | A throwaway canvas can create a WebGL2 context right now. | Returns `false` when `document` is undefined (server-side). Releases the probe context before returning. |
-| `new Chart(...)` throws `WebGL2UnavailableError` | The real chart canvas could not get a context. | The error has `name === "WebGL2UnavailableError"`. Before throwing, the constructor removes the DOM it created, so the host is left as it was. |
+| `new Chart(..., { renderer: "webgl2" })` throws `WebGL2UnavailableError` | The real chart canvas could not get a context (only the strict engines throw; the default `"auto"` falls back to Canvas 2D). | The error has `name === "WebGL2UnavailableError"`. Before throwing, the constructor removes the DOM it created, so the host is left as it was. |
 
 A `true` result from `isWebGL2Available()` does not guarantee the real chart gets a context, for example when the browser has run out of GPU contexts. Use the probe to choose the fallback up front, and keep the `try`/`catch` for the case where construction still fails. Match the error with `instanceof WebGL2UnavailableError`; other constructor errors (invalid options) are `RangeError` or `TypeError` and should not show the fallback. See [Error handling](./error-handling.md).
 
@@ -426,7 +426,7 @@ export function SafeChart({ x, y }: { x: number[]; y: number[] }) {
 
     let chart: Chart;
     try {
-      chart = new Chart(host);
+      chart = new Chart(host, { renderer: "webgl2" });
     } catch (error) {
       if (error instanceof WebGL2UnavailableError) {
         setUnsupported(true);
