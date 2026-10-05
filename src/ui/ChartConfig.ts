@@ -2,7 +2,7 @@ import type { Dataset, RgbaColor, SeriesConfig, SeriesStyle, SeriesStyleOptions 
 import { RingBuffer } from "../core/RingBuffer.js";
 import { StaticDataset } from "../core/StaticDataset.js";
 import { HistogramDataset } from "../core/Histogram.js";
-import type { HistogramOptions } from "../core/Histogram.js";
+import type { HistogramOptions } from "../core/histogramBins.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import type { AxisController, AxisScaleOptions } from "../interaction/AxisController.js";
 import type { NormalizedAxisConfig } from "./ChartLayout.js";

@@ -3,7 +3,7 @@
  * and screenshot options. Depends on the plugin contract, never the other way around.
  */
 import type { BufferOverflowStrategy, Dataset, DownsampleStrategy, InvalidSample, SeriesYAxis, ValuePrecision } from "../core/types.js";
-import type { HistogramOptions } from "../core/Histogram.js";
+import type { HistogramOptions } from "../core/histogramBins.js";
 import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 import type { ChartRendererFactory, RendererChoice } from "../render/ChartRenderer.js";
 import type { AxisScaleOptions } from "../interaction/AxisController.js";
