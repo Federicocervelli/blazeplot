@@ -7,7 +7,7 @@ import type { GpuBackend } from "../../src/render/webgl2/types.ts";
 function makeDoc(): Document {
   const doc = {
     createElement: () => {
-      const attributes = new Map<string, string>([["class", "blazeplot-canvas"], ["style", "position:absolute"]]);
+      const attributes = new Map<string, string>([["width", "300"], ["height", "150"], ["class", "blazeplot-canvas"], ["style", "position:absolute"]]);
       return {
         ownerDocument: doc,
         width: 300,
@@ -15,7 +15,7 @@ function makeDoc(): Document {
         removed: 0,
         getAttributeNames: () => [...attributes.keys()],
         removeAttribute: (name: string) => void attributes.delete(name),
-        hasAttributes: () => attributes.size > 0,
+        attributeNames: () => [...attributes.keys()],
         remove() {
           this.removed++;
         },
@@ -63,13 +63,14 @@ describe("WarmCanvasPool", () => {
     const backend = makeBackend();
     expect(parkPlotCanvas(first, backend)).toBe(true);
     expect((first as unknown as { removed: number }).removed).toBe(1);
-    expect([first.width, first.height]).toEqual([1, 1]);
+    // The drawing buffer is not resized (that reallocates it) while parked or on reuse.
+    expect([first.width, first.height]).toEqual([300, 150]);
     // Parking keeps the context: nothing is destroyed or released while the canvas waits.
     expect([backend.destroyed, backend.releases]).toEqual([0, 0]);
 
     const second = acquirePlotCanvas(doc);
     expect(second).toBe(first);
-    expect((second as unknown as { hasAttributes(): boolean }).hasAttributes()).toBe(false);
+    expect((second as unknown as { attributeNames(): string[] }).attributeNames()).toEqual(["width", "height"]);
     expect(adoptWarmBackend(second)).toBe(backend);
     // The backend is handed over once.
     expect(adoptWarmBackend(second)).toBeUndefined();
