@@ -32,10 +32,12 @@ interface Parked {
 }
 
 const parked: Parked[] = [];
-/** Canvases created here, which may be parked when their chart is disposed. Caller-supplied canvases never are. */
-const recyclable = new WeakSet<HTMLCanvasElement>();
-/** The backend of a canvas that was just taken from the pool, for the renderer built on it to adopt. */
-const handedOver = new WeakMap<HTMLCanvasElement, GpuBackend>();
+/**
+ * Canvases created here, which may be parked when their chart is disposed (caller-supplied canvases never
+ * are). The value is the warm backend of a canvas that was just taken from the pool, for the renderer
+ * built on it to adopt, and `null` otherwise.
+ */
+const owned = new WeakMap<HTMLCanvasElement, GpuBackend | null>();
 
 function unpark(entry: Parked): void {
   entry.cancel();
@@ -61,7 +63,7 @@ function usable(backend: GpuBackend): boolean {
  * backend carry over, or else a new one that may be parked later.
  */
 export function acquirePlotCanvas(doc: Document): HTMLCanvasElement {
-  for (const entry of [...parked]) {
+  for (const entry of parked.slice()) {
     if (entry.canvas.ownerDocument !== doc) continue;
     if (!usable(entry.backend)) {
       release(entry);
@@ -71,19 +73,19 @@ export function acquirePlotCanvas(doc: Document): HTMLCanvasElement {
     const { canvas } = entry;
     // Drop what the last chart's layout and plugins put on the element (class, style, ARIA); size is set by the next chart.
     for (const name of canvas.getAttributeNames()) canvas.removeAttribute(name);
-    handedOver.set(canvas, entry.backend);
+    owned.set(canvas, entry.backend);
     return canvas;
   }
   const canvas = doc.createElement("canvas");
-  recyclable.add(canvas);
+  owned.set(canvas, null);
   return canvas;
 }
 
 /** The warm backend that came with a canvas from {@link acquirePlotCanvas}, once; `undefined` for any other canvas. */
 export function adoptWarmBackend(canvas: HTMLCanvasElement): GpuBackend | undefined {
-  const backend = handedOver.get(canvas);
-  handedOver.delete(canvas);
-  return backend;
+  const backend = owned.get(canvas);
+  if (backend) owned.set(canvas, null);
+  return backend ?? undefined;
 }
 
 /**
@@ -91,7 +93,7 @@ export function adoptWarmBackend(canvas: HTMLCanvasElement): GpuBackend | undefi
  * one this module made or its context is unusable, and the caller must release it as usual.
  */
 export function parkPlotCanvas(canvas: HTMLCanvasElement, backend: GpuBackend): boolean {
-  if (!recyclable.has(canvas) || !usable(backend)) return false;
+  if (!owned.has(canvas) || !usable(backend)) return false;
   // Leave the old chart's DOM and give the drawing buffer back; the next chart sizes the canvas again.
   canvas.remove();
   canvas.width = 1;

@@ -19,14 +19,14 @@ const waiting = new Set<() => void>();
  * reused or released early); `releaseWarm` runs every pending release at once.
  */
 export function keepWarm(release: () => void): () => void {
-  const timer = setTimeout(() => run(), WARM_IDLE_MS);
-  const cancel = (): void => {
-    clearTimeout(timer);
-    waiting.delete(run);
-  };
   const run = (): void => {
     cancel();
     release();
+  };
+  const timer = setTimeout(run, WARM_IDLE_MS);
+  const cancel = (): void => {
+    clearTimeout(timer);
+    waiting.delete(run);
   };
   waiting.add(run);
   return cancel;
@@ -34,5 +34,5 @@ export function keepWarm(release: () => void): () => void {
 
 /** @internal Release everything kept warm now. For tests and for pages that must show no live contexts. */
 export function releaseWarm(): void {
-  for (const run of [...waiting]) run();
+  for (const run of waiting) run();
 }
