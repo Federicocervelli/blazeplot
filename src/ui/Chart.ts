@@ -1061,8 +1061,10 @@ export class Chart implements ChartPluginContext {
 
   /** Render the chart, including DOM overlays under the chart root, to an image blob. */
   async screenshot(options: ChartScreenshotOptions = {}): Promise<Blob> {
-    this.render();
+    // Load the chunk first, then render synchronously right before the compose step reads the
+    // (non-preserved) drawing buffer, so a presented frame cannot clear it in between.
     const { composeChartScreenshot } = await import("./screenshot.js");
+    this.render();
     return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
