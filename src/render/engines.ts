@@ -3,6 +3,7 @@ import type { ChartRenderer, ChartRendererFactory, RendererChoice, RendererOrigi
 import type { ChartRenderContext } from "./webgl2/SharedWebGL.js";
 import { SharedWebGLContext } from "./webgl2/SharedWebGL.js";
 import { WebGL2Renderer } from "./webgl2/WebGL2Renderer.js";
+import { acquirePlotCanvas } from "./webgl2/WarmCanvasPool.js";
 
 export type { ChartRenderContext } from "./webgl2/SharedWebGL.js";
 export { Canvas2DUnavailableError } from "./canvas2d/Canvas2DRenderer.js";
@@ -84,6 +85,16 @@ const namedRenderers: Readonly<Record<RendererChoice, () => ChartRendererFactory
 
 /** @internal Names accepted by `ChartOptions.renderer`, for error messages. */
 export const rendererChoices = Object.keys(namedRenderers) as readonly RendererChoice[];
+
+/**
+ * @internal The canvas for a chart's plot area. Charts that can end up on the native WebGL2 engine
+ * (`"webgl2"`, `"auto"`, the default) may get a warm canvas, with a live context and compiled
+ * programs, from a recently disposed chart; every other renderer gets a new canvas, because a canvas
+ * with a WebGL context cannot give out a 2D one.
+ */
+export function createPlotCanvas(option: RendererChoice | ChartRendererFactory | undefined, doc: Document): HTMLCanvasElement {
+  return option === undefined || option === "auto" || option === "webgl2" ? acquirePlotCanvas(doc) : doc.createElement("canvas");
+}
 
 /**
  * @internal Build the engine for a chart's plot canvas from its `renderer` option: a name, a factory, or

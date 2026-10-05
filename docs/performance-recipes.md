@@ -56,6 +56,10 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 - Dispose charts on unmount with `chart.dispose()`.
 - Keep optional features in subpath imports, for example `blazeplot/plugins/tooltip`, so chart-only bundles stay smaller.
 
+## Mounting and unmounting charts
+
+Creating a WebGL2 context is a synchronous round trip to the GPU process and compiling its shader programs costs again, so a page that mounts and unmounts charts (route changes, tabs, virtualised lists) would pay both every time. Disposing a chart on the WebGL2 engine (`"auto"` or `"webgl2"`) therefore keeps its plot canvas, context, and compiled programs warm: the next chart created in the same document takes them over and skips the context creation and the program build. Warm canvases are bounded (at most two per page) and short-lived: each is released two seconds after the chart that owned it was disposed unless another chart takes it first, so a page that stops creating charts ends up holding no WebGL contexts, as before. A warm context is the first one a browser evicts when a page hits its context cap. There is nothing to configure; charts on `"canvas2d"` or a shared context, and charts created from a canvas element you pass in, are not affected.
+
 ## Many charts on one page
 
 Browsers cap live WebGL contexts per page (about 16 in Chromium) and evict the oldest, so a dashboard with dozens of charts can end up with blank charts. Render them through one shared context instead:
