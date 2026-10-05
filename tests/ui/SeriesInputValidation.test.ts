@@ -21,6 +21,15 @@ beforeEach(() => {
 afterEach(() => target.remove());
 
 describe("chart-owned series input validation", () => {
+  it("throws a TypeError for an unknown series mode", () => {
+    const chart = new Chart(target, { backendFactory: (ctx) => new FakeBackend(ctx.canvas) });
+    for (const mode of ["envelope", "", undefined]) {
+      expect(() => chart.addSeries({ mode: mode as never, capacity: 8 })).toThrow(TypeError);
+    }
+    expect(chart.getSeriesState()).toHaveLength(0);
+    chart.dispose();
+  });
+
   it("passes SeriesConfig.onInvalidSample to the RingBuffer it creates", () => {
     const chart = new Chart(target, { backendFactory: (ctx) => new FakeBackend(ctx.canvas) });
     const reported: InvalidSample[] = [];

@@ -28,6 +28,7 @@ import type { ChartSummary } from "./ChartSummary.js";
 /** Vertices in the shared raw line/point/area upload buffer. */
 const BYTES_PER_VERTEX = 2 * Float32Array.BYTES_PER_ELEMENT;
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
+const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "bar", "ohlc", "candlestick"]);
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 /** Bars, min/max buckets, or candles expanded into triangles per draw. */
 const BAR_TRIANGLE_CAPACITY = 4_096;
@@ -531,6 +532,8 @@ export class Chart {
   private forcedColorsActive: boolean = false;
   /** Series styles saved while forced colors replace them. */
   private readonly forcedOriginalStyles = new Map<SeriesStore, SeriesStyle>();
+  /** Caller style options per series, plus the theme palette slot it follows (`null` once a color is pinned). */
+  private readonly seriesStyleState = new WeakMap<SeriesStore, { options: SeriesStyleOptions; paletteIndex: number | null }>();
   private summaryElement: HTMLElement | null = null;
   private summaryTimer: ReturnType<typeof setTimeout> | null = null;
   private summaryDirty: boolean = false;
@@ -826,11 +829,17 @@ export class Chart {
 
   /** Add a series with an explicit mode. Prefer the typed helpers such as `addLine`. */
   addSeries<D extends Dataset = Dataset>(config: SeriesConfig & { readonly dataset?: D }, style: SeriesStyleOptions = {}): SeriesStore<D> {
+    if (!SERIES_MODES.has(config.mode)) {
+      throw new TypeError(`Chart.addSeries: unknown series mode ${JSON.stringify(config.mode)}. Expected one of ${[...SERIES_MODES].join(", ")}.`);
+    }
     if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
     const dataset = (config.dataset ?? this.createDefaultDataset(config)) as D;
-    const series = new SeriesStore(dataset, config, this.resolveSeriesStyle(style), (change) => this.handleSeriesChange(change));
+    const slot = this.nextPaletteIndex();
+    const series = new SeriesStore(dataset, config, this.resolveSeriesStyle(style, slot), (change) => this.handleSeriesChange(change));
+    this.seriesStyleState.set(series, { options: { ...style }, paletteIndex: style.color ? null : slot });
+    series.bindStyleHandler((target, options) => this.setSeriesStyle(target, options));
     this.series.push(series);
     if (this.forcedColorsActive) this.applyForcedSeriesStyles();
     this.emitSeriesChange();
@@ -893,7 +902,7 @@ export class Chart {
     if (this.inspection?.series === series) this.inspection = null;
     const original = this.forcedOriginalStyles.get(series);
     if (original) {
-      series.setStyle(original);
+      series.applyResolvedStyle(original);
       this.forcedOriginalStyles.delete(series);
       this.applyForcedSeriesStyles();
     }
@@ -1086,6 +1095,7 @@ export class Chart {
     this.resolvedTheme = this.forcedColorsActive ? forcedColorsTheme(this.baseTheme, root) : this.baseTheme;
     root.style.background = this.resolvedTheme.backgroundCssColor;
     root.style.setProperty("--blazeplot-focus-ring", this.resolvedTheme.focusRingColor);
+    this.refreshSeriesStyles();
     this.applyForcedSeriesStyles();
     this.axisOverlay?.setOptions({ color: this.resolvedTheme.axisColor, font: this.resolvedTheme.axisFont });
     this.updateTextOverlays();
@@ -1265,11 +1275,55 @@ export class Chart {
     return new RingBuffer(capacity, { overflow: config.overflow, valuePrecision: config.valuePrecision, onInvalidSample: config.onInvalidSample });
   }
 
-  private resolveSeriesStyle(style: SeriesStyleOptions): SeriesStyle {
+  /** First theme palette slot no attached palette-colored series uses (the next slot in order when all are taken). */
+  private nextPaletteIndex(): number {
+    const size = this.baseTheme.seriesColors.length;
+    const used = new Set<number>();
+    for (const series of this.series) {
+      const slot = this.seriesStyleState.get(series)?.paletteIndex;
+      if (slot !== null && slot !== undefined) used.add(slot);
+    }
+    for (let slot = 0; slot < size; slot++) if (!used.has(slot)) return slot;
+    return this.series.length % size;
+  }
+
+  /** Merge `options` into a series' style: pin an explicit color, resolve, and respect forced colors. */
+  private setSeriesStyle(series: SeriesStore, options: SeriesStyleOptions): void {
+    const state = this.seriesStyleState.get(series);
+    if (!state) return;
+    const merged: Record<string, unknown> = { ...state.options };
+    for (const [key, value] of Object.entries(options)) {
+      if (value !== undefined) merged[key] = value;
+    }
+    state.options = merged as SeriesStyleOptions;
+    if (options.color) state.paletteIndex = null;
+    const resolved = this.resolveSeriesStyle(state.options, state.paletteIndex ?? this.nextPaletteIndex());
+    if (this.forcedColorsActive || this.forcedOriginalStyles.has(series)) {
+      this.forcedOriginalStyles.set(series, resolved);
+      this.applyForcedSeriesStyles();
+    } else {
+      series.applyResolvedStyle(resolved);
+    }
+    this.emitSeriesChange();
+  }
+
+  /** Re-resolve every series style from its stored options, so palette-colored series follow the theme. */
+  private refreshSeriesStyles(): void {
+    for (const series of this.series) {
+      const state = this.seriesStyleState.get(series);
+      if (!state) continue;
+      const resolved = this.resolveSeriesStyle(state.options, state.paletteIndex ?? this.nextPaletteIndex());
+      if (this.forcedColorsActive) this.forcedOriginalStyles.set(series, resolved);
+      else series.applyResolvedStyle(resolved);
+    }
+    if (!this.forcedColorsActive) this.forcedOriginalStyles.clear();
+  }
+
+  private resolveSeriesStyle(style: SeriesStyleOptions, paletteIndex: number): SeriesStyle {
     // The caller palette, not the forced-colors one: forced styles are applied on top and undone later.
     const palette = this.baseTheme.seriesColors;
     const root = this.layout.root;
-    const color = resolveThemeColor(style.color, palette[this.series.length % palette.length]!, root);
+    const color = resolveThemeColor(style.color, palette[paletteIndex % palette.length]!, root);
     const fillColor = resolveThemeColor(style.fillColor, withAlpha(color, 0.25), root);
     const barWidth = style.barWidth ?? 0.8;
     return {
@@ -1318,7 +1372,7 @@ export class Chart {
    */
   private applyForcedSeriesStyles(): void {
     if (!this.forcedColorsActive) {
-      for (const [series, style] of this.forcedOriginalStyles) series.setStyle(style);
+      for (const [series, style] of this.forcedOriginalStyles) series.applyResolvedStyle(style);
       this.forcedOriginalStyles.clear();
       return;
     }
@@ -1332,7 +1386,7 @@ export class Chart {
       }
       const color = palette[index % palette.length]!;
       const contrast = palette[(index + 1) % palette.length]!;
-      series.setStyle({ ...original, color, fillColor: withAlpha(color, 0.35), upColor: color, downColor: contrast, wickColor: color });
+      series.applyResolvedStyle({ ...original, color, fillColor: withAlpha(color, 0.35), upColor: color, downColor: contrast, wickColor: color });
     }
   }
 
@@ -1817,8 +1871,13 @@ export class Chart {
       return;
     }
 
-    const count = series.copyRawVisibleClipped(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
-    this.drawRawLine(count, series.style, projection, "raw");
+    for (let start = 0, done = false; !done;) {
+      const chunk = series.copyRawClippedChunk(viewport, start, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+      this.drawRawLine(chunk.count, series.style, projection, "raw");
+      // Resume at the last segment's end so consecutive chunks share a vertex and the seam stays closed.
+      start = chunk.next;
+      done = chunk.done || chunk.count === 0;
+    }
   }
 
   private drawAreaSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
@@ -1920,26 +1979,32 @@ export class Chart {
     }
 
     const range = series.visibleIndexRange(viewport, 1);
-    const count = series.copyRawRange(range.start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
-    if (count <= 0) return;
-
     const controller = this.controllerFor(series.config.yAxis);
-    if (!controller.isNonlinear("x") && !controller.isNonlinear("y")) {
-      this.uploadRawLineData(count, projection);
-      this.renderer.drawBarsInstanced(this.rawLineData, count, style, projection);
-      this.recordDraw("bars", count);
-      return;
-    }
-
-    // Nonlinear axes scale vertices on the CPU, so bars are expanded into transformed triangles.
+    const instanced = !controller.isNonlinear("x") && !controller.isNonlinear("y");
     const halfWidth = style.barWidth * 0.5;
-    for (let start = 0; start < count; start += BAR_TRIANGLE_CAPACITY) {
-      const batch = Math.min(BAR_TRIANGLE_CAPACITY, count - start);
-      for (let i = 0; i < batch; i++) {
-        const x = this.rawLineData[(start + i) * 2]!;
-        this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[(start + i) * 2 + 1]!);
+
+    // Draw every visible bar in upload-buffer sized chunks so exact series are never truncated.
+    for (let start = range.start; start < range.end;) {
+      const count = series.copyRawRange(start, range.end, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+      if (count <= 0) break;
+      start += count;
+
+      if (instanced) {
+        this.uploadRawLineData(count, projection);
+        this.renderer.drawBarsInstanced(this.rawLineData, count, style, projection);
+        this.recordDraw("bars", count);
+        continue;
       }
-      this.drawTriangleBatch(batch * 6, style.color, projection, "bars");
+
+      // Nonlinear axes scale vertices on the CPU, so bars are expanded into transformed triangles.
+      for (let offset = 0; offset < count; offset += BAR_TRIANGLE_CAPACITY) {
+        const batch = Math.min(BAR_TRIANGLE_CAPACITY, count - offset);
+        for (let i = 0; i < batch; i++) {
+          const x = this.rawLineData[(offset + i) * 2]!;
+          this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[(offset + i) * 2 + 1]!);
+        }
+        this.drawTriangleBatch(batch * 6, style.color, projection, "bars");
+      }
     }
   }
 

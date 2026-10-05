@@ -3,7 +3,7 @@ import type { MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
 import { createValueArray } from "./valueArray.js";
 import type { BufferOverflowStrategy, InvalidSample, TimeRange, ValuePrecision } from "./types.js";
-import { MAX_X, MIN_X, firstInvalidX, invalidSampleWarning, invalidXReason } from "./validation.js";
+import { assertEqualLengths, MAX_X, MIN_X, firstInvalidX, invalidSampleWarning, invalidXReason } from "./validation.js";
 
 /** Options for `RingBuffer`. */
 export interface RingBufferOptions {
@@ -113,7 +113,8 @@ export class RingBuffer {
    * storing anything).
    */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
-    let requested = Math.min(x.length, y.length);
+    assertEqualLengths("RingBuffer.append", { x, y });
+    let requested = x.length;
     if (requested <= 0) return;
 
     // drop-new stores at most `limit` samples; later valid samples are dropped without

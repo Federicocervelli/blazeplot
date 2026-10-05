@@ -64,13 +64,9 @@ describe("StaticDataset", () => {
       .toThrow(RangeError);
   });
 
-  it("handles mismatched x and y lengths", () => {
-    const ds = new StaticDataset(
-      new Float64Array([0, 1, 2]),
-      new Float32Array([10, 20]),
-    );
-
-    expect(ds.length).toBe(2);
+  it("rejects mismatched x and y lengths", () => {
+    expect(() => new StaticDataset(new Float64Array([0, 1, 2]), new Float32Array([10, 20])))
+      .toThrow("StaticDataset: x has 3 values but y has 2.");
   });
 
   it("finds lower bound for x", () => {

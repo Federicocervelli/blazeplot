@@ -1,4 +1,4 @@
-import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRange, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesSample } from "./types.js";
+import type { Dataset, AppendableDataset, YAppendableDataset, UpdatableDataset, YUpdatableDataset, OhlcDataset, XRange, XRangeDataset, RangeMinMaxDataset, RangeSampleCopyDataset, VisibleSampleCopyDataset, VisiblePointCopyDataset, MinMaxSegmentCopyDataset, Viewport, TimeRange, SeriesConfig, SeriesStyle, SeriesStyleOptions, SeriesSample } from "./types.js";
 import { MinMaxPyramid } from "./MinMaxPyramid.js";
 import type { MinMaxY } from "./MinMaxTree.js";
 
@@ -194,6 +194,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   /** Only allocated for downsampled custom datasets that cannot answer `rangeMinMaxY` themselves. */
   private readonly pyramid: MinMaxPyramid | null;
   private readonly onChange?: (change: SeriesChange) => void;
+  private styleHandler?: (series: SeriesStore, options: SeriesStyleOptions) => void;
 
   private _dirty: boolean = false;
   private _forceFullPyramidRebuild: boolean = false;
@@ -201,6 +202,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   private _lastBuildLength: number = 0;
   private _lastBuildRangeStart: number = NaN;
   private _visible: boolean = true;
+  private _dataVersion: number = 0;
 
   /** @internal Charts create series; use `chart.addSeries(...)` or a typed `chart.add*` helper. */
   constructor(dataset: D, config: SeriesConfig, style: SeriesStyle, onChange?: (change: SeriesChange) => void) {
@@ -229,6 +231,11 @@ export class SeriesStore<D extends Dataset = Dataset> {
     return this.isServerMinMax;
   }
 
+  /** @internal Counter that changes whenever the series reports a data change; lets overlays cache derived geometry. */
+  get dataVersion(): number {
+    return this._dataVersion;
+  }
+
   /** Number of samples in the backing dataset. */
   get length(): number {
     return this.dataset.length;
@@ -244,8 +251,24 @@ export class SeriesStore<D extends Dataset = Dataset> {
     return this.dataset.range;
   }
 
-  /** @internal Replace the resolved style, e.g. while the OS forces high-contrast colors. The chart re-renders. */
-  setStyle(style: SeriesStyle): void {
+  /**
+   * Merge style options into the series' style and redraw on the next frame. Omitted (or
+   * `undefined`) fields keep their current value; CSS colors resolve against the chart root.
+   * Setting `color` pins it, so later theme changes no longer recolor this series. Updates
+   * survive forced-colors mode being turned off.
+   */
+  setStyle(options: SeriesStyleOptions): void {
+    if (!this.styleHandler) throw new TypeError("series.setStyle(...) is only available on series attached through a chart.");
+    this.styleHandler(this as SeriesStore, options);
+  }
+
+  /** @internal Route `setStyle` through the owning chart, which resolves colors and forced-colors state. */
+  bindStyleHandler(handler: (series: SeriesStore, options: SeriesStyleOptions) => void): void {
+    this.styleHandler = handler;
+  }
+
+  /** @internal Replace the resolved style, e.g. while the OS forces high-contrast colors. */
+  applyResolvedStyle(style: SeriesStyle): void {
     (this as { style: SeriesStyle }).style = style;
   }
 
@@ -405,6 +428,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
   }
 
   private markDataMutated(forceFullPyramidRebuild: boolean): void {
+    this._dataVersion++;
     this._dirty = true;
     this._forceFullPyramidRebuild ||= forceFullPyramidRebuild;
     this.onChange?.("data");
@@ -422,6 +446,7 @@ export class SeriesStore<D extends Dataset = Dataset> {
     this.pyramid?.build(this.dataset);
     this._lastBuildLength = this.dataset.length;
     this._lastBuildRangeStart = this.dataset.range?.start ?? NaN;
+    this._dataVersion++;
     this._dirty = false;
     this.onChange?.("data");
   }
@@ -540,6 +565,56 @@ export class SeriesStore<D extends Dataset = Dataset> {
       yMax = Math.max(yMax, this.style.baseline);
     }
     return { xMin, xMax, yMin, yMax };
+  }
+
+  /**
+   * @internal Write `[minY, maxY]` for each of `bucketCount` equal-width X buckets spanning
+   * `[xMin, xMax]` into `target` (`NaN` pair when a bucket holds no non-gap sample). Bucket edges
+   * are found by binary search and extremes come from the shared min/max tree, so the cost is
+   * O(buckets * log n) for the built-in datasets. Bars and areas include their baseline.
+   */
+  copyXBucketBounds(xMin: number, xMax: number, bucketCount: number, target: Float64Array): void {
+    const count = Math.min(Math.max(0, Math.floor(bucketCount)), target.length >> 1);
+    target.fill(NaN, 0, count * 2);
+    if (count === 0 || this.dataset.length <= 0 || !(xMax > xMin)) return;
+
+    const includeBaseline = (this.config.mode === "area" || this.config.mode === "bar") && Number.isFinite(this.style.baseline);
+    const rangeMinMax = this.caps.ohlc ? null : this.caps.rangeMinMax;
+    const fast = rangeMinMax !== null && !this.caps.xRange && (!this.caps.gaps || rangeMinMax.rangeMinMaxExcludesGaps === true);
+    const span = xMax - xMin;
+    let start = this.dataset.lowerBoundX(xMin);
+    for (let b = 0; b < count; b++) {
+      const isLast = b === count - 1;
+      const bucketMin = xMin + (span * b) / count;
+      const bucketMax = xMin + (span * (b + 1)) / count;
+      const end = isLast ? this.dataset.upperBoundX(xMax) : this.dataset.lowerBoundX(bucketMax);
+      let minY = NaN;
+      let maxY = NaN;
+      if (end > start) {
+        if (fast) {
+          const range = rangeMinMax.rangeMinMaxY(start, end);
+          if (range) {
+            minY = range.minY;
+            maxY = range.maxY;
+          }
+        } else {
+          const bounds = this.dataBounds({ xMin: bucketMin, xMax: isLast ? xMax : bucketMax });
+          if (bounds) {
+            minY = bounds.yMin;
+            maxY = bounds.yMax;
+          }
+        }
+      }
+      if (Number.isFinite(minY) && Number.isFinite(maxY)) {
+        if (includeBaseline && fast) {
+          minY = Math.min(minY, this.style.baseline);
+          maxY = Math.max(maxY, this.style.baseline);
+        }
+        target[b * 2] = minY;
+        target[b * 2 + 1] = maxY;
+      }
+      start = Math.max(start, end);
+    }
   }
 
   /** @internal Find the nearest non-gap sample by X value, optionally constrained to a viewport. */
@@ -710,20 +785,35 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /** @internal Copy visible XY samples with the line clipped to the viewport's X edges. */
   copyRawVisibleClipped(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
-    if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
+    return this.copyRawClippedChunk(viewport, 0, target, maxPoints, xOrigin).count;
+  }
 
-    const start = Math.max(0, this.dataset.lowerBoundX(viewport.xMin) - 1);
-    const end = Math.min(this.dataset.length, this.dataset.upperBoundX(viewport.xMax) + 1);
-    if (end - start <= 0) return 0;
+  /**
+   * @internal Copy one chunk of the X-clipped line starting at logical index `start`.
+   * Returns the vertex count and the index to resume from (`done` once the visible range is exhausted).
+   * Each chunk holds whole segments, so consecutive chunks join without a seam gap.
+   */
+  copyRawClippedChunk(
+    viewport: Viewport,
+    start: number,
+    target: Float32Array,
+    maxPoints: number,
+    xOrigin: number = 0,
+  ): { count: number; next: number; done: boolean } {
+    if (maxPoints < 2 || target.length < maxPoints * 2) return { count: 0, next: start, done: true };
+
+    const range = this.visibleIndexRange(viewport, 1);
+    const from = Math.max(range.start, start);
+    const end = range.end;
+    if (end - from <= 0) return { count: 0, next: end, done: true };
 
     let count = 0;
     let lastX = NaN;
     let lastY = NaN;
     let lastWasGap = false;
-    const addPoint = (x: number, y: number): boolean => {
+    const addPoint = (x: number, y: number): void => {
       const outX = x - xOrigin;
-      if (!lastWasGap && count > 0 && outX === lastX && y === lastY) return true;
-      if (count >= maxPoints) return false;
+      if (!lastWasGap && count > 0 && outX === lastX && y === lastY) return;
       const offset = count * 2;
       target[offset] = outX;
       target[offset + 1] = y;
@@ -731,11 +821,9 @@ export class SeriesStore<D extends Dataset = Dataset> {
       lastX = outX;
       lastY = y;
       lastWasGap = false;
-      return true;
     };
-    const addGap = (): boolean => {
-      if (count === 0 || lastWasGap) return true;
-      if (count >= maxPoints) return false;
+    const addGap = (): void => {
+      if (count === 0 || lastWasGap) return;
       const offset = count * 2;
       target[offset] = NaN;
       target[offset + 1] = NaN;
@@ -743,36 +831,38 @@ export class SeriesStore<D extends Dataset = Dataset> {
       lastX = NaN;
       lastY = NaN;
       lastWasGap = true;
-      return true;
     };
 
-    if (end - start === 1) {
-      const x = this.dataset.getX(start);
-      const y = this.dataset.getY(start);
-      if (x < viewport.xMin || x > viewport.xMax || this.isGap(start, y)) return 0;
-      return addPoint(x, y) ? count : 0;
+    if (range.end - range.start === 1) {
+      const x = this.dataset.getX(from);
+      const y = this.dataset.getY(from);
+      if (x < viewport.xMin || x > viewport.xMax || this.isGap(from, y)) return { count: 0, next: end, done: true };
+      addPoint(x, y);
+      return { count, next: end, done: true };
     }
 
-    for (let i = start; i + 1 < end; i++) {
+    let i = from;
+    for (; i + 1 < end; i++) {
+      // A segment emits at most two points; stop before the buffer could overflow.
+      if (count + 2 > maxPoints) return { count, next: i, done: false };
       const x0 = this.dataset.getX(i);
       const y0 = this.dataset.getY(i);
       const x1 = this.dataset.getX(i + 1);
       const y1 = this.dataset.getY(i + 1);
       if (x1 < viewport.xMin || x0 > viewport.xMax) continue;
       if (this.isGap(i, y0) || this.isGap(i + 1, y1)) {
-        if (!addGap()) break;
+        addGap();
         continue;
       }
 
       const clippedX0 = Math.max(x0, viewport.xMin);
       const clippedX1 = Math.min(x1, viewport.xMax);
       if (clippedX1 < clippedX0) continue;
-      const clippedY0 = interpolateY(x0, y0, x1, y1, clippedX0);
-      const clippedY1 = interpolateY(x0, y0, x1, y1, clippedX1);
-      if (!addPoint(clippedX0, clippedY0) || !addPoint(clippedX1, clippedY1)) break;
+      addPoint(clippedX0, interpolateY(x0, y0, x1, y1, clippedX0));
+      addPoint(clippedX1, interpolateY(x0, y0, x1, y1, clippedX1));
     }
 
-    return count;
+    return { count, next: i, done: true };
   }
 
   /** @internal Copy a logical XY range into a render buffer; gaps are written as NaN. */

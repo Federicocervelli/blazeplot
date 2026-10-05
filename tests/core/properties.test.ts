@@ -475,11 +475,11 @@ describe("invalid input: documented current behavior", () => {
     expect(() => StaticDataset.fromObjects([{ x: NaN, y: 1 }], { x: "x", y: "y" })).toThrow(RangeError);
   });
 
-  it("mismatched X/Y lengths use the shorter array", () => {
-    expect(new StaticDataset([1, 2, 3], [1, 2]).length).toBe(2);
+  it("mismatched X/Y lengths throw and leave the data unchanged", () => {
+    expect(() => new StaticDataset([1, 2, 3], [1, 2])).toThrow(RangeError);
     const ring = new RingBuffer(8);
-    ring.append([1, 2, 3], [1, 2]);
-    expect(ring.length).toBe(2);
+    expect(() => ring.append([1, 2, 3], [1, 2])).toThrow(RangeError);
+    expect(ring.length).toBe(0);
   });
 
   it("UniformRingBuffer ignores X passed to append after seeding", () => {
