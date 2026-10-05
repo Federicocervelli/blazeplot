@@ -92,7 +92,7 @@ jobs:
           - shard: interaction-a11y
             command: bun run test:browser:ui
           - shard: stability
-            command: bun run test:stability
+            command: bun run test:browser:stability
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup

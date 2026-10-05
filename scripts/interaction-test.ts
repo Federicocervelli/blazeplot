@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RobustnessResults } from "../tests/browser/interaction/robustness.ts";
-import { CdpClient, closeTarget, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
+import { CdpClient, closeTarget, createTarget, evaluate, parseTestRenderer, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, testRendererFromEnv, waitForHttp, withTestRenderer } from "./browser-harness.js";
+import type { TestRenderer } from "./browser-harness.js";
 import { decodePng, encodePng } from "./png-image.js";
 import type { RgbaImage } from "./png-image.js";
 
@@ -20,6 +21,8 @@ interface Options {
   cases: string[];
   /** Where the forced-colors case writes its review screenshots. */
   outDir: string;
+  /** Engine the fixture charts use (`--renderer` or `BLAZEPLOT_TEST_RENDERER`); the fixture's WebGL2 default when unset. */
+  renderer?: TestRenderer;
 }
 
 interface RectSnapshot {
@@ -1009,7 +1012,7 @@ async function openCase(options: Options, serverUrl: string, caseName: string): 
     await closeTarget(options.debugPort, openTargetId);
     openTargetId = null;
   }
-  const url = new URL("/interaction/", serverUrl);
+  const url = withTestRenderer(new URL("/interaction/", serverUrl), options.renderer);
   url.searchParams.set("case", caseName);
   const target = await createTarget(options.debugPort, url.toString());
   openTargetId = target.id;
@@ -1023,7 +1026,7 @@ async function openCase(options: Options, serverUrl: string, caseName: string): 
 }
 
 function parseArgs(args: readonly string[]): Options {
-  const parsed: Options = { width: 900, height: 520, port: 41733, debugPort: 9225, timeoutMs: 30_000, keepBrowser: false, cases: [], outDir: "build/visual-tests/forced-colors" };
+  const parsed: Options = { width: 900, height: 520, port: 41733, debugPort: 9225, timeoutMs: 30_000, keepBrowser: false, cases: [], outDir: "build/visual-tests/forced-colors", renderer: testRendererFromEnv() };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg) continue;
@@ -1044,6 +1047,7 @@ function parseArgs(args: readonly string[]): Options {
       case "--chrome": parsed.chrome = readValue(); break;
       case "--keep-browser": parsed.keepBrowser = true; break;
       case "--case": parsed.cases.push(readValue()); break;
+      case "--renderer": parsed.renderer = parseTestRenderer(readValue()); break;
       case "--out-dir": parsed.outDir = readValue(); break;
       case "--help": case "-h": printHelpAndExit(); break;
       default: throw new Error(`Unknown argument: ${arg}`);

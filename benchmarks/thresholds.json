@@ -11,5 +11,16 @@
     "drawCallsP95": { "baseline": 4, "headroom": 1.2, "description": "Draw calls per frame, p95 (deterministic)" },
     "pointsRenderedP95": { "baseline": 28306, "headroom": 1.15, "description": "Points rendered per frame, p95 (deterministic)" },
     "uploadBytesP95": { "baseline": 226752, "headroom": 1.15, "description": "GPU upload bytes per frame, p95 (deterministic)" }
+  },
+  "renderers": {
+    "canvas2d": {
+      "metrics": {
+        "frameP50Ratio": { "baseline": 0.1713, "headroom": 1.7, "description": "Chart frame work p50 (ms) divided by the in-page calibration workload (ms), Canvas 2D engine" },
+        "frameP95Ratio": { "baseline": 0.585, "description": "Chart frame work p95 (ms) divided by the in-page calibration workload (ms), Canvas 2D engine" },
+        "ingestRatio": { "baseline": 5.7, "description": "Initial 1M-sample fill time (ms) divided by the in-page calibration workload (ms)" },
+        "drawCallsP95": { "baseline": 4, "headroom": 1.2, "description": "Draw calls per frame, p95 (deterministic)" },
+        "pointsRenderedP95": { "baseline": 28306, "headroom": 1.15, "description": "Points rendered per frame, p95 (deterministic)" }
+      }
+    }
   }
 }
