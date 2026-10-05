@@ -61,13 +61,13 @@ afterEach(() => {
 });
 
 describe("Chart construct / dispose", () => {
-  it("mounts DOM under the target and creates a fixed set of GPU buffers", () => {
+  it("mounts DOM under the target and holds one live backend", () => {
     const chart = make({ title: "Hello" });
     expect(target.children).toHaveLength(1);
     expect(target.firstElementChild).toBe(chart.rootElement);
     expect(chart.rootElement.contains(chart.canvas)).toBe(true);
     expect(backends).toHaveLength(1);
-    expect(backends[0]!.liveBuffers.size).toBe(3);
+    expect(backends[0]!.liveResourceCount).toBe(1);
     chart.dispose();
   });
 
@@ -225,12 +225,37 @@ describe("Chart resize", () => {
   });
 });
 
+describe("Chart GPU uploads", () => {
+  it("submits one stream per frame regardless of series and chunk count", () => {
+    const render = (seriesCount: number): { submits: number; draws: number } => {
+      const chart = make({ grid: true });
+      for (let i = 0; i < seriesCount; i++) {
+        const mode = i % 4;
+        const series = mode === 0 ? chart.addLine({ capacity: 64 }) : mode === 1 ? chart.addBar({ capacity: 64 }) : mode === 2 ? chart.addScatter({ capacity: 64 }) : chart.addArea({ capacity: 64 });
+        for (let j = 0; j < 32; j++) series.append({ x: j, y: j + i });
+      }
+      chart.fitToData();
+      chart.start();
+      raf.flush();
+      const backend = backends.at(-1)!;
+      const stats = { submits: backend.submits, draws: backend.draws.length };
+      chart.dispose();
+      return stats;
+    };
+
+    const few = render(2);
+    const many = render(40);
+    expect(few.submits).toBe(1);
+    expect(many.submits).toBe(1);
+    expect(many.draws).toBeGreaterThan(few.draws);
+  });
+});
+
 describe("Chart series churn", () => {
-  it("returns GPU resource counts and DOM to baseline after add/remove loops", () => {
+  it("returns DOM and listeners to baseline after add/remove loops", () => {
     const chart = make({ axes: { x: true, y: true, y2: true } });
     chart.start();
     raf.flush();
-    const backend = backends[0]!;
     const cycle = (): void => {
       const line = chart.addLine({ capacity: 32 });
       const bars = chart.addBar({ capacity: 32 });
@@ -245,11 +270,7 @@ describe("Chart series churn", () => {
       expect(chart.removeSeries(bars)).toBe(true);
       expect(chart.removeSeries(scatter)).toBe(true);
     };
-    // Warm-up: the renderer lazily allocates shared buffers (e.g. static quad corners) once.
     cycle();
-    const baselineBuffers = backend.liveBuffers.size;
-    const baselineCreated = backend.createdBuffers;
-    const baselinePrograms = backend.livePrograms.size;
     const baselineNodes = countNodes(chart.rootElement);
     const baselineListeners = ledger.net();
 
@@ -257,9 +278,6 @@ describe("Chart series churn", () => {
     raf.flush();
 
     expect(chart.getSeriesState()).toHaveLength(0);
-    expect(backend.liveBuffers.size).toBe(baselineBuffers);
-    expect(backend.createdBuffers).toBe(baselineCreated);
-    expect(backend.livePrograms.size).toBe(baselinePrograms);
     expect(countNodes(chart.rootElement)).toBe(baselineNodes);
     expect(ledger.net()).toBe(baselineListeners);
     expect(raf.pending.size).toBeLessThanOrEqual(1);
@@ -621,13 +639,6 @@ describe("Chart WebGL2 availability", () => {
     expect(target.querySelector(".blazeplot-root")).toBeNull();
   });
 
-  it("disposes the backend and DOM when buffer creation fails", () => {
-    const backend = new FakeBackend();
-    backend.createBuffer = () => { throw new Error("out of memory"); };
-    expect(() => new Chart(target, { backendFactory: () => backend })).toThrow("out of memory");
-    expect(backend.destroyCount).toBe(1);
-    expect(target.children).toHaveLength(0);
-  });
 });
 
 describe("Chart WebGL context loss", () => {
@@ -675,7 +686,7 @@ describe("Chart WebGL context loss", () => {
     expect(backends).toHaveLength(2);
     const fresh = backends[1]!;
     expect(old.destroyCount).toBe(1);
-    expect(fresh.liveBuffers.size).toBe(3);
+    expect(fresh.liveResourceCount).toBe(1);
     let renders = 0;
     chart.subscribe("render", () => renders++);
     raf.flush();

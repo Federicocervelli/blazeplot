@@ -1,13 +1,14 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import type { BufferSpec, DrawSpec, GpuBackend, GpuBuffer, GpuCapabilities, GpuProgram, GpuResource } from "../../src/render/types.ts";
+import type { DrawCommand, GpuBackend } from "../../src/render/types.ts";
 
-/** GPU backend that records every resource it hands out so tests can assert on leaks. */
+/** GPU backend that records submitted frames so tests can assert on draw and upload counts. */
 export class FakeBackend implements GpuBackend {
-  readonly capabilities: GpuCapabilities = { instancing: true };
-  readonly liveBuffers = new Set<GpuBuffer>();
-  readonly livePrograms = new Set<GpuProgram>();
-  createdBuffers = 0;
-  draws: DrawSpec[] = [];
+  /** Every draw command received, in submission order. */
+  draws: DrawCommand[] = [];
+  /** Number of `submit` calls, i.e. stream uploads. */
+  submits = 0;
+  /** Floats uploaded across all submits. */
+  uploadedFloats = 0;
   destroyCount = 0;
   contextLost = false;
   /** Times `WEBGL_lose_context.loseContext()` was called on this backend's context. */
@@ -22,28 +23,15 @@ export class FakeBackend implements GpuBackend {
     this.canvas = canvas;
   }
 
+  /** 1 while the backend holds its GPU objects, 0 once destroyed. */
   get liveResourceCount(): number {
-    return this.liveBuffers.size + this.livePrograms.size;
+    return this.destroyCount > 0 ? 0 : 1;
   }
 
-  createBuffer(spec: BufferSpec): GpuBuffer {
-    const buffer: GpuBuffer = { kind: "buffer", length: spec.length, type: spec.type };
-    this.createdBuffers++;
-    this.liveBuffers.add(buffer);
-    return buffer;
-  }
-  updateBuffer(): void {}
-  createProgram(): GpuProgram {
-    const program: GpuProgram = { kind: "program" };
-    this.livePrograms.add(program);
-    return program;
-  }
-  draw(spec: DrawSpec): void {
-    this.draws.push(spec);
-  }
-  dispose(resource: GpuResource): void {
-    this.liveBuffers.delete(resource as GpuBuffer);
-    this.livePrograms.delete(resource as GpuProgram);
+  submit(_stream: Float32Array, floatCount: number, commands: readonly DrawCommand[]): void {
+    this.submits++;
+    this.uploadedFloats += floatCount;
+    this.draws.push(...commands);
   }
   clear(): void {}
   viewport(): void {}
@@ -52,8 +40,6 @@ export class FakeBackend implements GpuBackend {
   }
   destroy(): void {
     this.destroyCount++;
-    this.liveBuffers.clear();
-    this.livePrograms.clear();
   }
 }
 
