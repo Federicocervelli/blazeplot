@@ -14,23 +14,25 @@ Stability tiers are defined here and apply per export. The [API reference](./api
 
 Anything not exported from a documented entry point is private, even if you can reach it through a bundler or deep import. The `exports` map in `package.json` blocks deep imports such as `blazeplot/dist/...`. Members marked `@internal` in source are stripped from the published `.d.ts` files (`stripInternal`), so they do not appear in your editor.
 
-Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for stable items; the [migration guide](./versioning-and-migration.md#migrating-to-05) lists the last round. The tiers below describe the contract that starts at 1.0.
+Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for stable items; the [migration guide](./versioning-and-migration.md#migrating-to-05) lists the last round. The same holds for the `1.0.0-rc.N` release candidates, which have still changed names and defaults between candidates (see the changelogs). The tiers below describe the contract that starts at 1.0.
 
 ## Package format
 
 - **ESM only.** `package.json` has `"type": "module"` and every export has only an `import` condition. `require("blazeplot")` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`; use `import` or a dynamic `import()` from CommonJS. There is no UMD or CommonJS build.
 - **Types** ship as `.d.ts` files next to each entry (`types` condition). See [TypeScript support](./versioning-and-migration.md#typescript-support) for the supported compiler versions.
 - **Tree shaking:** `"sideEffects": false`. Optional features live in subpath entries so chart-only apps do not pay for them.
-- **Browser only.** Charts need WebGL2 and the DOM. See [Browser support](./browser-support.md).
+- **Browser only.** Charts need the DOM and, with the default renderer, WebGL2 (the Canvas 2D renderer needs only a 2D canvas). See [Browser support](./browser-support.md).
 
 ## Stability by entry point
 
 | Entry point | Tier | Notes |
 |---|---|---|
-| `blazeplot` | Stable, with the exceptions listed in the tables below | Chart, datasets, data contracts, theming, `isWebGL2Available`, `WebGL2UnavailableError`. |
+| `blazeplot` | Stable, with the exceptions listed in the tables below | Chart, datasets, data contracts, theming, renderer-selection types, `isWebGL2Available`, `WebGL2UnavailableError`. |
 | `blazeplot/linked` | Stable | `createLinkedCharts` and its option/handle types. |
 | `blazeplot/data` | Stable | `binSamples`, `rollingMean`, and their types (pure, chart-agnostic transforms). |
 | `blazeplot/export` | Stable | `exportChartData`, `chartDataToCsv`, `downloadBlob`, `downloadChartScreenshot`, `copyChartScreenshotToClipboard`, and their types. |
+| `blazeplot/renderers/canvas2d` | Stable | `canvas2dRenderer`, `autoRenderer`, `Canvas2DUnavailableError`. The factories are the contract; the renderer they return is opaque. |
+| `blazeplot/renderers/shared` | Stable | `sharedRenderer`, `createChartRenderContext`, `ChartRenderContext`. Same: the factories and the context handle are the contract. |
 | `blazeplot/plugins/legend` | Stable | Options may grow; existing option names are kept. |
 | `blazeplot/plugins/tooltip` | Stable | Same. |
 | `blazeplot/plugins/interactions` | Stable | Same. |
@@ -47,8 +49,8 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 
 | Area | Exports | Tier |
 |---|---|---|
-| Chart | `Chart` (constructor, `add*` helpers, `addSeries`, viewport/pan/zoom/fit methods, latest-X follow methods (`followX`, `stopFollowX`, `setFollowXPaused`, `getFollowXState`), `pick`, `subscribe` for the events in `ChartEventMap`, `screenshot`, `start`, `stop`, `dispose`, `resize`, `setTheme`, and the `rootElement` and `theme` getters) and the option/result types it uses (`ChartOptions`, `AxisConfig`, `ChartPickItem`, `ChartHoverState`, and friends) | Stable |
-| Series handles | `SeriesStore` public methods (`append`, `updateAt`, `updateLast`, `replace`, `clear`, `setVisible`, `sampleAt`, `markDirty`, and so on) | Stable |
+| Chart | `Chart` (constructor, `add*` helpers, `addSeries`, viewport/pan/zoom/fit methods, latest-X follow methods (`followX`, `stopFollowX`, `setFollowXPaused`, `getFollowXState`), `pick`, `subscribe` for the events in `ChartEventMap` (including `viewportchange` with its `source` and `followxchange`), `screenshot`, `start`, `stop`, `dispose`, `resize`, `setTheme`, `setAxes`, `setGridVisible`, and the `rootElement`, `theme`, and `renderer` getters) and the option/result types it uses (`ChartOptions`, `AxisConfig`, `ChartPickItem`, `ChartHoverState`, and friends). `ChartOptions.renderer` takes `"webgl2"` or a factory from `blazeplot/renderers/*` | Stable |
+| Series handles | `SeriesStore` public methods (`append`, `updateAt`, `updateLast`, `replace`, `clear`, `setVisible`, `setStyle`, `sampleAt`, `markDirty`, and so on) | Stable |
 | Datasets | `RingBuffer`, `UniformRingBuffer`, `StaticDataset`, `OhlcRingBuffer`, `StaticOhlcDataset`, `ServerSampledDataset`, `HistogramDataset`, `histogram` | Stable |
 | Dataset contract | `Dataset`, `AppendableDataset`, `YAppendableDataset`, `UpdatableDataset`, `YUpdatableDataset`, `OhlcDataset`, `SeriesConfig`, `SeriesStyle`, `Viewport`, `TimeRange`, `XRange`, `BufferOverflowStrategy`, `ValuePrecision`, `DownsampleStrategy`, `SeriesMode` | Stable. See [Data semantics](./data-semantics.md). |
 | Theming | `DEFAULT_CHART_THEME`, `LIGHT_CHART_THEME`, `ChartTheme`, `ResolvedChartTheme`, `ThemeColor`, `RgbaColor` | Stable. New theme tokens may be added; existing token names are kept. |
@@ -56,7 +58,7 @@ Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for 
 | Viewport policy | `ViewportPolicy`, `PanIntent`, `ZoomIntent`, `ZoomAxis` | Stable |
 | Axes | `AxisScale`, `AxisTickFormat`, `AxisTickFormatter`, `AxisTimeZone`, `BuiltInAxisScale`, `AxisConfig` | Stable |
 | WebGL2 availability | `isWebGL2Available`, `WebGL2UnavailableError` | Stable. See [Error handling](./error-handling.md). |
-| Plugin contract | `ChartPlugin`, `ChartPluginHandle` (with its `dispose`, `onResize`, `onThemeChange`, `onContextLost`, `onContextRestored` hooks), `ChartPluginContext` and its groups (`ChartPluginCoords` including `format`, `ChartPluginViewport`, `ChartPluginState` including `inspect`/`getInspection` with `ChartInspectionTarget`, `ChartPluginLayout`, `ChartPluginDom`, `ChartPluginEvents`), `ChartPluginEventMap`, `ChartPluginEventName`, `ChartMountSlot`, `ChartSurface`, `ChartSurfaceDecoration`, `ChartSurfaceStyle`, `ChartRect`, `ChartPlotSize`, `ChartLayoutReservation`, and the install/hook/dispose order | Stable, except `ctx.unstable` (below). New groups, members, slots, surfaces, hooks, and plugin events may be added in a minor release; existing ones keep their names and behavior. The built-in plugins are written against this surface only. See [Plugin authoring](./plugin-authoring.md). |
+| Plugin contract | `ChartPlugin`, `ChartPluginHandle` (with its `dispose`, `onResize`, `onThemeChange`, `onContextLost`, `onContextRestored` hooks), `ChartPluginContext` and its groups (`ChartPluginCoords` including `format`, `ChartPluginViewport`, `ChartPluginState` including `inspect`/`getInspection` with `ChartInspectionTarget`, `ChartPluginLayout`, `ChartPluginDom` including `document`, `view`, and `claimPointer`, `ChartPluginEvents`), `ChartPluginEventMap`, `ChartPluginEventName`, `ChartMountSlot`, `ChartSurface`, `ChartSurfaceDecoration`, `ChartSurfaceStyle`, `ChartRect`, `ChartPlotSize`, `ChartLayoutReservation`, and the install/hook/dispose order | Stable, except `ctx.unstable` (below). New groups, members, slots, surfaces, hooks, and plugin events may be added in a minor release; existing ones keep their names and behavior. The built-in plugins are written against this surface only. See [Plugin authoring](./plugin-authoring.md). |
 
 ## Experimental
 
@@ -80,7 +82,8 @@ These are not an API for application code. The GPU backend types (`GpuBackend`, 
 | Item | Notes |
 |---|---|
 | `ChartOptions.backendFactory` and the backend types it takes | Marked `@internal` and stripped from published declarations. It exists for test fakes; shaders are written for the built-in renderer. Not covered by semver promises. |
-| `ChartPluginContext.unstable.getWebGLContext()` (`@experimental`) | Escape hatch to the raw `WebGL2RenderingContext`. The chart may recreate GPU state after context loss. State you change on it can interfere with rendering. |
+| `ChartPluginContext.unstable.getWebGLContext()` (`@experimental`) | Escape hatch to the raw `WebGL2RenderingContext`; `null` with the Canvas 2D and shared WebGL renderers. The chart may recreate GPU state after context loss. State you change on it can interfere with rendering. |
+| The `ChartRenderer` drawing interface and the renderer classes behind the factories | `ChartRenderer` is marked `@internal` and stripped from published declarations. Only the opaque `ChartRendererHandle` (`kind`), `ChartRendererFactory`, `ChartRendererFactoryContext`, and `ChartRendererKind` are public; custom renderers are not supported. |
 | `/** @internal */` members | Stripped from published declarations. If you reach them through casts, expect breakage in patch releases. |
 | Generated DOM structure and `blazeplot-*` class names | Styling hooks you pass through `className` options are stable; the markup the chart generates around them is not. The documented ARIA contract in [Accessibility](./accessibility.md) is stable. |
 | Bundle chunk names such as `dist/Chart-*.js` | Hashed output files. Import only the documented entry points. |

@@ -39,7 +39,7 @@ The minimum is enforced in CI: the `typescript-floor` job installs the packed pa
 
 ## Migrating to 1.0
 
-See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes since 0.5.5 (removed GPU backend exports, typed `select` events, the grouped and now stable plugin context, non-finite X handling), the experimental tier, ESM/TypeScript requirements, and a checklist.
+See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes since 0.5.5 (removed GPU backend exports, typed `select` events, the grouped and now stable plugin context, one X rule for every dataset, the export and follow-API renames, `addHistogram` removal, keyboard handling moved into `interactionsPlugin`, mismatched array lengths throwing, new gesture and rendering defaults), the experimental tier, ESM/TypeScript requirements, and a checklist.
 
 ## Migrating to 0.5
 
@@ -82,7 +82,7 @@ See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes 
 | `RingBuffer.get(i)` | `getX(i)`/`getY(i)`, or `series.sampleAt(i)` |
 | `OhlcRingBuffer.updateLast(…)` | `series.updateLast({ open, high, low, close })` or `dataset.updateAt(i, …)` |
 | `UniformRingBufferOptions.blockSize` | Removed (internal tuning) |
-| `ReglBackend` | `WebGL2Backend` |
+| `ReglBackend` | Removed. GPU backends are internal in 1.0 (not exported from `blazeplot`); use `isWebGL2Available()`, `WebGL2UnavailableError`, and the `renderer` option |
 | `MinMaxPyramid`, `DataCursor`, `Renderer`, `ShaderPrograms`, `WebGL2Resources`, `AxisController` value exports | Internal; no replacement needed |
 | `MinMaxSegmentCopyDataset.copyMinMaxSegments(viewport, target, max, layout, xOrigin)` | `copyMinMaxSegments(viewport, target, max, xOrigin)`, always writing `[x, minY, maxY]` triples |
 | `SeriesDataBounds`, `SelectionBounds` | `Viewport` |
@@ -105,6 +105,8 @@ Behavior changes worth checking:
 4. If you use custom datasets, re-check the assumptions in [Data semantics](./data-semantics.md).
 5. If you use React, verify that the effect creating `Chart` disposes it on cleanup.
 6. If you use subpath imports, run your bundler against the production build so export-map mistakes are caught early.
+7. If you use plugins, create one instance per chart, and re-check wheel and touch behavior on scrolling pages (see the cooperative-gesture options in [Troubleshooting](./troubleshooting.md#page-scrolling-and-chart-gestures)).
+8. If you filter `viewportchange` events, use the `source` field to tell user gestures from follow, fit, linked, and API updates.
 
 ## Migration-risk checklist
 
@@ -116,7 +118,7 @@ Use this when reviewing a PR that changes public behavior.
 | Dataset contracts | Sorted X expectations, gap behavior, bounds, picking, export helpers, and accelerated methods. |
 | Chart lifecycle | `start()`, `stop()`, `dispose()`, ResizeObserver cleanup, plugin disposers, context restore. |
 | Interaction behavior | Wheel/pointer/touch gestures, axis dragging, box zoom, double-click reset, keyboard focus. |
-| Visual output | Pixel-visible browser tests for affected chart types and overlays. |
+| Visual output | Pixel-visible browser tests for affected chart types and overlays. `bun run test:visual` renders every case with WebGL2, the shared context, Canvas 2D, and the WebGL-disabled fallback, so a rendering change has to look right on all of them. |
 | Bundle size | `bun run test:bundle-size` and aggregate runtime-size notes when chunking changes. |
 | Docs | Examples include complete imports, lifecycle cleanup, and regenerated README/API docs when public symbols change. |
 

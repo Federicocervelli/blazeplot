@@ -47,7 +47,7 @@ bun add blazeplot
 # or: npm install blazeplot
 ```
 
-Requires a browser with WebGL2 (see [Browser support](docs/browser-support.md)).
+Requires a browser with WebGL2, or opt into the Canvas 2D renderer for browsers without it (see [Browser support](docs/browser-support.md)). Using React, Vue, Svelte, or an SSR framework? See [Framework integration](docs/framework-integration.md).
 
 ## Quick start
 
@@ -78,14 +78,15 @@ For streaming data, pass `capacity` to `addLine` and append samples; see [Live d
 ## Features
 
 - **WebGL2 rendering with a Canvas 2D fallback.** GPU-accelerated plots by default; opt into `autoRenderer()` from `blazeplot/renderers/canvas2d` to keep drawing when WebGL2 is unavailable. Axis labels and grid use lightweight DOM layers and DPR-aware sizing.
-- **Series types.** Line, area, scatter, bar, histogram, OHLC, and candlestick, each with independent data, style, and visibility.
+- **Many charts on one page.** `sharedRenderer()` from `blazeplot/renderers/shared` draws every chart through one WebGL context, so dashboards are not limited by the browser's per-page context cap.
+- **Series types.** Line, area, scatter, bar, histogram (`addBar` with `HistogramDataset`), OHLC, and candlestick, each with independent data, style (`series.setStyle`), and visibility.
 - **Live and large data.** Streaming ring buffers (including fixed-rate `UniformRingBuffer`), static typed arrays, and a custom dataset contract for remote or procedural sources.
 - **Level-of-detail downsampling.** Min/max extraction keeps dense views accurate and cheap at any zoom; `ServerSampledDataset` renders server-reduced buckets directly.
-- **Plugins.** Legend, tooltip, interactions (pan, zoom, reset), annotations, selection, crosshair, navigator, accessibility, and flame graph, built on the same public APIs available to custom plugins.
-- **Accessibility.** Charts are named figures with a generated data summary, keyboard pan/zoom, focus rings, and forced-colors support; `blazeplot/plugins/a11y` adds a hidden data table and a keyboard inspection cursor (see [Accessibility](docs/accessibility.md)).
+- **Plugins.** Legend, tooltip, interactions (pan, zoom, reset, keyboard, touch), annotations, selection, crosshair, navigator, accessibility, and flame graph, built on the same public APIs available to custom plugins. Interactions can be cooperative on scrolling pages (`wheelZoom: "modifier"`, `touchPan: "two-finger"`).
+- **Accessibility.** Charts are named figures with a generated data summary, focus rings, and forced-colors support; `interactionsPlugin` adds keyboard pan/zoom, and `blazeplot/plugins/a11y` adds a hidden data table and a keyboard inspection cursor. Built-in text can be localized (see [Accessibility](docs/accessibility.md)).
 - **Linked charts.** `blazeplot/linked` synchronizes multi-panel layouts.
 - **Export.** `chart.screenshot()`, CSV/JSON data export, and pure transform helpers (see [Export image and data](docs/examples.md#export-image-and-data)).
-- **Diagnostics.** `chart.getFrameStats()` reports fps, frame time, vertex count, and draw calls.
+- **Diagnostics.** `chart.getFrameStats()` reports fps, frame time, rendered points, draw calls, upload bytes, and render mode.
 <!-- README_DOCS_START -->
 ## Documentation
 
@@ -121,11 +122,12 @@ bun install
 bun run dev        # docs and previews site
 bun test           # unit tests
 bun run typecheck  # strict TypeScript check
+bun run lint       # oxlint
 bun run build      # package build (JS + declarations)
 bun run ci         # full local CI: checks plus browser tests
 ```
 
-Open feature and fix PRs against `main`; releases are separate version-bump PRs. See [Release and benchmarks](docs/release-and-benchmarks.md) and [Documentation contributions](docs/documentation-contributions.md) for the full workflow.
+Open feature and fix PRs against `main` (against `v1` while the 1.0 release candidates are in progress); releases are separate version-bump PRs. See [Release and benchmarks](docs/release-and-benchmarks.md) and [Documentation contributions](docs/documentation-contributions.md) for the full workflow.
 
 ## License
 

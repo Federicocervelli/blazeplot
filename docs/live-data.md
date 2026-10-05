@@ -32,11 +32,11 @@ const valueArray = new Float32Array([0.2, 0.4]);
 series.append({ x: timestampArray, y: valueArray });
 ```
 
-Keep X values sorted in append order. Picking, binary search, and LOD assume sorted logical X values.
+Keep X values sorted in append order. Picking, binary search, and LOD assume sorted logical X values. The chart-owned buffer skips (and counts) a sample whose X is non-finite or lower than the newest one instead of throwing; pass `onInvalidSample` in the series config to observe them. When the buffer is full the oldest samples are dropped; set `overflow: "drop-new"` or `"error"` in the series config for other behavior. See [Data semantics](./data-semantics.md#streaming-skip-count-report).
 
 ## Fixed-rate samples
 
-For signals with constant sample spacing, use the `{ capacity, xStart, xStep }` shorthand. BlazePlot creates an implicit-X `UniformRingBuffer`, so you only append Y values.
+For signals with constant sample spacing, use the `{ capacity, xStart, xStep }` shorthand. BlazePlot creates an implicit-X `UniformRingBuffer`, so you only append Y values. Passing either `xStart` or `xStep` selects it (`xStart` defaults to 0 and `xStep` to 1). A uniform buffer always wraps, so combining the shorthand with `overflow: "drop-new"` or `"error"` throws a `TypeError`.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -63,7 +63,7 @@ series.append([{ y: 0.2 }, { y: 0.4 }, { y: 0.3 }]);
 
 ## Updating the active sample
 
-Use `updateLast(...)` when a feed revises the latest point instead of adding a new one.
+Use `updateLast(...)` when a feed revises the latest point instead of adding a new one. `{ y }` works on `RingBuffer` and `UniformRingBuffer` series; `{ x, y }` needs an explicit-X buffer such as `RingBuffer` (it throws a `TypeError` on a fixed-rate series), and a revised X must stay between its neighbors or the update returns `false`. Both return whether the sample was updated.
 
 ```ts
 const latestValue = 0.5;
@@ -141,7 +141,7 @@ chart.followX({
 - `chart.stopFollowX()` disables live-follow.
 - With the built-in interactions plugin, double-click/tap reset resumes follow by default. Pass `interactionsPlugin({ resumeFollowOnReset: false })` to keep reset on a historical viewport.
 
-Y-axis interactions do not pause X follow. X pan/zoom operations through the chart/plugin APIs do pause when `pauseOnInteraction` is enabled.
+With `pauseOnInteraction` enabled (the default), every `chart.pan(...)` and `chart.zoom(...)` call pauses follow, including Y-only gestures such as dragging a Y axis or Y-only wheel zoom, and so does any `chart.setViewport(...)` call that changes X (unless you pass `{ pauseFollow: false }`). Viewport changes that come from following itself, `fitToData`, or `autoFitY` do not pause it. There is no per-axis switch: to let users change Y without leaving live mode, set `pauseOnInteraction: false` and call `chart.setFollowXPaused(true)` from your own UI when you want to stop following.
 
 ### Telling user changes from automatic ones
 
