@@ -2,6 +2,7 @@ import type { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesSample } from "../core/types.js";
 import type { ChartSeriesState } from "./Chart.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
+import { singleChartPlugin } from "./OverlayUtils.js";
 
 /** Data table options for `a11yPlugin`. */
 export interface A11yTableOptions {
@@ -62,6 +63,8 @@ export interface A11yPlugin extends ChartPlugin {
 }
 
 const DEFAULT_MAX_ROWS = 100;
+/** Keyboard inspection panning reports `viewportchange.source === "user"`. */
+const USER_VIEWPORT = { source: "user" } as const;
 const DEFAULT_TABLE_UPDATE_MS = 500;
 const DEFAULT_LIVE_INTERVAL_MS = 10_000;
 const MIN_LIVE_INTERVAL_MS = 1_000;
@@ -136,7 +139,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
   let rebuildTable: (() => void) | null = null;
   let inspecting = false;
 
-  return {
+  return singleChartPlugin("a11y", {
     install(chart: ChartPluginContext) {
       const formatX = options.formatX ?? ((value: number) => chart.coords.format(value, "x"));
       const formatY = options.formatY ?? ((value: number, state: ChartSeriesState) => chart.coords.format(value, "y", state.yAxis));
@@ -180,6 +183,15 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
       const updateMs = Math.max(0, tableOptions?.updateMs ?? DEFAULT_TABLE_UPDATE_MS);
       let tableTimer: ReturnType<typeof setTimeout> | null = null;
       let tableSignature = "";
+      const tableCache = new Map<ChartSeriesState["series"], { table: HTMLTableElement; caption: HTMLElement; rows: HTMLElement[][]; columns: number; name: string }>();
+      const setText = (element: HTMLElement, text: string): void => {
+        const node = element.firstChild;
+        if (node && node.nodeType === 3) {
+          if ((node as Text).data !== text) (node as Text).data = text;
+        } else {
+          element.textContent = text;
+        }
+      };
 
       const formatValues = (state: ChartSeriesState, index: number, sample: SeriesSample): string[] => {
         if (isOhlc(state)) {
@@ -201,6 +213,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
         tableSignature = signature;
 
         const nodes: HTMLElement[] = [];
+        const seen = new Set<unknown>();
         for (const [i, state] of states.entries()) {
           const range = ranges[i]!;
           const visibleCount = Math.max(0, range.end - range.start);
@@ -212,14 +225,35 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
             continue;
           }
           const indices = sampleTableIndices(range.start, range.end, maxRows);
+          const sampled = indices.length < visibleCount ? `, evenly sampled from ${visibleCount.toLocaleString("en-US")} visible points` : " visible";
+          const captionText = `${name}: ${indices.length.toLocaleString("en-US")} points${sampled}`;
+          const headers = [tableOptions.xLabel ?? "X", ...(isOhlc(state) ? ["Open", "High", "Low", "Close"] : [tableOptions.yLabel ?? "Y"])];
+          const rows: Array<{ readonly index: number; readonly sample: SeriesSample; readonly values: string[] }> = [];
+          for (const index of indices) {
+            const sample = state.series.sampleAt(index);
+            if (sample) rows.push({ index, sample, values: formatValues(state, index, sample) });
+          }
+
+          // A live table is updated in place when its shape is unchanged, so streaming creates no garbage nodes.
+          const cached = tableCache.get(state.series);
+          if (cached && cached.rows.length === rows.length && cached.columns === headers.length && cached.name === name) {
+            setText(cached.caption, captionText);
+            for (const [r, row] of rows.entries()) {
+              const cells = cached.rows[r]!;
+              setText(cells[0]!, formatX(row.sample.x));
+              for (const [c, value] of row.values.entries()) setText(cells[c + 1]!, value);
+            }
+            nodes.push(cached.table);
+            seen.add(state.series);
+            continue;
+          }
+
           const table = doc.createElement("table");
           const caption = doc.createElement("caption");
-          const sampled = indices.length < visibleCount ? `, evenly sampled from ${visibleCount.toLocaleString("en-US")} visible points` : " visible";
-          caption.textContent = `${name}: ${indices.length.toLocaleString("en-US")} points${sampled}`;
+          caption.textContent = captionText;
           table.appendChild(caption);
           const head = doc.createElement("thead");
           const headRow = doc.createElement("tr");
-          const headers = [tableOptions.xLabel ?? "X", ...(isOhlc(state) ? ["Open", "High", "Low", "Close"] : [tableOptions.yLabel ?? "Y"])];
           for (const label of headers) {
             const th = doc.createElement("th");
             th.scope = "col";
@@ -229,25 +263,33 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
           head.appendChild(headRow);
           table.appendChild(head);
           const body = doc.createElement("tbody");
-          for (const index of indices) {
-            const sample = state.series.sampleAt(index);
-            if (!sample) continue;
-            const row = doc.createElement("tr");
+          const cellRows: HTMLElement[][] = [];
+          for (const row of rows) {
+            const tr = doc.createElement("tr");
             const x = doc.createElement("th");
             x.scope = "row";
-            x.textContent = formatX(sample.x);
-            row.appendChild(x);
-            for (const value of formatValues(state, index, sample)) {
+            x.textContent = formatX(row.sample.x);
+            tr.appendChild(x);
+            const cells: HTMLElement[] = [x];
+            for (const value of row.values) {
               const cell = doc.createElement("td");
               cell.textContent = value;
-              row.appendChild(cell);
+              tr.appendChild(cell);
+              cells.push(cell);
             }
-            body.appendChild(row);
+            cellRows.push(cells);
+            body.appendChild(tr);
           }
           table.appendChild(body);
           nodes.push(table);
+          tableCache.set(state.series, { table, caption, rows: cellRows, columns: headers.length, name });
+          seen.add(state.series);
         }
-        tables.replaceChildren(...nodes);
+        for (const series of tableCache.keys()) {
+          if (!seen.has(series)) tableCache.delete(series);
+        }
+        const current = tables.children;
+        if (current.length !== nodes.length || nodes.some((node, i) => current[i] !== node)) tables.replaceChildren(...nodes);
       };
 
       const scheduleTable = (): void => {
@@ -292,7 +334,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
         const shift = (fraction: number): number => (fraction < 0 ? fraction - 0.1 : fraction > 1 ? fraction - 0.9 : 0);
         const dx = Number.isFinite(dataFx) ? shift(dataFx) : 0;
         const dy = Number.isFinite(dataFy) ? shift(dataFy) : 0;
-        if (dx !== 0 || dy !== 0) chart.viewport.pan({ dx, dy }, state.yAxis);
+        if (dx !== 0 || dy !== 0) chart.viewport.pan({ dx, dy }, state.yAxis, USER_VIEWPORT);
       };
 
       const setActive = (state: ChartSeriesState, index: number): void => {
@@ -396,7 +438,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
       };
 
       if (inspectionEnabled) {
-        // Capture on the root runs before the chart's own arrow-key pan on the same element.
+        // Capture on the root runs before the interactions plugin's arrow-key pan on the same element.
         chart.dom.listen("root", "keydown", onInspectionKey, { capture: true });
         chart.dom.listen("root", "keydown", onStartKey);
         chart.dom.listen("root", "blur", () => stopInspection(null));
@@ -464,7 +506,7 @@ export function a11yPlugin(options: A11yPluginOptions = {}): A11yPlugin {
     isInspecting(): boolean {
       return inspecting;
     },
-  };
+  });
 }
 
 function defaultLiveText(

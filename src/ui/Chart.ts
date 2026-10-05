@@ -101,7 +101,7 @@ export interface ChartPickOptions {
   readonly maxDistancePx?: number;
 }
 
-/** ARIA, keyboard-navigation, and high-contrast options for the chart root. */
+/** ARIA and high-contrast options for the chart root. Keyboard pan and zoom come from `interactionsPlugin`. */
 export interface ChartAccessibilityOptions {
   /** Accessible name. Defaults to the chart title and subtitle, then `"BlazePlot chart"`. */
   readonly label?: string;
@@ -114,22 +114,12 @@ export interface ChartAccessibilityOptions {
   readonly description?: string | ((summary: ChartSummary) => string);
   /** ARIA role for the chart root. Defaults to `"figure"`. */
   readonly role?: string;
-  /** Arrow-key pan, +/- zoom, and Home to fit. Pass `false` to disable. */
-  readonly keyboard?: boolean | ChartKeyboardOptions;
   /**
    * Follow the operating system's forced-colors (high-contrast) mode: the canvas switches to
    * system colors and DOM overlays get forced-colors styles, updating when the mode changes.
    * Defaults to true.
    */
   readonly forcedColors?: boolean;
-}
-
-/** Keyboard pan and zoom behavior for accessible charts. */
-export interface ChartKeyboardOptions {
-  /** Fraction of the viewport moved per arrow key. Defaults to 0.1. */
-  readonly panFraction?: number;
-  /** Zoom factor per +/- key. Defaults to 1.25. */
-  readonly zoomFactor?: number;
 }
 
 /** @internal Context passed to a custom GPU backend factory. */
@@ -244,10 +234,36 @@ export interface ChartSeriesClickEvent extends ChartPointerEvent {
   readonly item: ChartPickItem;
 }
 
+/**
+ * What changed the viewport: a user gesture (`"user"`, passed by the interaction, navigator, and
+ * keyboard plugins), latest-X following (`"follow"`), `fitToData`/`autoFitY` (`"fit"`), a linked
+ * chart mirroring another panel (`"linked"`), or app code (`"api"`, the default).
+ */
+export type ChartViewportChangeSource = "user" | "follow" | "fit" | "api" | "linked";
+
 /** Emitted after the visible domain changes. */
 export interface ChartViewportChangeEvent {
   readonly viewport: Viewport;
   readonly rightViewport: Viewport;
+  /** What changed the viewport. */
+  readonly source: ChartViewportChangeSource;
+}
+
+/** Options for `chart.pan` and `chart.zoom`. */
+export interface ChartViewportGestureOptions {
+  /** Reported as `viewportchange.source`. Defaults to `"api"`. */
+  readonly source?: ChartViewportChangeSource;
+}
+
+/** Options for `chart.setViewport`. */
+export interface ChartSetViewportOptions extends ChartViewportGestureOptions {
+  /** Pause latest-X following when X changes. Defaults to true. Linked charts pass false for mirrored updates. */
+  readonly pauseFollow?: boolean;
+}
+
+/** Latest-X follow state change, emitted when following starts, stops, pauses, or resumes. */
+export interface ChartFollowXChangeEvent {
+  readonly state: ChartFollowXState;
 }
 
 /** Selection event payload emitted by selection plugins or custom code. `null` means the selection was cleared. */
@@ -296,6 +312,8 @@ export interface ChartEventMap extends ChartPluginEventMap {
   /** A frame finished drawing. */
   render: void;
   viewportchange: ChartViewportChangeEvent;
+  /** Latest-X following started, stopped, paused, or resumed. */
+  followxchange: ChartFollowXChangeEvent;
   seriesclick: ChartSeriesClickEvent;
   click: ChartPointerEvent;
   dblclick: ChartPointerEvent;
@@ -342,6 +360,8 @@ export interface ChartFitToDataOptions {
   readonly xMin?: number;
   /** Only consider samples at or before this X. */
   readonly xMax?: number;
+  /** Reported as `viewportchange.source`. Defaults to `"fit"`. */
+  readonly source?: ChartViewportChangeSource;
 }
 
 /** Options for automatically refitting Y as the X viewport changes. */
@@ -588,9 +608,6 @@ export class Chart {
     this.lastPointerButtons = 0;
     this.setHover(this.inspectionHoverState());
   };
-  private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    this.handleKeyboardNavigation(event);
-  };
   private readonly handleWebGLContextLost = (event: Event): void => {
     event.preventDefault();
     this.webglContextLost = true;
@@ -760,16 +777,16 @@ export class Chart {
    * Set any viewport edges. X is shared by both Y axes; Y edges apply to `yAxis`.
    * Changing X pauses latest-X following like a user pan would.
    */
-  setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left"): void {
+  setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left", options: ChartSetViewportOptions = {}): void {
     if (viewport.xMin !== undefined || viewport.xMax !== undefined) {
-      this.pauseXFollowForInteraction();
+      if (options.pauseFollow !== false) this.pauseXFollowForInteraction();
       this.camera.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax });
       this.syncRightCameraX();
     }
     if (viewport.yMin !== undefined || viewport.yMax !== undefined) {
       this.getCamera(yAxis).setViewport({ yMin: viewport.yMin, yMax: viewport.yMax });
     }
-    this.emitViewportChange();
+    this.emitViewportChange(options.source ?? "api");
     this.refreshHover();
   }
 
@@ -778,11 +795,11 @@ export class Chart {
    * Y pans only `yAxis` when given; omitted, Y pans both axes like a plot-area gesture.
    * The intent is normalized to the left axis domain (or `yAxis` when given).
    */
-  pan(intent: PanIntent, yAxis?: SeriesYAxis): void {
+  pan(intent: PanIntent, yAxis?: SeriesYAxis, options: ChartViewportGestureOptions = {}): void {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.applyGesture(() => {
+    this.applyGesture(options.source ?? "api", () => {
       if (yAxis === "right") {
         return (next.dx === 0 || this.axis.pan({ dx: next.dx, dy: 0 })) && (next.dy === 0 || this.rightAxis.pan({ dx: 0, dy: next.dy }));
       }
@@ -796,11 +813,11 @@ export class Chart {
    * Y zooms only `yAxis` when given; omitted, Y zooms both axes like a plot-area gesture.
    * The anchor is normalized to the left axis domain (or `yAxis` when given).
    */
-  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void {
+  zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options: ChartViewportGestureOptions = {}): void {
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
-    this.applyGesture(() => {
+    this.applyGesture(options.source ?? "api", () => {
       if (yAxis === "right") {
         return (next.axis === "y" || this.axis.zoom({ ...next, axis: "x" })) && (next.axis === "x" || this.rightAxis.zoom({ ...next, axis: "y" }));
       }
@@ -813,7 +830,7 @@ export class Chart {
    * Run a pan/zoom that moves one or both cameras. If any step is rejected (invalid scale
    * domain or a span beyond float precision), restore both so the axes never drift apart.
    */
-  private applyGesture(move: () => boolean): void {
+  private applyGesture(source: ChartViewportChangeSource, move: () => boolean): void {
     const left = this.camera.viewport;
     const right = this.rightCamera.viewport;
     if (!move()) {
@@ -823,7 +840,7 @@ export class Chart {
     }
     this.pauseXFollowForInteraction();
     this.syncRightCameraX();
-    this.emitViewportChange();
+    this.emitViewportChange(source);
     this.scheduleHoverRefresh();
   }
 
@@ -938,6 +955,7 @@ export class Chart {
     this.followXConfig = options;
     this.clearXFollowResumeTimer();
     this.xFollowPaused = false;
+    this.emitFollowXChange();
     this.applyFollowXPolicy();
     this.requestRender();
   }
@@ -948,6 +966,7 @@ export class Chart {
     this.followXConfig = null;
     this.xFollowPaused = false;
     this.clearXFollowResumeTimer();
+    this.emitFollowXChange();
     this.requestRender();
   }
 
@@ -956,6 +975,7 @@ export class Chart {
     this.clearXFollowResumeTimer();
     if (this.xFollowPaused === paused) return;
     this.xFollowPaused = paused;
+    this.emitFollowXChange();
     if (!paused) this.applyFollowXPolicy();
     this.requestRender();
   }
@@ -1019,7 +1039,7 @@ export class Chart {
 
     if (changed) {
       this.syncRightCameraX();
-      this.emitViewportChange();
+      this.emitViewportChange(options.source ?? "fit");
       this.refreshHover();
     }
     return changed;
@@ -1483,8 +1503,10 @@ export class Chart {
   private pauseXFollowForInteraction(): void {
     const config = this.followXConfig;
     if (!config || config.pauseOnInteraction === false) return;
+    const wasPaused = this.xFollowPaused;
     this.xFollowPaused = true;
     this.clearXFollowResumeTimer();
+    if (!wasPaused) this.emitFollowXChange();
     const resumeAfterMs = config.resumeAfterMs;
     if (typeof resumeAfterMs !== "number" || !Number.isFinite(resumeAfterMs) || resumeAfterMs <= 0) return;
     this.xFollowResumeTimer = setTimeout(() => {
@@ -1519,7 +1541,7 @@ export class Chart {
     if (domainsAlmostEqual(this.camera.xMin, this.camera.xMax, xMin, xMax) || !this.axis.isValidDomain("x", xMin, xMax)) return;
     this.camera.setViewport({ xMin, xMax });
     this.syncRightCameraX();
-    this.emitViewportChange();
+    this.emitViewportChange("follow");
   }
 
   private applyAutoFitYPolicy(): void {
@@ -1567,7 +1589,6 @@ export class Chart {
       [canvas, "dblclick", this.handleDoubleClick],
       [canvas, "webglcontextlost", this.handleWebGLContextLost],
       [canvas, "webglcontextrestored", this.handleWebGLContextRestored],
-      [root, "keydown", this.handleKeyDown],
     ];
     if (this.summaryElement) listeners.push([root, "focusin", this.handleRootFocusIn]);
     for (const [target, type, listener] of listeners) target[method](type, listener as EventListener);
@@ -1609,69 +1630,6 @@ export class Chart {
     root.appendChild(summary);
     root.setAttribute("aria-describedby", summary.id);
     this.summaryElement = summary;
-  }
-
-  private keyboardOptions(): Required<ChartKeyboardOptions> | null {
-    const accessibility = this.options.accessibility;
-    if (accessibility === false) return null;
-    const keyboard = typeof accessibility === "object" ? accessibility.keyboard : undefined;
-    if (keyboard === false) return null;
-    const config = typeof keyboard === "object" ? keyboard : undefined;
-    const panFraction = config?.panFraction;
-    const zoomFactor = config?.zoomFactor;
-    return {
-      panFraction: typeof panFraction === "number" && Number.isFinite(panFraction) ? Math.max(0, panFraction) : 0.1,
-      zoomFactor: typeof zoomFactor === "number" && Number.isFinite(zoomFactor) && zoomFactor > 1 ? zoomFactor : 1.25,
-    };
-  }
-
-  private handleKeyboardNavigation(event: KeyboardEvent): void {
-    const keyboard = this.keyboardOptions();
-    if (!keyboard || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-    const target = event.target;
-    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return;
-
-    const panStep = keyboard.panFraction * (event.shiftKey ? 2.5 : 1);
-    const zoomAtCenter = (factor: number, axis: ZoomIntent["axis"]): void => this.zoom({ factor, cx: 0.5, cy: 0.5, axis });
-    let handled = true;
-
-    switch (event.key) {
-      case "ArrowLeft":
-        this.pan({ dx: -panStep, dy: 0 });
-        break;
-      case "ArrowRight":
-        this.pan({ dx: panStep, dy: 0 });
-        break;
-      case "ArrowUp":
-        this.pan({ dx: 0, dy: panStep });
-        break;
-      case "ArrowDown":
-        this.pan({ dx: 0, dy: -panStep });
-        break;
-      case "+":
-      case "=":
-        zoomAtCenter(keyboard.zoomFactor, "xy");
-        break;
-      case "-":
-      case "_":
-        zoomAtCenter(1 / keyboard.zoomFactor, "xy");
-        break;
-      case "PageUp":
-        zoomAtCenter(keyboard.zoomFactor, "y");
-        break;
-      case "PageDown":
-        zoomAtCenter(1 / keyboard.zoomFactor, "y");
-        break;
-      case "Home":
-      case "0":
-        handled = this.fitToData({ padding: 0.05 });
-        break;
-      default:
-        handled = false;
-        break;
-    }
-
-    if (handled) event.preventDefault();
   }
 
   private rebuildAxisOverlay(): void {
@@ -2355,7 +2313,9 @@ export class Chart {
     };
   }
 
+  /** Emit `hover` only when the picked items or the anchor actually changed. */
   private setHover(state: ChartHoverState | null): void {
+    if (hoverStatesEqual(this.currentHover, state)) return;
     this.currentHover = state;
     this.emit("hover", state);
   }
@@ -2388,9 +2348,13 @@ export class Chart {
     return event;
   }
 
-  private emitViewportChange(): void {
-    this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport });
+  private emitViewportChange(source: ChartViewportChangeSource): void {
+    this.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source });
     this.requestRender();
+  }
+
+  private emitFollowXChange(): void {
+    if (this.hasListeners("followxchange")) this.emit("followxchange", { state: this.getFollowXState() });
   }
 
   private emitSeriesChange(): void {
@@ -2407,6 +2371,36 @@ export class Chart {
   private emit<K extends ChartEventName>(event: K, payload: ChartEventMap[K]): void {
     const listeners = this.listeners.get(event);
     if (!listeners) return;
-    for (const listener of listeners) (listener as Listener<K>)(payload);
+    // One throwing listener never stops the rest.
+    for (const listener of listeners) {
+      try {
+        (listener as Listener<K>)(payload);
+      } catch (error) {
+        console.error(`BlazePlot ${event} listener failed:`, error);
+      }
+    }
   }
+}
+
+/** Coordinates closer than this many CSS pixels count as unchanged. */
+const HOVER_EPSILON_PX = 1e-3;
+
+const near = (a: number, b: number): boolean => a === b || Math.abs(a - b) <= HOVER_EPSILON_PX;
+
+/** Whether two hover states show the same items at the same anchor (series, index, x, y, and position). */
+function hoverStatesEqual(a: ChartHoverState | null, b: ChartHoverState | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.source !== b.source || a.mode !== b.mode || a.group !== b.group || a.maxDistancePx !== b.maxDistancePx) return false;
+  if (a.items.length !== b.items.length) return false;
+  if (!near(a.plotX, b.plotX) || !near(a.plotY, b.plotY) || !near(a.clientX, b.clientX) || !near(a.clientY, b.clientY)) return false;
+  if (!Object.is(a.anchorX, b.anchorX) || !Object.is(a.dataX, b.dataX) || !Object.is(a.dataY, b.dataY)) return false;
+  for (let i = 0; i < a.items.length; i++) {
+    const p = a.items[i]!;
+    const q = b.items[i]!;
+    if (p.series !== q.series || p.index !== q.index || !Object.is(p.x, q.x) || !Object.is(p.y, q.y)) return false;
+    if (!near(p.plotX, q.plotX) || !near(p.plotY, q.plotY)) return false;
+    if (p.xRange?.xStart !== q.xRange?.xStart || p.xRange?.xEnd !== q.xRange?.xEnd) return false;
+  }
+  return true;
 }

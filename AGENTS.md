@@ -101,7 +101,6 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Optional built-ins like interactions, legend, tooltip, annotations, selection, crosshair, navigator, flamegraph, and a11y are Chart plugins exported from subpaths (`blazeplot/plugins/*`). `Chart` owns only the lightweight plugin contract and public state/pick/camera APIs; avoid importing built-in plugins into `Chart.ts` or the top-level entry.
 - The stable plugin contract (`ChartPluginContext` groups, mount slots/surfaces, `ChartPluginHandle` hooks, `ChartPluginEventMap`) and the `PluginHost` that builds per-plugin contexts live in `src/ui/PluginHost.ts`. Plugins install in registration order, hooks run in registration order, and disposal runs in reverse. Built-in plugins must use only the context and public types (no `Chart` import, no `ctx.unstable`); `tests/plugins/plugin-boundary.test.ts` enforces this. Tests install plugins on a live chart through the `@internal` `chart.installPlugin(...)`.
 - Hover state refreshes every render while the pointer is inside the plot, so live-follow charts update tooltips even when the cursor is still. `chart.pick()` returns actual raw sample coordinates plus plot/client coordinates for marker overlays.
-- In the website preview, synced-X behavior keeps live X follow active while wheel zoom/pan are Y-only.
 
 ## TypeScript Conventions
 

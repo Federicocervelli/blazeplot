@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import type { Chart } from "../../src/ui/Chart.ts";
 import type { ChartOptions } from "../../src/ui/Chart.ts";
+import { interactionsPlugin } from "../../src/plugins/interactions.ts";
+import type { InteractionsPluginOptions } from "../../src/plugins/interactions.ts";
 import { fire, keyEvent, useChartHarness } from "./harness.ts";
 
 // Behavior documented in docs/accessibility.md ("What the chart provides" and "Keyboard navigation").
@@ -17,6 +19,11 @@ const press = (chart: Chart, key: string, init: Parameters<typeof keyEvent>[1] =
   fire(target, event);
   return event;
 };
+
+/** A chart with keyboard navigation from the interactions plugin. */
+function nav(plugin: InteractionsPluginOptions = {}, options: ChartOptions = {}): Chart {
+  return make({ ...options, plugins: [interactionsPlugin(plugin)] });
+}
 
 describe("chart accessibility attributes", () => {
   it("makes the root a focusable labelled figure and hides decoration", () => {
@@ -64,11 +71,20 @@ describe("chart accessibility attributes", () => {
     chart.dispose();
   });
 
-  it("keeps ARIA but disables keys when keyboard is false", () => {
-    const chart = make({ accessibility: { keyboard: false } });
+  it("does not pan or zoom by keyboard without interactionsPlugin", () => {
+    const chart = make();
     expect(chart.rootElement.getAttribute("role")).toBe("figure");
-    const event = press(chart, "ArrowRight");
-    expect(event.defaultPrevented).toBe(false);
+    expect(chart.rootElement.tabIndex).toBe(0);
+    for (const key of ["ArrowRight", "+", "-", "PageUp", "Home", "0"]) {
+      expect(press(chart, key).defaultPrevented).toBe(false);
+    }
+    expect(chart.getViewport()).toMatchObject({ xMin: 0, xMax: 100, yMin: 0, yMax: 100 });
+    chart.dispose();
+  });
+
+  it("keeps the chart keys off when interactionsPlugin has keyboard: false", () => {
+    const chart = nav({ keyboard: false });
+    expect(press(chart, "ArrowRight").defaultPrevented).toBe(false);
     expect(chart.getViewport().xMin).toBe(0);
     chart.dispose();
   });
@@ -76,7 +92,7 @@ describe("chart accessibility attributes", () => {
 
 describe("chart keyboard navigation", () => {
   it("pans by 10% per arrow key and 2.5x with Shift", () => {
-    const chart = make();
+    const chart = nav();
     const right = press(chart, "ArrowRight");
     expect(right.defaultPrevented).toBe(true);
     expect(chart.getViewport()).toMatchObject({ xMin: 10, xMax: 110 });
@@ -92,7 +108,7 @@ describe("chart keyboard navigation", () => {
   });
 
   it("zooms both axes with + and -, and only Y with PageUp and PageDown", () => {
-    const chart = make();
+    const chart = nav();
     press(chart, "+");
     expect(chart.getViewport().xMax - chart.getViewport().xMin).toBeCloseTo(80, 8);
     expect(chart.getViewport().yMax - chart.getViewport().yMin).toBeCloseTo(80, 8);
@@ -111,12 +127,12 @@ describe("chart keyboard navigation", () => {
   });
 
   it("fits to the data with Home or 0 and leaves the key alone when there is nothing to fit", () => {
-    const empty = make();
+    const empty = nav();
     const nothing = press(empty, "Home");
     expect(nothing.defaultPrevented).toBe(false);
     empty.dispose();
 
-    const chart = make();
+    const chart = nav();
     const series = chart.addLine({ capacity: 8 });
     for (let x = 0; x < 5; x++) series.append({ x, y: x * 2 });
     const home = press(chart, "Home");
@@ -132,7 +148,7 @@ describe("chart keyboard navigation", () => {
   });
 
   it("ignores other keys, modifiers, form controls, and events another handler already handled", () => {
-    const chart = make();
+    const chart = nav();
     const before = chart.getViewport();
     expect(press(chart, "a").defaultPrevented).toBe(false);
     for (const init of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }] as const) {
@@ -161,14 +177,14 @@ describe("chart keyboard navigation", () => {
   });
 
   it("applies panFraction and zoomFactor, falling back for invalid values", () => {
-    const tuned = make({ accessibility: { keyboard: { panFraction: 0.2, zoomFactor: 2 } } });
+    const tuned = nav({ keyboard: { panFraction: 0.2, zoomFactor: 2 } });
     press(tuned, "ArrowRight");
     expect(tuned.getViewport().xMin).toBeCloseTo(20, 8);
     press(tuned, "+");
     expect(tuned.getViewport().xMax - tuned.getViewport().xMin).toBeCloseTo(50, 8);
     tuned.dispose();
 
-    const invalid = make({ accessibility: { keyboard: { panFraction: Number.NaN, zoomFactor: 0.5 } } });
+    const invalid = nav({ keyboard: { panFraction: Number.NaN, zoomFactor: 0.5 } });
     press(invalid, "ArrowRight");
     expect(invalid.getViewport().xMin).toBeCloseTo(10, 8);
     press(invalid, "+");
@@ -177,7 +193,7 @@ describe("chart keyboard navigation", () => {
   });
 
   it("passes keyboard pan and zoom through the viewport policy", () => {
-    const chart = make({ viewportPolicy: { beforePan: () => null, beforeZoom: () => null } });
+    const chart = nav({}, { viewportPolicy: { beforePan: () => null, beforeZoom: () => null } });
     const before = chart.getViewport();
     press(chart, "ArrowRight");
     press(chart, "+");
@@ -186,7 +202,7 @@ describe("chart keyboard navigation", () => {
   });
 
   it("stops listening for keys after dispose", () => {
-    const chart = make();
+    const chart = nav();
     const root = chart.rootElement;
     chart.dispose();
     const event = keyEvent("ArrowRight");

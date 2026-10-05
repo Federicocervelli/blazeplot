@@ -1,6 +1,6 @@
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
-import { createSvgElement } from "./OverlayUtils.js";
+import { createSvgElement, singleChartPlugin } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 
 /** Options for the overview navigator plugin. */
@@ -249,7 +249,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
     const viewport = chart.viewport.get();
     if (follow && options.followLive !== false && wasAtRightEdge && domain.xMax > viewport.xMax) {
       const span = viewport.xMax - viewport.xMin;
-      chart.viewport.set({ xMin: domain.xMax - span, xMax: domain.xMax });
+      chart.viewport.set({ xMin: domain.xMax - span, xMax: domain.xMax }, undefined, { source: "follow", pauseFollow: false });
     }
 
     const current = chart.viewport.get();
@@ -294,12 +294,12 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       xMax = domain.xMax;
       xMin = xMax - span;
     }
-    chart.viewport.set({ xMin, xMax });
+    chart.viewport.set({ xMin, xMax }, undefined, { source: "user" });
     options.onRangeChange?.({ xMin, xMax });
     render(false);
   };
 
-  return {
+  return singleChartPlugin("navigator", {
     install(chart: ChartPluginContext) {
       chartRef = chart;
       root = document.createElement("div");
@@ -348,7 +348,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       overlay.appendChild(leftHandleHit);
       overlay.appendChild(rightHandleHit);
       root.appendChild(overlay);
-      const unmount = chart.dom.mount("root", root);
+      chart.dom.mount("root", root);
 
       const applyTheme = (): void => {
         if (!root || !windowRect || !leftHandle || !rightHandle) return;
@@ -362,8 +362,8 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       };
 
       const onRender = (): void => render();
-      const unsubscribeRender = chart.events.subscribe("render", onRender);
-      const unsubscribeViewport = chart.events.subscribe("viewportchange", () => render(false));
+      chart.events.subscribe("render", onRender);
+      chart.events.subscribe("viewportchange", () => render(false));
       applyTheme();
 
       const onPointerDown = (event: PointerEvent): void => {
@@ -452,8 +452,6 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           render();
         },
         dispose() {
-          unsubscribeRender();
-          unsubscribeViewport();
           root?.removeEventListener("pointerdown", onPointerDown);
           root?.removeEventListener("pointermove", onPointerMove);
           root?.removeEventListener("pointerup", onPointerUp);
@@ -461,7 +459,6 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           root?.removeEventListener("dblclick", onDoubleClick);
           root?.removeEventListener("keydown", onKeyDown);
           releaseSpace?.();
-          unmount();
           root = null;
           overlay = null;
           windowRect = null;
@@ -481,5 +478,5 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       overviewCache = null;
       render();
     },
-  };
+  });
 }
