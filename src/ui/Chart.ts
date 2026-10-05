@@ -83,22 +83,19 @@ export class Chart {
     series: () => this.series,
     hoverOptions: () => this.options.hover,
     axis: () => this.axis,
-    plotWidth: () => this.plotWidth,
-    plotHeight: () => this.plotHeight,
+    plotSize: () => this.plotSize,
     emit: (event, payload) => this.events.emit(event, payload),
     hasListeners: (event) => this.events.has(event),
   });
   private lastFrameAt: number = 0;
-  /** Whether the canvas drawing buffer has been sized from layout yet (the first frame or `resize()` does it). */
-  private canvasSized: boolean = false;
   /**
-   * Plot size in CSS pixels, as of the last layout read. Layout is read when the canvas is sized (first
-   * frame, `resize()`, and the ResizeObserver, which fires whenever the plot's size changes), never
-   * per frame: a read after another chart's or plugin's DOM writes forces a synchronous layout, and a
-   * page of many charts redrawing in one animation frame would pay one per chart per frame.
+   * Plot size in CSS pixels, as of the last layout read, or -1 before the canvas was first sized.
+   * Layout is read when the canvas is sized (the first frame, `resize()`, and the ResizeObserver,
+   * which fires whenever the plot's size changes), never per frame: a read after another chart's or
+   * plugin's DOM writes forces a synchronous layout, and a page of many charts redrawing in one
+   * animation frame would pay one per chart per frame.
    */
-  private plotWidth: number = 0;
-  private plotHeight: number = 0;
+  private readonly plotSize = { width: -1, height: -1 };
   private readonly followXPolicy: FollowXController = new FollowXController({
     camera: () => this.camera,
     axis: () => this.axis,
@@ -690,8 +687,8 @@ export class Chart {
       return;
     }
 
-    if (!this.canvasSized) this.applyCanvasSize();
-    const { plotWidth, plotHeight } = this;
+    if (this.plotSize.width < 0) this.applyCanvasSize();
+    const { width: plotWidth, height: plotHeight } = this.plotSize;
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();
@@ -841,12 +838,12 @@ export class Chart {
   }
 
   private applyCanvasSize(dpr: number = this.layout.view.devicePixelRatio): boolean {
-    this.canvasSized = true;
     const scale = Number.isFinite(dpr) ? Math.max(1, dpr) : 1;
-    const plotWidth = this.plotWidth = this.canvas.clientWidth;
-    const plotHeight = this.plotHeight = this.canvas.clientHeight;
-    const width = Math.max(1, Math.floor(plotWidth * scale));
-    const height = Math.max(1, Math.floor(plotHeight * scale));
+    const size = this.plotSize;
+    size.width = this.canvas.clientWidth;
+    size.height = this.canvas.clientHeight;
+    const width = Math.max(1, Math.floor(size.width * scale));
+    const height = Math.max(1, Math.floor(size.height * scale));
     if (this.canvas.width === width && this.canvas.height === height) return false;
 
     this.canvas.width = width;

@@ -20,8 +20,7 @@ export interface ChartHoverHost {
   series(): readonly SeriesStore[];
   hoverOptions(): ChartPickOptions | undefined;
   /** Plot size in CSS pixels from the chart's last layout read; reading it never forces layout. */
-  plotWidth(): number;
-  plotHeight(): number;
+  plotSize(): { readonly width: number; readonly height: number };
   /** Controller of the left Y axis, which maps pointer positions to data. */
   axis(): AxisController;
   emit<K extends "hover" | ChartPointerEventType | "seriesclick">(event: K, payload: ChartEventMap[K]): void;
@@ -114,11 +113,12 @@ export class ChartHover {
       return;
     }
     if (!this.pointerInPlot) return;
+    const { width, height } = this.host.plotSize();
     const rect: PlotRect = {
       left: this.lastClientX - this.lastPlotX,
       top: this.lastClientY - this.lastPlotY,
-      width: this.host.plotWidth(),
-      height: this.host.plotHeight(),
+      width,
+      height,
     };
     if (this.lastButtons !== 0) {
       this.set(this.host.picker.reprojectHoverState(this.state, rect, { clientX: this.lastClientX, clientY: this.lastClientY, plotX: this.lastPlotX, plotY: this.lastPlotY }));

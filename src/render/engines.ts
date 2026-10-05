@@ -22,10 +22,7 @@ export { Canvas2DUnavailableError } from "./canvas2d/Canvas2DRenderer.js";
  */
 const sizesCanvasLater = new WeakSet<ChartRendererFactory>();
 
-function sizingLater(factory: ChartRendererFactory): ChartRendererFactory {
-  sizesCanvasLater.add(factory);
-  return factory;
-}
+const sizingLater = (factory: ChartRendererFactory): ChartRendererFactory => sizesCanvasLater.add(factory) && factory;
 
 const webgl2 = (origin: RendererOrigin): ChartRendererFactory => ({ canvas }) => new WebGL2Renderer(canvas, { origin });
 const canvas2d = (origin: RendererOrigin): ChartRendererFactory => sizingLater(({ canvas }) => new Canvas2DRenderer(canvas, origin));
@@ -72,8 +69,7 @@ export function autoRenderer(): ChartRendererFactory {
  * charts. Throws `WebGL2UnavailableError` when WebGL2 is unavailable. Same as `renderer: "shared"`.
  */
 export function sharedRenderer(context?: ChartRenderContext): ChartRendererFactory {
-  if (context) return sizingLater(context.renderer());
-  return sizingLater((factoryContext) => {
+  return sizingLater(context ? context.renderer() : (factoryContext) => {
     const doc = factoryContext.canvas.ownerDocument ?? globalThis.document;
     let target = documentContexts.get(doc);
     if (!target) documentContexts.set(doc, (target = new SharedWebGLContext(doc)));
