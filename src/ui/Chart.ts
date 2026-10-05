@@ -650,7 +650,8 @@ export class Chart {
     this.hover.dispose();
     // Reverse registration order; plugin cleanup errors never block chart-owned cleanup.
     this.plugins?.disposeAll();
-    this.axisOverlay?.dispose();
+    // The layout removal below detaches every label at once.
+    this.axisOverlay?.dispose(false);
     try {
       this.engine.dispose();
     } catch {

@@ -145,10 +145,16 @@ export class AxisOverlay {
     return this.measured[axis];
   }
 
-  /** Remove all axis overlay DOM nodes. */
-  dispose(): void {
-    for (const pool of [this.xPool, this.yPool, this.y2Pool]) {
-      for (const label of pool) label.el.remove();
+  /**
+   * Release the overlay. By default its label nodes are removed from the DOM; a chart that is
+   * tearing down its whole layout passes `false`, since removing the root takes every label with
+   * it in one operation instead of one detach (and one style invalidation) per label.
+   */
+  dispose(removeLabels: boolean = true): void {
+    if (removeLabels) {
+      for (const pool of [this.xPool, this.yPool, this.y2Pool]) {
+        for (const label of pool) label.el.remove();
+      }
     }
     this.xPool = [];
     this.yPool = [];
