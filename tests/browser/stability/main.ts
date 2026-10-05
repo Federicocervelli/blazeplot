@@ -267,7 +267,7 @@ function contextWatcher(): ContextWatcher {
   const state = { lost: 0, restored: 0 };
   const notify = (kind: "lost" | "restored"): void => {
     state[kind]++;
-    for (const waiter of [...waiters]) {
+    for (const waiter of waiters) {
       if (waiter.kind !== kind) continue;
       waiters.delete(waiter);
       waiter.resolve();
