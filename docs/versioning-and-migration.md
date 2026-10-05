@@ -76,7 +76,7 @@ See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes 
 | `visibleOnly: false` in data export options | `includeHidden: true` |
 | `chartDataToJSON(data)`, `chartDataToBlob(data, type)` | `JSON.stringify(data)`, `new Blob([chartDataToCsv(data)])` |
 | `resampleSamples` | `binSamples` |
-| `histogramDataset(values, options)` | `chart.addHistogram({ values, ...options })` or `new HistogramDataset(histogram(values, options))` |
+| `histogramDataset(values, options)` | `chart.addBar({ dataset: HistogramDataset.from(values, options) })` or `new HistogramDataset(histogram(values, options))` |
 | `HistogramOptions.thresholds: number` | `binCount` (`thresholds` now takes explicit edges only) |
 | `ServerSampledDataset.replacePoints/replaceBuckets`, `sampleKind` | `series.replace({ kind: "points" \| "minmax", … })`, `dataset.kind` |
 | `RingBuffer.get(i)` | `getX(i)`/`getY(i)`, or `series.sampleAt(i)` |

@@ -8,7 +8,7 @@ Most applications need no code changes beyond the checklist: the 1.0 surface is 
 
 ## What did not change
 
-- The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`/`addHistogram`, dataset classes, and every built-in plugin option keep their signatures, except that the custom `render`/`renderHighlight` callbacks of the legend, tooltip, and crosshair plugins now receive the plugin context instead of the `Chart` (see change 8), and the renames in change 10. Datasets gained optional validation options (change 3).
+- The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`, dataset classes, and every built-in plugin option keep their signatures, except that the custom `render`/`renderHighlight` callbacks of the legend, tooltip, and crosshair plugins now receive the plugin context instead of the `Chart` (see change 8), and the renames in change 10. Datasets gained optional validation options (change 3).
 - Entry points and subpaths are the same: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and `blazeplot/plugins/*`. What lives in `blazeplot/data` and `blazeplot/export` changed (see change 6).
 - The package was already ESM only and already required WebGL2; 1.0 now states both as policy.
 
@@ -368,6 +368,25 @@ chart.dispose();
 - **`"envelope"` is removed from `SeriesMode`.** It never rendered anything but a line. Use `"line"`, or `downsample: "server"` with `ServerSampledDataset` for a pre-reduced min/max band. `chart.addSeries` now throws a `TypeError` for any unknown `mode`.
 - **Default series colors no longer repeat after `removeSeries`.** A new series takes the first palette color that no attached palette-colored series uses (it used `series.length % palette.length`). Palette-colored series now follow `chart.setTheme(...)`; series with an explicit `color` do not. New: `series.setStyle(options)` merges style options after creation.
 - **The navigator overview uses `series.dataBounds()` and a min/max envelope for dense series.** Spikes between samples now show up in the overview and its Y domain, and series that start or end with a gap are no longer dropped. `maxSamplesPerSeries` now sets the size up to which a series draws as an exact polyline.
+- **`chart.addHistogram(...)` is removed; histograms are bar series over a `HistogramDataset`.** The binning code is no longer imported by `Chart`, so apps that never draw a histogram no longer bundle it. Use `HistogramDataset.from(values, options)` for raw values, or `new HistogramDataset(histogram(values, options))` for bins you computed. `addBar` uses the bin width as the default `barWidth`, and throws a `TypeError` for variable-width bins until you pass `style.barWidth`. The `HistogramSeriesConfig` and `PrecomputedHistogramSeriesConfig` types are removed.
+
+  Before (0.5):
+
+  <!-- snippet: skip intentionally old 0.5 API; chart.addHistogram no longer exists -->
+  ```ts
+  chart.addHistogram({ values, binSize: 10, name: "latency" }, { baseline: 0 });
+  ```
+
+  After (1.0):
+
+  ```ts
+  import { Chart, HistogramDataset } from "blazeplot";
+
+  const values = [12, 18, 19, 20, 21, 28, 33, 35];
+  const chart = new Chart(document.body);
+  chart.addBar({ name: "latency", dataset: HistogramDataset.from(values, { binSize: 10 }) }, { baseline: 0 });
+  chart.dispose();
+  ```
 - **`downsample: "none"` line and bar series draw every visible sample.** Past 16,384 visible samples (4,096 bars on the non-instanced path) they used to stop drawing partway across the plot. No code change is needed.
 
 ### 12. Gesture handling
@@ -467,5 +486,6 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 10. Apply the renames in change 10: search for `followLatestX`, `stopFollowingLatestX`, `setXFollowPaused`, `getXFollowState`, `ChartXFollowState`, `ChartPointerEventState`, `LODStrategy`, `chartDataToCSV`, `sharedX`, `labelBackground`, the `fill`/`stroke`/`background`/`window*` options of `selectionPlugin` and `navigatorPlugin`, and `chart.getCamera`, `chart.getWebGLContext`, `chart.canvas`, `chart.plotElement`, and the `*AxisElement` getters.
 11. Check change 9 if you style or test the chart root: search for `role="img"`, `aria-description`, `querySelector("style")` on the chart root, and full `ResolvedChartTheme` objects (add `focusRingColor`). Give each chart an `accessibility.label`, and consider `a11yPlugin()` for charts whose values users need.
 12. If you use `interactionsPlugin` with `selectionPlugin`, or write custom touch or drag plugins, read change 12: check `touch-action`, touch listeners, and which plugin owns a plain drag.
-13. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-14. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
+13. Search for `addHistogram`, `HistogramSeriesConfig`, and `PrecomputedHistogramSeriesConfig`. Replace each call with `chart.addBar({ dataset: HistogramDataset.from(values, options) })` (see change 11).
+14. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
+15. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
