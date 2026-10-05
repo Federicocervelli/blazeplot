@@ -144,6 +144,39 @@ Keyboard pan and zoom pass through `ViewportPolicy.beforePan` and `beforeZoom`, 
 | `interactionsPlugin` | Pointer, wheel, and touch only; the keyboard equivalents come from the chart itself. |
 | `flameGraphPlugin` | Its tooltip uses the same `role="tooltip"` / `aria-hidden` toggling. Frames are not keyboard focusable. |
 
+## Localization
+
+Every user-facing string can be replaced, so a non-English app can ship a fully localized chart. Each piece takes an object of strings and small formatter functions; only the keys you pass change.
+
+- Core: `accessibility: { locale, messages: { defaultLabel, summary } }` (the generated summary, see `ChartSummaryMessages`).
+- `a11yPlugin({ locale, messages })`: keyboard instructions, table captions and headers, inspection announcements, and the live summary (`A11yMessages`).
+- `legendPlugin({ messages })`: the group label and the hide/show titles (`LegendMessages`).
+- `selectionPlugin({ messages })`: selection announcements (`SelectionMessages`).
+
+Counts use `Intl.NumberFormat` semantics for `locale` (default `"en-US"`). Axis tick text is formatted by your `tickFormat`.
+
+```ts
+import { Chart } from "blazeplot";
+import { a11yPlugin } from "blazeplot/plugins/a11y";
+import { legendPlugin } from "blazeplot/plugins/legend";
+
+const chart = new Chart(element, {
+  accessibility: {
+    locale: "de-DE",
+    messages: {
+      defaultLabel: "Diagramm",
+      summary: { intro: (_mode, count) => `Diagramm mit ${count} Reihen.` },
+    },
+  },
+  plugins: [
+    a11yPlugin({ locale: "de-DE", messages: { instructions: "Tastatur: Eingabe startet die Punktprüfung.", stoppedInspecting: "Prüfung beendet." } }),
+    legendPlugin({ messages: { ariaLabel: "Legende", hide: (name) => `${name} ausblenden`, show: (name) => `${name} einblenden` } }),
+  ],
+});
+
+// Call chart.dispose() when the chart is removed.
+```
+
 ## Contrast and high contrast
 
 The built-in dark theme (`DEFAULT_CHART_THEME`) and light theme (`LIGHT_CHART_THEME`) are checked by a unit test that computes WCAG contrast ratios from the theme tokens: text tokens (axis labels, titles, tooltip and legend text, including muted legend text) reach at least 4.5:1 against what they sit on, and series colors, the selection border, crosshair, point-marker outline, and focus ring reach at least 3:1 against the background. Translucent tokens are composited first. Grid lines are decorative and not checked. If you pass your own `theme`, checking its contrast is up to you.
