@@ -40,6 +40,12 @@ describe("measureText", () => {
     expect(measureText(bare, "f", "a")).toEqual({ width: 12, height: 12 });
   });
 
+  it("uses the fallback size for a dimension the context cannot report", () => {
+    const context = { font: "", measureText: () => ({ width: 30 }) };
+    const doc = { createElement: () => ({ getContext: () => context }) } as unknown as Document;
+    expect(measureText(doc, "f", "abc")).toEqual({ width: 30, height: 12 });
+  });
+
   it("forgets remembered extents when a web font finishes loading", () => {
     const { doc, calls } = countingDocument();
     let loaded: () => void = () => {};
@@ -84,7 +90,10 @@ describe("axis overlay", () => {
     h.raf.flush();
 
     const observer = new MutationObserver(() => {});
-    observer.observe(chart.rootElement, { subtree: true, attributes: true, characterData: true, childList: true });
+    // The axis containers hold the labels; engines may legitimately touch the canvas every frame.
+    for (const axis of chart.rootElement.querySelectorAll(".blazeplot-axis")) {
+      observer.observe(axis, { subtree: true, attributes: true, characterData: true, childList: true });
+    }
     chart.requestRender();
     h.raf.flush();
     expect(observer.takeRecords()).toHaveLength(0);

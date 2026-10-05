@@ -59,9 +59,13 @@ export function measureText(doc: Document, font: string, text: string): TextExte
   }
   context.font = font;
   const metrics = context.measureText(text);
+  // A context that reports no glyph bounds (a minimal canvas implementation) gets the fallback size
+  // for that dimension rather than NaN, which would defeat every unchanged-position comparison.
+  const width = Math.ceil(metrics.width);
+  const height = Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent);
   const extent: TextExtent = {
-    width: Math.max(1, Math.ceil(metrics.width)),
-    height: Math.max(1, Math.ceil(metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent)),
+    width: Number.isFinite(width) ? Math.max(1, width) : FALLBACK_EXTENT.width,
+    height: Number.isFinite(height) ? Math.max(1, height) : FALLBACK_EXTENT.height,
   };
   byText.set(text, extent);
   measurer.entries++;
