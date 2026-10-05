@@ -182,7 +182,15 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         notifyPeers(state);
       };
 
-      const longPress = installLongPress(chart, { longPressMs: options.longPressMs, onPoint: showAtClientPoint });
+      const longPress = installLongPress(chart, {
+        longPressMs: options.longPressMs,
+        onPoint: showAtClientPoint,
+        // Touch never drives hover, so nothing else hides the tooltip when the finger lifts.
+        onEnd: () => {
+          render(chart.state.getHover());
+          notifyPeers(null);
+        },
+      });
 
       // `hover` runs after the frame it describes, so render synchronously: no extra frame of lag.
       chart.events.subscribe("hover", (state) => {

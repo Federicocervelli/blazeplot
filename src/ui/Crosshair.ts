@@ -437,6 +437,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       const longPress = installLongPress(chart, {
         longPressMs: options.longPressMs,
         onPoint: showAtClientPoint,
+        onEnd: onPointerLeave,
         beforeMove: (event) => {
           activeClientPoint = { clientX: event.clientX, clientY: event.clientY };
         },

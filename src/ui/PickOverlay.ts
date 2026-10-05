@@ -210,6 +210,8 @@ export interface LongPressTouchTrackerOptions {
   readonly view: Window;
   readonly delayMs: () => number | false | undefined;
   readonly onPoint: (clientX: number, clientY: number) => void;
+  /** Called when an active long press ends: finger lifted, cancelled, or a second finger arrived. */
+  readonly onEnd?: () => void;
   readonly movementThresholdPx?: number;
 }
 
@@ -242,6 +244,12 @@ export function createLongPressTouchTracker(options: LongPressTouchTrackerOption
     active = false;
   };
 
+  const end = (): void => {
+    const wasActive = active;
+    clear();
+    if (wasActive) options.onEnd?.();
+  };
+
   const refresh = (): void => {
     if (!active) return;
     options.onPoint(clientX, clientY);
@@ -272,7 +280,7 @@ export function createLongPressTouchTracker(options: LongPressTouchTrackerOption
       touchIds.add(event.pointerId);
       // A second finger means pinch or pan, never a long press.
       if (touchIds.size !== 1) {
-        clear();
+        end();
         return;
       }
       schedule(event.clientX, event.clientY);
@@ -294,7 +302,7 @@ export function createLongPressTouchTracker(options: LongPressTouchTrackerOption
     clearIfTouchPointer(event: PointerEvent): void {
       if (event.pointerType !== "touch") return;
       touchIds.delete(event.pointerId);
-      clear();
+      end();
     },
   };
 }
@@ -304,6 +312,8 @@ export interface InstallLongPressOptions {
   readonly longPressMs: number | false | undefined;
   /** Called with the finger position while a long press is active. */
   readonly onPoint: (clientX: number, clientY: number) => void;
+  /** Called when an active long press ends, so the plugin can hide what the press showed. */
+  readonly onEnd?: () => void;
   /** Runs for every pointer move, before the tracker sees it. */
   readonly beforeMove?: (event: PointerEvent) => void;
   /** Runs for pointer moves the tracker does not own (mouse and pen). */
@@ -325,6 +335,7 @@ export function installLongPress(chart: ChartPluginContext, options: InstallLong
     view: chart.dom.view,
     delayMs: () => options.longPressMs,
     onPoint: options.onPoint,
+    onEnd: options.onEnd,
   });
   const listen = (type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel", listener: (event: PointerEvent) => void): void => {
     chart.dom.listen("plot", type, listener, { capture: true });
