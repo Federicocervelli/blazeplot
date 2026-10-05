@@ -38,7 +38,7 @@ export type AxisTickFormat = string | AxisTickFormatter;
  *
  * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
-export interface AxisControllerAxisOptions {
+export interface AxisScaleOptions {
   readonly scale?: AxisScale;
   readonly tickFormat?: AxisTickFormat;
   readonly timezone?: AxisTimeZone;
@@ -50,8 +50,8 @@ export interface AxisControllerAxisOptions {
 
 /** Options for the X and Y axes controlled by an `AxisController`. */
 export interface AxisControllerOptions {
-  readonly x?: AxisControllerAxisOptions;
-  readonly y?: AxisControllerAxisOptions;
+  readonly x?: AxisScaleOptions;
+  readonly y?: AxisScaleOptions;
 }
 
 export class AxisController {
@@ -243,7 +243,7 @@ export class AxisController {
     return true;
   }
 
-  private static validateAxisDomain(axis: AxisRenderTarget, min: number, max: number, options: AxisControllerAxisOptions | undefined): void {
+  private static validateAxisDomain(axis: AxisRenderTarget, min: number, max: number, options: AxisScaleOptions | undefined): void {
     if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
       throw new RangeError(`Axis ${axis} requires a finite domain with max > min.`);
     }
@@ -293,7 +293,7 @@ export class AxisController {
     maxTicks: number,
     minPixelSpacing: number,
     target: number[],
-    options: AxisControllerAxisOptions | undefined,
+    options: AxisScaleOptions | undefined,
     axis: AxisRenderTarget,
   ): number[] {
     AxisController.validateAxisDomain(axis, min, max, options);
@@ -393,7 +393,7 @@ export class AxisController {
     return target;
   }
 
-  private getTimeTickValues(min: number, max: number, pixelSize: number, maxTicks: number, minPixelSpacing: number, target: number[], options: AxisControllerAxisOptions): number[] {
+  private getTimeTickValues(min: number, max: number, pixelSize: number, maxTicks: number, minPixelSpacing: number, target: number[], options: AxisScaleOptions): number[] {
     AxisController.validateAxisDomain("x", min, max, options);
     target.length = 0;
     this.lastTimeInterval = null;

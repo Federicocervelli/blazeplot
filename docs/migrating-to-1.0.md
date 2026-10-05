@@ -152,7 +152,7 @@ These types appeared in public signatures but were not exported in 0.5.5. They a
 
 ### 6. Chart data export moved from `blazeplot/data` to `blazeplot/export`
 
-`exportChartData`, `chartDataToCSV` (also renamed to `chartDataToCsv`, change 10), and their types (`ExportableChart`, `ChartDataExport`, `ChartDataExportOptions`, `ChartDataCsvOptions`, `ChartDataSeries`, `ChartDataSample`, `ChartDataSource`) moved to `blazeplot/export`, next to the screenshot download and clipboard helpers. `blazeplot/data` now holds only pure, chart-agnostic transforms: `binSamples`, `rollingMean`, and their types (`XYSample`, `SampleReducer`, `ResampleX`, `ResampleOptions`, `BinnedSample`, `RollingMeanSample`). There is no re-export: importing the moved names from `blazeplot/data` fails with "Module has no exported member". Behavior is unchanged.
+`exportChartData`, `chartDataToCSV` (also renamed to `chartDataToCsv`, change 10), and their types (`ExportableChart`, `ChartDataExport`, `ChartDataExportOptions`, `ChartDataCsvOptions`, `ChartDataSeries`, `ChartDataSample`, `ChartDataSource`) moved to `blazeplot/export`, next to the screenshot download and clipboard helpers. `blazeplot/data` now holds only pure, chart-agnostic transforms: `binSamples`, `histogramBins`, `rollingMean`, and their types (`XYSample`, `SampleReducer`, `ResampleX`, `ResampleOptions`, `BinnedSample`, `RollingMeanSample`; the histogram types stay in the root). There is no re-export: importing the moved names from `blazeplot/data` fails with "Module has no exported member". Behavior is unchanged.
 
 Before (0.5):
 
@@ -464,6 +464,27 @@ To keep the 0.5 behavior (fail instead of falling back, for example to show your
 
 See [Browser support](./browser-support.md#rendering-engines) and [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
 
+### 17. API consistency pass
+
+Late 1.0 release candidates removed a few leaky or inconsistent names. There are no deprecated aliases: the old names fail to compile.
+
+| rc / 0.5 | 1.0 |
+|---|---|
+| `AxisControllerAxisOptions` (experimental type of the axis scale options) | `AxisScaleOptions` (stable, and `AxisConfig` extends it). Only the `CustomAxisScale` hook shape stays experimental. |
+| `AxisRenderTarget` was experimental | Stable (it types the stable `AxisTickFormatter`). |
+| `rendererchange` in `ChartEventMap` (never emitted) | Removed. Read `chart.rendererInfo` for the engine in use. |
+| `ChartRendererKind` | `RendererName` |
+| `histogram(values, options)` (root export) | `histogramBins(values, options)`, imported from `blazeplot/data` next to `binSamples`. `HistogramDataset.from(values, options)` stays in the root and takes the same options (`binSize`, `binCount`, or `thresholds`). |
+| `chart.screenshot({ dpr })` | `chart.screenshot({ pixelRatio })` |
+| `chart.resize(dpr)` | `chart.resize(pixelRatio)` (positional, so only the parameter name changes) |
+| `TypedSeriesConfig` (`Omit<SeriesConfig, "mode">`: every option optional) | A union of `DatasetSeriesConfig<D>` (`{ dataset }`), `RingSeriesConfig` (`{ capacity, overflow?, valuePrecision?, onInvalidSample? }`), and `UniformRingSeriesConfig` (`{ capacity, xStep? / xStart?, valuePrecision? }`), all carrying `SeriesIdentityConfig` (`id`, `name`, `yAxis`, `downsample`). |
+| `chart.addLine({ capacity, dataset })`, `{ dataset, xStep }`, `{ dataset, overflow }` (buffer options silently ignored next to a dataset) | Compile error and a `TypeError` at run time. Drop the buffer options, or configure the dataset you pass. |
+| `chart.addLine({ xStep: 1 })`, `{ xStart }`, `{ name }` with neither `dataset` nor `capacity` | Compile error (and the existing `TypeError` for a missing `capacity`). |
+| `chart.addLine({ capacity, xStep, overflow: "drop-new" \| "error" })` and `{ capacity, xStep, onInvalidSample }` | Compile error (the uniform buffer only wraps and never rejects samples); `overflow` other than `"wrap"` already threw. `onInvalidSample` with `xStep` now throws too. |
+| `chart.addCandlestick({ capacity })`, `chart.addOhlc({ capacity })`, or an `XY` dataset | Compile error: they need `dataset: OhlcDataset` (`StaticOhlcDataset` or `OhlcRingBuffer`). |
+| `SeriesStore<D>.append` / `updateLast` / `updateAt` accepted any payload | Typed by the dataset: `{ x, y }` for `RingBuffer`, `{ y }` for `UniformRingBuffer`, OHLC objects for `OhlcRingBuffer`, and `never` for `StaticDataset`-backed series. The runtime `TypeError` stays. A bare `SeriesStore` (what `getSeriesState()` returns) keeps accepting every form. New exported types: `SeriesAppendFor`, `SeriesUpdateFor`, `SeriesYAppendData`, `SeriesXYExplicitAppendData`, `SeriesYUpdateData`. |
+| `chart.addLine(...)` returned `SeriesStore<Dataset>` for `{ capacity }` | Returns `SeriesStore<RingBuffer>` (or `SeriesStore<UniformRingBuffer>` with `xStep`/`xStart`), so `series.append({ x, y })` and `series.clear()` are typed without a cast. |
+
 ## New in 1.0
 
 Additive features that need no migration work but are easy to miss:
@@ -564,4 +585,5 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 15. Check fixed-height containers and visual baselines for charts with a `title` or `subtitle` (the title row, change 15) and for the rendering differences in change 13 (translucent blending, round `pointSize` markers in CSS pixels, dense area peaks).
 16. Rendering engines (change 16): the default `renderer` is now `"auto"`, so code that relied on `new Chart(...)` throwing `WebGL2UnavailableError` needs `renderer: "webgl2"`. On a release candidate, replace imports from `blazeplot/renderers/canvas2d` and `blazeplot/renderers/shared` with root imports or renderer names, and `"webgl2-shared"` with `"shared"`. If you mount many charts on one page, consider `renderer: "shared"`.
 17. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-18. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.
+18. Apply the renames in change 17 (search for `AxisControllerAxisOptions`, `rendererchange`, `ChartRendererKind`, `dpr`, root imports of `histogram`, and `capacity` passed next to a `dataset`).
+19. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.

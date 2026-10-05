@@ -1,7 +1,7 @@
 import type { Dataset, RgbaColor, SeriesConfig, SeriesStyle, SeriesStyleOptions } from "../core/types.js";
 import { RingBuffer } from "../core/RingBuffer.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
-import type { AxisController, AxisControllerAxisOptions } from "../interaction/AxisController.js";
+import type { AxisController, AxisScaleOptions } from "../interaction/AxisController.js";
 import type { NormalizedAxisConfig } from "./ChartLayout.js";
 import { resolveThemeColor } from "./theme.js";
 import type { AxisConfig, ChartOptions, TextOverlayConfig } from "./ChartOptions.js";
@@ -12,7 +12,7 @@ export function withAlpha(color: RgbaColor, factor: number): RgbaColor {
   return [color[0], color[1], color[2], color[3] * factor];
 }
 
-export type ResolvedAxisConfig = NormalizedAxisConfig & AxisControllerAxisOptions & { readonly title?: string | TextOverlayConfig };
+export type ResolvedAxisConfig = NormalizedAxisConfig & AxisScaleOptions & { readonly title?: string | TextOverlayConfig };
 
 export type ResolvedAxesConfig = { x: ResolvedAxisConfig; y: ResolvedAxisConfig; y2: ResolvedAxisConfig };
 
@@ -114,7 +114,20 @@ export function createDefaultDataset(config: SeriesConfig): Dataset {
     if (config.overflow !== undefined && config.overflow !== "wrap") {
       throw new TypeError("Series shorthand { capacity, xStep } uses UniformRingBuffer, which supports only wrap overflow.");
     }
+    if (config.onInvalidSample !== undefined) {
+      throw new TypeError("Series shorthand { capacity, xStep } uses UniformRingBuffer, which derives X and never rejects samples, so onInvalidSample does not apply.");
+    }
     return new UniformRingBuffer(capacity, { xStart: config.xStart, xStep: config.xStep, valuePrecision: config.valuePrecision });
   }
   return new RingBuffer(capacity, { overflow: config.overflow, valuePrecision: config.valuePrecision, onInvalidSample: config.onInvalidSample });
+}
+
+const BUFFER_ONLY_OPTIONS = ["capacity", "xStart", "xStep", "overflow", "valuePrecision", "onInvalidSample"] as const;
+
+/** A series that brings its own `dataset` cannot also configure the buffer BlazePlot would have created. */
+export function rejectBufferOptions(config: SeriesConfig): void {
+  const given = BUFFER_ONLY_OPTIONS.filter((key) => config[key] !== undefined);
+  if (given.length > 0) {
+    throw new TypeError(`Series option${given.length > 1 ? "s" : ""} ${given.map((key) => `"${key}"`).join(", ")} configure a buffer the chart creates and cannot be combined with "dataset". Configure the dataset itself, or drop "dataset".`);
+  }
 }

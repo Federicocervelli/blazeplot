@@ -244,7 +244,7 @@ describe("ChartHover", () => {
     const chart = h.make();
     const buffer = new RingBuffer(16);
     buffer.append([0, 5, 10], [0, 5, 10]);
-    const series = chart.addLine({ dataset: buffer, capacity: 16 });
+    const series = chart.addLine({ dataset: buffer });
     chart.setViewport({ xMin: 0, xMax: 10, yMin: 0, yMax: 10 });
     stubPlot(chart);
     const states: Array<ReturnType<typeof chart.getHoverState>> = [];

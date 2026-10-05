@@ -14,7 +14,7 @@ BlazePlot expects finite, non-decreasing X values and treats non-finite Y values
 | Historical OHLC/candles | `StaticOhlcDataset` | Bounds and fitting use high/low values. |
 | Live OHLC/candles | `OhlcRingBuffer` | Rolling OHLC history with explicit time values. |
 | Server-reduced buckets | `ServerSampledDataset` | Use `downsample: "server"` for min/max buckets. |
-| One-dimensional values | `histogram(...)` / `HistogramDataset.from(...)` with `chart.addBar(...)` | Converts raw values to bucket centers/counts and renders with the bar path. |
+| One-dimensional values | `histogramBins(...)` / `HistogramDataset.from(...)` with `chart.addBar(...)` | Converts raw values to bucket centers/counts and renders with the bar path. |
 | Custom remote/procedural data | `Dataset` or `AcceleratedDataset` | Implement sorted logical access and only the fast paths your data can answer cheaply. |
 
 ## Empty datasets
@@ -115,11 +115,11 @@ Rendering has its own precision. The GPU works in `float32`, so the chart subtra
 
 ## Histograms and X/Y binning
 
-`histogram(values, options)` bins one-dimensional finite values by value range. It skips `NaN`, infinities, and non-number values, tracks underflow/overflow outside the chosen bin edges, and can normalize bucket heights as counts, probability, percent, or density. Fixed-size bins align to origin `0` by default; pass `align` to use another origin. `HistogramDataset.from(values, options)` (or `new HistogramDataset(histogram(values, options))`) turns those buckets into a dataset you pass to `chart.addBar({ dataset })`; bars default to the bin width. Each rendered sample is centered at the bucket midpoint for the bar renderer, while the dataset exposes generic X-interval metadata that tooltip and picking code can present as a range.
+`histogramBins(values, options)` bins one-dimensional finite values by value range. It skips `NaN`, infinities, and non-number values, tracks underflow/overflow outside the chosen bin edges, and can normalize bucket heights as counts, probability, percent, or density. Fixed-size bins align to origin `0` by default; pass `align` to use another origin. `HistogramDataset.from(values, options)` (or `new HistogramDataset(histogramBins(values, options))`) turns those buckets into a dataset you pass to `chart.addBar({ dataset })`; bars default to the bin width. Each rendered sample is centered at the bucket midpoint for the bar renderer, while the dataset exposes generic X-interval metadata that tooltip and picking code can present as a range.
 
 `binSamples(samples, binSize, options)` is different: it expects existing `{ x, y }` samples and groups them by X interval with a Y reducer such as mean, sum, min, or max.
 
-Variable-width explicit histogram thresholds are supported by the pure `histogram(...)` helper. The chart helper uses one `barWidth` for the whole series: `chart.addBar({ dataset })` defaults it to the bin width of uniform bins, and throws a `TypeError` for variable-width bins unless you pass an explicit `style.barWidth`. Use uniform-width bins when you want accurate bar widths.
+Variable-width explicit histogram thresholds are supported by the pure `histogramBins(...)` helper. The chart helper uses one `barWidth` for the whole series: `chart.addBar({ dataset })` defaults it to the bin width of uniform bins, and throws a `TypeError` for variable-width bins unless you pass an explicit `style.barWidth`. Use uniform-width bins when you want accurate bar widths.
 
 ## Server-sampled datasets
 

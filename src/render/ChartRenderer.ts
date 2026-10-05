@@ -69,8 +69,6 @@ export type RendererName = "webgl2" | "canvas2d" | "shared";
 /** What `ChartOptions.renderer` can ask for: an engine by name, or `"auto"` (WebGL2, else Canvas 2D). */
 export type RendererChoice = RendererName | "auto";
 
-/** Rendering backend a chart is drawn with. */
-export type ChartRendererKind = RendererName;
 
 /** Which engine a chart ended up with, what was asked for, and what that engine can do. */
 export interface ChartRendererInfo {
@@ -97,7 +95,7 @@ export function describeRenderer(name: RendererName, capabilities: ChartRenderer
 
 /** Opaque renderer instance returned by a renderer factory. Only the built-in renderers implement it. */
 export interface ChartRendererHandle {
-  readonly kind: ChartRendererKind;
+  readonly kind: RendererName;
 }
 
 /**

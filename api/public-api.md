@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-167 exports.
+173 exports.
 
 #### interface AcceleratedDataset
 
@@ -30,25 +30,11 @@ interface AppendableDataset extends Dataset {
 #### interface AxisConfig
 
 ```ts
-interface AxisConfig extends AxisControllerAxisOptions {
+interface AxisConfig extends AxisScaleOptions {
     readonly visible?: boolean;
     readonly position?: AxisPosition;
     readonly title?: string | TextOverlayConfig;
     readonly size?: number | "auto";
-}
-```
-
-#### interface AxisControllerAxisOptions
-
-```ts
-interface AxisControllerAxisOptions {
-    readonly scale?: AxisScale;
-    readonly tickFormat?: AxisTickFormat;
-    readonly timezone?: AxisTimeZone;
-    readonly logBase?: number;
-    readonly symlogConstant?: number;
-    readonly categories?: readonly string[];
-    readonly reversed?: boolean;
 }
 ```
 
@@ -68,6 +54,20 @@ type AxisRenderTarget = "x" | "y";
 
 ```ts
 type AxisScale = BuiltInAxisScale | CustomAxisScale;
+```
+
+#### interface AxisScaleOptions
+
+```ts
+interface AxisScaleOptions {
+    readonly scale?: AxisScale;
+    readonly tickFormat?: AxisTickFormat;
+    readonly timezone?: AxisTimeZone;
+    readonly logBase?: number;
+    readonly symlogConstant?: number;
+    readonly categories?: readonly string[];
+    readonly reversed?: boolean;
+}
 ```
 
 #### type AxisTickFormat
@@ -172,27 +172,32 @@ class Chart {
     setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis, options?: ChartSetViewportOptions): void;
     pan(intent: PanIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
     zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
-    addSeries<D extends Dataset = Dataset>(config: SeriesConfig & {
-        readonly dataset?: D;
+    addSeries<D extends OhlcDataset>(config: DatasetSeriesConfig<D> & {
+        readonly mode: "ohlc" | "candlestick";
     }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addLine<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
+    addSeries<D extends Dataset>(config: DatasetSeriesConfig<D> & {
+        readonly mode: "line" | "area" | "scatter" | "bar";
     }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addArea<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
-    }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addScatter<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
-    }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addBar<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
-    }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addOhlc<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
-    }, style?: SeriesStyleOptions): SeriesStore<D>;
-    addCandlestick<D extends Dataset = Dataset>(config: TypedSeriesConfig & {
-        readonly dataset?: D;
-    }, style?: SeriesStyleOptions): SeriesStore<D>;
+    addSeries(config: UniformRingSeriesConfig & {
+        readonly mode: "line" | "area" | "scatter" | "bar";
+    }, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+    addSeries(config: RingSeriesConfig & {
+        readonly mode: "line" | "area" | "scatter" | "bar";
+    }, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+    addLine<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addLine(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+    addLine(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+    addArea<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addArea(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+    addArea(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+    addScatter<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addScatter(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+    addScatter(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+    addBar<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addBar(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+    addBar(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+    addOhlc<D extends OhlcDataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addCandlestick<D extends OhlcDataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
     removeSeries(series: SeriesStore): boolean;
     getSummary(): ChartSummary;
     getSeriesState(): ChartSeriesState[];
@@ -201,7 +206,7 @@ class Chart {
     setFollowXPaused(paused: boolean): void;
     getFollowXState(): ChartFollowXState;
     fitToData(options?: ChartFitToDataOptions): boolean;
-    resize(dpr?: number): boolean;
+    resize(pixelRatio?: number): boolean;
     getFrameStats(target?: ChartFrameStats): ChartFrameStats;
     getHoverState(): ChartHoverState | null;
     subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
@@ -254,7 +259,6 @@ interface ChartEventMap extends ChartPluginEventMap {
     themechange: void;
     render: void;
     viewportchange: ChartViewportChangeEvent;
-    rendererchange: ChartRendererInfo;
     followxchange: ChartFollowXChangeEvent;
     seriesclick: ChartSeriesClickEvent;
     click: ChartPointerEvent;
@@ -702,7 +706,7 @@ interface ChartRendererFactoryContext {
 
 ```ts
 interface ChartRendererHandle {
-    readonly kind: ChartRendererKind;
+    readonly kind: RendererName;
 }
 ```
 
@@ -717,12 +721,6 @@ interface ChartRendererInfo {
 }
 ```
 
-#### type ChartRendererKind
-
-```ts
-type ChartRendererKind = RendererName;
-```
-
 #### interface ChartScreenshotOptions
 
 ```ts
@@ -730,7 +728,7 @@ interface ChartScreenshotOptions {
     readonly type?: string;
     readonly quality?: number;
     readonly background?: string | null;
-    readonly dpr?: number;
+    readonly pixelRatio?: number;
     readonly width?: number;
     readonly height?: number;
 }
@@ -952,6 +950,20 @@ interface Dataset {
     upperBoundX(x: number): number;
     invalidate?(): void;
     readonly ordinalOffset?: number;
+}
+```
+
+#### interface DatasetSeriesConfig
+
+```ts
+interface DatasetSeriesConfig<D extends Dataset = Dataset> extends SeriesIdentityConfig {
+    readonly dataset: D;
+    readonly capacity?: never;
+    readonly xStart?: never;
+    readonly xStep?: never;
+    readonly overflow?: never;
+    readonly valuePrecision?: never;
+    readonly onInvalidSample?: never;
 }
 ```
 
@@ -1249,6 +1261,20 @@ interface RingBufferOptions {
 }
 ```
 
+#### interface RingSeriesConfig
+
+```ts
+interface RingSeriesConfig extends SeriesIdentityConfig {
+    readonly capacity: number;
+    readonly overflow?: BufferOverflowStrategy;
+    readonly valuePrecision?: ValuePrecision;
+    readonly onInvalidSample?: (sample: InvalidSample) => void;
+    readonly dataset?: never;
+    readonly xStart?: never;
+    readonly xStep?: never;
+}
+```
+
 #### type SampleCopyLayout
 
 ```ts
@@ -1259,6 +1285,20 @@ type SampleCopyLayout = "points" | "area";
 
 ```ts
 type SeriesAppendData = SeriesObjectAppendData | readonly SeriesAppendRow[];
+```
+
+#### type SeriesAppendFor
+
+```ts
+type SeriesAppendFor<D extends Dataset> = (D extends OhlcDataset & {
+    append(x: ArrayLike<number>, open: ArrayLike<number>, high: ArrayLike<number>, low: ArrayLike<number>, close: ArrayLike<number>): void;
+} ? SeriesOhlcAppendData | readonly SeriesOhlcAppendRow[] : never) | (D extends {
+    append(x: ArrayLike<number>, y: ArrayLike<number>): void;
+} ? SeriesXYExplicitAppendData | readonly Required<SeriesXYAppendRow>[] : never) | (D extends {
+    appendY(y: ArrayLike<number>): void;
+} ? SeriesYAppendData | readonly {
+    readonly y: number;
+}[] : never);
 ```
 
 #### type SeriesAppendRow
@@ -1295,10 +1335,15 @@ interface SeriesDataBoundsOptions {
 }
 ```
 
-#### type SeriesIdentityConfig
+#### interface SeriesIdentityConfig
 
 ```ts
-type SeriesIdentityConfig = Pick<SeriesConfig, "id" | "name" | "yAxis" | "downsample">;
+interface SeriesIdentityConfig {
+    readonly id?: string;
+    readonly name?: string;
+    readonly yAxis?: SeriesYAxis;
+    readonly downsample?: DownsampleStrategy;
+}
 ```
 
 #### type SeriesMode
@@ -1387,7 +1432,7 @@ type SeriesScalarOrArray = number | ArrayLike<number>;
 #### class SeriesStore
 
 ```ts
-class SeriesStore<D extends Dataset = Dataset> {
+class SeriesStore<D extends Dataset = any> {
     readonly config: SeriesConfig;
     readonly style: SeriesStyle;
     get length(): number;
@@ -1395,9 +1440,9 @@ class SeriesStore<D extends Dataset = Dataset> {
     get xRange(): TimeRange | null;
     setStyle(options: SeriesStyleOptions): void;
     setVisible(visible: boolean): void;
-    append(data: SeriesAppendData): void;
-    updateLast(data: SeriesUpdateData): boolean;
-    updateAt(index: number, data: SeriesUpdateData): boolean;
+    append(data: SeriesAppendFor<D>): void;
+    updateLast(data: SeriesUpdateFor<D>): boolean;
+    updateAt(index: number, rawData: SeriesUpdateFor<D>): boolean;
     replace(data: SeriesReplaceData<D>): void;
     markDirty(): void;
     clear(): void;
@@ -1447,6 +1492,18 @@ interface SeriesStyleOptions {
 type SeriesUpdateData = SeriesXYUpdateData | SeriesOhlcUpdateData;
 ```
 
+#### type SeriesUpdateFor
+
+```ts
+type SeriesUpdateFor<D extends Dataset> = (D extends OhlcDataset & {
+    updateAt(index: number, open: number, high: number, low: number, close: number): boolean;
+} ? SeriesOhlcUpdateData : never) | (D extends {
+    update(index: number, x: number, y: number): boolean;
+} ? SeriesXYUpdateData : D extends {
+    updateY(index: number, y: number): boolean;
+} ? SeriesYUpdateData : never);
+```
+
 #### interface SeriesXYAppendData
 
 ```ts
@@ -1465,6 +1522,15 @@ interface SeriesXYAppendRow {
 }
 ```
 
+#### interface SeriesXYExplicitAppendData
+
+```ts
+interface SeriesXYExplicitAppendData {
+    readonly x: SeriesScalarOrArray;
+    readonly y: SeriesScalarOrArray;
+}
+```
+
 #### interface SeriesXYUpdateData
 
 ```ts
@@ -1474,10 +1540,28 @@ interface SeriesXYUpdateData {
 }
 ```
 
+#### interface SeriesYAppendData
+
+```ts
+interface SeriesYAppendData {
+    readonly y: SeriesScalarOrArray;
+    readonly x?: undefined;
+}
+```
+
 #### type SeriesYAxis
 
 ```ts
 type SeriesYAxis = "left" | "right";
+```
+
+#### interface SeriesYUpdateData
+
+```ts
+interface SeriesYUpdateData {
+    readonly y: number;
+    readonly x?: undefined;
+}
 ```
 
 #### interface ServerSampledBuckets
@@ -1660,7 +1744,7 @@ interface TimeRange {
 #### type TypedSeriesConfig
 
 ```ts
-type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
+type TypedSeriesConfig<D extends Dataset = Dataset> = DatasetSeriesConfig<D> | RingSeriesConfig | UniformRingSeriesConfig;
 ```
 
 #### class UniformRingBuffer
@@ -1699,6 +1783,24 @@ interface UniformRingBufferOptions {
     readonly xStep?: number;
     readonly valuePrecision?: ValuePrecision;
 }
+```
+
+#### type UniformRingSeriesConfig
+
+```ts
+type UniformRingSeriesConfig = SeriesIdentityConfig & {
+    readonly capacity: number;
+    readonly valuePrecision?: ValuePrecision;
+    readonly overflow?: "wrap";
+    readonly onInvalidSample?: never;
+    readonly dataset?: never;
+} & ({
+    readonly xStep: number;
+    readonly xStart?: number;
+} | {
+    readonly xStep?: number;
+    readonly xStart: number;
+});
 ```
 
 #### interface UpdatableDataset
@@ -1829,12 +1931,6 @@ function canvas2dRenderer(): ChartRendererFactory;
 function createChartRenderContext(doc?: Document): ChartRenderContext;
 ```
 
-#### function histogram
-
-```ts
-function histogram(values: ArrayLike<number>, options?: HistogramOptions): HistogramResult;
-```
-
 #### function isWebGL2Available
 
 ```ts
@@ -1901,7 +1997,7 @@ function createLinkedCharts(target: HTMLElement, options: LinkedChartsOptions): 
 
 ### `blazeplot/data`
 
-8 exports.
+9 exports.
 
 #### interface BinnedSample
 
@@ -1958,6 +2054,12 @@ interface XYSample {
 
 ```ts
 function binSamples(samples: readonly XYSample[], binSize: number, options?: ResampleOptions): BinnedSample[];
+```
+
+#### function histogramBins
+
+```ts
+function histogramBins(values: ArrayLike<number>, options?: HistogramOptions): HistogramResult;
 ```
 
 #### function rollingMean

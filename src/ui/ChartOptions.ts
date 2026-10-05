@@ -2,10 +2,10 @@
  * Public chart construction options: `ChartOptions`, axis/title configuration, accessibility options,
  * and screenshot options. Depends on the plugin contract, never the other way around.
  */
-import type { SeriesConfig } from "../core/types.js";
+import type { BufferOverflowStrategy, Dataset, DownsampleStrategy, InvalidSample, SeriesYAxis, ValuePrecision } from "../core/types.js";
 import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 import type { ChartRendererFactory, RendererChoice } from "../render/ChartRenderer.js";
-import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
+import type { AxisScaleOptions } from "../interaction/AxisController.js";
 import type { ViewportPolicy } from "../interaction/ViewportPolicy.js";
 import type { ChartTheme } from "./theme.js";
 import type { ChartPlugin } from "./PluginTypes.js";
@@ -30,7 +30,7 @@ export interface ChartTitleConfig extends TextOverlayConfig {
 }
 
 /** Axis visibility, placement, scale, tick formatting, and title options. */
-export interface AxisConfig extends AxisControllerAxisOptions {
+export interface AxisConfig extends AxisScaleOptions {
   /** Hide tick labels while keeping the scale. Pass `false` instead of a config to hide an axis with default scale. */
   readonly visible?: boolean;
   readonly position?: AxisPosition;
@@ -119,11 +119,86 @@ export interface ChartOptions {
   readonly renderer?: RendererChoice | ChartRendererFactory;
 }
 
-/** Series configuration used by typed helpers such as `addLine`. */
-export type TypedSeriesConfig = Omit<SeriesConfig, "mode">;
+/** Options every series accepts, however its data is supplied. */
+export interface SeriesIdentityConfig {
+  /** Stable id, reported by `getSeriesState()`. Defaults to none. */
+  readonly id?: string;
+  /** Display name for legends, tooltips, and the accessible summary. */
+  readonly name?: string;
+  /** Which Y axis the series belongs to. Defaults to `"left"`. */
+  readonly yAxis?: SeriesYAxis;
+  /** Downsampling strategy for dense data. Defaults to min/max buckets for line, area, bar, and scatter series. */
+  readonly downsample?: DownsampleStrategy;
+}
 
-/** Identity and axis options shared by series that build their own dataset. */
-export type SeriesIdentityConfig = Pick<SeriesConfig, "id" | "name" | "yAxis" | "downsample">;
+/**
+ * A series that draws a dataset you built: a `StaticDataset`, a ring buffer you keep a handle to,
+ * a `HistogramDataset`, or a custom `Dataset`. The options that only apply to a buffer BlazePlot
+ * creates (`capacity`, `xStep`, `xStart`, `overflow`, `valuePrecision`, `onInvalidSample`) are
+ * rejected here, at compile time and at run time, instead of being silently ignored.
+ */
+export interface DatasetSeriesConfig<D extends Dataset = Dataset> extends SeriesIdentityConfig {
+  /** The data to draw. */
+  readonly dataset: D;
+  readonly capacity?: never;
+  readonly xStart?: never;
+  readonly xStep?: never;
+  readonly overflow?: never;
+  readonly valuePrecision?: never;
+  readonly onInvalidSample?: never;
+}
+
+/**
+ * A streaming series backed by a `RingBuffer` that BlazePlot creates. Append `{ x, y }` samples
+ * with finite, non-decreasing X. For evenly spaced samples use {@link UniformRingSeriesConfig}.
+ */
+export interface RingSeriesConfig extends SeriesIdentityConfig {
+  /** Maximum number of retained samples. A positive integer. */
+  readonly capacity: number;
+  /** What happens when the buffer is full. Defaults to `"wrap"`: the oldest sample is dropped. */
+  readonly overflow?: BufferOverflowStrategy;
+  /** Y storage precision. Defaults to `"float32"`. */
+  readonly valuePrecision?: ValuePrecision;
+  /** Called for each sample skipped because its X is non-finite or goes backwards. See `RingBufferOptions.onInvalidSample`. */
+  readonly onInvalidSample?: (sample: InvalidSample) => void;
+  readonly dataset?: never;
+  readonly xStart?: never;
+  readonly xStep?: never;
+}
+
+/**
+ * A streaming series backed by a `UniformRingBuffer` that BlazePlot creates: samples are evenly
+ * spaced, so append `{ y }` only. X of sample `n` is `xStart + n * xStep`, in X data units. Give
+ * `xStep`, `xStart`, or both.
+ */
+export type UniformRingSeriesConfig = SeriesIdentityConfig & {
+  /** Maximum number of retained samples. A positive integer. */
+  readonly capacity: number;
+  /** Y storage precision. Defaults to `"float32"`. */
+  readonly valuePrecision?: ValuePrecision;
+  /** A uniform buffer always wraps, so `"wrap"` is the only accepted value. */
+  readonly overflow?: "wrap";
+  readonly onInvalidSample?: never;
+  readonly dataset?: never;
+} & (
+  | {
+    /** X distance between consecutive samples, in X data units: a positive number. Defaults to 1 when only `xStart` is given. */
+    readonly xStep: number;
+    /** X of the first sample, in X data units. Defaults to 0. */
+    readonly xStart?: number;
+  }
+  | {
+    readonly xStep?: number;
+    readonly xStart: number;
+  }
+);
+
+/**
+ * Series configuration used by the typed helpers such as `addLine`: an existing `dataset`
+ * ({@link DatasetSeriesConfig}), or a `capacity` for a chart-owned streaming buffer
+ * ({@link RingSeriesConfig}, or {@link UniformRingSeriesConfig} when `xStep` or `xStart` is given).
+ */
+export type TypedSeriesConfig<D extends Dataset = Dataset> = DatasetSeriesConfig<D> | RingSeriesConfig | UniformRingSeriesConfig;
 
 /** Options for exporting the chart as an image blob. */
 export interface ChartScreenshotOptions {
@@ -132,8 +207,8 @@ export interface ChartScreenshotOptions {
   readonly quality?: number;
   /** CSS background color, or `null` for transparent. Defaults to the theme background. */
   readonly background?: string | null;
-  /** Output pixel ratio. Defaults to `devicePixelRatio`. */
-  readonly dpr?: number;
+  /** Device pixels per CSS pixel of the output image. Defaults to `devicePixelRatio`. */
+  readonly pixelRatio?: number;
   readonly width?: number;
   readonly height?: number;
 }

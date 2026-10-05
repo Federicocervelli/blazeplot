@@ -192,7 +192,7 @@ describe("Chart resize", () => {
     Object.defineProperty(el, "clientHeight", { configurable: true, value: height });
   }
 
-  it("resizes the drawing buffer by CSS size times dpr and reports whether it changed", () => {
+  it("resizes the drawing buffer by CSS size times pixelRatio and reports whether it changed", () => {
     const chart = make();
     stubSize(chartInternals(chart).canvas, 300, 150);
     expect(chart.resize(2)).toBe(true);
@@ -204,12 +204,25 @@ describe("Chart resize", () => {
     chart.dispose();
   });
 
-  it("clamps degenerate sizes and non-finite dpr to at least 1x1", () => {
+  it("clamps degenerate sizes and non-finite pixelRatio to at least 1x1", () => {
     const chart = make();
     stubSize(chartInternals(chart).canvas, 0, 0);
     chart.resize(Number.NaN);
     expect(chartInternals(chart).canvas.width).toBe(1);
     expect(chartInternals(chart).canvas.height).toBe(1);
+    chart.dispose();
+  });
+
+  it("rejects buffer options next to a dataset, and an OHLC series without one", async () => {
+    const { StaticDataset } = await import("../../src/core/StaticDataset.ts");
+    const chart = make();
+    const dataset = new StaticDataset([0, 1], [1, 2]);
+    const loose = chart as unknown as { addLine(config: object): unknown; addCandlestick(config: object): unknown };
+    expect(() => loose.addLine({ dataset, capacity: 10 })).toThrow('"capacity" configure a buffer the chart creates');
+    expect(() => loose.addLine({ dataset, xStep: 1, overflow: "wrap" })).toThrow('"xStep", "overflow"');
+    expect(() => loose.addLine({ capacity: 4, xStep: 1, onInvalidSample: () => {} })).toThrow("onInvalidSample does not apply");
+    expect(() => loose.addCandlestick({ capacity: 10 })).toThrow("require an OhlcDataset");
+    expect(chart.getSeriesState()).toHaveLength(0);
     chart.dispose();
   });
 
