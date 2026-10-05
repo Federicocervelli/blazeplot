@@ -2,6 +2,16 @@
 
 BlazePlot targets modern browsers with WebGL2 and draws with Canvas 2D where WebGL2 is unavailable or unreliable. Both engines ship in the core package and are fully supported; the default `renderer: "auto"` picks between them.
 
+## Minimum browser versions
+
+| Browser | Minimum |
+|---|---|
+| Chrome and Edge (Chromium) | 93 |
+| Firefox | 92 |
+| Safari (macOS and iOS) | 15.4 |
+
+These are set by the language and platform features the package uses without a fallback (`Object.hasOwn`, logical assignment operators, CSS `inset`); the library is built for `esnext` and does not transpile or polyfill them. The crosshair marker fill uses CSS `color-mix()` and simply renders without that tint on older browsers. WebGL2 itself is available from Chrome 56, Firefox 51, and Safari 15; charts on browsers or machines without it use Canvas 2D. Older browsers are not tested and are not supported. The same targets are declared in `package.json#browserslist`.
+
 ## Requirements
 
 | Feature | Used for | Notes |
@@ -35,6 +45,8 @@ A chart draws through one of three engines, chosen with `ChartOptions.renderer`.
 | `"webgl2"` | `webgl2Renderer()` | WebGL2, one context per chart | Throws `WebGL2UnavailableError`. |
 | `"canvas2d"` | `canvas2dRenderer()` | Canvas 2D (CPU-projected) | Throws `Canvas2DUnavailableError` (rare: the canvas cannot create a 2D context). |
 | `"shared"` | `sharedRenderer(context?)` | One WebGL2 context shared by every chart on the document, or by the charts of one `createChartRenderContext()` | Throws `WebGL2UnavailableError`. See [Many charts on one page](./performance-recipes.md#many-charts-on-one-page). |
+
+Dashboards that want one shared context where it is available, and Canvas 2D elsewhere, use `autoRenderer({ shared: true })` (or `autoRenderer({ shared: context })` with a `createChartRenderContext()` result): it uses the shared WebGL2 context and falls back to Canvas 2D without WebGL2, with `rendererInfo.fallbackFrom` set to `"shared"`. The `"shared"` name itself stays strict. To warm WebGL2 before the first chart mounts, call `preloadWebGL()` (optional; it creates and releases a context at idle time and does nothing without WebGL2 or on the server).
 
 A name is shorthand for its factory, and an unknown value throws a `TypeError` that lists the valid names. `createLinkedCharts` takes the same `renderer` option for every panel. Read the outcome from the chart:
 
@@ -93,7 +105,7 @@ The visual suite (`bun run test:visual`) renders every case with each engine and
 If you would rather show your own UI than a Canvas 2D chart, keep the fallback outside the chart constructor and ask for the strict engine, so users without WebGL2 get a useful page instead of a slower chart.
 
 ```ts
-import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
+import { Chart, isWebGL2Available } from "blazeplot";
 
 // Your own fallback: a static image from your backend, a table, or a message.
 function renderStaticFallback(x: number[], y: number[]): Node {
@@ -109,7 +121,7 @@ function renderTelemetryChart(element: HTMLElement, x: number[], y: number[]) {
   }
 
   const chart = new Chart(element, { renderer: "webgl2" });
-  chart.addLine({ dataset: new StaticDataset(x, y), name: "telemetry" });
+  chart.addLine({ x, y, name: "telemetry" });
   chart.fitToData({ padding: 0.05 });
   chart.start();
   return chart;
@@ -128,7 +140,7 @@ Charts are browser-only. In SSR apps, create charts after client mount or dynami
 
 ```tsx
 import { useEffect, useRef } from "react";
-import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
+import { Chart, isWebGL2Available } from "blazeplot";
 
 export function ClientOnlyChart({ x, y }: { x: number[]; y: number[] }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -137,7 +149,7 @@ export function ClientOnlyChart({ x, y }: { x: number[]; y: number[] }) {
     if (!ref.current || !isWebGL2Available()) return;
 
     const chart = new Chart(ref.current);
-    chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+    chart.addLine({ x, y, name: "series" });
     chart.fitToData();
     chart.start();
 
@@ -171,7 +183,7 @@ For each release candidate and the final 1.0 release, the release checklist reco
 
 Mobile WebGL2 verification is manual and not yet automated.
 
-Mobile browsers should use touch-friendly interaction options and compact axis/layout settings. Touch input uses Pointer Events only (there are no separate touch-event handlers). Charts on scrolling pages can use `interactionsPlugin({ touchPan: "two-finger", wheelZoom: "modifier" })` so they do not trap page scrolling; one-finger page scrolling in that mode is verified through touch emulation, not yet on a physical phone. See [Theming and layout](./theming-and-layout.md#mobile-layouts) and [Troubleshooting](./troubleshooting.md#page-scrolling-and-chart-gestures).
+Mobile browsers should use touch-friendly interaction options and compact axis/layout settings. Touch input uses Pointer Events only (there are no separate touch-event handlers). `interactionsPlugin` defaults to `touchPan: "two-finger"` (one finger scrolls the page, two fingers pan and pinch) so charts do not trap page scrolling; add `wheelZoom: "modifier"` to keep the mouse wheel for the page too, or `touchPan: true` for one-finger pan. One-finger page scrolling in the default mode is verified through touch emulation, not yet on a physical phone. See [Theming and layout](./theming-and-layout.md#mobile-layouts) and [Troubleshooting](./troubleshooting.md#page-scrolling-and-chart-gestures).
 
 ## Iframes, popups, and multiple documents
 

@@ -194,7 +194,7 @@ function optionsForCase(name: VisualCase): ConstructorParameters<typeof Chart>[1
     { type: "point", x: 96, y: 0.8, label: "point" },
   ] }));
   if (name === "selection") plugins.push(selectionPlugin({ mode: "xy" }));
-  if (name === "navigator") plugins.push(navigatorPlugin({ height: 72 }));
+  if (name === "navigator") plugins.push(navigatorPlugin({ heightPx: 72 }));
   if (name === "flamegraph") plugins.push(flameGraphPlugin({
     model: buildFlameGraphModel([
       { stack: ["root", "parse", "tokenize"], value: 28 },

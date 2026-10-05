@@ -7,9 +7,9 @@ type PackageJson = {
 };
 
 const expectedExports = {
-  "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "histogram", "isWebGL2Available", "WebGL2UnavailableError", "webgl2Renderer", "canvas2dRenderer", "sharedRenderer", "autoRenderer", "createChartRenderContext", "Canvas2DUnavailableError"],
+  "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "isWebGL2Available", "WebGL2UnavailableError", "webgl2Renderer", "canvas2dRenderer", "sharedRenderer", "autoRenderer", "createChartRenderContext", "Canvas2DUnavailableError"],
   "blazeplot/linked": ["createLinkedCharts"],
-  "blazeplot/data": ["binSamples", "rollingMean"],
+  "blazeplot/data": ["binSamples", "histogramBins", "rollingMean"],
   "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob", "exportChartData", "chartDataToCsv"],
   "blazeplot/plugins/legend": ["legendPlugin"],
   "blazeplot/plugins/tooltip": ["tooltipPlugin"],
@@ -47,6 +47,14 @@ for (const specifier of packageExportSpecifiers) {
     if (!(name in moduleExports)) {
       throw new Error(`${specifier} is missing expected export ${name}.`);
     }
+  }
+}
+
+for (const [subpath, condition] of Object.entries(packageJson.exports)) {
+  if (typeof condition === "string") continue;
+  const conditions = condition as Record<string, string>;
+  if (conditions.default !== conditions.import) {
+    throw new Error(`package.json exports["${subpath}"] needs a "default" condition equal to "import" (Node require(esm), Jest, Vitest).`);
   }
 }
 

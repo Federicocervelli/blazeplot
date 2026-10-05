@@ -46,7 +46,9 @@ export interface CrosshairPluginOptions {
   readonly syncGroup?: string;
   /** Line color. Defaults to `theme.crosshairColor`. */
   readonly color?: string;
-  readonly width?: number;
+  /** Line width in CSS pixels. Defaults to 1. */
+  readonly widthPx?: number;
+  /** SVG `stroke-dasharray` for the line, in CSS pixels (for example `"4 4"`). */
   readonly dash?: string;
   readonly label?: boolean;
   readonly labelBackgroundColor?: string;
@@ -55,11 +57,14 @@ export interface CrosshairPluginOptions {
   readonly labelPlacement?: CrosshairLabelPlacement;
   readonly zIndex?: number;
   readonly highlight?: boolean;
-  readonly markerSize?: number;
+  /** Point marker diameter in CSS pixels. Defaults to 10. */
+  readonly markerSizePx?: number;
   readonly markerStrokeColor?: string;
-  readonly markerStrokeWidth?: number;
+  /** Point marker outline width in CSS pixels. Defaults to 2. */
+  readonly markerStrokeWidthPx?: number;
   /** Override default pick highlighting. Defaults to points, or a brightened X-interval for items with `xRange` (bars, histogram bins). */
   readonly renderHighlight?: CrosshairHighlightRenderer;
+  /** Touch long-press delay in milliseconds, or `false` to disable. */
   readonly longPressMs?: number | false;
   readonly rulerModifier?: "none" | "ctrl" | "shift" | "alt" | "meta";
   readonly formatX?: (value: number) => string;
@@ -175,7 +180,12 @@ function renderDefaultLabel(
   );
 }
 
-/** Create a plugin that renders synchronized crosshair or ruler overlays. */
+/**
+ * Create a plugin that renders synchronized crosshair or ruler overlays.
+ *
+ * Stateful: an instance serves one chart at a time. Installing it on a second chart while the first is
+ * alive throws; create one instance per chart (linked layouts: `panelPlugins`). Disposing the chart frees it.
+ */
 export function crosshairPlugin(options: CrosshairPluginOptions = {}): CrosshairPlugin {
   const axis = options.axis ?? "xy";
   const yAxis = options.yAxis ?? "left";
@@ -253,14 +263,14 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       const stroke = options.markerStrokeColor ?? chartRef?.theme.markerStrokeColor ?? "";
       for (const item of items) {
         if (item.xRange && chartRef) markerLayer.appendChild(createXRangeHighlight(item, chartRef, stroke));
-        else markerLayer.appendChild(createPickMarker(markerLayer.ownerDocument, item, { sizePx: Math.max(2, options.markerSize ?? 10), strokeColor: stroke, strokeWidthPx: Math.max(0, options.markerStrokeWidth ?? 2) }));
+        else markerLayer.appendChild(createPickMarker(markerLayer.ownerDocument, item, { sizePx: Math.max(2, options.markerSizePx ?? 10), strokeColor: stroke, strokeWidthPx: Math.max(0, options.markerStrokeWidthPx ?? 2) }));
       }
       return;
     }
     markerPool.update(items, {
-      sizePx: Math.max(2, options.markerSize ?? 10),
+      sizePx: Math.max(2, options.markerSizePx ?? 10),
       strokeColor: options.markerStrokeColor ?? chartRef?.theme.markerStrokeColor ?? "",
-      strokeWidthPx: Math.max(0, options.markerStrokeWidth ?? 2),
+      strokeWidthPx: Math.max(0, options.markerStrokeWidthPx ?? 2),
     });
   };
 
@@ -317,7 +327,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       chartRef = chart;
       const releaseStyle = installPluginStyle(chart, "pick", PICK_FORCED_COLORS_CSS);
       const color = options.color ?? chart.theme.crosshairColor;
-      const width = `${options.width ?? 1}px`;
+      const width = `${options.widthPx ?? 1}px`;
       const dash = options.dash;
 
       root = chart.dom.document.createElement("div");
@@ -369,7 +379,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       rulerSvg.style.zIndex = "1";
       rulerLine = createSvgElement(chart.dom.document, "line");
       rulerLine.setAttribute("stroke", color);
-      rulerLine.setAttribute("stroke-width", String(options.width ?? 1));
+      rulerLine.setAttribute("stroke-width", String(options.widthPx ?? 1));
       if (dash) rulerLine.setAttribute("stroke-dasharray", dash);
       rulerSvg.appendChild(rulerLine);
 

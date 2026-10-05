@@ -28,13 +28,13 @@ const expectedExports: Record<string, readonly string[]> = {
     "autoRenderer",
     "canvas2dRenderer",
     "createChartRenderContext",
-    "histogram",
     "isWebGL2Available",
+    "preloadWebGL",
     "sharedRenderer",
     "webgl2Renderer",
   ],
   "./linked": ["createLinkedCharts"],
-  "./data": ["binSamples", "rollingMean"],
+  "./data": ["binSamples", "histogramBins", "rollingMean"],
   "./export": ["chartDataToCsv", "copyChartScreenshotToClipboard", "downloadBlob", "downloadChartScreenshot", "exportChartData"],
   "./plugins/legend": ["legendPlugin"],
   "./plugins/tooltip": ["tooltipPlugin"],
@@ -113,7 +113,7 @@ describe("public API behavior reachable without a DOM", () => {
     expect(ring.length).toBe(1);
     expect(new api.UniformRingBuffer(4, { xStart: 0, xStep: 1 }).length).toBe(0);
     expect(new api.StaticDataset([0, 1], [2, 3]).length).toBe(2);
-    expect(api.histogram([1, 2, 2, 3], { binCount: 2 }).bins.length).toBe(2);
+    expect((await import("../../src/data.ts")).histogramBins([1, 2, 2, 3], { binCount: 2 }).bins.length).toBe(2);
     expect(api.DEFAULT_CHART_THEME).toBeDefined();
     expect(typeof api.isWebGL2Available()).toBe("boolean");
     expect(new api.WebGL2UnavailableError()).toBeInstanceOf(Error);

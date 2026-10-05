@@ -35,6 +35,8 @@ export interface ChartAccessibilityHost {
   layout(): ChartLayout;
   getSummary(): ChartSummary;
   disposed(): boolean;
+  /** Whether `ChartOptions.plugins` is non-empty (a plugin may handle keyboard input on the root). */
+  hasPlugins(): boolean;
   series(): readonly SeriesStore[];
   /** Series palette of the active (possibly forced-colors) theme. */
   seriesColors(): readonly RgbaColor[];
@@ -133,7 +135,9 @@ export class ChartAccessibility {
     const layout = this.host.layout();
     const root = layout.root;
     const doc = root.ownerDocument;
-    if (root.tabIndex < 0) root.tabIndex = 0;
+    // A tab stop is useful when it reads the summary or when a plugin may take keyboard input; a chart with
+    // neither (`description: ""`, no plugins) would be an empty stop.
+    if (root.tabIndex < 0 && (config?.description !== "" || this.host.hasPlugins())) root.tabIndex = 0;
     root.setAttribute("role", config?.role ?? "figure");
     root.setAttribute("aria-label", config?.label ?? (title || config?.messages?.defaultLabel || "BlazePlot chart"));
     layout.plot.setAttribute("role", "presentation");

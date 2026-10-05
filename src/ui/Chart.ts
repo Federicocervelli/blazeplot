@@ -1,4 +1,4 @@
-import type { SeriesConfig, SeriesStyleOptions, Dataset, SeriesYAxis, Viewport } from "../core/types.js";
+import type { SeriesConfig, SeriesStyleOptions, Dataset, OhlcDataset, SeriesYAxis, Viewport } from "../core/types.js";
 import { SeriesStore } from "../core/SeriesStore.js";
 import type { SeriesChange } from "../core/SeriesStore.js";
 import { toRenderSurface } from "../render/ChartRenderer.js";
@@ -13,14 +13,17 @@ import { ChartLayout } from "./ChartLayout.js";
 import { ChartEmitter } from "./ChartEmitter.js";
 import { ChartHover } from "./ChartHover.js";
 import { ChartPicker, insidePlot, plotToData } from "./ChartPicker.js";
-import { forcedColorsTheme, resolveChartTheme } from "./theme.js";
+import { LIGHT_CHART_THEME, forcedColorsTheme, resolveChartTheme } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import { PluginHost } from "./PluginHost.js";
 import { chartInternals, registerChartInternals } from "./ChartInternals.js";
 import type { ChartLayoutReservation } from "./PluginTypes.js";
 import { FollowXController } from "./FollowX.js";
 import { ChartAccessibility } from "./ChartAccessibility.js";
-import { normalizeAxesConfig, createDefaultDataset, datasetBarWidth } from "./ChartConfig.js";
+import { assertChartTarget } from "./target.js";
+import { devWarn } from "../core/deprecation.js";
+import { normalizeAxesConfig, createDefaultDataset, datasetBarWidth, rejectBufferOptions, resolveSeriesSource } from "./ChartConfig.js";
+import type { RawSeriesConfig } from "./ChartConfig.js";
 import { ChartSeriesStyles } from "./ChartSeriesStyles.js";
 import { fitCameras } from "./ChartFit.js";
 import type { ResolvedAxesConfig } from "./ChartConfig.js";
@@ -32,21 +35,24 @@ const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "b
 const GRID_LINE_VERTEX_CAPACITY = (X_TICK_LIMIT + 2 + Y_TICK_LIMIT + 2) * 2;
 /** Smallest auto-sized gutter, so a short-label axis still leaves room for ticks. */
 const MIN_AUTO_GUTTER_PX = 16;
-export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartRenderLoop, ChartOptions, TypedSeriesConfig, SeriesIdentityConfig, ChartScreenshotOptions } from "./ChartOptions.js";
+export type { TextOverlayConfig, ChartTitleConfig, AxisConfig, ChartAccessibilityMessages, ChartAccessibilityOptions, ChartRenderLoop, ChartOptions, TypedSeriesConfig, DatasetSeriesConfig, StaticSeriesConfig, HistogramSeriesConfig, RingSeriesConfig, UniformRingSeriesConfig, SeriesIdentityConfig, ChartScreenshotOptions } from "./ChartOptions.js";
 export type { ChartPickMode, ChartPickGroup, ChartPickOptions, ChartSeriesState, ChartPickItem, ChartPointerEventType, ChartPointerEvent, ChartSeriesClickEvent, ChartViewportChangeEvent, ChartFollowXChangeEvent, ChartSelectEvent, ChartHoverState, ChartInspectionTarget, ChartEventMap, ChartEventName, ChartFrameStats } from "./ChartEvents.js";
 export type { ChartViewportChangeSource, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFitToDataPadding, ChartFitToDataOptions, ChartAutoFitYOptions, ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
-import type { ChartOptions, TypedSeriesConfig, ChartScreenshotOptions } from "./ChartOptions.js";
+import type { ChartOptions, TypedSeriesConfig, DatasetSeriesConfig, StaticSeriesConfig, HistogramSeriesConfig, RingSeriesConfig, UniformRingSeriesConfig, ChartScreenshotOptions } from "./ChartOptions.js";
+import type { RingBuffer } from "../core/RingBuffer.js";
+import type { StaticDataset } from "../core/StaticDataset.js";
+import type { HistogramDataset } from "../core/Histogram.js";
+import type { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import type { ChartPickOptions, ChartSeriesState, ChartHoverState, ChartEventMap, ChartEventName, ChartFrameStats } from "./ChartEvents.js";
 import type { ChartViewportChangeSource, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFitToDataOptions, ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
 
 
+// This file is intentionally the one large module (about 900 lines): it is the public facade, and most of
+// its length is the documented public API (series, viewport, follow, fit, hover/pick, theme, lifecycle).
+// The logic lives in focused collaborators (ChartPicker, ChartHover, ChartAccessibility, ChartSeriesStyles,
+// ChartFit, FollowXController, ChartEmitter, PluginHost, SeriesPainter, ChartLayout) that this class wires.
 /**
  * Imperative chart instance for rendering, interaction, and plugins.
- *
- * This file is intentionally the one large module (about 870 lines): it is the public facade, and most of
- * its length is the documented public API (series, viewport, follow, fit, hover/pick, theme, lifecycle).
- * The logic lives in focused collaborators (ChartPicker, ChartHover, ChartAccessibility, ChartSeriesStyles,
- * ChartFit, FollowXController, ChartEmitter, PluginHost, SeriesPainter, ChartLayout) that this class wires.
  */
 export class Chart {
   private series: SeriesStore[] = [];
@@ -110,12 +116,21 @@ export class Chart {
   private rafId: number = 0;
   private restoreRenderRafId: number = 0;
   private running: boolean = false;
+  /** Whether `start()` was ever called; drives the one-time "series added but never started" warning. */
+  private everStarted: boolean = false;
+  private startWarnTimer: ReturnType<Window["setTimeout"]> | undefined;
+  private sizeChecked: boolean = false;
   private disposed: boolean = false;
   private rendererLost: boolean = false;
   private domainErrorLogged: boolean = false;
   private readonly options: ChartOptions;
   /** Caller theme before forced-colors substitution; `setTheme` replaces it. */
-  private userTheme: ChartTheme | undefined;
+  private userTheme: ChartTheme | "auto" | undefined;
+  /** `(prefers-color-scheme: light)` watcher, present only while the theme is `"auto"`. */
+  private schemeQuery: MediaQueryList | null = null;
+  private readonly onSchemeChange = (): void => {
+    if (!this.disposed) this.applyTheme();
+  };
   /** Resolved caller theme; differs from `resolvedTheme` while forced colors are active. */
   private baseTheme: ResolvedChartTheme;
   private readonly a11y: ChartAccessibility = new ChartAccessibility({
@@ -123,6 +138,7 @@ export class Chart {
     titles: () => ({ title: this.options.title, subtitle: this.options.subtitle }),
     layout: () => this.layout,
     getSummary: () => this.getSummary(),
+    hasPlugins: () => (this.options.plugins?.length ?? 0) > 0,
     disposed: () => this.disposed,
     series: () => this.series,
     seriesColors: () => this.resolvedTheme.seriesColors,
@@ -149,11 +165,13 @@ export class Chart {
       }
       this.resetFrameStats();
       this.plugins.notify("onContextLost");
+      this.events.emit("contextlost", undefined);
       return;
     }
     this.rendererLost = false;
     this.applyCanvasSize();
     this.plugins.notify("onContextRestored");
+    this.events.emit("contextrestored", undefined);
     this.scheduleRenderAfterRestore();
   };
 
@@ -162,10 +180,12 @@ export class Chart {
     // The internals accessor reads private state through getters, so it needs a name for the instance.
     // oxlint-disable-next-line typescript/no-this-alias
     const chart = this;
+    assertChartTarget("Chart", target);
     this.options = options;
     this.followXPolicy.configure(options.followX ? (options.followX === true ? {} : options.followX) : null);
     this.userTheme = options.theme;
-    this.baseTheme = resolveChartTheme(options.theme, target);
+    this.watchColorScheme(target.ownerDocument.defaultView);
+    this.baseTheme = resolveChartTheme(this.themeOption(), target);
     this.resolvedTheme = this.baseTheme;
     this.normalizedAxes = normalizeAxesConfig(options.axes);
     this.gridVisible = options.grid !== false;
@@ -192,6 +212,7 @@ export class Chart {
     } catch (error) {
       // E.g. the chosen engine is unavailable: remove the half-built DOM and hand back a caller-supplied canvas.
       this.a11y.unwatchForcedColors();
+      this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
       this.layout.dispose();
       throw error;
     }
@@ -378,14 +399,27 @@ export class Chart {
     this.hover.schedule();
   }
 
-  /** Add a series with an explicit mode. Prefer the typed helpers such as `addLine`. */
-  addSeries<D extends Dataset = Dataset>(config: SeriesConfig & { readonly dataset?: D }, style: SeriesStyleOptions = {}): SeriesStore<D> {
-    if (!SERIES_MODES.has(config.mode)) {
-      throw new TypeError(`Chart.addSeries: unknown series mode ${JSON.stringify(config.mode)}. Expected one of ${[...SERIES_MODES].join(", ")}.`);
+  /**
+   * Add a series with an explicit mode. Prefer the typed helpers such as `addLine`. The config is
+   * the same union the helpers take: a `dataset`, or a `capacity` for a streaming buffer.
+   */
+  addSeries<D extends OhlcDataset>(config: DatasetSeriesConfig<D> & { readonly mode: "ohlc" | "candlestick" }, style?: SeriesStyleOptions): SeriesStore<D>;
+  addSeries<D extends Dataset>(config: DatasetSeriesConfig<D> & { readonly mode: "line" | "area" | "scatter" | "bar" }, style?: SeriesStyleOptions): SeriesStore<D>;
+  addSeries(config: UniformRingSeriesConfig & { readonly mode: "line" | "area" | "scatter" | "bar" }, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+  addSeries(config: RingSeriesConfig & { readonly mode: "line" | "area" | "scatter" | "bar" }, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+  addSeries(config: SeriesConfig, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries(config, style);
+  }
+
+  private attachSeries<D extends Dataset>(rawConfig: RawSeriesConfig & { readonly dataset?: D }, style: SeriesStyleOptions = {}): SeriesStore<D> {
+    if (!SERIES_MODES.has(rawConfig.mode)) {
+      throw new TypeError(`Chart.addSeries: unknown series mode ${JSON.stringify(rawConfig.mode)}. Expected one of ${[...SERIES_MODES].join(", ")}.`);
     }
+    const config = resolveSeriesSource(rawConfig);
     if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
+    if (config.dataset) rejectBufferOptions(config);
     const dataset = (config.dataset ?? createDefaultDataset(config)) as D;
     if (config.mode === "bar" && style.barWidth === undefined) style = datasetBarWidth(dataset, style);
     const slot = this.seriesStyles.nextPaletteIndex();
@@ -394,39 +428,71 @@ export class Chart {
     series.bindStyleHandler((target, options) => this.seriesStyles.set(target, options));
     this.series.push(series);
     this.engine.prepare?.(config.mode, series.style.lineWidth);
+    this.warnIfNeverStarted();
     if (this.a11y.forcedColorsActive) this.a11y.applyForcedSeriesStyles();
     this.emitSeriesChange();
     return series;
   }
-
-  /** Add a line series. */
-  addLine<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "line" }, style);
+  /** Add a line series. Pass `dataset` for data you built, or `capacity` for a streaming buffer the chart creates. */
+  addLine<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  /** Add a line series. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addLine(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
+  addLine(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+  /** Add a line series. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
+  addLine(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+  addLine(config: TypedSeriesConfig, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "line" }, style);
   }
 
-  /** Add an area series filled from `style.baseline`. */
-  addArea<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "area" }, style);
+  /** Add an area series filled from `style.baseline`. Pass `dataset` for data you built, or `capacity` for a streaming buffer the chart creates. */
+  addArea<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  /** Add an area series filled from `style.baseline`. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addArea(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
+  addArea(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+  /** Add an area series filled from `style.baseline`. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
+  addArea(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+  addArea(config: TypedSeriesConfig, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "area" }, style);
   }
 
-  /** Add a scatter series. */
-  addScatter<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "scatter" }, style);
+  /** Add a scatter series. Pass `dataset` for data you built, or `capacity` for a streaming buffer the chart creates. */
+  addScatter<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  /** Add a scatter series. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addScatter(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
+  addScatter(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+  /** Add a scatter series. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
+  addScatter(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+  addScatter(config: TypedSeriesConfig, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "scatter" }, style);
   }
 
-  /** Add a bar series growing from `style.baseline`. */
-  addBar<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "bar" }, style);
+  /**
+   * Add a bar series growing from `style.baseline`. Pass `dataset` for data you built (for a histogram of
+   * raw values: `HistogramDataset.from(values, { binSize | binCount })`), or `capacity` for a streaming
+   * buffer the chart creates.
+   */
+  addBar<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  /** Add a bar series growing from `style.baseline`. Evenly spaced streaming, backed by a `UniformRingBuffer`: append `{ y }`. */
+  addBar(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
+  /** Add a histogram: bar series over raw values binned by `binSize`, `binCount`, or `thresholds`. */
+  addBar(config: HistogramSeriesConfig, style?: SeriesStyleOptions): SeriesStore<HistogramDataset>;
+  addBar(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
+  /** Add a bar series growing from `style.baseline`. Streaming with explicit X, backed by a `RingBuffer`: append `{ x, y }`. */
+  addBar(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
+  addBar(config: TypedSeriesConfig, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "bar" }, style);
   }
 
-  /** Add an OHLC bar series backed by an `OhlcDataset`. */
-  addOhlc<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "ohlc" }, style);
+  /** Add an OHLC bar series. Requires an `OhlcDataset` (`StaticOhlcDataset` or `OhlcRingBuffer`).  */
+  addOhlc<D extends OhlcDataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  addOhlc(config: DatasetSeriesConfig<OhlcDataset>, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "ohlc" }, style);
   }
 
-  /** Add a candlestick series backed by an `OhlcDataset`. */
-  addCandlestick<D extends Dataset = Dataset>(config: TypedSeriesConfig & { readonly dataset?: D }, style?: SeriesStyleOptions): SeriesStore<D> {
-    return this.addSeries({ ...config, mode: "candlestick" }, style);
+  /** Add a candlestick series. Requires an `OhlcDataset` (`StaticOhlcDataset` or `OhlcRingBuffer`).  */
+  addCandlestick<D extends OhlcDataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+  addCandlestick(config: DatasetSeriesConfig<OhlcDataset>, style?: SeriesStyleOptions): SeriesStore {
+    return this.attachSeries({ ...config, mode: "candlestick" }, style);
   }
 
   /** Remove a series from the chart; returns `false` when it is not attached. */
@@ -462,7 +528,7 @@ export class Chart {
   }
 
   /** Return metadata for all attached series. */
-  getSeriesState(): ChartSeriesState[] {
+  getSeriesState(): readonly ChartSeriesState[] {
     return this.series.map((series, index) => ({
       series,
       index,
@@ -523,7 +589,7 @@ export class Chart {
   }
 
   /** Copy the latest render metrics into `target` (allocation-free polling) and return it. */
-  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): ChartFrameStats {
+  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): Readonly<ChartFrameStats> {
     return Object.assign(target, this.stats);
   }
 
@@ -559,15 +625,31 @@ export class Chart {
   }
 
   /** Replace the chart theme and re-render. Plugin `onThemeChange` hooks run before the `themechange` event. */
-  setTheme(theme?: ChartTheme): void {
+  setTheme(theme?: ChartTheme | "auto"): void {
     this.userTheme = theme;
+    this.watchColorScheme(this.layout.view);
     this.applyTheme();
+  }
+
+  /** The caller theme with `"auto"` replaced by the light theme when the user prefers a light color scheme. */
+  private themeOption(): ChartTheme | undefined {
+    if (this.userTheme !== "auto") return this.userTheme;
+    return this.schemeQuery?.matches ? LIGHT_CHART_THEME : undefined;
+  }
+
+  /** Listen to `prefers-color-scheme` on the chart's own window while the theme is `"auto"`. */
+  private watchColorScheme(view: Window | null): void {
+    this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
+    this.schemeQuery = null;
+    if (this.userTheme !== "auto" || !view || typeof view.matchMedia !== "function") return;
+    this.schemeQuery = view.matchMedia("(prefers-color-scheme: light)");
+    this.schemeQuery.addEventListener?.("change", this.onSchemeChange);
   }
 
   /** Resolve the caller theme (and forced colors) and push it to the canvas, overlays, and plugins. */
   private applyTheme(): void {
     const root = this.layout.root;
-    this.baseTheme = resolveChartTheme(this.userTheme, root);
+    this.baseTheme = resolveChartTheme(this.themeOption(), root);
     const forcedColorsActive = this.a11y.refreshForcedColors();
     this.resolvedTheme = forcedColorsActive ? forcedColorsTheme(this.baseTheme, root) : this.baseTheme;
     root.style.background = this.resolvedTheme.backgroundCssColor;
@@ -617,8 +699,26 @@ export class Chart {
     return composeChartScreenshot({ layout: this.layout, canvas: this.canvas, theme: this.resolvedTheme }, options);
   }
 
+  /**
+   * Development-only hint for the most common first-run mistake: a series was added, but nothing was
+   * ever drawn because `start()` was not called. One warning per chart, a second after the first series.
+   */
+  private warnIfNeverStarted(): void {
+    if (this.everStarted || this.startWarnTimer !== undefined) return;
+    this.startWarnTimer = this.layout.view.setTimeout(() => {
+      this.startWarnTimer = undefined;
+      if (this.everStarted || this.disposed) return;
+      devWarn("a series was added but chart.start() was never called, so nothing is drawn.");
+    }, 1_000);
+  }
+
   /** Start rendering according to `options.renderLoop`. */
   start(): void {
+    this.everStarted = true;
+    if (this.startWarnTimer !== undefined) {
+      this.layout.view.clearTimeout(this.startWarnTimer);
+      this.startWarnTimer = undefined;
+    }
     if (!this.running) {
       this.running = true;
       this.lastFrameAt = 0;
@@ -657,6 +757,10 @@ export class Chart {
     this.stop();
     this.followXPolicy.clearTimer();
     this.resizeObserver?.disconnect();
+    this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
+    this.schemeQuery = null;
+    if (this.startWarnTimer !== undefined) this.layout.view.clearTimeout(this.startWarnTimer);
+    this.startWarnTimer = undefined;
     if (this.restoreRenderRafId !== 0) this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
     this.restoreRenderRafId = 0;
     this.toggleDomListeners("removeEventListener");
@@ -689,6 +793,13 @@ export class Chart {
 
     if (this.plotSize.width < 0) this.applyCanvasSize();
     const { width: plotWidth, height: plotHeight } = this.plotSize;
+    if (!this.sizeChecked) {
+      this.sizeChecked = true;
+      if (plotWidth <= 0 || plotHeight <= 0) {
+        const axis = plotHeight <= 0 ? "height" : "width";
+        devWarn(`the plot area is ${plotWidth}x${plotHeight}px at the first render because the host element has zero ${axis}. Give it an explicit size (for example height: 400px) and make sure it is attached and visible.`);
+      }
+    }
 
     this.options.viewportPolicy?.beforeRender?.(this.camera);
     this.syncRightCameraX();

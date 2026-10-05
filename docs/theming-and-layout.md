@@ -34,7 +34,18 @@ Theme values are merged with the default theme, so you can override only the tok
 | Overlays | `selectionFillColor`, `selectionStrokeColor` (box zoom and selection), `crosshairColor`, `markerStrokeColor` (hover markers) |
 | Focus | `focusRingColor` (keyboard focus ring on the chart root, legend items, navigator, and annotations) |
 
-`DEFAULT_CHART_THEME` (dark) and `LIGHT_CHART_THEME` are the built-in themes; a unit test checks both for WCAG contrast (4.5:1 for text, 3:1 for graphics). Use the light one with `theme: LIGHT_CHART_THEME`, or spread it and override a few tokens. In the operating system's forced-colors (high-contrast) mode the chart switches to system colors on its own; see [Accessibility](./accessibility.md#contrast-and-high-contrast).
+`DEFAULT_CHART_THEME` (dark) and `LIGHT_CHART_THEME` are the built-in themes; a unit test checks both for WCAG contrast (4.5:1 for text, 3:1 for graphics). Use the light one with `theme: LIGHT_CHART_THEME`, follow the system preference with `theme: "auto"` (see below), or spread it and override a few tokens. In the operating system's forced-colors (high-contrast) mode the chart switches to system colors on its own; see [Accessibility](./accessibility.md#contrast-and-high-contrast).
+
+### Following the system color scheme
+
+The default theme is dark. Pass `theme: "auto"` to follow the page's `prefers-color-scheme` instead: the chart uses the dark theme, or `LIGHT_CHART_THEME` when the user prefers a light scheme, and switches live (with the usual `themechange` event and plugin `onThemeChange` hooks) when the preference changes. The preference is read from the chart's own window, so charts in iframes and popup windows follow their own document. `chart.setTheme("auto")` turns it on later; passing any explicit theme to `setTheme` stops following the preference. To combine `"auto"` with your own tokens, call `chart.setTheme(...)` from a `prefers-color-scheme` listener of your own and pass the theme you want.
+
+```ts
+import { Chart } from "blazeplot";
+
+const chart = new Chart(document.body, { theme: "auto" });
+chart.dispose();
+```
 
 Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(config, { color: "#f97316", lineWidth: 2 })`. The second argument of every `add*` helper is a `SeriesStyleOptions` object:
 
@@ -43,14 +54,24 @@ Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(confi
 | `color` | all | Stroke or marker color. Defaults to the next theme series color. |
 | `lineWidth` | line, area outline, OHLC, candlestick wick | Width in CSS pixels. Defaults to 1. |
 | `pointSize` | scatter | Round marker diameter in CSS pixels. Defaults to 4. |
-| `barWidth` | bar, candlestick body | Width in data X units. Defaults to 0.8 (the bin width for a `HistogramDataset`). |
+| `barWidth` | bar, candlestick body | Width in data X units (not pixels: it scales with zoom, and is milliseconds on a time axis). Defaults to 0.8 (the bin width for a `HistogramDataset`). |
 | `baseline` | bar, area | Y value bars and the area fill grow from. Defaults to 0. |
 | `fillColor` | area | Fill color. Defaults to `color` at 25% opacity. |
-| `tickWidth` | OHLC | Open/close tick width in data X units. Defaults to `barWidth`. |
+| `tickWidth` | OHLC | Open/close tick length in data X units (not pixels). Defaults to `barWidth`. |
 | `upColor`, `downColor` | OHLC, candlestick | Rising and falling colors. `upColor` defaults to `color`, `downColor` to `fillColor` when set, otherwise `color` at 45% opacity. |
 | `wickColor` | candlestick | Wick color. Defaults to `color`. |
 
 Translucent colors blend with what is already drawn.
+
+### Units
+
+Every numeric option states its unit in its name or its JSDoc. The conventions:
+
+- **`*Px` names are CSS pixels** (`offsetXPx`, `widthPx`, `radiusPx`, `heightPx`, `maxDistancePx`, `minDragDistancePx`, `hitTolerancePx`, `strokeWidthPx`). Series style `lineWidth` and `pointSize` are CSS pixels too (documented, unsuffixed). The renderer multiplies by the pixel ratio.
+- **`barWidth` and `tickWidth` are data X units**, not pixels, so bars keep their width relative to the data when you zoom. On a time axis X is epoch milliseconds, so a one-minute bar is `60_000`.
+- **`*Ms` names are milliseconds** of wall-clock time (`resumeAfterMs`, `longPressMs`, `updateMs`). Everything else about X (`window`, `xStep`, `xStart`, `binSize`) is in X data units.
+- **Screenshot `width` and `height` are device pixels** of the output image; `pixelRatio` is device pixels per CSS pixel.
+- Padding options such as `fitToData({ padding })` are fractions of the data span (0.05 is 5%).
 
 Series without an explicit `color` take the first theme palette color no other attached series uses, so removing a series and adding another never repeats a color that is still on screen. Those palette-colored series follow `chart.setTheme(...)`; series with an explicit `color` keep it.
 
@@ -132,7 +153,7 @@ For small screens, prefer:
 
 - inside axes or fewer visible axes,
 - fewer ticks through axis scale/tick options,
-- touch-first interaction options. `interactionsPlugin()` already pans with one finger and pinch-zooms (`touchPan: true`, `pinchZoom: true` are the defaults), which blocks page scrolling over the plot; on a scrolling page use `interactionsPlugin({ touchPan: "two-finger", wheelZoom: "modifier" })` so one finger scrolls the page and two fingers pan and zoom the chart, with a short hint (`gestureHint`) explaining it,
+- touch-first interaction options. `interactionsPlugin()` already lets one finger scroll the page while two fingers pan and pinch-zoom the chart (`touchPan: "two-finger"`, `pinchZoom: true` are the defaults), with a short hint (`gestureHint`) explaining it; a full-viewport chart can opt into one-finger pan with `touchPan: true`, and `wheelZoom: "modifier"` also keeps the mouse wheel for page scrolling,
 - legends outside the plot when space allows (`legendPlugin({ position: "bottom" })`),
 - `axes: { y: { size: "auto" } }` so gutters fit the actual tick labels instead of a fixed width.
 
@@ -143,6 +164,7 @@ Strings that BlazePlot generates are overridable, and unset keys keep their Engl
 - `accessibility: { locale, messages }` on the chart sets the default accessible name and the wording of the generated summary; `locale` (a BCP 47 tag, default `"en-US"`) formats the counts in it.
 - `legendPlugin({ messages })` overrides the legend's group label, hide/show tooltips, and fallback series names.
 - `a11yPlugin({ locale, messages })` covers the hidden data table, announcements, and inspection text.
+- `selectionPlugin`, `navigatorPlugin`, `annotationsPlugin`, and `interactionsPlugin` take `messages` too; the full list is in [Accessibility](./accessibility.md#localization).
 - `interactionsPlugin({ gestureHint: { wheelText, touchText, durationMs } })` rewords the cooperative-gesture hint.
 
 Axis tick text comes from your `tickFormat`; time ticks use English month and weekday names unless you format them yourself. See [Accessibility](./accessibility.md) for the full message lists.

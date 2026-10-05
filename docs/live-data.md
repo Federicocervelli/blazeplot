@@ -36,7 +36,7 @@ Keep X values sorted in append order. Picking, binary search, and LOD assume sor
 
 ## Fixed-rate samples
 
-For signals with constant sample spacing, use the `{ capacity, xStart, xStep }` shorthand. BlazePlot creates an implicit-X `UniformRingBuffer`, so you only append Y values. Passing either `xStart` or `xStep` selects it (`xStart` defaults to 0 and `xStep` to 1). A uniform buffer always wraps, so combining the shorthand with `overflow: "drop-new"` or `"error"` throws a `TypeError`.
+For signals with constant sample spacing, use the `{ capacity, xStart, xStep }` shorthand. BlazePlot creates an implicit-X `UniformRingBuffer`, so you only append Y values. Passing either `xStart` or `xStep` selects it (`xStart` defaults to 0 and `xStep` to 1), in X data units. A uniform buffer always wraps, so combining the shorthand with `overflow: "drop-new"` or `"error"` throws a `TypeError`.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -86,13 +86,13 @@ series.updateAt(42, { y: correctedValue });
 For spectra, waveforms, or any chart that redraws all of its points each frame, keep one series and swap its data instead of removing and re-adding the line. The series keeps its color, legend entry, and hover state.
 
 ```ts
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 const frequencies = new Float64Array([20, 100, 1_000, 10_000]);
 const magnitudes = new Float32Array([-60, -30, -10, -50]);
 
 const chart = new Chart(element);
-const spectrum = chart.addLine({ dataset: new StaticDataset(frequencies, magnitudes), name: "spectrum" }, { lineWidth: 2 });
+const spectrum = chart.addLine({ x: frequencies, y: magnitudes, name: "spectrum" }, { lineWidth: 2 });
 chart.setViewport({ xMin: frequencies[0]!, xMax: frequencies[frequencies.length - 1]!, yMin: -120, yMax: 0 });
 chart.start();
 

@@ -22,16 +22,16 @@ Use this page when a chart renders blank, feels slow, or behaves differently fro
 
 Check these first:
 
-1. **The host element has size.** BlazePlot fills its container; a `0px`-tall parent produces a `0px` plot.
+1. **The host element has size.** BlazePlot fills its container; a `0px`-tall parent produces a `0px` plot. In development the console warns once (`the chart's plot area is 400 x 0 px at its first render`) when the first frame finds a zero-size plot.
 2. **A rendering engine started.** Charts use WebGL2 when it is available and Canvas 2D otherwise (`renderer: "auto"`, the default). Check `chart.rendererInfo` to see which engine you got and whether it fell back. With a strict engine (`"webgl2"`, `"shared"`, `"canvas2d"`) the constructor throws instead of falling back; use `isWebGL2Available()` to show your own fallback UI.
 3. **The chart has a viewport.** Call `chart.fitToData()` after adding initial series, or set a viewport explicitly with `chart.setViewport(...)`.
-4. **Render scheduling is active.** Call `chart.start()` after setup. The default mode renders when chart-owned state changes and then idles; append through series APIs or call `series.markDirty()` after direct dataset mutation. Use the `renderLoop: "continuous"` chart option only for custom animations.
+4. **Render scheduling is active.** Call `chart.start()` after setup (in development the console warns once when a series was added and the chart was never started). The default mode renders when chart-owned state changes and then idles; append through series APIs or call `series.markDirty()` after direct dataset mutation. Use the `renderLoop: "continuous"` chart option only for custom animations.
 5. **The data is finite and sorted.** Built-in datasets expect ascending X values. Non-finite Y values create gaps.
 6. **The host is hidden or in another document.** A host with `display: none` has no size, so the plot is empty until it is shown; the chart's `ResizeObserver` then resizes it (call `chart.resize()` yourself where `ResizeObserver` is unavailable). In an iframe, create the chart from a host element that belongs to the iframe's document.
 7. **The log scale has no valid domain.** See [Log axis throws a domain error](#log-axis-throws-a-domain-error).
 
 ```ts
-import { Chart, StaticDataset, isWebGL2Available } from "blazeplot";
+import { Chart, isWebGL2Available } from "blazeplot";
 
 const x = [0, 1, 2];
 const y = [3, 6, 4];
@@ -44,7 +44,7 @@ if (!isWebGL2Available()) {
   showUnsupportedBrowserMessage();
 } else {
   const chart = new Chart(element, { renderer: "webgl2" });
-  chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
+  chart.addLine({ x, y, name: "series" });
   chart.fitToData({ padding: 0.05 });
   chart.start();
 }
@@ -158,7 +158,7 @@ export function TelemetryPanel() {
 
 A chart sets no `touch-action`, so on its own it never blocks scrolling. Gestures take scrolling over only when a plugin asks for them:
 
-- **`interactionsPlugin`** sets `touch-action: none` on the plot (and axis gutters) while `touchPan` or `pinchZoom` is on, and handles the wheel over the plot. If that traps scrolling on a long page, make it cooperative: `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger" })`. The wheel then scrolls the page unless Ctrl or Cmd is held (a trackpad pinch still zooms), and one finger scrolls while two fingers pan and zoom (the plot gets `touch-action: pan-x pan-y`; the axis gutters still take one-finger drags). A hint tells the user about the shortcut; reword it or turn it off with `gestureHint`. Or turn the gestures off with `wheelZoom: false`, `touchPan: false`, and `pinchZoom: false`.
+- **`interactionsPlugin`** handles the wheel over the plot and, by default (`touchPan: "two-finger"`), leaves one-finger touch drags to the page: the plot gets `touch-action: pan-x pan-y`, one finger scrolls and two fingers pan and zoom (the axis gutters still take one-finger drags). A hint tells touch users about the second finger; reword it or turn it off with `gestureHint`. If a touch drag scrolls the page when you expected the chart to pan, that is the default: pass `touchPan: true` for one-finger pan, which sets `touch-action: none` on the plot and blocks page scrolling over it. If the wheel traps scrolling on a long page, add `wheelZoom: "modifier"` so the wheel scrolls the page unless Ctrl or Cmd is held (a trackpad pinch still zooms). Or turn the gestures off with `wheelZoom: false`, `touchPan: false`, and `pinchZoom: false`.
 - **`selectionPlugin`** sets `touch-action: none` so a touch drag selects.
 - **`navigatorPlugin`** sets `touch-action: none` on its own overview strip only, not on the plot.
 - **`tooltipPlugin` and `crosshairPlugin`** set `touch-action: pan-y` for their long-press gesture, so vertical swipes still scroll.

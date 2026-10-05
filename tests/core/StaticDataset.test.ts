@@ -143,6 +143,7 @@ describe("StaticDataset", () => {
     expect(store.length).toBe(6);
     expect(store.visible).toBe(true);
 
+    // @ts-expect-error a StaticDataset series has no append
     expect(() => store.append({ x: new Float64Array([0]), y: new Float32Array([0]) }))
       .toThrow(TypeError);
 

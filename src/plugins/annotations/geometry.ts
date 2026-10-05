@@ -5,7 +5,8 @@
 import type { ChartPointerEvent } from "../../ui/ChartEvents.js";
 import type { ChartPluginContext } from "../../ui/PluginTypes.js";
 
-import type { Annotation, AnnotationHitBounds, AnnotationHitEvent, AnnotationLabelOptions } from "./types.js";
+import { DEFAULT_ANNOTATIONS_MESSAGES } from "./types.js";
+import type { Annotation, AnnotationHitBounds, AnnotationHitEvent, AnnotationLabelOptions, AnnotationsMessages } from "./types.js";
 
 export const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -115,7 +116,7 @@ export function hitTestAnnotation(chart: ChartPluginContext, annotation: Annotat
     case "point": {
       const dx = plotX - xToPx(annotation.x);
       const dy = plotY - yToPx(annotation.y);
-      const radius = annotation.radius ?? 5;
+      const radius = annotation.radiusPx ?? 5;
       return dx * dx + dy * dy <= (radius + tolerance) * (radius + tolerance);
     }
     case "label": {
@@ -169,7 +170,7 @@ export function annotationFocusRect(chart: ChartPluginContext, annotation: Annot
     case "point": {
       const x = xToPx(annotation.x);
       const y = yToPx(annotation.y);
-      const radius = (annotation.radius ?? 5) + 2;
+      const radius = (annotation.radiusPx ?? 5) + 2;
       return isInsidePlot(x, y, width, height) ? { x: x - radius, y: y - radius, w: radius * 2, h: radius * 2 } : null;
     }
     case "label": {
@@ -181,7 +182,7 @@ export function annotationFocusRect(chart: ChartPluginContext, annotation: Annot
 }
 
 /** Accessible name: `ariaLabel`, else the label text, else a description of the shape and position. */
-export function annotationName(chart: ChartPluginContext, annotation: Annotation): string {
+export function annotationName(chart: ChartPluginContext, annotation: Annotation, messages: AnnotationsMessages = DEFAULT_ANNOTATIONS_MESSAGES): string {
   if (annotation.ariaLabel) return annotation.ariaLabel;
   const text = labelText(annotation.label) ?? (annotation.type === "label" ? annotation.text : null);
   if (text) return text;
@@ -189,13 +190,13 @@ export function annotationName(chart: ChartPluginContext, annotation: Annotation
   const x = (value: number): string => chart.coords.format(value, "x", yAxis);
   const y = (value: number): string => chart.coords.format(value, "y", yAxis);
   switch (annotation.type) {
-    case "x-line": return `Vertical line at x ${x(annotation.x)}`;
-    case "y-line": return `Horizontal line at y ${y(annotation.y)}`;
-    case "x-range": return `X range from ${x(annotation.xMin)} to ${x(annotation.xMax)}`;
-    case "y-range": return `Y range from ${y(annotation.yMin)} to ${y(annotation.yMax)}`;
-    case "box": return `Box from x ${x(annotation.xMin)} to ${x(annotation.xMax)}, y ${y(annotation.yMin)} to ${y(annotation.yMax)}`;
-    case "point": return `Point at x ${x(annotation.x)}, y ${y(annotation.y)}`;
-    case "label": return `Label at x ${x(annotation.x)}, y ${y(annotation.y)}`;
+    case "x-line": return messages.xLine(x(annotation.x));
+    case "y-line": return messages.yLine(y(annotation.y));
+    case "x-range": return messages.xRange(x(annotation.xMin), x(annotation.xMax));
+    case "y-range": return messages.yRange(y(annotation.yMin), y(annotation.yMax));
+    case "box": return messages.box(x(annotation.xMin), x(annotation.xMax), y(annotation.yMin), y(annotation.yMax));
+    case "point": return messages.point(x(annotation.x), y(annotation.y));
+    case "label": return messages.label(x(annotation.x), y(annotation.y));
   }
 }
 

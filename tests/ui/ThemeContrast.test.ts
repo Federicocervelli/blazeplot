@@ -78,3 +78,14 @@ describe("built-in theme contrast", () => {
     expect(contrast(over(parseCss("#767676"), [1, 1, 1]), [1, 1, 1])).toBeCloseTo(4.54, 2);
   });
 });
+
+describe("theme color inputs", () => {
+  it("accepts RGBA tuples for DOM colors and resolves them to CSS strings", async () => {
+    const { resolveChartTheme } = await import("../../src/ui/theme.ts");
+    const theme = resolveChartTheme({ axisColor: [1, 0, 0, 1], tooltipBackgroundColor: [0, 0, 0, 0.5], focusRingColor: "#123456" });
+    expect(theme.axisColor).toBe("rgba(255, 0, 0, 1)");
+    expect(theme.tooltipBackgroundColor).toBe("rgba(0, 0, 0, 0.5)");
+    expect(theme.focusRingColor).toBe("#123456");
+    expect(theme.legendTextColor).toBe(DEFAULT_CHART_THEME.legendTextColor);
+  });
+});

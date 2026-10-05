@@ -12,10 +12,14 @@ export interface TooltipPluginOptions {
   readonly group?: ChartPickGroup;
   /** Charts whose tooltips share a `syncGroup` show values at the same X together. */
   readonly syncGroup?: string;
+  /** Largest pointer-to-sample distance, in CSS pixels, that shows a tooltip. */
   readonly maxDistancePx?: number;
-  readonly offsetX?: number;
-  readonly offsetY?: number;
+  /** Gap between the pointer and the tooltip box, in CSS pixels. Defaults to 12. */
+  readonly offsetXPx?: number;
+  /** Gap between the pointer and the tooltip box, in CSS pixels. Defaults to 12. */
+  readonly offsetYPx?: number;
   readonly highlight?: boolean;
+  /** Touch long-press delay in milliseconds, or `false` to disable. */
   readonly longPressMs?: number | false;
   readonly backgroundColor?: string;
   readonly textColor?: string;
@@ -51,8 +55,8 @@ const joinTooltipSyncGroup = createSyncRegistry();
 
 function placeTooltip(container: HTMLElement, state: ChartHoverState, options: TooltipPluginOptions, size: { readonly width: number; readonly height: number }): void {
   placeFixedWithinViewport(container, state.clientX, state.clientY, {
-    offsetX: options.offsetX ?? 12,
-    offsetY: options.offsetY ?? 12,
+    offsetX: options.offsetXPx ?? 12,
+    offsetY: options.offsetYPx ?? 12,
     size: {
       width: Math.max(1, size.width || 240),
       height: Math.max(1, size.height || 80),
@@ -60,7 +64,11 @@ function placeTooltip(container: HTMLElement, state: ChartHoverState, options: T
   });
 }
 
-/** Create a plugin that displays picked data values in a tooltip. */
+/**
+ * Create a plugin that displays picked data values in a tooltip.
+ *
+ * One instance may be passed to several charts: it keeps no per-chart state outside each install.
+ */
 export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {

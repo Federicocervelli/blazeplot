@@ -4,11 +4,16 @@ import type { ChartPlugin, ChartPluginContext } from "../../ui/PluginTypes.js";
 import { dragModifierMatches } from "../common/OverlayUtils.js";
 import { AXIS_SURFACES, TAP_SLOP_PX, USER_VIEWPORT, applySelectionAxis, axisGestureConfig, capturePointer, clientToDataClamped, constrainPan, isApplePlatform, isLikelyTrackpadPan, normalizeViewport, pinchMetrics, releasePointer, resolveAxis, wheelZoomFactor } from "./gestures.js";
 import type { AxisSurface, DragState, GestureSurface, TouchGestureState, TouchPoint } from "./gestures.js";
-import type { InteractionsPluginOptions } from "./types.js";
+import { DEFAULT_INTERACTIONS_MESSAGES } from "./types.js";
+import type { InteractionsMessages, InteractionsPluginOptions } from "./types.js";
 
 let nextInteractionsPluginId = 1;
 
-/** Create a plugin that enables pan, zoom, and touch interactions. */
+/**
+ * Create a plugin that enables pan, zoom, and touch interactions.
+ *
+ * One instance may be passed to several charts: it keeps no per-chart state outside each install.
+ */
 export function interactionsPlugin(options: InteractionsPluginOptions = {}): ChartPlugin {
   return {
     install(chart: ChartPluginContext) {
@@ -42,6 +47,10 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       selection.style.background = chart.theme.selectionFillColor;
       chart.dom.mount("plot", selection);
 
+      /** `touchPan` defaults to cooperative: one finger scrolls the page, two fingers pan and pinch. */
+      const touchPanMode = options.touchPan ?? "two-finger";
+      const messages: InteractionsMessages = { ...DEFAULT_INTERACTIONS_MESSAGES, ...options.messages };
+
       // Cooperative-gesture hint: created on first use, hidden again after a moment.
       const hintOptions = typeof options.gestureHint === "object" ? options.gestureHint : {};
       let hint: HTMLDivElement | null = null;
@@ -69,8 +78,8 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         }
         const label = hint.firstElementChild as HTMLElement;
         label.textContent = kind === "wheel"
-          ? hintOptions.wheelText ?? `Use ${isApplePlatform(chart.dom.view) ? "⌘" : "Ctrl"} + scroll to zoom`
-          : hintOptions.touchText ?? "Use two fingers to move the chart";
+          ? hintOptions.wheelText ?? messages.wheelHint(isApplePlatform(chart.dom.view) ? "⌘" : "Ctrl")
+          : hintOptions.touchText ?? messages.touchHint;
         label.style.background = hintOptions.backgroundColor ?? chart.theme.tooltipBackgroundColor;
         label.style.color = hintOptions.textColor ?? chart.theme.tooltipTextColor;
         label.style.font = hintOptions.font ?? chart.theme.tooltipFont;
@@ -86,9 +95,9 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         chart.dom.mount("root", axisHoverStyle);
       }
 
-      if (options.touchPan !== false || options.pinchZoom !== false) {
+      if (touchPanMode !== false || options.pinchZoom !== false) {
         // Cooperative mode leaves one-finger scrolling to the browser; two-finger input is ours.
-        chart.dom.decorate("plot", { style: { touchAction: options.touchPan === "two-finger" ? "pan-x pan-y" : "none" } });
+        chart.dom.decorate("plot", { style: { touchAction: touchPanMode === "two-finger" ? "pan-x pan-y" : "none" } });
         if (axisInteractions) {
           for (const surface of AXIS_SURFACES) chart.dom.decorate(surface, { style: { touchAction: "none" } });
         }
@@ -342,11 +351,11 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
       };
 
       /** Cooperative plot: one finger belongs to the page, two fingers to the chart. */
-      const isCooperative = (surface: GestureSurface): boolean => options.touchPan === "two-finger" && surface === "plot";
+      const isCooperative = (surface: GestureSurface): boolean => touchPanMode === "two-finger" && surface === "plot";
       const twoFingerEnabled = (): boolean => options.pinchZoom !== false || isCooperative(touchSurface);
 
       function onTouchDown(event: PointerEvent, surface: GestureSurface): void {
-        if (options.touchPan === false && options.pinchZoom === false) return;
+        if (touchPanMode === false && options.pinchZoom === false) return;
         // The first finger of a cooperative plot is the page's; only a second finger starts a gesture.
         const idle = touches.size === 0 && isCooperative(surface);
         if (!idle && !chart.dom.claimPointer(event)) return;
@@ -355,10 +364,10 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
         if (touches.size === 1) {
           touchSurface = surface;
-          tapCandidate = surface === "plot" && options.touchPan !== false && options.doubleTapReset !== false;
+          tapCandidate = surface === "plot" && touchPanMode !== false && options.doubleTapReset !== false;
           tapStartX = event.clientX;
           tapStartY = event.clientY;
-          if (options.touchPan !== false && !idle) startPan(event.pointerId, touches.get(event.pointerId)!, touchTargetConfig(surface));
+          if (touchPanMode !== false && !idle) startPan(event.pointerId, touches.get(event.pointerId)!, touchTargetConfig(surface));
           return;
         }
         tapCandidate = false;
@@ -420,7 +429,7 @@ export function interactionsPlugin(options: InteractionsPluginOptions = {}): Cha
         if (touches.size === 1) {
           const [remaining] = touches;
           touchGesture = null;
-          if (remaining && options.touchPan !== false && !isCooperative(touchSurface)) startPan(remaining[0], remaining[1], config);
+          if (remaining && touchPanMode !== false && !isCooperative(touchSurface)) startPan(remaining[0], remaining[1], config);
           return;
         }
         touchGesture = null;

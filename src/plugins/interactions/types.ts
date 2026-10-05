@@ -5,11 +5,25 @@ import type { Viewport } from "../../core/types.js";
 /** Static or dynamic axis choice for wheel and drag interactions. */
 export type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
 
+/** Overridable interactions strings, for localization. Unset keys keep their English defaults. */
+export interface InteractionsMessages {
+  /** Hint shown when the wheel is used without the modifier. `modifier` is `"⌘"` on Apple devices and `"Ctrl"` elsewhere. */
+  readonly wheelHint: (modifier: string) => string;
+  /** Hint shown when one finger drags a `touchPan: "two-finger"` chart. */
+  readonly touchHint: string;
+}
+
+/** English defaults for `InteractionsMessages`. */
+export const DEFAULT_INTERACTIONS_MESSAGES: InteractionsMessages = {
+  wheelHint: (modifier) => `Use ${modifier} + scroll to zoom`,
+  touchHint: "Use two fingers to move the chart",
+};
+
 /** Appearance and wording of the cooperative-gesture hint. */
 export interface InteractionsGestureHintOptions {
-  /** Shown when the wheel is used without the modifier. Defaults to "Use Ctrl + scroll to zoom" ("Use ⌘ + scroll to zoom" on Apple devices). */
+  /** Shown when the wheel is used without the modifier. Defaults to `messages.wheelHint` ("Use Ctrl + scroll to zoom", or "Use ⌘ + scroll to zoom" on Apple devices). */
   readonly wheelText?: string;
-  /** Shown when one finger drags a `touchPan: "two-finger"` chart. Defaults to "Use two fingers to move the chart". */
+  /** Shown when one finger drags a `touchPan: "two-finger"` chart. Defaults to `messages.touchHint` ("Use two fingers to move the chart"). */
   readonly touchText?: string;
   /** How long the hint stays visible. Defaults to 1200. */
   readonly durationMs?: number;
@@ -32,6 +46,8 @@ export interface InteractionsKeyboardOptions {
 
 /** Options for mouse, wheel, touch, and keyboard chart interactions. */
 export interface InteractionsPluginOptions {
+  /** Override the cooperative-gesture hint wording, for localization. `gestureHint.wheelText` and `touchText` take precedence. */
+  readonly messages?: Partial<InteractionsMessages>;
   /**
    * Arrow-key pan, +/- zoom, PageUp/PageDown Y zoom, and Home or 0 to fit, from the focused chart root.
    * Enabled by default; pass `false` to turn it off or an object to tune the step sizes.
@@ -76,10 +92,10 @@ export interface InteractionsPluginOptions {
   readonly resumeFollowOnReset?: boolean;
   readonly resetViewport?: () => Viewport;
   /**
-   * One-finger touch pan. `true` (the default) pans with one finger and blocks page scrolling
-   * over the plot. `"two-finger"` is cooperative: one finger scrolls the page, and two fingers
-   * pan and zoom the plot (a hint explains it). Axis gutters still pan with one finger.
-   * `false` disables touch pan.
+   * Touch pan. `"two-finger"` (the default) is cooperative: one finger scrolls the page, and two
+   * fingers pan and zoom the plot (a hint explains it). Axis gutters still pan with one finger.
+   * `true` opts into one-finger pan, which blocks page scrolling over the plot (use it for
+   * full-viewport charts). `false` disables touch pan.
    */
   readonly touchPan?: boolean | "two-finger";
   readonly pinchZoom?: boolean;

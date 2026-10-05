@@ -1,8 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import { a11yPlugin } from "../../src/plugins/a11y.ts";
+import { annotationsPlugin } from "../../src/plugins/annotations.ts";
+import { interactionsPlugin } from "../../src/plugins/interactions.ts";
+import { navigatorPlugin } from "../../src/plugins/navigator.ts";
 import { legendPlugin } from "../../src/plugins/legend.ts";
 import { selectionPlugin } from "../../src/plugins/selection.ts";
-import { fire, keyEvent, useChartHarness } from "./harness.ts";
+import { fire, keyEvent, useChartHarness, wheelEvent } from "./harness.ts";
 
 const h = useChartHarness();
 
@@ -119,5 +122,65 @@ describe("localizable strings", () => {
     expect(status()).toBe("Auswahl geloescht");
     expect(status()).not.toMatch(/Selection|Selecting|Selected/);
     chart.dispose();
+  });
+
+  it("localizes the navigator label and value text, and formats the range like the X axis", () => {
+    const chart = h.make({ axes: { x: { scale: "time", timezone: "utc" } }, plugins: [navigatorPlugin({ messages: { label: "Navigator", visibleRange: (from, to) => `Bereich ${from} bis ${to}` } })] });
+    const series = chart.addLine({ capacity: 64 });
+    const start = Date.UTC(2026, 0, 1);
+    for (let i = 0; i < 20; i++) series.append({ x: start + i * 86_400_000, y: i });
+    chart.setViewport({ xMin: start + 2 * 86_400_000, xMax: start + 6 * 86_400_000 });
+    const root = chart.rootElement.querySelector(".blazeplot-navigator") as HTMLElement;
+    expect(root.getAttribute("aria-label")).toBe("Navigator");
+    const text = root.getAttribute("aria-valuetext") ?? "";
+    expect(text).toMatch(/^Bereich .+ bis .+$/);
+    // A time axis reads as dates, not epoch milliseconds.
+    expect(text).not.toMatch(/\d{12,}/);
+    chart.dispose();
+  });
+
+  it("lets navigator label and formatValueText override the messages", () => {
+    const chart = h.make({ plugins: [navigatorPlugin({ label: "Zeitfenster", formatValueText: (range) => `${range.xMin}-${range.xMax}` })] });
+    chart.addLine({ capacity: 8 }).append({ x: [0, 10], y: [0, 1] });
+    chart.setViewport({ xMin: 2, xMax: 5 });
+    const root = chart.rootElement.querySelector(".blazeplot-navigator") as HTMLElement;
+    expect(root.getAttribute("aria-label")).toBe("Zeitfenster");
+    expect(root.getAttribute("aria-valuetext")).toBe("2-5");
+    chart.dispose();
+  });
+
+  it("localizes annotation names and the role description", () => {
+    const chart = h.make({
+      plugins: [
+        annotationsPlugin({
+          annotations: [
+            { type: "x-line", x: 5 },
+            { type: "box", xMin: 1, xMax: 2, yMin: 3, yMax: 4 },
+            { type: "point", x: 6, y: 1, ariaLabel: "Eigen" },
+          ],
+          messages: { roleDescription: "Anmerkung", xLine: (x) => `Senkrechte bei ${x}`, box: (a, b, c, d) => `Kasten ${a}-${b} / ${c}-${d}` },
+        }),
+      ],
+    });
+    chart.setViewport({ xMin: 0, xMax: 10, yMin: 0, yMax: 10 });
+    chart.start();
+    h.raf.flush();
+    const targets = [...chart.rootElement.querySelectorAll<HTMLElement>(".blazeplot-annotation-focus")];
+    expect(targets.map((target) => target.getAttribute("aria-label"))).toEqual(["Senkrechte bei 5", "Kasten 1-2 / 3-4", "Eigen"]);
+    expect(targets.every((target) => target.getAttribute("aria-roledescription") === "Anmerkung")).toBe(true);
+    chart.dispose();
+  });
+
+  it("localizes the cooperative-gesture hint, with gestureHint text taking precedence", () => {
+    const chart = h.make({ plugins: [interactionsPlugin({ wheelZoom: "modifier", messages: { wheelHint: (key) => `Mit ${key} scrollen zum Zoomen`, touchHint: "Zwei Finger benutzen" } })] });
+    fire(chart.rootElement.querySelector("canvas") ?? chart.rootElement, wheelEvent(100, 100, { deltaY: 10 }));
+    const hint = chart.rootElement.querySelector(".blazeplot-gesture-hint") as HTMLElement;
+    expect(hint.textContent).toMatch(/^Mit (Ctrl|⌘) scrollen zum Zoomen$/);
+    chart.dispose();
+
+    const overridden = h.make({ plugins: [interactionsPlugin({ wheelZoom: "modifier", messages: { wheelHint: () => "ignored" }, gestureHint: { wheelText: "Strg + Rad" } })] });
+    fire(overridden.rootElement.querySelector("canvas") ?? overridden.rootElement, wheelEvent(100, 100, { deltaY: 10 }));
+    expect((overridden.rootElement.querySelector(".blazeplot-gesture-hint") as HTMLElement).textContent).toBe("Strg + Rad");
+    overridden.dispose();
   });
 });

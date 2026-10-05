@@ -16,6 +16,7 @@ export type ChartPickGroup = "x" | "none";
 export interface ChartPickOptions {
   readonly mode?: ChartPickMode;
   readonly group?: ChartPickGroup;
+  /** Largest pointer-to-sample distance, in CSS pixels, that still counts as a hit. */
   readonly maxDistancePx?: number;
 }
 
@@ -174,6 +175,10 @@ export interface ChartEventMap extends ChartPluginEventMap {
   /** A series was added, removed, or shown/hidden. */
   serieschange: void;
   themechange: void;
+  /** The rendering engine lost its GPU context. Drawing pauses until `contextrestored`; show your own "GPU reset" UI here if you want one. */
+  contextlost: void;
+  /** The rendering engine recovered from a lost context and drawing resumes. */
+  contextrestored: void;
   /** A frame finished drawing. */
   render: void;
   viewportchange: ChartViewportChangeEvent;

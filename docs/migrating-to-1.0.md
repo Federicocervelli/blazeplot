@@ -152,7 +152,7 @@ These types appeared in public signatures but were not exported in 0.5.5. They a
 
 ### 6. Chart data export moved from `blazeplot/data` to `blazeplot/export`
 
-`exportChartData`, `chartDataToCSV` (also renamed to `chartDataToCsv`, change 10), and their types (`ExportableChart`, `ChartDataExport`, `ChartDataExportOptions`, `ChartDataCsvOptions`, `ChartDataSeries`, `ChartDataSample`, `ChartDataSource`) moved to `blazeplot/export`, next to the screenshot download and clipboard helpers. `blazeplot/data` now holds only pure, chart-agnostic transforms: `binSamples`, `rollingMean`, and their types (`XYSample`, `SampleReducer`, `ResampleX`, `ResampleOptions`, `BinnedSample`, `RollingMeanSample`). There is no re-export: importing the moved names from `blazeplot/data` fails with "Module has no exported member". Behavior is unchanged.
+`exportChartData`, `chartDataToCSV` (also renamed to `chartDataToCsv`, change 10), and their types (`ExportableChart`, `ChartDataExport`, `ChartDataExportOptions`, `ChartDataCsvOptions`, `ChartDataSeries`, `ChartDataSample`, `ChartDataSource`) moved to `blazeplot/export`, next to the screenshot download and clipboard helpers. `blazeplot/data` now holds only pure, chart-agnostic transforms: `binSamples`, `histogramBins`, `rollingMean`, and their types (`XYSample`, `SampleReducer`, `ResampleX`, `ResampleOptions`, `BinnedSample`, `RollingMeanSample`; the histogram types stay in the root). There is no re-export: importing the moved names from `blazeplot/data` fails with "Module has no exported member". Behavior is unchanged.
 
 Before (0.5):
 
@@ -397,7 +397,8 @@ chart.dispose();
 - **`touch-action` is no longer forced.** A chart without `interactionsPlugin` (or another plugin that asks for it) no longer sets `touch-action: none`, so one-finger swipes scroll the page. `interactionsPlugin` and `selectionPlugin` set it themselves, and the tooltip and crosshair long press use `pan-y`. If you relied on the old default for your own touch handling, request it with `ctx.dom.decorate("plot", { style: { touchAction: "none" } })`. `touchAction` decorations now combine by intersection.
 - **Touch input uses Pointer Events only.** The built-in plugins no longer register `touchstart`, `touchmove`, `touchend`, or `touchcancel` listeners. If a custom plugin listens for those on the plot, listen for `pointerdown`, `pointermove`, `pointerup`, and `pointercancel` and check `event.pointerType === "touch"`.
 - **Pointer gestures are arbitrated.** Plugins claim a drag with `ctx.dom.claimPointer(event)`. With `interactionsPlugin` and `selectionPlugin` both at their defaults, a plain drag now selects and no longer also box-zooms; use `interactionsPlugin({ boxZoomModifier: "alt" })` to keep box zoom. `selectionPlugin` now ignores presses with Shift, Alt, or Ctrl/Cmd held unless you set `modifier`.
-- **New cooperative options.** `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger" })` leaves plain wheel and one-finger input to the page. See [Built-in plugins](./built-in-plugins.md#cooperative-gestures-on-scrolling-pages).
+- **Touch pan defaults to two fingers (behavior change).** `interactionsPlugin()` used to pan with one finger and set `touch-action: none` on the plot; its default is now `touchPan: "two-finger"`: one finger scrolls the page, two fingers pan and pinch, and a short hint explains it. Pass `touchPan: true` to keep one-finger pan (for example for a full-viewport chart). `wheelZoom` still defaults to `true`.
+- **Cooperative options.** `interactionsPlugin({ wheelZoom: "modifier" })` additionally leaves the plain wheel to the page. See [Built-in plugins](./built-in-plugins.md#cooperative-gestures-on-scrolling-pages).
 
 ### 13. Rendering fixes that change how charts look
 
@@ -474,18 +475,39 @@ Late 1.0 release candidates removed a few leaky or inconsistent names. There are
 | `AxisRenderTarget` was experimental | Stable (it types the stable `AxisTickFormatter`). |
 | `rendererchange` in `ChartEventMap` (never emitted) | Removed. Read `chart.rendererInfo` for the engine in use. |
 | `ChartRendererKind` | `RendererName` |
+| `histogram(values, options)` (root export) | `histogramBins(values, options)`, imported from `blazeplot/data` next to `binSamples`. `HistogramDataset.from(values, options)` stays in the root and takes the same options (`binSize`, `binCount`, or `thresholds`). |
 | `chart.screenshot({ dpr })` | `chart.screenshot({ pixelRatio })` |
 | `chart.resize(dpr)` | `chart.resize(pixelRatio)` (positional, so only the parameter name changes) |
+| `TypedSeriesConfig` (`Omit<SeriesConfig, "mode">`: every option optional) | A union of `DatasetSeriesConfig<D>` (`{ dataset }`), `RingSeriesConfig` (`{ capacity, overflow?, valuePrecision?, onInvalidSample? }`), and `UniformRingSeriesConfig` (`{ capacity, xStep? / xStart?, valuePrecision? }`), all carrying `SeriesIdentityConfig` (`id`, `name`, `yAxis`, `downsample`). |
+| `chart.addLine({ capacity, dataset })`, `{ dataset, xStep }`, `{ dataset, overflow }` (buffer options silently ignored next to a dataset) | Compile error and a `TypeError` at run time. Drop the buffer options, or configure the dataset you pass. |
+| `chart.addLine({ xStep: 1 })`, `{ xStart }`, `{ name }` with neither `dataset` nor `capacity` | Compile error (and the existing `TypeError` for a missing `capacity`). |
+| `chart.addLine({ capacity, xStep, overflow: "drop-new" \| "error" })` and `{ capacity, xStep, onInvalidSample }` | Compile error (the uniform buffer only wraps and never rejects samples); `overflow` other than `"wrap"` already threw. `onInvalidSample` with `xStep` now throws too. |
+| `chart.addCandlestick({ capacity })`, `chart.addOhlc({ capacity })`, or an `XY` dataset | Compile error: they need `dataset: OhlcDataset` (`StaticOhlcDataset` or `OhlcRingBuffer`). |
+| `TextOverlayConfig` / `ChartTitleConfig` `offsetX`, `offsetY` (axis and chart titles) | `offsetXPx`, `offsetYPx` (CSS pixels) |
+| `tooltipPlugin({ offsetX, offsetY })` | `tooltipPlugin({ offsetXPx, offsetYPx })` |
+| Annotation `label: { offsetX, offsetY }` | `label: { offsetXPx, offsetYPx }` |
+| Annotation `width` (`x-line`, `y-line`), `borderWidth` (ranges, box), `radius` and `strokeWidth` (`point`) | `widthPx`, `borderWidthPx`, `radiusPx`, `strokeWidthPx` |
+| `crosshairPlugin({ width, markerSize, markerStrokeWidth })` | `crosshairPlugin({ widthPx, markerSizePx, markerStrokeWidthPx })` |
+| `navigatorPlugin({ height, strokeWidth, handleWidth, handleHitWidth, margin })` | `navigatorPlugin({ heightPx, strokeWidthPx, handleWidthPx, handleHitWidthPx, marginPx })` |
+| `ChartTheme` `axisColor`, `tooltipBackgroundColor` and the other DOM color tokens accepted only CSS strings | Every `*Color` token accepts a CSS string or an RGBA tuple (`ThemeColor`), like `backgroundColor`. `chart.theme` still reports CSS strings. |
+| `chart.getSeriesState()`, `ctx.state.getSeries()` returned a mutable array; `getFrameStats()` returned a mutable object | `readonly ChartSeriesState[]` and `Readonly<ChartFrameStats>` (the `target` you pass in stays mutable). |
+| `SeriesStore<D>.append` / `updateLast` / `updateAt` accepted any payload | Typed by the dataset: `{ x, y }` for `RingBuffer`, `{ y }` for `UniformRingBuffer`, OHLC objects for `OhlcRingBuffer`, and `never` for `StaticDataset`-backed series. The runtime `TypeError` stays. A bare `SeriesStore` (what `getSeriesState()` returns) keeps accepting every form. New exported types: `SeriesAppendFor`, `SeriesUpdateFor`, `SeriesYAppendData`, `SeriesXYExplicitAppendData`, `SeriesYUpdateData`. |
+| `chart.addLine(...)` returned `SeriesStore<Dataset>` for `{ capacity }` | Returns `SeriesStore<RingBuffer>` (or `SeriesStore<UniformRingBuffer>` with `xStep`/`xStart`), so `series.append({ x, y })` and `series.clear()` are typed without a cast. |
+
+Unit conventions after this pass: plugin options measured in CSS pixels end in `Px`; options in milliseconds end in `Ms`; series style `lineWidth` and `pointSize` are CSS pixels, and `barWidth` and `tickWidth` are data X units (not pixels). Every option's JSDoc states its unit; see [Theming and layout](./theming-and-layout.md#units).
 
 ## New in 1.0
 
 Additive features that need no migration work but are easy to miss:
 
 - **Accessibility:** `blazeplot/plugins/a11y` (data table, keyboard inspection, live summary), `chart.getSummary()`, `LIGHT_CHART_THEME` (change 9, [Accessibility](./accessibility.md)).
-- **Localization:** `accessibility.locale` and `messages`, `a11yPlugin({ locale, messages })`, `legendPlugin({ messages })`, `selectionPlugin({ messages })`.
+- **Theme:** `theme: "auto"` follows `prefers-color-scheme` (dark by default, `LIGHT_CHART_THEME` when the user prefers light), also accepted by `chart.setTheme`.
+- **Runtime checks and events:** an actionable `TypeError` for a bad `Chart`/`createLinkedCharts` target, one-time development warnings for a zero-size host and for a chart that was never started, chart `contextlost`/`contextrestored` events, `autoRenderer({ shared })`, and the optional `preloadWebGL()` (see [Error handling](./error-handling.md)). A chart whose `accessibility.description` is `""` and that has no plugins is no longer a tab stop.
+- **Localization:** `accessibility.locale` and `messages`, `a11yPlugin({ locale, messages })`, `legendPlugin({ messages })`, `selectionPlugin({ messages })`, `navigatorPlugin({ messages, label, formatValueText })`, `annotationsPlugin({ messages })`, `interactionsPlugin({ messages })`. The navigator's value text now formats the range with the X axis formatter (dates on a time axis) instead of raw numbers.
 - **Rendering engines:** Canvas 2D (also the `"auto"` fallback) and shared-context rendering through `ChartOptions.renderer`, `chart.rendererInfo`, and `ctx.renderer` (change 16).
 - **Gestures:** `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger", gestureHint, boxZoomModifier })`, `selectionPlugin({ modifier })`, `ctx.dom.claimPointer` (change 12), and the long-press tooltip and crosshair on touch.
 - **Layout:** `axes.*.size` (a number, or `"auto"` to size gutters from the measured tick labels), outside legend positions, the title row (change 15).
+- **Shorter series calls:** `chart.addLine({ x, y })` (and `addArea`, `addScatter`, `addBar`) builds a `StaticDataset` from your arrays (X sorted ascending, same `RangeError`s), and `chart.addBar({ values, binSize | binCount | thresholds })` builds a `HistogramDataset`. The `dataset` form stays for object rows, unsorted data, shared datasets, and live buffers (`StaticSeriesConfig`, `HistogramSeriesConfig`; the handle is `SeriesStore<StaticDataset>` / `SeriesStore<HistogramDataset>`).
 - **Series and data:** `series.setStyle(options)`, `HistogramDataset.from(values, options)`, `StaticDataset.sorted(...)`, `StaticOhlcDataset.sorted(...)`, and `rejectedSamples` / `onInvalidSample` on streaming buffers.
 - **Events and viewport:** `viewportchange.source`, `followxchange`, and the options argument of `chart.pan`, `zoom`, and `setViewport` (change 14).
 - **Plugin context:** `ctx.coords.format`, `clientToPlot`, `plotToClient`, `ctx.state.inspect`, `ctx.dom.document`, `view`, `create`, `createSvg`, and `claimPointer`.
@@ -495,7 +517,7 @@ Additive features that need no migration work but are easy to miss:
 
 ### ESM only
 
-The package declares `"type": "module"` and exposes only an `import` condition. `require("blazeplot")` throws `ERR_PACKAGE_PATH_NOT_EXPORTED`. There is no CommonJS or UMD build, and none is planned.
+The package declares `"type": "module"` and every export has `import` and `default` conditions. Use `import` or `await import("blazeplot")`; `require("blazeplot")` works only on Node.js 22.12+, which can `require()` ES modules. There is no CommonJS or UMD build, and none is planned.
 
 Before:
 
@@ -521,7 +543,7 @@ In a CommonJS project, use dynamic `import()` or move the chart code into an ES 
 
 ### TypeScript 5.0 or newer
 
-The declarations are checked against TypeScript 5.0 and newer. Your `moduleResolution` must understand package `exports` (`bundler`, `node16`, or `nodenext`); the legacy `node`/`node10` setting cannot resolve subpaths such as `blazeplot/plugins/tooltip`. Include `"DOM"` in `lib`. Details: [TypeScript support](./versioning-and-migration.md#typescript-support).
+The declarations are checked against TypeScript 5.0 and newer. Use a `moduleResolution` that reads package `exports` (`bundler`, `node16`, or `nodenext`); the legacy `node`/`node10` setting also resolves every subpath through `typesVersions`. Include `"DOM"` in `lib`. Details: [TypeScript support](./versioning-and-migration.md#typescript-support).
 
 ```json
 {
@@ -571,11 +593,11 @@ series.append({ y: 2 }); // fixed-rate series with xStep
 9. If you write custom plugins, port them to the grouped plugin context with the table in change 8 (search for `install(`, `setLayoutReservation`, `rootElement`, `plotElement`, `getCamera`, and `render:` callbacks of the legend, tooltip, and crosshair plugins). The new contract is stable. If you implement custom fast-path datasets or use `ctx.unstable`, note they are experimental: pin a 1.x range and read each minor changelog.
 10. Apply the renames in change 10: search for `followLatestX`, `stopFollowingLatestX`, `setXFollowPaused`, `getXFollowState`, `ChartXFollowState`, `ChartPointerEventState`, `LODStrategy`, `chartDataToCSV`, `sharedX`, `labelBackground`, the `fill`/`stroke`/`background`/`window*` options of `selectionPlugin` and `navigatorPlugin`, and `chart.getCamera`, `chart.getWebGLContext`, `chart.canvas`, `chart.plotElement`, and the `*AxisElement` getters.
 11. Check change 9 if you style or test the chart root: search for `role="img"`, `aria-description`, `querySelector("style")` on the chart root, and full `ResolvedChartTheme` objects (add `focusRingColor`). Give each chart an `accessibility.label`, and consider `a11yPlugin()` for charts whose values users need.
-12. If you use `interactionsPlugin` with `selectionPlugin`, or write custom touch or drag plugins, read change 12: check `touch-action`, touch listeners, and which plugin owns a plain drag.
+12. If you use `interactionsPlugin` with `selectionPlugin`, or write custom touch or drag plugins, read change 12: check `touch-action`, touch listeners, and which plugin owns a plain drag. Add `touchPan: true` to any `interactionsPlugin()` that must keep one-finger touch pan.
 13. Search for `addHistogram`, `HistogramSeriesConfig`, and `PrecomputedHistogramSeriesConfig`. Replace each call with `chart.addBar({ dataset: HistogramDataset.from(values, options) })` (see change 11).
 14. Check change 14: search for `.subscribe("hover"` used as a per-frame callback, listeners that relied on exceptions propagating, and hand-built `ChartViewportChangeEvent` objects. Create stateful built-in plugin instances once per chart (`annotationsPlugin()`, `crosshairPlugin()`, `selectionPlugin()`, `navigatorPlugin()`, `a11yPlugin()`, `flameGraphPlugin()`).
 15. Check fixed-height containers and visual baselines for charts with a `title` or `subtitle` (the title row, change 15) and for the rendering differences in change 13 (translucent blending, round `pointSize` markers in CSS pixels, dense area peaks).
 16. Rendering engines (change 16): the default `renderer` is now `"auto"`, so code that relied on `new Chart(...)` throwing `WebGL2UnavailableError` needs `renderer: "webgl2"`. On a release candidate, replace imports from `blazeplot/renderers/canvas2d` and `blazeplot/renderers/shared` with root imports or renderer names, and `"webgl2-shared"` with `"shared"`. If you mount many charts on one page, consider `renderer: "shared"`.
 17. Run `tsc --noEmit`, then exercise pan, zoom, tooltips, selection, screenshots, and exports in a real browser, as in the [upgrade checklist](./versioning-and-migration.md#upgrade-checklist-for-users).
-18. Apply the renames in change 17 (search for `AxisControllerAxisOptions`, `rendererchange`, `ChartRendererKind`, and `dpr`).
+18. Apply the renames in change 17 (search for `AxisControllerAxisOptions`, `rendererchange`, `ChartRendererKind`, `dpr`, root imports of `histogram`, `capacity` passed next to a `dataset`, and the option names in the table above such as `offsetX`, `markerSize`, `handleWidth`).
 19. Skim the [API reference](./api-reference.md) and [API stability](./stability.md) for anything your app imports.

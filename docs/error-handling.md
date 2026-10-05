@@ -18,6 +18,8 @@ The short version: **constructors, static data, and explicit configuration throw
 
 ## Creating a chart
 
+`new Chart(target, ...)` and `createLinkedCharts(target, ...)` throw a `TypeError` such as `Chart: target must be an HTMLElement (got null). Is the element mounted?` when `target` is not a DOM element, typically a `document.getElementById(...)` or framework ref that is still `null`. Create the chart after the element is mounted.
+
 By default (`renderer: "auto"`) `new Chart(target, options)` uses WebGL2 and falls back to Canvas 2D without logging anything; `chart.rendererInfo.fallbackFrom` is `"webgl2"` when it did. A strictly requested engine throws instead: `WebGL2UnavailableError` for `"webgl2"` and `"shared"` when no WebGL2 context is available, `Canvas2DUnavailableError` for `"canvas2d"` when no 2D context is available. Before it throws it removes the DOM it created and hands back any canvas you supplied, so a failed construction leaves your container as it was. `createLinkedCharts(...)` behaves the same way.
 
 If a plugin's `install()` throws, the chart disposes everything already set up and rethrows that error from the constructor. That includes installing one stateful built-in plugin instance (annotations, crosshair, selection, navigator, a11y, flame graph) on a second chart: create one instance per chart.
@@ -52,7 +54,7 @@ export function mountChart(element: HTMLElement): Chart | null {
 
 | Call | Throws |
 |---|---|
-| `chart.addLine({ capacity })` and other chart-owned series | `TypeError` when `capacity` is not a positive integer and no `dataset` is given. `TypeError` when `xStep`/`xStart` is combined with an overflow strategy other than `"wrap"`. |
+| `chart.addLine({ capacity })` and other chart-owned series | `TypeError` when `capacity` is not a positive integer and no `dataset` is given. `TypeError` when `xStep`/`xStart` is combined with an overflow strategy other than `"wrap"` or with `onInvalidSample`. `TypeError` when `dataset` is combined with `capacity`, `xStart`, `xStep`, `overflow`, `valuePrecision`, or `onInvalidSample`, which configure a buffer the chart creates. TypeScript rejects all of these at compile time; the checks cover JavaScript callers and casts. |
 | `chart.addSeries({ mode })` | `TypeError` when `mode` is not one of `line`, `area`, `scatter`, `bar`, `ohlc`, `candlestick` (JavaScript callers, or a removed mode such as `"envelope"`). |
 | `chart.addOhlc(...)` / `addCandlestick(...)` | `TypeError` without an `OhlcDataset`. |
 | `chart.addBar({ dataset: HistogramDataset.from(...) })` | `TypeError` when variable-width bins have no `style.barWidth`; histogram option errors below. |
@@ -146,7 +148,7 @@ Helper functions are stricter than datasets because they are pure and run once:
 |---|---|
 | `binSamples(samples, binSize)` | `RangeError` when `binSize` is not a positive finite number. Samples with non-finite `x` or `y` are skipped. |
 | `rollingMean(samples, windowSize)` | `RangeError` when `windowSize` is not a positive integer. Non-finite samples are skipped. |
-| `histogram(values, options)` | Skips `NaN`, infinities, and non-number values (counted in `invalid`). `TypeError` for mutually exclusive `binSize`/`binCount`/`thresholds`, non-finite thresholds, or an unsupported `normalize`. `RangeError` for fewer than two thresholds, non-increasing thresholds, non-positive `binSize`, non-integer `binCount`, or `max < min`. An empty or all-invalid input returns zero bins instead of throwing. |
+| `histogramBins(values, options)` | Skips `NaN`, infinities, and non-number values (counted in `invalid`). `TypeError` for mutually exclusive `binSize`/`binCount`/`thresholds`, non-finite thresholds, or an unsupported `normalize`. `RangeError` for fewer than two thresholds, non-increasing thresholds, non-positive `binSize`, non-integer `binCount`, or `max < min`. An empty or all-invalid input returns zero bins instead of throwing. |
 | `exportChartData(chart, options)` | Never throws for bad data. A `null` selection exports nothing; a non-finite `maxRowsPerSeries` is treated as no cap (positive) or zero rows (negative). |
 | `chartDataToCsv(data)` | Never throws. Text cells that start with `=`, `+`, `-`, `@`, tab, or carriage return get a leading `'` unless `escapeFormulas: false`. |
 
@@ -154,6 +156,7 @@ Helper functions are stricter than datasets because they are pure and run once:
 
 - **Render-loop errors.** `chart.start()` schedules frames with `requestAnimationFrame`. A domain error (see above) is caught, logged once, and the frame is skipped. Any other exception inside a frame propagates out of the animation-frame callback, so it shows up in `window.onerror` and the console like any uncaught error. With `renderLoop: "continuous"` the loop keeps running after a thrown frame.
 - **Context loss.** Every engine owns its loss handling and reports it to the chart, which stops drawing, runs plugins' `onContextLost` hook, and runs `onContextRestored` once the engine is ready again. Data and viewport are untouched. A WebGL engine calls `preventDefault()` on `webglcontextlost` and rebuilds its GPU resources on `webglcontextrestored`; if rebuilding fails it logs `BlazePlot failed to restore WebGL resources after context restoration.` with `console.error` and the chart stays blank, so recreate it. With the shared engine the one shared context handles loss once for every attached chart and a failed rebuild logs the same message. Canvas 2D handles the canvas `contextlost` and `contextrestored` events in browsers that fire them and has nothing to rebuild.
+- **Context events.** The chart also emits `contextlost` and `contextrestored` events (`chart.subscribe("contextlost", ...)`) when the engine reports loss and recovery, for apps that want to show their own "GPU reset" notice. Nothing needs to be done for the chart itself to recover.
 - **After `dispose()`.** Disposal releases DOM, listeners, plugins, and GPU resources. Calling `start()`, `resize()`, or series methods on a disposed chart is unsupported and has no defined behavior. Plugin `dispose` and cleanup functions that throw are logged and do not stop the rest of disposal.
 - **Resize.** `ResizeObserver` is optional. Without it, call `chart.resize()` yourself. `resize()` returns whether the canvas size changed.
 
@@ -190,5 +193,7 @@ export async function copyOrDownload(chart: Chart): Promise<void> {
 | `BlazePlot <event> listener failed:` | `error` | A chart event listener threw. The remaining listeners still ran. |
 | `BlazePlot plugin <hook> hook failed:` / `plugin dispose failed:` / `plugin cleanup failed:` | `error` | A plugin hook, dispose, or tracked cleanup threw. Other plugins and resources were still released. |
 | `BlazePlot failed to restore WebGL resources after context restoration.` | `error` | GPU resources could not be rebuilt after context loss (per-chart or shared context). |
+| `BlazePlot: the plot area is WxHpx at the first render because the host element has zero height ... ` | `warn` (once per chart, development builds only) | The host element has zero width or height at the first frame, so nothing is visible. Give it an explicit size, attach it, or call `chart.resize()` when it gets one. A chart in a hidden tab or `display: none` host warns too, and draws as soon as it is shown. |
+| `BlazePlot: a series was added but chart.start() was never called ...` | `warn` (once per chart, development builds only) | A second after the first series was added, `chart.start()` still had not been called, so nothing is drawn. |
 
-BlazePlot has no other runtime logging. There is no debug flag. Deprecated APIs, once any exist, log a single development-only `BlazePlot: ... is deprecated` warning per API per page load; production builds are silent. See the [deprecation process](./versioning-and-migration.md#deprecation-process).
+The two development-only warnings are silent when `process.env.NODE_ENV === "production"`, which bundlers replace statically. BlazePlot has no other runtime logging. There is no debug flag. Deprecated APIs, once any exist, log a single development-only `BlazePlot: ... is deprecated` warning per API per page load; production builds are silent. See the [deprecation process](./versioning-and-migration.md#deprecation-process).

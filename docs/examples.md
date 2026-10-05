@@ -8,8 +8,8 @@ Use this table before reaching for a generic chart example. The dataset choice d
 
 | If you have | Use |
 |---|---|
-| Fixed X/Y arrays or object rows | `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` |
-| One-dimensional values that need a frequency distribution | `histogram(...)` or `HistogramDataset.from(...)` with `chart.addBar(...)` |
+| Fixed X/Y arrays or object rows | `chart.addLine({ x, y })` (or `addArea`, `addScatter`, `addBar`), or `StaticDataset` with `{ dataset }` for object rows and unsorted data |
+| One-dimensional values that need a frequency distribution | `chart.addBar({ values, binCount })`, or `histogramBins(...)` / `HistogramDataset.from(...)` with `{ dataset }` |
 | Irregular live samples | `RingBuffer` with `overflow: "wrap"` for a rolling window |
 | Fixed-rate telemetry | `UniformRingBuffer` with `series.append({ y })` so repeated X values are derived, not stored |
 | Historical OHLC data | `StaticOhlcDataset` with `chart.addOhlc(...)` or `chart.addCandlestick(...)` |
@@ -35,15 +35,17 @@ Most examples follow the same lifecycle:
 ## Basic line chart
 
 ```ts
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 const chart = new Chart(element);
-chart.addLine({ dataset: new StaticDataset([0, 1, 2], [3, 6, 4]), name: "values" });
+chart.addLine({ x: [0, 1, 2], y: [3, 6, 4], name: "values" });
 chart.fitToData();
 chart.start();
 ```
 
 :::chart basic-line Basic line chart
+
+`addLine({ x, y })` wraps your arrays in a `StaticDataset` (no copy), so X must be finite and sorted ascending (a `RangeError` names the first bad index) and Y can hold `NaN` for gaps. The same `{ x, y }` shorthand works on `addArea`, `addScatter`, and `addBar`. For unsorted rows, object rows, or a series you keep a dataset handle for, build the dataset yourself and pass `dataset` (the object-rows example below). A series takes exactly one data source: `{ x, y }`, `{ dataset }`, or `{ capacity }` for live data.
 
 Dispose charts when the owning page, component, or panel is removed:
 
@@ -78,26 +80,29 @@ chart.start();
 Use histograms when you have one-dimensional measurements and want a frequency distribution. BlazePlot computes bucket centers/counts and renders them through the existing bar renderer.
 
 ```ts
-import { Chart, HistogramDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 const values = new Float64Array([12, 18, 19, 20, 21, 28, 33, 35, 36, 42]);
 const chart = new Chart(element, {
   axes: { x: { title: "Latency ms" }, y: { title: "Count" } },
 });
-chart.addBar({ name: "latency", dataset: HistogramDataset.from(values, { binSize: 10 }) });
+chart.addBar({ name: "latency", values, binSize: 10 });
 chart.fitToData({ includeZero: true });
 chart.start();
 ```
+
+`addBar({ values, binSize | binCount | thresholds, ... })` is shorthand for `dataset: HistogramDataset.from(values, options)` and takes the same options (`min`, `max`, `align`, `normalize`, `includeEmpty`, `includeMax`). Pass `binSize` (bucket width in value units), `binCount` (number of equal-width buckets, at most 512), or `thresholds` (explicit edges). Build the `HistogramDataset` yourself when you want its `result` (counts, underflow, overflow) or to share one dataset between series.
 
 :::chart histogram Latency histogram
 
 Precompute or inspect bins with the pure helper:
 
 ```ts
-import { Chart, HistogramDataset, histogram } from "blazeplot";
+import { Chart, HistogramDataset } from "blazeplot";
+import { histogramBins } from "blazeplot/data";
 
 const values = [12, 15, 15, 18, 22, 22, 22, 30, 41];
-const bins = histogram(values, { binCount: 20, normalize: "density" });
+const bins = histogramBins(values, { binCount: 20, normalize: "density" });
 
 const chart = new Chart(element);
 chart.addBar({ name: "latency density", dataset: new HistogramDataset(bins) });
@@ -105,7 +110,7 @@ chart.fitToData({ includeZero: true });
 chart.start();
 ```
 
-Normalization modes are `"count"`, `"probability"`, `"percent"`, and `"density"`. Bins are configurable with one of `binSize`, `binCount` (capped at 512), or explicit `thresholds` (pick one), plus `min`, `max`, and `align`; fixed-size bins align to `0` by default, and the built-in tooltip presents interval-backed samples as bucket ranges rather than only midpoint coordinates. Use `histogram(...)` for one-dimensional value frequencies; use `binSamples(...)` when you already have X/Y samples and need to reduce Y values into fixed X intervals.
+Normalization modes are `"count"`, `"probability"`, `"percent"`, and `"density"`. Bins are configurable with one of `binSize`, `binCount` (capped at 512), or explicit `thresholds` (pick one), plus `min`, `max`, and `align`; fixed-size bins align to `0` by default, and the built-in tooltip presents interval-backed samples as bucket ranges rather than only midpoint coordinates. Use `histogramBins(...)` (from `blazeplot/data`) for one-dimensional value frequencies; use `binSamples(...)` when you already have X/Y samples and need to reduce Y values into fixed X intervals.
 
 ## Live line chart
 
@@ -311,7 +316,7 @@ Available plugin subpaths are listed in the [API reference](./api-reference.md#p
 
 ### Charts on a scrolling page
 
-By default `interactionsPlugin` handles the wheel and one-finger touch over the plot, which stops the page from scrolling there. On a long page, make the gestures cooperative: the wheel zooms only with Ctrl or Cmd held, one finger scrolls the page, and two fingers pan and zoom the chart. A short hint explains the shortcut.
+By default `interactionsPlugin` lets one finger scroll the page and uses two fingers to pan and pinch (`touchPan: "two-finger"`), but the wheel zooms the plot and stops the page from scrolling there. On a long page, also make the wheel cooperative: it zooms only with Ctrl or Cmd held. A short hint explains the shortcut. Pass `touchPan: true` instead if one finger should pan the chart.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -406,7 +411,7 @@ Use the same `Chart` constructor in an effect when React owns the container.
 
 ```tsx
 import { useEffect, useRef } from "react";
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 import { interactionsPlugin } from "blazeplot/plugins/interactions";
 
 export function PriceChart() {
@@ -415,7 +420,7 @@ export function PriceChart() {
   useEffect(() => {
     if (!hostRef.current) return;
     const chart = new Chart(hostRef.current, { plugins: [interactionsPlugin()] });
-    chart.addLine({ dataset: new StaticDataset([0, 1, 2], [10, 12, 11]), name: "price" });
+    chart.addLine({ x: [0, 1, 2], y: [10, 12, 11], name: "price" });
     chart.fitToData();
     chart.start();
     return () => chart.dispose();

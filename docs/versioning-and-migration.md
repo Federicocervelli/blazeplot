@@ -24,15 +24,15 @@ BlazePlot follows npm semver. Use this page to decide whether a change is patch/
 BlazePlot ships its own `.d.ts` files; no `@types` package is needed.
 
 - **Minimum supported TypeScript: 5.0.** The published declarations were compiled and checked with `skipLibCheck: false` against a consumer importing every entry point and subpath, under `moduleResolution: "bundler"` and `"node16"`, with TypeScript 5.0.4, 5.4.5, 5.9.3, 6.0.2, and 7.0.2 (checked on 0.5.5). Older compilers are not tested; 4.9 also accepted the declarations under `node16` resolution during that check, but it is outside the support policy.
-- `moduleResolution` must understand package `exports` and subpath imports: `bundler`, `node16`, or `nodenext`. The legacy `node`/`node10` setting cannot resolve subpaths such as `blazeplot/plugins/tooltip`.
+- Use `moduleResolution` `bundler`, `node16`, or `nodenext`, which read package `exports`. The legacy `node`/`node10` setting also resolves every subpath, through `typesVersions` in `package.json`, and is checked in CI.
 - The declarations reference DOM types (`HTMLElement`, `WebGL2RenderingContext`), so your `lib` must include `"DOM"`.
-- Proposed policy, pending maintainer confirmation: raising the minimum TypeScript version is a minor-release change announced in the changelog, and the new minimum will already be well past its release date.
+- Raising the minimum TypeScript version happens only in a minor release (never in a patch) and is announced in the changelog; the new minimum will already be well past its release date.
 
-The minimum is enforced in CI: the `typescript-floor` job installs the packed package into a consumer project and typechecks every entry point with TypeScript 5.0.4 and the latest 5.x under both resolution modes (`bun run test:typescript-floor`).
+The minimum is enforced in CI: the `typescript-floor` job installs the packed package into a consumer project and typechecks every entry point with TypeScript 5.0.4 and the latest 5.x under all three resolution modes (`bundler`, `node16`, legacy `node10`) (`bun run test:typescript-floor`).
 
 ## Module format and runtime
 
-- **ESM only.** `package.json` declares `"type": "module"` and exposes only an `import` condition. `require("blazeplot")` fails with `ERR_PACKAGE_PATH_NOT_EXPORTED`; load it with `import` or `await import("blazeplot")`. CommonJS and UMD builds are not planned.
+- **ESM only.** `package.json` declares `"type": "module"`; every export has `import` and `default` conditions pointing at the ES module build. `import` and `await import("blazeplot")` work everywhere, and `require("blazeplot")` works on Node.js 22.12+ (which can `require()` ES modules) and in Jest/Vitest resolvers that fall back to `default`. There is no CommonJS or UMD build and none is planned.
 - **Output target** is modern browsers with WebGL2 (see [Browser support](./browser-support.md)). The library is built with the Vite `esnext` target, so the published JavaScript is not transpiled for older engines; if you need to support one, transpile `node_modules/blazeplot` with your bundler.
 - **Bundlers** such as Vite, esbuild, Rollup, and webpack 5 resolve the `exports` map. Import only the documented entry points; deep paths into `dist/` are not exported.
 - **Node.js** can import the package for tooling and type checks, but charts only run in a browser DOM with WebGL2.
@@ -76,7 +76,7 @@ See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes 
 | `visibleOnly: false` in data export options | `includeHidden: true` |
 | `chartDataToJSON(data)`, `chartDataToBlob(data, type)` | `JSON.stringify(data)`, `new Blob([chartDataToCsv(data)])` |
 | `resampleSamples` | `binSamples` |
-| `histogramDataset(values, options)` | `chart.addBar({ dataset: HistogramDataset.from(values, options) })` or `new HistogramDataset(histogram(values, options))` |
+| `histogramDataset(values, options)` | `chart.addBar({ dataset: HistogramDataset.from(values, options) })` or `new HistogramDataset(histogramBins(values, options))` |
 | `HistogramOptions.thresholds: number` | `binCount` (`thresholds` now takes explicit edges only) |
 | `ServerSampledDataset.replacePoints/replaceBuckets`, `sampleKind` | `series.replace({ kind: "points" \| "minmax", … })`, `dataset.kind` |
 | `RingBuffer.get(i)` | `getX(i)`/`getY(i)`, or `series.sampleAt(i)` |
@@ -126,7 +126,7 @@ Use this when reviewing a PR that changes public behavior.
 
 This is the process for retiring a public API. Which APIs it covers depends on their tier in [API stability](./stability.md): stable APIs always follow it, experimental APIs may skip it with a changelog note, and internal APIs are not covered.
 
-> The warning helper is implemented (internal, not exported). No API is currently deprecated. The minimum removal window in step 7 is still a proposal pending maintainer confirmation.
+> The warning helper is implemented (internal, not exported). No API is currently deprecated. The minimum removal window is in step 7.
 
 When replacing a public API:
 
@@ -145,7 +145,7 @@ When replacing a public API:
    - Route every warning through the internal helper `warnDeprecated(id, message)` in `src/core/deprecation.ts`. It is not exported from the package. It warns once per `id` for the page lifetime and prefixes the message with `BlazePlot: `. Use a stable id such as `chart.foo`.
 5. **Document the move**: add the old-to-new row to the migration table on this page and a "Deprecated" entry in `changelogs/vX.Y.Z.md`.
 6. **Test both names** while the alias exists, including that the warning fires once (see `tests/core/deprecation.test.ts`; call `resetDeprecationWarnings()` in `beforeEach` and spy on `console.warn`).
-7. **Remove only in a major release**, and only after the API has been deprecated for at least one full minor release (proposed minimum: 6 months or two minors, whichever is longer). An undocumented or experimental API, or an API whose retention creates a security or correctness risk, can be removed sooner with a changelog note.
+7. **Remove only in a major release**, and only after the API has been deprecated for at least one minor release and at least 6 months, whichever is longer. An undocumented or experimental API, or an API whose retention creates a security or correctness risk, can be removed sooner with a changelog note.
 
 Maintainer usage, together with the `@deprecated` tag:
 

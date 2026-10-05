@@ -1,3 +1,5 @@
+export { histogramBins } from "./core/histogramBins.js";
+
 /** Simple X/Y sample used by data resampling helpers. */
 export interface XYSample {
   readonly x: number;

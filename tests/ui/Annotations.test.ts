@@ -41,8 +41,8 @@ describe("annotationsPlugin rendering", () => {
     chart.setViewport({ xMin: 0, xMax: 100, yMin: 0, yMax: 100 });
     const plugin = annotationsPlugin({
       annotations: [
-        { type: "x-line", x: 50, label: "deploy", color: "red", width: 3, dash: "4 2", className: "mark" },
-        { type: "y-line", y: 25, label: { text: "limit", offsetX: -10, offsetY: 5, color: "blue" } },
+        { type: "x-line", x: 50, label: "deploy", color: "red", widthPx: 3, dash: "4 2", className: "mark" },
+        { type: "y-line", y: 25, label: { text: "limit", offsetXPx: -10, offsetYPx: 5, color: "blue" } },
       ],
     });
     const dispose = installPlugin(chart, plugin);
@@ -73,7 +73,7 @@ describe("annotationsPlugin rendering", () => {
     const { chart, plugin } = make({
       annotations: [
         { type: "x-range", xMin: 25, xMax: 75, label: "window" },
-        { type: "y-range", yMin: 50, yMax: 150, borderColor: "red", borderWidth: 2 },
+        { type: "y-range", yMin: 50, yMax: 150, borderColor: "red", borderWidthPx: 2 },
         { type: "box", xMin: 90, xMax: 120, yMin: 0, yMax: 50, fillColor: "blue" },
         { type: "x-range", xMin: 200, xMax: 300 },
         { type: "box", xMin: 10, xMax: 10, yMin: 0, yMax: 1 },
@@ -97,7 +97,7 @@ describe("annotationsPlugin rendering", () => {
     const { chart } = make({
       annotations: [
         { type: "point", x: 10, y: 10, label: "p" },
-        { type: "point", x: 20, y: 20, shape: "diamond", radius: 8 },
+        { type: "point", x: 20, y: 20, shape: "diamond", radiusPx: 8 },
         { type: "point", x: 30, y: 30, shape: "cross" },
         { type: "point", x: 500, y: 30 },
         { type: "label", x: 40, y: 40, text: "note", backgroundColor: "black", color: "white", font: "10px serif" },
@@ -181,7 +181,7 @@ describe("annotationsPlugin hit testing and events", () => {
     { id: "xr", type: "x-range", xMin: 60, xMax: 70 },
     { id: "yr", type: "y-range", yMin: 80, yMax: 90 },
     { id: "bx", type: "box", xMin: 10, xMax: 20, yMin: 10, yMax: 20 },
-    { id: "pt", type: "point", x: 90, y: 10, radius: 5 },
+    { id: "pt", type: "point", x: 90, y: 10, radiusPx: 5 },
     { id: "lb", type: "label", x: 30, y: 60, text: "hello" },
   ];
 
