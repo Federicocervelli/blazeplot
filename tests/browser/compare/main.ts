@@ -13,7 +13,6 @@ import {
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { Chart, StaticDataset } from "@/index.ts";
-import { canvas2dRenderer } from "@/renderers/canvas2d.ts";
 import type { AcceleratedDataset, Dataset, SampleCopyLayout, SeriesStore, TimeRange, Viewport } from "@/index.ts";
 import officialConfig from "../../../scripts/benchmark-config.json";
 
@@ -518,7 +517,7 @@ function createBlazePlotInstance(host: HTMLElement, scenario: ScenarioConfig, da
     axes: { x: { position: "outside" }, y: { position: "outside" } },
     grid: false,
     renderLoop: "auto",
-    renderer: renderer === "canvas2d" ? canvas2dRenderer() : "webgl2",
+    renderer: renderer === "canvas2d" ? "canvas2d" : "webgl2",
   });
   const streaming = scenario.operation === "stream";
   const series = streaming

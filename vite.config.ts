@@ -24,8 +24,6 @@ export default defineConfig(({ command }) => {
           linked: resolve(__dirname, "src/linked.ts"),
           data: resolve(__dirname, "src/data.ts"),
           export: resolve(__dirname, "src/export.ts"),
-          "renderers/canvas2d": resolve(__dirname, "src/renderers/canvas2d.ts"),
-          "renderers/shared": resolve(__dirname, "src/renderers/shared.ts"),
           "plugins/legend": resolve(__dirname, "src/plugins/legend.ts"),
           "plugins/tooltip": resolve(__dirname, "src/plugins/tooltip.ts"),
           "plugins/interactions": resolve(__dirname, "src/plugins/interactions.ts"),

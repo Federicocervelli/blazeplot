@@ -9,7 +9,6 @@ import { legendPlugin } from "@/plugins/legend.ts";
 import { navigatorPlugin } from "@/plugins/navigator.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
-import { sharedRenderer } from "@/renderers/shared.ts";
 
 /**
  * Page-side workloads for `scripts/stability-test.ts`.
@@ -409,7 +408,7 @@ async function sharedContextChurn(count: number): Promise<WorkloadResult> {
     for (let j = 0; j < SHARED_BATCH; j++) {
       const host = createHost(240, 140);
       host.style.left = `${(j % 5) * 20}px`;
-      const chart = new Chart(host, { axes: { x: true, y: true }, plugins: j % 5 === 0 ? fullPlugins() : [], renderer: sharedRenderer() });
+      const chart = new Chart(host, { axes: { x: true, y: true }, plugins: j % 5 === 0 ? fullPlugins() : [], renderer: "shared" });
       const counter = countRenders(chart);
       addSampleSeries(chart);
       chart.fitToData({ padding: 0.05 });
@@ -717,7 +716,7 @@ async function sharedContextLoss(cycles: number): Promise<ContextLossResult> {
   for (let i = 0; i < 3; i++) {
     const host = createHost(320, 200);
     host.style.left = `${i * 10}px`;
-    const chart = new Chart(host, { axes: { x: true, y: true }, renderer: sharedRenderer(), plugins: i === 0 ? [watcher.plugin] : [] });
+    const chart = new Chart(host, { axes: { x: true, y: true }, renderer: "shared", plugins: i === 0 ? [watcher.plugin] : [] });
     const renders = countRenders(chart);
     addSampleSeries(chart);
     chart.fitToData({ padding: 0.05 });

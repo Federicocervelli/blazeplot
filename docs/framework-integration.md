@@ -283,12 +283,11 @@ $effect(() => {
 
 ## Many charts in one page
 
-Each chart opens its own WebGL context by default, and browsers keep only about 16 per page, evicting the oldest. A list, grid, or table with a chart per row should draw through one shared context. `sharedRenderer()` needs no extra wiring in the component: pass it as the `renderer` option, and the hidden context is created with the first chart and released when the last one is disposed.
+Each chart opens its own WebGL context by default, and browsers keep only about 16 per page, evicting the oldest. A list, grid, or table with a chart per row should draw through one shared context. `"shared"` needs no extra wiring in the component: pass it as the `renderer` option, and the hidden context is created with the first chart and released when the last one is disposed.
 
 ```tsx
 import { useEffect, useRef } from "react";
 import { Chart, StaticDataset } from "blazeplot";
-import { sharedRenderer } from "blazeplot/renderers/shared";
 
 export function Sparkline({ y }: { y: number[] }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -297,7 +296,7 @@ export function Sparkline({ y }: { y: number[] }) {
     const host = hostRef.current;
     if (!host) return;
 
-    const chart = new Chart(host, { renderer: sharedRenderer(), axes: false, grid: false });
+    const chart = new Chart(host, { renderer: "shared", axes: false, grid: false });
     chart.addLine({ dataset: new StaticDataset(y.map((_, index) => index), y) });
     chart.fitToData({ padding: 0.1 });
     chart.start();
@@ -309,7 +308,7 @@ export function Sparkline({ y }: { y: number[] }) {
 }
 ```
 
-If WebGL2 may be missing, choose the factory yourself with `isWebGL2Available() ? sharedRenderer() : canvas2dRenderer()` (from `blazeplot/renderers/canvas2d`). Details and measurements are in [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
+If WebGL2 may be missing, choose the factory yourself with `isWebGL2Available() ? sharedRenderer() : canvas2dRenderer()` (both from `blazeplot`). Details and measurements are in [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
 
 ## Iframes, portals, and popups
 
@@ -398,7 +397,7 @@ The `dispose` indirection matters: the dynamic import resolves after `onMount` r
 
 ## No-WebGL2 fallback
 
-By default a browser without WebGL2 cannot draw a chart. The simplest fix is the built-in Canvas 2D fallback: pass `renderer: autoRenderer()` from `blazeplot/renderers/canvas2d` and read `chart.renderer` (see [Browser support](./browser-support.md#canvas-2d-renderer)). If you would rather show your own UI (a static image, a table, a message), decide what those users see. There are two ways to detect it, and they behave differently:
+By default a browser without WebGL2 cannot draw a chart. The simplest fix is the built-in Canvas 2D fallback: pass `renderer: "auto"` and read `chart.renderer` (see [Browser support](./browser-support.md#canvas-2d-renderer)). If you would rather show your own UI (a static image, a table, a message), decide what those users see. There are two ways to detect it, and they behave differently:
 
 | Check | What it tells you | Behavior |
 |---|---|---|

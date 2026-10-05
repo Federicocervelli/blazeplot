@@ -9,7 +9,7 @@ Most applications need no code changes beyond the checklist: the 1.0 surface is 
 ## What did not change
 
 - The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`, dataset classes, and every built-in plugin option keep their signatures, except that the custom `render`/`renderHighlight` callbacks of the legend, tooltip, and crosshair plugins now receive the plugin context instead of the `Chart` (see change 8), the renames in change 10, and the removed or moved options in changes 9, 11, and 12. Datasets gained optional validation options (change 3).
-- The existing entry points and subpaths still exist: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and the `blazeplot/plugins/*` entries. What lives in `blazeplot/data` and `blazeplot/export` changed (see change 6). 1.0 adds `blazeplot/plugins/a11y`, `blazeplot/renderers/canvas2d`, and `blazeplot/renderers/shared` (see [New in 1.0](#new-in-10)).
+- The existing entry points and subpaths still exist: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and the `blazeplot/plugins/*` entries. What lives in `blazeplot/data` and `blazeplot/export` changed (see change 6). 1.0 adds `blazeplot/plugins/a11y`, and the Canvas 2D and shared WebGL2 renderers ship in the core package (see [New in 1.0](#new-in-10)).
 - The package was already ESM only and already required WebGL2 by default; 1.0 states both as policy. Canvas 2D is an opt-in fallback (change 16), never a silent default.
 
 ## Breaking changes
@@ -44,7 +44,7 @@ if (isWebGL2Available()) {
 }
 ```
 
-Custom backends are not supported, and the internal `backendFactory` option no longer exists. To test code that mounts charts, render in a real browser (see [Troubleshooting](./troubleshooting.md)). To draw without WebGL2, pass `renderer: autoRenderer()` from `blazeplot/renderers/canvas2d` instead of writing a backend (change 16).
+Custom backends are not supported, and the internal `backendFactory` option no longer exists. To test code that mounts charts, render in a real browser (see [Troubleshooting](./troubleshooting.md)). To draw without WebGL2, pass `renderer: "auto"` (the default) instead of writing a backend (change 16).
 
 ### 2. `emitSelect` is removed, and `ChartSelectEvent` is no longer generic
 
@@ -430,7 +430,7 @@ chart.dispose();
 
 WebGL2 is still the default: `new Chart(...)` throws `WebGL2UnavailableError` when it is missing. What changed underneath:
 
-- **`ChartOptions.renderer`** accepts `"webgl2"` (the default) or a factory from the new renderer subpaths: `canvas2dRenderer()` and `autoRenderer()` (WebGL2 with a Canvas 2D fallback) from `blazeplot/renderers/canvas2d`, and `sharedRenderer()` or `createChartRenderContext().renderer()` (one hidden WebGL context for many charts) from `blazeplot/renderers/shared`. The string `"canvas2d"` is not accepted (`TypeError`). `chart.renderer` reports the backend in use (`"webgl2"`, `"shared"`, or `"canvas2d"`), and `createLinkedCharts` takes a `renderer` for every panel. Custom renderer implementations are not supported.
+- **`ChartOptions.renderer`** accepts `"auto"` (the default: WebGL2 with a Canvas 2D fallback), `"webgl2"`, `"canvas2d"`, `"shared"` (one hidden WebGL context for many charts), or a factory (`webgl2Renderer()`, `canvas2dRenderer()`, `autoRenderer()`, `sharedRenderer()`, `createChartRenderContext().renderer()`) exported from `blazeplot`. `chart.renderer` reports the backend in use (`"webgl2"`, `"shared"`, or `"canvas2d"`), and `createLinkedCharts` takes a `renderer` for every panel. Custom renderer implementations are not supported.
 - **Fewer WebGL code paths.** The non-instanced scatter and bar fallbacks and the internal buffer pool are gone; every frame is recorded into one vertex stream and uploaded once. This is internal, with no API change.
 - **Context-dependent hooks.** With the Canvas 2D renderer there is no WebGL context: `ctx.unstable.getWebGLContext()` is `null` and `onContextLost` / `onContextRestored` never run. With the shared renderer the context belongs to a hidden canvas, so `getWebGLContext()` is `null` too, while the lost and restored hooks still run for every attached chart.
 
@@ -440,9 +440,8 @@ After (1.0):
 
 ```ts
 import { Chart } from "blazeplot";
-import { autoRenderer } from "blazeplot/renderers/canvas2d";
 
-const chart = new Chart(element, { renderer: autoRenderer() });
+const chart = new Chart(element);
 chart.start();
 console.log(chart.renderer); // "webgl2" or "canvas2d"
 chart.dispose();
@@ -456,7 +455,7 @@ Additive features that need no migration work but are easy to miss:
 
 - **Accessibility:** `blazeplot/plugins/a11y` (data table, keyboard inspection, live summary), `chart.getSummary()`, `LIGHT_CHART_THEME` (change 9, [Accessibility](./accessibility.md)).
 - **Localization:** `accessibility.locale` and `messages`, `a11yPlugin({ locale, messages })`, `legendPlugin({ messages })`, `selectionPlugin({ messages })`.
-- **Renderers:** `blazeplot/renderers/canvas2d` and `blazeplot/renderers/shared` (change 16).
+- **Renderers:** Canvas 2D and shared-context rendering through `ChartOptions.renderer` (change 16).
 - **Gestures:** `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger", gestureHint, boxZoomModifier })`, `selectionPlugin({ modifier })`, `ctx.dom.claimPointer` (change 12), and the long-press tooltip and crosshair on touch.
 - **Layout:** `axes.*.size` (a number, or `"auto"` to size gutters from the measured tick labels), outside legend positions, the title row (change 15).
 - **Series and data:** `series.setStyle(options)`, `HistogramDataset.from(values, options)`, `StaticDataset.sorted(...)`, `StaticOhlcDataset.sorted(...)`, and `rejectedSamples` / `onInvalidSample` on streaming buffers.

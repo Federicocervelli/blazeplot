@@ -113,6 +113,6 @@ export interface ChartRendererFactoryContext {
 
 /**
  * Creates the renderer for a chart. It may throw when its backend is unavailable.
- * Use `canvas2dRenderer()` / `autoRenderer()` from `blazeplot/renderers/canvas2d`.
+ * The built-in factories are `webgl2Renderer()`, `canvas2dRenderer()`, `sharedRenderer()`, and `autoRenderer()`.
  */
 export type ChartRendererFactory = (context: ChartRendererFactoryContext) => ChartRendererHandle;

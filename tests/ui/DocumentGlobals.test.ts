@@ -32,12 +32,12 @@ describe("src/ui avoids global document/window", () => {
 
 // Helpers outside src/ui that create DOM nodes must take a document (or derive one from the chart
 // canvas) and only fall back to the global as a default value.
-describe("data, export, render, and renderer helpers avoid global document", () => {
+describe("data, export, and render helpers avoid global document", () => {
   const ROOT = join(import.meta.dir, "../../src");
   const files = [
     "export.ts",
     "data.ts",
-    ...["render", "renderers"].flatMap((dir) => readdirSync(join(ROOT, dir)).filter((n) => n.endsWith(".ts")).map((n) => `${dir}/${n}`)),
+    ...(readdirSync(join(ROOT, "render"), { recursive: true }) as string[]).filter((n) => n.endsWith(".ts")).map((n) => `render/${n.replaceAll("\\", "/")}`),
   ];
 
   it("only references the global document as a parameter default or fallback", () => {
