@@ -1835,8 +1835,13 @@ export class Chart {
       return;
     }
 
-    const count = series.copyRawVisibleClipped(viewport, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
-    this.drawRawLine(count, series.style, projection, "raw");
+    for (let start = 0, done = false; !done;) {
+      const chunk = series.copyRawClippedChunk(viewport, start, this.rawLineData, RAW_LINE_VERTEX_CAPACITY, this.currentXOrigin);
+      this.drawRawLine(chunk.count, series.style, projection, "raw");
+      // Resume at the last segment's end so consecutive chunks share a vertex and the seam stays closed.
+      start = chunk.next;
+      done = chunk.done || chunk.count === 0;
+    }
   }
 
   private drawAreaSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
@@ -1939,24 +1944,29 @@ export class Chart {
     }
 
     const range = series.visibleIndexRange(viewport, 1);
-    const count = series.copyRawRange(range.start, range.end, this.rawLineData, rawBarCapacity, this.currentXOrigin);
-    if (count <= 0) return;
-
     const controller = this.controllerFor(series.config.yAxis);
-    if (this.renderer.supportsInstancing && !controller.isNonlinear("x") && !controller.isNonlinear("y")) {
-      this.uploadRawLineData(count, projection);
-      this.renderer.drawBarsInstanced(this.rawLineBuffer, count, style, projection);
-      this.recordDraw("bars", count);
-      return;
-    }
-
-    const barCount = Math.min(count, BAR_TRIANGLE_CAPACITY);
+    const instanced = this.renderer.supportsInstancing && !controller.isNonlinear("x") && !controller.isNonlinear("y");
     const halfWidth = style.barWidth * 0.5;
-    for (let i = 0; i < barCount; i++) {
-      const x = this.rawLineData[i * 2]!;
-      this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[i * 2 + 1]!);
+
+    for (let start = range.start; start < range.end;) {
+      const count = series.copyRawRange(start, range.end, this.rawLineData, instanced ? RAW_LINE_VERTEX_CAPACITY : BAR_TRIANGLE_CAPACITY, this.currentXOrigin);
+      if (count <= 0) break;
+      start += count;
+
+      if (instanced) {
+        this.uploadRawLineData(count, projection);
+        this.renderer.drawBarsInstanced(this.rawLineBuffer, count, style, projection);
+        this.recordDraw("bars", count);
+        continue;
+      }
+
+      const barCount = Math.min(count, BAR_TRIANGLE_CAPACITY);
+      for (let i = 0; i < barCount; i++) {
+        const x = this.rawLineData[i * 2]!;
+        this.writeBarTriangles(i, x - halfWidth, x + halfWidth, style.baseline, this.rawLineData[i * 2 + 1]!);
+      }
+      this.drawTriangleBatch(barCount * 6, style.color, projection, "bars");
     }
-    this.drawTriangleBatch(barCount * 6, style.color, projection, "bars");
   }
 
   private drawRawLine(vertexCount: number, style: SeriesStyle, projection: RenderProjection, mode: DrawMode): void {

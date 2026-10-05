@@ -700,20 +700,35 @@ export class SeriesStore<D extends Dataset = Dataset> {
 
   /** @internal Copy visible XY samples with the line clipped to the viewport's X edges. */
   copyRawVisibleClipped(viewport: Viewport, target: Float32Array, maxPoints: number, xOrigin: number = 0): number {
-    if (maxPoints <= 0 || target.length < maxPoints * 2) return 0;
+    return this.copyRawClippedChunk(viewport, 0, target, maxPoints, xOrigin).count;
+  }
 
-    const start = Math.max(0, this.dataset.lowerBoundX(viewport.xMin) - 1);
-    const end = Math.min(this.dataset.length, this.dataset.upperBoundX(viewport.xMax) + 1);
-    if (end - start <= 0) return 0;
+  /**
+   * @internal Copy one chunk of the X-clipped line starting at logical index `start`.
+   * Returns the vertex count and the index to resume from (`done` once the visible range is exhausted).
+   * Each chunk holds whole segments, so consecutive chunks join without a seam gap.
+   */
+  copyRawClippedChunk(
+    viewport: Viewport,
+    start: number,
+    target: Float32Array,
+    maxPoints: number,
+    xOrigin: number = 0,
+  ): { count: number; next: number; done: boolean } {
+    if (maxPoints < 3 || target.length < maxPoints * 2) return { count: 0, next: start, done: true };
+
+    const range = this.visibleIndexRange(viewport, 1);
+    const from = Math.max(range.start, start);
+    const end = range.end;
+    if (end - from <= 0) return { count: 0, next: end, done: true };
 
     let count = 0;
     let lastX = NaN;
     let lastY = NaN;
     let lastWasGap = false;
-    const addPoint = (x: number, y: number): boolean => {
+    const addPoint = (x: number, y: number): void => {
       const outX = x - xOrigin;
-      if (!lastWasGap && count > 0 && outX === lastX && y === lastY) return true;
-      if (count >= maxPoints) return false;
+      if (!lastWasGap && count > 0 && outX === lastX && y === lastY) return;
       const offset = count * 2;
       target[offset] = outX;
       target[offset + 1] = y;
@@ -721,11 +736,9 @@ export class SeriesStore<D extends Dataset = Dataset> {
       lastX = outX;
       lastY = y;
       lastWasGap = false;
-      return true;
     };
-    const addGap = (): boolean => {
-      if (count === 0 || lastWasGap) return true;
-      if (count >= maxPoints) return false;
+    const addGap = (): void => {
+      if (count === 0 || lastWasGap) return;
       const offset = count * 2;
       target[offset] = NaN;
       target[offset + 1] = NaN;
@@ -733,36 +746,38 @@ export class SeriesStore<D extends Dataset = Dataset> {
       lastX = NaN;
       lastY = NaN;
       lastWasGap = true;
-      return true;
     };
 
-    if (end - start === 1) {
-      const x = this.dataset.getX(start);
-      const y = this.dataset.getY(start);
-      if (x < viewport.xMin || x > viewport.xMax || this.isGap(start, y)) return 0;
-      return addPoint(x, y) ? count : 0;
+    if (range.end - range.start === 1) {
+      const x = this.dataset.getX(from);
+      const y = this.dataset.getY(from);
+      if (x < viewport.xMin || x > viewport.xMax || this.isGap(from, y)) return { count: 0, next: end, done: true };
+      addPoint(x, y);
+      return { count, next: end, done: true };
     }
 
-    for (let i = start; i + 1 < end; i++) {
+    let i = from;
+    for (; i + 1 < end; i++) {
+      // A segment emits at most two points; stop before the buffer could overflow.
+      if (count + 2 > maxPoints) return { count, next: i, done: false };
       const x0 = this.dataset.getX(i);
       const y0 = this.dataset.getY(i);
       const x1 = this.dataset.getX(i + 1);
       const y1 = this.dataset.getY(i + 1);
       if (x1 < viewport.xMin || x0 > viewport.xMax) continue;
       if (this.isGap(i, y0) || this.isGap(i + 1, y1)) {
-        if (!addGap()) break;
+        addGap();
         continue;
       }
 
       const clippedX0 = Math.max(x0, viewport.xMin);
       const clippedX1 = Math.min(x1, viewport.xMax);
       if (clippedX1 < clippedX0) continue;
-      const clippedY0 = interpolateY(x0, y0, x1, y1, clippedX0);
-      const clippedY1 = interpolateY(x0, y0, x1, y1, clippedX1);
-      if (!addPoint(clippedX0, clippedY0) || !addPoint(clippedX1, clippedY1)) break;
+      addPoint(clippedX0, interpolateY(x0, y0, x1, y1, clippedX0));
+      addPoint(clippedX1, interpolateY(x0, y0, x1, y1, clippedX1));
     }
 
-    return count;
+    return { count, next: i, done: true };
   }
 
   /** @internal Copy a logical XY range into a render buffer; gaps are written as NaN. */
