@@ -1427,8 +1427,8 @@ class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMaxSegment
     lowerBoundX(value: number): number;
     upperBoundX(value: number): number;
     rangeMinMaxY(start: number, end: number): MinMaxY | null;
-    copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number): number;
-    copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number): number;
+    copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number, yOrigin?: number): number;
+    copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number, yOrigin?: number): number;
 }
 ```
 
@@ -1596,9 +1596,9 @@ class UniformRingBuffer implements AppendableDataset, AcceleratedDataset {
     upperBoundX(x: number): number;
     rangeMinMaxY(start: number, end: number): MinMaxY | null;
     get ordinalOffset(): number;
-    copyVisibleSamples(viewport: Viewport, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number): number;
-    copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number): number;
-    copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number): number;
+    copyVisibleSamples(viewport: Viewport, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number, yOrigin?: number): number;
+    copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number, yOrigin?: number): number;
+    copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number, yOrigin?: number): number;
 }
 ```
 

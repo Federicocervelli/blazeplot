@@ -31,7 +31,7 @@ interface BundleSizeReport {
 // Budgets are the built size plus about 1.5% (at least 100 bytes), rounded up to 100 bytes.
 // Tighten them when a change shrinks a chunk; raise one only with a reason in the PR.
 const budgets: Budget[] = [
-  { label: "root entry", path: "dist/index.js", maxBytes: 12_000 },
+  { label: "root entry", path: "dist/index.js", maxBytes: 12_100 },
   { label: "linked entry", path: "dist/linked.js", maxBytes: 2_500 },
   { label: "data entry", path: "dist/data.js", maxBytes: 1_800 },
   { label: "export entry", path: "dist/export.js", maxBytes: 3_900 },
@@ -48,7 +48,7 @@ const budgets: Budget[] = [
 
 const sharedBudgets: SharedChunkBudget[] = [
   // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152.
-  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 155_300 },
+  { label: "shared Chart chunk", pattern: /^Chart-.*\.js$/, maxBytes: 157_600 },
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 6_400 },

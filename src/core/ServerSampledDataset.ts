@@ -179,8 +179,11 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     return minY <= maxY ? { minY, maxY } : null;
   }
 
+  /** @internal Copy methods accept a trailing `yOrigin` that is subtracted in float64 before the render-buffer write. */
+  readonly supportsYOrigin = true;
+
   /** Copy sampled points for a logical range into a render buffer, striding when the range exceeds `maxPoints`. */
-  copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number): number {
+  copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number, yOrigin: number = 0): number {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
     const count = Math.min(maxPoints, Math.max(0, to - from));
@@ -192,14 +195,14 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     for (let index = from; index < to && written < count; index += stride) {
       const gap = this.isGap(index);
       const x = gap ? NaN : this.x[index]! - xOrigin;
-      const y = gap ? NaN : this.getY(index);
+      const y = gap ? NaN : this.getY(index) - yOrigin;
       const offset = written * floats;
       if (layout === "points") {
         target[offset] = x;
         target[offset + 1] = y;
       } else {
         target[offset] = x;
-        target[offset + 1] = gap ? NaN : baseline;
+        target[offset + 1] = gap ? NaN : baseline - yOrigin;
         target[offset + 2] = x;
         target[offset + 3] = y;
       }
@@ -209,7 +212,7 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
   }
 
   /** Copy `[x, minY, maxY]` buckets for a viewport, merging neighbors when more than `maxSegments` are visible. */
-  copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number): number {
+  copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number, yOrigin: number = 0): number {
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);
     const count = Math.min(maxSegments, Math.max(0, end - start));
@@ -228,8 +231,8 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
       if (!range) continue;
       const offset = written * 3;
       target[offset] = this.bucketX(segmentStart, segmentEnd) - xOrigin;
-      target[offset + 1] = range.minY;
-      target[offset + 2] = range.maxY;
+      target[offset + 1] = range.minY - yOrigin;
+      target[offset + 2] = range.maxY - yOrigin;
       written++;
     }
 

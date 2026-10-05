@@ -120,6 +120,22 @@ describe("Renderer", () => {
     expect(backend.commands[1]).toMatchObject({ kind: "bar", instances: 5, barWidth: 0.4, baseline: -1, first: 5 });
   });
 
+  it("treats pointSize as a CSS-pixel diameter", () => {
+    const { renderer, backend } = makeRenderer();
+    renderer.beginFrame(1280, 960, 2);
+    renderer.drawPoints(positions, 5, [0, 0, 1, 1], 6, projection);
+    renderer.endFrame();
+    expect(backend.commands[0]).toMatchObject({ kind: "point", pointSize: 12 });
+  });
+
+  it("offsets the instanced bar baseline by the Y origin", () => {
+    const { renderer, backend } = makeRenderer();
+    renderer.beginFrame(640, 480, 1);
+    renderer.drawBarsInstanced(positions, 5, testStyle({ barWidth: 0.4, baseline: 1_000_000 }), projection, 999_990);
+    renderer.endFrame();
+    expect(backend.commands[0]).toMatchObject({ kind: "bar", baseline: 10 });
+  });
+
   it("grows the frame stream while keeping earlier draws intact", () => {
     const { renderer, backend } = makeRenderer();
     renderer.beginFrame(640, 480, 1);

@@ -37,10 +37,10 @@ For exact ordering and gap behavior, see [Data semantics](./data-semantics.md).
 
 ## Choosing downsampling
 
-- Line and bar series use min/max LOD by default in dense views.
+- Line, area, and bar series use min/max LOD by default in dense views.
 - Use `downsample: "none"` only when the number of visible samples is bounded and exact raw rendering matters.
 - Scatter series first extract exact visible points, then sample when the visible set is too large.
-- Area series render sampled strips and do not use min/max LOD. If preserving extremes matters more than filled-shape continuity, use a line/bar series or server-sampled min/max buckets.
+- Area series draw an exact triangle strip while the visible samples fit in the buffer. Denser views render min/max buckets as full-width columns (fill from the baseline to each bucket's extreme, plus a min/max envelope outline), so spikes are kept. With `downsample: "none"` area series fall back to stable stride decimation, which can drop peaks.
 - Server-sampled min/max data should use `downsample: "server"`.
 
 ## Reducing per-frame work
