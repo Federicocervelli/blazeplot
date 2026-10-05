@@ -107,7 +107,7 @@ export class BlazeplotPreviewsPage extends LitElement {
     return html`
       <section data-live-preview-root class="stage flex min-h-[620px] flex-col ${STAGE_HEIGHT}" aria-label="Live performance demo">
         <div class="relative min-h-[300px] flex-1">
-          <div data-preview-chart="live" class="h-full w-full"></div>
+          <div data-preview-chart="live" class="absolute inset-0"></div>
           <div data-live-overlay hidden class="absolute left-3 top-3 z-40 max-w-[calc(100%-24px)] overflow-x-auto whitespace-pre rounded-md border border-line bg-raised/90 px-3 py-2 font-mono text-[11px] leading-relaxed text-fg-2 backdrop-blur-sm"><span data-live-overlay-text>BlazePlot booting...</span></div>
         </div>
         <div class="stage-bar bottom" aria-label="Demo controls" role="group">
@@ -157,7 +157,7 @@ export class BlazeplotPreviewsPage extends LitElement {
           <span data-sensor-status class="font-mono text-[11px] text-fg-3">booting…</span>
         </div>
         <div class="relative min-h-0 flex-1">
-          <div data-preview-chart="sensor" class="h-full w-full"></div>
+          <div data-preview-chart="sensor" class="absolute inset-0"></div>
         </div>
       </section>
     `;
