@@ -45,13 +45,12 @@ import type { ChartPickOptions, ChartSeriesState, ChartHoverState, ChartEventMap
 import type { ChartViewportChangeSource, ChartViewportGestureOptions, ChartSetViewportOptions, ChartFitToDataOptions, ChartFollowXOptions, ChartFollowXState } from "./ChartViewportTypes.js";
 
 
+// This file is intentionally the one large module (about 900 lines): it is the public facade, and most of
+// its length is the documented public API (series, viewport, follow, fit, hover/pick, theme, lifecycle).
+// The logic lives in focused collaborators (ChartPicker, ChartHover, ChartAccessibility, ChartSeriesStyles,
+// ChartFit, FollowXController, ChartEmitter, PluginHost, SeriesPainter, ChartLayout) that this class wires.
 /**
  * Imperative chart instance for rendering, interaction, and plugins.
- *
- * This file is intentionally the one large module (about 870 lines): it is the public facade, and most of
- * its length is the documented public API (series, viewport, follow, fit, hover/pick, theme, lifecycle).
- * The logic lives in focused collaborators (ChartPicker, ChartHover, ChartAccessibility, ChartSeriesStyles,
- * ChartFit, FollowXController, ChartEmitter, PluginHost, SeriesPainter, ChartLayout) that this class wires.
  */
 export class Chart {
   private series: SeriesStore[] = [];
@@ -511,7 +510,7 @@ export class Chart {
   }
 
   /** Return metadata for all attached series. */
-  getSeriesState(): ChartSeriesState[] {
+  getSeriesState(): readonly ChartSeriesState[] {
     return this.series.map((series, index) => ({
       series,
       index,
@@ -572,7 +571,7 @@ export class Chart {
   }
 
   /** Copy the latest render metrics into `target` (allocation-free polling) and return it. */
-  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): ChartFrameStats {
+  getFrameStats(target: ChartFrameStats = { fps: 0, frameMs: 0, pointsRendered: 0, drawCalls: 0, uploadBytes: 0, renderMode: "none" }): Readonly<ChartFrameStats> {
     return Object.assign(target, this.stats);
   }
 

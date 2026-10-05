@@ -1,36 +1,39 @@
 import type { RgbaColor, ThemeColor } from "../core/types.js";
 
-/** Partial chart theme supplied by callers. */
+/**
+ * Partial chart theme supplied by callers. Every `*Color` field takes a CSS color string or an RGBA
+ * tuple (0-1 channels). `chart.theme` reports DOM colors as CSS strings and canvas colors as RGBA tuples.
+ */
 export interface ChartTheme {
   readonly backgroundColor?: ThemeColor;
   readonly gridColor?: ThemeColor;
-  readonly axisColor?: string;
+  readonly axisColor?: ThemeColor;
   readonly axisFont?: string;
   readonly seriesColors?: readonly ThemeColor[];
-  readonly tooltipBackgroundColor?: string;
-  readonly tooltipTextColor?: string;
+  readonly tooltipBackgroundColor?: ThemeColor;
+  readonly tooltipTextColor?: ThemeColor;
   readonly tooltipFont?: string;
-  readonly legendBackgroundColor?: string;
-  readonly legendBorderColor?: string;
-  readonly legendTextColor?: string;
-  readonly legendMutedTextColor?: string;
+  readonly legendBackgroundColor?: ThemeColor;
+  readonly legendBorderColor?: ThemeColor;
+  readonly legendTextColor?: ThemeColor;
+  readonly legendMutedTextColor?: ThemeColor;
   readonly legendFont?: string;
-  readonly titleColor?: string;
+  readonly titleColor?: ThemeColor;
   readonly titleFont?: string;
-  readonly subtitleColor?: string;
+  readonly subtitleColor?: ThemeColor;
   readonly subtitleFont?: string;
-  readonly axisTitleColor?: string;
+  readonly axisTitleColor?: ThemeColor;
   readonly axisTitleFont?: string;
   /** Box-zoom and selection rectangle fill. */
-  readonly selectionFillColor?: string;
+  readonly selectionFillColor?: ThemeColor;
   /** Box-zoom and selection rectangle border. */
-  readonly selectionStrokeColor?: string;
+  readonly selectionStrokeColor?: ThemeColor;
   /** Crosshair and ruler line color. */
-  readonly crosshairColor?: string;
+  readonly crosshairColor?: ThemeColor;
   /** Outline of hover/crosshair point markers. */
-  readonly markerStrokeColor?: string;
+  readonly markerStrokeColor?: ThemeColor;
   /** Keyboard focus ring around the chart root, legend items, navigator, and annotations. */
-  readonly focusRingColor?: string;
+  readonly focusRingColor?: ThemeColor;
 }
 
 /** Fully resolved chart theme with concrete RGBA values. */
@@ -206,7 +209,8 @@ export function resolveChartTheme(theme: ChartTheme | undefined, context?: Eleme
     ))
     : DEFAULT_CHART_THEME.seriesColors;
 
-  const overrides = Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined));
+  // RGBA tuples become CSS strings for DOM tokens; background, grid, and series colors are resolved below.
+  const overrides = Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined).map(([key, value]) => [key, Array.isArray(value) ? rgbaCss(value as unknown as RgbaColor) : value]));
   return {
     ...DEFAULT_CHART_THEME,
     ...overrides,
