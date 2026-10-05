@@ -84,26 +84,13 @@ export function placeAbsoluteWithinBox(
   element.style.top = `${top}px`;
 }
 
-/** The nodes of one rendered row: a color swatch and its text. */
-interface PickRow {
-  readonly swatch: HTMLSpanElement;
-  readonly text: Text;
-  color: string;
-}
-
-interface RenderedRows {
-  readonly rows: readonly PickRow[];
-  readonly first: Node;
-  readonly last: Node;
-}
-
-/** Rows last rendered into a container, so the next render can update them in place. */
-const renderedRows = new WeakMap<HTMLElement, RenderedRows>();
+/** Swatch and text nodes of the rows last rendered into a container, so the next render updates them in place. */
+const renderedRows = new WeakMap<HTMLElement, Array<[HTMLSpanElement, Text]>>();
 
 /**
  * Render picked series values as text rows; formatter output is plain text, never HTML. While the item
- * count stays the same (the usual case while the pointer moves) the existing nodes are updated in place and
- * only what changed is written, so a hover does not rebuild the container's subtree on every move.
+ * count stays the same (the usual case while the pointer moves) the existing nodes are updated in place, so a
+ * hover does not rebuild the container's subtree on every move.
  */
 export function renderPickItems<TContext>(
   container: HTMLElement,
@@ -113,43 +100,28 @@ export function renderPickItems<TContext>(
   defaultFormatter: (item: ChartPickItem, context: TContext) => string,
 ): void {
   const pad = Math.max(1, ...items.map((item) => labelOfPickItem(item).length));
-  let rendered = renderedRows.get(container);
+  let rows = renderedRows.get(container);
   // Reuse only while the container still holds exactly the nodes this function made (a custom render may have replaced them).
-  const reusable = rendered !== undefined && rendered.rows.length === items.length &&
-    container.firstChild === rendered.first && container.lastChild === rendered.last;
-  if (!reusable) {
+  if (!rows || rows.length !== items.length || container.firstChild !== rows[0]?.[0] || container.lastChild !== rows[rows.length - 1]?.[1]) {
     container.replaceChildren();
-    const rows: PickRow[] = [];
     const doc = container.ownerDocument;
-    for (let index = 0; index < items.length; index++) {
+    rows = items.map((_item, index) => {
       if (index > 0) container.append(doc.createElement("br"));
       const swatch = doc.createElement("span");
       swatch.className = "blazeplot-pick-swatch";
       swatch.textContent = "\u2588";
       const text = doc.createTextNode("");
       container.append(swatch, text);
-      rows.push({ swatch, text, color: "" });
-    }
-    const first = rows[0];
-    const last = rows[rows.length - 1];
-    rendered = first && last ? { rows, first: first.swatch, last: last.text } : undefined;
-    if (rendered) renderedRows.set(container, rendered);
-    else renderedRows.delete(container);
+      return [swatch, text];
+    });
+    renderedRows.set(container, rows);
   }
-  if (!rendered) return;
-  const { rows } = rendered;
-  for (let index = 0; index < items.length; index++) {
-    const item = items[index]!;
-    const row = rows[index]!;
-    const color = rgbaCss(item.series.style.color);
-    if (row.color !== color) {
-      row.color = color;
-      row.swatch.style.color = color;
-    }
+  items.forEach((item, index) => {
+    const [swatch, text] = rows![index]!;
+    swatch.style.color = rgbaCss(item.series.style.color);
     const value = formatter ? formatter(item, context) : defaultFormatter(item, context);
-    const text = ` ${labelOfPickItem(item).padEnd(pad)}  ${value}`;
-    if (row.text.data !== text) row.text.data = text;
-  }
+    text.data = ` ${labelOfPickItem(item).padEnd(pad)}  ${value}`;
+  });
 }
 
 /** Visual options for the hover/selection pick marker. */
