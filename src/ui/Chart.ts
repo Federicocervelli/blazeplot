@@ -27,6 +27,7 @@ import type { ChartSummary } from "./ChartSummary.js";
 
 /** Vertices in the shared raw line/point/area upload buffer. */
 const RAW_LINE_VERTEX_CAPACITY = 16_384;
+const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "bar", "ohlc", "candlestick"]);
 const AREA_POINT_CAPACITY = RAW_LINE_VERTEX_CAPACITY >> 1;
 /** Bars, min/max buckets, or candles expanded into triangles per draw. */
 const BAR_TRIANGLE_CAPACITY = 4_096;
@@ -831,6 +832,9 @@ export class Chart {
 
   /** Add a series with an explicit mode. Prefer the typed helpers such as `addLine`. */
   addSeries<D extends Dataset = Dataset>(config: SeriesConfig & { readonly dataset?: D }, style: SeriesStyleOptions = {}): SeriesStore<D> {
+    if (!SERIES_MODES.has(config.mode)) {
+      throw new TypeError(`Chart.addSeries: unknown series mode ${JSON.stringify(config.mode)}. Expected one of ${[...SERIES_MODES].join(", ")}.`);
+    }
     if ((config.mode === "ohlc" || config.mode === "candlestick") && !config.dataset) {
       throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
     }
