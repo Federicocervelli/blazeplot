@@ -6,7 +6,8 @@ import { WebGL2Backend } from "./WebGL2Backend.js";
 import type { ProgramName } from "./ShaderPrograms.js";
 import { releaseWebGLContext } from "./releaseWebGLContext.js";
 
-const INITIAL_STREAM_FLOATS = 1 << 16;
+/** The frame stream starts small and doubles on demand, so a sparse chart does not hold the 256 KiB a dense one needs. */
+const INITIAL_STREAM_FLOATS = 1 << 10;
 const DEFAULT_MAX_DRAWING_BUFFER_PIXELS = 16_384 * 16_384;
 
 /**
