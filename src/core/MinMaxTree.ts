@@ -43,8 +43,6 @@ export class MinMaxTree {
   private readonly valid: Uint8Array;
   /** Physical samples at or beyond this index hold no data yet (a ring buffer fills from index 0). */
   private validEnd: number;
-  /** Result slot for recomputing one node, so refreshing allocates nothing. */
-  private readonly scratch: MinMaxOut = { minY: Infinity, maxY: -Infinity };
 
   constructor(
     private readonly values: ArrayLike<number>,
@@ -160,27 +158,26 @@ export class MinMaxTree {
   /** Bring a node summary up to date: children first, a leaf by scanning its block. */
   private refresh(node: number): void {
     if (this.valid[node] !== 0) return;
-    const own = this.scratch;
-    own.minY = Infinity;
-    own.maxY = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
     if (node >= this.base) {
       const from = (node - this.base) * this.blockSize;
       const to = Math.min(this.validEnd, from + this.blockSize);
       for (let i = from; i < to; i++) {
         const value = this.values[i]!;
         if (!Number.isFinite(value)) continue;
-        if (value < own.minY) own.minY = value;
-        if (value > own.maxY) own.maxY = value;
+        if (value < minY) minY = value;
+        if (value > maxY) maxY = value;
       }
     } else {
       const left = node << 1;
       this.refresh(left);
       this.refresh(left + 1);
-      own.minY = Math.min(this.minTree[left]!, this.minTree[left + 1]!);
-      own.maxY = Math.max(this.maxTree[left]!, this.maxTree[left + 1]!);
+      minY = Math.min(this.minTree[left]!, this.minTree[left + 1]!);
+      maxY = Math.max(this.maxTree[left]!, this.maxTree[left + 1]!);
     }
-    this.minTree[node] = own.minY;
-    this.maxTree[node] = own.maxY;
+    this.minTree[node] = minY;
+    this.maxTree[node] = maxY;
     this.valid[node] = 1;
   }
 }
