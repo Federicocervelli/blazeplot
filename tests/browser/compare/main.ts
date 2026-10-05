@@ -6,6 +6,7 @@
  * Run `window.__blazeplotCompare.start()` once `snapshot().state === "ready"`.
  */
 import { installRafWorkAccounting } from "./common.ts";
+import { releaseWarm } from "@/render/webgl2/warm.ts";
 
 installRafWorkAccounting();
 
@@ -250,6 +251,10 @@ async function discardedSetupRuns(spec: ChartSpec, data: LibraryData): Promise<v
     mounted.handle.destroy();
     mounted.host.remove();
   }
+  // BlazePlot parks a disposed chart's WebGL context for 2 s so a remount can reuse it. That is the point of
+  // mount-destroy-cycle and many-charts, but it would hide context creation from every other scenario's
+  // "ready" number (a canvas library creates its canvas inside its measured constructor), so release it here.
+  if (scenario.kind !== "cycle" && scenario.kind !== "many") releaseWarm();
 }
 
 function initialViewport(spec: ChartSpec): ViewportRange {

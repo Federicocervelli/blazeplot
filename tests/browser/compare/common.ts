@@ -29,6 +29,8 @@ export interface ChartSpec {
   /** Extra samples that will be appended while streaming. */
   readonly streamExtra?: number;
   readonly hover?: boolean;
+  /** BlazePlot only (hover scenarios): the heavier default crosshair (free lines plus coordinate label) next to the tooltip instead of the feature-equivalent pair. */
+  readonly hoverRich?: boolean;
   /** Chart follows its container size (resize scenario). */
   readonly responsive?: boolean;
   /** BlazePlot only: use its accelerated procedural dataset (10M scenario). */
