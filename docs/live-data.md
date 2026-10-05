@@ -36,7 +36,7 @@ Keep X values sorted in append order. Picking, binary search, and LOD assume sor
 
 ## Fixed-rate samples
 
-For signals with constant sample spacing, use the `{ capacity, xStart, xStep }` shorthand. BlazePlot creates an implicit-X `UniformRingBuffer`, so you only append Y values. Passing either `xStart` or `xStep` selects it (`xStart` defaults to 0 and `xStep` to 1). A uniform buffer always wraps, so combining the shorthand with `overflow: "drop-new"` or `"error"` throws a `TypeError`.
+For signals with constant sample spacing, use the `{ capacity, xStart, xStep }` shorthand. BlazePlot creates an implicit-X `UniformRingBuffer`, so you only append Y values. Passing either `xStart` or `xStep` selects it (`xStart` defaults to 0 and `xStep` to 1), in X data units. A uniform buffer always wraps, so combining the shorthand with `overflow: "drop-new"` or `"error"` throws a `TypeError`.
 
 ```ts
 import { Chart } from "blazeplot";
