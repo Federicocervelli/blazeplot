@@ -44,7 +44,7 @@ if (isWebGL2Available()) {
 }
 ```
 
-Custom backends are not supported, and `backendFactory` is not covered by semver. If you only used it for test fakes, keep doing so against the internal option at your own risk; otherwise render in a real browser (see [Troubleshooting](./troubleshooting.md)). To draw without WebGL2, pass `renderer: autoRenderer()` from `blazeplot/renderers/canvas2d` instead of writing a backend (change 16).
+Custom backends are not supported, and the internal `backendFactory` option no longer exists. To test code that mounts charts, render in a real browser (see [Troubleshooting](./troubleshooting.md)). To draw without WebGL2, pass `renderer: autoRenderer()` from `blazeplot/renderers/canvas2d` instead of writing a backend (change 16).
 
 ### 2. `emitSelect` is removed, and `ChartSelectEvent` is no longer generic
 

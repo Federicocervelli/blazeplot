@@ -90,7 +90,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `BufferOverflowStrategy` | type | `./core/types` | Behavior when a fixed-capacity streaming buffer is full. |
 | `BuiltInAxisScale` | type | `./interaction/AxisController` | Built-in axis scale names. |
 | `Camera2D` | class | `./interaction/Camera2D` | Camera that maps data domains to clip, screen, and plot coordinates. |
-| `Chart` | class | `./ui/Chart` | Imperative WebGL chart instance for rendering, interaction, and plugins. |
+| `Chart` | class | `./ui/Chart` | Imperative chart instance for rendering, interaction, and plugins. |
 | `ChartAccessibilityMessages` | type | `./ui/Chart` | — |
 | `ChartAccessibilityOptions` | type | `./ui/Chart` | — |
 | `ChartAutoFitYOptions` | type | `./ui/Chart` | — |

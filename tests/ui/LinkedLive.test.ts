@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { createLinkedCharts } from "../../src/linked.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
-import { FakeBackend } from "./fakes.ts";
+import { recordingRenderer } from "./fakes.ts";
 import { pluginContext, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();
@@ -11,7 +11,7 @@ function build(count: number, followX: boolean) {
     panels: Array.from({ length: count }, () => ({
       options: {
         ...(followX ? { followX: { window: 10 } } : {}),
-        backendFactory: (ctx: { canvas: HTMLCanvasElement }) => new FakeBackend(ctx.canvas),
+        renderer: recordingRenderer(),
       },
     })),
   });

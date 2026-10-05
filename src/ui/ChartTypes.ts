@@ -3,7 +3,6 @@ import type { AxisPosition } from "./ChartLayout.js";
 import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 import type { SeriesStore } from "../core/SeriesStore.js";
 import type { ChartRendererFactory } from "../render/ChartRenderer.js";
-import type { GpuBackend } from "../render/webgl2/types.js";
 import type { AxisControllerAxisOptions } from "../interaction/AxisController.js";
 import type { ViewportPolicy } from "../interaction/types.js";
 import type { ChartTheme } from "./theme.js";
@@ -84,14 +83,6 @@ export interface ChartAccessibilityOptions {
   readonly forcedColors?: boolean;
 }
 
-/** @internal Context passed to a custom GPU backend factory. */
-export interface ChartBackendFactoryContext {
-  readonly canvas: HTMLCanvasElement;
-}
-
-/** @internal Creates the GPU backend used by a chart. */
-export type ChartBackendFactory = (context: ChartBackendFactoryContext) => GpuBackend;
-
 /** Render loop scheduling mode. */
 export type ChartRenderLoop = "auto" | "continuous";
 
@@ -128,8 +119,6 @@ export interface ChartOptions {
    * unavailable) to render without WebGL2. Read the chosen backend from `chart.renderer`.
    */
   readonly renderer?: "webgl2" | ChartRendererFactory;
-  /** @internal Hook for supplying a custom GPU backend (test fakes). Takes precedence over `renderer`. */
-  readonly backendFactory?: ChartBackendFactory;
 }
 
 /** Series configuration used by typed helpers such as `addLine`. */
