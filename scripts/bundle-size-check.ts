@@ -46,15 +46,12 @@ const budgets: Budget[] = [
   { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 9_400 },
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 22_100 },
   { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 11_900 },
-  { label: "canvas2d renderer entry", path: "dist/renderers/canvas2d.js", maxBytes: 300 },
-  { label: "shared renderer entry", path: "dist/renderers/shared.js", maxBytes: 300 },
 ];
 
 const sharedBudgets: SharedChunkBudget[] = [
   // 155_184 bytes in 1.0.0-rc.3 (plugin host, chart semantics, forced colors); 151_515 after #152; 140_448 after the Chart split and histogram tree-shaking (#172).
-  { label: "shared Chart chunk", pattern: /^Chart-.*.js$/, maxBytes: 143_500 },
-  // Every engine (WebGL2 renderer, backend, shaders, Canvas 2D, shared context) and the renderer factories. The default renderer is "auto", so the Chart always needs WebGL2 and Canvas 2D; the two subpath entries are thin re-exports until they are removed.
-  { label: "shared engines chunk", pattern: /^engines-.*.js$/, maxBytes: 25_000 },
+  // 166_315 bytes after the engines moved into the core graph: the default renderer is "auto", so the Chart always ships WebGL2 (the old 12 KB chunk, now inlined), Canvas 2D, and the shared WebGL2 context (about +15 KB over the 143_500 budget plus the separate WebGL2 chunk before).
+  { label: "shared Chart chunk (Chart + every engine)", pattern: /^Chart-.*.js$/, maxBytes: 168_900 },
   { label: "shared WebGL context release chunk", pattern: /^releaseWebGLContext-.*.js$/, maxBytes: 300 },
   // Theme module shared by the core and plugins (rgbaCss): dark, light, and forced-colors themes.
   { label: "shared theme chunk", pattern: /^theme-.*\.js$/, maxBytes: 6_900 },

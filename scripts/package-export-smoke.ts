@@ -7,12 +7,10 @@ type PackageJson = {
 };
 
 const expectedExports = {
-  "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "histogram", "isWebGL2Available", "WebGL2UnavailableError"],
+  "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "histogram", "isWebGL2Available", "WebGL2UnavailableError", "webgl2Renderer", "canvas2dRenderer", "sharedRenderer", "autoRenderer", "createChartRenderContext", "Canvas2DUnavailableError"],
   "blazeplot/linked": ["createLinkedCharts"],
   "blazeplot/data": ["binSamples", "rollingMean"],
   "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob", "exportChartData", "chartDataToCsv"],
-  "blazeplot/renderers/canvas2d": ["canvas2dRenderer", "autoRenderer", "Canvas2DUnavailableError"],
-  "blazeplot/renderers/shared": ["createChartRenderContext", "sharedRenderer"],
   "blazeplot/plugins/legend": ["legendPlugin"],
   "blazeplot/plugins/tooltip": ["tooltipPlugin"],
   "blazeplot/plugins/interactions": ["interactionsPlugin"],

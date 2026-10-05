@@ -28,8 +28,6 @@ Guides: [Overview](./overview.md), [Docs map](./README.md), [Examples](./example
 | `blazeplot/linked` | Multi-panel layouts with shared X and per-panel plugins. |
 | `blazeplot/data` | Pure, chart-agnostic data transforms (binning, rolling mean). |
 | `blazeplot/export` | Chart data export (CSV/JSON-ready rows) and screenshot download/clipboard helpers. |
-| `blazeplot/renderers/canvas2d` | Canvas 2D renderer and WebGL2-with-Canvas-2D-fallback renderer factories. |
-| `blazeplot/renderers/shared` | Shared WebGL2 render context: many charts, one WebGL context. |
 | `blazeplot/plugins/legend` | Built-in legend plugin. |
 | `blazeplot/plugins/tooltip` | Built-in tooltip plugin. |
 | `blazeplot/plugins/interactions` | Built-in pan, zoom, axis interaction, and reset plugin. |
@@ -61,10 +59,7 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 21 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| canvas2d renderer entry | `dist/renderers/canvas2d.js` | 0 KiB |
-| shared renderer entry | `dist/renderers/shared.js` | 0 KiB |
-| shared Chart chunk | `dist/Chart-*.js` | 138 KiB |
-| shared engines chunk | `dist/engines-*.js` | 24 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 162 KiB |
 | shared WebGL context release chunk | `dist/releaseWebGLContext-*.js` | 0 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
@@ -132,7 +127,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartRect` | interface | `./ui/PluginHost` | A rectangle in CSS pixels. |
 | `ChartRenderContext` | type | `./render/engines` | — |
 | `ChartRendererCapabilities` | interface | `./render/ChartRenderer` | Static facts about the engine a chart draws with. |
-| `ChartRendererFactory` | type | `./render/ChartRenderer` | Creates the renderer for a chart. It may throw when its backend is unavailable. Use `canvas2dRenderer()` / `autoRenderer()` from `blazeplot/renderers/canvas2d`. |
+| `ChartRendererFactory` | type | `./render/ChartRenderer` | Creates the renderer for a chart. It may throw when its backend is unavailable. The built-in factories are `webgl2Renderer()`, `canvas2dRenderer()`, `sharedRenderer()`, and `autoRenderer()`. |
 | `ChartRendererFactoryContext` | interface | `./render/ChartRenderer` | Context passed to a renderer factory when a chart (re)creates its renderer. |
 | `ChartRendererHandle` | interface | `./render/ChartRenderer` | Opaque renderer instance returned by a renderer factory. Only the built-in renderers implement it. |
 | `ChartRendererInfo` | interface | `./render/ChartRenderer` | Which engine a chart ended up with, what was asked for, and what that engine can do. |

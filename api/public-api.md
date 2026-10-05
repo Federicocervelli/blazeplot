@@ -2069,56 +2069,6 @@ function downloadChartScreenshot(chart: Chart, options?: ChartDownloadOptions): 
 function exportChartData(chart: ExportableChart, options?: ChartDataExportOptions): ChartDataExport;
 ```
 
-### `blazeplot/renderers/canvas2d`
-
-3 exports.
-
-#### class Canvas2DUnavailableError
-
-```ts
-class Canvas2DUnavailableError extends Error {
-    constructor(message?: string);
-}
-```
-
-#### function autoRenderer
-
-```ts
-function autoRenderer(): ChartRendererFactory;
-```
-
-#### function canvas2dRenderer
-
-```ts
-function canvas2dRenderer(): ChartRendererFactory;
-```
-
-### `blazeplot/renderers/shared`
-
-3 exports.
-
-#### interface ChartRenderContext
-
-```ts
-interface ChartRenderContext {
-    renderer(): ChartRendererFactory;
-    readonly chartCount: number;
-    dispose(): void;
-}
-```
-
-#### function createChartRenderContext
-
-```ts
-function createChartRenderContext(doc?: Document): ChartRenderContext;
-```
-
-#### function sharedRenderer
-
-```ts
-function sharedRenderer(context?: ChartRenderContext): ChartRendererFactory;
-```
-
 ### `blazeplot/plugins/legend`
 
 3 exports.

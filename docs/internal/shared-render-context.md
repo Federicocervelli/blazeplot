@@ -1,6 +1,6 @@
 # Shared render context design note
 
-Status: shipped as an opt-in renderer in 1.0 (`blazeplot/renderers/shared`, public API `sharedRenderer()` and `createChartRenderContext()`). `createLinkedCharts` keeps per-chart contexts by default and takes a `renderer` option to opt in; see [Open questions](#open-questions).
+Status: shipped as an opt-in renderer in 1.0 (`renderer: "shared"`, public API `sharedRenderer()` and `createChartRenderContext()` from `blazeplot`). `createLinkedCharts` keeps per-chart contexts by default and takes a `renderer` option to opt in; see [Open questions](#open-questions).
 
 ## Problem
 

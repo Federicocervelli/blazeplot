@@ -7,7 +7,7 @@ BlazePlot targets modern browsers with WebGL2 and ships an opt-in Canvas 2D rend
 | Feature | Used for | Notes |
 |---|---|---|
 | WebGL2 | Plot rendering | Required by the default renderer. BlazePlot throws `WebGL2UnavailableError` when a chart cannot create a WebGL2 context, unless you pass the [Canvas 2D renderer](#canvas-2d-renderer). |
-| Canvas 2D | Fallback plot rendering | Used by `blazeplot/renderers/canvas2d`. Available in every browser that can draw a `<canvas>`. |
+| Canvas 2D | Fallback plot rendering | Used by `renderer: "canvas2d"` and by `"auto"` when WebGL2 fails. Available in every browser that can draw a `<canvas>`. |
 | Pointer Events | Built-in interactions | Used for pan, zoom, box selection, touch gestures, and plugin hit testing. |
 | `ResizeObserver` | Automatic layout updates | Optional. Without it, call `chart.resize()` after container size changes. |
 | Async Clipboard API + `ClipboardItem` | Clipboard export helpers | Optional. Browsers usually require HTTPS and a user gesture. Download helpers still work without clipboard support. |
@@ -27,16 +27,16 @@ if (isWebGL2Available()) {
 
 ## Canvas 2D renderer
 
-`blazeplot/renderers/canvas2d` is a separate entry point, so WebGL-only apps do not pay for it. It exports two renderer factories:
+The Canvas 2D engine ships in the core `blazeplot` package, so there is nothing extra to import. Pick an engine with `ChartOptions.renderer`, by name or with the matching factory exported from `blazeplot`:
 
-- `autoRenderer()` uses WebGL2 and falls back to Canvas 2D when WebGL2 is unavailable or its context cannot be created (browsers with hardware acceleration off, GPU blocklists, privacy-hardened browsers, headless screenshot pipelines, pages that used up the WebGL context cap).
-- `canvas2dRenderer()` always uses Canvas 2D.
+- `"auto"` (the default, `autoRenderer()`) uses WebGL2 and falls back to Canvas 2D when WebGL2 is unavailable or its context cannot be created (browsers with hardware acceleration off, GPU blocklists, privacy-hardened browsers, headless screenshot pipelines, pages that used up the WebGL context cap).
+- `"canvas2d"` (`canvas2dRenderer()`) always uses Canvas 2D.
+- `"webgl2"` (`webgl2Renderer()`) requires WebGL2 and throws `WebGL2UnavailableError` instead of falling back.
 
 ```ts
 import { Chart, StaticDataset } from "blazeplot";
-import { autoRenderer } from "blazeplot/renderers/canvas2d";
 
-const chart = new Chart(element, { renderer: autoRenderer() });
+const chart = new Chart(element, { renderer: "auto" });
 chart.addLine({ dataset: new StaticDataset(new Float64Array([0, 1, 2]), new Float32Array([0, 1, 0])) });
 chart.fitToData();
 chart.start();
@@ -45,7 +45,7 @@ console.log(chart.renderer); // "webgl2" or "canvas2d"
 // Later: chart.dispose();
 ```
 
-`chart.renderer` is `"webgl2"`, `"canvas2d"`, or `"shared"` (see [shared context](./performance-recipes.md#many-charts-on-one-page)). `canvas2dRenderer()` throws `Canvas2DUnavailableError` when the canvas cannot create a 2D context, which is rare; `autoRenderer()` only falls back when WebGL2 fails.
+`chart.renderer` is `"webgl2"`, `"canvas2d"`, or `"shared"` (see [shared context](./performance-recipes.md#many-charts-on-one-page)). `"canvas2d"` throws `Canvas2DUnavailableError` when the canvas cannot create a 2D context, which is rare; `"auto"` only falls back when WebGL2 fails.
 
 Every series type (line, area, bar, scatter, OHLC, candlestick, histogram), gaps, log/symlog and reversed axes, dual Y axes, wide lines, `chart.screenshot()`, every built-in plugin, and the flame graph plugin work on both renderers. `ctx.unstable.getWebGLContext()` returns `null` on Canvas 2D (and on the shared WebGL renderer).
 

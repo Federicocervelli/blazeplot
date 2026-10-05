@@ -50,14 +50,6 @@
       "types": "./dist/export.d.ts",
       "import": "./dist/export.js"
     },
-    "./renderers/canvas2d": {
-      "types": "./dist/renderers/canvas2d.d.ts",
-      "import": "./dist/renderers/canvas2d.js"
-    },
-    "./renderers/shared": {
-      "types": "./dist/renderers/shared.d.ts",
-      "import": "./dist/renderers/shared.js"
-    },
     "./plugins/legend": {
       "types": "./dist/plugins/legend.d.ts",
       "import": "./dist/plugins/legend.js"
