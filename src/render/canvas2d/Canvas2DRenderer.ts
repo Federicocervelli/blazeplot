@@ -74,7 +74,7 @@ export class Canvas2DRenderer implements ChartRenderer {
   }
 
   drawLines(
-    data: Float32Array,
+    d: Float32Array,
     vertexCount: number,
     color: RgbaColor,
     lineWidth: number,
@@ -82,7 +82,6 @@ export class Canvas2DRenderer implements ChartRenderer {
     primitive: "line_strip" | "lines" = "line_strip",
   ): void {
     this.drawCalls++;
-    const d = data;
     const n = Math.min(vertexCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
     const ctx = this.ctx;
@@ -185,24 +184,23 @@ export class Canvas2DRenderer implements ChartRenderer {
     }
   }
 
-  drawClipLines(data: Float32Array, vertexCount: number, color: RgbaColor): void {
+  drawClipLines(d: Float32Array, vertexCount: number, color: RgbaColor): void {
     this.drawCalls++;
     const hw = this.width * 0.5;
     const hh = this.height * 0.5;
     this.ctx.beginPath();
     // Clip space is the pixel map x * hw + hw, y * -hh + hh.
-    this.traceSegments(data, Math.min(vertexCount, data.length >> 1), hw, hw, -hh, hh, true);
+    this.traceSegments(d, Math.min(vertexCount, d.length >> 1), hw, hw, -hh, hh, true);
     this.stroke(color, 1);
   }
 
-  drawPoints(data: Float32Array, pointCount: number, color: RgbaColor, pointSize: number, projection: RenderProjection): void {
+  drawPoints(d: Float32Array, pointCount: number, color: RgbaColor, pointSize: number, projection: RenderProjection): void {
     this.drawCalls++;
-    const d = data;
     const n = Math.min(pointCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
     const radius = Math.max(0.5, pointSize * this.pixelRatio * 0.5);
     const ctx = this.ctx;
-    this.setFill(color);
+    this.ctx.fillStyle = css(color);
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = d[i * 2]! * sx + ox;
@@ -214,14 +212,13 @@ export class Canvas2DRenderer implements ChartRenderer {
     ctx.fill();
   }
 
-  drawBarsInstanced(data: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection, yOrigin: number = 0): void {
+  drawBarsInstanced(d: Float32Array, barCount: number, style: SeriesStyle, projection: RenderProjection, yOrigin: number = 0): void {
     this.drawCalls++;
-    const d = data;
     const n = Math.min(barCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
     const half = style.barWidth * 0.5;
     const base = (style.baseline - yOrigin) * sy + oy;
-    this.setFill(style.color);
+    this.ctx.fillStyle = css(style.color);
     // One path and one fill for the whole batch instead of a fill call per bar.
     this.ctx.beginPath();
     for (let i = 0; i < n; i++) {
@@ -234,34 +231,41 @@ export class Canvas2DRenderer implements ChartRenderer {
   }
 
   drawTriangles(
-    data: Float32Array,
+    d: Float32Array,
     vertexCount: number,
     color: RgbaColor,
     projection: RenderProjection,
     primitive: "triangles" | "triangle_strip" = "triangles",
   ): void {
     this.drawCalls++;
-    const d = data;
     const n = Math.min(vertexCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
     const ctx = this.ctx;
-    this.setFill(color);
+    this.ctx.fillStyle = css(color);
 
     if (primitive === "triangle_strip") {
       // A strip is a ribbon: even vertices run along one edge, odd vertices along the other. A pair with a
       // non-finite vertex breaks the strip, as the triangles that touch it vanish on a GPU, so each run of
-      // complete pairs is filled on its own instead of bridging the gap.
+      // complete pairs is its own closed subpath (along the even vertices, then back along the odd ones)
+      // instead of bridging the gap; all of them are filled with one fill.
       const pairs = n >> 1;
       let runStart = -1;
+      ctx.beginPath();
       for (let pair = 0; pair <= pairs; pair++) {
         const complete = pair < pairs && Number.isFinite(d[pair * 4]! + d[pair * 4 + 1]! + d[pair * 4 + 2]! + d[pair * 4 + 3]!);
         if (complete) {
           if (runStart < 0) runStart = pair;
           continue;
         }
-        if (runStart >= 0 && pair - runStart >= 2) this.fillRibbon(d, runStart, pair, sx, ox, sy, oy);
+        if (runStart >= 0 && pair - runStart >= 2) {
+          ctx.moveTo(d[runStart * 4]! * sx + ox, d[runStart * 4 + 1]! * sy + oy);
+          for (let p = runStart + 1; p < pair; p++) ctx.lineTo(d[p * 4]! * sx + ox, d[p * 4 + 1]! * sy + oy);
+          for (let p = pair - 1; p >= runStart; p--) ctx.lineTo(d[p * 4 + 2]! * sx + ox, d[p * 4 + 3]! * sy + oy);
+          ctx.closePath();
+        }
         runStart = -1;
       }
+      ctx.fill();
       return;
     }
 
@@ -326,8 +330,7 @@ export class Canvas2DRenderer implements ChartRenderer {
     this.canvas.removeEventListener("contextlost", this.handleContextLost);
     this.canvas.removeEventListener("contextrestored", this.handleContextRestored);
     this.lossListener = null;
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.ctx.clearRect(0, 0, this.width, this.height);
+    this.beginFrame(this.width, this.height, this.pixelRatio);
   }
 
   private readonly handleContextLost = (event: Event): void => {
@@ -341,21 +344,6 @@ export class Canvas2DRenderer implements ChartRenderer {
     this.lost = false;
     this.lossListener?.("restored");
   };
-
-  /** Fill the ribbon through vertex pairs `[from, to)`: along the even vertices, then back along the odd ones. */
-  private fillRibbon(d: Float32Array, from: number, to: number, sx: number, ox: number, sy: number, oy: number): void {
-    const ctx = this.ctx;
-    ctx.beginPath();
-    for (let pair = from; pair < to; pair++) {
-      const x = d[pair * 4]! * sx + ox;
-      const y = d[pair * 4 + 1]! * sy + oy;
-      if (pair === from) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-    }
-    for (let pair = to - 1; pair >= from; pair--) ctx.lineTo(d[pair * 4 + 2]! * sx + ox, d[pair * 4 + 3]! * sy + oy);
-    ctx.closePath();
-    ctx.fill();
-  }
 
   private project(p: RenderProjection): PixelMap {
     const m = this.map;
@@ -371,12 +359,7 @@ export class Canvas2DRenderer implements ChartRenderer {
     ctx.strokeStyle = css(color);
     ctx.lineWidth = width;
     ctx.lineJoin = width > THIN_STROKE_PX ? "round" : "miter";
-    ctx.lineCap = "butt";
     ctx.stroke();
-  }
-
-  private setFill(color: RgbaColor): void {
-    this.ctx.fillStyle = css(color);
   }
 
   /**

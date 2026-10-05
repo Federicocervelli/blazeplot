@@ -12,6 +12,8 @@ const BAR_TRIANGLE_CAPACITY = 4_096;
 const FLOATS_PER_MINMAX_BUCKET = 3;
 const FLOATS_PER_BAR_TRIANGLES = 12;
 const FLOATS_PER_OHLC_TUPLE = 5;
+/** OHLC tuples staged per draw: what the raw scratch array holds, capped like the other expanded primitives. */
+const MAX_CANDLES_PER_DRAW = Math.min(Math.floor((RAW_LINE_VERTEX_CAPACITY * 2) / FLOATS_PER_OHLC_TUPLE), BAR_TRIANGLE_CAPACITY);
 const MAX_EXACT_SCATTER_POINTS = RAW_LINE_VERTEX_CAPACITY * 4;
 
 /** Render mode reported in frame stats. */
@@ -87,10 +89,9 @@ export class SeriesPainter {
   }
 
   private projectionFor(yAxis: SeriesYAxis | undefined): RenderProjection {
-    const right = yAxis === "right";
-    const camera = right ? this.rightCamera : this.camera;
-    const controller = right ? this.rightAxis : this.axis;
-    const projection = right ? this.rightProjection : this.leftProjection;
+    const camera = this.cameraFor(yAxis);
+    const controller = this.controllerFor(yAxis);
+    const projection = yAxis === "right" ? this.rightProjection : this.leftProjection;
     const scaledOrigin = controller.scaleValue(this.currentXOrigin, "x");
     const xMin = controller.scaleValue(camera.xMin, "x") - scaledOrigin;
     const xMax = controller.scaleValue(camera.xMax, "x") - scaledOrigin;
@@ -229,12 +230,11 @@ export class SeriesPainter {
 
   private drawOhlcSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport);
-    const maxCandles = Math.min(Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE), BAR_TRIANGLE_CAPACITY);
     const { style } = series;
     const yOrigin = this.yOriginFor(series.config.yAxis);
 
     for (let start = range.start; start < range.end;) {
-      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin, yOrigin);
+      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, MAX_CANDLES_PER_DRAW, this.currentXOrigin, yOrigin);
       if (candleCount <= 0) break;
 
       this.drawOhlcTicks(candleCount, style.tickWidth, true, style.upColor, style.lineWidth, projection);
@@ -245,12 +245,11 @@ export class SeriesPainter {
 
   private drawCandlestickSeries(series: SeriesStore, viewport: Viewport, projection: RenderProjection): void {
     const range = series.visibleIndexRange(viewport, 1);
-    const maxCandles = Math.min(Math.floor(this.rawLineData.length / FLOATS_PER_OHLC_TUPLE), BAR_TRIANGLE_CAPACITY);
     const { style } = series;
     const yOrigin = this.yOriginFor(series.config.yAxis);
 
     for (let start = range.start; start < range.end;) {
-      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, maxCandles, this.currentXOrigin, yOrigin);
+      const candleCount = series.copyOhlcTuplesRange(start, range.end, this.rawLineData, MAX_CANDLES_PER_DRAW, this.currentXOrigin, yOrigin);
       if (candleCount <= 0) break;
 
       for (let i = 0; i < candleCount; i++) {

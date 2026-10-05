@@ -236,7 +236,18 @@ function observe2d(calls: ReadonlyArray<readonly [string, ...unknown[]]>): DrawO
       case "fill":
         if (pathRects.length > 0) out.push({ kind: "rect", rects: pathRects });
         else if (arcs.length > 0) out.push({ kind: "marker", diameterPx: arcs[0]!.r * 2, centers: arcs.map((a) => [a.x, a.y] as const) });
-        else if (ops.length > 0 || args[1] !== -1) out.push({ kind: "polygon", bbox: bbox(ops.map((o) => [o.x, o.y] as const)) });
+        else if (ops.length > 0) {
+          // Each moveTo opens a subpath, and each closed subpath is one polygon.
+          let subpath: Array<readonly [number, number]> = [];
+          for (const o of ops) {
+            if (o.op === "move" && subpath.length > 0) {
+              out.push({ kind: "polygon", bbox: bbox(subpath) });
+              subpath = [];
+            }
+            subpath.push([o.x, o.y] as const);
+          }
+          out.push({ kind: "polygon", bbox: bbox(subpath) });
+        } else if (args[1] !== -1) out.push({ kind: "polygon", bbox: bbox([]) });
         pathRects = [];
         break;
       case "fillRect": {
