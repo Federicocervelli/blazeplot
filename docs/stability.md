@@ -81,7 +81,6 @@ These are not an API for application code. The GPU backend types (`GpuBackend`, 
 
 | Item | Notes |
 |---|---|
-| `ChartOptions.backendFactory` and the backend types it takes | Marked `@internal` and stripped from published declarations. It exists for test fakes; shaders are written for the built-in renderer. Not covered by semver promises. |
 | `ChartPluginContext.unstable.getWebGLContext()` (`@experimental`) | Escape hatch to the raw `WebGL2RenderingContext`; `null` with the Canvas 2D and shared WebGL renderers. The chart may recreate GPU state after context loss. State you change on it can interfere with rendering. |
 | The `ChartRenderer` drawing interface and the renderer classes behind the factories | `ChartRenderer` is marked `@internal` and stripped from published declarations. Only the opaque `ChartRendererHandle` (`kind`), `ChartRendererFactory`, `ChartRendererFactoryContext`, and `ChartRendererKind` are public; custom renderers are not supported. |
 | `/** @internal */` members | Stripped from published declarations. If you reach them through casts, expect breakage in patch releases. |

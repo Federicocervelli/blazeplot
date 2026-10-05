@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Canvas2DRenderer, Canvas2DUnavailableError } from "../../src/render/canvas2d/Canvas2DRenderer.ts";
 import { testStyle } from "../helpers.ts";
-import type { RenderProjection } from "../../src/render/ChartRenderer.ts";
+import type { ChartRenderer, RenderProjection } from "../../src/render/ChartRenderer.ts";
 import { FakeContext2D as FakeContext, FakePath, fakeCanvas2d } from "./fake2d.ts";
 
 beforeAll(() => {
@@ -25,10 +25,10 @@ function upload(_renderer: Canvas2DRenderer, values: number[]): Float32Array {
 }
 
 describe("Canvas2DRenderer", () => {
-  it("reports its kind and has no WebGL context", () => {
+  it("reports its kind and exposes no WebGL context", () => {
     const { renderer } = setup();
     expect(renderer.kind).toBe("canvas2d");
-    expect(renderer.getWebGLContext()).toBeNull();
+    expect((renderer as ChartRenderer).webglContext).toBeUndefined();
   });
 
   it("throws when the canvas has no 2D context", () => {

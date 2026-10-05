@@ -64,10 +64,6 @@ export class Canvas2DRenderer implements ChartRenderer {
     return { uploadBytes: 0, drawCalls: this.drawCalls };
   }
 
-  getWebGLContext(): null {
-    return null;
-  }
-
   drawLines(
     data: Float32Array,
     vertexCount: number,

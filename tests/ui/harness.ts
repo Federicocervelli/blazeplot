@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach } from "bun:test";
-import { FakeBackend, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
+import { RecordingRenderer, recordingRenderer, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
 import type { FakeRaf, ListenerLedger, TestEnv } from "./fakes.ts";
 import type { Chart as ChartType, ChartOptions } from "../../src/ui/Chart.ts";
 import type { ChartPlugin, ChartPluginContext } from "../../src/ui/PluginHost.ts";
@@ -10,7 +10,7 @@ export interface ChartHarness {
   readonly ledger: () => ListenerLedger;
   /** The host element charts are mounted into. */
   readonly target: () => HTMLDivElement;
-  readonly backends: () => readonly FakeBackend[];
+  readonly backends: () => readonly RecordingRenderer[];
   /** Create a chart on the FakeBackend with a 400x200 plot at the client origin. */
   make(options?: ChartOptions, plot?: PlotStub): ChartType;
 }
@@ -116,7 +116,7 @@ export function useChartHarness(): ChartHarness {
   let env: TestEnv;
   let Chart: typeof ChartType;
   let target: HTMLDivElement;
-  let backends: FakeBackend[] = [];
+  let backends: RecordingRenderer[] = [];
   let ledger: ListenerLedger;
   const raf = { current: null as unknown as FakeRaf };
 
@@ -161,11 +161,7 @@ export function useChartHarness(): ChartHarness {
     make(options: ChartOptions = {}, plot?: PlotStub): ChartType {
       const chart = new Chart(target, {
         ...options,
-        backendFactory: (ctx) => {
-          const backend = new FakeBackend(ctx.canvas);
-          backends.push(backend);
-          return backend;
-        },
+        renderer: recordingRenderer(backends),
       });
       stubPlot(chart, plot);
       return chart;

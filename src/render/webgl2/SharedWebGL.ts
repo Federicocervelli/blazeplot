@@ -173,11 +173,6 @@ class SharedWebGLRenderer implements ChartRenderer {
     return report;
   }
 
-  getWebGLContext(): null {
-    // The context is shared between charts; no chart or plugin may keep or release it.
-    return null;
-  }
-
   drawLines(data: Float32Array, vertexCount: number, color: RgbaColor, lineWidth: number, projection: RenderProjection, primitive?: "line_strip" | "lines"): void {
     this.shared.active.drawLines(data, vertexCount, color, lineWidth, projection, primitive);
   }

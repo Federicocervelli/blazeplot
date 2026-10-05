@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { countNodes, FakeBackend, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
+import { countNodes, RecordingRenderer, recordingRenderer, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
 import type { FakeRaf, ListenerLedger, TestEnv } from "./fakes.ts";
 import type { Chart as ChartType, ChartOptions } from "../../src/ui/Chart.ts";
 import type { ChartPlugin, ChartPluginContext, ChartPluginHandle } from "../../src/ui/PluginHost.ts";
@@ -19,17 +19,13 @@ beforeAll(async () => {
 afterAll(() => env.teardown());
 
 let target: HTMLDivElement;
-let backends: FakeBackend[];
+let backends: RecordingRenderer[];
 let ledger: ListenerLedger;
 
 function make(options: ChartOptions = {}): ChartType {
   return new Chart(target, {
     ...options,
-    backendFactory: (ctx) => {
-      const backend = new FakeBackend(ctx.canvas);
-      backends.push(backend);
-      return backend;
-    },
+    renderer: recordingRenderer(backends),
   });
 }
 
@@ -61,13 +57,13 @@ afterEach(() => {
 });
 
 describe("Chart construct / dispose", () => {
-  it("mounts DOM under the target and holds one live backend", () => {
+  it("mounts DOM under the target and creates one engine", () => {
     const chart = make({ title: "Hello" });
     expect(target.children).toHaveLength(1);
     expect(target.firstElementChild).toBe(chart.rootElement);
     expect(chart.rootElement.contains(chart.canvas)).toBe(true);
     expect(backends).toHaveLength(1);
-    expect(backends[0]!.liveResourceCount).toBe(1);
+    expect(backends[0]!.disposeCount).toBe(0);
     chart.dispose();
   });
 
@@ -86,8 +82,7 @@ describe("Chart construct / dispose", () => {
     expect(ledger.net()).toBe(0);
     expect(observer.disconnected).toBe(true);
     expect(raf.pending.size).toBe(0);
-    expect(backends[0]!.destroyCount).toBeGreaterThanOrEqual(1);
-    expect(backends[0]!.liveResourceCount).toBe(0);
+    expect(backends[0]!.disposeCount).toBe(1);
   });
 
   it("cancels a pending hover rAF on dispose", () => {
@@ -105,24 +100,24 @@ describe("Chart construct / dispose", () => {
     expect(target.children).toHaveLength(0);
     expect(ledger.net()).toBe(0);
     expect(raf.pending.size).toBe(0);
-    // The backend must only be torn down once.
-    expect(backends[0]!.destroyCount).toBe(1);
+    // The engine must only be disposed once.
+    expect(backends[0]!.disposeCount).toBe(1);
   });
 
-  it("releases its WebGL context on dispose instead of leaving it to GC", () => {
+  it("hands the engine its own release: dispose reaches it exactly once", () => {
     const chart = make();
     chart.start();
-    expect(backends[0]!.contextReleases).toBe(0);
+    expect(backends[0]!.disposeCount).toBe(0);
     chart.dispose();
-    expect(backends[0]!.contextReleases).toBe(1);
     chart.dispose();
-    expect(backends[0]!.contextReleases).toBe(1);
+    expect(backends[0]!.disposeCount).toBe(1);
   });
 
-  it("still disposes cleanly when the context cannot be released", () => {
+  it("still disposes cleanly when the engine throws on cleanup", () => {
     const chart = make();
-    const gl = backends[0]!.getContext()!;
-    gl.getExtension = () => { throw new Error("context is gone"); };
+    backends[0]!.dispose = () => {
+      throw new Error("context is gone");
+    };
     expect(() => chart.dispose()).not.toThrow();
     expect(target.children).toHaveLength(0);
   });
@@ -147,7 +142,7 @@ describe("Chart construct / dispose", () => {
     expect(ledger.net()).toBe(0);
     expect(raf.pending.size).toBe(0);
     expect(backends).toHaveLength(25);
-    for (const backend of backends) expect(backend.liveResourceCount).toBe(0);
+    for (const backend of backends) expect(backend.disposeCount).toBe(1);
   });
 });
 
@@ -225,9 +220,9 @@ describe("Chart resize", () => {
   });
 });
 
-describe("Chart GPU uploads", () => {
-  it("submits one stream per frame regardless of series and chunk count", () => {
-    const render = (seriesCount: number): { submits: number; draws: number } => {
+describe("Chart frames", () => {
+  it("finishes one engine frame per render regardless of series and chunk count", () => {
+    const render = (seriesCount: number): { frames: number; draws: number } => {
       const chart = make({ grid: true });
       for (let i = 0; i < seriesCount; i++) {
         const mode = i % 4;
@@ -238,15 +233,15 @@ describe("Chart GPU uploads", () => {
       chart.start();
       raf.flush();
       const backend = backends.at(-1)!;
-      const stats = { submits: backend.submits, draws: backend.draws.length };
+      const stats = { frames: backend.frames, draws: backend.draws.length };
       chart.dispose();
       return stats;
     };
 
     const few = render(2);
     const many = render(40);
-    expect(few.submits).toBe(1);
-    expect(many.submits).toBe(1);
+    expect(few.frames).toBe(1);
+    expect(many.frames).toBe(1);
     expect(many.draws).toBeGreaterThan(few.draws);
   });
 });
@@ -432,8 +427,8 @@ describe("Chart plugins", () => {
     Object.defineProperty(chart.canvas, "clientWidth", { configurable: true, value: 320 });
     Object.defineProperty(chart.canvas, "clientHeight", { configurable: true, value: 160 });
     chart.resize(1);
-    fire(chart.canvas, new window.Event("webglcontextlost", { cancelable: true }));
-    fire(chart.canvas, new window.Event("webglcontextrestored"));
+    backends[0]!.lose();
+    backends[0]!.restore();
 
     expect(log).toEqual([
       "theme a", "theme b", "event themechange",
@@ -485,7 +480,7 @@ describe("Chart plugins", () => {
     error.mockRestore();
     expect(log).toEqual(["first"]);
     expect(target.children).toHaveLength(0);
-    expect(backends[0]!.destroyCount).toBe(1);
+    expect(backends[0]!.disposeCount).toBe(1);
   });
 
   it("a plugin that throws during install tears down the already-built chart", () => {
@@ -508,7 +503,7 @@ describe("Chart plugins", () => {
     expect(target.children).toHaveLength(0);
     expect(ledger.net()).toBe(0);
     expect(FakeResizeObserver.instances[0]!.disconnected).toBe(true);
-    expect(backends[0]!.liveResourceCount).toBe(0);
+    expect(backends[0]!.disposeCount).toBe(1);
   });
 
   it("sums layout reservations from every plugin as root padding and releases them", () => {
@@ -644,14 +639,12 @@ describe("Chart WebGL2 availability", () => {
 
 });
 
-describe("Chart WebGL context loss", () => {
-  function lose(chart: ChartType): Event {
-    const event = new window.Event("webglcontextlost", { cancelable: true }) as unknown as Event;
-    fire(chart.canvas, event);
-    return event;
+describe("Chart context loss", () => {
+  function lose(): void {
+    backends.at(-1)!.lose();
   }
-  function restore(chart: ChartType): void {
-    fire(chart.canvas, new window.Event("webglcontextrestored"));
+  function restore(): void {
+    backends.at(-1)!.restore();
   }
   function withData(chart: ChartType): void {
     const series = chart.addLine({ capacity: 8 });
@@ -660,15 +653,18 @@ describe("Chart WebGL context loss", () => {
     chart.fitToData();
   }
 
-  it("prevents default on loss and skips drawing until restoration", () => {
-    const chart = make({ grid: false });
+  it("stops drawing when the engine reports loss, tells plugins, and skips frames until restoration", () => {
+    const log: string[] = [];
+    const chart = make({ grid: false, plugins: [{ install: () => ({ onContextLost: () => log.push("lost"), onContextRestored: () => log.push("restored") }) }] });
     withData(chart);
     chart.start();
+    raf.flush();
     let renders = 0;
     chart.subscribe("render", () => renders++);
 
-    const event = lose(chart);
-    expect(event.defaultPrevented).toBe(true);
+    lose();
+    expect(log).toEqual(["lost"]);
+    backends[0]!.draws = [];
     chart.requestRender();
     raf.flush();
     expect(renders).toBe(0);
@@ -676,40 +672,33 @@ describe("Chart WebGL context loss", () => {
     chart.dispose();
   });
 
-  it("recreates GPU resources on restore, disposes the old backend, and renders again", () => {
-    const chart = make({ grid: false });
+  it("renders again after the engine reports restoration, on the same engine", () => {
+    const log: string[] = [];
+    const chart = make({ grid: false, plugins: [{ install: () => ({ onContextLost: () => log.push("lost"), onContextRestored: () => log.push("restored") }) }] });
     withData(chart);
     chart.start();
     raf.flush();
-    const old = backends[0]!;
 
-    lose(chart);
-    restore(chart);
+    lose();
+    restore();
 
-    expect(backends).toHaveLength(2);
-    const fresh = backends[1]!;
-    expect(old.destroyCount).toBe(1);
-    expect(fresh.liveResourceCount).toBe(1);
+    expect(backends).toHaveLength(1);
+    expect(log).toEqual(["lost", "restored"]);
     let renders = 0;
     chart.subscribe("render", () => renders++);
     raf.flush();
     expect(renders).toBe(1);
-    expect(fresh.draws.length).toBeGreaterThan(0);
-
-    // The restored backend reuses the old backend's context, so only the final dispose may release it.
-    expect(old.contextReleases + fresh.contextReleases).toBe(0);
+    expect(backends[0]!.draws.length).toBeGreaterThan(0);
 
     chart.dispose();
-    expect(fresh.destroyCount).toBe(1);
-    expect(old.destroyCount).toBe(1);
-    expect(fresh.contextReleases).toBe(1);
+    expect(backends[0]!.disposeCount).toBe(1);
     expect(raf.pending.size).toBe(0);
   });
 
-  it("detects a lost context during render via isContextLost and does not emit render", () => {
+  it("detects a lost engine during render and does not emit render", () => {
     const chart = make();
     chart.start();
-    backends[0]!.contextLost = true;
+    backends[0]!.lost = true;
     let renders = 0;
     chart.subscribe("render", () => renders++);
     raf.flush();
@@ -717,35 +706,22 @@ describe("Chart WebGL context loss", () => {
     chart.dispose();
   });
 
-  it("stays lost and logs when restoration cannot recreate resources", () => {
-    let calls = 0;
-    const chart = new Chart(target, {
-      backendFactory: (ctx) => {
-        calls++;
-        if (calls > 1) throw new WebGL2UnavailableError();
-        const backend = new FakeBackend(ctx.canvas);
-        backends.push(backend);
-        return backend;
-      },
-    });
-    const errors = spyOn(console, "error").mockImplementation(() => {});
-    lose(chart);
-    expect(() => restore(chart)).not.toThrow();
-    expect(errors).toHaveBeenCalledTimes(1);
-    errors.mockRestore();
-    expect(backends[0]!.destroyCount).toBe(0);
+  it("ignores engine notifications after dispose", () => {
+    const log: string[] = [];
+    const chart = make({ plugins: [{ install: () => ({ onContextLost: () => log.push("lost") }) }] });
     chart.dispose();
-    expect(backends[0]!.destroyCount).toBe(1);
+    lose();
+    expect(log).toEqual([]);
   });
 
   it("cancels the post-restore render if the context is lost again or the chart is disposed", () => {
     const chart = make();
-    lose(chart);
-    restore(chart);
+    lose();
+    restore();
     expect(raf.pending.size).toBe(1);
-    lose(chart);
+    lose();
     expect(raf.pending.size).toBe(0);
-    restore(chart);
+    restore();
     expect(raf.pending.size).toBe(1);
     chart.dispose();
     expect(raf.pending.size).toBe(0);

@@ -67,8 +67,8 @@ export class WebGL2Renderer implements ChartRenderer {
     return { uploadBytes: this.streamFloats * Float32Array.BYTES_PER_ELEMENT, drawCalls: commands.length };
   }
 
-  /** Return the underlying WebGL2 context when available. */
-  getWebGLContext(): WebGL2RenderingContext | null {
+  /** @internal The WebGL2 context behind the backend, when it has one. */
+  webglContext(): WebGL2RenderingContext | null {
     return this.backend.getContext?.() ?? null;
   }
 

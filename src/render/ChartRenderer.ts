@@ -60,8 +60,8 @@ export interface ChartRenderer extends ChartRendererHandle {
    * engine owns the underlying DOM events and rebuilds its own resources before reporting `"restored"`.
    */
   setLossListener(listener: ((state: RendererLossState) => void) | null): void;
-  /** The underlying WebGL2 context, or `null` when the renderer does not expose one. */
-  getWebGLContext(): WebGL2RenderingContext | null;
+  /** @internal Escape hatch for plugins that draw with their own GL: the engine's exclusive WebGL2 context, if it owns one. */
+  webglContext?(): WebGL2RenderingContext | null;
   /** Polyline (`"line_strip"`) or independent segments (`"lines"`); NaN vertices break the line. */
   drawLines(data: Float32Array, vertexCount: number, color: RgbaColor, lineWidth: number, projection: RenderProjection, primitive?: "line_strip" | "lines"): void;
   /** 1px segments from clip-space vertices (grid lines). */
