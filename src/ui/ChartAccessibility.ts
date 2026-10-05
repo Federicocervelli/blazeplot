@@ -1,6 +1,6 @@
 import type { RgbaColor, SeriesStyle } from "../core/types.js";
 import type { SeriesStore } from "../core/SeriesStore.js";
-import type { ChartAccessibilityOptions } from "./ChartTypes.js";
+import type { ChartAccessibilityOptions } from "./ChartOptions.js";
 import type { ChartLayout } from "./ChartLayout.js";
 import { titleText } from "./ChartLayout.js";
 import type { ChartSummary } from "./ChartSummary.js";

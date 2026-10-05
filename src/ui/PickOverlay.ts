@@ -1,6 +1,6 @@
 import type { SeriesYAxis } from "../core/types.js";
-import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./Chart.js";
-import type { ChartPluginContext } from "./PluginHost.js";
+import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./ChartEvents.js";
+import type { ChartPluginContext } from "./PluginTypes.js";
 import { clamp } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 

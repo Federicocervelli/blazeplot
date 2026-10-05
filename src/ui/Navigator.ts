@@ -1,5 +1,5 @@
 import type { SeriesStore } from "../core/SeriesStore.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginTypes.js";
 import { createSvgElement, installPluginStyle, singleChartPlugin } from "./OverlayUtils.js";
 import { rgbaCss } from "./theme.js";
 

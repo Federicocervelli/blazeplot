@@ -2,7 +2,7 @@ import type { Camera2D } from "../interaction/Camera2D.js";
 import type { AxisController } from "../interaction/AxisController.js";
 import type { SeriesSample, SeriesYAxis } from "../core/types.js";
 import type { SeriesStore } from "../core/SeriesStore.js";
-import type { ChartHoverState, ChartPickItem, ChartPickOptions } from "./ChartTypes.js";
+import type { ChartHoverState, ChartPickItem, ChartPickOptions } from "./ChartEvents.js";
 
 interface PickCandidate {
   readonly sample: SeriesSample;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import { selectionPlugin } from "../../src/plugins/selection.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
-import type { ChartPlugin } from "../../src/ui/PluginHost.ts";
+import type { ChartPlugin } from "../../src/ui/PluginTypes.ts";
 import { fire, pointerEvent, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();

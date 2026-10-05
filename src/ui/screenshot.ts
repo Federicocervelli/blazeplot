@@ -1,4 +1,4 @@
-import type { ChartScreenshotOptions } from "./Chart.js";
+import type { ChartScreenshotOptions } from "./ChartOptions.js";
 import type { ChartLayout } from "./ChartLayout.js";
 import { rgbaCss } from "./theme.js";
 import type { ResolvedChartTheme } from "./theme.js";

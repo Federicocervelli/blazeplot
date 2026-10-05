@@ -1,5 +1,5 @@
-import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./Chart.js";
-import type { ChartPlugin, ChartPluginContext } from "./PluginHost.js";
+import type { ChartHoverState, ChartPickGroup, ChartPickItem, ChartPickMode } from "./ChartEvents.js";
+import type { ChartPlugin, ChartPluginContext } from "./PluginTypes.js";
 import { createOverlayLayer, installPluginStyle, placeFixedWithinViewport } from "./OverlayUtils.js";
 import { PICK_FORCED_COLORS_CSS, createPickMarkerPool, createSyncRegistry, formatCompactNumber, installLongPress, pickAtDataX, renderPickItems } from "./PickOverlay.js";
 

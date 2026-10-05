@@ -1,6 +1,8 @@
 import type { SeriesMode, SeriesYAxis, Viewport } from "./core/types.js";
 import type { SeriesStore } from "./core/SeriesStore.js";
-import type { Chart, ChartScreenshotOptions, ChartSeriesState } from "./ui/Chart.js";
+import type { Chart } from "./ui/Chart.js";
+import type { ChartSeriesState } from "./ui/ChartEvents.js";
+import type { ChartScreenshotOptions } from "./ui/ChartOptions.js";
 import type { SelectionState } from "./ui/Selection.js";
 
 /** Options for downloading a chart screenshot. */

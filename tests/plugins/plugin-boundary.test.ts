@@ -8,7 +8,7 @@ import { crosshairPlugin } from "../../src/plugins/crosshair.ts";
 import { navigatorPlugin } from "../../src/plugins/navigator.ts";
 import { selectionPlugin } from "../../src/plugins/selection.ts";
 import { useChartHarness } from "../ui/harness.ts";
-import type { ChartPlugin } from "../../src/ui/PluginHost.ts";
+import type { ChartPlugin } from "../../src/ui/PluginTypes.ts";
 
 /**
  * The built-in plugins are the proof that third parties can write equivalent plugins, so they may
@@ -31,6 +31,9 @@ const unstableAllowance: Record<string, readonly string[]> = {
 };
 
 /** Shared plugin-side helper modules that are not themselves package entries. */
+/** Leaf type modules every plugin may import types from (public plugin and chart-state types). */
+const typeModules: readonly string[] = ["src/ui/PluginTypes.ts", "src/ui/ChartEvents.ts", "src/ui/ChartViewportTypes.ts"];
+
 const pluginHelpers = ["src/ui/OverlayUtils.ts", "src/ui/PickOverlay.ts"];
 
 interface ImportRecord {
@@ -108,6 +111,7 @@ describe("built-in plugin boundary", () => {
           continue;
         }
         if (modules.has(target)) continue;
+        if (typeModules.includes(target) && (record.typeOnly || record.names.every((n) => n.typeOnly))) continue;
 
         const helperNames = runtimeHelpers[target];
         for (const { name, typeOnly } of record.names) {
