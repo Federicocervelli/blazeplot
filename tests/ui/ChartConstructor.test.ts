@@ -1,8 +1,32 @@
 import { chartInternals } from "../../src/ui/ChartInternals.ts";
-import { describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { FakeGl } from "../render/fakeGl.ts";
 import { stubPlot, useChartHarness } from "./harness.ts";
 
 const h = useChartHarness();
+
+/** Context doubles for the real engines, whatever engine the rest of the UI suites run on. */
+let restoreGetContext: () => void;
+beforeAll(() => {
+  const proto = window.HTMLCanvasElement.prototype as unknown as { getContext: unknown };
+  const original = proto.getContext;
+  const gls = new WeakMap<object, FakeGl>();
+  const ctx2d = new Proxy({ canvas: null, measureText: () => ({ width: 5 }), isContextLost: () => false } as Record<string, unknown>, {
+    get: (target, key) => (key in target ? target[key as string] : () => undefined),
+    set: () => true,
+  });
+  proto.getContext = function (this: object, kind: string): unknown {
+    if (kind === "2d") return ctx2d;
+    if (kind !== "webgl2") return null;
+    let gl = gls.get(this);
+    if (!gl) gls.set(this, (gl = new FakeGl()));
+    return gl;
+  };
+  restoreGetContext = () => {
+    proto.getContext = original;
+  };
+});
+afterAll(() => restoreGetContext());
 
 /** Count layout reads (`clientWidth`, `clientHeight`, `getBoundingClientRect`) on every canvas while `run` executes. */
 function countCanvasLayoutReads(run: () => void): number {
@@ -24,23 +48,39 @@ function countCanvasLayoutReads(run: () => void): number {
   return reads;
 }
 
+async function chartClass(): Promise<typeof import("../../src/ui/Chart.ts").Chart> {
+  return (await import("../../src/ui/Chart.ts")).Chart;
+}
+
 describe("chart constructor", () => {
-  it("reads no layout, so mounting many charts in one task does not lay the page out per chart", () => {
-    const charts: Array<ReturnType<typeof h.make>> = [];
-    const reads = countCanvasLayoutReads(() => {
-      for (let i = 0; i < 10; i++) {
-        const chart = h.make({ axes: { x: true, y: true } });
-        chart.addLine({ capacity: 4 }).append({ x: 1, y: 2 });
-        chart.start();
-        charts.push(chart);
-      }
-    });
-    expect(reads).toBe(0);
-    for (const chart of charts) chart.dispose();
+  it("reads no layout for engines that can be sized later, so many charts share one layout", async () => {
+    const Chart = await chartClass();
+    for (const renderer of ["canvas2d", "shared"] as const) {
+      const charts: Array<InstanceType<typeof Chart>> = [];
+      const reads = countCanvasLayoutReads(() => {
+        for (let i = 0; i < 10; i++) {
+          const chart = new Chart(h.target(), { renderer, axes: { x: true, y: true } });
+          chart.addLine({ capacity: 4 }).append({ x: 1, y: 2 });
+          chart.start();
+          charts.push(chart);
+        }
+      });
+      expect(reads).toBe(0);
+      for (const chart of charts) chart.dispose();
+    }
   });
 
-  it("sizes the drawing buffer from layout on the first frame", () => {
-    const chart = h.make({ axes: { x: true, y: true } });
+  it("sizes the canvas before a WebGL2 context is created on it", async () => {
+    const Chart = await chartClass();
+    const reads = countCanvasLayoutReads(() => {
+      new Chart(h.target(), { renderer: "webgl2", axes: { x: true, y: true } }).dispose();
+    });
+    expect(reads).toBeGreaterThan(0);
+  });
+
+  it("sizes the drawing buffer from layout on the first frame", async () => {
+    const Chart = await chartClass();
+    const chart = new Chart(h.target(), { renderer: "canvas2d", axes: { x: true, y: true } });
     const canvas = chartInternals(chart).canvas;
     stubPlot(chart, { width: 320, height: 180 });
     expect(canvas.width).not.toBe(320);
@@ -50,8 +90,9 @@ describe("chart constructor", () => {
     chart.dispose();
   });
 
-  it("does not let the first frame override an explicit resize", () => {
-    const chart = h.make({ axes: { x: true, y: true } });
+  it("does not let the first frame override an explicit resize", async () => {
+    const Chart = await chartClass();
+    const chart = new Chart(h.target(), { renderer: "canvas2d", axes: { x: true, y: true } });
     const canvas = chartInternals(chart).canvas;
     stubPlot(chart, { width: 320, height: 180 });
     expect(chart.resize(1)).toBe(true);

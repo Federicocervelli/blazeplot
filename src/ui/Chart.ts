@@ -169,17 +169,18 @@ export class Chart {
     this.layout.root.style.background = this.resolvedTheme.backgroundCssColor;
     this.layout.root.style.setProperty("--blazeplot-focus-ring", this.resolvedTheme.focusRingColor);
     this.a11y.install();
-    // No layout read here: sizing the drawing buffer needs the plot's laid-out size, and reading it
-    // right after mounting forces a synchronous layout of the whole page. Mounting many charts in one
-    // task would then lay the page out once per chart. The first frame sizes the canvas instead (see
-    // `render`), where the browser has batched every chart's DOM changes into a single layout.
+    // Sizing the drawing buffer needs the plot's laid-out size, and reading it right after mounting
+    // forces a synchronous layout of the whole page, so mounting many charts in one task would lay the
+    // page out once per chart. `createEngine` sizes the canvas only for engines that need it before
+    // they exist (a WebGL2 context on the plot canvas); for the others the first frame does it (see
+    // `render`), after the browser has batched every chart's DOM changes into a single layout.
     this.camera = new Camera2D();
     this.rightCamera = new Camera2D();
     this.applyAxisDirections();
     this.axis = new AxisController(this.camera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y });
     this.rightAxis = new AxisController(this.rightCamera, { x: this.normalizedAxes.x, y: this.normalizedAxes.y2 });
     try {
-      this.engine = createEngine(options.renderer, this.canvas);
+      this.engine = createEngine(options.renderer, this.canvas, () => this.applyCanvasSize());
       this.engine.setLossListener(this.onRendererState);
     } catch (error) {
       // E.g. the chosen engine is unavailable: remove the half-built DOM and hand back a caller-supplied canvas.
