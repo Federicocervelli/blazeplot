@@ -209,6 +209,20 @@ export class RingBuffer {
     return this.yData[this.logicalToPhysical(index)]!;
   }
 
+  /** @internal Bulk-read logical samples `[start, end)` into Float64 scratch arrays (indices must be valid). */
+  readXYRange(start: number, end: number, xOut: Float64Array, yOut: Float64Array): void {
+    const count = end - start;
+    if (count <= 0) return;
+    const physical = this.logicalToPhysical(start);
+    const first = Math.min(count, this.capacity - physical);
+    xOut.set(this.xData.subarray(physical, physical + first), 0);
+    yOut.set(this.yData.subarray(physical, physical + first), 0);
+    if (first < count) {
+      xOut.set(this.xData.subarray(0, count - first), first);
+      yOut.set(this.yData.subarray(0, count - first), first);
+    }
+  }
+
   /** Return whether the sample should be rendered as a gap. */
   isGap(index: number): boolean {
     return !Number.isFinite(this.getY(index));

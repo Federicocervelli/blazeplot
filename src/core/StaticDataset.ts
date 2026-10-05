@@ -183,6 +183,16 @@ export class StaticDataset implements Dataset {
     return this.yData[index]!;
   }
 
+  /** @internal Bulk-read logical samples `[start, end)` into Float64 scratch arrays (indices must be valid). */
+  readXYRange(start: number, end: number, xOut: Float64Array, yOut: Float64Array): void {
+    const xs = this.xData;
+    const ys = this.yData;
+    for (let i = start; i < end; i++) {
+      xOut[i - start] = xs[i]!;
+      yOut[i - start] = ys[i]!;
+    }
+  }
+
   /** Return whether the sample should be rendered as a gap. */
   isGap(index: number): boolean {
     return !Number.isFinite(this.getY(index));
