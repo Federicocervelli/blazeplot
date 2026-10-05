@@ -81,8 +81,10 @@ jobs:
     needs: version
     if: needs.version.outputs.publish == 'true'
     uses: ./.github/workflows/ci.yml
+    # pull-requests is read by CI's change-detection job; it is a no-op outside pull_request events.
     permissions:
       contents: read
+      pull-requests: read
 
   release:
     needs: [version, ci]
