@@ -565,7 +565,7 @@ async function runCooperativeCase(options: Options, serverUrl: string): Promise<
   }
 }
 
-/** `touch-action` is only set when a plugin needs exclusive touch input. */
+/** `touch-action` is only set when a plugin needs to handle touch input. */
 async function runTouchActionCase(options: Options, serverUrl: string): Promise<void> {
   const touchActions = "[...document.querySelectorAll('#chart, #chart *')].map((el) => getComputedStyle(el).touchAction)";
   let cdp = await openCase(options, serverUrl, "plain");
@@ -580,8 +580,8 @@ async function runTouchActionCase(options: Options, serverUrl: string): Promise<
   try {
     await waitForReady(cdp, options.timeoutMs);
     const canvas = await evaluate(cdp, "getComputedStyle(document.querySelector('#chart canvas')).touchAction", false);
-    assert(canvas === "none", `interactionsPlugin requests exclusive touch input (got ${String(canvas)})`);
-    console.log("✓ touch-action: auto without plugins, none with interactions");
+    assert(canvas === "pan-x pan-y", `interactionsPlugin defaults to cooperative touch input (got ${String(canvas)})`);
+    console.log("✓ touch-action: auto without plugins, pan-x pan-y with default interactions");
   } finally {
     cdp.close();
   }

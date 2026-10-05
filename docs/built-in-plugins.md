@@ -41,17 +41,17 @@ const chart = new Chart(element, {
   plugins: [
     interactionsPlugin({
       wheelZoom: "modifier", // the wheel scrolls the page unless Ctrl or Cmd is held
-      touchPan: "two-finger", // one finger scrolls the page, two fingers pan and pinch the chart
+      touchPan: "two-finger", // the default: one finger scrolls the page, two fingers pan and pinch the chart
     }),
   ],
 });
 ```
 
 - `wheelZoom: "modifier"`: a wheel event without Ctrl or Cmd is not `preventDefault`ed and does not change the viewport. Ctrl+wheel and trackpad pinch (which browsers send as Ctrl+wheel) still zoom. Axis gutters follow the same rule.
-- `touchPan: "two-finger"`: the plot keeps `touch-action: pan-x pan-y`, so one finger scrolls the page; two fingers pan and zoom the chart (pinch zoom needs `pinchZoom` left on). Axis gutters still pan with one finger. Double-tap reset keeps working.
+- `touchPan: "two-finger"` (the default): the plot keeps `touch-action: pan-x pan-y`, so one finger scrolls the page; two fingers pan and zoom the chart (pinch zoom needs `pinchZoom` left on). Axis gutters still pan with one finger. Double-tap reset keeps working.
 - `gestureHint` (default `true`) shows a short overlay when the user scrolls without the modifier or drags with one finger: "Use Ctrl + scroll to zoom" ("Use ⌘ + scroll to zoom" on Apple devices) or "Use two fingers to move the chart". It is `aria-hidden`, takes its colors and font from the theme's tooltip tokens, and can be customized with `gestureHint: { wheelText, touchText, durationMs, backgroundColor, textColor, font, className }` or turned off with `gestureHint: false`.
 
-The defaults (`wheelZoom: true`, `touchPan: true`) are unchanged, so full-viewport charts behave as before.
+The defaults are `wheelZoom: true` and `touchPan: "two-finger"`: the wheel zooms the plot, while on touch screens one finger scrolls the page and two fingers pan and pinch. A full-viewport chart that should pan with one finger opts in with `touchPan: true` (the plot then gets `touch-action: none` and blocks page scrolling over it); `touchPan: false` disables touch panning.
 
 ### Drags shared with selection
 

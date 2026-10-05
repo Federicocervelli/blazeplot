@@ -13,7 +13,7 @@ import { ChartLayout } from "./ChartLayout.js";
 import { ChartEmitter } from "./ChartEmitter.js";
 import { ChartHover } from "./ChartHover.js";
 import { ChartPicker, insidePlot, plotToData } from "./ChartPicker.js";
-import { forcedColorsTheme, resolveChartTheme } from "./theme.js";
+import { LIGHT_CHART_THEME, forcedColorsTheme, resolveChartTheme } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import { PluginHost } from "./PluginHost.js";
 import { chartInternals, registerChartInternals } from "./ChartInternals.js";
@@ -115,7 +115,12 @@ export class Chart {
   private domainErrorLogged: boolean = false;
   private readonly options: ChartOptions;
   /** Caller theme before forced-colors substitution; `setTheme` replaces it. */
-  private userTheme: ChartTheme | undefined;
+  private userTheme: ChartTheme | "auto" | undefined;
+  /** `(prefers-color-scheme: light)` watcher, present only while the theme is `"auto"`. */
+  private schemeQuery: MediaQueryList | null = null;
+  private readonly onSchemeChange = (): void => {
+    if (!this.disposed) this.applyTheme();
+  };
   /** Resolved caller theme; differs from `resolvedTheme` while forced colors are active. */
   private baseTheme: ResolvedChartTheme;
   private readonly a11y: ChartAccessibility = new ChartAccessibility({
@@ -165,7 +170,8 @@ export class Chart {
     this.options = options;
     this.followXPolicy.configure(options.followX ? (options.followX === true ? {} : options.followX) : null);
     this.userTheme = options.theme;
-    this.baseTheme = resolveChartTheme(options.theme, target);
+    this.watchColorScheme(target.ownerDocument.defaultView);
+    this.baseTheme = resolveChartTheme(this.themeOption(), target);
     this.resolvedTheme = this.baseTheme;
     this.normalizedAxes = normalizeAxesConfig(options.axes);
     this.gridVisible = options.grid !== false;
@@ -192,6 +198,7 @@ export class Chart {
     } catch (error) {
       // E.g. the chosen engine is unavailable: remove the half-built DOM and hand back a caller-supplied canvas.
       this.a11y.unwatchForcedColors();
+      this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
       this.layout.dispose();
       throw error;
     }
@@ -559,15 +566,31 @@ export class Chart {
   }
 
   /** Replace the chart theme and re-render. Plugin `onThemeChange` hooks run before the `themechange` event. */
-  setTheme(theme?: ChartTheme): void {
+  setTheme(theme?: ChartTheme | "auto"): void {
     this.userTheme = theme;
+    this.watchColorScheme(this.layout.view);
     this.applyTheme();
+  }
+
+  /** The caller theme with `"auto"` replaced by the light theme when the user prefers a light color scheme. */
+  private themeOption(): ChartTheme | undefined {
+    if (this.userTheme !== "auto") return this.userTheme;
+    return this.schemeQuery?.matches ? LIGHT_CHART_THEME : undefined;
+  }
+
+  /** Listen to `prefers-color-scheme` on the chart's own window while the theme is `"auto"`. */
+  private watchColorScheme(view: Window | null): void {
+    this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
+    this.schemeQuery = null;
+    if (this.userTheme !== "auto" || !view || typeof view.matchMedia !== "function") return;
+    this.schemeQuery = view.matchMedia("(prefers-color-scheme: light)");
+    this.schemeQuery.addEventListener?.("change", this.onSchemeChange);
   }
 
   /** Resolve the caller theme (and forced colors) and push it to the canvas, overlays, and plugins. */
   private applyTheme(): void {
     const root = this.layout.root;
-    this.baseTheme = resolveChartTheme(this.userTheme, root);
+    this.baseTheme = resolveChartTheme(this.themeOption(), root);
     const forcedColorsActive = this.a11y.refreshForcedColors();
     this.resolvedTheme = forcedColorsActive ? forcedColorsTheme(this.baseTheme, root) : this.baseTheme;
     root.style.background = this.resolvedTheme.backgroundCssColor;
@@ -657,6 +680,8 @@ export class Chart {
     this.stop();
     this.followXPolicy.clearTimer();
     this.resizeObserver?.disconnect();
+    this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
+    this.schemeQuery = null;
     if (this.restoreRenderRafId !== 0) this.layout.view.cancelAnimationFrame(this.restoreRenderRafId);
     this.restoreRenderRafId = 0;
     this.toggleDomListeners("removeEventListener");

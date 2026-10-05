@@ -80,7 +80,7 @@ export function InteractiveChart({ x, y }: { x: number[]; y: number[] }) {
 
     const chart = new Chart(host, {
       // A chart inside a scrolling page should not trap the wheel or one-finger touch.
-      plugins: [interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger" }), crosshairPlugin(), tooltipPlugin()],
+      plugins: [interactionsPlugin({ wheelZoom: "modifier" }), crosshairPlugin(), tooltipPlugin()],
     });
     chart.addLine({ dataset: new StaticDataset(x, y), name: "series" });
     chart.fitToData({ padding: 0.05 });

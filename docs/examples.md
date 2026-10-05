@@ -311,7 +311,7 @@ Available plugin subpaths are listed in the [API reference](./api-reference.md#p
 
 ### Charts on a scrolling page
 
-By default `interactionsPlugin` handles the wheel and one-finger touch over the plot, which stops the page from scrolling there. On a long page, make the gestures cooperative: the wheel zooms only with Ctrl or Cmd held, one finger scrolls the page, and two fingers pan and zoom the chart. A short hint explains the shortcut.
+By default `interactionsPlugin` lets one finger scroll the page and uses two fingers to pan and pinch (`touchPan: "two-finger"`), but the wheel zooms the plot and stops the page from scrolling there. On a long page, also make the wheel cooperative: it zooms only with Ctrl or Cmd held. A short hint explains the shortcut. Pass `touchPan: true` instead if one finger should pan the chart.
 
 ```ts
 import { Chart } from "blazeplot";

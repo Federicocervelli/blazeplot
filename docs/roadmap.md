@@ -22,7 +22,7 @@ These are additive and can ship in 1.x minor releases.
 2. **Mobile and responsive UX**
    - [ ] Better hover-free workflows for selection, navigator, legend, tooltip, and annotations on touch screens.
    - [ ] Responsive presets for axes, tick density, gutters, legends, and compact dashboard panels.
-   - [ ] Mobile WebGL2 coverage in the browser test suite, including real-device checks of one-finger page scrolling with `touchPan: "two-finger"` (verified through touch emulation only so far).
+   - [ ] Mobile WebGL2 coverage in the browser test suite, including real-device checks of one-finger page scrolling with the default `touchPan: "two-finger"` (verified through touch emulation only so far).
 
 3. **Data pipeline helpers**
    - [ ] Optional ingestion helpers for CSV, JSON, typed arrays, and worker-fed batches.

@@ -17,7 +17,7 @@ BlazePlot is for datasets that outgrow general-purpose charting libraries: milli
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **197 KiB raw**. Plugins and helpers ship as separate subpath entries.
+The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **198 KiB raw**. Plugins and helpers ship as separate subpath entries.
 
 Headline numbers from the manual headed comparison against uPlot and Chart.js, one primary metric per scenario (median of fresh-page runs; bold marks the winner among BlazePlot WebGL, uPlot and Chart.js):
 
@@ -72,7 +72,7 @@ if (!el) throw new Error("Missing #chart host");
 const x = Array.from({ length: 1000 }, (_, i) => i);
 const y = x.map((value) => Math.sin(value * 0.02));
 
-const chart = new Chart(el, { plugins: [interactionsPlugin(), tooltipPlugin()] });
+const chart = new Chart(el, { theme: "auto", plugins: [interactionsPlugin(), tooltipPlugin()] }); // theme: "auto" follows prefers-color-scheme
 chart.addLine({ dataset: new StaticDataset(x, y), name: "sine" });
 chart.fitToData();
 chart.start();
@@ -90,7 +90,7 @@ For streaming data, pass `capacity` to `addLine` and append samples; see [Live d
 - **Series types.** Line, area, scatter, bar, histogram (`addBar` with `HistogramDataset`), OHLC, and candlestick, each with independent data, style (`series.setStyle`), and visibility.
 - **Live and large data.** Streaming ring buffers (including fixed-rate `UniformRingBuffer`), static typed arrays, and a custom dataset contract for remote or procedural sources.
 - **Level-of-detail downsampling.** Min/max extraction keeps dense views accurate and cheap at any zoom; `ServerSampledDataset` renders server-reduced buckets directly.
-- **Plugins.** Legend, tooltip, interactions (pan, zoom, reset, keyboard, touch), annotations, selection, crosshair, navigator, accessibility, and flame graph, built on the same public APIs available to custom plugins. Interactions can be cooperative on scrolling pages (`wheelZoom: "modifier"`, `touchPan: "two-finger"`).
+- **Plugins.** Legend, tooltip, interactions (pan, zoom, reset, keyboard, touch), annotations, selection, crosshair, navigator, accessibility, and flame graph, built on the same public APIs available to custom plugins. Touch pan is cooperative by default (one finger scrolls the page, two fingers pan and pinch), and `wheelZoom: "modifier"` keeps the wheel for page scrolling.
 - **Accessibility.** Charts are named figures with a generated data summary, focus rings, and forced-colors support; `interactionsPlugin` adds keyboard pan/zoom, and `blazeplot/plugins/a11y` adds a hidden data table and a keyboard inspection cursor. Built-in text can be localized (see [Accessibility](docs/accessibility.md)).
 - **Linked charts.** `blazeplot/linked` synchronizes multi-panel layouts.
 - **Export.** `chart.screenshot()`, CSV/JSON data export, and pure transform helpers (see [Export image and data](docs/examples.md#export-image-and-data)).

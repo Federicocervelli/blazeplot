@@ -205,7 +205,7 @@ class Chart {
     getFrameStats(target?: ChartFrameStats): ChartFrameStats;
     getHoverState(): ChartHoverState | null;
     subscribe<K extends ChartEventName>(event: K, callback: (payload: ChartEventMap[K]) => void): () => void;
-    setTheme(theme?: ChartTheme): void;
+    setTheme(theme?: ChartTheme | "auto"): void;
     setGridVisible(visible: boolean): void;
     setAxes(axes: ChartOptions["axes"]): void;
     pick(clientX: number, clientY: number, options?: ChartPickOptions): ChartHoverState | null;
@@ -401,7 +401,7 @@ interface ChartOptions {
     readonly followX?: boolean | ChartFollowXOptions;
     readonly renderLoop?: ChartRenderLoop;
     readonly plugins?: readonly ChartPlugin[];
-    readonly theme?: ChartTheme;
+    readonly theme?: ChartTheme | "auto";
     readonly renderer?: RendererChoice | ChartRendererFactory;
 }
 ```

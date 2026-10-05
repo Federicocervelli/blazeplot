@@ -106,7 +106,12 @@ export interface ChartOptions {
   readonly renderLoop?: ChartRenderLoop;
   /** Installed in this order when the chart is constructed; disposed in reverse order by `dispose()`. */
   readonly plugins?: readonly ChartPlugin[];
-  readonly theme?: ChartTheme;
+  /**
+   * Chart theme. Defaults to the dark theme. `"auto"` follows the page's `prefers-color-scheme`
+   * (the dark theme, or `LIGHT_CHART_THEME` when the user prefers light) and switches live when the
+   * preference changes.
+   */
+  readonly theme?: ChartTheme | "auto";
   /**
    * Rendering engine. Defaults to `"auto"`: WebGL2, falling back to Canvas 2D when WebGL2 is
    * unavailable. `"webgl2"` and `"canvas2d"` are strict and throw `WebGL2UnavailableError` /

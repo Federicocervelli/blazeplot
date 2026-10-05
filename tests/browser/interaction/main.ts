@@ -248,7 +248,7 @@ if (caseName === "a11y") {
       })]
     : caseName === "mobile"
       ? [
-          interactionsPlugin({ minDragDistancePx: 4 }),
+          interactionsPlugin({ minDragDistancePx: 4, touchPan: true }),
           tooltipPlugin(),
           crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }),
         ]
