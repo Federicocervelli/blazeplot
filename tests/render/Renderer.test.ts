@@ -1,43 +1,17 @@
 import { describe, expect, it } from "bun:test";
 import { Renderer } from "../../src/render/Renderer.ts";
 import { testStyle } from "../helpers.ts";
-import type { BufferSpec, DrawSpec, GpuBackend, GpuBuffer, GpuCapabilities, GpuProgram, GpuResource } from "../../src/render/types.ts";
+import type { DrawCommand, GpuBackend } from "../../src/render/types.ts";
 
 class MockBackend implements GpuBackend {
-  readonly capabilities: GpuCapabilities;
-  readonly createdBuffers: BufferSpec[] = [];
-  readonly updates: Array<{ buffer: GpuBuffer; data: Float32Array | Uint16Array; offset?: number }> = [];
-  readonly programs: Array<{ vert: string; frag: string }> = [];
-  readonly draws: DrawSpec[] = [];
+  readonly submits: Array<{ stream: Float32Array; floatCount: number; commands: readonly DrawCommand[] }> = [];
   readonly clears: Array<readonly [number, number, number, number]> = [];
   readonly viewports: Array<readonly [number, number, number, number]> = [];
   destroyed = false;
-  private nextBufferId = 1;
-  private nextProgramId = 1;
 
-  constructor(instancing: boolean = true) {
-    this.capabilities = { instancing };
+  submit(stream: Float32Array, floatCount: number, commands: readonly DrawCommand[]): void {
+    this.submits.push({ stream: stream.slice(0, floatCount), floatCount, commands: [...commands] });
   }
-
-  createBuffer(spec: BufferSpec): GpuBuffer {
-    this.createdBuffers.push(spec);
-    return { kind: "buffer", length: spec.length, type: spec.type, id: this.nextBufferId++ } as GpuBuffer;
-  }
-
-  updateBuffer(buffer: GpuBuffer, data: Float32Array | Uint16Array, offset?: number): void {
-    this.updates.push({ buffer, data, offset });
-  }
-
-  createProgram(vert: string, frag: string): GpuProgram {
-    this.programs.push({ vert, frag });
-    return { kind: "program", id: this.nextProgramId++ } as GpuProgram;
-  }
-
-  draw(spec: DrawSpec): void {
-    this.draws.push(spec);
-  }
-
-  dispose(_resource: GpuResource): void {}
 
   clear(r: number, g: number, b: number, a: number): void {
     this.clears.push([r, g, b, a]);
@@ -47,118 +21,144 @@ class MockBackend implements GpuBackend {
     this.viewports.push([x, y, w, h]);
   }
 
-  getContext(): WebGL2RenderingContext | null {
-    return null;
-  }
-
   destroy(): void {
     this.destroyed = true;
   }
+
+  get commands(): readonly DrawCommand[] {
+    return this.submits.flatMap((submit) => submit.commands);
+  }
 }
 
-function makeRenderer(instancing: boolean = true): { renderer: Renderer; backend: MockBackend; positions: GpuBuffer } {
-  const backend = new MockBackend(instancing);
-  const renderer = new Renderer(backend);
-  const positions = renderer.createFloatBuffer(16);
-  return { renderer, backend, positions };
+function makeRenderer(): { renderer: Renderer; backend: MockBackend } {
+  const backend = new MockBackend();
+  return { renderer: new Renderer(backend), backend };
 }
+
+const positions = new Float32Array([0, 0, 1, 1, 2, 0, 3, 1, 4, 0, 5, 1, 6, 0, 7, 1]);
 
 describe("Renderer", () => {
   const projection = { scaleX: 2, scaleY: 3, offsetX: -1, offsetY: 1 };
 
-  it("lazily creates programs and shares static quad corners through the backend contract", () => {
-    const { renderer, backend, positions } = makeRenderer();
-    expect(backend.programs).toHaveLength(0);
-    expect(backend.createdBuffers).toEqual([{ usage: "stream", type: "float", length: 16 }]);
-
-    renderer.drawBarsInstanced(positions, 3, testStyle(), projection);
-    renderer.drawBarsInstanced(positions, 3, testStyle(), projection);
-
-    expect(backend.programs).toHaveLength(1);
-    expect(backend.createdBuffers.filter((spec) => spec.usage === "static")).toHaveLength(1);
-    expect(Array.from(backend.updates.at(-1)!.data)).toEqual([-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1]);
-  });
-
-  it("begins frames with a viewport and transparent clear, and delegates updates and dispose", () => {
-    const { renderer, backend, positions } = makeRenderer();
+  it("begins frames with a viewport and transparent clear, and destroys the backend on dispose", () => {
+    const { renderer, backend } = makeRenderer();
 
     renderer.beginFrame(300, 200, 2);
-    renderer.updateFloatBuffer(positions, new Float32Array([1, 2, 3, 4]), 2);
     renderer.dispose();
 
     expect(backend.viewports).toEqual([[0, 0, 300, 200]]);
     expect(backend.clears).toEqual([[0, 0, 0, 0]]);
-    expect(Array.from(backend.updates.at(-1)!.data)).toEqual([1, 2]);
     expect(backend.destroyed).toBe(true);
   });
 
+  it("records draws and submits the whole frame in one call", () => {
+    const { renderer, backend } = makeRenderer();
+    renderer.beginFrame(800, 400, 1);
+
+    renderer.drawLines(positions, 4, [1, 0, 0, 1], 1, projection);
+    renderer.drawTriangles(positions, 8, [0, 1, 0, 0.5], projection, "triangle_strip");
+    renderer.drawPoints(positions, 3, [0, 0, 1, 1], 5, projection);
+    expect(backend.submits).toHaveLength(0);
+    renderer.endFrame();
+
+    expect(backend.submits).toHaveLength(1);
+    const { commands, floatCount, stream } = backend.submits[0]!;
+    expect(floatCount).toBe((4 + 8 + 3) * 2);
+    expect(Array.from(stream.subarray(0, 8))).toEqual([0, 0, 1, 1, 2, 0, 3, 1]);
+    expect(commands.map((c) => c.first)).toEqual([0, 4, 12]);
+  });
+
+  it("does not submit empty frames", () => {
+    const { renderer, backend } = makeRenderer();
+    renderer.beginFrame(800, 400, 1);
+    renderer.drawLines(positions, 0, [1, 1, 1, 1], 1, projection);
+    renderer.endFrame();
+    expect(backend.submits).toHaveLength(0);
+  });
+
   it("draws hairlines natively and area fills as triangle strips", () => {
-    const { renderer, backend, positions } = makeRenderer();
+    const { renderer, backend } = makeRenderer();
     renderer.beginFrame(800, 400, 1);
 
     renderer.drawLines(positions, 6, [1, 0, 0, 1], 1, projection);
     renderer.drawTriangles(positions, 8, [0, 1, 0, 0.5], projection, "triangle_strip");
+    renderer.endFrame();
 
-    expect(backend.draws.at(-2)).toMatchObject({ primitive: "line_strip", count: 6, attributes: { position: positions } });
-    expect(Array.from(backend.draws.at(-2)!.uniforms.uScale as Float32Array)).toEqual([2, 3]);
-    expect(backend.draws.at(-1)).toMatchObject({ primitive: "triangle_strip", count: 8 });
-    expect(backend.draws.at(-1)!.uniforms.uColor).toEqual([0, 1, 0, 0.5]);
+    expect(backend.commands[0]).toMatchObject({ kind: "solid", primitive: "line_strip", count: 6, scaleX: 2, scaleY: 3, offsetX: -1, offsetY: 1, color: [1, 0, 0, 1] });
+    expect(backend.commands[1]).toMatchObject({ kind: "solid", primitive: "triangle_strip", count: 8, color: [0, 1, 0, 0.5] });
+  });
+
+  it("draws clip-space lines with an identity projection", () => {
+    const { renderer, backend } = makeRenderer();
+    renderer.beginFrame(800, 400, 1);
+    renderer.drawClipLines(positions, 4, [0.5, 0.5, 0.5, 1]);
+    renderer.endFrame();
+    expect(backend.commands[0]).toMatchObject({ kind: "solid", primitive: "lines", count: 4, scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 });
   });
 
   it("expands wide lines into instanced quads sized in device pixels", () => {
-    const { renderer, backend, positions } = makeRenderer(true);
+    const { renderer, backend } = makeRenderer();
     renderer.beginFrame(800, 400, 2);
 
     renderer.drawLines(positions, 6, [1, 1, 0, 1], 1.5, projection);
-    const strip = backend.draws.at(-1)!;
-    expect(strip).toMatchObject({ primitive: "triangle_strip", count: 4, instances: 5 });
-    expect(strip.attributes.aStart).toMatchObject({ buffer: positions, divisor: 1, stride: 8, offset: 0 });
-    expect(strip.attributes.aEnd).toMatchObject({ buffer: positions, divisor: 1, stride: 8, offset: 8 });
-    expect(strip.uniforms.uLineWidth).toBe(3);
-    expect(Array.from(strip.uniforms.uCanvasSize as Float32Array)).toEqual([800, 400]);
-
     renderer.drawLines(positions, 6, [1, 1, 0, 1], 2, projection, "lines");
-    expect(backend.draws.at(-1)).toMatchObject({ instances: 3, attributes: { aStart: { stride: 16 }, aEnd: { stride: 16 } } });
+    renderer.endFrame();
+
+    expect(backend.commands[0]).toMatchObject({ kind: "thickLine", layout: "strip", segments: 5, lineWidth: 3, canvasWidth: 800, canvasHeight: 400 });
+    expect(backend.commands[1]).toMatchObject({ kind: "thickLine", layout: "pairs", segments: 3, lineWidth: 4 });
   });
 
-  it("falls back to native lines and point sprites without instancing", () => {
-    const { renderer, backend, positions } = makeRenderer(false);
-    renderer.beginFrame(640, 480, 2);
+  it("uses instanced quads for points and bars", () => {
+    const { renderer, backend } = makeRenderer();
+    renderer.beginFrame(640, 480, 1);
 
-    renderer.drawLines(positions, 4, [1, 1, 1, 1], 3, projection);
-    renderer.drawPoints(positions, 10, [1, 1, 1, 1], 7, projection);
+    renderer.drawPoints(positions, 5, [0, 0, 1, 1], 7, projection);
+    renderer.drawBarsInstanced(positions, 5, testStyle({ barWidth: 0.4, baseline: -1 }), projection);
+    renderer.endFrame();
 
-    expect(backend.draws.at(-2)).toMatchObject({ primitive: "line_strip", count: 4 });
-    expect(backend.draws.at(-1)).toMatchObject({ primitive: "points", count: 10, attributes: { aPosition: positions } });
-    expect(backend.draws.at(-1)!.instances).toBeUndefined();
+    expect(backend.commands[0]).toMatchObject({ kind: "point", instances: 5, pointSize: 7, canvasWidth: 640, canvasHeight: 480 });
+    expect(backend.commands[1]).toMatchObject({ kind: "bar", instances: 5, barWidth: 0.4, baseline: -1, first: 5 });
   });
 
-  it("treats pointSize as a CSS-pixel diameter on both point paths", () => {
-    for (const instancing of [true, false]) {
-      const { renderer, backend, positions } = makeRenderer(instancing);
-      renderer.beginFrame(1280, 960, 2);
-      renderer.drawPoints(positions, 10, [0, 0, 1, 1], 6, projection);
-      expect(backend.draws.at(-1)!.uniforms.uPointSize).toBe(12);
-    }
+  it("treats pointSize as a CSS-pixel diameter", () => {
+    const { renderer, backend } = makeRenderer();
+    renderer.beginFrame(1280, 960, 2);
+    renderer.drawPoints(positions, 5, [0, 0, 1, 1], 6, projection);
+    renderer.endFrame();
+    expect(backend.commands[0]).toMatchObject({ kind: "point", pointSize: 12 });
   });
 
   it("offsets the instanced bar baseline by the Y origin", () => {
-    const { renderer, backend, positions } = makeRenderer(true);
+    const { renderer, backend } = makeRenderer();
     renderer.beginFrame(640, 480, 1);
     renderer.drawBarsInstanced(positions, 5, testStyle({ barWidth: 0.4, baseline: 1_000_000 }), projection, 999_990);
-    expect(backend.draws.at(-1)!.uniforms.uBaseline).toBe(10);
+    renderer.endFrame();
+    expect(backend.commands[0]).toMatchObject({ kind: "bar", baseline: 10 });
   });
 
-  it("uses instanced quads for points and bars when supported", () => {
-    const { renderer, backend, positions } = makeRenderer(true);
+  it("grows the frame stream while keeping earlier draws intact", () => {
+    const { renderer, backend } = makeRenderer();
     renderer.beginFrame(640, 480, 1);
+    const big = new Float32Array(200_000).fill(3);
+    renderer.drawTriangles(positions, 8, [1, 1, 1, 1], projection);
+    renderer.drawTriangles(big, 100_000, [1, 1, 1, 1], projection);
+    renderer.endFrame();
 
-    renderer.drawPoints(positions, 10, [0, 0, 1, 1], 7, projection);
-    renderer.drawBarsInstanced(positions, 5, testStyle({ barWidth: 0.4, baseline: -1 }), projection);
+    const { stream, floatCount } = backend.submits[0]!;
+    expect(floatCount).toBe(16 + 200_000);
+    expect(Array.from(stream.subarray(0, 4))).toEqual([0, 0, 1, 1]);
+    expect(stream[16]).toBe(3);
+    expect(backend.commands[1]!.first).toBe(8);
+  });
 
-    expect(backend.draws.at(-2)).toMatchObject({ primitive: "triangle_strip", count: 4, instances: 10 });
-    expect(backend.draws.at(-2)!.uniforms.uPointSize).toBe(7);
-    expect(Array.from(backend.draws.at(-2)!.uniforms.uCanvasSize as Float32Array)).toEqual([640, 480]);
-    expect(backend.draws.at(-1)).toMatchObject({ instances: 5, uniforms: { uBarWidth: 0.4, uBaseline: -1 } });
+  it("starts each frame from an empty stream", () => {
+    const { renderer, backend } = makeRenderer();
+    for (let frame = 0; frame < 2; frame++) {
+      renderer.beginFrame(640, 480, 1);
+      renderer.drawTriangles(positions, 8, [1, 1, 1, 1], projection);
+      renderer.endFrame();
+    }
+    expect(backend.submits.map((s) => s.floatCount)).toEqual([16, 16]);
+    expect(backend.submits[1]!.commands[0]!.first).toBe(0);
   });
 });

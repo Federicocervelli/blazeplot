@@ -12,6 +12,7 @@ Use this page when a chart renders blank, feels slow, or behaves differently fro
 | Chart slows down over time | Per-point appends, chart recreation, hidden render loops, DOM overlays | [Performance drops over time](#performance-drops-over-time) |
 | Log axis fails or stops drawing | Zero or negative viewport values | [Log axis throws a domain error](#log-axis-throws-a-domain-error) |
 | React chart remounts | Unstable `options` identity or missing effect cleanup | [React chart recreates unexpectedly](#react-chart-recreates-unexpectedly) |
+| Page will not scroll over the chart, or a touch drag scrolls instead of panning | Which plugin sets `touch-action`, `wheelZoom`/`touchPan` options | [Page scrolling and chart gestures](#page-scrolling-and-chart-gestures) |
 | Screenshot omits controls | Controls live outside the chart root | [Screenshots miss external UI](#screenshots-miss-external-ui) |
 
 ## Blank chart
@@ -128,6 +129,17 @@ export function TelemetryPanel() {
   return <div ref={hostRef} style={{ height: 320 }} />;
 }
 ```
+
+## Page scrolling and chart gestures
+
+A chart sets no `touch-action`, so on its own it never blocks scrolling. Gestures take scrolling over only when a plugin asks for them:
+
+- **`interactionsPlugin`** sets `touch-action: none` on the plot (and axis gutters) while `touchPan` or `pinchZoom` is on, and handles the wheel over the plot. If that traps scrolling on a long page, make it cooperative: `interactionsPlugin({ wheelZoom: "modifier", touchPan: "two-finger" })`. The wheel then scrolls the page unless Ctrl or Cmd is held, and one finger scrolls while two fingers pan and zoom. Or turn the gestures off with `wheelZoom: false`, `touchPan: false`, and `pinchZoom: false`.
+- **`selectionPlugin`** sets `touch-action: none` so a touch drag selects.
+- **`tooltipPlugin` and `crosshairPlugin`** set `touch-action: pan-y` for their long-press gesture, so vertical swipes still scroll.
+- **Your own plugin** opts into exclusive touch input explicitly: `ctx.dom.decorate("plot", { style: { touchAction: "none" } })`. Decorations combine by intersection, so the most restrictive plugin wins.
+
+To keep the chart from reacting to touch at all, leave `interactionsPlugin` out or set `touchPan: false, pinchZoom: false`.
 
 ## Screenshots miss external UI
 

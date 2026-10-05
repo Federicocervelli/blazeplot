@@ -2,8 +2,9 @@ import { describe, expect, it } from "bun:test";
 import { interactionsPlugin } from "../../src/plugins/interactions.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
 import type { InteractionsPluginOptions } from "../../src/ui/Interactions.ts";
+import { tooltipPlugin } from "../../src/plugins/tooltip.ts";
 import { countNodes } from "./fakes.ts";
-import { fire, installPlugin, pointerEvent, touchEvent, useChartHarness, wheelEvent } from "./harness.ts";
+import { fire, installPlugin, pointerEvent, useChartHarness, wheelEvent } from "./harness.ts";
 
 const h = useChartHarness();
 
@@ -57,6 +58,26 @@ describe("interactionsPlugin install and dispose", () => {
     expect(x.style.filter).toBe(before.xFilter);
     expect(x.className).toBe(before.xClass);
     chart.dispose();
+  });
+
+  it("leaves touch-action alone without the plugin so the page can scroll", () => {
+    const plain = h.make({ axes: { x: true, y: true } });
+    for (const el of [plain.canvas, plain.plotElement, plain.rootElement, plain.xAxisElement, plain.yAxisElement]) {
+      expect(el.style.touchAction).toBe("");
+    }
+    const withPlugin = make();
+    expect(withPlugin.canvas.style.touchAction).toBe("none");
+  });
+
+  it("keeps the most restrictive touch-action whatever the plugin install order", () => {
+    const tooltipFirst = h.make({ plugins: [tooltipPlugin(), interactionsPlugin()] });
+    expect(tooltipFirst.canvas.style.touchAction).toBe("none");
+    const interactionsFirst = h.make({ plugins: [interactionsPlugin(), tooltipPlugin()] });
+    expect(interactionsFirst.canvas.style.touchAction).toBe("none");
+    const tooltipOnly = h.make({ plugins: [tooltipPlugin()] });
+    expect(tooltipOnly.canvas.style.touchAction).toBe("pan-y");
+    for (const chart of [tooltipFirst, interactionsFirst, tooltipOnly]) chart.dispose();
+    expect(tooltipOnly.canvas.style.touchAction).toBe("");
   });
 
   it("does not claim gutters or touch-action when the related options are off", () => {
@@ -330,49 +351,60 @@ describe("interactionsPlugin reset", () => {
   });
 });
 
+const touch = (type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel", x: number, y: number, pointerId = 1): PointerEvent =>
+  pointerEvent(type, x, y, { pointerType: "touch", pointerId });
+
 describe("interactionsPlugin touch", () => {
   it("pans with one finger and pinch-zooms with two", () => {
     const chart = make();
-    const down = touchEvent("touchstart", [{ clientX: 200, clientY: 100 }]);
-    fire(chart.canvas, down);
-    expect(down.defaultPrevented).toBe(true);
-    fire(chart.canvas, touchEvent("touchmove", [{ clientX: 240, clientY: 100 }]));
+    fire(chart.canvas, touch("pointerdown", 200, 100));
+    fire(chart.canvas, touch("pointermove", 240, 100));
     expect(chart.getViewport().xMin).toBeCloseTo(-10, 5);
-    fire(chart.canvas, touchEvent("touchend", [], [{ clientX: 240, clientY: 100 }]));
+    fire(chart.canvas, touch("pointerup", 240, 100));
     // A finished gesture does not keep panning.
-    fire(chart.canvas, touchEvent("touchmove", [{ clientX: 300, clientY: 100 }]));
+    fire(chart.canvas, touch("pointermove", 300, 100));
     expect(chart.getViewport().xMin).toBeCloseTo(-10, 5);
 
-    const pinchStart = touchEvent("touchstart", [{ clientX: 150, clientY: 100 }, { clientX: 250, clientY: 100 }]);
-    fire(chart.canvas, pinchStart);
-    expect(pinchStart.defaultPrevented).toBe(true);
+    fire(chart.canvas, touch("pointerdown", 150, 100, 1));
+    fire(chart.canvas, touch("pointerdown", 250, 100, 2));
     const widthBefore = span(chart, "x");
-    fire(chart.canvas, touchEvent("touchmove", [{ clientX: 100, clientY: 100 }, { clientX: 300, clientY: 100 }]));
+    fire(chart.canvas, touch("pointermove", 100, 100, 1));
+    fire(chart.canvas, touch("pointermove", 300, 100, 2));
     expect(span(chart, "x")).toBeLessThan(widthBefore);
     // Lifting one finger switches back to a pan with the remaining one.
-    fire(chart.canvas, touchEvent("touchend", [{ clientX: 100, clientY: 100 }], [{ clientX: 300, clientY: 100 }]));
+    fire(chart.canvas, touch("pointerup", 300, 100, 2));
     const xMin = chart.getViewport().xMin;
-    fire(chart.canvas, touchEvent("touchmove", [{ clientX: 140, clientY: 100 }]));
+    fire(chart.canvas, touch("pointermove", 140, 100, 1));
     expect(chart.getViewport().xMin).not.toBe(xMin);
-    fire(chart.canvas, touchEvent("touchcancel", [], [{ clientX: 140, clientY: 100 }]));
+    fire(chart.canvas, touch("pointercancel", 140, 100, 1));
     chart.dispose();
   });
 
   it("pans only the touched axis gutter", () => {
     const chart = make();
-    fire(chart.yAxisElement, touchEvent("touchstart", [{ clientX: -10, clientY: 100 }]));
-    fire(chart.yAxisElement, touchEvent("touchmove", [{ clientX: -10, clientY: 120 }]));
+    fire(chart.yAxisElement, touch("pointerdown", -10, 100));
+    fire(chart.yAxisElement, touch("pointermove", -10, 120));
     expect(chart.getViewport().xMin).toBe(0);
     expect(chart.getViewport().yMin).not.toBe(0);
     chart.dispose();
   });
 
-  it("resets on double tap, but not for slow or distant taps", () => {
+  it("ignores a move that another plugin already handled", () => {
+    const chart = make();
+    fire(chart.canvas, touch("pointerdown", 200, 100));
+    const move = touch("pointermove", 240, 100);
+    move.preventDefault();
+    fire(chart.canvas, move);
+    expect(chart.getViewport().xMin).toBe(0);
+    chart.dispose();
+  });
+
+  it("resets on double tap, but not for slow, distant, or dragged taps", () => {
     const chart = make();
     fire(chart.canvas, wheelEvent(100, 100, { deltaY: -100 }));
-    const tap = (x: number, stamp: number): TouchEvent => {
-      fire(chart.canvas, touchEvent("touchstart", [{ clientX: x, clientY: 100 }]));
-      const end = touchEvent("touchend", [], [{ clientX: x, clientY: 100 }]);
+    const tap = (x: number, stamp: number): PointerEvent => {
+      fire(chart.canvas, touch("pointerdown", x, 100));
+      const end = touch("pointerup", x, 100);
       Object.defineProperty(end, "timeStamp", { value: stamp });
       fire(chart.canvas, end);
       return end;
@@ -382,7 +414,16 @@ describe("interactionsPlugin touch", () => {
     expect(span(chart, "x")).toBeLessThan(100);
     tap(100, 2000);
     expect(span(chart, "x")).toBeLessThan(100);
-    const second = tap(102, 2100);
+    // A drag between taps never counts as a tap.
+    fire(chart.canvas, touch("pointerdown", 100, 100));
+    fire(chart.canvas, touch("pointermove", 160, 100));
+    const dragEnd = touch("pointerup", 160, 100);
+    Object.defineProperty(dragEnd, "timeStamp", { value: 2050 });
+    fire(chart.canvas, dragEnd);
+    const afterDrag = span(chart, "x");
+    tap(160, 2100);
+    expect(span(chart, "x")).toBe(afterDrag);
+    const second = tap(162, 2200);
     expect(second.defaultPrevented).toBe(true);
     expect(chart.getViewport()).toEqual({ xMin: 0, xMax: 100, yMin: 0, yMax: 100 });
     chart.dispose();
@@ -390,9 +431,104 @@ describe("interactionsPlugin touch", () => {
 
   it("ignores touches when touchPan and pinchZoom are off", () => {
     const chart = make({ touchPan: false, pinchZoom: false });
-    const down = touchEvent("touchstart", [{ clientX: 200, clientY: 100 }]);
-    fire(chart.canvas, down);
-    expect(down.defaultPrevented).toBe(false);
+    fire(chart.canvas, touch("pointerdown", 200, 100));
+    fire(chart.canvas, touch("pointermove", 260, 100));
+    expect(chart.getViewport().xMin).toBe(0);
+    chart.dispose();
+  });
+});
+
+const hintOf = (chart: Chart): HTMLElement | null => chart.plotElement.querySelector(".blazeplot-gesture-hint");
+
+describe("interactionsPlugin cooperative gestures", () => {
+  it('wheelZoom "modifier" scrolls the page without Ctrl and zooms with Ctrl or pinch', () => {
+    const chart = make({ wheelZoom: "modifier" });
+    const before = chart.getViewport();
+    const plain = wheelEvent(100, 100, { deltaY: -100 });
+    fire(chart.canvas, plain);
+    expect(plain.defaultPrevented).toBe(false);
+    expect(chart.getViewport()).toEqual(before);
+    const hint = hintOf(chart)!;
+    expect(hint.style.display).toBe("flex");
+    expect(hint.getAttribute("aria-hidden")).toBe("true");
+    expect(hint.textContent).toMatch(/scroll to zoom/);
+
+    const zoom = wheelEvent(100, 100, { deltaY: -100, ctrlKey: true });
+    fire(chart.canvas, zoom);
+    expect(zoom.defaultPrevented).toBe(true);
+    expect(span(chart, "x")).toBeLessThan(100);
+    // Axis gutters are cooperative too.
+    const axisWheel = wheelEvent(100, 100, { deltaY: -100 });
+    const viewport = chart.getViewport();
+    fire(chart.xAxisElement, axisWheel);
+    expect(axisWheel.defaultPrevented).toBe(false);
+    expect(chart.getViewport()).toEqual(viewport);
+    chart.dispose();
+  });
+
+  it("themes, words, and hides the hint on request", () => {
+    const custom = make({ wheelZoom: "modifier", gestureHint: { wheelText: "Hold Ctrl", backgroundColor: "rgb(1, 2, 3)", textColor: "rgb(4, 5, 6)", durationMs: 5 } });
+    fire(custom.canvas, wheelEvent(100, 100, { deltaY: -100 }));
+    const label = hintOf(custom)!.firstElementChild as HTMLElement;
+    expect(label.textContent).toBe("Hold Ctrl");
+    expect(label.style.background).toContain("rgb(1, 2, 3)");
+    expect(label.style.color).toBe("rgb(4, 5, 6)");
+    custom.dispose();
+
+    const off = make({ wheelZoom: "modifier", gestureHint: false });
+    fire(off.canvas, wheelEvent(100, 100, { deltaY: -100 }));
+    expect(hintOf(off)).toBeNull();
+    off.dispose();
+  });
+
+  it("the hint hides itself after its duration", async () => {
+    const chart = make({ wheelZoom: "modifier", gestureHint: { durationMs: 5 } });
+    fire(chart.canvas, wheelEvent(100, 100, { deltaY: -100 }));
+    expect(hintOf(chart)!.style.display).toBe("flex");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(hintOf(chart)!.style.display).toBe("none");
+    chart.dispose();
+  });
+
+  it('touchPan "two-finger" lets one finger scroll the page and uses two fingers to pan and zoom', () => {
+    const chart = make({ touchPan: "two-finger" });
+    expect(chart.canvas.style.touchAction).toBe("pan-x pan-y");
+    const before = chart.getViewport();
+    fire(chart.canvas, touch("pointerdown", 200, 100));
+    fire(chart.canvas, touch("pointermove", 260, 100));
+    expect(chart.getViewport()).toEqual(before);
+    expect(hintOf(chart)!.style.display).toBe("flex");
+    expect(hintOf(chart)!.textContent).toMatch(/two fingers/);
+    // The browser takes over for the scroll.
+    fire(chart.canvas, touch("pointercancel", 260, 100));
+    expect(chart.getViewport()).toEqual(before);
+
+    fire(chart.canvas, touch("pointerdown", 150, 100, 1));
+    fire(chart.canvas, touch("pointerdown", 250, 100, 2));
+    const width = span(chart, "x");
+    fire(chart.canvas, touch("pointermove", 100, 100, 1));
+    fire(chart.canvas, touch("pointermove", 300, 100, 2));
+    expect(span(chart, "x")).toBeLessThan(width);
+    const afterPinch = chart.getViewport();
+    // Moving both fingers together pans.
+    fire(chart.canvas, touch("pointermove", 140, 100, 1));
+    fire(chart.canvas, touch("pointermove", 340, 100, 2));
+    expect(chart.getViewport().xMin).toBeLessThan(afterPinch.xMin);
+    expect(span(chart, "x")).toBeCloseTo(afterPinch.xMax - afterPinch.xMin, 5);
+    // Lifting one finger does not start a one-finger pan.
+    fire(chart.canvas, touch("pointerup", 340, 100, 2));
+    const settled = chart.getViewport();
+    fire(chart.canvas, touch("pointermove", 200, 100, 1));
+    expect(chart.getViewport()).toEqual(settled);
+    chart.dispose();
+  });
+
+  it("two-finger mode still pans with one finger on an axis gutter", () => {
+    const chart = make({ touchPan: "two-finger" });
+    expect(chart.yAxisElement.style.touchAction).toBe("none");
+    fire(chart.yAxisElement, touch("pointerdown", -10, 100));
+    fire(chart.yAxisElement, touch("pointermove", -10, 120));
+    expect(chart.getViewport().yMin).not.toBe(0);
     chart.dispose();
   });
 });

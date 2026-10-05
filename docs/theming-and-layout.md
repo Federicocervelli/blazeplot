@@ -38,6 +38,19 @@ Theme values are merged with the default theme, so you can override only the tok
 
 Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(config, { color: "#f97316", lineWidth: 2 })`.
 
+Series without an explicit `color` take the first theme palette color no other attached series uses, so removing a series and adding another never repeats a color that is still on screen. Those palette-colored series follow `chart.setTheme(...)`; series with an explicit `color` keep it.
+
+Restyle a series after creation with `series.setStyle(...)`. It merges the fields you pass, resolves CSS colors, updates the legend and the next frame, and survives forced-colors mode. Setting `color` pins it, so later theme changes leave that series alone.
+
+```ts
+import { Chart } from "blazeplot";
+
+const chart = new Chart(document.body);
+const series = chart.addLine({ capacity: 1_000, name: "cpu" });
+series.setStyle({ color: "#f97316", lineWidth: 2 });
+chart.dispose();
+```
+
 ## Sizing
 
 - The chart root fills its host element. Give the host an explicit width and height.
@@ -47,7 +60,9 @@ Per-series colors take the same CSS strings or RGBA tuples: `chart.addLine(confi
 
 ## Axes and gutters
 
-- Outside axes are the default and reserve real CSS-pixel gutters for tick labels: 52px on the left/right Y sides and 28px on the bottom X side. Gutters expand when an outside axis has a title.
+- Outside axes are the default and reserve real CSS-pixel gutters for tick labels: 52px on the left/right Y sides and 28px on the bottom X side. Gutters expand (by 24px for Y, 20px for X) when an outside axis has a title.
+- Set `size` on an axis to change its gutter: `axes: { y: { size: 80 } }` is a fixed size in CSS pixels, not counting the title allowance. `size: "auto"` measures the widest (Y, Y2) or tallest (X) tick label and adds padding. It grows at once and shrinks only after the smaller size has held for about a second, so live charts with changing label lengths do not jitter.
+- A chart title and subtitle get their own row above the plot (26px for a title, 20px more for a subtitle), so they never cover the plot area.
 - Inside axes draw labels over the plot and are useful for compact layouts.
 - Use `axes: { x: { position: "inside" }, y: { position: "inside" } }` when space is tight.
 - Titles and axis titles are built-in DOM text overlays and are included in `chart.screenshot()` output.
@@ -78,7 +93,7 @@ Use `scale: "log"` only for positive domains. Use `scale: "symlog"` when values 
 
 Plugins that need space outside the plot should mount their UI into the `"root"` slot and call `ctx.layout.reserve(reservation)`, which returns a release function. This avoids overlapping axes and keeps screenshots consistent. Plot overlays, such as crosshairs or custom markers, should mount into the `"plot"` slot with `ctx.dom.mount("plot", element)`. See [Plugin authoring](./plugin-authoring.md#mount-slots-and-surfaces).
 
-The built-in legend is positioned inside the chart root and does not reserve space. The navigator can reserve top or bottom space. For external legends or controls, create a plugin with a layout reservation.
+The built-in legend defaults to a corner inside the plot and does not reserve space. Pass `legendPlugin({ position: "bottom" })` (or `"top"`, `"left"`, `"right"`) to place it outside the plot: it reserves its measured size through `ctx.layout.reserve` and the plot shrinks to fit. The navigator can reserve top or bottom space. For external legends or controls, create a plugin with a layout reservation.
 
 For plugin lifecycle details, see [Plugin authoring](./plugin-authoring.md).
 

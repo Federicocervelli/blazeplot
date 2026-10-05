@@ -67,7 +67,7 @@ function latestSample(series: SeriesStore): SeriesSample | null {
  * @internal Build the chart summary from series state. Costs one `dataBounds()` per series
  * (logarithmic for built-in datasets), so callers throttle it instead of running it per frame.
  */
-export function buildChartSummary(series: readonly SeriesStore[], format: SummaryValueFormatter): ChartSummary {
+export function buildChartSummary(series: readonly SeriesStore[], format: SummaryValueFormatter, messages: ChartSummaryMessages = DEFAULT_SUMMARY_MESSAGES): ChartSummary {
   const summaries: ChartSeriesSummary[] = [];
   let xMin = Infinity;
   let xMax = -Infinity;
@@ -82,7 +82,7 @@ export function buildChartSummary(series: readonly SeriesStore[], format: Summar
     summaries.push({
       index,
       ...(store.config.id === undefined ? {} : { id: store.config.id }),
-      name: seriesDisplayName(store, index),
+      name: store.config.name ?? store.config.id ?? messages.seriesName(store.config.mode, index),
       mode: store.config.mode,
       visible: store.visible,
       yAxis,
@@ -93,29 +93,79 @@ export function buildChartSummary(series: readonly SeriesStore[], format: Summar
     });
   }
   const x = Number.isFinite(xMin) && Number.isFinite(xMax) ? { min: xMin, max: xMax } : null;
-  return { series: summaries, x, text: summaryText(summaries, x, format) };
+  return { series: summaries, x, text: summaryText(summaries, x, format, messages) };
 }
 
-function plural(count: number, singular: string, pluralForm: string = `${singular}s`): string {
-  return `${count.toLocaleString("en-US")} ${count === 1 ? singular : pluralForm}`;
+/**
+ * Strings and formatters behind the generated chart summary. Override any key through
+ * `accessibility.messages.summary`; unset keys keep the English default.
+ */
+export interface ChartSummaryMessages {
+  /** Text when the chart has no series. */
+  readonly noSeries: string;
+  /** Opening sentence. `mode` is the single shared series mode, or `null` when modes are mixed. */
+  readonly intro: (mode: SeriesMode | null, seriesCount: number) => string;
+  readonly xRange: (from: string, to: string) => string;
+  /** Mode word used when a chart mixes series modes. */
+  readonly modeName: (mode: SeriesMode) => string;
+  readonly hidden: string;
+  readonly points: (count: number) => string;
+  readonly valueRange: (from: string, to: string) => string;
+  readonly latest: (y: string, x: string) => string;
+  /** One series line from its name and facts. */
+  readonly seriesLine: (name: string, facts: readonly string[]) => string;
+  readonly moreSeries: (count: number) => string;
+  /** Fallback series name when it has neither `name` nor `id`. */
+  readonly seriesName: (mode: SeriesMode, index: number) => string;
 }
 
-function summaryText(series: readonly ChartSeriesSummary[], x: ChartSummaryRange | null, format: SummaryValueFormatter): string {
-  if (series.length === 0) return "Chart with no data series.";
+/** Create the default English summary messages, counting with `Intl.NumberFormat(locale)`. */
+export function createSummaryMessages(locale?: string | readonly string[], overrides: Partial<ChartSummaryMessages> = {}): ChartSummaryMessages {
+  const count = (value: number): string => formatCount(value, locale);
+  const plural = (value: number, singular: string, pluralForm: string = `${singular}s`): string =>
+    `${count(value)} ${value === 1 ? singular : pluralForm}`;
+  return {
+    noSeries: "Chart with no data series.",
+    intro: (mode, seriesCount) => `${mode ? `${capitalize(modeName(mode))} chart` : "Chart"} with ${plural(seriesCount, "series", "series")}.`,
+    xRange: (from, to) => `X from ${from} to ${to}.`,
+    modeName,
+    hidden: "hidden",
+    points: (value) => plural(value, "point"),
+    valueRange: (from, to) => `values from ${from} to ${to}`,
+    latest: (y, x) => `latest ${y} at ${x}`,
+    seriesLine: (name, facts) => `${name}: ${facts.join(", ")}.`,
+    moreSeries: (value) => `And ${plural(value, "more series", "more series")}.`,
+    seriesName: (mode, index) => `${mode} ${index + 1}`,
+    ...overrides,
+  };
+}
+
+/** @internal Format an integer count for `locale` (the runtime default when omitted). */
+export function formatCount(value: number, locale?: string | readonly string[]): string {
+  try {
+    return value.toLocaleString(locale as string | string[] | undefined);
+  } catch {
+    return value.toLocaleString("en-US");
+  }
+}
+
+const DEFAULT_SUMMARY_MESSAGES: ChartSummaryMessages = createSummaryMessages("en-US");
+
+function summaryText(series: readonly ChartSeriesSummary[], x: ChartSummaryRange | null, format: SummaryValueFormatter, messages: ChartSummaryMessages): string {
+  if (series.length === 0) return messages.noSeries;
   const modes = new Set(series.map((item) => item.mode));
-  const kind = modes.size === 1 ? `${capitalize(modeName(series[0]!.mode))} chart` : "Chart";
-  const parts = [`${kind} with ${plural(series.length, "series", "series")}.`];
-  if (x) parts.push(`X from ${format(x.min, "x", "left")} to ${format(x.max, "x", "left")}.`);
+  const parts = [messages.intro(modes.size === 1 ? series[0]!.mode : null, series.length)];
+  if (x) parts.push(messages.xRange(format(x.min, "x", "left"), format(x.max, "x", "left")));
   for (const item of series.slice(0, MAX_DESCRIBED_SERIES)) {
     const facts: string[] = [];
-    if (modes.size > 1) facts.push(modeName(item.mode));
-    if (!item.visible) facts.push("hidden");
-    facts.push(plural(item.sampleCount, "point"));
-    if (item.y) facts.push(`values from ${format(item.y.min, "y", item.yAxis)} to ${format(item.y.max, "y", item.yAxis)}`);
-    if (item.latest) facts.push(`latest ${format(item.latest.y, "y", item.yAxis)} at ${format(item.latest.x, "x", item.yAxis)}`);
-    parts.push(`${item.name}: ${facts.join(", ")}.`);
+    if (modes.size > 1) facts.push(messages.modeName(item.mode));
+    if (!item.visible) facts.push(messages.hidden);
+    facts.push(messages.points(item.sampleCount));
+    if (item.y) facts.push(messages.valueRange(format(item.y.min, "y", item.yAxis), format(item.y.max, "y", item.yAxis)));
+    if (item.latest) facts.push(messages.latest(format(item.latest.y, "y", item.yAxis), format(item.latest.x, "x", item.yAxis)));
+    parts.push(messages.seriesLine(item.name, facts));
   }
-  if (series.length > MAX_DESCRIBED_SERIES) parts.push(`And ${plural(series.length - MAX_DESCRIBED_SERIES, "more series", "more series")}.`);
+  if (series.length > MAX_DESCRIBED_SERIES) parts.push(messages.moreSeries(series.length - MAX_DESCRIBED_SERIES));
   return parts.join(" ");
 }
 

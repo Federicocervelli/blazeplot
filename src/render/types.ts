@@ -1,63 +1,70 @@
-/** Minimal GPU abstraction used by the renderer. */
+import type { RgbaColor } from "../core/types.js";
+
+/** Primitive topology for solid-color draws. */
+export type SolidPrimitive = "lines" | "line_strip" | "triangles" | "triangle_strip";
+
+/** Fields shared by every recorded draw. Vertices are `[x, y]` float pairs in the frame stream. */
+interface DrawBase {
+  /** Index of the first `[x, y]` vertex of this draw in the frame stream. */
+  readonly first: number;
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+  readonly color: RgbaColor;
+}
+
+/** Native GL primitives in a solid color (hairlines, grid, area fills, triangle batches). */
+export interface SolidDraw extends DrawBase {
+  readonly kind: "solid";
+  readonly primitive: SolidPrimitive;
+  /** Vertex count. */
+  readonly count: number;
+}
+
+/** Wide lines drawn as one screen-space quad per segment. */
+export interface ThickLineDraw extends DrawBase {
+  readonly kind: "thickLine";
+  readonly segments: number;
+  /** `strip` reads consecutive vertices as a polyline; `pairs` reads independent vertex pairs. */
+  readonly layout: "strip" | "pairs";
+  /** Line width in device pixels. */
+  readonly lineWidth: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
+/** Instanced point quads. */
+export interface PointDraw extends DrawBase {
+  readonly kind: "point";
+  readonly instances: number;
+  /** Point size in device pixels. */
+  readonly pointSize: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
+/** Instanced bar quads, `barWidth` wide in data units, from `baseline`. */
+export interface BarDraw extends DrawBase {
+  readonly kind: "bar";
+  readonly instances: number;
+  readonly barWidth: number;
+  readonly baseline: number;
+}
+
+/** One recorded draw call. */
+export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw;
+
+/**
+ * Minimal GPU surface used by the renderer. A frame is recorded on the CPU and submitted in one
+ * call, so the number of buffer uploads does not depend on the number of series or chunks.
+ */
 export interface GpuBackend {
-  readonly capabilities: GpuCapabilities;
-  createBuffer(spec: BufferSpec): GpuBuffer;
-  updateBuffer(buffer: GpuBuffer, data: Float32Array | Uint16Array, offset?: number): void;
-  createProgram(vert: string, frag: string): GpuProgram;
-  draw(spec: DrawSpec): void;
-  dispose(resource: GpuResource): void;
-  clear(r: number, g: number, b: number, a: number): void;
+  /** Set the clipped drawing rectangle in drawing-buffer pixels. */
   viewport(x: number, y: number, w: number, h: number): void;
+  clear(r: number, g: number, b: number, a: number): void;
+  /** Upload the first `floatCount` floats of `stream` once, then issue every command against it in order. */
+  submit(stream: Float32Array, floatCount: number, commands: readonly DrawCommand[]): void;
   getContext?(): WebGL2RenderingContext | null;
   destroy(): void;
-}
-
-/** Feature flags reported by a GPU backend. */
-export interface GpuCapabilities {
-  readonly instancing: boolean;
-}
-
-/** Parameters for allocating a GPU buffer. */
-export interface BufferSpec {
-  readonly usage: "static" | "dynamic" | "stream";
-  readonly type: "float" | "element";
-  readonly length: number;
-}
-
-/** Opaque handle for a GPU buffer. */
-export interface GpuBuffer {
-  readonly kind: "buffer";
-  readonly length: number;
-  readonly type: BufferSpec["type"];
-}
-
-/** Opaque handle for a linked GPU program. */
-export interface GpuProgram {
-  readonly kind: "program";
-}
-
-/** GPU resource accepted by backend disposal. */
-export type GpuResource = GpuBuffer | GpuProgram;
-
-/** Uniform values accepted by `DrawSpec.uniforms`. */
-export type UniformValue = number | boolean | readonly number[] | Float32Array;
-
-/** Vertex attribute binding for a draw call. */
-export interface AttributeSpec {
-  readonly buffer: GpuBuffer;
-  readonly divisor: number;
-  readonly stride?: number;
-  readonly offset?: number;
-  readonly size?: number;
-}
-
-/** Complete draw call description for a GPU backend. */
-export interface DrawSpec {
-  readonly program: GpuProgram;
-  readonly primitive: "points" | "lines" | "line_strip" | "triangles" | "triangle_strip";
-  readonly count: number;
-  readonly instances?: number;
-  readonly uniforms: Readonly<Record<string, UniformValue>>;
-  readonly attributes: Readonly<Record<string, GpuBuffer | AttributeSpec>>;
-  readonly elements?: GpuBuffer;
 }

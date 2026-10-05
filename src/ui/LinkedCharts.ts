@@ -44,7 +44,7 @@ let linkedChartsId = 0;
 export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOptions): LinkedChartsHandle {
   const rows = Math.max(1, Math.floor(options.rows ?? options.panels.length));
   const columns = Math.max(1, Math.floor(options.columns ?? Math.ceil(options.panels.length / rows)));
-  const root = document.createElement("div");
+  const root = target.ownerDocument.createElement("div");
   const charts: Chart[] = [];
   const disposers: Array<() => void> = [];
   const syncGroup = `blazeplot-linked-${linkedChartsId++}`;
@@ -67,7 +67,7 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
   const selectRelays = new Map<Chart, (selection: ChartSelectEvent["selection"]) => void>();
 
   for (const panel of options.panels) {
-    const cell = document.createElement("div");
+    const cell = target.ownerDocument.createElement("div");
     cell.className = panel.className ?? "blazeplot-linked-panel";
     Object.assign(cell.style, { position: "relative", minWidth: "0", minHeight: "0" });
     root.appendChild(cell);
@@ -106,8 +106,16 @@ export function createLinkedCharts(target: HTMLElement, options: LinkedChartsOpt
 
   for (const chart of charts) {
     if (options.syncX !== false) {
+      // Mirrored updates must not pause the receiving panel's live follow; the pause itself is mirrored
+      // through `followxchange`, so a user pan pauses every panel and resuming resumes them all.
       disposers.push(chart.subscribe("viewportchange", ({ viewport }) => {
-        syncOthers(chart, (other) => other.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax }));
+        syncOthers(chart, (other) => other.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax }, "left", { source: "linked", pauseFollow: false }));
+      }));
+      disposers.push(chart.subscribe("followxchange", ({ state }) => {
+        if (state === "off") return;
+        syncOthers(chart, (other) => {
+          if (other.getFollowXState() !== "off") other.setFollowXPaused(state === "paused");
+        });
       }));
     }
     if (options.syncSelections) {

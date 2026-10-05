@@ -1,25 +1,30 @@
-import type { GpuBackend, GpuBuffer, GpuProgram, GpuResource, BufferSpec, DrawSpec, AttributeSpec, UniformValue } from "./types.js";
+import type { BarDraw, DrawCommand, GpuBackend, PointDraw, SolidDraw, SolidPrimitive, ThickLineDraw } from "./types.js";
+import { ShaderPrograms } from "./ShaderPrograms.js";
 import { releaseWebGLContext } from "./releaseWebGLContext.js";
-import { WebGL2Resources } from "./WebGL2Resources.js";
 
-type NativeGpuBuffer = GpuBuffer & {
-  readonly buffer: WebGLBuffer;
-  readonly target: number;
-};
+const BYTES_PER_VERTEX = 2 * Float32Array.BYTES_PER_ELEMENT;
 
-type UniformSetter = (value: UniformValue) => void;
+/** Unit-quad corner offsets shared by every instanced program, as triangle-strip vertices. */
+const SEGMENT_CORNERS = [0, -1, 0, 1, 1, -1, 1, 1];
+const POINT_CORNERS = [-1, -1, 1, -1, -1, 1, 1, 1];
+const BAR_CORNERS = [-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1];
 
-type NativeGpuProgram = GpuProgram & {
-  readonly id: number;
+/** A linked program with its fixed vertex array object and uniform locations. */
+interface ProgramState {
   readonly program: WebGLProgram;
-  readonly attributes: ReadonlyMap<string, AttributeInfo>;
-  readonly uniforms: ReadonlyMap<string, UniformSetter>;
-};
-
-interface AttributeInfo {
-  readonly location: number;
-  readonly size: number;
-  readonly type: number;
+  readonly vao: WebGLVertexArrayObject;
+  readonly corners: WebGLBuffer | null;
+  readonly uScale: WebGLUniformLocation | null;
+  readonly uOffset: WebGLUniformLocation | null;
+  readonly uColor: WebGLUniformLocation | null;
+  readonly uCanvasSize: WebGLUniformLocation | null;
+  readonly uLineWidth: WebGLUniformLocation | null;
+  readonly uPointSize: WebGLUniformLocation | null;
+  readonly uBarWidth: WebGLUniformLocation | null;
+  readonly uBaseline: WebGLUniformLocation | null;
+  /** Attribute locations of the per-instance streams (`aStart`/`aEnd` or `aPosition`). */
+  readonly aStart: number;
+  readonly aEnd: number;
 }
 
 /** Error thrown when a WebGL2 backend cannot be created. */
@@ -40,16 +45,18 @@ export function isWebGL2Available(): boolean {
   return gl !== null;
 }
 
-/** Native WebGL2 implementation of BlazePlot's GPU backend. */
+/**
+ * Native WebGL2 implementation of BlazePlot's GPU backend.
+ *
+ * Every frame's geometry lives in one stream buffer that is re-specified (orphaned) and uploaded
+ * with a single `bufferData` call in `submit`; draws read from it at vertex offsets. Each built-in
+ * program has one vertex array object, created on first use.
+ */
 export class WebGL2Backend implements GpuBackend {
   private readonly gl: WebGL2RenderingContext;
-  private readonly resources: WebGL2Resources;
-  private nextProgramId: number = 1;
+  private readonly stream: WebGLBuffer;
+  private programs: Partial<Record<keyof typeof ShaderPrograms, ProgramState>> = {};
   private scissorBox: { x: number; y: number; w: number; h: number } | null = null;
-  private activeProgram: NativeGpuProgram | null = null;
-  private readonly allocatedPrograms: Set<WebGLProgram> = new Set();
-  private enabledAttributes: Set<number> = new Set();
-  private scratchAttributes: Set<number> = new Set();
   /**
    * True once the context this backend's objects belong to has been lost. A restored context is a
    * new generation: every object created before the loss is invalid and deleting it logs
@@ -59,7 +66,6 @@ export class WebGL2Backend implements GpuBackend {
   private readonly handleContextLost = (): void => {
     this.contextLost = true;
   };
-  readonly capabilities: GpuBackend["capabilities"];
 
   /** Create a WebGL2 backend for a canvas. */
   constructor(private readonly canvas: HTMLCanvasElement) {
@@ -80,119 +86,14 @@ export class WebGL2Backend implements GpuBackend {
     }
 
     this.gl = gl;
-    this.capabilities = {
-      instancing: typeof gl.vertexAttribDivisor === "function" && typeof gl.drawArraysInstanced === "function",
-    };
-    this.resources = new WebGL2Resources(gl);
+    const stream = gl.createBuffer();
+    if (!stream) throw new Error("Failed to allocate WebGL buffer.");
+    this.stream = stream;
     canvas.addEventListener("webglcontextlost", this.handleContextLost);
 
     this.gl.disable(this.gl.DEPTH_TEST);
     this.gl.disable(this.gl.STENCIL_TEST);
     this.applyBlendState();
-  }
-
-  /** Allocate a GPU buffer from a buffer spec. */
-  createBuffer(spec: BufferSpec): GpuBuffer {
-    const { buffer } = this.resources.acquire(spec.length, spec.usage, spec.type);
-    return {
-      kind: "buffer",
-      length: spec.length,
-      type: spec.type,
-      buffer,
-      target: spec.type === "element" ? this.gl.ELEMENT_ARRAY_BUFFER : this.gl.ARRAY_BUFFER,
-    } as NativeGpuBuffer;
-  }
-
-  /** Upload typed-array data into a GPU buffer. */
-  updateBuffer(buffer: GpuBuffer, data: Float32Array | Uint16Array, offset: number = 0): void {
-    if (data.length + offset > buffer.length) {
-      throw new RangeError("GPU buffer update exceeds allocated buffer length.");
-    }
-
-    const nativeBuffer = this.asNativeBuffer(buffer);
-    const bytesPerElement = buffer.type === "float" ? Float32Array.BYTES_PER_ELEMENT : Uint16Array.BYTES_PER_ELEMENT;
-    this.gl.bindBuffer(nativeBuffer.target, nativeBuffer.buffer);
-    this.gl.bufferSubData(nativeBuffer.target, offset * bytesPerElement, data);
-  }
-
-  /** Compile and link a GPU program. */
-  createProgram(vert: string, frag: string): GpuProgram {
-    const vertexShader = this.compileShader(this.gl.VERTEX_SHADER, vert);
-    const fragmentShader = this.compileShader(this.gl.FRAGMENT_SHADER, frag);
-    const program = this.gl.createProgram();
-    if (!program) {
-      this.gl.deleteShader(vertexShader);
-      this.gl.deleteShader(fragmentShader);
-      throw new Error("Failed to allocate WebGL program.");
-    }
-
-    this.gl.attachShader(program, vertexShader);
-    this.gl.attachShader(program, fragmentShader);
-    this.gl.linkProgram(program);
-    this.gl.deleteShader(vertexShader);
-    this.gl.deleteShader(fragmentShader);
-
-    if (!this.gl.getProgramParameter(program, this.gl.LINK_STATUS)) {
-      const log = this.gl.getProgramInfoLog(program) ?? "unknown link error";
-      this.gl.deleteProgram(program);
-      throw new Error(`Failed to link WebGL program: ${log}`);
-    }
-
-    this.allocatedPrograms.add(program);
-
-    return {
-      kind: "program",
-      id: this.nextProgramId++,
-      program,
-      attributes: this.readAttributes(program),
-      uniforms: this.readUniforms(program),
-    } as NativeGpuProgram;
-  }
-
-  /** Issue a draw call described by a draw spec. */
-  draw(spec: DrawSpec): void {
-    if (spec.count <= 0 || (spec.instances !== undefined && spec.instances <= 0)) return;
-
-    const program = this.asNativeProgram(spec.program);
-    this.useProgram(program);
-    this.applyScissor();
-    this.applyAttributes(program, spec.attributes);
-    this.applyUniforms(program, spec.uniforms);
-
-    const primitive = this.toGlPrimitive(spec.primitive);
-    if (spec.elements) {
-      const elements = this.asNativeBuffer(spec.elements);
-      if (elements.type !== "element") {
-        throw new TypeError("Indexed draws require an element buffer.");
-      }
-      this.gl.bindBuffer(this.gl.ELEMENT_ARRAY_BUFFER, elements.buffer);
-      const drawType = this.gl.UNSIGNED_SHORT;
-      if (spec.instances !== undefined) {
-        this.gl.drawElementsInstanced(primitive, spec.count, drawType, 0, spec.instances);
-      } else {
-        this.gl.drawElements(primitive, spec.count, drawType, 0);
-      }
-      return;
-    }
-
-    if (spec.instances !== undefined) {
-      this.gl.drawArraysInstanced(primitive, 0, spec.count, spec.instances);
-    } else {
-      this.gl.drawArrays(primitive, 0, spec.count);
-    }
-  }
-
-  /** Release a GPU resource owned by this backend. */
-  dispose(resource: GpuResource): void {
-    if (this.isNativeBuffer(resource)) {
-      this.resources.release(resource.buffer);
-      return;
-    }
-    if (this.isNativeProgram(resource)) {
-      if (!this.isContextInvalid()) this.gl.deleteProgram(resource.program);
-      this.allocatedPrograms.delete(resource.program);
-      if (this.activeProgram === resource) this.activeProgram = null;
-    }
   }
 
   /** Clear the active framebuffer. */
@@ -211,32 +112,187 @@ export class WebGL2Backend implements GpuBackend {
     this.scissorBox = { x, y, w, h };
   }
 
+  /** Upload the frame stream with one call, then draw every command from it. */
+  submit(stream: Float32Array, floatCount: number, commands: readonly DrawCommand[]): void {
+    if (floatCount <= 0 || commands.length === 0) return;
+    const gl = this.gl;
+    this.applyScissor();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.stream);
+    gl.bufferData(gl.ARRAY_BUFFER, floatCount === stream.length ? stream : stream.subarray(0, floatCount), gl.STREAM_DRAW);
+
+    let active: ProgramState | null = null;
+    for (const command of commands) {
+      const state = this.programFor(command);
+      if (state !== active) {
+        gl.useProgram(state.program);
+        gl.bindVertexArray(state.vao);
+        active = state;
+      }
+      gl.uniform2f(state.uScale, command.scaleX, command.scaleY);
+      gl.uniform2f(state.uOffset, command.offsetX, command.offsetY);
+      gl.uniform4f(state.uColor, command.color[0], command.color[1], command.color[2], command.color[3]);
+      switch (command.kind) {
+        case "solid":
+          this.drawSolid(command);
+          break;
+        case "thickLine":
+          this.drawThickLine(state, command);
+          break;
+        case "point":
+          this.drawPoints(state, command);
+          break;
+        case "bar":
+          this.drawBars(state, command);
+          break;
+      }
+    }
+    gl.bindVertexArray(null);
+  }
+
   /** Return the underlying WebGL2 rendering context. */
   getContext(): WebGL2RenderingContext {
     return this.gl;
   }
 
-  /** Release pooled resources owned by the backend. */
+  /** Release GPU objects owned by the backend. */
   destroy(): void {
     this.canvas.removeEventListener("webglcontextlost", this.handleContextLost);
-    if (this.isContextInvalid()) {
-      this.enabledAttributes.clear();
-      this.activeProgram = null;
-      this.allocatedPrograms.clear();
-      this.resources.destroy(true);
-      return;
+    const programs = Object.values(this.programs);
+    this.programs = {};
+    if (this.isContextInvalid()) return;
+    for (const state of programs) {
+      this.gl.deleteProgram(state.program);
+      this.gl.deleteVertexArray(state.vao);
+      if (state.corners) this.gl.deleteBuffer(state.corners);
     }
-    for (const location of this.enabledAttributes) {
-      this.gl.disableVertexAttribArray(location);
-      this.gl.vertexAttribDivisor(location, 0);
+    this.gl.deleteBuffer(this.stream);
+  }
+
+  private drawSolid(command: SolidDraw): void {
+    this.gl.drawArrays(this.toGlPrimitive(command.primitive), command.first, command.count);
+  }
+
+  private drawThickLine(state: ProgramState, command: ThickLineDraw): void {
+    const gl = this.gl;
+    gl.uniform2f(state.uCanvasSize, command.canvasWidth, command.canvasHeight);
+    gl.uniform1f(state.uLineWidth, command.lineWidth);
+    const stride = command.layout === "strip" ? BYTES_PER_VERTEX : BYTES_PER_VERTEX * 2;
+    this.pointInstanceAttribute(state.aStart, stride, command.first * BYTES_PER_VERTEX);
+    this.pointInstanceAttribute(state.aEnd, stride, (command.first + 1) * BYTES_PER_VERTEX);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, command.segments);
+  }
+
+  private drawPoints(state: ProgramState, command: PointDraw): void {
+    const gl = this.gl;
+    gl.uniform2f(state.uCanvasSize, command.canvasWidth, command.canvasHeight);
+    gl.uniform1f(state.uPointSize, command.pointSize);
+    this.pointInstanceAttribute(state.aStart, BYTES_PER_VERTEX, command.first * BYTES_PER_VERTEX);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, command.instances);
+  }
+
+  private drawBars(state: ProgramState, command: BarDraw): void {
+    const gl = this.gl;
+    gl.uniform1f(state.uBarWidth, command.barWidth);
+    gl.uniform1f(state.uBaseline, command.baseline);
+    this.pointInstanceAttribute(state.aStart, BYTES_PER_VERTEX, command.first * BYTES_PER_VERTEX);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, command.instances);
+  }
+
+  /** Re-aim a per-instance attribute of the bound VAO at the frame stream (WebGL2 has no base instance). */
+  private pointInstanceAttribute(location: number, stride: number, byteOffset: number): void {
+    this.gl.vertexAttribPointer(location, 2, this.gl.FLOAT, false, stride, byteOffset);
+  }
+
+  private programFor(command: DrawCommand): ProgramState {
+    switch (command.kind) {
+      case "solid":
+        return (this.programs.line ??= this.createProgram("line", "position", null, null));
+      case "thickLine":
+        return (this.programs.thickLine ??= this.createProgram("thickLine", "aStart", "aEnd", SEGMENT_CORNERS));
+      case "point":
+        return (this.programs.point ??= this.createProgram("point", "aPosition", null, POINT_CORNERS));
+      case "bar":
+        return (this.programs.bar ??= this.createProgram("bar", "aPosition", null, BAR_CORNERS));
     }
-    this.enabledAttributes.clear();
-    this.activeProgram = null;
-    for (const program of this.allocatedPrograms) {
-      this.gl.deleteProgram(program);
+  }
+
+  /** Compile one built-in program and record its VAO: instance/vertex stream from the frame stream, corners from a static buffer. */
+  private createProgram(name: keyof typeof ShaderPrograms, startName: string, endName: string | null, corners: readonly number[] | null): ProgramState {
+    const gl = this.gl;
+    const sources = ShaderPrograms[name];
+    const vertexShader = this.compileShader(gl.VERTEX_SHADER, sources.vert);
+    const fragmentShader = this.compileShader(gl.FRAGMENT_SHADER, sources.frag);
+    const program = gl.createProgram();
+    if (!program) {
+      gl.deleteShader(vertexShader);
+      gl.deleteShader(fragmentShader);
+      throw new Error("Failed to allocate WebGL program.");
     }
-    this.allocatedPrograms.clear();
-    this.resources.destroy();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+    gl.deleteShader(vertexShader);
+    gl.deleteShader(fragmentShader);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      const log = gl.getProgramInfoLog(program) ?? "unknown link error";
+      gl.deleteProgram(program);
+      throw new Error(`Failed to link WebGL program: ${log}`);
+    }
+
+    const vao = gl.createVertexArray();
+    if (!vao) {
+      gl.deleteProgram(program);
+      throw new Error("Failed to allocate WebGL vertex array.");
+    }
+    const aStart = gl.getAttribLocation(program, startName);
+    const aEnd = endName ? gl.getAttribLocation(program, endName) : -1;
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.stream);
+    gl.enableVertexAttribArray(aStart);
+    if (corners) {
+      // Instanced streams are re-aimed at the frame stream offset on every draw.
+      gl.vertexAttribDivisor(aStart, 1);
+      if (aEnd >= 0) {
+        gl.enableVertexAttribArray(aEnd);
+        gl.vertexAttribDivisor(aEnd, 1);
+      }
+    } else {
+      gl.vertexAttribPointer(aStart, 2, gl.FLOAT, false, 0, 0);
+    }
+
+    let cornerBuffer: WebGLBuffer | null = null;
+    if (corners) {
+      cornerBuffer = gl.createBuffer();
+      if (!cornerBuffer) {
+        gl.bindVertexArray(null);
+        gl.deleteVertexArray(vao);
+        gl.deleteProgram(program);
+        throw new Error("Failed to allocate WebGL buffer.");
+      }
+      const aCorner = gl.getAttribLocation(program, "aCorner");
+      gl.bindBuffer(gl.ARRAY_BUFFER, cornerBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(corners), gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(aCorner);
+      gl.vertexAttribPointer(aCorner, 2, gl.FLOAT, false, BYTES_PER_VERTEX, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.stream);
+    }
+    gl.bindVertexArray(null);
+
+    return {
+      program,
+      vao,
+      corners: cornerBuffer,
+      uScale: gl.getUniformLocation(program, "uScale"),
+      uOffset: gl.getUniformLocation(program, "uOffset"),
+      uColor: gl.getUniformLocation(program, "uColor"),
+      uCanvasSize: gl.getUniformLocation(program, "uCanvasSize"),
+      uLineWidth: gl.getUniformLocation(program, "uLineWidth"),
+      uPointSize: gl.getUniformLocation(program, "uPointSize"),
+      uBarWidth: gl.getUniformLocation(program, "uBarWidth"),
+      uBaseline: gl.getUniformLocation(program, "uBaseline"),
+      aStart,
+      aEnd,
+    };
   }
 
   private applyBlendState(): void {
@@ -263,43 +319,6 @@ export class WebGL2Backend implements GpuBackend {
     return shader;
   }
 
-  private readAttributes(program: WebGLProgram): ReadonlyMap<string, AttributeInfo> {
-    const attributes = new Map<string, AttributeInfo>();
-    const count = this.gl.getProgramParameter(program, this.gl.ACTIVE_ATTRIBUTES) as number;
-    for (let i = 0; i < count; i++) {
-      const active = this.gl.getActiveAttrib(program, i);
-      if (!active) continue;
-      const location = this.gl.getAttribLocation(program, active.name);
-      if (location < 0) continue;
-      attributes.set(active.name, {
-        location,
-        size: this.attributeComponentCount(active.type),
-        type: active.type,
-      });
-    }
-    return attributes;
-  }
-
-  private readUniforms(program: WebGLProgram): ReadonlyMap<string, UniformSetter> {
-    const uniforms = new Map<string, UniformSetter>();
-    const count = this.gl.getProgramParameter(program, this.gl.ACTIVE_UNIFORMS) as number;
-    for (let i = 0; i < count; i++) {
-      const active = this.gl.getActiveUniform(program, i);
-      if (!active) continue;
-      const name = active.name.replace(/\[0\]$/, "");
-      const location = this.gl.getUniformLocation(program, name);
-      if (!location) continue;
-      uniforms.set(name, this.createUniformSetter(location, active.type));
-    }
-    return uniforms;
-  }
-
-  private useProgram(program: NativeGpuProgram): void {
-    if (this.activeProgram === program) return;
-    this.gl.useProgram(program.program);
-    this.activeProgram = program;
-  }
-
   private applyScissor(): void {
     if (!this.scissorBox) {
       this.gl.disable(this.gl.SCISSOR_TEST);
@@ -309,153 +328,12 @@ export class WebGL2Backend implements GpuBackend {
     this.gl.scissor(this.scissorBox.x, this.scissorBox.y, this.scissorBox.w, this.scissorBox.h);
   }
 
-  private applyAttributes(program: NativeGpuProgram, attributes: Readonly<Record<string, GpuBuffer | AttributeSpec>>): void {
-    const used = this.scratchAttributes;
-    used.clear();
-    for (const name in attributes) {
-      const info = program.attributes.get(name);
-      if (!info) continue;
-      const attribute = attributes[name]!;
-      const spec = "divisor" in attribute ? attribute : null;
-      const buffer = this.asNativeBuffer(spec ? spec.buffer : attribute as GpuBuffer);
-      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, buffer.buffer);
-      this.gl.enableVertexAttribArray(info.location);
-      this.gl.vertexAttribPointer(info.location, spec?.size ?? info.size, this.gl.FLOAT, false, spec?.stride ?? 0, spec?.offset ?? 0);
-      this.gl.vertexAttribDivisor(info.location, spec?.divisor ?? 0);
-      used.add(info.location);
-    }
-
-    for (const location of this.enabledAttributes) {
-      if (!used.has(location)) {
-        this.gl.disableVertexAttribArray(location);
-        this.gl.vertexAttribDivisor(location, 0);
-      }
-    }
-    this.scratchAttributes = this.enabledAttributes;
-    this.enabledAttributes = used;
-  }
-
-  private applyUniforms(program: NativeGpuProgram, uniforms: Readonly<Record<string, UniformValue>>): void {
-    for (const name in uniforms) {
-      program.uniforms.get(name)?.(uniforms[name]!);
-    }
-  }
-
-  private createUniformSetter(location: WebGLUniformLocation, type: number): UniformSetter {
-    switch (type) {
-      case this.gl.FLOAT:
-        return value => this.gl.uniform1f(location, this.toNumber(value));
-      case this.gl.FLOAT_VEC2: {
-        const scratch = new Float32Array(2);
-        return value => this.gl.uniform2fv(location, this.toFloatList(value, scratch));
-      }
-      case this.gl.FLOAT_VEC3: {
-        const scratch = new Float32Array(3);
-        return value => this.gl.uniform3fv(location, this.toFloatList(value, scratch));
-      }
-      case this.gl.FLOAT_VEC4: {
-        const scratch = new Float32Array(4);
-        return value => this.gl.uniform4fv(location, this.toFloatList(value, scratch));
-      }
-      case this.gl.INT:
-      case this.gl.BOOL:
-        return value => this.gl.uniform1i(location, this.toNumber(value));
-      default:
-        return value => this.setUniformByValue(location, value);
-    }
-  }
-
-  private setUniformByValue(location: WebGLUniformLocation, value: UniformValue): void {
-    if (typeof value === "number") {
-      this.gl.uniform1f(location, value);
-      return;
-    }
-    if (typeof value === "boolean") {
-      this.gl.uniform1i(location, value ? 1 : 0);
-      return;
-    }
-    switch (value.length) {
-      case 1:
-        this.gl.uniform1fv(location, value);
-        return;
-      case 2:
-        this.gl.uniform2fv(location, value);
-        return;
-      case 3:
-        this.gl.uniform3fv(location, value);
-        return;
-      case 4:
-        this.gl.uniform4fv(location, value);
-        return;
-      case 9:
-        this.gl.uniformMatrix3fv(location, false, value);
-        return;
-      case 16:
-        this.gl.uniformMatrix4fv(location, false, value);
-        return;
-      default:
-        throw new Error(`Unsupported uniform array length: ${value.length}`);
-    }
-  }
-
-  private toFloatList(value: UniformValue, scratch: Float32Array): Float32List {
-    if (typeof value === "number" || typeof value === "boolean") {
-      throw new TypeError(`Expected a float vector uniform with ${scratch.length} components.`);
-    }
-    if (value.length !== scratch.length) {
-      throw new TypeError(`Expected a float vector uniform with ${scratch.length} components, received ${value.length}.`);
-    }
-    if (value instanceof Float32Array) return value;
-    scratch.set(value);
-    return scratch;
-  }
-
-  private toNumber(value: UniformValue): number {
-    if (typeof value === "number") return value;
-    if (typeof value === "boolean") return value ? 1 : 0;
-    if (value.length === 1) return value[0] ?? 0;
-    throw new TypeError("Expected a scalar uniform value.");
-  }
-
-  private attributeComponentCount(type: number): number {
-    switch (type) {
-      case this.gl.FLOAT:
-        return 1;
-      case this.gl.FLOAT_VEC2:
-        return 2;
-      case this.gl.FLOAT_VEC3:
-        return 3;
-      case this.gl.FLOAT_VEC4:
-        return 4;
-      default:
-        return 1;
-    }
-  }
-
   private updateFullViewport(): void {
     this.gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
 
-  private asNativeBuffer(buffer: GpuBuffer): NativeGpuBuffer {
-    return buffer as NativeGpuBuffer;
-  }
-
-  private asNativeProgram(program: GpuProgram): NativeGpuProgram {
-    return program as NativeGpuProgram;
-  }
-
-  private isNativeBuffer(resource: GpuResource): resource is NativeGpuBuffer {
-    return "length" in resource && "type" in resource && "buffer" in resource;
-  }
-
-  private isNativeProgram(resource: GpuResource): resource is NativeGpuProgram {
-    return "program" in resource;
-  }
-
-  private toGlPrimitive(primitive: DrawSpec["primitive"]): number {
+  private toGlPrimitive(primitive: SolidPrimitive): number {
     switch (primitive) {
-      case "points":
-        return this.gl.POINTS;
       case "lines":
         return this.gl.LINES;
       case "line_strip":

@@ -2,6 +2,7 @@ import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxY } from "./MinMaxTree.js";
 import { nonFiniteXWarning } from "./search.js";
 import { createValueArray } from "./valueArray.js";
+import { assertEqualLengths } from "./validation.js";
 import type { AcceleratedDataset, AppendableDataset, SampleCopyLayout, TimeRange, ValuePrecision, Viewport } from "./types.js";
 
 function positiveModulo(value: number, modulo: number): number {
@@ -99,7 +100,8 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
    * previous sample, even if the passed values differ; use `RingBuffer` for irregular X.
    */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
-    const requested = Math.min(x.length, y.length);
+    assertEqualLengths("UniformRingBuffer.append", { x, y });
+    const requested = x.length;
     if (requested <= 0) return;
 
     if (this._length === 0) this.seed(x[0]!);

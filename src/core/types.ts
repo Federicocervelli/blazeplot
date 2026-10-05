@@ -56,7 +56,7 @@ export interface SeriesStyle {
 }
 
 /** Built-in renderer mode for a series. */
-export type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar" | "ohlc" | "candlestick";
+export type SeriesMode = "line" | "area" | "scatter" | "bar" | "ohlc" | "candlestick";
 /** Y axis used to scale and render a series. */
 export type SeriesYAxis = "left" | "right";
 

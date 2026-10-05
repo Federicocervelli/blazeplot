@@ -15,11 +15,57 @@ const chart = new Chart(element, {
 
 ## Interactions
 
-`interactionsPlugin` adds wheel zoom, shift-drag plot pan, axis drag pan, plot box zoom, double-click reset, touch pan, and pinch zoom. Touch pan and pinch zoom are enabled by default unless you set them to `false`.
+`interactionsPlugin` adds wheel zoom, shift-drag plot pan, axis drag pan, plot box zoom, double-click reset, touch pan, and pinch zoom. Touch pan and pinch zoom are enabled by default unless you set them to `false`. With the focused chart root it also pans, zooms, and fits by keyboard (arrows, `+`/`-`, PageUp/PageDown, Home or `0`); tune with `keyboard: { panFraction, zoomFactor }` or pass `keyboard: false`. A chart without this plugin does not navigate by keyboard.
 
 Use it when users should control the viewport directly. If your app owns all camera changes, leave it out and call chart camera/viewport APIs yourself.
 
 For live charts using `chart.followX(...)`, double-click/tap reset resumes latest-X follow by default so a reset action behaves like a "back to live" action. Set `resumeFollowOnReset: false` if your reset button should keep the chart paused on a historical viewport.
+
+Without `interactionsPlugin` a chart sets no `touch-action`, so one-finger swipes scroll the page. The plugin sets `touch-action: none` on the plot (and axis gutters) while touch pan or pinch zoom is on, which makes a touch drag pan the chart instead of the page.
+
+### Cooperative gestures on scrolling pages
+
+On a page that scrolls (docs, reports, dashboards), a chart that always handles the wheel or one-finger drag traps scrolling. Two options hand those gestures back to the page:
+
+```ts
+import { Chart } from "blazeplot";
+import { interactionsPlugin } from "blazeplot/plugins/interactions";
+
+const chart = new Chart(element, {
+  plugins: [
+    interactionsPlugin({
+      wheelZoom: "modifier", // the wheel scrolls the page unless Ctrl or Cmd is held
+      touchPan: "two-finger", // one finger scrolls the page, two fingers pan and pinch the chart
+    }),
+  ],
+});
+```
+
+- `wheelZoom: "modifier"`: a wheel event without Ctrl or Cmd is not `preventDefault`ed and does not change the viewport. Ctrl+wheel and trackpad pinch (which browsers send as Ctrl+wheel) still zoom. Axis gutters follow the same rule.
+- `touchPan: "two-finger"`: the plot keeps `touch-action: pan-x pan-y`, so one finger scrolls the page; two fingers pan and zoom the chart (pinch zoom needs `pinchZoom` left on). Axis gutters still pan with one finger. Double-tap reset keeps working.
+- `gestureHint` (default `true`) shows a short overlay when the user scrolls without the modifier or drags with one finger: "Use Ctrl + scroll to zoom" ("Use ⌘ + scroll to zoom" on Apple devices) or "Use two fingers to move the chart". It is `aria-hidden`, takes its colors and font from the theme's tooltip tokens, and can be customized with `gestureHint: { wheelText, touchText, durationMs, backgroundColor, textColor, font, className }` or turned off with `gestureHint: false`.
+
+The defaults (`wheelZoom: true`, `touchPan: true`) are unchanged, so full-viewport charts behave as before.
+
+### Drags shared with selection
+
+Box zoom (`boxZoom`, on by default) and `selectionPlugin` both start from a plain left-button drag. When both are installed, the drag runs exactly one action: the pointer is claimed through `ctx.dom.claimPointer`, and `selectionPlugin` claims first, so a plain drag selects and does not also zoom. Shift-drag still pans. To keep both gestures, move one of them to a modifier key:
+
+```ts
+import { Chart } from "blazeplot";
+import { interactionsPlugin } from "blazeplot/plugins/interactions";
+import { selectionPlugin } from "blazeplot/plugins/selection";
+
+const chart = new Chart(element, {
+  plugins: [
+    interactionsPlugin({ boxZoomModifier: "alt" }), // Alt-drag zooms into a rectangle
+    selectionPlugin(), // plain drag selects
+  ],
+});
+```
+
+`boxZoomModifier` and `selectionPlugin({ modifier })` accept `"none"`, `"shift"`, `"alt"`, or `"ctrl"` (Ctrl or Cmd). `"none"` means no modifier key at all; the others require exactly that key. Setting `boxZoomModifier: "shift"` replaces shift-drag pan. Shift+Arrow keyboard selection is a separate input path and does not conflict with pointer drags. See [Plugin authoring](./plugin-authoring.md#claiming-pointer-gestures) for the rule third-party plugins follow.
+
 
 ## Tooltip, crosshair, and legend
 
@@ -97,6 +143,8 @@ selection.clear();
 
 Use `mode: "x-range"` for time-window selection, `"y-range"` for horizontal bands, or `"xy"` for box selection.
 
+A selection starts from a plain left-button drag (no Shift, Alt, or Ctrl/Cmd held) or a touch drag; it sets `touch-action: none` on the plot so a touch drag selects instead of scrolling. Pick another trigger with `modifier: "shift" | "alt" | "ctrl"` when a plain drag belongs to another plugin. With `interactionsPlugin` installed at its defaults, the plain drag selects and box zoom stays idle (use `interactionsPlugin({ boxZoomModifier: "alt" })` to keep box zoom on Alt-drag); see [Drags shared with selection](#drags-shared-with-selection).
+
 Keyboard users select from the focused chart: Shift + Arrow keys extend a range from the keyboard inspection cursor (with `a11yPlugin`) or from the plot center, Enter commits it (same `select` event and `commit` change), and Escape cancels it. Progress is announced through a polite live region. Tune the step with `keyboard: { step: 0.1 }` (fraction of the plot per press) or turn it off with `keyboard: false`; while it is on, Shift + Arrow no longer does the chart's faster pan.
 
 ## Accessibility
@@ -142,6 +190,8 @@ const chart = new Chart(element, { plugins: [navigator] });
 // Call after replacing the dataset or changing which series the navigator follows.
 navigator.refresh();
 ```
+
+The overview takes its X and Y domain from each series' `dataBounds()`, so gaps, OHLC highs and lows, and bar or area baselines are included, and a series that starts or ends with a gap still appears. Series with up to `maxSamplesPerSeries` samples (default 512) draw as an exact polyline. Denser series draw a filled min/max envelope with one bucket per CSS pixel of navigator width, so isolated spikes stay visible. The overview is rebuilt only when the data or the navigator width changes, not on every viewport change.
 
 ## Flame graphs and status spans
 

@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-147 exports.
+152 exports.
 
 #### interface AcceleratedDataset
 
@@ -34,6 +34,7 @@ interface AxisConfig extends AxisControllerAxisOptions {
     readonly visible?: boolean;
     readonly position?: AxisPosition;
     readonly title?: string | TextOverlayConfig;
+    readonly size?: number | "auto";
 }
 ```
 
@@ -158,9 +159,9 @@ class Chart {
         number
     ] | null;
     getViewport(yAxis?: SeriesYAxis): Viewport;
-    setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
-    pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
-    zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
+    setViewport(viewport: Partial<Viewport>, yAxis?: SeriesYAxis, options?: ChartSetViewportOptions): void;
+    pan(intent: PanIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
+    zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
     addSeries<D extends Dataset = Dataset>(config: SeriesConfig & {
         readonly dataset?: D;
     }, style?: SeriesStyleOptions): SeriesStore<D>;
@@ -207,14 +208,24 @@ class Chart {
 }
 ```
 
+#### interface ChartAccessibilityMessages
+
+```ts
+interface ChartAccessibilityMessages {
+    readonly defaultLabel?: string;
+    readonly summary?: Partial<ChartSummaryMessages>;
+}
+```
+
 #### interface ChartAccessibilityOptions
 
 ```ts
 interface ChartAccessibilityOptions {
+    readonly locale?: string;
+    readonly messages?: ChartAccessibilityMessages;
     readonly label?: string;
     readonly description?: string | ((summary: ChartSummary) => string);
     readonly role?: string;
-    readonly keyboard?: boolean | ChartKeyboardOptions;
     readonly forcedColors?: boolean;
 }
 ```
@@ -234,6 +245,7 @@ interface ChartEventMap extends ChartPluginEventMap {
     themechange: void;
     render: void;
     viewportchange: ChartViewportChangeEvent;
+    followxchange: ChartFollowXChangeEvent;
     seriesclick: ChartSeriesClickEvent;
     click: ChartPointerEvent;
     dblclick: ChartPointerEvent;
@@ -262,6 +274,7 @@ interface ChartFitToDataOptions {
     readonly includeZero?: boolean;
     readonly xMin?: number;
     readonly xMax?: number;
+    readonly source?: ChartViewportChangeSource;
 }
 ```
 
@@ -271,6 +284,14 @@ interface ChartFitToDataOptions {
 interface ChartFitToDataPadding {
     readonly x?: number;
     readonly y?: number;
+}
+```
+
+#### interface ChartFollowXChangeEvent
+
+```ts
+interface ChartFollowXChangeEvent {
+    readonly state: ChartFollowXState;
 }
 ```
 
@@ -331,15 +352,6 @@ interface ChartHoverState {
 interface ChartInspectionTarget {
     readonly series: SeriesStore;
     readonly index: number;
-}
-```
-
-#### interface ChartKeyboardOptions
-
-```ts
-interface ChartKeyboardOptions {
-    readonly panFraction?: number;
-    readonly zoomFactor?: number;
 }
 ```
 
@@ -483,10 +495,15 @@ interface ChartPluginCoords {
 
 ```ts
 interface ChartPluginDom {
+    readonly document: Document;
+    readonly view: Window & typeof globalThis;
+    create<K extends keyof HTMLElementTagNameMap>(tag: K): HTMLElementTagNameMap[K];
+    createSvg<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K];
     mount(slot: ChartMountSlot, element: Element): () => void;
     listen<K extends keyof HTMLElementEventMap>(surface: ChartSurface, type: K, listener: (event: HTMLElementEventMap[K]) => void, options?: boolean | AddEventListenerOptions): () => void;
     decorate(surface: ChartSurface, decoration: ChartSurfaceDecoration): () => void;
     contains(target: EventTarget | null | undefined): boolean;
+    claimPointer(event: PointerEvent): boolean;
 }
 ```
 
@@ -564,9 +581,9 @@ interface ChartPluginUnstable {
 ```ts
 interface ChartPluginViewport {
     get(yAxis?: SeriesYAxis): Viewport;
-    set(viewport: Partial<Viewport>, yAxis?: SeriesYAxis): void;
-    pan(intent: PanIntent, yAxis?: SeriesYAxis): void;
-    zoom(intent: ZoomIntent, yAxis?: SeriesYAxis): void;
+    set(viewport: Partial<Viewport>, yAxis?: SeriesYAxis, options?: ChartSetViewportOptions): void;
+    pan(intent: PanIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
+    zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options?: ChartViewportGestureOptions): void;
     fitToData(options?: ChartFitToDataOptions): boolean;
     isReversed(axis: "x" | "y", yAxis?: SeriesYAxis): boolean;
     followX(options?: ChartFollowXOptions): void;
@@ -681,6 +698,14 @@ interface ChartSeriesSummary {
 }
 ```
 
+#### interface ChartSetViewportOptions
+
+```ts
+interface ChartSetViewportOptions extends ChartViewportGestureOptions {
+    readonly pauseFollow?: boolean;
+}
+```
+
 #### interface ChartSummary
 
 ```ts
@@ -688,6 +713,24 @@ interface ChartSummary {
     readonly series: readonly ChartSeriesSummary[];
     readonly x: ChartSummaryRange | null;
     readonly text: string;
+}
+```
+
+#### interface ChartSummaryMessages
+
+```ts
+interface ChartSummaryMessages {
+    readonly noSeries: string;
+    readonly intro: (mode: SeriesMode | null, seriesCount: number) => string;
+    readonly xRange: (from: string, to: string) => string;
+    readonly modeName: (mode: SeriesMode) => string;
+    readonly hidden: string;
+    readonly points: (count: number) => string;
+    readonly valueRange: (from: string, to: string) => string;
+    readonly latest: (y: string, x: string) => string;
+    readonly seriesLine: (name: string, facts: readonly string[]) => string;
+    readonly moreSeries: (count: number) => string;
+    readonly seriesName: (mode: SeriesMode, index: number) => string;
 }
 ```
 
@@ -774,6 +817,21 @@ interface ChartTitleConfig extends TextOverlayConfig {
 interface ChartViewportChangeEvent {
     readonly viewport: Viewport;
     readonly rightViewport: Viewport;
+    readonly source: ChartViewportChangeSource;
+}
+```
+
+#### type ChartViewportChangeSource
+
+```ts
+type ChartViewportChangeSource = "user" | "follow" | "fit" | "api" | "linked";
+```
+
+#### interface ChartViewportGestureOptions
+
+```ts
+interface ChartViewportGestureOptions {
+    readonly source?: ChartViewportChangeSource;
 }
 ```
 
@@ -1157,7 +1215,7 @@ type SeriesIdentityConfig = Pick<SeriesConfig, "id" | "name" | "yAxis" | "downsa
 #### type SeriesMode
 
 ```ts
-type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar" | "ohlc" | "candlestick";
+type SeriesMode = "line" | "area" | "scatter" | "bar" | "ohlc" | "candlestick";
 ```
 
 #### type SeriesObjectAppendData
@@ -1246,6 +1304,7 @@ class SeriesStore<D extends Dataset = Dataset> {
     get length(): number;
     get visible(): boolean;
     get xRange(): TimeRange | null;
+    setStyle(options: SeriesStyleOptions): void;
     setVisible(visible: boolean): void;
     append(data: SeriesAppendData): void;
     updateLast(data: SeriesUpdateData): boolean;
@@ -1913,14 +1972,26 @@ function exportChartData(chart: ExportableChart, options?: ChartDataExportOption
 
 ### `blazeplot/plugins/legend`
 
-2 exports.
+3 exports.
+
+#### interface LegendMessages
+
+```ts
+interface LegendMessages {
+    readonly ariaLabel: string;
+    readonly hide: (name: string) => string;
+    readonly show: (name: string) => string;
+    readonly seriesName: (mode: string, index: number) => string;
+}
+```
 
 #### interface LegendPluginOptions
 
 ```ts
 interface LegendPluginOptions {
+    readonly messages?: Partial<LegendMessages>;
     readonly className?: string;
-    readonly position?: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+    readonly position?: "top-left" | "top-right" | "bottom-left" | "bottom-right" | "top" | "bottom" | "left" | "right";
     readonly toggleOnClick?: boolean;
     readonly backgroundColor?: string;
     readonly borderColor?: string;
@@ -1973,7 +2044,7 @@ function tooltipPlugin(options?: TooltipPluginOptions): ChartPlugin;
 
 ### `blazeplot/plugins/interactions`
 
-3 exports.
+5 exports.
 
 #### type InteractionAxisOption
 
@@ -1981,13 +2052,38 @@ function tooltipPlugin(options?: TooltipPluginOptions): ChartPlugin;
 type InteractionAxisOption = ZoomAxis | (() => ZoomAxis);
 ```
 
+#### interface InteractionsGestureHintOptions
+
+```ts
+interface InteractionsGestureHintOptions {
+    readonly wheelText?: string;
+    readonly touchText?: string;
+    readonly durationMs?: number;
+    readonly className?: string;
+    readonly backgroundColor?: string;
+    readonly textColor?: string;
+    readonly font?: string;
+}
+```
+
+#### interface InteractionsKeyboardOptions
+
+```ts
+interface InteractionsKeyboardOptions {
+    readonly panFraction?: number;
+    readonly zoomFactor?: number;
+}
+```
+
 #### interface InteractionsPluginOptions
 
 ```ts
 interface InteractionsPluginOptions {
+    readonly keyboard?: boolean | InteractionsKeyboardOptions;
     readonly axis?: InteractionAxisOption;
     readonly boxZoom?: boolean;
-    readonly wheelZoom?: boolean;
+    readonly boxZoomModifier?: "none" | "shift" | "alt" | "ctrl";
+    readonly wheelZoom?: boolean | "modifier";
     readonly wheelZoomSensitivity?: number;
     readonly trackpadPinchSensitivity?: number;
     readonly trackpadPan?: boolean;
@@ -2000,8 +2096,9 @@ interface InteractionsPluginOptions {
     readonly doubleClickReset?: boolean;
     readonly resumeFollowOnReset?: boolean;
     readonly resetViewport?: () => Viewport;
-    readonly touchPan?: boolean;
+    readonly touchPan?: boolean | "two-finger";
     readonly pinchZoom?: boolean;
+    readonly gestureHint?: boolean | InteractionsGestureHintOptions;
     readonly doubleTapReset?: boolean;
     readonly minDragDistancePx?: number;
 }
@@ -2222,7 +2319,7 @@ function annotationsPlugin(options?: AnnotationsPluginOptions): AnnotationsPlugi
 
 ### `blazeplot/plugins/selection`
 
-9 exports.
+10 exports.
 
 #### interface SelectionEvent
 
@@ -2245,6 +2342,20 @@ type SelectionEventType = "start" | "update" | "commit" | "clear";
 ```ts
 interface SelectionKeyboardOptions {
     readonly step?: number;
+}
+```
+
+#### interface SelectionMessages
+
+```ts
+interface SelectionMessages {
+    readonly cleared: string;
+    readonly cancelled: string;
+    readonly selecting: (description: string, starting: boolean) => string;
+    readonly selected: (description: string) => string;
+    readonly xRange: (from: string, to: string) => string;
+    readonly yRange: (from: string, to: string) => string;
+    readonly join: (x: string, y: string) => string;
 }
 ```
 
@@ -2278,9 +2389,11 @@ interface SelectionPlugin extends ChartPlugin {
 
 ```ts
 interface SelectionPluginOptions {
+    readonly messages?: Partial<SelectionMessages>;
     readonly mode?: SelectionMode;
     readonly yAxis?: SeriesYAxis;
     readonly minDragDistancePx?: number;
+    readonly modifier?: "none" | "shift" | "alt" | "ctrl";
     readonly className?: string;
     readonly fillColor?: string;
     readonly strokeColor?: string;
@@ -2644,7 +2757,7 @@ function parseFoldedStacks<T = unknown>(input: string, separator?: string): Flam
 
 ### `blazeplot/plugins/a11y`
 
-6 exports.
+7 exports.
 
 #### interface A11yInspection
 
@@ -2668,6 +2781,33 @@ interface A11yLiveOptions {
 }
 ```
 
+#### interface A11yMessages
+
+```ts
+interface A11yMessages {
+    readonly instructions: string;
+    readonly noPointsInView: (name: string) => string;
+    readonly tableCaption: (name: string, shown: string, visible: string, sampled: boolean) => string;
+    readonly xHeader: string;
+    readonly yHeader: string;
+    readonly ohlcHeaders: readonly [
+        open: string,
+        high: string,
+        low: string,
+        close: string
+    ];
+    readonly noValue: (name: string) => string;
+    readonly ohlcValues: (open: string, high: string, low: string, close: string) => string;
+    readonly inspection: (name: string, x: string, y: string, position: string, total: string) => string;
+    readonly noPointsToInspect: string;
+    readonly noVisibleSeries: string;
+    readonly stoppedInspecting: string;
+    readonly livePart: (name: string, y: string, x: string) => string;
+    readonly live: (parts: readonly string[]) => string;
+    readonly seriesName: (mode: string, index: number) => string;
+}
+```
+
 #### interface A11yPlugin
 
 ```ts
@@ -2681,6 +2821,8 @@ interface A11yPlugin extends ChartPlugin {
 
 ```ts
 interface A11yPluginOptions {
+    readonly locale?: string;
+    readonly messages?: Partial<A11yMessages>;
     readonly table?: boolean | A11yTableOptions;
     readonly inspection?: boolean;
     readonly live?: boolean | A11yLiveOptions;

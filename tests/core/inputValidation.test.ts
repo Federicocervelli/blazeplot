@@ -351,8 +351,8 @@ describe("static datasets validate X once at construction", () => {
     );
     expect(() => new StaticDataset([-Infinity], [0])).toThrow("X at index 0 is -Infinity (non-finite-x)");
     expect(() => new StaticDataset([0, 2, 1], [0, 0, 0])).toThrow("StaticDataset.sorted(x, y)");
-    // Only the samples in use (the shorter array) are checked; duplicates are fine.
-    expect(new StaticDataset([0, 1, 1, NaN], [0, 0, 0]).length).toBe(3);
+    // Duplicate X is fine.
+    expect(new StaticDataset([0, 1, 1], [0, 0, 0]).length).toBe(3);
   });
 
   it("assumeSorted skips the check at construction and on replace", () => {
@@ -366,13 +366,6 @@ describe("static datasets validate X once at construction", () => {
     const ds = new StaticDataset([0, 1, 2], [5, 6, 7]);
     expect(() => ds.replace({ x: [0, 2, 1], y: [1, 1, 1] })).toThrow(RangeError);
     expect([ds.getX(2), ds.getY(2), ds.length]).toEqual([2, 7, 3]);
-
-    // A Y-only replace that grows the sample count checks the newly used X values.
-    const x = [0, 1, 5, 2];
-    const grow = new StaticDataset(x, [0, 0]);
-    expect(() => grow.replace({ y: [0, 0, 0, 0] })).toThrow("X at index 3 is 2, below 5 at index 2");
-    grow.replace({ y: [1, 1, 1] });
-    expect(grow.length).toBe(3);
   });
 
   it("sorted() stably sorts by X, carries Y, and drops non-finite X", () => {
@@ -445,5 +438,45 @@ describe("static datasets validate X once at construction", () => {
     // Overlapping buckets are allowed.
     ds.replace({ kind: "minmax", xStart: [0, 4], xEnd: [6, 10], minY: [0, 0], maxY: [1, 1] });
     expect(ds.length).toBe(2);
+  });
+});
+
+describe("mismatched parallel array lengths throw instead of truncating", () => {
+  it("RingBuffer.append names the owner and both lengths and stores nothing", () => {
+    const buf = new RingBuffer(8);
+    buf.push(0, 1);
+    expect(() => buf.append([1, 2, 3], [1, 2])).toThrow("RingBuffer.append: x has 3 values but y has 2.");
+    expect(() => buf.append([1, 2], [1, 2, 3])).toThrow(RangeError);
+    expect([buf.length, buf.rejectedSamples]).toEqual([1, 0]);
+  });
+
+  it("UniformRingBuffer.append", () => {
+    const buf = new UniformRingBuffer(8);
+    expect(() => buf.append([0, 1, 2], [1, 2])).toThrow("UniformRingBuffer.append: x has 3 values but y has 2.");
+    expect(buf.length).toBe(0);
+  });
+
+  it("StaticDataset constructor, sorted, and replace keep the current data", () => {
+    expect(() => new StaticDataset([0, 1], [0])).toThrow("StaticDataset: x has 2 values but y has 1.");
+    expect(() => StaticDataset.sorted([0, 1], [0])).toThrow("StaticDataset.sorted: x has 2 values but y has 1.");
+    const ds = new StaticDataset([0, 1, 2], [5, 6, 7]);
+    expect(() => ds.replace({ x: [0, 1], y: [1] })).toThrow("StaticDataset.replace: x has 2 values but y has 1.");
+    expect(() => ds.replace({ y: [1] })).toThrow("StaticDataset.replace: x has 3 values but y has 1.");
+    expect([ds.length, ds.getX(2), ds.getY(2)]).toEqual([3, 2, 7]);
+  });
+
+  it("OHLC datasets name the first array and the mismatched one", () => {
+    expect(() => new StaticOhlcDataset([0, 1], [1, 1], [2, 2], [0, 0], [1])).toThrow("StaticOhlcDataset: x has 2 values but close has 1.");
+    expect(() => StaticOhlcDataset.sorted([0, 1], [1, 1], [2], [0, 0], [1, 1])).toThrow("StaticOhlcDataset.sorted: x has 2 values but high has 1.");
+    const buf = new OhlcRingBuffer(8);
+    expect(() => buf.append([0, 1], [1, 1], [2, 2], [0, 0], [1])).toThrow("OhlcRingBuffer.append: x has 2 values but close has 1.");
+    expect(buf.length).toBe(0);
+  });
+
+  it("ServerSampledDataset.replace keeps its data", () => {
+    const ds = new ServerSampledDataset({ kind: "points", x: [1, 2], y: [3, 4] });
+    expect(() => ds.replace({ kind: "points", x: [1, 2, 3], y: [3, 4] })).toThrow("ServerSampledDataset.replace: x has 3 values but y has 2.");
+    expect(() => ds.replace({ kind: "minmax", xStart: [0, 1], xEnd: [1, 2], minY: [0], maxY: [1, 1] })).toThrow("xStart has 2 values but minY has 1.");
+    expect([ds.kind, ds.length]).toEqual(["points", 2]);
   });
 });
