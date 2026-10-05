@@ -19,7 +19,7 @@ Create a sized container, construct `Chart`, add a dataset-backed series, fit th
 <div id="chart" style="width:100%;height:400px"></div>
 
 <script type="module">
-  import { Chart, StaticDataset } from "blazeplot";
+  import { Chart } from "blazeplot";
 
   const x = Array.from({ length: 1000 }, (_, i) => i);
   const y = x.map((value) => Math.sin(value * 0.02));
@@ -28,7 +28,7 @@ Create a sized container, construct `Chart`, add a dataset-backed series, fit th
   if (!element) throw new Error("Missing chart element");
 
   const chart = new Chart(element);
-  chart.addLine({ dataset: new StaticDataset(x, y), name: "sine" });
+  chart.addLine({ x, y, name: "sine" });
   chart.fitToData();
   chart.start();
 </script>

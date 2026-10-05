@@ -46,7 +46,7 @@ Generated from `dist/` after the package build.
 
 | Chunk | File | Size |
 |---|---|---:|
-| root entry | `dist/index.js` | 15 KiB |
+| root entry | `dist/index.js` | 12 KiB |
 | linked entry | `dist/linked.js` | 2 KiB |
 | data entry | `dist/data.js` | 2 KiB |
 | export entry | `dist/export.js` | 4 KiB |
@@ -59,12 +59,12 @@ Generated from `dist/` after the package build.
 | crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 17 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 170 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 175 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
 | shared PickOverlay chunk | `dist/PickOverlay-*.js` | 5 KiB |
-| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 198 KiB |
+| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 199 KiB |
 
 ### All public exports
 
@@ -161,6 +161,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `HistogramNormalization` | type | `./core/histogramBins` | Histogram value normalization modes. |
 | `HistogramOptions` | interface | `./core/histogramBins` | Options for converting one-dimensional values into histogram bins. |
 | `HistogramResult` | interface | `./core/histogramBins` | Result of a histogram transform. |
+| `HistogramSeriesConfig` | type | `./ui/Chart` | — |
 | `InvalidOhlcSample` | interface | `./core/types` | An OHLC candle an `OhlcRingBuffer` skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSample` | interface | `./core/types` | A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. |
 | `InvalidSampleReason` | type | `./core/types` | Why a sample broke the dataset X rule (X finite and non-decreasing): `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the previous accepted X (or, for `update`, outside its neighbors). |
@@ -224,6 +225,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `StaticOhlcDataset` | class | `./core/OhlcDataset` | Immutable OHLC dataset backed by parallel arrays. X must be finite and non-decreasing; the constructor checks it and throws a `RangeError` naming the first bad index. A candle with any non-finite price is a gap. |
 | `StaticOhlcDatasetOptions` | interface | `./core/OhlcDataset` | Options for `StaticOhlcDataset`. |
 | `StaticOhlcDatasetSortedOptions` | interface | `./core/OhlcDataset` | Options for `StaticOhlcDataset.sorted`. |
+| `StaticSeriesConfig` | type | `./ui/Chart` | — |
 | `TextOverlayConfig` | type | `./ui/Chart` | — |
 | `ThemeColor` | type | `./core/types` | Any CSS color string (`"#3b82f6"`, `"rgb(59 130 246)"`, `"var(--accent)"`) or an RGBA tuple. |
 | `TimeRange` | interface | `./core/types` | Inclusive data X range. |

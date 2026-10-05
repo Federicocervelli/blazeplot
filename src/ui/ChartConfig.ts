@@ -1,5 +1,8 @@
 import type { Dataset, RgbaColor, SeriesConfig, SeriesStyle, SeriesStyleOptions } from "../core/types.js";
 import { RingBuffer } from "../core/RingBuffer.js";
+import { StaticDataset } from "../core/StaticDataset.js";
+import { HistogramDataset } from "../core/Histogram.js";
+import type { HistogramOptions } from "../core/histogramBins.js";
 import { UniformRingBuffer } from "../core/UniformRingBuffer.js";
 import type { AxisController, AxisScaleOptions } from "../interaction/AxisController.js";
 import type { NormalizedAxisConfig } from "./ChartLayout.js";
@@ -130,4 +133,46 @@ export function rejectBufferOptions(config: SeriesConfig): void {
   if (given.length > 0) {
     throw new TypeError(`Series option${given.length > 1 ? "s" : ""} ${given.map((key) => `"${key}"`).join(", ")} configure a buffer the chart creates and cannot be combined with "dataset". Configure the dataset itself, or drop "dataset".`);
   }
+}
+
+/** Series config as the typed helpers receive it, before `x`/`y` and `values` shorthands become a `dataset`. */
+export type RawSeriesConfig = SeriesConfig & HistogramOptions & {
+  readonly x?: ArrayLike<number>;
+  readonly y?: ArrayLike<number>;
+  readonly values?: ArrayLike<number>;
+};
+
+const HISTOGRAM_OPTION_KEYS = ["binSize", "binCount", "thresholds", "min", "max", "align", "normalize", "includeEmpty", "includeMax"] as const;
+
+/**
+ * Turn the `{ x, y }` and `{ values, ...histogram options }` shorthands into a `dataset`, and check that a
+ * series names exactly one data source. Returns the config the chart stores on the series.
+ */
+export function resolveSeriesSource(raw: RawSeriesConfig): SeriesConfig {
+  const { x, y, values, ...rest } = raw;
+  const histogramOptions: { -readonly [K in keyof HistogramOptions]: HistogramOptions[K] } = {};
+  for (const key of HISTOGRAM_OPTION_KEYS) {
+    if (rest[key] !== undefined) (histogramOptions as Record<string, unknown>)[key] = rest[key];
+    delete (rest as Record<string, unknown>)[key];
+  }
+  const xy = x !== undefined || y !== undefined;
+  const histogram = values !== undefined;
+  const bufferGiven = rest.capacity !== undefined || rest.xStep !== undefined || rest.xStart !== undefined;
+  if (!xy && !histogram) {
+    if (Object.keys(histogramOptions).length > 0) {
+      throw new TypeError("Histogram options such as binSize and binCount need { values } (or pass them to HistogramDataset.from).");
+    }
+    return rest;
+  }
+  const mode = rest.mode;
+  if (mode === "ohlc" || mode === "candlestick") throw new TypeError("OHLC and candlestick series require an OhlcDataset.");
+  if (rest.dataset !== undefined || bufferGiven || (xy && histogram)) {
+    throw new TypeError("Pass exactly one data source: { dataset }, { x, y }, { values } (bar series), or { capacity }.");
+  }
+  if (xy) {
+    if (x === undefined || y === undefined) throw new TypeError("Series shorthand { x, y } needs both x and y.");
+    return { ...rest, dataset: new StaticDataset(x, y) };
+  }
+  if (mode !== "bar") throw new TypeError("Series shorthand { values } builds a histogram and is only available on bar series: chart.addBar({ values, binCount }).");
+  return { ...rest, dataset: HistogramDataset.from(values as ArrayLike<number>, histogramOptions) };
 }

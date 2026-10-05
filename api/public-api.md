@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-173 exports.
+175 exports.
 
 #### interface AcceleratedDataset
 
@@ -185,15 +185,20 @@ class Chart {
         readonly mode: "line" | "area" | "scatter" | "bar";
     }, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
     addLine<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addLine(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
     addLine(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
     addLine(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
     addArea<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addArea(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
     addArea(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
     addArea(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
     addScatter<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addScatter(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
     addScatter(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
     addScatter(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
     addBar<D extends Dataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
+    addBar(config: StaticSeriesConfig, style?: SeriesStyleOptions): SeriesStore<StaticDataset>;
+    addBar(config: HistogramSeriesConfig, style?: SeriesStyleOptions): SeriesStore<HistogramDataset>;
     addBar(config: UniformRingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<UniformRingBuffer>;
     addBar(config: RingSeriesConfig, style?: SeriesStyleOptions): SeriesStore<RingBuffer>;
     addOhlc<D extends OhlcDataset>(config: DatasetSeriesConfig<D>, style?: SeriesStyleOptions): SeriesStore<D>;
@@ -1037,6 +1042,17 @@ interface HistogramResult {
 }
 ```
 
+#### interface HistogramSeriesConfig
+
+```ts
+interface HistogramSeriesConfig extends SeriesIdentityConfig, HistogramOptions {
+    readonly values: ArrayLike<number>;
+    readonly dataset?: never;
+    readonly capacity?: never;
+    readonly x?: never;
+}
+```
+
 #### interface InvalidOhlcSample
 
 ```ts
@@ -1714,6 +1730,18 @@ interface StaticOhlcDatasetSortedOptions {
 }
 ```
 
+#### interface StaticSeriesConfig
+
+```ts
+interface StaticSeriesConfig extends SeriesIdentityConfig {
+    readonly x: ArrayLike<number>;
+    readonly y: ArrayLike<number>;
+    readonly dataset?: never;
+    readonly capacity?: never;
+    readonly values?: never;
+}
+```
+
 #### interface TextOverlayConfig
 
 ```ts
@@ -1744,7 +1772,7 @@ interface TimeRange {
 #### type TypedSeriesConfig
 
 ```ts
-type TypedSeriesConfig<D extends Dataset = Dataset> = DatasetSeriesConfig<D> | RingSeriesConfig | UniformRingSeriesConfig;
+type TypedSeriesConfig<D extends Dataset = Dataset> = DatasetSeriesConfig<D> | StaticSeriesConfig | HistogramSeriesConfig | RingSeriesConfig | UniformRingSeriesConfig;
 ```
 
 #### class UniformRingBuffer
