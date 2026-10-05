@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
-import { evaluate, extractMetrics, formatReport, limitFor, median, parseThresholds, withBaselines, type GateRunInput, type PerfThresholds } from "../../scripts/perf-gate-lib.ts";
+import { evaluate, extractMetrics, formatReport, limitFor, median, parseThresholds, withBaselines, withUpdatedThresholds, type GateRunInput, type PerfThresholds } from "../../scripts/perf-gate-lib.ts";
 
 const thresholds: PerfThresholds = {
   scenario: "perf-gate",
@@ -76,6 +76,33 @@ describe("perf gate", () => {
     expect(parsed.scenario).toBe("perf-gate");
     expect(Object.keys(parsed.metrics).length).toBeGreaterThan(0);
     expect(parsed.defaultHeadroom).toBeGreaterThan(1);
+  });
+
+  it("gives Canvas 2D its own metrics on top of the shared measurement settings", () => {
+    const raw = JSON.parse(readFileSync(new URL("../../benchmarks/thresholds.json", import.meta.url), "utf8")) as Record<string, unknown>;
+    const webgl = parseThresholds(raw);
+    const canvas = parseThresholds(raw, "canvas2d");
+    expect(canvas.scenario).toBe(webgl.scenario);
+    expect(canvas.repetitions).toBe(webgl.repetitions);
+    // A CPU-drawn engine uploads nothing, so it has no upload metric.
+    expect(webgl.metrics.uploadBytesP95).toBeDefined();
+    expect(canvas.metrics.uploadBytesP95).toBeUndefined();
+    expect(canvas.metrics.frameP50Ratio).toBeDefined();
+    expect(() => parseThresholds({ ...raw, renderers: {} }, "canvas2d")).toThrow("renderers.canvas2d");
+  });
+
+  it("writes refreshed baselines back to the right section of the file", () => {
+    const raw = JSON.parse(readFileSync(new URL("../../benchmarks/thresholds.json", import.meta.url), "utf8")) as Record<string, unknown>;
+    const canvas = parseThresholds(raw, "canvas2d");
+    const next = withBaselines(canvas, [{ frameP50Ratio: 0.2, frameP95Ratio: 0.3, ingestRatio: 4, drawCallsP95: 4, pointsRenderedP95: 28000 }]);
+    const updated = withUpdatedThresholds(raw, "canvas2d", next) as { metrics: Record<string, { baseline: number }>; renderers: { canvas2d: { metrics: Record<string, { baseline: number }> } } };
+    expect(updated.renderers.canvas2d.metrics.frameP50Ratio?.baseline).toBe(0.2);
+    // The WebGL2 section is untouched.
+    expect(updated.metrics.frameP50Ratio?.baseline).toBe((raw.metrics as Record<string, { baseline: number }>).frameP50Ratio?.baseline);
+    const webgl = parseThresholds(raw);
+    const refreshed = withUpdatedThresholds(raw, "webgl2", withBaselines(webgl, [{ frameP50Ratio: 0.5, frameP95Ratio: 0.5, ingestRatio: 1, drawCallsP95: 4, pointsRenderedP95: 28000, uploadBytesP95: 1000 }])) as { metrics: Record<string, { baseline: number }>; renderers: unknown };
+    expect(refreshed.metrics.frameP50Ratio?.baseline).toBe(0.5);
+    expect(refreshed.renderers).toEqual(raw.renderers);
   });
 
   it("rejects malformed thresholds", () => {

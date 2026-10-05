@@ -131,6 +131,19 @@ export function defineEngineContract(fixture: EngineFixture): void {
       close(polygons[0]!.bbox, [0, 0, 120, 50]);
     });
 
+    it("breaks triangle strips at a non-finite vertex pair instead of bridging the gap", () => {
+      const h = frame();
+      // Three runs of (x, y) / (x, baseline) pairs: x 0-2, a NaN pair at x = 3, then x 4-6 and x 8-9.
+      const nan = Number.NaN;
+      h.renderer.drawTriangles(new Float32Array([0, 4, 0, 0, 1, 4, 1, 0, 2, 4, 2, 0, 3, nan, 3, 0, 4, 3, 4, 0, 5, 3, 5, 0, 6, 3, 6, 0, nan, nan, 7, 0, 8, 2, 8, 0, 9, 2, 9, 0]), 20, white, projection, "triangle_strip");
+      h.renderer.endFrame();
+      const boxes = only(h.draws(), "polygon").map((p) => p.bbox);
+      expect(boxes).toHaveLength(3);
+      close(boxes[0]!, [0, 10, 20, 50], 0.01);
+      close(boxes[1]!, [40, 20, 60, 50], 0.01);
+      close(boxes[2]!, [80, 30, 90, 50], 0.01);
+    });
+
     it("fills device-pixel rectangles with their own colors and skips non-finite ones", () => {
       const h = frame();
       const rects = new Float32Array([

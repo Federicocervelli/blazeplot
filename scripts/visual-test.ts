@@ -3,6 +3,8 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import { compareEngines, CROSS_ENGINE_THRESHOLDS, IDENTICAL_THRESHOLDS } from "./cross-engine.js";
+import type { CrossEngineKind, CrossEngineResult } from "./cross-engine.js";
 import { decodePng, diffImages, encodePng, measureInk } from "./png-image.js";
 import type { RgbaImage } from "./png-image.js";
 import { CdpClient, attachConsoleLogging, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
@@ -25,15 +27,18 @@ interface Options {
   forceCompare: boolean;
   /** Renderer configurations to run; see RENDERER_MODES. */
   renderers: RendererMode[];
+  /** Print cross-engine metrics without failing, for recalibrating the thresholds in scripts/cross-engine.ts. */
+  crossEngineReportOnly: boolean;
 }
 
 /**
  * Renderer configurations. `webgl2` is the primary run and owns the committed pixel baselines.
- * `canvas2d` forces the Canvas 2D renderer and is compared against the same WebGL baselines with a looser
- * tolerance (antialiasing and pixel snapping differ; see docs/internal/local-development.md).
- * `shared` renders through `sharedRenderer()` (one hidden WebGL context, blitted into each chart canvas) and is
- * compared against the WebGL baselines with the baseline's own tolerance, since the pixels are the same GL output.
- * `auto-no-webgl` launches Chrome with WebGL disabled and checks that `renderer: autoRenderer()` falls back.
+ * `canvas2d` forces the Canvas 2D renderer. `shared` renders through the shared WebGL2 context (one hidden
+ * context, blitted into each chart canvas). When `webgl2` runs in the same invocation, both are compared with
+ * its render of the same case (see scripts/cross-engine.ts): `shared` must be bit-identical, `canvas2d` within the
+ * per-kind parity thresholds. Without a `webgl2` run in the invocation they fall back to the committed baselines
+ * (`canvas2d` with a looser tolerance, since antialiasing and pixel snapping differ).
+ * `auto-no-webgl` launches Chrome with WebGL disabled and checks that the default `"auto"` renderer falls back.
  */
 type RendererMode = "webgl2" | "shared" | "canvas2d" | "auto-no-webgl";
 const RENDERER_MODES: readonly RendererMode[] = ["webgl2", "shared", "canvas2d", "auto-no-webgl"];
@@ -174,6 +179,24 @@ const CASE_CHECKS: Readonly<Record<string, CaseCheck>> = {
 };
 const DEFAULT_CASE_CHECK: CaseCheck = { minInkRatio: 0.004 };
 
+/**
+ * What each case mostly draws, which picks its cross-engine threshold (see scripts/cross-engine.ts): rectangles
+ * are compared per pixel, everything with antialiased edges after a blur. `null` skips the comparison.
+ */
+const CROSS_ENGINE_KINDS: Readonly<Record<string, CrossEngineKind | null>> = {
+  bar: "fill",
+  histogram: "fill",
+  "translucent-overlap": "fill",
+  "exact-line-long": "dense-stroke",
+  "dense-area-spike": "fill",
+  // Needs a real WebGL context that Canvas 2D cannot offer.
+  "context-restore": null,
+};
+const DEFAULT_CROSS_ENGINE_KIND: CrossEngineKind = "stroke";
+
+/** Plot-area crops (grid hidden) per renderer mode and case, kept in memory for the cross-engine comparison. */
+type ModeCaptures = Map<string, RgbaImage>;
+
 await main();
 
 async function main(): Promise<void> {
@@ -200,8 +223,17 @@ async function main(): Promise<void> {
 
     const chromePath = resolveChrome(options.chrome);
     const failures: string[] = [];
+    const captures = new Map<RendererMode, ModeCaptures>();
     for (const [index, mode] of options.renderers.entries()) {
-      failures.push(...await runMode(mode, index, options, serverUrl, chromePath));
+      const run = await runMode(mode, index, options, serverUrl, chromePath);
+      failures.push(...run.failures);
+      captures.set(mode, run.captures);
+    }
+    const parity = await compareRenderers(captures, options);
+    if (options.crossEngineReportOnly) {
+      if (parity.length > 0) console.warn(`cross-engine report: ${parity.length} comparison(s) would fail (not enforced)`);
+    } else {
+      failures.push(...parity);
     }
     if (failures.length > 0) {
       throw new Error(`${failures.length} visual case(s) failed:\n  - ${failures.join("\n  - ")}`);
@@ -212,17 +244,65 @@ async function main(): Promise<void> {
   }
 }
 
+interface CrossEngineRow {
+  readonly renderer: RendererMode;
+  readonly caseName: string;
+  readonly kind: CrossEngineKind | "identical";
+  readonly result: CrossEngineResult;
+}
+
+/**
+ * Compare every other renderer's plot crop with the `webgl2` crop of the same case: `shared` must match to the
+ * bit, `canvas2d` within the thresholds for the case's kind. Failures keep both crops under `cross-engine/`.
+ */
+async function compareRenderers(captures: ReadonlyMap<RendererMode, ModeCaptures>, options: Options): Promise<string[]> {
+  const reference = captures.get("webgl2");
+  if (!reference) return [];
+  const failures: string[] = [];
+  const rows: CrossEngineRow[] = [];
+  for (const mode of ["shared", "canvas2d"] as const) {
+    const images = captures.get(mode);
+    if (!images) continue;
+    for (const [caseName, image] of images) {
+      const expected = reference.get(caseName);
+      if (!expected) continue;
+      const kind = mode === "shared" ? "identical" : CROSS_ENGINE_KINDS[caseName] === undefined ? DEFAULT_CROSS_ENGINE_KIND : CROSS_ENGINE_KINDS[caseName];
+      if (kind === null) continue;
+      const thresholds = kind === "identical" ? IDENTICAL_THRESHOLDS : CROSS_ENGINE_THRESHOLDS[kind];
+      const result = compareEngines(expected, image, thresholds);
+      rows.push({ renderer: mode, caseName, kind, result });
+      const note = `${(result.diffRatio * 100).toFixed(3)}% differ (${result.diffPixels}px, max delta ${result.maxChannelDelta}), ink ratio ${result.inkRatio.toFixed(3)}`;
+      if (result.ok) {
+        console.log(`✓ [crossEngine ${mode}] ${caseName} (${kind}): ${note}`);
+        continue;
+      }
+      const dir = join(options.outDir, "cross-engine", mode);
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, `${caseName}.webgl2.png`), encodePng(expected));
+      await writeFile(join(dir, `${caseName}.${mode}.png`), encodePng(image));
+      const message = `[crossEngine ${mode}] ${caseName} (${kind}): ${result.failures.join("; ")}`;
+      failures.push(message);
+      console.error(`✗ ${message}; ${note}. Crops: ${dir}`);
+    }
+  }
+  await mkdir(options.outDir, { recursive: true });
+  await writeFile(join(options.outDir, "cross-engine.json"), `${JSON.stringify({ generatedAt: new Date().toISOString(), rows: rows.map((row) => ({ renderer: row.renderer, case: row.caseName, kind: row.kind, ok: row.result.ok, diffRatio: row.result.diffRatio, diffPixels: row.result.diffPixels, maxChannelDelta: row.result.maxChannelDelta, inkRatio: row.result.inkRatio, referenceBounds: row.result.referenceBounds, otherBounds: row.result.otherBounds })) }, null, 2)}\n`);
+  return failures;
+}
+
 /** Run the selected cases for one renderer configuration in its own browser; returns the failure messages. */
-async function runMode(mode: RendererMode, index: number, base: Options, serverUrl: string, chromePath: string): Promise<string[]> {
+async function runMode(mode: RendererMode, index: number, base: Options, serverUrl: string, chromePath: string): Promise<{ failures: string[]; captures: ModeCaptures }> {
   const options: Options = {
     ...base,
     outDir: mode === "webgl2" ? base.outDir : join(base.outDir, mode),
     debugPort: base.debugPort + index,
     cases: base.cases.filter((name) => mode !== "auto-no-webgl" || !WEBGL_ONLY_CASES.has(name)),
-    // Pixel baselines belong to the WebGL run; Canvas 2D is compared against them, the fallback run only checks ink.
-    baselines: mode === "auto-no-webgl" || (mode !== "webgl2" && base.baselines === "update") ? "skip" : base.baselines,
+    // Pixel baselines belong to the WebGL run. Other renderers are compared with it directly when it runs in the
+    // same invocation; the fallback run only checks ink.
+    baselines: mode === "auto-no-webgl" || (mode !== "webgl2" && (base.baselines === "update" || base.renderers.includes("webgl2"))) ? "skip" : base.baselines,
   };
   const diffFactor = mode === "canvas2d" ? CANVAS2D_DIFF_FACTOR : 1;
+  const captures: ModeCaptures = new Map();
   const label = mode === "webgl2" ? "" : `[${mode}] `;
   await mkdir(options.outDir, { recursive: true });
   let chromeProc: Bun.Subprocess | null = null;
@@ -283,6 +363,7 @@ async function runMode(mode: RendererMode, index: number, base: Options, serverU
           throw new Error(`Blank canvas in ${caseName}: draw calls were issued but only ${(ink.ratio * 100).toFixed(3)}% of pixels differ from the background (minimum ${(check.minInkRatio * 100).toFixed(3)}%)`);
         }
 
+        captures.set(caseName, probeImage);
         const result: CaseResult = { caseName, screenshot: screenshotPath, chartScreenshotBytes, assertions: snapshot.assertions ?? [], inkRatio: ink.ratio, minInkRatio: check.minInkRatio };
         summary.push(result);
         let baselineNote = "";
@@ -311,7 +392,7 @@ async function runMode(mode: RendererMode, index: number, base: Options, serverU
     const reportPath = join(options.outDir, "summary.json");
     await writeFile(reportPath, `${JSON.stringify({ generatedAt: new Date().toISOString(), renderer: mode, browser: basename(chromePath), platform: process.platform, baselines: options.baselines, cases: summary }, null, 2)}\n`);
     console.log(`${label}Visual test screenshots written to ${options.outDir}`);
-    return failures;
+    return { failures, captures };
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (userDataDir && !options.keepBrowser) await rm(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
@@ -331,6 +412,7 @@ function parseArgs(args: readonly string[]): Options {
     baselineDir: DEFAULT_BASELINE_DIR,
     baselines: "compare",
     forceCompare: false,
+    crossEngineReportOnly: false,
     renderers: [...RENDERER_MODES],
   };
 
@@ -388,6 +470,9 @@ function parseArgs(args: readonly string[]): Options {
       case "--update-baselines":
         parsed.baselines = "update";
         break;
+      case "--cross-engine-report":
+        parsed.crossEngineReportOnly = true;
+        break;
       case "--skip-baselines":
         parsed.baselines = "skip";
         break;
@@ -424,6 +509,7 @@ Options:
   --chrome <path>        Chrome/Chromium/Brave executable
   --keep-browser         Keep browser profile/process
   --update-baselines     Rewrite pixel baselines from this run (generate them in the CI environment)
+  --cross-engine-report  Print the cross-engine parity metrics without failing (recalibrating scripts/cross-engine.ts)
   --skip-baselines       Skip pixel baseline comparison (blank-canvas checks still run)
   --compare-baselines    Compare baselines even on non-Linux platforms (skipped there by default)
   --baseline-dir <path>  Baseline PNG directory (default ${DEFAULT_BASELINE_DIR})
