@@ -67,6 +67,7 @@ export interface CrosshairPluginOptions {
   /** Touch long-press delay in milliseconds, or `false` to disable. */
   readonly longPressMs?: number | false;
   readonly rulerModifier?: "none" | "ctrl" | "shift" | "alt" | "meta";
+  /** Format X values in the label. Defaults to the X axis format for time and categorical axes (dates, category names), else a compact number. */
   readonly formatX?: (value: number) => string;
   readonly formatY?: (value: number) => string;
   readonly formatter?: (item: ChartPickItem, position: CrosshairPosition) => string;
@@ -204,7 +205,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   let rulerLine: SVGLineElement | null = null;
   let rulerStart: CrosshairPosition | null = null;
 
-  const formatX = options.formatX ?? formatCompactNumber;
+  // Default X labels follow time and categorical axes (dates, category names); numeric axes use compact numbers.
+  const formatX = options.formatX ?? ((value: number): string => chartRef?.coords.formatReadout(value, "x") ?? formatCompactNumber(value));
   const formatY = options.formatY ?? formatCompactNumber;
   let currentPosition: CrosshairPosition | null = null;
   let currentMeasurement: RulerMeasurement | null = null;

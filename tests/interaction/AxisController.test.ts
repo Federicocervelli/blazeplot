@@ -237,3 +237,22 @@ describe("AxisController", () => {
     expect(axis.formatValue(50, "x")).toBe("v50");
   });
 });
+
+describe("AxisController.formatReadout", () => {
+  it("gives full timestamps for time axes and category names for categorical axes", () => {
+    const time = new AxisController(new Camera2D(), { x: { scale: "time", timezone: "utc" } });
+    const start = Date.UTC(2026, 4, 18, 12, 34, 56, 0);
+    expect(time.formatReadout(start, "x")).toBe("2026-05-18 12:34:56");
+    expect(time.formatReadout(start + 789, "x")).toBe("2026-05-18 12:34:56.789");
+    expect(new AxisController(new Camera2D(), { x: { scale: "time", timezone: "utc", tickFormat: "%H:%M" } }).formatReadout(start, "x")).toBe("12:34");
+    expect(new AxisController(new Camera2D(), { x: { scale: "time", tickFormat: (v) => `t${v}` } }).formatReadout(5, "x")).toBe("t5");
+    const categorical = new AxisController(new Camera2D(), { x: { scale: "categorical", categories: ["a", "b", "c"] } });
+    expect(categorical.formatReadout(1, "x")).toBe("b");
+  });
+
+  it("returns null for numeric axes", () => {
+    const axis = new AxisController(new Camera2D(), { x: { scale: "log" } });
+    expect(axis.formatReadout(10, "x")).toBeNull();
+    expect(axis.formatReadout(10, "y")).toBeNull();
+  });
+});

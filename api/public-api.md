@@ -519,6 +519,7 @@ interface ChartPluginCoords {
         number
     ];
     format(value: number, axis: "x" | "y", yAxis?: SeriesYAxis): string;
+    formatReadout(value: number, axis: "x" | "y", yAxis?: SeriesYAxis): string | null;
 }
 ```
 

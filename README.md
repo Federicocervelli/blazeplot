@@ -53,7 +53,7 @@ For streaming data, pass `capacity` to `addLine` and append samples; see [Live d
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **202 KiB raw**. Plugins and helpers ship as separate subpath entries.
+The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **205 KiB raw**. Plugins and helpers ship as separate subpath entries.
 
 Across 19 scenarios and 154 metric comparisons against uPlot and Chart.js, BlazePlot (WebGL) clearly wins 117, is within noise on 13, and loses 24.
 

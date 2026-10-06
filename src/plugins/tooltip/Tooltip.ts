@@ -30,25 +30,19 @@ export interface TooltipPluginOptions {
   readonly render?: (state: ChartHoverState, container: HTMLElement, chart: ChartPluginContext) => void;
 }
 
-function renderDefaultTooltip(state: ChartHoverState, container: HTMLElement, formatter: TooltipPluginOptions["formatter"]): void {
+function renderDefaultTooltip(state: ChartHoverState, container: HTMLElement, formatter: TooltipPluginOptions["formatter"], chart: ChartPluginContext): void {
+  // Time and categorical X axes print dates and category names; numeric X and all Y values stay compact numbers.
+  const formatX = (value: number): string => chart.coords.formatReadout(value, "x") ?? formatCompactNumber(value);
   renderPickItems(
     container,
     state.items,
     state,
     formatter,
-    formatDefaultTooltipItem,
+    (item) => {
+      if (item.xRange) return `${formatX(item.xRange.xStart)}–${formatX(item.xRange.xEnd)}: ${formatCompactNumber(item.y)}`;
+      return `(${formatX(item.x)}, ${formatCompactNumber(item.y)})`;
+    },
   );
-}
-
-function formatDefaultTooltipItem(item: ChartPickItem): string {
-  if (item.xRange) {
-    return `${formatXRange(item.xRange)}: ${formatCompactNumber(item.y)}`;
-  }
-  return `(${formatCompactNumber(item.x)}, ${formatCompactNumber(item.y)})`;
-}
-
-function formatXRange(range: NonNullable<ChartPickItem["xRange"]>): string {
-  return `${formatCompactNumber(range.xStart)}–${formatCompactNumber(range.xEnd)}`;
 }
 
 const joinTooltipSyncGroup = createSyncRegistry();
@@ -147,7 +141,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         if (options.render) {
           options.render(effectiveState, container, chart);
         } else {
-          renderDefaultTooltip(effectiveState, container, options.formatter);
+          renderDefaultTooltip(effectiveState, container, options.formatter, chart);
         }
 
         container.style.display = "block";

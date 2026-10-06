@@ -190,7 +190,7 @@ describe("viewport outside the data warning", () => {
   });
 
   it("formats time axes as dates", () => {
-    const chart = h.make({ axes: { x: { scale: "time", timezone: "UTC" } } });
+    const chart = h.make({ axes: { x: { scale: "time", timezone: "utc" } } });
     const series = chart.addLine({ capacity: 4 });
     series.append({ x: Date.UTC(2024, 0, 1), y: 1 });
     chart.setViewport({ xMin: 0, xMax: 1000 });

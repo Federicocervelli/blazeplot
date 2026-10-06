@@ -81,6 +81,8 @@ const chart = new Chart(element, {
 
 Use the `group` or `syncGroup` options when several charts should share hover state. The tooltip and crosshair also follow the keyboard inspection cursor of `a11yPlugin` (any hover state with `source: "inspection"`).
 
+Default labels follow the X axis: a `scale: "time"` axis prints a full timestamp (`2024-01-01 00:00:05`, with `.123` milliseconds when the value has them, in the axis `timezone`, or your string `tickFormat`; a function `tickFormat` is used as-is) and a `scale: "categorical"` axis prints the category name. Linear and log X values, and all Y values, print as compact numbers (6 significant digits). A custom `formatter`, `formatX`, or `formatY` replaces the default.
+
 On touch screens the tooltip and crosshair appear on a long press (`longPressMs`, default 450 ms; `false` turns it off), follow the finger while it is held, and hide when it lifts, is cancelled, or a second finger arrives (that starts a pinch or pan instead). Both ask for `touch-action: pan-y` on the plot, so a vertical swipe still scrolls the page. Their `render` (and the crosshair's `renderHighlight`) callbacks receive the plugin context, not the `Chart`, as the last argument.
 
 ```ts

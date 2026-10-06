@@ -93,6 +93,13 @@ export interface ChartPluginCoords {
    * scale formatting). Use it for text that should match the axes, such as announcements.
    */
   format(value: number, axis: "x" | "y", yAxis?: SeriesYAxis): string;
+  /**
+   * Like `format`, but self-contained for readouts such as tooltips: a time axis gives a full
+   * timestamp (date and time, honoring the axis `timezone` and a string `tickFormat`) and a categorical
+   * axis gives the category name. Returns `null` for numeric axes, where the caller prints the number
+   * at its own precision.
+   */
+  formatReadout(value: number, axis: "x" | "y", yAxis?: SeriesYAxis): string | null;
 }
 
 /** Viewport reads, changes, and latest-X follow control. Changes go through the chart's `ViewportPolicy`. */

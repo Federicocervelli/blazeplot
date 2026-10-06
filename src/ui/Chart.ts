@@ -263,6 +263,7 @@ export class Chart {
       inspect: (inspectTarget) => this.hover.inspect(inspectTarget),
       getInspection: () => this.hover.inspection,
       formatValue: (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis),
+      formatReadout: (value, axis, yAxis) => this.formatAxisReadout(value, axis, yAxis),
     });
     try {
       for (const plugin of options.plugins ?? []) this.plugins.install(plugin);
@@ -894,6 +895,16 @@ export class Chart {
       return this.controllerFor(yAxis).formatValue(value, axis);
     } catch {
       return String(value);
+    }
+  }
+
+  /** Format a value for a readout (see `AxisController.formatReadout`); `null` for numeric axes or when formatting throws. */
+  private formatAxisReadout(value: number, axis: "x" | "y", yAxis: SeriesYAxis = "left"): string | null {
+    if (!Number.isFinite(value)) return null;
+    try {
+      return this.controllerFor(yAxis).formatReadout(value, axis);
+    } catch {
+      return null;
     }
   }
 
