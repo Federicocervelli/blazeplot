@@ -242,6 +242,7 @@ export class PluginHost {
     const coords: ChartPluginCoords = {
       dataToPlot: (x, y, yAxis) => chart.dataToPlot(x, y, yAxis),
       clientToData: (clientX, clientY, yAxis) => chart.clientToData(clientX, clientY, yAxis),
+      plotToData: (plotX, plotY, yAxis) => access.plotToData(plotX, plotY, yAxis),
       clientToPlot: (clientX, clientY) => {
         const rect = plotClientRect();
         return [clientX - rect.left, clientY - rect.top];

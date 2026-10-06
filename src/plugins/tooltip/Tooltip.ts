@@ -121,6 +121,15 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
         markers.update(options.highlight === false || !state ? [] : state.items, { strokeColor: chart.theme.markerStrokeColor });
       };
 
+      // Visibility as last written (hidden at mount); the tooltip re-renders on every move, so skip unchanged writes.
+      let shown = false;
+      const setShown = (next: boolean): void => {
+        if (next === shown) return;
+        shown = next;
+        container.style.display = next ? "block" : "none";
+        container.setAttribute("aria-hidden", next ? "false" : "true");
+      };
+
       const render = (state: ChartHoverState | null): void => {
         // Keyboard inspection pins the tooltip to the inspected sample; never re-pick it.
         const shouldRepick = state !== null && state.source !== "inspection" && (
@@ -132,8 +141,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
 
         renderMarkers(effectiveState);
         if (!effectiveState || effectiveState.items.length === 0) {
-          container.style.display = "none";
-          container.setAttribute("aria-hidden", "true");
+          setShown(false);
           resetTooltipWidth();
           return;
         }
@@ -144,8 +152,7 @@ export function tooltipPlugin(options: TooltipPluginOptions = {}): ChartPlugin {
           renderDefaultTooltip(effectiveState, container, options.formatter, chart);
         }
 
-        container.style.display = "block";
-        container.setAttribute("aria-hidden", "false");
+        setShown(true);
         lockTooltipWidth();
         if (tooltipSize.width <= 0 || tooltipSize.height <= 0) {
           tooltipSize = { width: container.offsetWidth, height: container.offsetHeight };

@@ -112,9 +112,28 @@ function positionFromPick(chart: ChartPluginContext, clientX: number, clientY: n
   return item ? { dataX: item.x, dataY: item.y, plotX: item.plotX, plotY: item.plotY, items: [item] } : null;
 }
 
-function resolvePosition(chart: ChartPluginContext, clientX: number, clientY: number, yAxis: SeriesYAxis, snap: CrosshairSnapMode): CrosshairPosition | null {
-  const rect = chart.layout.plotRect();
-  if (rect.width <= 0 || rect.height <= 0) return null;
+/**
+ * Plot-local point of a pointer event on the plot surface (the chart canvas), or `undefined` when the event
+ * was retargeted. `offsetX/Y` is relative to the canvas, i.e. already plot-local, so the common move needs
+ * no layout read to leave client space.
+ */
+function plotPointOf(event: PointerEvent): { plotX: number; plotY: number } | undefined {
+  if (event.target !== event.currentTarget) return undefined;
+  return { plotX: event.offsetX, plotY: event.offsetY };
+}
+
+function resolvePosition(
+  chart: ChartPluginContext,
+  clientX: number,
+  clientY: number,
+  yAxis: SeriesYAxis,
+  snap: CrosshairSnapMode,
+  plotPoint?: { plotX: number; plotY: number },
+): CrosshairPosition | null {
+  if (!plotPoint) {
+    const rect = chart.layout.plotRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+  }
 
   const pickMode: ChartPickMode = snap === "nearest-point" ? "nearest-point" : "nearest-x";
   if (snap !== "none") {
@@ -122,6 +141,10 @@ function resolvePosition(chart: ChartPluginContext, clientX: number, clientY: nu
     if (picked) return picked;
   }
 
+  if (plotPoint) {
+    const data = chart.coords.plotToData(plotPoint.plotX, plotPoint.plotY, yAxis);
+    return data ? { dataX: data[0], dataY: data[1], plotX: plotPoint.plotX, plotY: plotPoint.plotY, items: [] } : null;
+  }
   const data = chart.coords.clientToData(clientX, clientY, yAxis);
   if (!data) return null;
   const [plotX, plotY] = chart.coords.dataToPlot(data[0], data[1], yAxis);
@@ -212,8 +235,20 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   let currentMeasurement: RulerMeasurement | null = null;
   let activeClientPoint: { clientX: number; clientY: number } | null = null;
   let sync: SyncMembership | null = null;
+  let labelSize = { width: 0, height: 0 };
+  let plotSize = { width: 0, height: 0 };
+  let labelResizeObserver: ResizeObserver | null = null;
+
+  // What the DOM last received; moves re-render constantly and every style write dirties style, so equal writes are skipped.
+  let visibleState: boolean | null = null;
+  let lineDisplaysSet = false;
+  let labelShown: boolean | null = null;
+  let lastLineX = NaN;
+  let lastLineY = NaN;
 
   const setVisible = (visible: boolean): void => {
+    if (visible === visibleState) return;
+    visibleState = visible;
     if (root) root.style.display = visible ? "block" : "none";
     if (lineLayer) lineLayer.style.display = visible ? "block" : "none";
     if (overlayLayer) overlayLayer.style.display = visible ? "block" : "none";
@@ -242,11 +277,18 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     const chart = chartRef;
     if (!chart || !label) return;
     const placement = options.labelPlacement ?? "bottom-right";
-    const rect = label.getBoundingClientRect();
-    const offsetX = placement.endsWith("left") ? -rect.width - 12 : 12;
-    const offsetY = placement.startsWith("top") ? -rect.height - 12 : 12;
-    const plot = chart.layout.plotRect();
-    placeAbsoluteWithinBox(label, position.plotX, position.plotY, plot.width, plot.height, { offsetX, offsetY });
+    // Both sizes come from caches (label ResizeObserver, plot `onResize`); a zero cache measures once.
+    if (labelSize.width <= 0 || labelSize.height <= 0) {
+      const rect = label.getBoundingClientRect();
+      labelSize = { width: rect.width, height: rect.height };
+    }
+    if (plotSize.width <= 0 || plotSize.height <= 0) {
+      const plot = chart.layout.plotRect();
+      plotSize = { width: plot.width, height: plot.height };
+    }
+    const offsetX = placement.endsWith("left") ? -labelSize.width - 12 : 12;
+    const offsetY = placement.startsWith("top") ? -labelSize.height - 12 : 12;
+    placeAbsoluteWithinBox(label, position.plotX, position.plotY, plotSize.width, plotSize.height, { offsetX, offsetY, size: labelSize });
   };
 
   // Plain point markers are reused across updates; custom or interval highlights rebuild the layer.
@@ -283,19 +325,32 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       return;
     }
     setVisible(true);
-    vertical.style.display = axis === "y" ? "none" : "block";
-    horizontal.style.display = axis === "x" ? "none" : "block";
-    vertical.style.left = `${position.plotX}px`;
-    horizontal.style.top = `${position.plotY}px`;
+    if (!lineDisplaysSet) {
+      lineDisplaysSet = true;
+      vertical.style.display = axis === "y" ? "none" : "block";
+      horizontal.style.display = axis === "x" ? "none" : "block";
+    }
+    if (position.plotX !== lastLineX) {
+      lastLineX = position.plotX;
+      vertical.style.left = `${position.plotX}px`;
+    }
+    if (position.plotY !== lastLineY) {
+      lastLineY = position.plotY;
+      horizontal.style.top = `${position.plotY}px`;
+    }
     if (options.label !== false) {
-      label.style.display = "block";
+      if (labelShown !== true) {
+        labelShown = true;
+        label.style.display = "block";
+      }
       if (options.render) {
         options.render(position, label, chartRef!);
       } else {
         renderDefaultLabel(position, label, formatX, formatY, options.formatter);
       }
       placeLabel(position);
-    } else {
+    } else if (labelShown !== false) {
+      labelShown = false;
       label.style.display = "none";
     }
   };
@@ -390,6 +445,14 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       lineLayer.appendChild(rulerSvg);
       overlayLayer.appendChild(markerLayer);
       overlayLayer.appendChild(label);
+      const labelElement = label;
+      const ResizeObserverCtor = chart.dom.view.ResizeObserver ?? globalThis.ResizeObserver;
+      if (typeof ResizeObserverCtor !== "undefined") {
+        labelResizeObserver = new ResizeObserverCtor(() => {
+          labelSize = { width: labelElement.offsetWidth, height: labelElement.offsetHeight };
+        });
+        labelResizeObserver.observe(labelElement);
+      }
       root.append(lineLayer, overlayLayer);
       chart.dom.mount("plot", root);
 
@@ -405,8 +468,8 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         },
       });
 
-      const updateAtClientPoint = (clientX: number, clientY: number): void => {
-        const position = resolvePosition(chart, clientX, clientY, yAxis, snap);
+      const updateAtClientPoint = (clientX: number, clientY: number, plotPoint?: { plotX: number; plotY: number }): void => {
+        const position = resolvePosition(chart, clientX, clientY, yAxis, snap, plotPoint);
         renderPosition(position);
         emitMove(position);
         if (position) sync?.broadcast(position.dataX);
@@ -456,7 +519,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
           if (event.pointerType === "touch") return;
           activeClientPoint = { clientX: event.clientX, clientY: event.clientY };
         },
-        onMove: (event) => updateAtClientPoint(event.clientX, event.clientY),
+        onMove: (event) => updateAtClientPoint(event.clientX, event.clientY, plotPointOf(event)),
         onDown: onPointerDown,
         onUp: onPointerUp,
       });
@@ -490,8 +553,17 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         sync?.broadcast(null);
       });
 
-      return () => {
+      const dispose = (): void => {
         longPress.clear();
+        labelResizeObserver?.disconnect();
+        labelResizeObserver = null;
+        visibleState = null;
+        lineDisplaysSet = false;
+        labelShown = null;
+        lastLineX = NaN;
+        lastLineY = NaN;
+        labelSize = { width: 0, height: 0 };
+        plotSize = { width: 0, height: 0 };
         releaseStyle();
         markerPool = null;
         sync?.leave();
@@ -508,6 +580,12 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         rulerStart = null;
         activeClientPoint = null;
         chartRef = null;
+      };
+      return {
+        dispose,
+        onResize(size) {
+          plotSize = { width: size.width, height: size.height };
+        },
       };
     },
     getPosition(): CrosshairPosition | null {

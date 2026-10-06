@@ -84,6 +84,8 @@ export interface ChartPluginCoords {
   dataToPlot(x: number, y: number, yAxis?: SeriesYAxis): [number, number];
   /** Client coordinates (e.g. `event.clientX/Y`) to data coordinates, or `null` outside the plot. */
   clientToData(clientX: number, clientY: number, yAxis?: SeriesYAxis): [number, number] | null;
+  /** Plot-local CSS pixels (e.g. `event.offsetX/Y` on the plot canvas) to data coordinates, or `null` outside the plot. Reads no layout. */
+  plotToData(plotX: number, plotY: number, yAxis?: SeriesYAxis): [number, number] | null;
   /** Client coordinates to plot-local CSS pixels. Points outside the plot are not clamped. */
   clientToPlot(clientX: number, clientY: number): [number, number];
   /** Plot-local CSS pixels to client coordinates. */

@@ -74,7 +74,7 @@ export class ChartPicker {
     const anchorX = selected.sample.x;
     const items = group === "none"
       ? [this.createPickItem(selected.sample, selected.series, selected.seriesIndex, clientX, clientY, rect)]
-      : this.collectPickItems(anchorX, clientX, clientY, rect);
+      : this.collectPickItems(anchorX, clientX, clientY, rect, selected);
     return { clientX, clientY, plotX, plotY, dataX, dataY, anchorX, mode, group, maxDistancePx, items, source: "pointer" };
   }
 
@@ -127,12 +127,15 @@ export class ChartPicker {
     return best && (best.sample.distancePx ?? Infinity) <= maxDistancePx ? best : null;
   }
 
-  collectPickItems(anchorX: number, clientX: number, clientY: number, rect: PlotRect): ChartPickItem[] {
+  /** One item per visible series at `anchorX`. `known` is a sample already found for its series at `anchorX`, reused instead of searching again. */
+  collectPickItems(anchorX: number, clientX: number, clientY: number, rect: PlotRect, known?: PickCandidate): ChartPickItem[] {
     const items: ChartPickItem[] = [];
     for (let seriesIndex = 0; seriesIndex < this.source.series().length; seriesIndex++) {
       const series = this.source.series()[seriesIndex]!;
       if (!series.visible) continue;
-      const sample = series.nearestSampleByX(anchorX, this.source.camera(series.config.yAxis).viewport);
+      const sample = known && known.series === series
+        ? known.sample
+        : series.nearestSampleByX(anchorX, this.source.camera(series.config.yAxis).viewport);
       if (sample) items.push(this.createPickItem(sample, series, seriesIndex, clientX, clientY, rect));
     }
     return items;

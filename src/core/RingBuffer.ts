@@ -1,6 +1,6 @@
 import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxOut, MinMaxY } from "./MinMaxTree.js";
-import { lowerBound, upperBound } from "./search.js";
+import { lowerBoundRing, upperBoundRing } from "./search.js";
 import { createValueArray } from "./valueArray.js";
 import type { BufferOverflowStrategy, InvalidSample, TimeRange, ValuePrecision } from "./types.js";
 import { assertEqualLengths, MAX_X, MIN_X, firstInvalidX, invalidSampleWarning, invalidXReason } from "./validation.js";
@@ -230,12 +230,12 @@ export class RingBuffer {
 
   /** Return the first logical index whose X value is at least `x`. */
   lowerBoundX(x: number): number {
-    return lowerBound(this._length, (index) => this.xData[this.logicalToPhysical(index)]!, x);
+    return lowerBoundRing(this.xData, this.logicalToPhysical(0), this._length, x);
   }
 
   /** Return the first logical index whose X value is greater than `x`. */
   upperBoundX(x: number): number {
-    return upperBound(this._length, (index) => this.xData[this.logicalToPhysical(index)]!, x);
+    return upperBoundRing(this.xData, this.logicalToPhysical(0), this._length, x);
   }
 
   /** Return min/max Y values for a logical index range. */

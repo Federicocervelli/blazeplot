@@ -1,5 +1,5 @@
 import type { MinMaxY } from "./MinMaxTree.js";
-import { lowerBound, upperBound } from "./search.js";
+import { lowerBoundTyped, upperBoundTyped } from "./search.js";
 import type { Dataset, MinMaxSegmentCopyDataset, RangeMinMaxDataset, SampleCopyLayout, TimeRange, Viewport, XRange, XRangeDataset } from "./types.js";
 import { assertEqualLengths, assertSortedFiniteX } from "./validation.js";
 
@@ -152,13 +152,13 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
   /** Return the first index whose sample (or bucket end) reaches `value`. */
   lowerBoundX(value: number): number {
     const edges = this._kind === "points" ? this.x : this.xEnd;
-    return lowerBound(edges.length, (index) => edges[index]!, value);
+    return lowerBoundTyped(edges, edges.length, value);
   }
 
   /** Return the first index whose sample (or bucket start) is past `value`. */
   upperBoundX(value: number): number {
     const edges = this._kind === "points" ? this.x : this.xStart;
-    return upperBound(edges.length, (index) => edges[index]!, value);
+    return upperBoundTyped(edges, edges.length, value);
   }
 
   /** Return min/max Y values for a logical index range. */

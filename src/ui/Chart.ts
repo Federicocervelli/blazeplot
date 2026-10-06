@@ -13,6 +13,7 @@ import { ChartLayout } from "./ChartLayout.js";
 import { ChartEmitter } from "./ChartEmitter.js";
 import { ChartHover } from "./ChartHover.js";
 import { ChartPicker, insidePlot, plotToData } from "./ChartPicker.js";
+import type { PlotRect } from "./ChartPicker.js";
 import { LIGHT_CHART_THEME, forcedColorsTheme, resolveChartTheme } from "./theme.js";
 import type { ChartTheme, ResolvedChartTheme } from "./theme.js";
 import { PluginHost } from "./PluginHost.js";
@@ -254,6 +255,7 @@ export class Chart {
       getWebGLContext: () => chart.getWebGLContext(),
       createRenderSurface: (canvas) => chart.createRenderSurface(canvas),
       getCamera: (yAxis) => chart.getCamera(yAxis),
+      plotToData: (plotX, plotY, yAxis = "left") => chart.plotPointToData(plotX, plotY, yAxis),
       installPlugin: (plugin) => chart.plugins.install(plugin),
     });
     this.plugins = new PluginHost(this, chartInternals(this), {
@@ -311,23 +313,33 @@ export class Chart {
   /** Convert data coordinates to plot-local CSS-pixel coordinates. */
   dataToPlot(x: number, y: number, yAxis: SeriesYAxis = "left"): [number, number] {
     const controller = this.controllerFor(yAxis);
-    // Use the same fractional plot size as clientToData so conversions round-trip exactly.
-    const rect = this.canvas.getBoundingClientRect();
+    // The cached plot size, like clientToData, so conversions round-trip exactly and never force layout.
+    const { width, height } = this.currentPlotSize();
     return this.getCamera(yAxis).toScreen(
       controller.valueToClip(x, "x"),
       controller.valueToClip(y, "y"),
-      rect.width,
-      rect.height,
+      width,
+      height,
     );
   }
 
   /** Convert viewport client coordinates to data coordinates, or `null` outside the plot. */
   clientToData(clientX: number, clientY: number, yAxis: SeriesYAxis = "left"): [number, number] | null {
-    const rect = this.canvas.getBoundingClientRect();
-    const plotX = clientX - rect.left;
-    const plotY = clientY - rect.top;
-    if (!insidePlot(plotX, plotY, rect)) return null;
-    return plotToData(plotX, plotY, rect, this.controllerFor(yAxis));
+    const origin = this.canvas.getBoundingClientRect();
+    return this.plotPointToData(clientX - origin.left, clientY - origin.top, yAxis);
+  }
+
+  /** Plot-local CSS pixels to data coordinates, or `null` outside the plot. Never reads layout. */
+  private plotPointToData(plotX: number, plotY: number, yAxis: SeriesYAxis): [number, number] | null {
+    const size = this.currentPlotSize();
+    if (!insidePlot(plotX, plotY, size)) return null;
+    return plotToData(plotX, plotY, size, this.controllerFor(yAxis));
+  }
+
+  /** The cached plot size; measures the canvas once if it was never sized. */
+  private currentPlotSize(): PlotRect {
+    if (this.plotSize.width < 0) this.applyCanvasSize();
+    return { left: 0, top: 0, width: this.plotSize.width, height: this.plotSize.height };
   }
 
   /** Return the visible data domain for the requested Y axis. */

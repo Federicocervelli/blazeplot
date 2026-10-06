@@ -54,6 +54,52 @@ describe("crosshairPlugin crosshair mode", () => {
     chart.dispose();
   });
 
+  it("positions from the canvas offset without reading layout on a pointer move", () => {
+    const { chart, plugin } = make();
+    move(chart, 200, 100);
+    const canvas = chartInternals(chart).canvas;
+    let reads = 0;
+    const original = canvas.getBoundingClientRect.bind(canvas);
+    canvas.getBoundingClientRect = () => { reads++; return original(); };
+    fire(canvas, pointerEvent("pointermove", 999, 999, { offsetX: 100, offsetY: 50 }));
+    expect(reads).toBe(0);
+    const position = plugin.getPosition()!;
+    expect(position.plotX).toBe(100);
+    expect(position.plotY).toBe(50);
+    expect(position.dataX).toBeCloseTo(2.5, 5);
+    expect(lines(chart).v.style.left).toBe("100px");
+    chart.dispose();
+  });
+
+  it("skips unchanged style writes on repeated moves", () => {
+    const { chart } = make({ snap: "nearest-x" });
+    move(chart, 200, 100);
+    const { v, hz, label } = lines(chart);
+    const marker = rootOf(chart).querySelector(".blazeplot-pick-marker") as HTMLElement;
+    expect(marker).toBeTruthy();
+    const writes: string[] = [];
+    for (const [name, el] of [["root", rootOf(chart)], ["v", v], ["hz", hz], ["label", label], ["marker", marker]] as const) {
+      const style = el.style;
+      Object.defineProperty(el, "style", {
+        configurable: true,
+        value: new Proxy(style, {
+          set(target, prop, value) {
+            writes.push(`${name}.${String(prop)}`);
+            return Reflect.set(target, prop, value);
+          },
+        }),
+      });
+    }
+    // Same sample, same position: nothing to write.
+    move(chart, 200, 100);
+    expect(writes).toEqual([]);
+    // Moving to another sample writes positions only: no display, color, or border writes.
+    move(chart, 300, 100);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.filter((w) => !/.(left|top)$/.test(w))).toEqual([]);
+    chart.dispose();
+  });
+
   it("hides when the pointer leaves or moves outside the plot and reports null", () => {
     const { chart, plugin, moves } = make();
     move(chart, 200, 100);

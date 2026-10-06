@@ -40,6 +40,30 @@ describe("tooltipPlugin", () => {
     chart.dispose();
   });
 
+  it("writes visibility once while hovering, not on every move", () => {
+    const chart = h.make({ plugins: [tooltipPlugin()] });
+    seed(chart);
+    hover(chart, 200, 100);
+    const tip = tooltipOf();
+    const writes: string[] = [];
+    const setAttribute = tip.setAttribute.bind(tip);
+    tip.setAttribute = (name: string, value: string) => { if (name === "aria-hidden") writes.push(name); setAttribute(name, value); };
+    Object.defineProperty(tip, "style", {
+      configurable: true,
+      value: new Proxy(tip.style, {
+        set(target, prop, value) {
+          if (prop === "display") writes.push("display");
+          return Reflect.set(target, prop, value);
+        },
+      }),
+    });
+    hover(chart, 250, 100);
+    hover(chart, 300, 100);
+    expect(writes).toEqual([]);
+    expect(tip.getAttribute("aria-hidden")).toBe("false");
+    chart.dispose();
+  });
+
   it("shows picked values with aria-hidden=false on hover and hides on pointer leave", () => {
     const chart = h.make({ plugins: [tooltipPlugin()] });
     seed(chart);

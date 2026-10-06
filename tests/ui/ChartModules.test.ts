@@ -123,6 +123,20 @@ describe("ChartPicker", () => {
     expect(picker.pickAtPlot(-5, 10, 0, 0, rect)).toBeNull();
   });
 
+  it("searches each series once per nearest-x pick, reusing the winner's sample", () => {
+    const { picker, series } = setup();
+    const buffer = new RingBuffer(16);
+    buffer.append([0, 4, 10], [1, 2, 3]);
+    const second = new SeriesStore(buffer, { mode: "line", capacity: 16 }, testStyle());
+    series.push(second);
+    const calls = [series[0]!, second].map((s) => spyOn(s, "nearestSampleByX"));
+    const hover = picker.pickAtPlot(48, 52, 58, 72, rect)!;
+    expect(hover.items.map((item) => item.index)).toEqual([1, 1]);
+    // The series that won is searched once; the other once for the pick and once at the anchor.
+    expect(calls[0]!).toHaveBeenCalledTimes(1);
+    expect(calls[1]!).toHaveBeenCalledTimes(2);
+  });
+
   it("honors maxDistancePx and nearest-point mode", () => {
     const { picker } = setup();
     expect(picker.pickAtPlot(60, 50, 70, 70, rect, { maxDistancePx: 1 })).toBeNull();
