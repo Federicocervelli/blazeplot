@@ -182,6 +182,23 @@ describe("crosshairPlugin crosshair mode", () => {
     fire(chartInternals(chart).canvas, pointerEvent("pointerup", 240, 100, { pointerType: "touch" }));
     chart.dispose();
   });
+
+  it("does not draw or broadcast a crosshair while a finger scrolls the page (no long press)", () => {
+    const a = make({ syncGroup: "touch-scroll" });
+    const b = make({ syncGroup: "touch-scroll" });
+    const canvas = chartInternals(a.chart).canvas;
+    fire(canvas, pointerEvent("pointerdown", 200, 100, { pointerType: "touch" }));
+    // A scroll gesture: moves beyond the long-press threshold before the delay elapses.
+    for (const x of [210, 230, 260]) fire(canvas, pointerEvent("pointermove", x, 100, { pointerType: "touch" }));
+    // The render handler used to redraw the crosshair at the last touch point.
+    a.chart.start();
+    h.raf.flush();
+    expect(a.plugin.getPosition()).toBeNull();
+    expect(rootOf(a.chart).style.display).toBe("none");
+    expect(rootOf(b.chart).style.display).toBe("none");
+    fire(canvas, pointerEvent("pointerup", 260, 100, { pointerType: "touch" }));
+    for (const x of [a, b]) x.chart.dispose();
+  });
 });
 
 describe("crosshairPlugin ruler mode", () => {
