@@ -132,6 +132,10 @@ export class BlazeplotHomePage extends LitElement {
               </div>
               <span class="sr-only" role="status" aria-live="polite"></span>
             </div>
+            <div class="home-badges mt-5 flex flex-wrap items-center gap-2" data-home-badges>
+              <a href="https://www.npmjs.com/package/blazeplot" target="_blank" rel="noreferrer noopener"><img src="https://img.shields.io/npm/dm/blazeplot?style=flat-square&label=npm%20downloads&color=cb3837&logo=npm" alt="npm downloads per month" height="20" class="block h-5 w-auto" /></a>
+              <a href="https://github.com/sponsors/Federicocervelli" target="_blank" rel="noreferrer noopener"><img src="https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ea4aaa?style=flat-square&logo=githubsponsors" alt="Sponsor BlazePlot on GitHub Sponsors" height="20" class="block h-5 w-auto" /></a>
+            </div>
           </div>
           <div class="stage min-w-0 shadow-[0_24px_80px_-32px_rgb(0_0_0/0.9)]">
             <div class="stage-bar top justify-between">
