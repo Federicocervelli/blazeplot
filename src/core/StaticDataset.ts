@@ -1,6 +1,6 @@
 import { MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxOut, MinMaxY } from "./MinMaxTree.js";
-import { lowerBound, upperBound } from "./search.js";
+import { lowerBoundTyped, upperBoundTyped } from "./search.js";
 import type { Dataset, TimeRange, ValuePrecision } from "./types.js";
 import { createValueArray } from "./valueArray.js";
 import { assertEqualLengths, assertSortedFiniteX, invalidXError, stableFiniteXOrder } from "./validation.js";
@@ -199,12 +199,12 @@ export class StaticDataset implements Dataset {
 
   /** Return the first logical index whose X value is at least `x`. */
   lowerBoundX(x: number): number {
-    return lowerBound(this.length, (index) => this.xData[index]!, x);
+    return lowerBoundTyped(this.xData, this.length, x);
   }
 
   /** Return the first logical index whose X value is greater than `x`. */
   upperBoundX(x: number): number {
-    return upperBound(this.length, (index) => this.xData[index]!, x);
+    return upperBoundTyped(this.xData, this.length, x);
   }
 
   /** Return min/max Y values for a logical index range. Summaries are built lazily, only for the blocks queried. */

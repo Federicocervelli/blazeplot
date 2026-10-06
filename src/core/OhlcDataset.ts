@@ -1,4 +1,4 @@
-import { lowerBound, upperBound } from "./search.js";
+import { lowerBoundRing, lowerBoundTyped, upperBoundRing, upperBoundTyped } from "./search.js";
 import { createValueArray } from "./valueArray.js";
 import type { BufferOverflowStrategy, InvalidOhlcSample, OhlcDataset, TimeRange, ValuePrecision } from "./types.js";
 import { assertEqualLengths, MAX_X, MIN_X, assertSortedFiniteX, firstInvalidX, invalidSampleWarning, invalidXReason, stableFiniteXOrder } from "./validation.js";
@@ -138,12 +138,12 @@ export class StaticOhlcDataset implements OhlcDataset {
 
   /** Return the first logical index whose X value is at least `x`. */
   lowerBoundX(x: number): number {
-    return lowerBound(this.length, (index) => this.xs[index]!, x);
+    return lowerBoundTyped(this.xs, this.length, x);
   }
 
   /** Return the first logical index whose X value is greater than `x`. */
   upperBoundX(x: number): number {
-    return upperBound(this.length, (index) => this.xs[index]!, x);
+    return upperBoundTyped(this.xs, this.length, x);
   }
 
   private assertValidIndex(index: number): void {
@@ -358,12 +358,12 @@ export class OhlcRingBuffer implements OhlcDataset {
 
   /** Return the first logical index whose X value is at least `x`. */
   lowerBoundX(x: number): number {
-    return lowerBound(this._length, (index) => this.getX(index), x);
+    return lowerBoundRing(this.xData, this.logicalToPhysical(0), this._length, x);
   }
 
   /** Return the first logical index whose X value is greater than `x`. */
   upperBoundX(x: number): number {
-    return upperBound(this._length, (index) => this.getX(index), x);
+    return upperBoundRing(this.xData, this.logicalToPhysical(0), this._length, x);
   }
 
   /** Store an already-validated candle, overwriting the oldest one when full. */
