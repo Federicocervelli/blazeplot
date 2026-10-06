@@ -50,7 +50,7 @@ const budgets: Budget[] = [
   { label: "selection plugin", path: "dist/plugins/selection.js", maxBytes: 8_800 },
   { label: "legend plugin", path: "dist/plugins/legend.js", maxBytes: 4_800 },
   { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_300 },
-  { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 9_400 },
+  { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 10_700 }, // +1_154 for the hover-path work: offset-based positioning, cached label/plot sizes, a ResizeObserver, and skip-equal DOM writes
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 17_700 },
   { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 11_900 },
 ];
@@ -64,14 +64,14 @@ const sharedBudgets: SharedChunkBudget[] = [
   { label: "lazy screenshot chunk", pattern: /^screenshot-.*\.js$/, maxBytes: 6_400 },
   { label: "shared OverlayUtils chunk", pattern: /^OverlayUtils-.*\.js$/, maxBytes: 2_600 },
   // Tooltip and crosshair helpers (pick markers, sync groups, long press), kept out of OverlayUtils so other plugins skip them.
-  { label: "shared PickOverlay chunk", pattern: /^PickOverlay-.*.js$/, maxBytes: 5_300 },
+  { label: "shared PickOverlay chunk", pattern: /^PickOverlay-.*.js$/, maxBytes: 6_100 }, // +648 for the skip-equal marker pool state and cached label size placement
 ];
 
 // The chart-only import graph: `import { Chart } from "blazeplot"` with no plugin, so it is what every consumer pays.
 // It holds the root entry, the Chart chunk (Chart, every rendering engine, the data engine), and the theme module.
 // 196_943 bytes (rc.8: 182_613 = index 20_845 + Chart 142_844 + WebGL2 11_955 + release 176 + theme 6_793). The engines moved into the core graph (WebGL2, Canvas 2D, and the shared context ship in the
 // root because the default renderer is "auto"), which is the whole +14.3 KB (+7.8%): Canvas 2D, the shared context, render surfaces, and engine-owned context loss.
-const graphBudgets: GraphBudget[] = [{ label: "chart-only import graph (index + Chart + engines + theme)", entry: "dist/index.js", maxBytes: 207_300 }]; // +700 theme: "auto" (matchMedia watcher and live switch); +2_300 runtime UX (see the Chart chunk budget); +1_900 net for the { x, y } and { values } series shorthands (StaticDataset, HistogramDataset, binning are now reached through Chart); +577 same runtime guard for buffer options next to a dataset; +220 lazy canvas sizing (engine hook, first-frame sizing, cached plot size), after the axis label and layout PRs took 213 back (-31, -182); +400 Canvas 2D polyline reducer; 199_900 before the warm canvas pool and the shared context idle release (+1_560: pool, idle-release helper, layout hook).
+const graphBudgets: GraphBudget[] = [{ label: "chart-only import graph (index + Chart + engines + theme)", entry: "dist/index.js", maxBytes: 208_100 }]; // +727 closure-free ring/typed binary search, plotToData and the cached-size dataToPlot; +700 theme: "auto" (matchMedia watcher and live switch); +2_300 runtime UX (see the Chart chunk budget); +1_900 net for the { x, y } and { values } series shorthands (StaticDataset, HistogramDataset, binning are now reached through Chart); +577 same runtime guard for buffer options next to a dataset; +220 lazy canvas sizing (engine hook, first-frame sizing, cached plot size), after the axis label and layout PRs took 213 back (-31, -182); +400 Canvas 2D polyline reducer; 199_900 before the warm canvas pool and the shared context idle release (+1_560: pool, idle-release helper, layout hook).
 
 /** Files `entry` imports statically, transitively (dynamic `import()` is excluded: it is not downloaded up front). */
 function staticGraph(entry: string): string[] {
