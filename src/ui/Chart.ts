@@ -872,10 +872,17 @@ export class Chart {
     }
   }
 
-  /** Attached series that pass the visibility and explicit-series filters. */
-  private candidateSeries(options: { readonly series?: readonly SeriesStore[]; readonly includeHidden?: boolean }): SeriesStore[] {
+  /**
+   * Attached series that pass the visibility and explicit-series filters. Returns `this.series`
+   * itself when nothing is filtered out (every frame of a follow-X chart), so callers only iterate.
+   */
+  private candidateSeries(options: { readonly series?: readonly SeriesStore[]; readonly includeHidden?: boolean }): readonly SeriesStore[] {
     const candidates = options.series ? options.series.filter((series) => this.series.includes(series)) : this.series;
-    return options.includeHidden ? candidates : candidates.filter((series) => series.visible);
+    if (options.includeHidden) return candidates;
+    for (const series of candidates) {
+      if (!series.visible) return candidates.filter((item) => item.visible);
+    }
+    return candidates;
   }
 
   private applyAutoFitYPolicy(): void {
