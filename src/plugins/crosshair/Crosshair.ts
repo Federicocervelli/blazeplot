@@ -449,6 +449,9 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         onPoint: showAtClientPoint,
         onEnd: onPointerLeave,
         beforeMove: (event) => {
+          // Touch never drives the crosshair except through a long press: a finger scrolling the page must not
+          // leave a tracked point behind for the render handler (or sync group) to draw.
+          if (event.pointerType === "touch") return;
           activeClientPoint = { clientX: event.clientX, clientY: event.clientY };
         },
         onMove: (event) => updateAtClientPoint(event.clientX, event.clientY),
