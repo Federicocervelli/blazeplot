@@ -54,6 +54,23 @@ describe("crosshairPlugin crosshair mode", () => {
     chart.dispose();
   });
 
+  it("positions from the canvas offset without reading layout on a pointer move", () => {
+    const { chart, plugin } = make();
+    move(chart, 200, 100);
+    const canvas = chartInternals(chart).canvas;
+    let reads = 0;
+    const original = canvas.getBoundingClientRect.bind(canvas);
+    canvas.getBoundingClientRect = () => { reads++; return original(); };
+    fire(canvas, pointerEvent("pointermove", 999, 999, { offsetX: 100, offsetY: 50 }));
+    expect(reads).toBe(0);
+    const position = plugin.getPosition()!;
+    expect(position.plotX).toBe(100);
+    expect(position.plotY).toBe(50);
+    expect(position.dataX).toBeCloseTo(2.5, 5);
+    expect(lines(chart).v.style.left).toBe("100px");
+    chart.dispose();
+  });
+
   it("hides when the pointer leaves or moves outside the plot and reports null", () => {
     const { chart, plugin, moves } = make();
     move(chart, 200, 100);

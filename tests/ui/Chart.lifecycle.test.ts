@@ -1,4 +1,5 @@
 import { chartInternals } from "../../src/ui/ChartInternals.ts";
+import { stubPlot } from "./harness.ts";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { countNodes, RecordingRenderer, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
 import { chartRenderer, describeRecorded, installEngineDoubles, itRecorded } from "./engines.ts";
@@ -631,7 +632,7 @@ describe("Chart plugins", () => {
   it("exposes coordinates, viewport, state, geometry, and the unstable escape hatches", () => {
     let ctx = null as ChartPluginContext | null;
     const chart = make({ plugins: [{ install: (c) => { ctx = c; } }] });
-    chartInternals(chart).canvas.getBoundingClientRect = () => ({ left: 10, top: 20, width: 400, height: 200, right: 410, bottom: 220, x: 10, y: 20, toJSON() {} }) as DOMRect;
+    stubPlot(chart, { width: 400, height: 200, left: 10, top: 20 });
     const c = ctx!;
     c.viewport.set({ xMin: 0, xMax: 100, yMin: 0, yMax: 10 });
     expect(c.viewport.get()).toMatchObject({ xMin: 0, xMax: 100, yMin: 0, yMax: 10 });
@@ -640,6 +641,10 @@ describe("Chart plugins", () => {
     expect(c.coords.plotToClient(100, 50)).toEqual([110, 70]);
     expect(c.coords.clientToData(210, 120)).toEqual([50, 5]);
     expect(c.coords.clientToData(0, 0)).toBeNull();
+    expect(c.coords.plotToData(200, 100)).toEqual([50, 5]);
+    expect(c.coords.plotToData(-1, 100)).toBeNull();
+    const [px, py] = c.coords.dataToPlot(50, 5);
+    expect(c.coords.clientToData(10 + px, 20 + py)).toEqual([50, 5]);
     expect(c.viewport.isReversed("x")).toBe(false);
     expect(c.viewport.getFollowXState()).toBe("off");
     c.viewport.followX({ window: 10 });

@@ -26,6 +26,8 @@ export interface ChartInternals {
   createRenderSurface(canvas: HTMLCanvasElement): ChartRenderSurface;
   /** Camera for the requested Y axis (default left). */
   getCamera(yAxis?: SeriesYAxis): Camera2D;
+  /** Plot-local CSS pixels to data coordinates through the cached plot size (no layout read), or `null` outside the plot. */
+  plotToData(plotX: number, plotY: number, yAxis?: SeriesYAxis): [number, number] | null;
   /** Install a plugin on a live chart. Returns a function that disposes just that plugin. */
   installPlugin(plugin: ChartPlugin): () => void;
 }

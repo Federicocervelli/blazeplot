@@ -510,6 +510,10 @@ interface ChartPluginCoords {
         number,
         number
     ] | null;
+    plotToData(plotX: number, plotY: number, yAxis?: SeriesYAxis): [
+        number,
+        number
+    ] | null;
     clientToPlot(clientX: number, clientY: number): [
         number,
         number
