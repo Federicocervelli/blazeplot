@@ -102,7 +102,7 @@ describe("chart summary", () => {
 
   it("injects the focus and forced-colors stylesheet with a theme focus color", () => {
     const chart = make({ theme: { focusRingColor: "#ff00aa" } });
-    const style = chart.rootElement.querySelector("style.blazeplot-style");
+    const style = chart.rootElement.ownerDocument.head.querySelector("style.blazeplot-style");
     expect(style?.textContent).toContain(".blazeplot-root:focus-visible");
     expect(style?.textContent).toContain("@media (forced-colors:active)");
     // Plugin-specific rules live in the plugins, not the core sheet.
@@ -112,8 +112,21 @@ describe("chart summary", () => {
     chart.dispose();
 
     const off = make({ accessibility: false });
-    expect(off.rootElement.querySelector("style.blazeplot-style")).toBeNull();
+    expect(off.rootElement.ownerDocument.head.querySelector("style.blazeplot-style")).toBeNull();
     off.dispose();
+  });
+
+  it("shares one stylesheet per document and removes it with the last chart", () => {
+    const sheets = (): number => document.head.querySelectorAll("style.blazeplot-style").length;
+    const before = sheets();
+    const a = make();
+    const b = make();
+    expect(sheets()).toBe(before + 1);
+    a.dispose();
+    expect(sheets()).toBe(before + 1);
+    b.dispose();
+    b.dispose();
+    expect(sheets()).toBe(before);
   });
 });
 

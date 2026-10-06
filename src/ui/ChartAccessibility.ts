@@ -5,6 +5,7 @@ import type { ChartLayout } from "./ChartLayout.js";
 import { titleText } from "./ChartLayout.js";
 import type { ChartSummary } from "./ChartSummary.js";
 import { withAlpha } from "./ChartConfig.js";
+import { installSharedStyle } from "./SharedStyle.js";
 
 /** Minimum delay between regenerated accessibility summaries while data changes. */
 const SUMMARY_THROTTLE_MS = 1_000;
@@ -56,6 +57,7 @@ export class ChartAccessibility {
   private summaryElement: HTMLElement | null = null;
   private summaryTimer: ReturnType<typeof setTimeout> | null = null;
   private summaryDirty = false;
+  private releaseStyle: (() => void) | null = null;
   private readonly handleForcedColorsChange = (): void => {
     this.host.onForcedColorsChange();
   };
@@ -145,10 +147,7 @@ export class ChartAccessibility {
       element.setAttribute("aria-hidden", "true");
     }
 
-    const style = doc.createElement("style");
-    style.className = "blazeplot-style";
-    style.textContent = CHART_STYLESHEET;
-    root.appendChild(style);
+    this.releaseStyle = installSharedStyle(root, "blazeplot-style", CHART_STYLESHEET);
 
     if (config?.description === "") return;
     const summary = doc.createElement("div");
@@ -186,9 +185,11 @@ export class ChartAccessibility {
     if (element.textContent !== text) element.textContent = text;
   }
 
-  /** Cancel pending timers and the media-query listener. */
+  /** Cancel pending timers, the media-query listener, and this chart's hold on the shared stylesheet. */
   dispose(): void {
     this.unwatchForcedColors();
+    this.releaseStyle?.();
+    this.releaseStyle = null;
     if (this.summaryTimer !== null) clearTimeout(this.summaryTimer);
     this.summaryTimer = null;
   }

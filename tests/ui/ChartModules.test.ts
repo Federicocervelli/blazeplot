@@ -272,7 +272,7 @@ describe("ChartAccessibility", () => {
     expect(root.getAttribute("aria-label")).toBe("Latency — p99");
     const summary = root.ownerDocument.getElementById(root.getAttribute("aria-describedby")!);
     expect(summary?.className).toBe("blazeplot-visually-hidden");
-    expect(root.querySelector("style.blazeplot-style")).not.toBeNull();
+    expect(root.ownerDocument.head.querySelector("style.blazeplot-style")).not.toBeNull();
     chart.addLine({ capacity: 4, name: "A" }).append({ x: 1, y: 2 });
     chart.dispose();
   });
@@ -281,7 +281,7 @@ describe("ChartAccessibility", () => {
     const chart = h.make({ accessibility: false });
     const root = chartInternals(chart).canvas.closest(".blazeplot-root") as HTMLElement;
     expect(root.hasAttribute("aria-label")).toBe(false);
-    expect(root.querySelector("style.blazeplot-style")).toBeNull();
+    expect(root.ownerDocument.head.querySelector("style.blazeplot-style")).toBeNull();
     // Keyboard events are inert without the a11y plugin.
     fire(root, keyEvent("ArrowRight"));
     chart.dispose();

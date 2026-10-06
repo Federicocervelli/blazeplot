@@ -211,7 +211,7 @@ export class Chart {
       this.engine.setLossListener(this.onRendererState);
     } catch (error) {
       // E.g. the chosen engine is unavailable: remove the half-built DOM and hand back a caller-supplied canvas.
-      this.a11y.unwatchForcedColors();
+      this.a11y.dispose();
       this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
       this.layout.dispose();
       throw error;
