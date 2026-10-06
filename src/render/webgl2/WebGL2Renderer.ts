@@ -32,7 +32,8 @@ export class WebGL2Renderer implements ChartRenderer {
   readonly kind = "webgl2" as const;
   private stream = new Float32Array(INITIAL_STREAM_FLOATS);
   private streamFloats = 0;
-  private commands: DrawCommand[] = [];
+  /** Reused every frame: `submit` consumes it synchronously and keeps no reference. */
+  private readonly commands: DrawCommand[] = [];
   private canvasWidth = 1;
   private canvasHeight = 1;
   private pixelRatio = 1;
@@ -78,7 +79,7 @@ export class WebGL2Renderer implements ChartRenderer {
     this.canvasHeight = Math.max(1, height);
     this.pixelRatio = Math.max(1, pixelRatio);
     this.streamFloats = 0;
-    this.commands = [];
+    this.commands.length = 0;
     this.backend.viewport(0, 0, width, height);
     this.backend.clear(0, 0, 0, 0);
   }
@@ -87,9 +88,13 @@ export class WebGL2Renderer implements ChartRenderer {
   endFrame(): FrameReport {
     const commands = this.commands;
     if (commands.length === 0) return { uploadBytes: 0, drawCalls: 0 };
-    this.commands = [];
-    this.backend.submit(this.stream, this.streamFloats, commands);
-    return { uploadBytes: this.streamFloats * Float32Array.BYTES_PER_ELEMENT, drawCalls: commands.length };
+    const drawCalls = commands.length;
+    try {
+      this.backend.submit(this.stream, this.streamFloats, commands);
+    } finally {
+      commands.length = 0;
+    }
+    return { uploadBytes: this.streamFloats * Float32Array.BYTES_PER_ELEMENT, drawCalls };
   }
 
   /** Start building the programs a series of `mode` will need (see `ChartRenderer.prepare`). */
@@ -136,7 +141,10 @@ export class WebGL2Renderer implements ChartRenderer {
       canvasWidth: this.canvasWidth,
       canvasHeight: this.canvasHeight,
       color,
-      ...projection,
+      scaleX: projection.scaleX,
+      scaleY: projection.scaleY,
+      offsetX: projection.offsetX,
+      offsetY: projection.offsetY,
     });
   }
 
@@ -156,7 +164,10 @@ export class WebGL2Renderer implements ChartRenderer {
       canvasWidth: this.canvasWidth,
       canvasHeight: this.canvasHeight,
       color,
-      ...projection,
+      scaleX: projection.scaleX,
+      scaleY: projection.scaleY,
+      offsetX: projection.offsetX,
+      offsetY: projection.offsetY,
     });
   }
 
@@ -170,7 +181,10 @@ export class WebGL2Renderer implements ChartRenderer {
       barWidth: style.barWidth,
       baseline: style.baseline - yOrigin,
       color: style.color,
-      ...projection,
+      scaleX: projection.scaleX,
+      scaleY: projection.scaleY,
+      offsetX: projection.offsetX,
+      offsetY: projection.offsetY,
     });
   }
 
@@ -197,7 +211,7 @@ export class WebGL2Renderer implements ChartRenderer {
     this.canvas.removeEventListener("webglcontextlost", this.handleContextLost);
     this.canvas.removeEventListener("webglcontextrestored", this.handleContextRestored);
     this.lossListener = null;
-    this.commands = [];
+    this.commands.length = 0;
     // A healthy chart canvas stays warm for the next chart instead of paying for a context release now and a new context later.
     if (this.poolable && !this.lost && parkPlotCanvas(this.canvas, this.backend)) return;
     destroyBackend(this.backend);
@@ -207,7 +221,7 @@ export class WebGL2Renderer implements ChartRenderer {
     // Allow the browser to restore the context; the chart stops drawing until it does.
     event.preventDefault();
     this.lost = true;
-    this.commands = [];
+    this.commands.length = 0;
     this.lossListener?.("lost");
   };
 
@@ -234,7 +248,7 @@ export class WebGL2Renderer implements ChartRenderer {
 
   private drawSolid(data: Float32Array, vertexCount: number, color: RgbaColor, projection: RenderProjection, primitive: SolidPrimitive): void {
     if (vertexCount <= 0) return;
-    this.commands.push({ kind: "solid", primitive, first: this.stage(data, vertexCount), count: vertexCount, color, ...projection });
+    this.commands.push({ kind: "solid", primitive, first: this.stage(data, vertexCount), count: vertexCount, color, scaleX: projection.scaleX, scaleY: projection.scaleY, offsetX: projection.offsetX, offsetY: projection.offsetY });
   }
 
   /** Append the first `vertexCount` `[x, y]` vertices of `data` to the frame stream; returns their first vertex index. */

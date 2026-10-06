@@ -41,6 +41,13 @@ export class Canvas2DRenderer implements ChartRenderer {
   private height = 1;
   private pixelRatio = 1;
   private readonly map: PixelMap = { sx: 0, ox: 0, sy: 0, oy: 0 };
+  /** What was last written to the context's `fillStyle`, `strokeStyle`, `lineWidth`, and `lineJoin` this frame. */
+  private fill: string | null = null;
+  private strokeColor: string | null = null;
+  private strokeWidth = NaN;
+  private strokeJoin: string | null = null;
+  /** Scratch for the float color of the rect being filled (compared with `fill` before a string is built). */
+  private readonly rectColor: [number, number, number, number] = [0, 0, 0, 0];
 
   constructor(private readonly canvas: HTMLCanvasElement, origin?: RendererOrigin) {
     const ctx = canvas.getContext("2d");
@@ -64,6 +71,11 @@ export class Canvas2DRenderer implements ChartRenderer {
     this.height = Math.max(1, height);
     this.pixelRatio = Math.max(1, pixelRatio);
     this.drawCalls = 0;
+    // Style state lives on the context (a restore resets it), so forget what was last set and set it per frame.
+    this.fill = null;
+    this.strokeColor = null;
+    this.strokeWidth = NaN;
+    this.strokeJoin = null;
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
     this.ctx.clearRect(0, 0, this.width, this.height);
   }
@@ -200,7 +212,7 @@ export class Canvas2DRenderer implements ChartRenderer {
     const { sx, ox, sy, oy } = this.project(projection);
     const radius = Math.max(0.5, pointSize * this.pixelRatio * 0.5);
     const ctx = this.ctx;
-    this.ctx.fillStyle = css(color);
+    this.setFill(color);
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = d[i * 2]! * sx + ox;
@@ -218,7 +230,7 @@ export class Canvas2DRenderer implements ChartRenderer {
     const { sx, ox, sy, oy } = this.project(projection);
     const half = style.barWidth * 0.5;
     const base = (style.baseline - yOrigin) * sy + oy;
-    this.ctx.fillStyle = css(style.color);
+    this.setFill(style.color);
     // One path and one fill for the whole batch instead of a fill call per bar.
     this.ctx.beginPath();
     for (let i = 0; i < n; i++) {
@@ -241,7 +253,7 @@ export class Canvas2DRenderer implements ChartRenderer {
     const n = Math.min(vertexCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
     const ctx = this.ctx;
-    this.ctx.fillStyle = css(color);
+    this.setFill(color);
 
     if (primitive === "triangle_strip") {
       // A strip is a ribbon: even vertices run along one edge, odd vertices along the other. A pair with a
@@ -307,7 +319,6 @@ export class Canvas2DRenderer implements ChartRenderer {
     this.drawCalls++;
     const n = Math.min(count, rects.length >> 3);
     const ctx = this.ctx;
-    let style = "";
     for (let i = 0; i < n; i++) {
       const o = i * 8;
       const x = rects[o]!;
@@ -316,8 +327,20 @@ export class Canvas2DRenderer implements ChartRenderer {
       const h = rects[o + 3]!;
       if (!Number.isFinite(x + y + w + h)) continue;
       if (x + w < 0 || y + h < 0 || x > this.width || y > this.height) continue;
-      const next = css([rects[o + 4]!, rects[o + 5]!, rects[o + 6]!, rects[o + 7]!]);
-      if (next !== style) ctx.fillStyle = style = next;
+      // Rect colors arrive as floats, so compare them with the last fill color before building a string.
+      const r = rects[o + 4]!;
+      const g = rects[o + 5]!;
+      const b = rects[o + 6]!;
+      const a = rects[o + 7]!;
+      const last = this.rectColor;
+      if (this.fill === null || last[0] !== r || last[1] !== g || last[2] !== b || last[3] !== a) {
+        last[0] = r;
+        last[1] = g;
+        last[2] = b;
+        last[3] = a;
+        const next = css(last);
+        if (next !== this.fill) ctx.fillStyle = this.fill = next;
+      }
       ctx.fillRect(x, y, w, h);
     }
   }
@@ -356,10 +379,19 @@ export class Canvas2DRenderer implements ChartRenderer {
 
   private stroke(color: RgbaColor, width: number): void {
     const ctx = this.ctx;
-    ctx.strokeStyle = css(color);
-    ctx.lineWidth = width;
-    ctx.lineJoin = width > THIN_STROKE_PX ? "round" : "miter";
+    const next = cssOf(color);
+    if (next !== this.strokeColor) ctx.strokeStyle = this.strokeColor = next;
+    if (width !== this.strokeWidth) ctx.lineWidth = this.strokeWidth = width;
+    const join = width > THIN_STROKE_PX ? "round" : "miter";
+    if (join !== this.strokeJoin) ctx.lineJoin = this.strokeJoin = join;
     ctx.stroke();
+  }
+
+  /** Set the fill color unless the context already has it. */
+  private setFill(color: RgbaColor): void {
+    const next = cssOf(color);
+    if (next !== this.fill) this.ctx.fillStyle = this.fill = next;
+    this.rectColor[3] = NaN;
   }
 
   /**
@@ -378,6 +410,18 @@ export class Canvas2DRenderer implements ChartRenderer {
   }
 }
 
+
+/** CSS strings by color tuple: series styles are resolved once, so every frame after the first hits. */
+const cssCache = new WeakMap<RgbaColor, string>();
+
+function cssOf(color: RgbaColor): string {
+  let value = cssCache.get(color);
+  if (value === undefined) {
+    value = css(color);
+    cssCache.set(color, value);
+  }
+  return value;
+}
 
 function css(color: RgbaColor): string {
   return `rgba(${Math.round(color[0] * 255)},${Math.round(color[1] * 255)},${Math.round(color[2] * 255)},${color[3]})`;
