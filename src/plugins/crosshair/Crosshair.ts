@@ -237,7 +237,16 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
   let plotSize = { width: 0, height: 0 };
   let labelResizeObserver: ResizeObserver | null = null;
 
+  // What the DOM last received; moves re-render constantly and every style write dirties style, so equal writes are skipped.
+  let visibleState: boolean | null = null;
+  let lineDisplaysSet = false;
+  let labelShown: boolean | null = null;
+  let lastLineX = NaN;
+  let lastLineY = NaN;
+
   const setVisible = (visible: boolean): void => {
+    if (visible === visibleState) return;
+    visibleState = visible;
     if (root) root.style.display = visible ? "block" : "none";
     if (lineLayer) lineLayer.style.display = visible ? "block" : "none";
     if (overlayLayer) overlayLayer.style.display = visible ? "block" : "none";
@@ -277,7 +286,7 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
     }
     const offsetX = placement.endsWith("left") ? -labelSize.width - 12 : 12;
     const offsetY = placement.startsWith("top") ? -labelSize.height - 12 : 12;
-    placeAbsoluteWithinBox(label, position.plotX, position.plotY, plotSize.width, plotSize.height, { offsetX, offsetY });
+    placeAbsoluteWithinBox(label, position.plotX, position.plotY, plotSize.width, plotSize.height, { offsetX, offsetY, size: labelSize });
   };
 
   // Plain point markers are reused across updates; custom or interval highlights rebuild the layer.
@@ -314,19 +323,32 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
       return;
     }
     setVisible(true);
-    vertical.style.display = axis === "y" ? "none" : "block";
-    horizontal.style.display = axis === "x" ? "none" : "block";
-    vertical.style.left = `${position.plotX}px`;
-    horizontal.style.top = `${position.plotY}px`;
+    if (!lineDisplaysSet) {
+      lineDisplaysSet = true;
+      vertical.style.display = axis === "y" ? "none" : "block";
+      horizontal.style.display = axis === "x" ? "none" : "block";
+    }
+    if (position.plotX !== lastLineX) {
+      lastLineX = position.plotX;
+      vertical.style.left = `${position.plotX}px`;
+    }
+    if (position.plotY !== lastLineY) {
+      lastLineY = position.plotY;
+      horizontal.style.top = `${position.plotY}px`;
+    }
     if (options.label !== false) {
-      label.style.display = "block";
+      if (labelShown !== true) {
+        labelShown = true;
+        label.style.display = "block";
+      }
       if (options.render) {
         options.render(position, label, chartRef!);
       } else {
         renderDefaultLabel(position, label, formatX, formatY, options.formatter);
       }
       placeLabel(position);
-    } else {
+    } else if (labelShown !== false) {
+      labelShown = false;
       label.style.display = "none";
     }
   };
@@ -533,6 +555,13 @@ export function crosshairPlugin(options: CrosshairPluginOptions = {}): Crosshair
         longPress.clear();
         labelResizeObserver?.disconnect();
         labelResizeObserver = null;
+        visibleState = null;
+        lineDisplaysSet = false;
+        labelShown = null;
+        lastLineX = NaN;
+        lastLineY = NaN;
+        labelSize = { width: 0, height: 0 };
+        plotSize = { width: 0, height: 0 };
         releaseStyle();
         markerPool = null;
         sync?.leave();

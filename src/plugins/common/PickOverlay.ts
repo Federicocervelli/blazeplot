@@ -67,21 +67,27 @@ export function formatCompactNumber(value: number): string {
   return Number(value.toPrecision(6)).toString();
 }
 
-/** Position an absolute element inside a plot-sized box. */
+/**
+ * Position an absolute element inside a plot-sized box. Pass `options.size` (a cached measurement) to skip
+ * reading the element's rect, which forces layout after the caller's last DOM write.
+ */
 export function placeAbsoluteWithinBox(
   element: HTMLElement,
   x: number,
   y: number,
   width: number,
   height: number,
-  options: { readonly offsetX: number; readonly offsetY: number; readonly margin?: number },
+  options: { readonly offsetX: number; readonly offsetY: number; readonly margin?: number; readonly size?: { readonly width: number; readonly height: number } },
 ): void {
-  const rect = element.getBoundingClientRect();
+  const rect = options.size ?? element.getBoundingClientRect();
   const margin = options.margin ?? 4;
   const left = clamp(x + options.offsetX, margin, Math.max(margin, width - rect.width - margin));
   const top = clamp(y + options.offsetY, margin, Math.max(margin, height - rect.height - margin));
-  element.style.left = `${left}px`;
-  element.style.top = `${top}px`;
+  // Equal writes are skipped: each one dirties style even when the value did not change.
+  const leftCss = `${left}px`;
+  const topCss = `${top}px`;
+  if (element.style.left !== leftCss) element.style.left = leftCss;
+  if (element.style.top !== topCss) element.style.top = topCss;
 }
 
 /** Swatch and text nodes of the rows last rendered into a container, so the next render updates them in place. */
@@ -183,28 +189,71 @@ export interface PickMarkerPool {
   reset(): void;
 }
 
+/** What a pooled marker element last had written, so unchanged values skip a style write (each one dirties style). */
+interface MarkerState {
+  readonly el: HTMLDivElement;
+  shown: boolean;
+  left: number;
+  top: number;
+  /** Color components behind `background`; compared by value, so the CSS string is only rebuilt on change. */
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+  stroke: string;
+}
+
 /** Create a pool that reuses `createPickMarker` elements inside `layer`. */
 export function createPickMarkerPool(layer: HTMLElement): PickMarkerPool {
-  const markers: HTMLDivElement[] = [];
+  const markers: MarkerState[] = [];
   return {
     update(items, options) {
       // Leftovers from custom highlights are not in the pool.
       if (markers.length === 0 && layer.firstChild) layer.replaceChildren();
       for (let i = 0; i < items.length; i++) {
         const item = items[i]!;
-        let marker = markers[i];
-        if (!marker) {
-          marker = createPickMarker(layer.ownerDocument, item, options);
-          markers[i] = marker;
-          layer.appendChild(marker);
+        const color = item.series.style.color;
+        let state = markers[i];
+        if (!state) {
+          const el = createPickMarker(layer.ownerDocument, item, options);
+          el.style.display = "block";
+          el.style.borderColor = options.strokeColor;
+          state = { el, shown: true, left: item.plotX, top: item.plotY, r: color[0], g: color[1], b: color[2], a: color[3], stroke: options.strokeColor };
+          markers[i] = state;
+          layer.appendChild(el);
+          continue;
         }
-        marker.style.display = "block";
-        marker.style.left = `${item.plotX}px`;
-        marker.style.top = `${item.plotY}px`;
-        marker.style.background = rgbaCss(item.series.style.color);
-        marker.style.borderColor = options.strokeColor;
+        const style = state.el.style;
+        if (!state.shown) {
+          state.shown = true;
+          style.display = "block";
+        }
+        if (state.left !== item.plotX) {
+          state.left = item.plotX;
+          style.left = `${item.plotX}px`;
+        }
+        if (state.top !== item.plotY) {
+          state.top = item.plotY;
+          style.top = `${item.plotY}px`;
+        }
+        if (state.r !== color[0] || state.g !== color[1] || state.b !== color[2] || state.a !== color[3]) {
+          state.r = color[0];
+          state.g = color[1];
+          state.b = color[2];
+          state.a = color[3];
+          style.background = rgbaCss(color);
+        }
+        if (state.stroke !== options.strokeColor) {
+          state.stroke = options.strokeColor;
+          style.borderColor = options.strokeColor;
+        }
       }
-      for (let i = items.length; i < markers.length; i++) markers[i]!.style.display = "none";
+      for (let i = items.length; i < markers.length; i++) {
+        const state = markers[i]!;
+        if (!state.shown) continue;
+        state.shown = false;
+        state.el.style.display = "none";
+      }
     },
     reset() {
       layer.replaceChildren();
