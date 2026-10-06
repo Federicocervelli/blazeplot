@@ -28,8 +28,9 @@ import type { RawSeriesConfig } from "./ChartConfig.js";
 import { ChartSeriesStyles } from "./ChartSeriesStyles.js";
 import { fitCameras } from "./ChartFit.js";
 import type { ResolvedAxesConfig } from "./ChartConfig.js";
+import { observeResize } from "./SharedResizeObserver.js";
 import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
-import type { ChartSummary } from "./ChartSummary.js";
+import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 
 const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "bar", "ohlc", "candlestick"]);
 /** Two vertices per grid line; tick generators may add one extra tick at each edge. */
@@ -79,7 +80,8 @@ export class Chart {
     hoverDefaults: () => this.options.hover,
   });
   private readonly painter = new SeriesPainter(this.stats, GRID_LINE_VERTEX_CAPACITY);
-  private resizeObserver: ResizeObserver | null = null;
+  private stopObservingResize: (() => void) | null = null;
+  private summaryMessages: ChartSummaryMessages | null = null;
   private readonly plugins: PluginHost;
   private readonly events = new ChartEmitter();
   private readonly layoutReservations = new Map<string, ChartLayoutReservation>();
@@ -124,6 +126,12 @@ export class Chart {
   private disposed: boolean = false;
   private rendererLost: boolean = false;
   private domainErrorLogged: boolean = false;
+  /** Set once the caller has chosen a viewport (API, gesture, follow, `autoFitY`, or a policy that moves the camera); the automatic initial fit stops for good. */
+  private viewportSetByCaller: boolean = false;
+  /** Set when a linked group mirrored an X range onto this chart: X is no longer auto-fitted, but Y still is. */
+  private xSetByLink: boolean = false;
+  /** Whether the one-time "viewport contains none of the data" check ran. */
+  private viewportOverlapChecked: boolean = false;
   private readonly options: ChartOptions;
   /** Caller theme before forced-colors substitution; `setTheme` replaces it. */
   private userTheme: ChartTheme | "auto" | undefined;
@@ -184,6 +192,8 @@ export class Chart {
     assertChartTarget("Chart", target);
     this.options = options;
     this.followXPolicy.configure(options.followX ? (options.followX === true ? {} : options.followX) : null);
+    // Explicit viewport options are caller intent: they replace the automatic initial fit.
+    if (options.followX || options.autoFitY) this.viewportSetByCaller = true;
     this.userTheme = options.theme;
     this.watchColorScheme(target.ownerDocument.defaultView);
     this.baseTheme = resolveChartTheme(this.themeOption(), target);
@@ -212,7 +222,7 @@ export class Chart {
       this.engine.setLossListener(this.onRendererState);
     } catch (error) {
       // E.g. the chosen engine is unavailable: remove the half-built DOM and hand back a caller-supplied canvas.
-      this.a11y.unwatchForcedColors();
+      this.a11y.dispose();
       this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
       this.layout.dispose();
       throw error;
@@ -223,11 +233,8 @@ export class Chart {
 
     this.toggleDomListeners("addEventListener");
 
-    const ResizeObserverCtor = this.layout.view.ResizeObserver ?? globalThis.ResizeObserver;
-    if (typeof ResizeObserverCtor !== "undefined") {
-      this.resizeObserver = new ResizeObserverCtor(() => this.resize());
-      this.resizeObserver.observe(this.layout.plot);
-    }
+    // One observer per window serves every chart in it.
+    this.stopObservingResize = observeResize(this.layout.view, this.layout.plot, () => this.resize());
 
     registerChartInternals(this, {
       get canvas() {
@@ -257,6 +264,7 @@ export class Chart {
       inspect: (inspectTarget) => this.hover.inspect(inspectTarget),
       getInspection: () => this.hover.inspection,
       formatValue: (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis),
+      formatReadout: (value, axis, yAxis) => this.formatAxisReadout(value, axis, yAxis),
     });
     try {
       for (const plugin of options.plugins ?? []) this.plugins.install(plugin);
@@ -342,8 +350,16 @@ export class Chart {
   /**
    * Set any viewport edges. X is shared by both Y axes; Y edges apply to `yAxis`.
    * Changing X pauses latest-X following like a user pan would.
+   *
+   * Until you set a viewport (this method, `fitToData`, `followX`, `pan`, `zoom`, or a `viewportPolicy`
+   * that moves the camera), the chart shows all of its visible data: each frame first fits the viewport
+   * to the data (like `fitToData()` with no padding) and emits `viewportchange` with source `"fit"`.
+   * After the first such call the automatic fit stops for good.
    */
   setViewport(viewport: Partial<Viewport>, yAxis: SeriesYAxis = "left", options: ChartSetViewportOptions = {}): void {
+    // A linked group only mirrors X; the panel keeps fitting its own Y.
+    if (options.source === "linked") this.xSetByLink = true;
+    else this.viewportSetByCaller = true;
     if (viewport.xMin !== undefined || viewport.xMax !== undefined) {
       if (options.pauseFollow !== false) this.followXPolicy.pauseForInteraction();
       this.camera.setViewport({ xMin: viewport.xMin, xMax: viewport.xMax });
@@ -362,6 +378,7 @@ export class Chart {
    * The intent is normalized to the left axis domain (or `yAxis` when given).
    */
   pan(intent: PanIntent, yAxis?: SeriesYAxis, options: ChartViewportGestureOptions = {}): void {
+    this.viewportSetByCaller = true;
     const policy = this.options.viewportPolicy;
     const next = policy?.beforePan ? policy.beforePan(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
@@ -380,6 +397,7 @@ export class Chart {
    * The anchor is normalized to the left axis domain (or `yAxis` when given).
    */
   zoom(intent: ZoomIntent, yAxis?: SeriesYAxis, options: ChartViewportGestureOptions = {}): void {
+    this.viewportSetByCaller = true;
     const policy = this.options.viewportPolicy;
     const next = policy?.beforeZoom ? policy.beforeZoom(this.getCamera(yAxis), intent) : intent;
     if (!next) return;
@@ -530,13 +548,13 @@ export class Chart {
    * most once a second from the same data.
    */
   getSummary(): ChartSummary {
-    const option = this.options.accessibility;
-    const config = typeof option === "object" ? option : undefined;
-    return buildChartSummary(
-      this.series,
-      (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis),
-      createSummaryMessages(config?.locale ?? "en-US", config?.messages?.summary),
-    );
+    if (!this.summaryMessages) {
+      // Options are fixed at construction, so the wording is built once per chart.
+      const option = this.options.accessibility;
+      const config = typeof option === "object" ? option : undefined;
+      this.summaryMessages = createSummaryMessages(config?.locale ?? "en-US", config?.messages?.summary);
+    }
+    return buildChartSummary(this.series, (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis), this.summaryMessages);
   }
 
   /** Return metadata for all attached series. */
@@ -555,6 +573,7 @@ export class Chart {
 
   /** Keep the X viewport on the latest data, replacing any previous follow options. */
   followX(options: ChartFollowXOptions = {}): void {
+    this.viewportSetByCaller = true;
     this.followXPolicy.start(options);
   }
 
@@ -578,6 +597,7 @@ export class Chart {
    * scale space, and an axis with no usable domain (e.g. non-positive data on a log axis) is left alone.
    */
   fitToData(options: ChartFitToDataOptions = {}): boolean {
+    this.viewportSetByCaller = true;
     const changed = fitCameras(this.candidateSeries(options), options, { camera: this.camera, controller: this.axis }, { camera: this.rightCamera, controller: this.rightAxis });
 
     if (changed) {
@@ -768,7 +788,8 @@ export class Chart {
     this.disposed = true;
     this.stop();
     this.followXPolicy.clearTimer();
-    this.resizeObserver?.disconnect();
+    this.stopObservingResize?.();
+    this.stopObservingResize = null;
     this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
     this.schemeQuery = null;
     if (this.startWarnTimer !== undefined) this.layout.view.clearTimeout(this.startWarnTimer);
@@ -813,7 +834,10 @@ export class Chart {
       }
     }
 
+    this.applyInitialFit();
+    const beforePolicy = this.viewportSetByCaller ? null : this.camera.viewport;
     this.options.viewportPolicy?.beforeRender?.(this.camera);
+    if (beforePolicy && !viewportsEqual(beforePolicy, this.camera.viewport)) this.viewportSetByCaller = true;
     this.syncRightCameraX();
     this.followXPolicy.apply();
     this.applyAutoFitYPolicy();
@@ -828,6 +852,8 @@ export class Chart {
       this.domainErrorLogged = true;
       return;
     }
+
+    this.warnIfViewportMissesData();
 
     try {
       const pixelRatio = this.canvas.width / Math.max(1, plotWidth);
@@ -884,10 +910,69 @@ export class Chart {
     }
   }
 
-  /** Attached series that pass the visibility and explicit-series filters. */
-  private candidateSeries(options: { readonly series?: readonly SeriesStore[]; readonly includeHidden?: boolean }): SeriesStore[] {
+  /** Format a value for a readout (see `AxisController.formatReadout`); `null` for numeric axes or when formatting throws. */
+  private formatAxisReadout(value: number, axis: "x" | "y", yAxis: SeriesYAxis = "left"): string | null {
+    if (!Number.isFinite(value)) return null;
+    try {
+      return this.controllerFor(yAxis).formatReadout(value, axis);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Attached series that pass the visibility and explicit-series filters. Returns `this.series`
+   * itself when nothing is filtered out (every frame of a follow-X chart), so callers only iterate.
+   */
+  private candidateSeries(options: { readonly series?: readonly SeriesStore[]; readonly includeHidden?: boolean }): readonly SeriesStore[] {
     const candidates = options.series ? options.series.filter((series) => this.series.includes(series)) : this.series;
-    return options.includeHidden ? candidates : candidates.filter((series) => series.visible);
+    if (options.includeHidden) return candidates;
+    for (const series of candidates) {
+      if (!series.visible) return candidates.filter((item) => item.visible);
+    }
+    return candidates;
+  }
+
+  /**
+   * Until the caller sets a viewport, fit the cameras to the visible series every frame so the chart
+   * shows all its data (including streaming data appended after the first frame). Emits `viewportchange`
+   * with source `"fit"` only when a camera moved; nothing happens while no visible series has data.
+   */
+  private applyInitialFit(): void {
+    if (this.viewportSetByCaller) return;
+    const changed = fitCameras(this.candidateSeries({}), { x: !this.xSetByLink }, { camera: this.camera, controller: this.axis }, { camera: this.rightCamera, controller: this.rightAxis });
+    if (!changed) return;
+    this.syncRightCameraX();
+    // The frame that called this is already drawing, so skip `emitViewportChange`'s extra render request.
+    this.events.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source: "fit" });
+  }
+
+  /**
+   * Development-only: once, at the first frame where a visible series has data, warn when the viewport
+   * overlaps none of the data's X range (the chart would draw nothing).
+   */
+  private warnIfViewportMissesData(): void {
+    if (this.viewportOverlapChecked) return;
+    let dataMin = Infinity;
+    let dataMax = -Infinity;
+    for (const series of this.series) {
+      if (!series.visible) continue;
+      const range = series.xRange;
+      if (!range) continue;
+      dataMin = Math.min(dataMin, range.start);
+      dataMax = Math.max(dataMax, range.end);
+    }
+    if (!(dataMin <= dataMax)) return;
+    this.viewportOverlapChecked = true;
+    if (!this.viewportSetByCaller) return;
+    const viewMin = this.axis.unscaleValue(this.camera.xMin, "x");
+    const viewMax = this.axis.unscaleValue(this.camera.xMax, "x");
+    if (!Number.isFinite(viewMin) || !Number.isFinite(viewMax)) return;
+    const lo = Math.min(viewMin, viewMax);
+    const hi = Math.max(viewMin, viewMax);
+    if (dataMax >= lo && dataMin <= hi) return;
+    const format = (value: number): string => this.formatAxisValue(value, "x");
+    devWarn(`the viewport X range [${format(lo)}, ${format(hi)}] contains none of the data (data X range [${format(dataMin)}, ${format(dataMax)}]); call chart.fitToData() or chart.setViewport(...).`);
   }
 
   private applyAutoFitYPolicy(): void {
@@ -1022,4 +1107,8 @@ export class Chart {
     this.hover.refresh();
     this.requestRender();
   }
+}
+
+function viewportsEqual(a: Viewport, b: Viewport): boolean {
+  return a.xMin === b.xMin && a.xMax === b.xMax && a.yMin === b.yMin && a.yMax === b.yMax;
 }

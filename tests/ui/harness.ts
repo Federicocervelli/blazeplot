@@ -151,7 +151,7 @@ export function useChartHarness(): ChartHarness {
     document.body.appendChild(target);
     backends = [];
     raf.current.pending.clear();
-    FakeResizeObserver.instances = [];
+    FakeResizeObserver.reset();
     ledger = trackListeners();
   });
   afterEach(() => {

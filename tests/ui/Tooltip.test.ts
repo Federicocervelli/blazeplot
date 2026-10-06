@@ -331,7 +331,68 @@ describe("plugin-owned styles", () => {
   it("keeps plugin rules out of charts without the plugin", () => {
     const chart = h.make();
     expect(sheets()).toEqual([]);
-    expect(chart.rootElement.querySelector("style.blazeplot-style")!.textContent).not.toContain("blazeplot-tooltip");
+    expect(chart.rootElement.ownerDocument.head.querySelector("style.blazeplot-style")!.textContent).not.toContain("blazeplot-tooltip");
     chart.dispose();
+  });
+});
+
+describe("tooltipPlugin default X formatting", () => {
+  const T0 = Date.UTC(2024, 0, 1);
+
+  function seedTime(chart: Chart, step: number): void {
+    const series = chart.addLine({ capacity: 32, name: "A" });
+    for (let i = 0; i <= 10; i++) series.append({ x: T0 + i * step, y: i * 10 });
+    chart.setViewport({ xMin: T0, xMax: T0 + 10 * step, yMin: 0, yMax: 100 });
+  }
+
+  it("prints a full date and time for a time X axis, with milliseconds only when present", () => {
+    const chart = h.make({ axes: { x: { scale: "time", timezone: "utc" } }, plugins: [tooltipPlugin()] });
+    seedTime(chart, 1000);
+    hover(chart, 200, 100);
+    expect(tooltipOf().textContent).toContain("(2024-01-01 00:00:05, 50)");
+    chart.dispose();
+
+    const fine = h.make({ axes: { x: { scale: "time", timezone: "utc" } }, plugins: [tooltipPlugin()] });
+    seedTime(fine, 100);
+    hover(fine, 200, 100);
+    expect(tooltipOf().textContent).toContain("(2024-01-01 00:00:00.500, 50)");
+    fine.dispose();
+  });
+
+  it("honors a string tickFormat and a function tickFormat on a time axis", () => {
+    const pattern = h.make({ axes: { x: { scale: "time", timezone: "utc", tickFormat: "%d %b %H:%M:%S" } }, plugins: [tooltipPlugin()] });
+    seedTime(pattern, 1000);
+    hover(pattern, 200, 100);
+    expect(tooltipOf().textContent).toContain("(01 Jan 00:00:05, 50)");
+    pattern.dispose();
+
+    const fn = h.make({ axes: { x: { scale: "time", tickFormat: (value: number) => `t${(value - T0) / 1000}s` } }, plugins: [tooltipPlugin()] });
+    seedTime(fn, 1000);
+    hover(fn, 200, 100);
+    expect(tooltipOf().textContent).toContain("(t5s, 50)");
+    fn.dispose();
+  });
+
+  it("prints category names for a categorical X axis", () => {
+    const categories = Array.from({ length: 11 }, (_, i) => `cat-${i}`);
+    const chart = h.make({ axes: { x: { scale: "categorical", categories } }, plugins: [tooltipPlugin()] });
+    seed(chart);
+    hover(chart, 200, 100);
+    expect(tooltipOf().textContent).toContain("(cat-5, 50)");
+    chart.dispose();
+  });
+
+  it("keeps compact numbers for linear X and lets a custom formatter win", () => {
+    const chart = h.make({ plugins: [tooltipPlugin()] });
+    seed(chart);
+    hover(chart, 200, 100);
+    expect(tooltipOf().textContent).toContain("(5, 50)");
+    chart.dispose();
+
+    const custom = h.make({ axes: { x: { scale: "time", timezone: "utc" } }, plugins: [tooltipPlugin({ formatter: (item) => `raw ${item.x}` })] });
+    seedTime(custom, 1000);
+    hover(custom, 200, 100);
+    expect(tooltipOf().textContent).toContain(`raw ${T0 + 5000}`);
+    custom.dispose();
   });
 });

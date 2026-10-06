@@ -38,6 +38,7 @@ export interface PluginHostInternals {
   inspect(target: ChartInspectionTarget | null): ChartHoverState | null;
   getInspection(): ChartInspectionTarget | null;
   formatValue(value: number, axis: "x" | "y", yAxis?: SeriesYAxis): string;
+  formatReadout(value: number, axis: "x" | "y", yAxis?: SeriesYAxis): string | null;
 }
 
 interface InstalledPlugin {
@@ -251,6 +252,7 @@ export class PluginHost {
         return [rect.left + plotX, rect.top + plotY];
       },
       format: (value, axis, yAxis) => internals.formatValue(value, axis, yAxis),
+      formatReadout: (value, axis, yAxis) => internals.formatReadout(value, axis, yAxis),
     };
 
     const viewport: ChartPluginViewport = {

@@ -104,4 +104,35 @@ describe("axis overlay", () => {
     observer.disconnect();
     chart.dispose();
   });
+
+  it("formats a tick label only when its value or the axis format generation changes", () => {
+    let calls = 0;
+    const chart = h.make({
+      axes: {
+        x: {
+          position: "outside",
+          tickFormat: (value: number) => {
+            calls++;
+            return String(value);
+          },
+        },
+        y: { position: "outside" },
+      },
+    });
+    stubPlot(chart, { width: 400, height: 200 });
+    chart.setViewport({ xMin: 0, xMax: 10, yMin: 0, yMax: 9 });
+    chart.start();
+    h.raf.flush();
+    expect(calls).toBeGreaterThan(0);
+
+    calls = 0;
+    chart.requestRender();
+    h.raf.flush();
+    expect(calls).toBe(0);
+
+    chart.setViewport({ xMin: 1, xMax: 11 });
+    h.raf.flush();
+    expect(calls).toBeGreaterThan(0);
+    chart.dispose();
+  });
 });

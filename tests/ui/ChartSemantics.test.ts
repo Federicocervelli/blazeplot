@@ -30,6 +30,18 @@ afterEach(() => {
 });
 
 describe("chart summary", () => {
+  it("keeps its locale and message overrides across repeated summaries", () => {
+    const chart = make({ accessibility: { locale: "de-DE", messages: { summary: { noSeries: "Keine Daten." } } } });
+    expect(chart.getSummary().text).toBe("Keine Daten.");
+    expect(chart.getSummary().text).toBe("Keine Daten.");
+    addRamp(chart, "CPU", 1000, 3);
+    const first = chart.getSummary().text;
+    expect(first).toContain("3 points");
+    expect(chart.getSummary().text).toBe(first);
+    expect(describedText(chart)).not.toBe("Chart with no data series.");
+    chart.dispose();
+  });
+
   it("describes series names, X and Y ranges, sample counts, and latest values", () => {
     const chart = make();
     addRamp(chart, "CPU", 10);
@@ -102,7 +114,7 @@ describe("chart summary", () => {
 
   it("injects the focus and forced-colors stylesheet with a theme focus color", () => {
     const chart = make({ theme: { focusRingColor: "#ff00aa" } });
-    const style = chart.rootElement.querySelector("style.blazeplot-style");
+    const style = chart.rootElement.ownerDocument.head.querySelector("style.blazeplot-style");
     expect(style?.textContent).toContain(".blazeplot-root:focus-visible");
     expect(style?.textContent).toContain("@media (forced-colors:active)");
     // Plugin-specific rules live in the plugins, not the core sheet.
@@ -112,8 +124,21 @@ describe("chart summary", () => {
     chart.dispose();
 
     const off = make({ accessibility: false });
-    expect(off.rootElement.querySelector("style.blazeplot-style")).toBeNull();
+    expect(off.rootElement.ownerDocument.head.querySelector("style.blazeplot-style")).toBeNull();
     off.dispose();
+  });
+
+  it("shares one stylesheet per document and removes it with the last chart", () => {
+    const sheets = (): number => document.head.querySelectorAll("style.blazeplot-style").length;
+    const before = sheets();
+    const a = make();
+    const b = make();
+    expect(sheets()).toBe(before + 1);
+    a.dispose();
+    expect(sheets()).toBe(before + 1);
+    b.dispose();
+    b.dispose();
+    expect(sheets()).toBe(before);
   });
 });
 
@@ -164,6 +189,34 @@ describe("forced colors", () => {
       chart.dispose();
       expect(media.listeners()).toBe(0);
     } finally {
+      media.restore();
+    }
+  });
+
+  it("shares one media query list per window and lets go of it with the last chart", () => {
+    const media = stubForcedColors(false);
+    const stubbed = window.matchMedia;
+    let calls = 0;
+    window.matchMedia = ((query: string) => {
+      calls++;
+      return stubbed.call(window, query);
+    }) as typeof window.matchMedia;
+    try {
+      const a = make();
+      const b = make();
+      expect(calls).toBe(1);
+      expect(media.listeners()).toBe(2);
+      media.set(true);
+      expect(a.theme.backgroundCssColor).toBe("Canvas");
+      expect(b.theme.backgroundCssColor).toBe("Canvas");
+      a.dispose();
+      expect(media.listeners()).toBe(1);
+      b.dispose();
+      expect(media.listeners()).toBe(0);
+      make().dispose();
+      expect(calls).toBe(2);
+    } finally {
+      window.matchMedia = stubbed;
       media.restore();
     }
   });

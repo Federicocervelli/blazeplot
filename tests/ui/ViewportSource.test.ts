@@ -70,6 +70,24 @@ describe("viewportchange source", () => {
     chart.dispose();
   });
 
+  it("follows the newest visible series only, whether or not any series is hidden", () => {
+    const { chart, series } = seeded();
+    const other = chart.addLine({ capacity: 64, name: "B" });
+    other.append({ x: 50, y: 1 });
+    chart.followX({ window: 10 });
+    chart.start();
+    h.raf.flush();
+    expect(chart.getViewport().xMax).toBe(50);
+    other.setVisible(false);
+    h.raf.flush();
+    expect(chart.getViewport().xMax).toBe(10);
+    other.setVisible(true);
+    series.append({ x: 60, y: 1 });
+    h.raf.flush();
+    expect(chart.getViewport().xMax).toBe(60);
+    chart.dispose();
+  });
+
   it("lets pauseFollow false keep following active", () => {
     const { chart } = seeded();
     chart.followX({ window: 10 });

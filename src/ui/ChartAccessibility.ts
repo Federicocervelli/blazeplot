@@ -5,6 +5,7 @@ import type { ChartLayout } from "./ChartLayout.js";
 import { titleText } from "./ChartLayout.js";
 import type { ChartSummary } from "./ChartSummary.js";
 import { withAlpha } from "./ChartConfig.js";
+import { installSharedStyle } from "./SharedStyle.js";
 
 /** Minimum delay between regenerated accessibility summaries while data changes. */
 const SUMMARY_THROTTLE_MS = 1_000;
@@ -23,6 +24,17 @@ const CHART_STYLESHEET = [
   ".blazeplot-root:focus-visible,.blazeplot-root :focus-visible{outline-color:Highlight}",
   "}",
 ].join("");
+
+interface SharedQuery {
+  readonly view: Window;
+  /** The `matchMedia` this list came from, so a replaced one (tests, polyfills) gets a fresh list. */
+  readonly source: Window["matchMedia"];
+  readonly query: MediaQueryList;
+  users: number;
+}
+
+/** One `(forced-colors: active)` list per window, shared by its charts and dropped with the last watcher. */
+const forcedColorsQueries = new WeakMap<Window, SharedQuery>();
 
 let nextSummaryId = 1;
 
@@ -51,11 +63,12 @@ export interface ChartAccessibilityHost {
 export class ChartAccessibility {
   /** Series styles saved while forced colors replace them. */
   readonly originalStyles = new Map<SeriesStore, SeriesStyle>();
-  private forcedColorsQuery: MediaQueryList | null = null;
+  private forcedColorsShared: SharedQuery | null = null;
   private forcedColorsMatches = false;
   private summaryElement: HTMLElement | null = null;
   private summaryTimer: ReturnType<typeof setTimeout> | null = null;
   private summaryDirty = false;
+  private releaseStyle: (() => void) | null = null;
   private readonly handleForcedColorsChange = (): void => {
     this.host.onForcedColorsChange();
   };
@@ -82,20 +95,28 @@ export class ChartAccessibility {
     if (option === false || (typeof option === "object" && option.forcedColors === false)) return;
     const view = this.host.layout().view;
     if (typeof view.matchMedia !== "function") return;
-    const query = view.matchMedia("(forced-colors: active)");
-    this.forcedColorsQuery = query;
-    this.forcedColorsMatches = query.matches;
-    query.addEventListener?.("change", this.handleForcedColorsChange);
+    let shared = forcedColorsQueries.get(view);
+    if (!shared || shared.source !== view.matchMedia) {
+      shared = { view, source: view.matchMedia, query: view.matchMedia("(forced-colors: active)"), users: 0 };
+      forcedColorsQueries.set(view, shared);
+    }
+    shared.users++;
+    this.forcedColorsShared = shared;
+    this.forcedColorsMatches = shared.query.matches;
+    shared.query.addEventListener?.("change", this.handleForcedColorsChange);
   }
 
   unwatchForcedColors(): void {
-    this.forcedColorsQuery?.removeEventListener?.("change", this.handleForcedColorsChange);
-    this.forcedColorsQuery = null;
+    const shared = this.forcedColorsShared;
+    if (!shared) return;
+    this.forcedColorsShared = null;
+    shared.query.removeEventListener?.("change", this.handleForcedColorsChange);
+    if (--shared.users <= 0 && forcedColorsQueries.get(shared.view) === shared) forcedColorsQueries.delete(shared.view);
   }
 
   /** Re-read the media query; returns whether forced colors are active. */
   refreshForcedColors(): boolean {
-    this.forcedColorsMatches = this.forcedColorsQuery?.matches === true;
+    this.forcedColorsMatches = this.forcedColorsShared?.query.matches === true;
     return this.forcedColorsMatches;
   }
 
@@ -145,10 +166,7 @@ export class ChartAccessibility {
       element.setAttribute("aria-hidden", "true");
     }
 
-    const style = doc.createElement("style");
-    style.className = "blazeplot-style";
-    style.textContent = CHART_STYLESHEET;
-    root.appendChild(style);
+    this.releaseStyle = installSharedStyle(root, "blazeplot-style", CHART_STYLESHEET);
 
     if (config?.description === "") return;
     const summary = doc.createElement("div");
@@ -186,9 +204,11 @@ export class ChartAccessibility {
     if (element.textContent !== text) element.textContent = text;
   }
 
-  /** Cancel pending timers and the media-query listener. */
+  /** Cancel pending timers, the media-query listener, and this chart's hold on the shared stylesheet. */
   dispose(): void {
     this.unwatchForcedColors();
+    this.releaseStyle?.();
+    this.releaseStyle = null;
     if (this.summaryTimer !== null) clearTimeout(this.summaryTimer);
     this.summaryTimer = null;
   }

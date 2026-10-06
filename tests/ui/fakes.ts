@@ -93,6 +93,14 @@ export function recordingRenderer(sink?: RecordingRenderer[]): (context: { canva
 
 export class FakeResizeObserver {
   static instances: FakeResizeObserver[] = [];
+  /**
+   * Forget every instance and install a fresh constructor as the global `ResizeObserver`: charts share
+   * one observer per window and constructor, so a chart left over from another test keeps the old one.
+   */
+  static reset(): void {
+    FakeResizeObserver.instances = [];
+    (globalThis as Record<string, unknown>).ResizeObserver = class extends FakeResizeObserver {};
+  }
   observed = new Set<Element>();
   disconnected = false;
   constructor(readonly callback: ResizeObserverCallback) {
@@ -108,8 +116,10 @@ export class FakeResizeObserver {
     this.observed.clear();
     this.disconnected = true;
   }
-  trigger(): void {
-    this.callback([], this as unknown as ResizeObserver);
+  /** Deliver a notification for the given targets, or every observed one. */
+  trigger(targets: Iterable<Element> = this.observed): void {
+    const entries = [...targets].map((target) => ({ target }) as ResizeObserverEntry);
+    this.callback(entries, this as unknown as ResizeObserver);
   }
 }
 
@@ -200,7 +210,7 @@ export function setupDom(): TestEnv {
   g.requestAnimationFrame = raf.request;
   g.cancelAnimationFrame = raf.cancel;
   g.ResizeObserver = FakeResizeObserver;
-  FakeResizeObserver.instances = [];
+  FakeResizeObserver.reset();
   return {
     raf,
     teardown() {

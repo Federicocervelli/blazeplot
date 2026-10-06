@@ -30,6 +30,9 @@ const NO_TICKS: readonly number[] = [];
 interface AxisLabel {
   readonly el: HTMLDivElement;
   text: string;
+  /** The value and `AxisController.formatGeneration` `text` was formatted from; formatting is skipped while both match. */
+  value: number;
+  generation: number;
   /** Whether the element is currently displayed. */
   shown: boolean;
   /** Last written left (X axis) or top (Y axes) in CSS pixels; `NaN` until the first write. */
@@ -194,7 +197,7 @@ export class AxisOverlay {
     el.style.cssText = `position:absolute;pointer-events:none;white-space:nowrap;user-select:none;${side}:4px`;
     this.styleLabel(el);
     parent.appendChild(el);
-    return { el, text: "", shown: true, pos: NaN, start: 0, end: 0, edge: false, wanted: false };
+    return { el, text: "", value: NaN, generation: -1, shown: true, pos: NaN, start: 0, end: 0, edge: false, wanted: false };
   }
 
   private updateAxis(
@@ -211,6 +214,7 @@ export class AxisOverlay {
     const font = this.font;
     const candidates = this.candidates;
     candidates.length = 0;
+    const generation = controller.formatGeneration;
 
     while (pool.length < values.length) pool.push(this.createLabel(axis, parent));
 
@@ -220,11 +224,16 @@ export class AxisOverlay {
       if (i >= values.length) continue;
 
       const value = values[i]!;
-      const text = controller.formatValue(value, horizontal ? "x" : "y");
-      if (label.text !== text) {
-        label.text = text;
-        label.el.textContent = text;
+      if (label.value !== value || label.generation !== generation) {
+        label.value = value;
+        label.generation = generation;
+        const next = controller.formatValue(value, horizontal ? "x" : "y");
+        if (label.text !== next) {
+          label.text = next;
+          label.el.textContent = next;
+        }
       }
+      const text = label.text;
       // X ticks map clip -1..1 left to right, Y ticks bottom to top, so Y is flipped to screen space.
       const clip = controller.valueToClip(value, horizontal ? "x" : "y");
       const screen = horizontal ? (clip + 1) * 0.5 * plotW : (1 - clip) * 0.5 * plotH;
