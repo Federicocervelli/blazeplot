@@ -175,7 +175,7 @@ function renderMarkdownEntry(reports: readonly BenchmarkReport[], cliArgs: reado
     `Command: \`${command}\``,
     "",
     "| Scenario | Browser | Canvas | Renderer | RAF FPS | RAF p95 ms | Chart p50 ms | Chart p95 ms | Points | Draws | Upload KB |",
-    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
   ];
 
   for (const report of reports) {

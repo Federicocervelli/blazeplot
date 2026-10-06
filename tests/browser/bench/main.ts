@@ -1,6 +1,8 @@
+import { chartInternals } from "@/ui/ChartInternals.ts";
 import { Chart } from "@/index.ts";
 import type { ChartFrameStats, SeriesStore } from "@/index.ts";
-import { buildFlameGraphModel, flameGraphPlugin } from "@/plugins/flamegraph.ts";
+import { flameGraphPlugin } from "@/plugins/flamegraph.ts";
+import { buildFlameGraphModel } from "@/plugins/flamegraph/model.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import { ProceduralLineDataset } from "../../../website/src/ProceduralLineDataset.ts";
 
@@ -23,6 +25,10 @@ interface ScenarioConfig {
   readonly flameChartPan?: boolean;
   readonly flameMinFrameWidthPx?: number;
   readonly interaction?: "hover" | "pan";
+  /** Extra independent line series (each with its own dataset and downsample pass) on top of the main wave. */
+  readonly extraLineSeries?: number;
+  /** Replace the sparse scatter with a dense scatter that uses the default 2D viewport-aware sampler. */
+  readonly denseScatter?: boolean;
 }
 
 interface NumericSummary {
@@ -35,6 +41,8 @@ interface NumericSummary {
 
 interface BenchmarkResult {
   readonly scenario: string;
+  /** The rendering engine the chart ran on (`chart.renderer`). */
+  readonly engine: string;
   readonly renderer: ChartFrameStats["renderMode"];
   readonly durationMs: number;
   readonly initialSamples: number;
@@ -57,6 +65,10 @@ interface BenchmarkResult {
     readonly uploadBytes: NumericSummary;
   };
   readonly finalStats: ChartFrameStats;
+  /** Median wall time of a fixed CPU workload run in this page before and after measuring; used to normalise across machines. */
+  readonly calibrationMs: number;
+  /** Total wall time spent inside the initial fill appends (data generation plus ingest). */
+  readonly ingestMs: number;
   readonly userAgent: string;
 }
 
@@ -99,6 +111,60 @@ const SCENARIOS: Record<string, ScenarioConfig> = {
     yMax: 1.5,
     measureMs: 500,
     warmupMs: 100,
+  },
+  // Deterministic scenario for the CI performance gate (scripts/perf-gate.ts): fixed data and a
+  // panning sub-window of it, so every frame re-extracts LOD for line, scatter, and bar series.
+  "perf-gate": {
+    name: "perf-gate",
+    initialSamples: 1_000_000,
+    viewportSamples: 500_000,
+    capacity: 1_000_000,
+    fillBatchSize: 65_536,
+    liveBatchSize: 0,
+    sparseInterval: 256,
+    includeScatter: true,
+    includeBars: true,
+    yMin: -1.5,
+    yMax: 1.5,
+    measureMs: 3_000,
+    warmupMs: 500,
+    interaction: "pan",
+  },
+  // Many independent line series (#179): per-series LOD, buffer upload, and draw overhead dominates.
+  "many-series-100x20k-pan": {
+    name: "many-series-100x20k-pan",
+    initialSamples: 20_000,
+    viewportSamples: 10_000,
+    capacity: 20_000,
+    fillBatchSize: 20_000,
+    liveBatchSize: 0,
+    sparseInterval: 256,
+    includeScatter: false,
+    includeBars: false,
+    yMin: -1.5,
+    yMax: 1.5,
+    measureMs: 3_000,
+    warmupMs: 500,
+    interaction: "pan",
+    extraLineSeries: 99,
+  },
+  // Dense scatter (#179): default 2D viewport-aware point sampler, well past the point budget.
+  "scatter-1m-sampled-pan": {
+    name: "scatter-1m-sampled-pan",
+    initialSamples: 1_000_000,
+    viewportSamples: 500_000,
+    capacity: 1_000_000,
+    fillBatchSize: 65_536,
+    liveBatchSize: 0,
+    sparseInterval: 256,
+    includeScatter: true,
+    includeBars: false,
+    yMin: -1.5,
+    yMax: 1.5,
+    measureMs: 3_000,
+    warmupMs: 500,
+    interaction: "pan",
+    denseScatter: true,
   },
   "mixed-1m-live": {
     name: "mixed-1m-live",
@@ -237,24 +303,50 @@ const chartPlugins = flameChartModel
     ? [tooltipPlugin({ mode: "nearest-x", group: "x", highlight: true, formatter: (item) => `${item.x}, ${item.y}` })]
     : [];
 
+// `?renderer=canvas2d` (or shared) benchmarks another engine; the default stays WebGL2 so the main gate never silently measures a fallback.
+const rendererParam = params.get("renderer") ?? "webgl2";
+if (rendererParam !== "webgl2" && rendererParam !== "canvas2d" && rendererParam !== "shared") throw new Error(`Unknown renderer '${rendererParam}'. Use webgl2, canvas2d, or shared.`);
+
 const chart = new Chart(chartTarget, {
+  renderer: rendererParam,
   renderLoop: "continuous",
   axes: { x: { position: "outside" }, y: { position: "outside" } },
   hover: config.interaction === "hover" ? { mode: "nearest-x", group: "x" } : undefined,
   plugins: chartPlugins,
 });
 
-const lineDataset = config.proceduralLine ? new ProceduralLineDataset(config.capacity) : undefined;
-const lineSeries = chart.addSeries(
-  { mode: "line", capacity: config.capacity, dataset: lineDataset, downsample: "minmax", name: "Benchmark wave" },
-  { color: [0.3, 0.6, 1.0, 1.0], lineWidth: 1 },
-);
+// Gate self-test hook (`bun run bench:gate -- --inject-slowdown-ms <ms>`): burns CPU inside every
+// frame so maintainers can confirm the performance gate fails on a synthetic regression.
+const burnMs = readPositiveNumberParam("burnMs", 0);
+if (burnMs > 0) {
+  chart.subscribe("render", () => {
+    const until = performance.now() + burnMs;
+    while (performance.now() < until) { /* spin */ }
+  });
+}
+
+const lineStyle = { color: [0.3, 0.6, 1.0, 1.0] as [number, number, number, number], lineWidth: 1 };
+const lineSeries: SeriesStore = config.proceduralLine
+  ? chart.addSeries({ mode: "line", dataset: new ProceduralLineDataset(config.capacity), downsample: "minmax", name: "Benchmark wave" }, lineStyle)
+  : chart.addSeries({ mode: "line", capacity: config.capacity, downsample: "minmax", name: "Benchmark wave" }, lineStyle);
+
+const extraLines: SeriesStore[] = [];
+for (let i = 0; i < (config.extraLineSeries ?? 0); i++) {
+  extraLines.push(
+    chart.addSeries(
+      { mode: "line", capacity: config.capacity, downsample: "minmax", name: `Benchmark wave ${i + 2}` },
+      { color: [0.3 + (i % 7) * 0.09, 0.9 - (i % 5) * 0.12, 0.4 + (i % 3) * 0.2, 1.0], lineWidth: 1 },
+    ),
+  );
+}
 
 const scatterSeries = config.includeScatter
-  ? chart.addSeries(
-      { mode: "scatter", capacity: Math.ceil(config.capacity / config.sparseInterval) + 1, downsample: "none", name: "Benchmark spikes" },
-      { color: [0.95, 0.35, 0.35, 1.0], pointSize: 5 },
-    )
+  ? config.denseScatter
+    ? chart.addSeries({ mode: "scatter", capacity: config.capacity, name: "Benchmark dense scatter" }, { color: [0.95, 0.35, 0.35, 0.6], pointSize: 3 })
+    : chart.addSeries(
+        { mode: "scatter", capacity: Math.ceil(config.capacity / config.sparseInterval) + 1, downsample: "none", name: "Benchmark spikes" },
+        { color: [0.95, 0.35, 0.35, 1.0], pointSize: 5 },
+      )
   : null;
 
 const barSeries = config.includeBars
@@ -278,6 +370,7 @@ let progress = 0;
 let result: BenchmarkResult | null = null;
 let error: string | null = null;
 let nextX = 0;
+let ingestMs = 0;
 let measurePromise: Promise<BenchmarkResult> | null = null;
 
 window.__blazeplotBench = {
@@ -311,7 +404,9 @@ async function prepare(): Promise<void> {
 
     while (nextX < config.initialSamples) {
       const batchSize = Math.min(config.fillBatchSize, config.initialSamples - nextX);
+      const ingestStartedAt = performance.now();
       appendRange(nextX, batchSize);
+      ingestMs += performance.now() - ingestStartedAt;
       nextX += batchSize;
       progress = nextX / config.initialSamples;
       updateViewport();
@@ -352,6 +447,7 @@ async function measure(): Promise<BenchmarkResult> {
   const pointsRendered: number[] = [];
   const drawCalls: number[] = [];
   const uploadBytes: number[] = [];
+  const calibrationSamples = calibrate();
   const startMs = performance.now();
   let lastFrameMs: number | null = null;
   let liveSamplesAppended = 0;
@@ -383,18 +479,21 @@ async function measure(): Promise<BenchmarkResult> {
     renderStatus();
   }
 
+  const measuredMs = performance.now() - startMs;
+  calibrationSamples.push(...calibrate());
   chart.getFrameStats(frameStats);
   result = {
     scenario: config.name,
+    engine: chart.renderer,
     renderer: frameStats.renderMode,
-    durationMs: performance.now() - startMs,
+    durationMs: measuredMs,
     initialSamples: config.initialSamples,
     liveSamplesAppended,
     totalLineSamples: nextX,
     viewportSamples: config.viewportSamples,
     flameChartFrames: flameChartModel?.frames.length,
     flameChartStacks: config.flameChartStacks,
-    canvas: { width: chart.canvas.width, height: chart.canvas.height },
+    canvas: { width: chartInternals(chart).canvas.width, height: chartInternals(chart).canvas.height },
     raf: {
       frames: rafDeltas.length,
       fps: rafDeltas.length > 0 ? (rafDeltas.length * 1000) / sum(rafDeltas) : 0,
@@ -408,6 +507,8 @@ async function measure(): Promise<BenchmarkResult> {
       uploadBytes: summarize(uploadBytes),
     },
     finalStats: { ...frameStats },
+    calibrationMs: median(calibrationSamples),
+    ingestMs,
     userAgent: navigator.userAgent,
   };
   state = "done";
@@ -432,6 +533,20 @@ function appendRange(startX: number, count: number): void {
     yValues[i] = Math.sin((x / period) * tau) * 0.25 + 0.8 + noise01(x) * 0.01;
   }
   lineSeries.append({ x: xValues, y: yValues });
+
+  for (let s = 0; s < extraLines.length; s++) {
+    const y = new Float32Array(count);
+    const phase = (s + 1) * 0.37;
+    for (let i = 0; i < count; i++) y[i] = Math.sin((xValues[i]! / period) * tau + phase) * 0.25 + 0.8 - (s % 10) * 0.15 + noise01(xValues[i]! + s) * 0.01;
+    extraLines[s]!.append({ x: xValues, y });
+  }
+
+  if (config.denseScatter && scatterSeries) {
+    const y = new Float32Array(count);
+    for (let i = 0; i < count; i++) y[i] = (noise01(xValues[i]! * 31 + 7) - 0.5) * 2.4;
+    scatterSeries.append({ x: xValues, y });
+    return;
+  }
 
   if (!scatterSeries && !barSeries) return;
   appendSparseSeries(startX, count, period, tau, scatterSeries, barSeries);
@@ -490,12 +605,12 @@ function updateViewport(elapsedMs = 0): void {
 }
 
 function dispatchHover(elapsedMs: number): void {
-  const rect = chart.canvas.getBoundingClientRect();
+  const rect = chartInternals(chart).canvas.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return;
   const t = elapsedMs / Math.max(1, config.measureMs);
   const x = rect.left + rect.width * (0.08 + 0.84 * ((Math.sin(t * Math.PI * 2) + 1) * 0.5));
   const y = rect.top + rect.height * (0.2 + 0.6 * ((Math.cos(t * Math.PI * 4) + 1) * 0.5));
-  chart.canvas.dispatchEvent(new PointerEvent("pointermove", {
+  chartInternals(chart).canvas.dispatchEvent(new PointerEvent("pointermove", {
     bubbles: true,
     cancelable: true,
     clientX: x,
@@ -576,6 +691,46 @@ function sum(values: readonly number[]): number {
   let total = 0;
   for (const value of values) total += value;
   return total;
+}
+
+const CALIBRATION_SIZE = 262_144;
+const CALIBRATION_BUCKETS = 512;
+let calibrationY: Float32Array | null = null;
+
+/**
+ * Fixed single-thread CPU workload shaped like the engine's hot paths (typed-array fill with math,
+ * then a bucketed min/max scan). Returns wall times in ms; callers take the median so the result
+ * can normalise frame work for the speed and load of the machine running the page.
+ */
+function calibrate(runs = 7): number[] {
+  const ys = (calibrationY ??= new Float32Array(CALIBRATION_SIZE));
+  const bucketSize = CALIBRATION_SIZE / CALIBRATION_BUCKETS;
+  const samples: number[] = [];
+  let sink = 0;
+  for (let run = 0; run < runs; run++) {
+    const startedAt = performance.now();
+    for (let i = 0; i < CALIBRATION_SIZE; i++) ys[i] = Math.sin(i * 0.001) * 0.25 + noise01(i) * 0.01;
+    for (let b = 0; b < CALIBRATION_BUCKETS; b++) {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let i = b * bucketSize; i < (b + 1) * bucketSize; i++) {
+        const y = ys[i] ?? 0;
+        if (y < lo) lo = y;
+        if (y > hi) hi = y;
+      }
+      sink += hi - lo;
+    }
+    samples.push(performance.now() - startedAt);
+  }
+  if (sink === Infinity) console.warn("calibration sink", sink);
+  return samples;
+}
+
+function median(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 ? (sorted[mid] ?? 0) : (((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2);
 }
 
 function noise01(seed: number): number {

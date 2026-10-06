@@ -61,16 +61,12 @@ describe("StaticDataset", () => {
 
   it("throws when object rows have invalid x values", () => {
     expect(() => StaticDataset.fromObjects([{ time: undefined, value: 3 }], { x: "time", y: "value" }))
-      .toThrow(TypeError);
+      .toThrow(RangeError);
   });
 
-  it("handles mismatched x and y lengths", () => {
-    const ds = new StaticDataset(
-      new Float64Array([0, 1, 2]),
-      new Float32Array([10, 20]),
-    );
-
-    expect(ds.length).toBe(2);
+  it("rejects mismatched x and y lengths", () => {
+    expect(() => new StaticDataset(new Float64Array([0, 1, 2]), new Float32Array([10, 20])))
+      .toThrow("StaticDataset: x has 3 values but y has 2.");
   });
 
   it("finds lower bound for x", () => {
@@ -147,6 +143,7 @@ describe("StaticDataset", () => {
     expect(store.length).toBe(6);
     expect(store.visible).toBe(true);
 
+    // @ts-expect-error a StaticDataset series has no append
     expect(() => store.append({ x: new Float64Array([0]), y: new Float32Array([0]) }))
       .toThrow(TypeError);
 

@@ -1,4 +1,4 @@
-import { Chart, OhlcRingBuffer, ServerSampledDataset } from "../../../../src/index.ts";
+import { Chart, OhlcRingBuffer, ServerSampledDataset, type ChartPlugin } from "../../../../src/index.ts";
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
 import { addDisposableListener } from ".././charts/dom.ts";
@@ -63,12 +63,30 @@ export default class Preview extends PreviewResources {
     let tradeCount = 0;
     let highlightedCandleIndex = -1;
 
+    const candleHighlightOverlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    candleHighlightOverlay.style.position = "absolute";
+    candleHighlightOverlay.style.inset = "0";
+    candleHighlightOverlay.style.width = "100%";
+    candleHighlightOverlay.style.height = "100%";
+    candleHighlightOverlay.style.pointerEvents = "none";
+    candleHighlightOverlay.style.zIndex = "28";
+    candleHighlightOverlay.setAttribute("aria-hidden", "true");
+    let plotSize = (): { width: number; height: number } => ({ width: 1, height: 1 });
+    // Mount the overlay through a tiny plugin so it lives in the plot slot and is removed on dispose.
+    const candleHighlightPlugin: ChartPlugin = {
+      install: (ctx) => {
+        plotSize = () => ctx.layout.plotRect();
+        return ctx.dom.mount("plot", candleHighlightOverlay);
+      },
+    };
+
     const liveChart = new Chart(liveChartEl, siteChartOptions({
       axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
       hover: { mode: "nearest-x", group: "none", maxDistancePx: 48 },
       followX: { window: liveWindowMs, pauseOnInteraction: true },
       autoFitY: { padding: { y: 0.08 } },
       plugins: [
+        candleHighlightPlugin,
         interactionsPlugin({
           wheelZoom: true,
           shiftDragPan: true,
@@ -96,16 +114,6 @@ export default class Preview extends PreviewResources {
       { dataset: liveDataset, name: "5s candles" },
       { color: [0.8, 0.86, 1, 1], lineWidth: 1, barWidth: 4_000, upColor: [0.16, 0.86, 0.56, 1], downColor: [0.96, 0.32, 0.36, 1], wickColor: [0.75, 0.82, 0.92, 1] },
     );
-    const candleHighlightOverlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    candleHighlightOverlay.style.position = "absolute";
-    candleHighlightOverlay.style.inset = "0";
-    candleHighlightOverlay.style.width = "100%";
-    candleHighlightOverlay.style.height = "100%";
-    candleHighlightOverlay.style.pointerEvents = "none";
-    candleHighlightOverlay.style.zIndex = "28";
-    candleHighlightOverlay.setAttribute("aria-hidden", "true");
-    liveChart.plotElement.appendChild(candleHighlightOverlay);
-    this.previewDisposers.push(() => candleHighlightOverlay.remove());
 
     const addListener = <K extends keyof HTMLElementEventMap>(element: HTMLElement, type: K, listener: (event: HTMLElementEventMap[K]) => void): void => addDisposableListener(this.previewDisposers, element, type, listener);
 
@@ -172,7 +180,7 @@ export default class Preview extends PreviewResources {
       currentLow = NaN;
       currentClose = NaN;
       tradeCount = 0;
-      liveChart.setXFollowPaused(false);
+      liveChart.setFollowXPaused(false);
       const symbol = symbolSelect.value.toLowerCase();
       const url = `wss://stream.binance.com:9443/ws/${symbol}@aggTrade`;
       liveStatusEl.textContent = `connecting ${symbolSelect.value}…`;
@@ -238,7 +246,7 @@ export default class Preview extends PreviewResources {
     };
 
     const resumeLiveFollowViewport = (): { xMin: number; xMax: number; yMin: number; yMax: number } => {
-      liveChart.setXFollowPaused(false);
+      liveChart.setFollowXPaused(false);
       const current = liveChart.getViewport();
       const range = liveDataset.range;
       if (!range) return current;
@@ -249,8 +257,9 @@ export default class Preview extends PreviewResources {
     const renderHighlightedCandle = (): void => {
       candleHighlightOverlay.replaceChildren();
       if (highlightedCandleIndex < 0 || highlightedCandleIndex >= liveDataset.length) return;
-      const width = Math.max(1, liveChart.canvas.clientWidth);
-      const height = Math.max(1, liveChart.canvas.clientHeight);
+      const size = plotSize();
+      const width = Math.max(1, size.width);
+      const height = Math.max(1, size.height);
       candleHighlightOverlay.setAttribute("viewBox", `0 0 ${width} ${height}`);
       const x = liveDataset.getX(highlightedCandleIndex);
       const open = liveDataset.getOpen(highlightedCandleIndex);

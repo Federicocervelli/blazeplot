@@ -8,16 +8,18 @@ Use this table before reaching for a generic chart example. The dataset choice d
 
 | If you have | Use |
 |---|---|
-| Fixed X/Y arrays or object rows | `StaticDataset` with `chart.addLine(...)`, `chart.addScatter(...)`, `chart.addBar(...)`, or `chart.addArea(...)` |
-| One-dimensional values that need a frequency distribution | `histogram(...)` or `chart.addHistogram(...)` |
+| Fixed X/Y arrays or object rows | `chart.addLine({ x, y })` (or `addArea`, `addScatter`, `addBar`), or `StaticDataset` with `{ dataset }` for object rows and unsorted data |
+| One-dimensional values that need a frequency distribution | `chart.addBar({ values, binCount })`, or `histogramBins(...)` / `HistogramDataset.from(...)` with `{ dataset }` |
 | Irregular live samples | `RingBuffer` with `overflow: "wrap"` for a rolling window |
 | Fixed-rate telemetry | `UniformRingBuffer` with `series.append({ y })` so repeated X values are derived, not stored |
 | Historical OHLC data | `StaticOhlcDataset` with `chart.addOhlc(...)` or `chart.addCandlestick(...)` |
 | Server-reduced min/max buckets | `ServerSampledDataset` with `downsample: "server"` |
 | React ownership of the DOM | Create and dispose `Chart` in an effect |
 | Multiple charts sharing an X range | `createLinkedCharts` from `blazeplot/linked` |
+| Browsers that may lack WebGL2 | The default `renderer: "auto"` falls back to Canvas 2D; use `"webgl2"` to require it |
+| Dozens of charts on one page | `renderer: "shared"` |
 
-All built-in datasets expect sorted X values. If source data arrives out of order, sort it before constructing the dataset or write a custom dataset that exposes sorted logical access.
+All built-in datasets require finite, non-decreasing X values: static datasets throw a `RangeError` for unsorted input and streaming buffers skip out-of-order samples. If source data arrives out of order, build the dataset with `StaticDataset.sorted(x, y)` or write a custom dataset that exposes sorted logical access. See [Data semantics](./data-semantics.md#the-x-rule).
 
 ## Example structure
 
@@ -33,15 +35,17 @@ Most examples follow the same lifecycle:
 ## Basic line chart
 
 ```ts
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 
 const chart = new Chart(element);
-chart.addLine({ dataset: new StaticDataset([0, 1, 2], [3, 6, 4]), name: "values" });
+chart.addLine({ x: [0, 1, 2], y: [3, 6, 4], name: "values" });
 chart.fitToData();
 chart.start();
 ```
 
 :::chart basic-line Basic line chart
+
+`addLine({ x, y })` wraps your arrays in a `StaticDataset` (no copy), so X must be finite and sorted ascending (a `RangeError` names the first bad index) and Y can hold `NaN` for gaps. The same `{ x, y }` shorthand works on `addArea`, `addScatter`, and `addBar`. For unsorted rows, object rows, or a series you keep a dataset handle for, build the dataset yourself and pass `dataset` (the object-rows example below). A series takes exactly one data source: `{ x, y }`, `{ dataset }`, or `{ capacity }` for live data.
 
 Dispose charts when the owning page, component, or panel is removed:
 
@@ -82,27 +86,31 @@ const values = new Float64Array([12, 18, 19, 20, 21, 28, 33, 35, 36, 42]);
 const chart = new Chart(element, {
   axes: { x: { title: "Latency ms" }, y: { title: "Count" } },
 });
-chart.addHistogram({ values, binSize: 10, name: "latency" });
+chart.addBar({ name: "latency", values, binSize: 10 });
 chart.fitToData({ includeZero: true });
 chart.start();
 ```
+
+`addBar({ values, binSize | binCount | thresholds, ... })` is shorthand for `dataset: HistogramDataset.from(values, options)` and takes the same options (`min`, `max`, `align`, `normalize`, `includeEmpty`, `includeMax`). Pass `binSize` (bucket width in value units), `binCount` (number of equal-width buckets, at most 512), or `thresholds` (explicit edges). Build the `HistogramDataset` yourself when you want its `result` (counts, underflow, overflow) or to share one dataset between series.
 
 :::chart histogram Latency histogram
 
 Precompute or inspect bins with the pure helper:
 
 ```ts
-import { Chart, histogram } from "blazeplot";
+import { Chart, HistogramDataset } from "blazeplot";
+import { histogramBins } from "blazeplot/data";
 
-const bins = histogram(values, { binCount: 20, normalize: "density" });
+const values = [12, 15, 15, 18, 22, 22, 22, 30, 41];
+const bins = histogramBins(values, { binCount: 20, normalize: "density" });
 
 const chart = new Chart(element);
-chart.addHistogram({ histogram: bins, name: "latency density" });
+chart.addBar({ name: "latency density", dataset: new HistogramDataset(bins) });
 chart.fitToData({ includeZero: true });
 chart.start();
 ```
 
-Normalization modes are `"count"`, `"probability"`, `"percent"`, and `"density"`. Bins are configurable with `binSize`, `binCount`, explicit `thresholds`, `min`, `max`, and `align`; fixed-size bins align to `0` by default, and the built-in tooltip presents interval-backed samples as bucket ranges rather than only midpoint coordinates. Use `histogram(...)` for one-dimensional value frequencies; use `binSamples(...)` when you already have X/Y samples and need to reduce Y values into fixed X intervals.
+Normalization modes are `"count"`, `"probability"`, `"percent"`, and `"density"`. Bins are configurable with one of `binSize`, `binCount` (capped at 512), or explicit `thresholds` (pick one), plus `min`, `max`, and `align`; fixed-size bins align to `0` by default, and the built-in tooltip presents interval-backed samples as bucket ranges rather than only midpoint coordinates. Use `histogramBins(...)` (from `blazeplot/data`) for one-dimensional value frequencies; use `binSamples(...)` when you already have X/Y samples and need to reduce Y values into fixed X intervals.
 
 ## Live line chart
 
@@ -130,7 +138,7 @@ const cleanup = () => {
 
 :::chart live-line Rolling live line chart
 
-Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. For timestamped streams, `chart.followLatestX({ currentX: () => Date.now(), ... })` scrolls smoothly between batched updates. You can also enable or change follow behavior at runtime with `chart.followLatestX(...)`, stop it with `chart.stopFollowingLatestX()`, and call `chart.setXFollowPaused(false)` from a "live" button if the user pans away and wants to jump back. Double-click/tap reset in the interactions plugin resumes follow by default. See [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
+Keep appended X values sorted. `followX` keeps a rolling X window pinned to the newest sample, while `autoFitY` refits Y to the visible X range. For timestamped streams, `chart.followX({ currentX: () => Date.now(), ... })` scrolls smoothly between batched updates. You can also enable or change follow behavior at runtime with `chart.followX(...)`, stop it with `chart.stopFollowX()`, and call `chart.setFollowXPaused(false)` from a "live" button if the user pans away and wants to jump back. Double-click/tap reset in the interactions plugin resumes follow by default. See [Live data](./live-data.md), [Data semantics](./data-semantics.md), [Performance recipes](./performance-recipes.md), and [Troubleshooting](./troubleshooting.md#live-chart-keeps-jumping-away-from-the-latest-data) for the details.
 
 If samples arrive at a fixed interval, use the `{ capacity, xStep }` shorthand so BlazePlot creates an implicit-X buffer:
 
@@ -162,6 +170,12 @@ Use `ServerSampledDataset` when your backend already reduced dense history into 
 ```ts
 import { Chart, ServerSampledDataset } from "blazeplot";
 
+// Bucket envelopes reduced by your backend; each bucket covers [xStart, xEnd].
+const bucketStarts = new Float64Array([0, 10, 20]);
+const bucketEnds = new Float64Array([10, 20, 30]);
+const bucketMins = new Float32Array([1, 0.5, 2]);
+const bucketMaxes = new Float32Array([4, 3.5, 5]);
+
 const dataset = new ServerSampledDataset({
   kind: "minmax",
   xStart: bucketStarts,
@@ -178,7 +192,7 @@ chart.start();
 
 :::chart server-sampled Server-sampled min/max buckets
 
-Bucket ranges should be sorted and non-overlapping for predictable picking, bounds, and visible-data export. Use `series.replace(...)` when a new viewport response arrives so on-demand rendering and LOD state update.
+Bucket `xStart` and `xEnd` values must each be finite and non-decreasing, with `xEnd >= xStart` per bucket, or the constructor and `replace` throw a `RangeError`; overlapping buckets are allowed. Use `series.replace(...)` when a new viewport response arrives so on-demand rendering and LOD state update; it takes the same `{ kind, ... }` data as the constructor.
 
 ## Financial OHLC and candlesticks
 
@@ -206,7 +220,7 @@ const last = close.at(-1) ?? 0;
 
 const linked = createLinkedCharts(element, {
   rows: 2,
-  sharedX: true,
+  syncX: true,
   spacing: 0,
   panels: [
     {
@@ -249,8 +263,15 @@ OHLC bounds use high/low values, while generic `getY()` returns close. For live 
 Use `blazeplot/linked` for dashboards that share an X range but keep independent Y axes.
 
 ```ts
+import { StaticDataset } from "blazeplot";
 import { createLinkedCharts } from "blazeplot/linked";
 import { crosshairPlugin } from "blazeplot/plugins/crosshair";
+
+const dashboardElement = document.getElementById("dashboard")!;
+const priceDataset = new StaticDataset([0, 1, 2], [10, 12, 11]);
+const volumeDataset = new StaticDataset([0, 1, 2], [300, 450, 380]);
+const xMin = 0;
+const xMax = 2;
 
 const linked = createLinkedCharts(dashboardElement, {
   rows: 2,
@@ -268,7 +289,7 @@ linked.dispose();
 
 :::chart linked Linked charts with a shared X range
 
-`panelPlugins` runs once per panel and receives a sync group unique to the layout, so only the plugins you import are bundled.
+`panelPlugins` runs once per panel and receives a sync group unique to the layout, so only the plugins you import are bundled. X is synced by default (`syncX: false` turns it off); `syncSelections: true` mirrors selection events to the other panels, and per-panel `options` take any `ChartOptions`. When panels use `followX`, a user pan on one panel pauses every panel and `chart.setFollowXPaused(false)` resumes them all.
 
 ## Built-in plugins
 
@@ -291,7 +312,61 @@ const chart = new Chart(element, {
 
 :::chart plugins Interactions, legend, and tooltip plugins
 
-Available plugin subpaths are listed in the [API reference](./api-reference.md#package-entry-points). To write your own plugin, see [Plugin authoring](./plugin-authoring.md).
+Available plugin subpaths are listed in the [API reference](./api-reference.md#package-entry-points). To write your own plugin, see [Plugin authoring](./plugin-authoring.md). Create a new plugin instance for each chart; several built-in plugins throw if one instance is installed on a second chart.
+
+### Charts on a scrolling page
+
+By default `interactionsPlugin` lets one finger scroll the page and uses two fingers to pan and pinch (`touchPan: "two-finger"`), but the wheel zooms the plot and stops the page from scrolling there. On a long page, also make the wheel cooperative: it zooms only with Ctrl or Cmd held. A short hint explains the shortcut. Pass `touchPan: true` instead if one finger should pan the chart.
+
+```ts
+import { Chart } from "blazeplot";
+import { interactionsPlugin } from "blazeplot/plugins/interactions";
+
+const chart = new Chart(element, {
+  plugins: [
+    interactionsPlugin({
+      wheelZoom: "modifier",
+      touchPan: "two-finger",
+      gestureHint: { wheelText: "Hold Ctrl and scroll to zoom", touchText: "Use two fingers to move the chart" },
+    }),
+  ],
+});
+
+// Later: chart.dispose();
+```
+
+## Restyle a series
+
+`series.setStyle(...)` merges new style options into a series after it was created, and `chart.setTheme(...)` restyles the chart.
+
+```ts
+import { Chart, LIGHT_CHART_THEME } from "blazeplot";
+
+const chart = new Chart(element);
+const cpu = chart.addLine({ capacity: 10_000, name: "cpu" });
+
+cpu.setStyle({ color: "#f97316", lineWidth: 2 });
+chart.setTheme(LIGHT_CHART_THEME);
+chart.dispose();
+```
+
+## Renderers
+
+The default renderer, `"auto"`, uses WebGL2 and falls back to Canvas 2D when it is missing; `"webgl2"` and `"canvas2d"` ask for one engine strictly, and `"shared"` draws many charts through one WebGL context.
+
+```ts
+import { Chart } from "blazeplot";
+
+const fallbackChart = new Chart(element, { renderer: "auto" });
+console.log(fallbackChart.renderer); // "webgl2" or "canvas2d"
+
+const dashboardChart = new Chart(container, { renderer: "shared" });
+
+fallbackChart.dispose();
+dashboardChart.dispose();
+```
+
+See [Browser support](./browser-support.md#rendering-engines) for the differences between renderers and [Performance recipes](./performance-recipes.md#many-charts-on-one-page) for when to share a context. `createLinkedCharts(element, { renderer: "shared", panels })` applies one renderer to every panel.
 
 ## Annotations
 
@@ -315,21 +390,20 @@ const chart = new Chart(element, {
 
 ## Export image and data
 
-Use `chart.screenshot()` for an image of the plot plus built-in DOM text overlays. Use `blazeplot/data` and `blazeplot/export` for downloadable visible data.
+Use `chart.screenshot()` for an image of the plot plus the canvas, SVG, and DOM text overlays under the chart root (axis labels and titles, legend, crosshair, annotations). It renders a fresh frame first. Use `blazeplot/export` for downloadable visible data and image download helpers.
 
 ```ts
-import { chartDataToCSV, exportChartData } from "blazeplot/data";
-import { downloadBlob } from "blazeplot/export";
+import { chartDataToCsv, downloadBlob, exportChartData } from "blazeplot/export";
 
 const image = await chart.screenshot();
 const visible = exportChartData(chart, { range: "visible", includeYRange: true });
-const csv = chartDataToCSV(visible);
+const csv = chartDataToCsv(visible);
 
 downloadBlob(image, "chart.png");
 downloadBlob(new Blob([csv], { type: "text/csv" }), "visible-data.csv");
 ```
 
-`includeYRange: true` filters exported samples to both the current X range and Y range. Without it, export uses the visible X range.
+`range: "visible"` limits the export to the current X range, and `includeYRange: true` also filters it to the current Y range. Without `range`, every sample of the shown series is exported; pass a selection plugin state (`selection.getSelection()`) to export just the selected samples. The CSV helper prefixes text cells that start with `=`, `+`, `-`, or `@` with `'` so spreadsheets do not run them as formulas (`escapeFormulas: false` turns that off).
 
 ## React
 
@@ -337,7 +411,7 @@ Use the same `Chart` constructor in an effect when React owns the container.
 
 ```tsx
 import { useEffect, useRef } from "react";
-import { Chart, StaticDataset } from "blazeplot";
+import { Chart } from "blazeplot";
 import { interactionsPlugin } from "blazeplot/plugins/interactions";
 
 export function PriceChart() {
@@ -346,7 +420,7 @@ export function PriceChart() {
   useEffect(() => {
     if (!hostRef.current) return;
     const chart = new Chart(hostRef.current, { plugins: [interactionsPlugin()] });
-    chart.addLine({ dataset: new StaticDataset([0, 1, 2], [10, 12, 11]), name: "price" });
+    chart.addLine({ x: [0, 1, 2], y: [10, 12, 11], name: "price" });
     chart.fitToData();
     chart.start();
     return () => chart.dispose();

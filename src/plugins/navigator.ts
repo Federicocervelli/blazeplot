@@ -1,2 +1,2 @@
-export { navigatorPlugin } from "../ui/Navigator.js";
-export type { NavigatorPlugin, NavigatorPluginOptions } from "../ui/Navigator.js";
+export { navigatorPlugin } from "./navigator/Navigator.js";
+export type { NavigatorMessages, NavigatorPlugin, NavigatorPluginOptions } from "./navigator/Navigator.js";

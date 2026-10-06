@@ -1,10 +1,5 @@
-export {
-  buildFlameGraphModel,
-  buildStatusChartModel,
-  flameGraphPlugin,
-  parseFoldedStacks,
-  pickFrame,
-} from "../ui/FlameGraph.js";
+export { flameGraphPlugin } from "./flamegraph/FlameGraph.js";
+export { buildStatusChartModel, parseFoldedStacks } from "./flamegraph/model.js";
 export type {
   BuildFlameGraphModelOptions,
   BuildStatusChartModelOptions,
@@ -17,4 +12,4 @@ export type {
   FlameGraphPluginOptions,
   FlameGraphRenderableFrame,
   FlameGraphStatusSpan,
-} from "../ui/FlameGraph.js";
+} from "./flamegraph/types.js";

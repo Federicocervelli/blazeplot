@@ -1,9 +1,12 @@
 #!/usr/bin/env bun
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RobustnessResults } from "../tests/browser/interaction/robustness.ts";
-import { CdpClient, closeTarget, createTarget, evaluate, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, waitForHttp } from "./browser-harness.js";
+import { CdpClient, closeTarget, createTarget, evaluate, parseTestRenderer, readPositiveInteger, resolveChrome, sleep, spawnChrome, startVite, testRendererFromEnv, waitForHttp, withTestRenderer } from "./browser-harness.js";
+import type { TestRenderer } from "./browser-harness.js";
+import { decodePng, encodePng } from "./png-image.js";
+import type { RgbaImage } from "./png-image.js";
 
 interface Options {
   width: number;
@@ -14,6 +17,12 @@ interface Options {
   url?: string;
   chrome?: string;
   keepBrowser: boolean;
+  /** Run only these cases (`--case`, repeatable); all cases when empty. */
+  cases: string[];
+  /** Where the forced-colors case writes its review screenshots. */
+  outDir: string;
+  /** Engine the fixture charts use (`--renderer` or `BLAZEPLOT_TEST_RENDERER`); the fixture's WebGL2 default when unset. */
+  renderer?: TestRenderer;
 }
 
 interface RectSnapshot {
@@ -54,12 +63,27 @@ interface InteractionSnapshot {
   renderEvents: number;
   followingLatestX: boolean;
   latestXFollowPaused: boolean;
+  a11y: {
+    active: string;
+    activeOutline: string;
+    announcement: string;
+    selectionStatus: string;
+    hoverSource: string | null;
+    hoverSeries: string | null;
+    hoverIndex: number | null;
+    annotationCount: number;
+    annotationClicks: number;
+    tableRows: number;
+    describedBy: string;
+  };
   error?: string | null;
 }
 
 // Each case gets a fresh page. Earlier pages are closed so their render loops
 // (continuous mode, live follow) do not compete for CPU with timing-sensitive cases.
 let openTargetId: string | null = null;
+/** CDP modifier bit for Shift. */
+const SHIFT = 8;
 
 await main();
 
@@ -81,20 +105,33 @@ async function main(): Promise<void> {
     chromeProc = launchChrome(chromePath, userDataDir, options);
     await waitForHttp(`http://127.0.0.1:${options.debugPort}/json/version`, 30_000);
 
-    await runInteractionsCase(options, serverUrl);
-    await runSelectionCase(options, serverUrl);
-    await runLinkedCase(options, serverUrl);
-    await runMobileCase(options, serverUrl);
-    await runMobileLongPressCase(options, serverUrl);
-    await runLifecycleCase(options, serverUrl);
-    await runRenderLoopCase(options, serverUrl);
-    await runContinuousRenderLoopCase(options, serverUrl);
-    await runLiveFollowCase(options, serverUrl);
-    await runRobustnessCase(options, serverUrl);
+    const cases: ReadonlyArray<readonly [string, (options: Options, serverUrl: string) => Promise<void>]> = [
+      ["interactions", runInteractionsCase],
+      ["selection", runSelectionCase],
+      ["arbitration", runArbitrationCase],
+      ["touch-action", runTouchActionCase],
+      ["cooperative", runCooperativeCase],
+      ["linked", runLinkedCase],
+      ["site-linked", runSiteLinkedCase],
+      ["iframe", runIframeCase],
+      ["mobile", runMobileCase],
+      ["mobile-longpress", runMobileLongPressCase],
+      ["lifecycle", runLifecycleCase],
+      ["render-loop", runRenderLoopCase],
+      ["continuous-render-loop", runContinuousRenderLoopCase],
+      ["live-follow", runLiveFollowCase],
+      ["robustness", runRobustnessCase],
+      ["a11y", runKeyboardA11yCase],
+      ["forced-colors", runForcedColorsCase],
+    ];
+    const selected = options.cases.length > 0 ? cases.filter(([name]) => options.cases.includes(name)) : cases;
+    if (selected.length === 0) throw new Error(`No interaction case matches --case ${options.cases.join(", ")}. Cases: ${cases.map(([name]) => name).join(", ")}`);
+    for (const [, run] of selected) await run(options, serverUrl);
   } finally {
     if (chromeProc && !options.keepBrowser) chromeProc.kill();
     if (viteProc) viteProc.kill();
-    if (userDataDir && !options.keepBrowser) await rm(userDataDir, { recursive: true, force: true });
+    // Windows can keep the profile locked briefly after Chrome exits; a failed cleanup must not mask test errors.
+    if (userDataDir && !options.keepBrowser) await rm(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }).catch(() => undefined);
   }
 }
 
@@ -151,8 +188,8 @@ async function runLiveFollowCase(options: Options, serverUrl: string): Promise<v
   try {
     let snapshot = await waitForReady(cdp, options.timeoutMs);
     const epochLikeX = 1_700_000_000_000;
-    assert(snapshot.viewport.xMax >= epochLikeX + 1_020, "followLatestX can use a live x clock ahead of the newest sample");
-    assert(close(spanX(snapshot.viewport), 100, 0.1), "followLatestX uses the configured rolling window");
+    assert(snapshot.viewport.xMax >= epochLikeX + 1_020, "followX can use a live x clock ahead of the newest sample");
+    assert(close(spanX(snapshot.viewport), 100, 0.1), "followX uses the configured rolling window");
     const initialRenderEvents = snapshot.renderEvents;
     await sleep(120);
     snapshot = await getRequiredSnapshot(cdp);
@@ -372,6 +409,184 @@ async function runLinkedCase(options: Options, serverUrl: string): Promise<void>
   }
 }
 
+interface PanelSnapshot {
+  viewport: ViewportSnapshot;
+  canvasRect: RectSnapshot;
+}
+
+async function getPanels(cdp: CdpClient): Promise<[PanelSnapshot, PanelSnapshot]> {
+  return await evaluate(cdp, "window.__blazeplotInteractionTest.panels()", true) as [PanelSnapshot, PanelSnapshot];
+}
+
+/**
+ * The website feature preview (synced time + log panels, default box zoom, shift pan, shared crosshair) no longer
+ * needs `boxZoom: false`: a plain drag box-zooms one panel, X stays synced, and hover/pan keep working.
+ */
+async function runSiteLinkedCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "site-linked");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    let [top, bottom] = await getPanels(cdp);
+    const initialSpan = spanX(top.viewport);
+    const initialBottomY = bottom.viewport;
+    // Plain drag on the top panel: box zoom (X synced to the bottom panel).
+    const rect = top.canvasRect;
+    await drag(cdp, rect.left + rect.width * 0.25, rect.top + rect.height * 0.25, rect.left + rect.width * 0.6, rect.top + rect.height * 0.7, 0);
+    await sleep(250);
+    [top, bottom] = await getPanels(cdp);
+    assert(spanX(top.viewport) < initialSpan * 0.5, "plain drag box-zooms the top panel");
+    assert(close(top.viewport.xMin, bottom.viewport.xMin, 1e-6) && close(top.viewport.xMax, bottom.viewport.xMax, 1e-6), "box zoom keeps the linked X range synced");
+    assert(spanY(top.viewport) < 10 * 0.9, "box zoom also narrows the top panel Y");
+    assert(close(spanY(bottom.viewport), spanY(initialBottomY), 1e-9), "box zoom on the top panel leaves the other panel's Y alone");
+
+    // Plain drag on the log panel: Y stays positive and finite.
+    const logRect = bottom.canvasRect;
+    await drag(cdp, logRect.left + logRect.width * 0.1, logRect.top + logRect.height * 0.2, logRect.left + logRect.width * 0.5, logRect.top + logRect.height * 0.8, 0);
+    await sleep(250);
+    [top, bottom] = await getPanels(cdp);
+    assert(bottom.viewport.yMin > 0 && Number.isFinite(bottom.viewport.yMax) && bottom.viewport.yMax > bottom.viewport.yMin, "box zoom on the log panel keeps a valid positive Y range");
+    assert(spanY(bottom.viewport) < spanY(initialBottomY), "box zoom narrows the log panel Y");
+    assert(close(top.viewport.xMin, bottom.viewport.xMin, 1e-6), "log-panel box zoom keeps X synced");
+
+    // Shift-drag still pans, and the shared crosshair shows on hover.
+    const before = top.viewport.xMin;
+    const center = centerOf(top.canvasRect);
+    await drag(cdp, center.x, center.y, center.x + 80, center.y, SHIFT);
+    await sleep(250);
+    [top, bottom] = await getPanels(cdp);
+    assert(Math.abs(top.viewport.xMin - before) > 0.5, "shift-drag pans the top panel");
+    assert(close(top.viewport.xMin, bottom.viewport.xMin, 1e-6), "shift pan keeps X synced");
+    await mouseMove(cdp, center.x, center.y);
+    await sleep(250);
+    const hovered = await getRequiredSnapshot(cdp);
+    assert(hovered.visibleCrosshairs >= 2, "linked crosshair shows on both panels with box zoom enabled");
+    console.log("✓ site-linked: default box zoom coexists with synced X, log Y, shift pan, and the shared crosshair");
+  } finally {
+    cdp.close();
+  }
+}
+
+/** A chart created in an iframe renders, hovers, zooms, pans, and screenshots without touching the parent window or document. */
+async function runIframeCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "iframe");
+  try {
+    let snapshot = await waitForReady(cdp, options.timeoutMs);
+    assert(snapshot.canvasRect.width > 100 && snapshot.canvasRect.height > 100, "iframe chart has a plot area");
+    assert(snapshot.renderEvents > 0, "iframe chart rendered");
+    const center = centerOf(snapshot.canvasRect);
+    await mouseMove(cdp, center.x, center.y);
+    await sleep(250);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.hoverEvents > 0, "hover works inside the iframe");
+    assert(snapshot.visibleCrosshairs >= 1, "crosshair is visible inside the iframe");
+
+    const span = spanX(snapshot.viewport);
+    await wheel(cdp, center.x, center.y, -400);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(spanX(snapshot.viewport) < span, "wheel zoom works inside the iframe");
+
+    const before = snapshot.viewport.xMin;
+    await drag(cdp, center.x, center.y, center.x + 100, center.y, SHIFT);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(Math.abs(snapshot.viewport.xMin - before) > 0.5, "shift-drag pan works inside the iframe");
+
+    const ink = await evaluate(cdp, "window.__blazeplotInteractionTest.screenshotInk()", true) as number;
+    assert(ink > 0.005, `screenshot of an iframe chart has content (${(ink * 100).toFixed(2)}% ink)`);
+
+    const hits = await evaluate(cdp, "window.__blazeplotIframeProbe?.hits() ?? null", false) as string[] | null;
+    assert(hits !== null, "iframe probe is installed");
+    assert(hits.length === 0, `no global document/window use from src/: ${hits.slice(0, 3).join(" | ")}`);
+    console.log("✓ iframe: render, hover, wheel zoom, pan, screenshot, and no global document/window use");
+  } finally {
+    cdp.close();
+  }
+}
+
+/** Interactions and selection at their defaults share the plain drag: it must select once and not zoom. */
+async function runArbitrationCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "arbitration");
+  try {
+    const snapshot = await waitForReady(cdp, options.timeoutMs);
+    const rect = snapshot.canvasRect;
+    await drag(cdp, rect.left + rect.width * 0.2, rect.top + rect.height * 0.2, rect.left + rect.width * 0.7, rect.top + rect.height * 0.65, 0);
+    await sleep(200);
+    const after = await getRequiredSnapshot(cdp);
+    assert(after.selectionCommits === 1, "plain drag commits exactly one selection");
+    assert(close(spanX(after.viewport), spanX(snapshot.viewport), 1e-6), "plain drag does not also box-zoom x");
+    assert(close(spanY(after.viewport), spanY(snapshot.viewport), 1e-6), "plain drag does not also box-zoom y");
+    console.log("✓ arbitration: one plain drag, one action");
+  } finally {
+    cdp.close();
+  }
+}
+
+/** `wheelZoom: "modifier"` and `touchPan: "two-finger"` leave one-finger and plain-wheel input to the page. */
+async function runCooperativeCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "cooperative");
+  try {
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 2 });
+    let snapshot = await waitForReady(cdp, options.timeoutMs);
+    const center = centerOf(snapshot.canvasRect);
+    const initialSpan = spanX(snapshot.viewport);
+    await evaluate(cdp, "window.__wheelPrevented = []; window.addEventListener('wheel', (e) => window.__wheelPrevented.push(e.defaultPrevented)); true", false);
+
+    await wheel(cdp, center.x, center.y, -300);
+    await sleep(150);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(close(spanX(snapshot.viewport), initialSpan, 1e-6), "plain wheel does not zoom a cooperative chart");
+    assert(JSON.stringify(await evaluate(cdp, "window.__wheelPrevented", false)) === "[false]", "plain wheel is left for the page to scroll");
+    const hint = await evaluate(cdp, "(() => { const h = document.querySelector('.blazeplot-gesture-hint'); return h ? { display: getComputedStyle(h).display, hidden: h.getAttribute('aria-hidden') } : null; })()", false) as { display: string; hidden: string } | null;
+    assert(hint !== null && hint.display !== "none" && hint.hidden === "true", "plain wheel shows the aria-hidden hint");
+
+    await wheel(cdp, center.x, center.y, -300, 2);
+    await sleep(150);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(spanX(snapshot.viewport) < initialSpan * 0.95, "Ctrl+wheel zooms a cooperative chart");
+
+    await evaluate(cdp, "window.__blazeplotInteractionTest.resetViewport()", true);
+    await sleep(100);
+    snapshot = await getRequiredSnapshot(cdp);
+    const touchAction = await evaluate(cdp, "getComputedStyle(document.querySelector('#chart canvas')).touchAction", false);
+    assert(touchAction === "pan-x pan-y", `cooperative touch-action leaves scrolling to the browser (got ${String(touchAction)})`);
+    await touchDrag(cdp, center.x, center.y, center.x + 120, center.y);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(Math.abs(snapshot.viewport.xMin - snapshot.initialViewport.xMin) < 1e-6, "one finger does not pan a two-finger chart");
+
+    await pinch(cdp, center.x, center.y, 40, 120);
+    await sleep(200);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(spanX(snapshot.viewport) < spanX(snapshot.initialViewport) * 0.8, "two-finger pinch zooms a cooperative chart");
+    console.log("✓ cooperative: modifier wheel and two-finger touch");
+  } finally {
+    cdp.close();
+  }
+}
+
+/** `touch-action` is only set when a plugin needs to handle touch input; decorations combine by intersection. */
+async function runTouchActionCase(options: Options, serverUrl: string): Promise<void> {
+  const touchActions = "[...document.querySelectorAll('#chart, #chart *')].map((el) => getComputedStyle(el).touchAction)";
+  let cdp = await openCase(options, serverUrl, "plain");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    const values = await evaluate(cdp, `${touchActions}.filter((v) => v !== 'auto')`, false) as string[];
+    assert(values.length === 0, `a chart without plugins leaves touch-action alone (found ${values.join(", ")})`);
+  } finally {
+    cdp.close();
+  }
+  cdp = await openCase(options, serverUrl, "arbitration");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    const canvas = await evaluate(cdp, "getComputedStyle(document.querySelector('#chart canvas')).touchAction", false);
+    assert(canvas === "none", `interactions plus selection still request exclusive touch input: the selection drag needs it (got ${String(canvas)})`);
+    console.log("✓ touch-action: auto without plugins, none with interactions plus selection");
+  } finally {
+    cdp.close();
+  }
+}
+
 async function runSelectionCase(options: Options, serverUrl: string): Promise<void> {
   const cdp = await openCase(options, serverUrl, "selection");
   try {
@@ -434,12 +649,370 @@ async function runRobustnessCase(options: Options, serverUrl: string): Promise<v
   }
 }
 
+/** Keyboard-only: Tab focus, inspection cursor, keyboard selection, annotation activation/removal, focus rings. */
+async function runKeyboardA11yCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "a11y");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    await sleep(1_200); // the summary (1 s) and data table (0.5 s) update on throttles
+    let snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.describedBy.includes("interaction line 1") && snapshot.a11y.describedBy.includes("1,000 points"), `generated summary describes the series (${snapshot.a11y.describedBy})`);
+    assert(snapshot.a11y.tableRows > 0, "a11y data table has rows");
+
+    await key(cdp, "Tab", 9);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.active === "chart-root", `Tab focuses the chart root first (got ${snapshot.a11y.active})`);
+    assert(snapshot.a11y.activeOutline.startsWith("solid 2px"), `chart root shows a 2px focus ring (got ${snapshot.a11y.activeOutline})`);
+
+    await key(cdp, "Enter", 13);
+    await sleep(120);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.hoverSource === "inspection", "Enter starts keyboard inspection");
+    assert(snapshot.a11y.announcement.startsWith("interaction line 1: x"), `inspection announces the value (${snapshot.a11y.announcement})`);
+    assert(snapshot.visibleTooltips >= 1 && snapshot.visibleCrosshairs >= 1, "tooltip and crosshair follow the inspection cursor");
+    const startIndex = snapshot.a11y.hoverIndex ?? -1;
+    const startCrosshairX = snapshot.crosshairX;
+
+    for (let i = 0; i < 3; i++) await key(cdp, "ArrowRight", 39);
+    await sleep(120);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.hoverIndex === startIndex + 3, `ArrowRight steps one sample at a time (${startIndex} -> ${snapshot.a11y.hoverIndex})`);
+    assert(snapshot.crosshairX !== null && startCrosshairX !== null && snapshot.crosshairX > startCrosshairX, "crosshair moves with the cursor");
+    assert(close(spanX(snapshot.viewport), spanX(snapshot.initialViewport), 1e-6) && snapshot.viewport.xMin === snapshot.initialViewport.xMin, "inspection keys do not pan the chart");
+
+    await key(cdp, "ArrowDown", 40);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.hoverSeries === "interaction cosine", `ArrowDown switches series (${snapshot.a11y.hoverSeries})`);
+    await key(cdp, "End", 35);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.hoverIndex === 999, `End jumps to the last visible sample (${snapshot.a11y.hoverIndex})`);
+    await key(cdp, "Escape", 27);
+    await sleep(120);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.hoverSource === null && snapshot.visibleTooltips === 0, "Escape ends inspection and hides the tooltip");
+    console.log("✓ keyboard: Tab focus ring, inspection cursor drives tooltip and crosshair, series switch, End, Escape");
+
+    for (let i = 0; i < 4; i++) await key(cdp, "ArrowRight", 39, SHIFT);
+    await key(cdp, "Enter", 13);
+    await sleep(120);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.selectionCommits === 1 && snapshot.selectionBounds !== null && snapshot.selectionBounds.xMax > snapshot.selectionBounds.xMin, "Shift+Arrow then Enter commits a keyboard selection");
+    assert(snapshot.a11y.selectionStatus.startsWith("Selected X from"), `keyboard selection is announced (${snapshot.a11y.selectionStatus})`);
+    console.log("✓ keyboard: Shift+Arrow selection committed with Enter");
+
+    await key(cdp, "Tab", 9);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.active === "annotation:Deploy", `Tab reaches the first annotation (got ${snapshot.a11y.active})`);
+    assert(snapshot.a11y.activeOutline.startsWith("solid 2px"), `annotation shows a focus ring (got ${snapshot.a11y.activeOutline})`);
+    await key(cdp, "Enter", 13);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.annotationClicks === 1, "Enter activates the focused annotation");
+    await key(cdp, "Delete", 46);
+    await sleep(80);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.annotationCount === 1, "Delete removes a removable annotation");
+    assert(snapshot.a11y.active === "annotation:Incident", `focus moves to the next annotation (got ${snapshot.a11y.active})`);
+    await key(cdp, "Delete", 46);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.annotationCount === 1, "Delete leaves non-removable annotations alone");
+
+    await key(cdp, "Tab", 9);
+    snapshot = await getRequiredSnapshot(cdp);
+    assert(snapshot.a11y.active.startsWith("legend:"), `Tab reaches the legend (got ${snapshot.a11y.active})`);
+    assert(snapshot.a11y.activeOutline.startsWith("solid 2px"), `legend item shows a focus ring (got ${snapshot.a11y.activeOutline})`);
+    console.log("✓ keyboard: annotation focus, activation, removal; legend focus ring");
+  } finally {
+    cdp.close();
+  }
+}
+
+/**
+ * Forced colors (Windows high-contrast) in a real browser: emulate `forced-colors: active` over CDP
+ * on the all-plugins a11y fixture, check that the theme, series, canvas pixels, and DOM overlays
+ * switch to system colors and stay visible, then turn emulation off and check that the caller
+ * theme comes back through the `matchMedia` change listener, without a reload.
+ */
+async function runForcedColorsCase(options: Options, serverUrl: string): Promise<void> {
+  const cdp = await openCase(options, serverUrl, "a11y");
+  try {
+    await waitForReady(cdp, options.timeoutMs);
+    await mkdir(options.outDir, { recursive: true });
+    await sleep(200);
+
+    const normal = await getColors(cdp);
+    assert(!normal.forcedColorsMatches, "forced colors are off before emulation");
+    assert(normal.seriesColors.length === 2, `fixture has two series (${normal.seriesColors.length})`);
+    const normalBackground = rgb255(normal.theme.backgroundColor);
+    const normalSeries = normal.seriesColors.map(rgb255);
+    await expectCanvas(cdp, normalBackground, normalSeries, "normal theme", join(options.outDir, "normal-canvas.png"));
+    await captureScreenshot(cdp, join(options.outDir, "normal.png"));
+
+    // Dark scheme selects Chromium's dark forced palette, like a Windows dark Contrast theme.
+    await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "active" }, { name: "prefers-color-scheme", value: "dark" }] });
+    let forced = await waitForThemeChange(cdp, normal.themeChanges, options.timeoutMs);
+    assert(forced.forcedColorsMatches, "matchMedia reports forced colors after emulation");
+    const system = mapRecord(forced.system, parseCssRgb);
+    const canvasColor = system.Canvas;
+    const textColor = system.CanvasText;
+    assert(forced.theme.backgroundCssColor === "Canvas", `theme background is the Canvas system color (${forced.theme.backgroundCssColor})`);
+    assertNear(rgb255(forced.theme.backgroundColor), canvasColor, 1, "theme background RGBA resolves to the Canvas system color");
+    assert(forced.theme.axisColor === "CanvasText", `axis color is CanvasText (${forced.theme.axisColor})`);
+    const systemSeries = [system.Highlight, system.LinkText, system.CanvasText, system.GrayText];
+    const forcedSeries = forced.seriesColors.map(rgb255);
+    forcedSeries.forEach((color, index) => {
+      assert(systemSeries.some((candidate) => maxChannelDelta(candidate, color) <= 1), `series ${index} uses a system color (${color.join(",")})`);
+      assert(maxChannelDelta(color, rgb255(forced.theme.seriesColors[index % forced.theme.seriesColors.length]!)) <= 1, `series ${index} follows the forced theme palette`);
+      assert(contrastRatio(color, canvasColor) >= 3, `series ${index} has at least 3:1 contrast with Canvas (${contrastRatio(color, canvasColor).toFixed(2)})`);
+    });
+    assert(maxChannelDelta(forcedSeries[0]!, forcedSeries[1]!) > 32, "the two series get different system colors");
+    assert(forced.seriesColors.every((color) => color[3] === 1) && forced.theme.backgroundColor[3] === 1, `forced series and background are opaque (${forced.seriesColors.map((color) => color[3]).join(", ")})`);
+    assert(maxChannelDelta(forcedSeries[0]!, normalSeries[0]!) > 0 || maxChannelDelta(canvasColor, normalBackground) > 0, "forced palette differs from the normal theme");
+    assertNear(parseCssRgb(forced.rootBackground), canvasColor, 1, "chart root background is Canvas");
+    assert(forced.axisLabelColor !== null, "axis tick labels are rendered");
+    assertNear(parseCssRgb(forced.axisLabelColor), textColor, 1, "axis tick labels use CanvasText");
+    assert(forced.titleColor !== null, "chart title is rendered");
+    assertNear(parseCssRgb(forced.titleColor), textColor, 1, "chart title uses CanvasText");
+    assert(contrastRatio(textColor, canvasColor) >= 4.5, `CanvasText has at least 4.5:1 contrast with Canvas (${contrastRatio(textColor, canvasColor).toFixed(2)})`);
+    assert(forced.legend !== null, "legend is visible");
+    assertNear(parseCssRgb(forced.legend.background), canvasColor, 1, "legend background is Canvas");
+    assertNear(parseCssRgb(forced.legend.color), textColor, 1, "legend text is CanvasText");
+    assert(forced.legend.borderStyle === "solid", `legend keeps a visible border (${forced.legend.borderStyle})`);
+    assertNear(parseCssRgb(forced.legend.borderColor), textColor, 1, "legend border is CanvasText");
+    assertSwatches(forced.legendSwatchColors, forcedSeries, "legend swatches keep the series colors (forced-color-adjust: none)");
+    assert(forced.navigatorWindowFill !== null, "navigator window is rendered");
+    assert(isTransparentFill(forced.navigatorWindowFill), `navigator window does not wash over the overview series (fill ${forced.navigatorWindowFill})`);
+
+    // Canvas cleared to Canvas, each series drawn in its system color.
+    await expectCanvas(cdp, canvasColor, forcedSeries, "forced colors", join(options.outDir, "forced-canvas.png"));
+    console.log(`✓ forced colors: theme, series (${forcedSeries.map((color) => color.join(",")).join(" / ")}), canvas pixels, axis text, and legend use system colors`);
+
+    await key(cdp, "Tab", 9);
+    forced = await getColors(cdp);
+    assert(forced.activeOutlineColor !== null, "chart root is focused");
+    assertNear(parseCssRgb(forced.activeOutlineColor), system.Highlight, 1, "focus ring uses Highlight");
+    for (let i = 0; i < 4; i++) await key(cdp, "ArrowRight", 39, SHIFT);
+    await key(cdp, "Enter", 13);
+    await sleep(120);
+    forced = await getColors(cdp);
+    assert(forced.selectionBorderColor !== null, "keyboard selection brush is visible");
+    assertNear(parseCssRgb(forced.selectionBorderColor), system.Highlight, 1, "selection brush border uses Highlight");
+    await key(cdp, "Enter", 13);
+    await sleep(150);
+    forced = await getColors(cdp);
+    assert(forced.tooltip !== null, "inspection tooltip is visible");
+    assertNear(parseCssRgb(forced.tooltip.background), canvasColor, 1, "tooltip background is Canvas");
+    assertNear(parseCssRgb(forced.tooltip.color), textColor, 1, "tooltip text is CanvasText");
+    assert(forced.tooltip.borderStyle === "solid", `tooltip has a visible border (${forced.tooltip.borderStyle})`);
+    assertNear(parseCssRgb(forced.tooltip.borderColor), textColor, 1, "tooltip border is CanvasText");
+    assertSwatches(forced.tooltipSwatchColors, forcedSeries, "tooltip swatches keep the series colors");
+    assertSwatches(forced.pickMarkerBackgrounds, forcedSeries, "inspection markers keep the series colors");
+    await captureScreenshot(cdp, join(options.outDir, "forced-colors.png"));
+    console.log("✓ forced colors: focus ring, selection brush, tooltip, swatches, and markers use system colors");
+
+    await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "forced-colors", value: "none" }, { name: "prefers-color-scheme", value: "dark" }] });
+    const restored = await waitForThemeChange(cdp, forced.themeChanges, options.timeoutMs);
+    assert(!restored.forcedColorsMatches, "matchMedia reports forced colors off");
+    assert(restored.theme.backgroundCssColor === normal.theme.backgroundCssColor, `theme background restored (${restored.theme.backgroundCssColor})`);
+    assertNear(rgb255(restored.theme.backgroundColor), normalBackground, 0, "theme background RGBA restored");
+    assert(restored.theme.axisColor === normal.theme.axisColor, `axis color restored (${restored.theme.axisColor})`);
+    restored.seriesColors.map(rgb255).forEach((color, index) => assertNear(color, normalSeries[index]!, 0, `series ${index} color restored`));
+    assert(restored.rootBackground === normal.rootBackground, `root background restored (${restored.rootBackground})`);
+    assert(restored.legend !== null && normal.legend !== null && restored.legend.background === normal.legend.background && restored.legend.color === normal.legend.color, "legend colors restored");
+    assertSwatches(restored.legendSwatchColors, normalSeries, "legend swatches restored");
+    assertSwatches(restored.tooltipSwatchColors, normalSeries, "tooltip swatches restored");
+    assert(restored.navigatorWindowFill === normal.navigatorWindowFill, `navigator window fill restored (${restored.navigatorWindowFill})`);
+    await expectCanvas(cdp, normalBackground, normalSeries, "restored theme", join(options.outDir, "restored-canvas.png"));
+    await captureScreenshot(cdp, join(options.outDir, "restored.png"));
+    console.log(`✓ forced colors: turning emulation off restores the theme without reload (screenshots in ${options.outDir})`);
+  } finally {
+    await cdp.send("Emulation.setEmulatedMedia", { features: [] }).catch(() => undefined);
+    cdp.close();
+  }
+}
+
+interface ColorSnapshot {
+  forcedColorsMatches: boolean;
+  themeChanges: number;
+  system: Record<"Canvas" | "CanvasText" | "Highlight" | "LinkText" | "GrayText", string>;
+  theme: { backgroundCssColor: string; backgroundColor: number[]; seriesColors: number[][]; axisColor: string };
+  seriesColors: number[][];
+  rootBackground: string;
+  axisLabelColor: string | null;
+  titleColor: string | null;
+  legend: OverlayColors | null;
+  tooltip: OverlayColors | null;
+  selectionBorderColor: string | null;
+  activeOutlineColor: string | null;
+  legendSwatchColors: string[];
+  tooltipSwatchColors: string[];
+  pickMarkerBackgrounds: string[];
+  navigatorWindowFill: string | null;
+}
+
+interface OverlayColors {
+  background: string;
+  color: string;
+  borderColor: string;
+  borderStyle: string;
+}
+
+type Rgb = readonly [number, number, number];
+
+async function getColors(cdp: CdpClient): Promise<ColorSnapshot> {
+  const colors = await evaluate(cdp, "window.__blazeplotInteractionTest?.colors?.() ?? null", true) as ColorSnapshot | null;
+  if (!colors) throw new Error("Interaction controller colors() is not available");
+  return colors;
+}
+
+/** Wait for the chart's `themechange` event, fired by its `(forced-colors: active)` listener. */
+async function waitForThemeChange(cdp: CdpClient, previousChanges: number, timeoutMs: number): Promise<ColorSnapshot> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < Math.min(timeoutMs, 5_000)) {
+    const colors = await getColors(cdp);
+    if (colors.themeChanges > previousChanges) return colors;
+    await sleep(50);
+  }
+  throw new Error("Interaction assertion failed: the chart did not react to the forced-colors media change (no themechange event)");
+}
+
+/**
+ * Poll plot-area screenshots until the background is the dominant color and every series color
+ * covers at least 200 px (a frame may still be pending after a theme change). On timeout, save the
+ * last capture to `failurePath` and fail with the colors that were found.
+ */
+async function expectCanvas(cdp: CdpClient, background: Rgb, seriesColors: readonly Rgb[], label: string, failurePath: string): Promise<void> {
+  const startedAt = Date.now();
+  let problem = "";
+  let image: RgbaImage | null = null;
+  while (Date.now() - startedAt < 5_000) {
+    const capture = await captureCanvas(cdp);
+    image = capture;
+    const dominant = dominantColor(capture);
+    const counts = seriesColors.map((color) => countNear(capture, color, 24));
+    problem = maxChannelDelta(dominant, background) > 6
+      ? `background is ${dominant.join(",")}, expected ${background.join(",")}`
+      : counts.some((count) => count < 200)
+        ? `series pixel counts ${counts.join(" / ")} for ${seriesColors.map((color) => color.join(",")).join(" / ")} (need 200 each)`
+        : "";
+    if (!problem) return;
+    await sleep(100);
+  }
+  if (image) await writeFile(failurePath, encodePng(image));
+  throw new Error(`Interaction assertion failed: ${label} canvas pixels: ${problem}; top colors ${image ? topColors(image, 8) : "n/a"} (capture saved to ${failurePath})`);
+}
+
+function topColors(image: RgbaImage, limit: number): string {
+  const counts = new Map<number, number>();
+  for (let i = 0; i < image.data.length; i += 4) {
+    const packed = (image.data[i]! << 16) | (image.data[i + 1]! << 8) | image.data[i + 2]!;
+    counts.set(packed, (counts.get(packed) ?? 0) + 1);
+  }
+  return [...counts].sort((a, b) => b[1] - a[1]).slice(0, limit)
+    .map(([packed, count]) => `${(packed >> 16) & 255},${(packed >> 8) & 255},${packed & 255}x${count}`).join(" ");
+}
+
+/** Screenshot the plot canvas area (WebGL pixels plus any overlays on top). */
+async function captureCanvas(cdp: CdpClient): Promise<RgbaImage> {
+  const rect = (await getRequiredSnapshot(cdp)).canvasRect;
+  const clip = { x: Math.ceil(rect.left) + 2, y: Math.ceil(rect.top) + 2, width: Math.floor(rect.width) - 4, height: Math.floor(rect.height) - 4, scale: 1 };
+  const response = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, clip }) as { data?: string };
+  if (!response.data) throw new Error("Page.captureScreenshot returned no data");
+  return decodePng(Buffer.from(response.data, "base64"));
+}
+
+async function captureScreenshot(cdp: CdpClient, path: string): Promise<void> {
+  const response = await cdp.send("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }) as { data?: string };
+  if (!response.data) throw new Error("Page.captureScreenshot returned no data");
+  await writeFile(path, Buffer.from(response.data, "base64"));
+}
+
+function rgb255(color: readonly number[]): Rgb {
+  return [Math.round((color[0] ?? 0) * 255), Math.round((color[1] ?? 0) * 255), Math.round((color[2] ?? 0) * 255)];
+}
+
+function parseCssRgb(css: string): Rgb {
+  const match = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(css);
+  if (!match) throw new Error(`Interaction assertion failed: cannot parse CSS color ${css}`);
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function mapRecord<K extends string, V, R>(record: Record<K, V>, map: (value: V) => R): Record<K, R> {
+  return Object.fromEntries(Object.entries(record).map(([name, value]) => [name, map(value as V)])) as Record<K, R>;
+}
+
+/** Every swatch is one of the series colors and every series color appears. */
+function assertSwatches(swatches: readonly string[], seriesColors: readonly Rgb[], label: string): void {
+  assert(swatches.length >= seriesColors.length, `${label}: expected ${seriesColors.length} swatches, found ${swatches.length}`);
+  const parsed = swatches.map(parseCssRgb);
+  for (const swatch of parsed) {
+    assert(seriesColors.some((color) => maxChannelDelta(color, swatch) <= 1), `${label} (swatch ${swatch.join(",")} is not a series color ${seriesColors.map((color) => color.join(",")).join(" / ")})`);
+  }
+  for (const color of seriesColors) {
+    assert(parsed.some((swatch) => maxChannelDelta(color, swatch) <= 1), `${label} (no swatch for ${color.join(",")})`);
+  }
+}
+
+function isTransparentFill(fill: string): boolean {
+  return fill === "none" || fill === "transparent" || /^rgba\(.*,\s*0\)$/.test(fill);
+}
+
+function maxChannelDelta(a: Rgb, b: Rgb): number {
+  return Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
+}
+
+function assertNear(actual: Rgb, expected: Rgb, tolerance: number, label: string): void {
+  assert(maxChannelDelta(actual, expected) <= tolerance, `${label} (got ${actual.join(",")}, expected ${expected.join(",")})`);
+}
+
+/** WCAG 2 contrast ratio between two sRGB colors. */
+function contrastRatio(a: Rgb, b: Rgb): number {
+  const luminance = (color: Rgb): number => {
+    const [r, g, b2] = color.map((channel) => {
+      const c = channel / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }) as [number, number, number];
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b2;
+  };
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** Most frequent opaque pixel color. */
+function dominantColor(image: RgbaImage): Rgb {
+  const counts = new Map<number, number>();
+  let best = 0;
+  let bestCount = -1;
+  for (let i = 0; i < image.data.length; i += 4) {
+    const packed = (image.data[i]! << 16) | (image.data[i + 1]! << 8) | image.data[i + 2]!;
+    const count = (counts.get(packed) ?? 0) + 1;
+    counts.set(packed, count);
+    if (count > bestCount) {
+      best = packed;
+      bestCount = count;
+    }
+  }
+  return [(best >> 16) & 255, (best >> 8) & 255, best & 255];
+}
+
+function countNear(image: RgbaImage, color: Rgb, tolerance: number): number {
+  let count = 0;
+  for (let i = 0; i < image.data.length; i += 4) {
+    if (Math.abs(image.data[i]! - color[0]) <= tolerance && Math.abs(image.data[i + 1]! - color[1]) <= tolerance && Math.abs(image.data[i + 2]! - color[2]) <= tolerance) count++;
+  }
+  return count;
+}
+
+async function key(cdp: CdpClient, name: string, keyCode: number, modifiers = 0): Promise<void> {
+  await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: name, code: name, windowsVirtualKeyCode: keyCode, modifiers });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: name, code: name, windowsVirtualKeyCode: keyCode, modifiers });
+}
+
 async function openCase(options: Options, serverUrl: string, caseName: string): Promise<CdpClient> {
   if (openTargetId) {
     await closeTarget(options.debugPort, openTargetId);
     openTargetId = null;
   }
-  const url = new URL("/interaction/", serverUrl);
+  const url = withTestRenderer(new URL("/interaction/", serverUrl), options.renderer);
   url.searchParams.set("case", caseName);
   const target = await createTarget(options.debugPort, url.toString());
   openTargetId = target.id;
@@ -453,7 +1026,7 @@ async function openCase(options: Options, serverUrl: string, caseName: string): 
 }
 
 function parseArgs(args: readonly string[]): Options {
-  const parsed: Options = { width: 900, height: 520, port: 41733, debugPort: 9225, timeoutMs: 30_000, keepBrowser: false };
+  const parsed: Options = { width: 900, height: 520, port: 41733, debugPort: 9225, timeoutMs: 30_000, keepBrowser: false, cases: [], outDir: "build/visual-tests/forced-colors", renderer: testRendererFromEnv() };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg) continue;
@@ -473,6 +1046,9 @@ function parseArgs(args: readonly string[]): Options {
       case "--url": parsed.url = readValue(); break;
       case "--chrome": parsed.chrome = readValue(); break;
       case "--keep-browser": parsed.keepBrowser = true; break;
+      case "--case": parsed.cases.push(readValue()); break;
+      case "--renderer": parsed.renderer = parseTestRenderer(readValue()); break;
+      case "--out-dir": parsed.outDir = readValue(); break;
       case "--help": case "-h": printHelpAndExit(); break;
       default: throw new Error(`Unknown argument: ${arg}`);
     }
@@ -481,7 +1057,7 @@ function parseArgs(args: readonly string[]): Options {
 }
 
 function printHelpAndExit(): never {
-  console.log(`Usage: bun run test:interaction [options]\n\nRuns automated browser interaction tests for hover, crosshair, wheel zoom, pan, box zoom, reset, selection, and linked sync.\n`);
+  console.log(`Usage: bun run test:interaction [options]\n\nRuns automated browser interaction tests for hover, crosshair, wheel zoom, pan, box zoom, reset, selection, linked sync, keyboard accessibility, and forced colors.\n\nOptions:\n  --case <name>      Run one case (repeatable), e.g. --case forced-colors\n  --out-dir <dir>    Forced-colors screenshot directory (default build/visual-tests/forced-colors)\n  --chrome <path>    Browser executable\n  --keep-browser     Leave Chrome running\n`);
   process.exit(0);
 }
 
@@ -515,8 +1091,8 @@ async function mouseMove(cdp: CdpClient, x: number, y: number, modifiers = 0): P
   await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, modifiers, pointerType: "mouse" });
 }
 
-async function wheel(cdp: CdpClient, x: number, y: number, deltaY: number): Promise<void> {
-  await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY, pointerType: "mouse" });
+async function wheel(cdp: CdpClient, x: number, y: number, deltaY: number, modifiers = 0): Promise<void> {
+  await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY, modifiers, pointerType: "mouse" });
 }
 
 async function drag(cdp: CdpClient, x0: number, y0: number, x1: number, y1: number, modifiers: number): Promise<void> {

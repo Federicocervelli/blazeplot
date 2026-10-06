@@ -1,4 +1,4 @@
-import type { ChartScreenshotOptions } from "./Chart.js";
+import type { ChartScreenshotOptions } from "./ChartOptions.js";
 import type { ChartLayout } from "./ChartLayout.js";
 import { rgbaCss } from "./theme.js";
 import type { ResolvedChartTheme } from "./theme.js";
@@ -18,12 +18,12 @@ export async function composeChartScreenshot(
   const { layout, canvas: sourceCanvas, theme } = context;
   const rootRect = layout.root.getBoundingClientRect();
   const plotRect = layout.plot.getBoundingClientRect();
-  const dpr = Number.isFinite(options.dpr) ? Math.max(1, options.dpr!) : Math.max(1, globalThis.devicePixelRatio || 1);
-  const width = Number.isFinite(options.width) ? Math.max(1, Math.round(options.width!)) : Math.max(1, Math.round(rootRect.width * dpr));
-  const height = Number.isFinite(options.height) ? Math.max(1, Math.round(options.height!)) : Math.max(1, Math.round(rootRect.height * dpr));
+  const pixelRatio = Number.isFinite(options.pixelRatio) ? Math.max(1, options.pixelRatio!) : Math.max(1, layout.view.devicePixelRatio || 1);
+  const width = Number.isFinite(options.width) ? Math.max(1, Math.round(options.width!)) : Math.max(1, Math.round(rootRect.width * pixelRatio));
+  const height = Number.isFinite(options.height) ? Math.max(1, Math.round(options.height!)) : Math.max(1, Math.round(rootRect.height * pixelRatio));
   const scaleX = width / Math.max(1, rootRect.width);
   const scaleY = height / Math.max(1, rootRect.height);
-  const canvas = document.createElement("canvas");
+  const canvas = layout.doc.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
 
@@ -49,9 +49,9 @@ export async function composeChartScreenshot(
   });
 }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(doc: Document, src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const image = new Image();
+    const image = doc.createElement("img");
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error("Unable to load SVG overlay for screenshot export."));
     image.src = src;
@@ -103,9 +103,6 @@ async function drawSvgOverlaysForScreenshot(
     if (rect.width <= 0 || rect.height <= 0) continue;
 
     const clone = source.cloneNode(true) as SVGSVGElement;
-    // Text is drawn on the 2D canvas afterwards: an SVG rasterized as an <img> cannot see the
-    // page fonts, so its text would fall back to the default serif face.
-    for (const text of Array.from(clone.querySelectorAll("text"))) text.remove();
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     clone.setAttribute("width", String(rect.width));
     clone.setAttribute("height", String(rect.height));
@@ -113,7 +110,7 @@ async function drawSvgOverlaysForScreenshot(
     const blob = new Blob([serializer.serializeToString(clone)], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     try {
-      const image = await loadImage(url);
+      const image = await loadImage(root.ownerDocument, url);
       ctx.save();
       ctx.globalAlpha = Number.isFinite(Number(style.opacity)) ? Number(style.opacity) : 1;
       ctx.drawImage(
@@ -127,52 +124,19 @@ async function drawSvgOverlaysForScreenshot(
     } finally {
       URL.revokeObjectURL(url);
     }
-    drawSvgTextForScreenshot(ctx, source, rect, rootRect, scaleX, scaleY);
   }
 }
 
-
 /** Attribute that opts a DOM overlay element into background and border painting in screenshots. */
-export const SCREENSHOT_BOX_ATTRIBUTE = "data-blazeplot-screenshot-box";
+const SCREENSHOT_BOX_ATTRIBUTE = "data-blazeplot-screenshot-box";
 
 /** Computed style through the element's own window, so charts in iframes and popups resolve correctly. */
 function computedStyle(el: Element): CSSStyleDeclaration {
-  return (el.ownerDocument?.defaultView ?? globalThis).getComputedStyle(el);
-}
-
-/**
- * Canvas `font` string for a computed style. Some engines leave the `font` shorthand empty on
- * computed styles, which would silently keep the canvas default (10px sans-serif).
- */
-export function resolveCanvasFont(style: Pick<CSSStyleDeclaration, "font" | "fontStyle" | "fontWeight" | "fontSize" | "fontFamily">): string {
-  if (style.font) return style.font;
-  const parts = [style.fontStyle, style.fontWeight, style.fontSize || "16px", style.fontFamily || "sans-serif"];
-  return parts.filter((part) => part && part !== "normal").join(" ");
+  return (el.ownerDocument.defaultView ?? globalThis).getComputedStyle(el);
 }
 
 function isRenderable(el: Element, style: CSSStyleDeclaration): boolean {
   return !(style.display === "none" || style.visibility === "hidden" || style.opacity === "0" || el.closest(".blazeplot-visually-hidden"));
-}
-
-function isSkippedElement(el: Element): boolean {
-  const tag = el.tagName.toLowerCase();
-  return tag === "svg" || tag === "canvas" || tag === "script" || tag === "style" || el.classList.contains("blazeplot-visually-hidden");
-}
-
-/** Non-empty text nodes of the chart DOM that should be painted, in document order (SVG/canvas excluded). */
-export function collectScreenshotTextNodes(root: HTMLElement): Text[] {
-  const result: Text[] = [];
-  const walk = (node: Node): void => {
-    for (let child = node.firstChild; child; child = child.nextSibling) {
-      if (child.nodeType === 1) {
-        if (!isSkippedElement(child as Element)) walk(child);
-      } else if (child.nodeType === 3 && (child as Text).data.trim()) {
-        result.push(child as Text);
-      }
-    }
-  };
-  walk(root);
-  return result;
 }
 
 /** Closest element (starting at `el`) with a CSS transform, up to `root`. */
@@ -196,21 +160,23 @@ function textLines(node: Text): Array<{ text: string; rect: DOMRect }> {
   const range = node.ownerDocument.createRange();
   const lines: Array<{ text: string; rect: DOMRect }> = [];
   let current: { text: string; left: number; top: number; right: number; bottom: number } | null = null;
-  const flush = (): void => {
-    if (current) lines.push({ text: current.text, rect: new DOMRect(current.left, current.top, current.right - current.left, current.bottom - current.top) });
-    current = null;
-  };
   for (let i = 0; i < value.length; i++) {
     range.setStart(node, i);
     range.setEnd(node, i + 1);
     const rect = range.getBoundingClientRect();
     const char = value[i]!;
     if (rect.width === 0 && rect.height === 0) {
-      // Collapsed whitespace or a line break: a newline ends the current line.
-      if (char === "\n") flush();
+      // Collapsed whitespace or a line break: it ends the current line when it is a newline.
+      if (char === "\n" && current) {
+        lines.push({ text: current.text, rect: new DOMRect(current.left, current.top, current.right - current.left, current.bottom - current.top) });
+        current = null;
+      }
       continue;
     }
-    if (current && rect.top >= current.bottom - rect.height / 2) flush();
+    if (current && rect.top >= current.bottom - rect.height / 2) {
+      lines.push({ text: current.text, rect: new DOMRect(current.left, current.top, current.right - current.left, current.bottom - current.top) });
+      current = null;
+    }
     if (!current) {
       current = { text: char, left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
     } else {
@@ -221,7 +187,7 @@ function textLines(node: Text): Array<{ text: string; rect: DOMRect }> {
       current.bottom = Math.max(current.bottom, rect.bottom);
     }
   }
-  flush();
+  if (current) lines.push({ text: current.text, rect: new DOMRect(current.left, current.top, current.right - current.left, current.bottom - current.top) });
   return lines;
 }
 
@@ -249,9 +215,11 @@ function drawBox(ctx: CanvasRenderingContext2D, el: HTMLElement, style: CSSStyle
 function drawTextNode(ctx: CanvasRenderingContext2D, node: Text, parent: Element, rootRect: DOMRect, root: Element, scaleX: number, scaleY: number): void {
   const style = computedStyle(parent);
   if (!isRenderable(parent, style)) return;
+  const raw = node.data;
+  if (!raw.trim()) return;
 
   ctx.save();
-  ctx.font = resolveCanvasFont(style);
+  ctx.font = style.font;
   ctx.fillStyle = style.color;
   const transformed = transformedAncestor(parent, root);
   if (transformed) {
@@ -263,7 +231,7 @@ function drawTextNode(ctx: CanvasRenderingContext2D, node: Text, parent: Element
     ctx.transform(a, b, c, d, 0, 0);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(node.data.replace(/\s+/g, " ").trim(), 0, 0);
+    ctx.fillText(raw.replace(/\s+/g, " ").trim(), 0, 0);
     ctx.restore();
     return;
   }
@@ -278,47 +246,6 @@ function drawTextNode(ctx: CanvasRenderingContext2D, node: Text, parent: Element
   ctx.restore();
 }
 
-/** Paint SVG `<text>` (annotation labels) with its computed font so it matches the page. */
-function drawSvgTextForScreenshot(
-  ctx: CanvasRenderingContext2D,
-  svg: SVGSVGElement,
-  svgRect: DOMRect,
-  rootRect: DOMRect,
-  scaleX: number,
-  scaleY: number,
-): void {
-  for (const text of svg.querySelectorAll("text")) {
-    const value = text.textContent;
-    if (!value || !value.trim()) continue;
-    const style = computedStyle(text);
-    if (!isRenderable(text, style)) continue;
-    const anchor = text.getAttribute("text-anchor") ?? style.textAnchor;
-    const x = Number.parseFloat(text.getAttribute("x") ?? "0") || 0;
-    const y = Number.parseFloat(text.getAttribute("y") ?? "0") || 0;
-    const fill = text.getAttribute("fill") ?? style.fill;
-    const stroke = text.getAttribute("stroke") ?? style.stroke;
-    const strokeWidth = Number.parseFloat(text.getAttribute("stroke-width") ?? style.strokeWidth) || 0;
-    ctx.save();
-    ctx.scale(scaleX, scaleY);
-    ctx.font = resolveCanvasFont(style);
-    ctx.textAlign = anchor === "middle" ? "center" : anchor === "end" ? "right" : "left";
-    ctx.textBaseline = text.getAttribute("dominant-baseline") === "hanging" ? "hanging" : "alphabetic";
-    const px = svgRect.left - rootRect.left + x;
-    const py = svgRect.top - rootRect.top + y;
-    if (stroke && stroke !== "none" && strokeWidth > 0) {
-      ctx.lineJoin = "round";
-      ctx.strokeStyle = stroke;
-      ctx.lineWidth = strokeWidth;
-      ctx.strokeText(value, px, py);
-    }
-    if (fill && fill !== "none") {
-      ctx.fillStyle = fill;
-      ctx.fillText(value, px, py);
-    }
-    ctx.restore();
-  }
-}
-
 /**
  * Paint DOM overlay text (any element, not just leaf divs), rotated text, and the boxes of
  * elements that opt in with `data-blazeplot-screenshot-box`, in document order.
@@ -330,20 +257,26 @@ function drawDomForScreenshot(
   scaleX: number,
   scaleY: number,
 ): void {
-  const walk = (node: Node): void => {
-    for (let child = node.firstChild; child; child = child.nextSibling) {
-      if (child.nodeType === 1) {
-        const el = child as HTMLElement;
-        if (isSkippedElement(el)) continue;
-        if (el.hasAttribute(SCREENSHOT_BOX_ATTRIBUTE)) {
-          const style = computedStyle(el);
-          if (isRenderable(el, style) && !transformedAncestor(el, root)) drawBox(ctx, el, style, rootRect, scaleX, scaleY);
-        }
-        walk(el);
-      } else if (child.nodeType === 3 && (child as Text).data.trim() && child.parentElement) {
-        drawTextNode(ctx, child as Text, child.parentElement, rootRect, root, scaleX, scaleY);
+  const doc = root.ownerDocument;
+  const walker = doc.createTreeWalker(root, 1 | 4 /* NodeFilter.SHOW_ELEMENT | SHOW_TEXT */, {
+    acceptNode(node: Node): number {
+      if (node.nodeType === 1) {
+        const tag = (node as Element).tagName.toLowerCase();
+        if (tag === "svg" || tag === "canvas" || tag === "script" || tag === "style") return 2; // FILTER_REJECT
+        if ((node as Element).classList.contains("blazeplot-visually-hidden")) return 2;
       }
+      return 1; // FILTER_ACCEPT
+    },
+  });
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeType === 1) {
+      const el = node as HTMLElement;
+      if (el.hasAttribute?.(SCREENSHOT_BOX_ATTRIBUTE)) {
+        const style = computedStyle(el);
+        if (isRenderable(el, style) && !transformedAncestor(el, root)) drawBox(ctx, el, style, rootRect, scaleX, scaleY);
+      }
+    } else if (node.parentElement) {
+      drawTextNode(ctx, node as Text, node.parentElement, rootRect, root, scaleX, scaleY);
     }
-  };
-  walk(root);
+  }
 }

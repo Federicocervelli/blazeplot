@@ -1,5 +1,6 @@
 import { Chart, StaticDataset } from "../../../../src/index.ts";
 import { createLinkedCharts } from "../../../../src/linked.ts";
+import { a11yPlugin } from "../../../../src/plugins/a11y.ts";
 import { annotationsPlugin } from "../../../../src/plugins/annotations.ts";
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
@@ -46,17 +47,19 @@ export default class Preview extends PreviewResources {
           onMeasureChange: (measurement) => this.featureLog(`ruler Δx ${this.featureFormatDuration(measurement.deltaX)}  Δy ${formatValue(measurement.deltaY)}`),
           onMeasureEnd: (measurement) => this.featureLog(`ruler end: Δx ${this.featureFormatDuration(measurement.deltaX)}  Δy ${formatValue(measurement.deltaY)}  samples ${measurement.sampleCount.toLocaleString()}`),
         }),
-        navigatorPlugin({ height: 58, placement: "bottom", followLive: false }),
+        navigatorPlugin({ heightPx: 58, placement: "bottom", followLive: false }),
         legendPlugin({ toggleOnClick: true }),
         tooltipPlugin({ mode: "nearest-x", group: "x", maxDistancePx: 48, formatter: (item) => `(${formatDate(item.x)}, ${formatValue(item.y)})` }),
+        // Hidden data table plus keyboard inspection: focus the chart, press Enter, then use the arrow keys.
+        a11yPlugin({ formatX: formatDate, formatY: (value) => formatValue(value), table: { xLabel: "Time (UTC)", yLabel: "Value" } }),
       ],
     }));
     this.previewCharts.push(chart);
 
-    chart.addArea({ capacity: xs.length, dataset: new StaticDataset(xs, throughput), downsample: "none", name: "Throughput" }, { baseline: 0, fillColor: [0.125, 0.827, 0.933, 0.16], lineWidth: 1 });
-    chart.addLine({ capacity: xs.length, dataset: new StaticDataset(xs, cpu), downsample: "minmax", name: "CPU" }, { color: [0.22, 0.74, 0.97, 1], lineWidth: 2 });
-    chart.addLine({ capacity: xs.length, dataset: new StaticDataset(xs, latency), downsample: "minmax", name: "Latency", yAxis: "right" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
-    chart.addScatter({ capacity: xs.length, dataset: new StaticDataset(xs, incidents), downsample: "none", name: "Incidents" }, { color: [1, 0.85, 0.25, 1], pointSize: 8 });
+    chart.addArea({ dataset: new StaticDataset(xs, throughput), downsample: "none", name: "Throughput" }, { baseline: 0, fillColor: [0.125, 0.827, 0.933, 0.16], lineWidth: 1 });
+    chart.addLine({ dataset: new StaticDataset(xs, cpu), downsample: "minmax", name: "CPU" }, { color: [0.22, 0.74, 0.97, 1], lineWidth: 2 });
+    chart.addLine({ dataset: new StaticDataset(xs, latency), downsample: "minmax", name: "Latency", yAxis: "right" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
+    chart.addScatter({ dataset: new StaticDataset(xs, incidents), downsample: "none", name: "Incidents" }, { color: [1, 0.85, 0.25, 1], pointSize: 8 });
     chart.setViewport({ xMin: initialXMin, xMax: initialXMax, yMin: 0, yMax: 120 });
     chart.setViewport({ yMin: 0, yMax: 130 }, "right");
     chart.subscribe("viewportchange", (event) => this.featureLog(`viewport: ${formatDate(event.viewport.xMin)} → ${formatDate(event.viewport.xMax)}`));
@@ -80,18 +83,18 @@ export default class Preview extends PreviewResources {
     const linked = createLinkedCharts(target, {
       rows: 2,
       spacing: 8,
-      sharedX: true,
+      syncX: true,
       panels: [
         {
           options: siteChartOptions({
             axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } },
-            plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
+            plugins: [interactionsPlugin({ shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
           }),
         },
         {
           options: siteChartOptions({
             axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside", scale: "log", logBase: 10 } },
-            plugins: [interactionsPlugin({ boxZoom: false, shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
+            plugins: [interactionsPlugin({ shiftDragPan: true }), crosshairPlugin({ syncGroup: "linked-preview", snap: "nearest-x", formatX: this.featureFormatDate, formatY: this.featureFormatValue })],
           }),
         },
       ],
@@ -99,8 +102,8 @@ export default class Preview extends PreviewResources {
     this.previewDisposers.push(() => linked.dispose());
     const linkedA = linked.charts[0]!;
     const linkedB = linked.charts[1]!;
-    linkedA.addLine({ capacity: xs.length, dataset: new StaticDataset(xs, cpu), downsample: "minmax", name: "CPU" }, { lineWidth: 2 });
-    linkedB.addLine({ capacity: xs.length, dataset: new StaticDataset(xs, latency.map((value) => Math.max(1, value))), downsample: "minmax", name: "Latency log ticks" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
+    linkedA.addLine({ dataset: new StaticDataset(xs, cpu), downsample: "minmax", name: "CPU" }, { lineWidth: 2 });
+    linkedB.addLine({ dataset: new StaticDataset(xs, latency.map((value) => Math.max(1, value))), downsample: "minmax", name: "Latency log ticks" }, { color: [0.988, 0.29, 0.02, 1], lineWidth: 2 });
     linked.setXRange(initialXMin, initialXMax);
     linkedA.setViewport({ yMin: 0, yMax: 120 });
     linkedB.setViewport({ yMin: 1, yMax: 140 });

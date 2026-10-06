@@ -1,6 +1,9 @@
 import type { MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
 import type { Dataset, MinMaxSegmentCopyDataset, RangeMinMaxDataset, SampleCopyLayout, TimeRange, Viewport, XRange, XRangeDataset } from "./types.js";
+import { assertEqualLengths, assertSortedFiniteX } from "./validation.js";
+
+const SERVER_HINT = "Sort server samples by X and drop non-finite X before passing them.";
 
 /** Server-provided point samples. */
 export interface ServerSampledPoints {
@@ -39,6 +42,10 @@ function copyFloat32(values: ArrayLike<number>, length: number): Float32Array {
  * `downsample: "server"` so BlazePlot renders the supplied buckets directly
  * instead of applying another client-side sampler. Swap in fresh data after
  * each fetch with `series.replace(data)`.
+ *
+ * Point X, bucket `xStart`, and bucket `xEnd` must each be finite and non-decreasing, and
+ * every bucket needs `xEnd >= xStart` (buckets may overlap). The constructor and `replace`
+ * throw a `RangeError` naming the first bad index and keep the current data.
  */
 export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMaxSegmentCopyDataset, XRangeDataset {
   readonly rangeMinMaxExcludesGaps = true;
@@ -76,11 +83,13 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
       : { start: this.xStart[0]!, end: this.xEnd[length - 1]! };
   }
 
-  /** Replace all samples with point or bucket data. */
+  /** Replace all samples with point or bucket data. Throws a `RangeError` for non-finite or decreasing X. */
   replace(data: ServerSampledData): void {
-    this._kind = data.kind;
     if (data.kind === "points") {
-      const length = Math.min(data.x.length, data.y.length);
+      assertEqualLengths("ServerSampledDataset.replace", { x: data.x, y: data.y });
+      const length = data.x.length;
+      assertSortedFiniteX("ServerSampledDataset", data.x, length, SERVER_HINT);
+      this._kind = data.kind;
       this.x = copyFloat64(data.x, length);
       this.y = copyFloat32(data.y, length);
       this.xStart = this.xEnd = new Float64Array(0);
@@ -88,7 +97,18 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
       return;
     }
 
-    const length = Math.min(data.xStart.length, data.xEnd.length, data.minY.length, data.maxY.length);
+    assertEqualLengths("ServerSampledDataset.replace", { xStart: data.xStart, xEnd: data.xEnd, minY: data.minY, maxY: data.maxY });
+    const length = data.xStart.length;
+    assertSortedFiniteX("ServerSampledDataset xStart", data.xStart, length, SERVER_HINT, "bucket");
+    assertSortedFiniteX("ServerSampledDataset xEnd", data.xEnd, length, SERVER_HINT, "bucket");
+    for (let i = 0; i < length; i++) {
+      if (data.xEnd[i]! < data.xStart[i]!) {
+        throw new RangeError(
+          `ServerSampledDataset: bucket ${i} ends at ${data.xEnd[i]} before it starts at ${data.xStart[i]} (inverted-bucket). Each bucket needs xEnd >= xStart.`,
+        );
+      }
+    }
+    this._kind = data.kind;
     this.xStart = copyFloat64(data.xStart, length);
     this.xEnd = copyFloat64(data.xEnd, length);
     this.minY = copyFloat32(data.minY, length);
@@ -159,8 +179,11 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     return minY <= maxY ? { minY, maxY } : null;
   }
 
+  /** @internal Copy methods accept a trailing `yOrigin` that is subtracted in float64 before the render-buffer write. */
+  readonly supportsYOrigin = true;
+
   /** Copy sampled points for a logical range into a render buffer, striding when the range exceeds `maxPoints`. */
-  copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number): number {
+  copySamplesRange(start: number, end: number, target: Float32Array, maxPoints: number, layout: SampleCopyLayout, baseline: number, xOrigin: number, yOrigin: number = 0): number {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
     const count = Math.min(maxPoints, Math.max(0, to - from));
@@ -172,14 +195,14 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
     for (let index = from; index < to && written < count; index += stride) {
       const gap = this.isGap(index);
       const x = gap ? NaN : this.x[index]! - xOrigin;
-      const y = gap ? NaN : this.getY(index);
+      const y = gap ? NaN : this.getY(index) - yOrigin;
       const offset = written * floats;
       if (layout === "points") {
         target[offset] = x;
         target[offset + 1] = y;
       } else {
         target[offset] = x;
-        target[offset + 1] = gap ? NaN : baseline;
+        target[offset + 1] = gap ? NaN : baseline - yOrigin;
         target[offset + 2] = x;
         target[offset + 3] = y;
       }
@@ -189,7 +212,7 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
   }
 
   /** Copy `[x, minY, maxY]` buckets for a viewport, merging neighbors when more than `maxSegments` are visible. */
-  copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number): number {
+  copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number, yOrigin: number = 0): number {
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);
     const count = Math.min(maxSegments, Math.max(0, end - start));
@@ -208,8 +231,8 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
       if (!range) continue;
       const offset = written * 3;
       target[offset] = this.bucketX(segmentStart, segmentEnd) - xOrigin;
-      target[offset + 1] = range.minY;
-      target[offset + 2] = range.maxY;
+      target[offset + 1] = range.minY - yOrigin;
+      target[offset + 2] = range.maxY - yOrigin;
       written++;
     }
 

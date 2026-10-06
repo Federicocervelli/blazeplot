@@ -1,116 +1,36 @@
-import {
-  Chart as ChartJs,
-  Decimation,
-  Legend,
-  LineController,
-  LineElement,
-  LinearScale,
-  PointElement,
-  Tooltip,
-  type ChartConfiguration,
-  type ChartDataset,
-} from "chart.js";
-import uPlot from "uplot";
-import "uplot/dist/uPlot.min.css";
-import { Chart, StaticDataset } from "@/index.ts";
-import type { AcceleratedDataset, Dataset, SampleCopyLayout, SeriesStore, TimeRange, Viewport } from "@/index.ts";
+/**
+ * Comparison benchmark page. One page load measures exactly one (scenario, library) pair so every
+ * sample comes from a fresh browser context with a clean heap and a cold-but-warmed-up JIT; the
+ * Node driver (`scripts/benchmark-compare.ts`) repeats pages and aggregates medians.
+ *
+ * Run `window.__blazeplotCompare.start()` once `snapshot().state === "ready"`.
+ */
+import { installRafWorkAccounting } from "./common.ts";
+import { releaseWarm } from "@/render/webgl2/warm.ts";
+
+installRafWorkAccounting();
+
 import officialConfig from "../../../scripts/benchmark-config.json";
+import { BOTTOM_GUTTER, LEFT_GUTTER, RIGHT_GUTTER, createChart } from "./adapters.ts";
+import {
+  animationFrame,
+  nextFrameDone,
+  round,
+  settleFrames,
+  settledHeapBytes,
+  summarize,
+  sum,
+  takeRafCallbackWorkMs,
+  type ChartHandle,
+  type ChartSpec,
+  type LibraryId,
+  type ViewportRange,
+} from "./common.ts";
+import { buildData, type LibraryData } from "./data.ts";
+import { SCENARIOS, THROUGHPUT_RATES, latestViewport, panViewport, staticViewport, type ScenarioImpl } from "./scenarios.ts";
 
-ChartJs.register(LineController, LineElement, PointElement, LinearScale, Decimation, Legend, Tooltip);
-
-type LibraryId = "blazeplot" | "uplot" | "chartjs";
-type ScenarioOperation = "static" | "pan" | "stream";
-type BlazePlotDataPath = "prepared-arrays" | "accelerated-dataset";
 type BenchmarkState = "prewarming" | "ready" | "running" | "done" | "error";
-type UPlotData = ConstructorParameters<typeof uPlot>[1];
-type ChartJsPoint = { x: number; y: number };
-type MutableChartJsDataset = ChartDataset<"line", ChartJsPoint[]> & { _data?: ChartJsPoint[] };
-
-interface ScenarioConfig {
-  readonly name: string;
-  readonly title: string;
-  readonly sampleCount: number;
-  readonly viewportSamples: number;
-  readonly operation: ScenarioOperation;
-  readonly measureMs: number;
-  readonly warmupMs: number;
-  readonly streamBatchSize?: number;
-  readonly blazeplotDataPath?: BlazePlotDataPath;
-  readonly yMin: number;
-  readonly yMax: number;
-}
-
-interface BenchmarkData {
-  readonly sampleCount: number;
-  readonly xFloat?: Float64Array;
-  readonly yFloat?: Float32Array;
-  readonly xArray?: number[];
-  readonly yArray?: number[];
-  readonly chartJsPoints?: ChartJsPoint[];
-}
-
-interface ViewportRange {
-  readonly xMin: number;
-  readonly xMax: number;
-  readonly yMin: number;
-  readonly yMax: number;
-}
-
-interface NumericSummary {
-  readonly min: number;
-  readonly max: number;
-  readonly avg: number;
-  readonly p50: number;
-  readonly p95: number;
-}
-
-interface InstanceStats {
-  readonly fps?: number;
-  readonly frameMs?: number;
-  readonly pointsRendered?: number;
-  readonly drawCalls?: number;
-  readonly uploadBytes?: number;
-  readonly renderMode?: string;
-}
-
-interface MeasurementResult {
-  readonly durationMs: number;
-  readonly frames: number;
-  readonly rafFps: number;
-  readonly rafFrameMs: NumericSummary;
-  readonly updateMs: NumericSummary;
-  readonly chartFrameMs?: NumericSummary;
-  readonly pointsRendered?: NumericSummary;
-  readonly drawCalls?: NumericSummary;
-  readonly uploadBytes?: NumericSummary;
-  readonly samplesAppended: number;
-}
-
-interface LibraryResult {
-  readonly library: LibraryId;
-  readonly ok: boolean;
-  readonly readyMs?: number;
-  readonly setupWarmupReadyMs?: readonly number[];
-  readonly heapBeforeBytes?: number | null;
-  readonly heapAfterReadyBytes?: number | null;
-  readonly heapAfterMeasureBytes?: number | null;
-  readonly firstFrame?: InstanceStats;
-  readonly measurement?: MeasurementResult;
-  readonly error?: string;
-}
-
-interface ScenarioResult {
-  readonly name: string;
-  readonly title: string;
-  readonly operation: ScenarioOperation;
-  readonly sampleCount: number;
-  readonly viewportSamples: number;
-  readonly measureMs: number;
-  readonly warmupMs: number;
-  readonly streamBatchSize?: number;
-  readonly dataPrepMs: number;
-  readonly results: LibraryResult[];
-}
+type DetailValue = number | string | boolean | null;
 
 interface BrowserEnvironment {
   readonly userAgent: string;
@@ -123,915 +43,552 @@ interface BrowserEnvironment {
   readonly webglRenderer: string | null;
   readonly webglVersion: string | null;
   readonly headlessUserAgent: boolean;
+  readonly gcExposed: boolean;
 }
 
-interface PageBenchmarkResult {
+export interface RunResult {
+  readonly scenario: string;
+  readonly library: LibraryId;
+  readonly ok: boolean;
+  readonly error?: string;
+  readonly metrics: Record<string, number>;
+  readonly details: Record<string, DetailValue>;
+  readonly params: { readonly width: number; readonly height: number; readonly points: number; readonly visible: number; readonly seriesCount: number; readonly scale: number };
   readonly environment: BrowserEnvironment;
-  readonly canvas: { readonly width: number; readonly height: number };
-  readonly libraries: LibraryId[];
-  readonly prewarmMs: number;
-  readonly scenarios: ScenarioResult[];
 }
 
-interface BenchmarkInstance {
-  readonly ready?: () => Promise<void>;
-  readonly pan?: (viewport: ViewportRange) => void;
-  readonly append?: (startX: number, count: number, viewport: ViewportRange) => void;
-  readonly stats?: () => InstanceStats;
-  readonly destroy: () => void;
+interface LoopResult {
+  readonly rafFrameMs: number[];
+  readonly workMs: number[];
+  readonly internalFrameMs: number[];
+  readonly points: number[];
+  readonly draws: number[];
+  readonly appended: number;
+  readonly nextX: number;
 }
 
-interface BenchmarkController {
-  state: BenchmarkState;
-  progress: number;
-  result: PageBenchmarkResult | null;
-  error: string | null;
-  start: () => Promise<PageBenchmarkResult>;
-  snapshot: () => {
-    state: BenchmarkState;
-    progress: number;
-    result: PageBenchmarkResult | null;
-    error: string | null;
-  };
+interface Mounted {
+  readonly host: HTMLElement;
+  readonly handle: ChartHandle;
+  readonly constructMs: number;
+  readonly readyMs: number;
 }
-
-const DEFAULT_LIBRARIES = officialConfig.libraries as readonly LibraryId[];
-const DEFAULT_SCENARIOS = officialConfig.scenarios;
-const SCENARIOS: Record<string, ScenarioConfig> = {
-  "line-100k-static": {
-    name: "line-100k-static",
-    title: "100k point line, initial render",
-    sampleCount: 100_000,
-    viewportSamples: 100_000,
-    operation: "static",
-    measureMs: 0,
-    warmupMs: 100,
-    yMin: -1.25,
-    yMax: 1.25,
-  },
-  "line-1m-static": {
-    name: "line-1m-static",
-    title: "1M point line, initial render",
-    sampleCount: 1_000_000,
-    viewportSamples: 1_000_000,
-    operation: "static",
-    measureMs: 0,
-    warmupMs: 100,
-    yMin: -1.25,
-    yMax: 1.25,
-  },
-  "line-1m-pan": {
-    name: "line-1m-pan",
-    title: "1M point line, automated pan over 100k visible samples",
-    sampleCount: 1_000_000,
-    viewportSamples: 100_000,
-    operation: "pan",
-    measureMs: 3_000,
-    warmupMs: 250,
-    yMin: -1.25,
-    yMax: 1.25,
-  },
-  "line-1m-stream": {
-    name: "line-1m-stream",
-    title: "1M point line, live append while following latest 100k samples",
-    sampleCount: 1_000_000,
-    viewportSamples: 100_000,
-    operation: "stream",
-    measureMs: 3_000,
-    warmupMs: 250,
-    streamBatchSize: 1_024,
-    yMin: -1.25,
-    yMax: 1.25,
-  },
-  "line-5m-pan": {
-    name: "line-5m-pan",
-    title: "5M point line, automated pan over 1M visible samples",
-    sampleCount: 5_000_000,
-    viewportSamples: 1_000_000,
-    operation: "pan",
-    measureMs: 3_000,
-    warmupMs: 250,
-    yMin: -1.25,
-    yMax: 1.25,
-  },
-  "line-10m-accelerated-pan": {
-    name: "line-10m-accelerated-pan",
-    title: "10M point line, automated pan over 5M visible samples using BlazePlot's accelerated dataset path",
-    sampleCount: 10_000_000,
-    viewportSamples: 5_000_000,
-    operation: "pan",
-    measureMs: 3_000,
-    warmupMs: 250,
-    blazeplotDataPath: "accelerated-dataset",
-    yMin: -1.25,
-    yMax: 1.25,
-  },
-};
 
 const params = new URLSearchParams(window.location.search);
-const selectedLibraries = readListParam("libraries", DEFAULT_LIBRARIES, isLibraryId);
-const selectedScenarioNames = readScenarioNames();
-const canvasSize = {
-  width: readPositiveIntegerParam("width", 1280),
-  height: readPositiveIntegerParam("height", 720),
-};
-const measureOverrideMs = readOptionalPositiveIntegerParam("measureMs");
-const warmupOverrideMs = readOptionalPositiveIntegerParam("warmupMs");
-const setupWarmupRuns = readPositiveIntegerParam("setupWarmupRuns", 1);
+const scenarioName = params.get("scenario") ?? "line-100k-static";
+const library = (params.get("library") ?? "blazeplot") as LibraryId;
+if (!(scenarioName in SCENARIOS)) throw new Error(`Unknown scenario: ${scenarioName}`);
+if (!(officialConfig.libraries as readonly string[]).includes(library)) throw new Error(`Unknown library: ${library}`);
+
+const canvasSize = { width: readIntParam("width", 1280), height: readIntParam("height", 720) };
+const scale = Number(params.get("scale") ?? "1") || 1;
+const setupWarmupRuns = readIntParam("setupWarmupRuns", 1);
+const measureOverrideMs = readOptionalIntParam("measureMs");
+const warmupOverrideMs = readOptionalIntParam("warmupMs");
+const scenario = scaleScenario(SCENARIOS[scenarioName]!);
+const fullSpec: ChartSpec = { ...scenario.spec, width: canvasSize.width, height: canvasSize.height };
 const mount = document.getElementById("mount");
 const statusTarget = document.getElementById("status");
 if (!mount) throw new Error("No #mount container found");
 
 let state: BenchmarkState = "prewarming";
-let progress = 0;
-let result: PageBenchmarkResult | null = null;
+let result: RunResult | null = null;
 let error: string | null = null;
-let runPromise: Promise<PageBenchmarkResult> | null = null;
-let prewarmMs = 0;
+let runPromise: Promise<RunResult> | null = null;
 
 window.__blazeplotCompare = {
   get state() {
     return state;
   },
-  get progress() {
-    return progress;
-  },
-  get result() {
-    return result;
-  },
-  get error() {
-    return error;
-  },
   start,
-  snapshot,
+  snapshot: () => ({ state, result, error }),
 };
 
 renderStatus("prewarming");
 void prepare();
 
-declare global {
-  interface Window {
-    __blazeplotCompare: BenchmarkController;
-    gc?: () => void;
-  }
-
-  interface Navigator {
-    readonly deviceMemory?: number;
-  }
-
-  interface Performance {
-    readonly memory?: { readonly usedJSHeapSize: number };
-  }
-}
-
-function readScenarioNames(): string[] {
-  const names = readListParam("scenarios", DEFAULT_SCENARIOS, (value): value is string => value in SCENARIOS);
-  if (names.length === 0) throw new Error("At least one benchmark scenario is required.");
-  return names;
-}
-
-function readListParam<T extends string>(name: string, fallback: readonly T[], predicate: (value: string) => value is T): T[] {
-  const raw = params.get(name);
-  const values = raw ? raw.split(",").map((value) => value.trim()).filter(Boolean) : [...fallback];
-  const invalid = values.filter((value) => !predicate(value));
-  if (invalid.length > 0) throw new Error(`Unknown ${name}: ${invalid.join(", ")}`);
-  return values as T[];
-}
-
-function isLibraryId(value: string): value is LibraryId {
-  return value === "blazeplot" || value === "uplot" || value === "chartjs";
+function scaleScenario(base: ScenarioImpl): ScenarioImpl {
+  const scaled = (value: number, floor = 1_000): number => (scale === 1 ? value : Math.max(Math.min(value, floor), Math.round(value * scale)));
+  return {
+    ...base,
+    measureMs: measureOverrideMs ?? (scale === 1 ? base.measureMs : Math.max(300, Math.round(base.measureMs * Math.min(1, scale * 10)))),
+    warmupMs: warmupOverrideMs ?? (base.warmupMs > 0 && scale !== 1 ? 100 : base.warmupMs),
+    count: base.count !== undefined && scale !== 1 ? Math.max(3, Math.round(base.count * Math.min(1, scale * 10))) : base.count,
+    spec: { ...base.spec, points: scaled(base.spec.points), visible: scaled(base.spec.visible) },
+  };
 }
 
 async function prepare(): Promise<void> {
   try {
-    const startedAt = performance.now();
-    await prewarmLibraries();
-    prewarmMs = performance.now() - startedAt;
+    // A cold-page scenario must not warm anything up: it measures the first chart this page ever builds.
+    if (scenario.kind !== "cold") await prewarmLibrary();
     state = "ready";
     renderStatus("ready");
   } catch (caught) {
     state = "error";
-    error = caught instanceof Error ? caught.message : String(caught);
+    error = caught instanceof Error ? (caught.stack ?? caught.message) : String(caught);
     renderStatus("error");
   }
 }
 
-async function start(): Promise<PageBenchmarkResult> {
+/** Build and destroy small charts of the scenario's series type so library code is compiled before any measurement. */
+async function prewarmLibrary(): Promise<void> {
+  const spec: ChartSpec = {
+    ...fullSpec,
+    points: Math.min(fullSpec.points, 20_000),
+    visible: Math.min(fullSpec.visible, 20_000),
+    seriesCount: Math.min(fullSpec.seriesCount, 3),
+    accelerated: false,
+    stream: false,
+    sharedContext: false,
+  };
+  const data = buildData(spec, library);
+  for (let i = 0; i < 2; i++) {
+    const mounted = await mountAndPresent(spec, data, staticViewport(spec));
+    mounted.handle.destroy();
+    mounted.host.remove();
+  }
+  mount!.replaceChildren();
+}
+
+function start(): Promise<RunResult> {
   if (runPromise) return runPromise;
-  if (state !== "ready") throw new Error(`Comparison benchmark is not ready; current state is ${state}`);
-  runPromise = runComparison();
+  if (state !== "ready") return Promise.reject(new Error(`Comparison benchmark is not ready; current state is ${state}`));
+  runPromise = run();
   return runPromise;
 }
 
-async function runComparison(): Promise<PageBenchmarkResult> {
+async function run(): Promise<RunResult> {
   state = "running";
-  error = null;
-  progress = 0;
-  renderStatus("starting");
-
+  renderStatus(`running ${scenarioName} on ${library}`);
+  const metrics: Record<string, number> = {};
+  const details: Record<string, DetailValue> = {};
+  let ok = true;
+  let failure: string | undefined;
   try {
-    const scenarioResults: ScenarioResult[] = [];
-    const totalSteps = selectedScenarioNames.length * selectedLibraries.length;
-    let completedSteps = 0;
-
-    for (const scenarioName of selectedScenarioNames) {
-      const scenario = withOverrides(SCENARIOS[scenarioName]!);
-      renderStatus(`preparing ${scenario.name}`);
-      await settleFrames(1);
-
-      const prepStartedAt = performance.now();
-      const data = createBenchmarkData(scenario, selectedLibraries);
-      const dataPrepMs = performance.now() - prepStartedAt;
-      const libraryResults: LibraryResult[] = [];
-
-      for (const library of selectedLibraries) {
-        const setupWarmupReadyMs: number[] = [];
-        for (let warmupRun = 0; warmupRun < setupWarmupRuns; warmupRun++) {
-          renderStatus(`warming ${scenario.name} on ${library} (${warmupRun + 1}/${setupWarmupRuns})`);
-          setupWarmupReadyMs.push(await runLibrarySetupWarmup(library, scenario, data));
-          await settleFrames(1);
-        }
-        renderStatus(`running ${scenario.name} on ${library}`);
-        const libraryResult = await runLibraryBenchmark(library, scenario, data, setupWarmupReadyMs);
-        libraryResults.push(libraryResult);
-        completedSteps += 1;
-        progress = totalSteps > 0 ? completedSteps / totalSteps : 1;
-        renderStatus(`finished ${scenario.name} on ${library}`);
-        await settleFrames(2);
-      }
-
-      scenarioResults.push({
-        name: scenario.name,
-        title: scenario.title,
-        operation: scenario.operation,
-        sampleCount: scenario.sampleCount,
-        viewportSamples: scenario.viewportSamples,
-        measureMs: scenario.measureMs,
-        warmupMs: scenario.warmupMs,
-        streamBatchSize: scenario.streamBatchSize,
-        dataPrepMs,
-        results: libraryResults,
-      });
+    switch (scenario.kind) {
+      case "static":
+      case "cold":
+        await runStatic(metrics, details);
+        break;
+      case "pan":
+      case "stream":
+        await runPanOrStream(metrics, details);
+        break;
+      case "soak":
+        await runSoak(metrics, details);
+        break;
+      case "hover":
+        await runHover(metrics, details);
+        break;
+      case "resize":
+        await runResize(metrics, details);
+        break;
+      case "many":
+        await runMany(metrics, details);
+        break;
+      case "cycle":
+        await runCycle(metrics, details);
+        break;
+      case "throughput":
+        await runThroughput(metrics, details);
+        break;
     }
-
-    result = {
-      environment: collectBrowserEnvironment(),
-      canvas: canvasSize,
-      libraries: selectedLibraries,
-      prewarmMs: round(prewarmMs),
-      scenarios: scenarioResults,
-    };
-    state = "done";
-    progress = 1;
-    renderStatus("done");
-    return result;
   } catch (caught) {
-    state = "error";
-    error = caught instanceof Error ? caught.message : String(caught);
-    renderStatus("error");
-    throw caught;
+    ok = false;
+    failure = caught instanceof Error ? (caught.stack ?? caught.message) : String(caught);
   }
-}
-
-function withOverrides(scenario: ScenarioConfig): ScenarioConfig {
-  return {
-    ...scenario,
-    measureMs: measureOverrideMs ?? scenario.measureMs,
-    warmupMs: warmupOverrideMs ?? scenario.warmupMs,
+  result = {
+    scenario: scenarioName,
+    library,
+    ok,
+    ...(failure ? { error: failure } : {}),
+    metrics: Object.fromEntries(Object.entries(metrics).map(([key, value]) => [key, round(value)])),
+    details,
+    params: { width: canvasSize.width, height: canvasSize.height, points: fullSpec.points, visible: fullSpec.visible, seriesCount: fullSpec.seriesCount, scale },
+    environment: collectBrowserEnvironment(),
   };
+  state = ok ? "done" : "error";
+  error = failure ?? null;
+  renderStatus(ok ? "done" : "error");
+  return result;
 }
 
-async function prewarmLibraries(): Promise<void> {
-  const scenario: ScenarioConfig = {
-    name: "prewarm",
-    title: "Tiny library prewarm",
-    sampleCount: 100_000,
-    viewportSamples: 100_000,
-    operation: "static",
-    measureMs: 0,
-    warmupMs: 0,
-    yMin: -1.25,
-    yMax: 1.25,
-  };
-  const data = createBenchmarkData(scenario, selectedLibraries);
-  for (const library of selectedLibraries) {
-    renderStatus(`prewarming ${library}`);
-    const host = createHost();
-    let instance: BenchmarkInstance | null = null;
-    try {
-      instance = createInstance(library, host, scenario, data);
-      await instance.ready?.();
-      await settleFrames(1);
-    } finally {
-      instance?.destroy();
-      host.remove();
-    }
-  }
-  mount!.replaceChildren();
-}
+// ------------------------------------------------------------------ mounting
 
-async function runLibrarySetupWarmup(library: LibraryId, scenario: ScenarioConfig, data: BenchmarkData): Promise<number> {
-  let host: HTMLElement | null = null;
-  let instance: BenchmarkInstance | null = null;
-  try {
-    host = createHost();
-    const startedAt = performance.now();
-    instance = createInstance(library, host, scenario.operation === "stream" ? { ...scenario, operation: "static", streamBatchSize: undefined } : scenario, data);
-    await instance.ready?.();
-    return round(performance.now() - startedAt);
-  } finally {
-    try {
-      instance?.destroy();
-    } finally {
-      host?.remove();
-    }
-  }
-}
-
-async function runLibraryBenchmark(library: LibraryId, scenario: ScenarioConfig, data: BenchmarkData, setupWarmupReadyMs: readonly number[]): Promise<LibraryResult> {
-  let host: HTMLElement | null = null;
-  let instance: BenchmarkInstance | null = null;
-  await collectGarbage();
-  const heapBeforeBytes = readHeapBytes();
-
-  try {
-    host = createHost();
-    const createStartedAt = performance.now();
-    instance = createInstance(library, host, scenario, data);
-    if (instance.ready) await instance.ready();
-    const readyMs = performance.now() - createStartedAt;
-    const firstFrame = instance.stats?.();
-    const heapAfterReadyBytes = readHeapBytes();
-    if (scenario.warmupMs > 0) await waitMs(scenario.warmupMs);
-
-    const measurement = scenario.operation === "static"
-      ? undefined
-      : await measureInstance(instance, scenario, data);
-    const heapAfterMeasureBytes = readHeapBytes();
-
-    return {
-      library,
-      ok: true,
-      readyMs: round(readyMs),
-      setupWarmupReadyMs,
-      heapBeforeBytes,
-      heapAfterReadyBytes,
-      heapAfterMeasureBytes,
-      firstFrame,
-      measurement,
-    };
-  } catch (caught) {
-    return {
-      library,
-      ok: false,
-      setupWarmupReadyMs,
-      heapBeforeBytes,
-      heapAfterReadyBytes: readHeapBytes(),
-      heapAfterMeasureBytes: readHeapBytes(),
-      error: caught instanceof Error ? caught.message : String(caught),
-    };
-  } finally {
-    try {
-      instance?.destroy();
-    } finally {
-      host?.remove();
-    }
-  }
-}
-
-function createInstance(library: LibraryId, host: HTMLElement, scenario: ScenarioConfig, data: BenchmarkData): BenchmarkInstance {
-  switch (library) {
-    case "blazeplot":
-      return createBlazePlotInstance(host, scenario, data);
-    case "uplot":
-      return createUPlotInstance(host, scenario, data);
-    case "chartjs":
-      return createChartJsInstance(host, scenario, data);
-  }
-}
-
-function createBlazePlotInstance(host: HTMLElement, scenario: ScenarioConfig, data: BenchmarkData): BenchmarkInstance {
-  const chart = new Chart(host, {
-    axes: { x: { position: "outside" }, y: { position: "outside" } },
-    grid: false,
-    renderLoop: "auto",
-  });
-  const streaming = scenario.operation === "stream";
-  const series = streaming
-    ? createBlazePlotStreamingSeries(chart, scenario, data)
-    : chart.addLine({
-        dataset: createBlazePlotDataset(scenario, data),
-        downsample: "minmax",
-        name: "Benchmark line",
-      }, { color: [0.23, 0.45, 0.95, 1], lineWidth: 1 });
-  chart.setViewport(initialViewport(scenario, scenario.sampleCount));
-  chart.start();
-
-  return {
-    ready: () => waitForBlazePlotFrame(chart),
-    pan: (viewport) => chart.setViewport(viewport),
-    append: (startX, count, viewport) => {
-      if (streaming) appendBlazePlotYOnlySamples(series, startX, count);
-      else appendBlazePlotSamples(series, startX, count);
-      chart.setViewport(viewport);
-    },
-    stats: () => chartStats(chart),
-    destroy: () => chart.dispose(),
-  };
-}
-
-function createBlazePlotDataset(scenario: ScenarioConfig, data: BenchmarkData): Dataset {
-  if (scenario.blazeplotDataPath === "accelerated-dataset") return new ProceduralBenchmarkDataset(scenario.sampleCount);
-  return new StaticDataset(requireBenchmarkData(data.xFloat, "BlazePlot x data"), requireBenchmarkData(data.yFloat, "BlazePlot y data"));
-}
-
-function createBlazePlotStreamingSeries(chart: Chart, scenario: ScenarioConfig, data: BenchmarkData): SeriesStore {
-  const series = chart.addLine({
-    capacity: scenario.sampleCount + streamAppendCapacity(scenario),
-    xStart: 0,
-    xStep: 1,
-    downsample: "minmax",
-    name: "Benchmark line",
-  }, { color: [0.23, 0.45, 0.95, 1], lineWidth: 1 });
-  series.append({ y: requireBenchmarkData(data.yFloat, "BlazePlot y data") });
-  return series;
-}
-
-function createUPlotInstance(host: HTMLElement, scenario: ScenarioConfig, data: BenchmarkData): BenchmarkInstance {
-  const sourceX = requireBenchmarkData(data.xArray, "uPlot x data");
-  const sourceY = requireBenchmarkData(data.yArray, "uPlot y data");
-  const xValues = scenario.operation === "stream" ? sourceX.slice() : sourceX;
-  const yValues = scenario.operation === "stream" ? sourceY.slice() : sourceY;
-  const viewport = initialViewport(scenario, scenario.sampleCount);
-  const plotData = [xValues, yValues] as unknown as NonNullable<UPlotData>;
-  const options: ConstructorParameters<typeof uPlot>[0] = {
-    width: canvasSize.width,
-    height: canvasSize.height,
-    legend: { show: false },
-    cursor: { show: false, drag: { x: false, y: false } },
-    scales: {
-      x: { time: false, min: viewport.xMin, max: viewport.xMax },
-      y: { auto: false, range: () => [scenario.yMin, scenario.yMax] },
-    },
-    axes: [
-      { show: true, grid: { show: false } },
-      { show: true, grid: { show: false } },
-    ],
-    series: [
-      {},
-      { label: "Benchmark line", stroke: "#3b73f2", width: 1, points: { show: false } },
-    ],
-  };
-  const plot = new uPlot(options, plotData, host);
-
-  return {
-    ready: () => settleFrames(1),
-    pan: (nextViewport) => setUPlotViewport(plot, nextViewport),
-    append: (startX, count, nextViewport) => {
-      appendArraySamples(xValues, yValues, startX, count);
-      setUPlotDataAndViewport(plot, plotData, nextViewport);
-    },
-    destroy: () => plot.destroy(),
-  };
-}
-
-function createChartJsInstance(host: HTMLElement, scenario: ScenarioConfig, data: BenchmarkData): BenchmarkInstance {
-  const canvas = document.createElement("canvas");
-  canvas.width = canvasSize.width;
-  canvas.height = canvasSize.height;
-  canvas.style.width = `${canvasSize.width}px`;
-  canvas.style.height = `${canvasSize.height}px`;
-  host.append(canvas);
-
-  const viewport = initialViewport(scenario, scenario.sampleCount);
-  const chartJsPoints = requireBenchmarkData(data.chartJsPoints, "Chart.js point data");
-  const sourceData = scenario.operation === "stream" ? chartJsPoints.slice() : chartJsPoints;
-  const dataset: MutableChartJsDataset = {
-    label: "Benchmark line",
-    data: sourceData,
-    borderColor: "#3b73f2",
-    borderWidth: 1,
-    pointRadius: 0,
-    pointHitRadius: 0,
-    parsing: false,
-    normalized: true,
-    tension: 0,
-  };
-  const config: ChartConfiguration<"line", ChartJsPoint[], unknown> = {
-    type: "line",
-    data: { datasets: [dataset] },
-    options: {
-      responsive: false,
-      animation: false,
-      parsing: false,
-      normalized: true,
-      events: [],
-      devicePixelRatio: window.devicePixelRatio,
-      interaction: { mode: "nearest", axis: "x", intersect: false },
-      elements: {
-        point: { radius: 0, hitRadius: 0, hoverRadius: 0 },
-        line: { borderWidth: 1, tension: 0 },
-      },
-      plugins: {
-        legend: { display: false },
-        tooltip: { enabled: false },
-        decimation: {
-          enabled: true,
-          algorithm: "min-max",
-          threshold: Math.max(1_000, canvasSize.width * 4),
-        },
-      },
-      scales: {
-        x: {
-          type: "linear",
-          min: viewport.xMin,
-          max: viewport.xMax,
-          ticks: { sampleSize: 8, maxRotation: 0 },
-          grid: { display: false },
-        },
-        y: {
-          type: "linear",
-          min: viewport.yMin,
-          max: viewport.yMax,
-          ticks: { sampleSize: 8, maxRotation: 0 },
-          grid: { display: false },
-        },
-      },
-    },
-  };
-  const chart = new ChartJs(canvas, config);
-
-  return {
-    ready: () => settleFrames(1),
-    pan: (nextViewport) => {
-      setChartJsViewport(chart, nextViewport);
-      chart.update("none");
-    },
-    append: (startX, count, nextViewport) => {
-      appendChartJsSamples(dataset, startX, count);
-      setChartJsViewport(chart, nextViewport);
-      chart.update("none");
-    },
-    destroy: () => chart.destroy(),
-  };
-}
-
-async function measureInstance(instance: BenchmarkInstance, scenario: ScenarioConfig, data: BenchmarkData): Promise<MeasurementResult> {
-  const rafFrameMs: number[] = [];
-  const updateMs: number[] = [];
-  const chartFrameMs: number[] = [];
-  const pointsRendered: number[] = [];
-  const drawCalls: number[] = [];
-  const uploadBytes: number[] = [];
-  const startedAt = performance.now();
-  let lastRafAt = await animationFrame();
-  let nextX = data.sampleCount;
-  let samplesAppended = 0;
-
-  while (performance.now() - startedAt < scenario.measureMs) {
-    const elapsedMs = performance.now() - startedAt;
-    const operationStartedAt = performance.now();
-
-    if (scenario.operation === "pan") {
-      instance.pan?.(panViewport(scenario, elapsedMs, data.sampleCount));
-    } else if (scenario.operation === "stream") {
-      const samplesPerSecond = (scenario.streamBatchSize ?? 1) * 60;
-      const targetNextX = data.sampleCount + Math.floor((elapsedMs / 1000) * samplesPerSecond);
-      const count = Math.max(0, targetNextX - nextX);
-      if (count > 0) {
-        nextX += count;
-        samplesAppended += count;
-        instance.append?.(nextX - count, count, latestViewport(scenario, nextX));
-      }
-    }
-
-    updateMs.push(performance.now() - operationStartedAt);
-    const rafAt = await animationFrame();
-    rafFrameMs.push(Math.max(0, rafAt - lastRafAt));
-    lastRafAt = rafAt;
-
-    const stats = instance.stats?.();
-    if (typeof stats?.frameMs === "number") chartFrameMs.push(stats.frameMs);
-    if (typeof stats?.pointsRendered === "number") pointsRendered.push(stats.pointsRendered);
-    if (typeof stats?.drawCalls === "number") drawCalls.push(stats.drawCalls);
-    if (typeof stats?.uploadBytes === "number") uploadBytes.push(stats.uploadBytes);
-  }
-
-  const durationMs = performance.now() - startedAt;
-  return {
-    durationMs: round(durationMs),
-    frames: rafFrameMs.length,
-    rafFps: rafFrameMs.length > 0 ? round((rafFrameMs.length * 1000) / sum(rafFrameMs)) : 0,
-    rafFrameMs: summarize(rafFrameMs),
-    updateMs: summarize(updateMs),
-    chartFrameMs: chartFrameMs.length > 0 ? summarize(chartFrameMs) : undefined,
-    pointsRendered: pointsRendered.length > 0 ? summarize(pointsRendered) : undefined,
-    drawCalls: drawCalls.length > 0 ? summarize(drawCalls) : undefined,
-    uploadBytes: uploadBytes.length > 0 ? summarize(uploadBytes) : undefined,
-    samplesAppended,
-  };
-}
-
-function positiveModulo(value: number, modulo: number): number {
-  return ((value % modulo) + modulo) % modulo;
-}
-
-function createHost(): HTMLElement {
-  mount!.replaceChildren();
+function createHost(width: number, height: number, parent: HTMLElement = mount!): HTMLElement {
   const host = document.createElement("div");
   host.className = "bench-case";
-  host.style.width = `${canvasSize.width}px`;
-  host.style.height = `${canvasSize.height}px`;
-  mount!.append(host);
+  host.style.width = `${width}px`;
+  host.style.height = `${height}px`;
+  parent.append(host);
   return host;
 }
 
-class ProceduralBenchmarkDataset implements AcceleratedDataset {
-  private static readonly minY = -0.95;
-  private static readonly maxY = 0.95;
+/**
+ * Construct a chart in a new host and wait until it is on screen. The clock covers library
+ * construction (including layout and axes) through the end of the first frame in which the chart's
+ * content has been drawn: libraries that draw synchronously are measured through the next frame
+ * boundary, and BlazePlot (which draws in its first animation frame) through the frame that drew it.
+ */
+async function mountAndPresent(spec: ChartSpec, data: LibraryData, viewport: ViewportRange, parent?: HTMLElement): Promise<Mounted> {
+  if (!parent) mount!.replaceChildren();
+  const host = createHost(spec.width, spec.height, parent);
+  const startedAt = performance.now();
+  const handle = createChart(library, host, spec, data, viewport);
+  const constructMs = performance.now() - startedAt;
+  let presentedAt = await nextFrameDone();
+  for (let guard = 0; !handle.hasContent() && guard < 240; guard++) presentedAt = await nextFrameDone();
+  if (!handle.hasContent()) throw new Error("Chart never drew content within 240 frames.");
+  return { host, handle, constructMs, readyMs: presentedAt - startedAt };
+}
 
-  constructor(readonly length: number) {
-    if (!Number.isInteger(length) || length <= 0) throw new RangeError("Procedural benchmark dataset length must be positive.");
+async function discardedSetupRuns(spec: ChartSpec, data: LibraryData): Promise<void> {
+  const setupSpec: ChartSpec = scenario.kind === "stream" || scenario.kind === "throughput" ? { ...spec, streamExtra: 0 } : spec;
+  for (let i = 0; i < setupWarmupRuns; i++) {
+    renderStatus(`setup warmup ${i + 1}/${setupWarmupRuns}`);
+    const mounted = await mountAndPresent(setupSpec, data, initialViewport(spec));
+    mounted.handle.destroy();
+    mounted.host.remove();
   }
+  // BlazePlot parks a disposed chart's WebGL context for 2 s so a remount can reuse it. That is the point of
+  // mount-destroy-cycle and many-charts, but it would hide context creation from every other scenario's
+  // "ready" number (a canvas library creates its canvas inside its measured constructor), so release it here.
+  if (scenario.kind !== "cycle" && scenario.kind !== "many") releaseWarm();
+}
 
-  get range(): TimeRange {
-    return { start: 0, end: this.length - 1 };
+function initialViewport(spec: ChartSpec): ViewportRange {
+  return scenario.kind === "stream" || scenario.kind === "throughput" ? latestViewport(spec, spec.points) : staticViewport(spec);
+}
+
+function recordSizes(mounted: Mounted, details: Record<string, DetailValue>): void {
+  details.plotWidth = round(mounted.handle.plotWidth(), 1);
+  details.plotHeight = round(mounted.handle.plotHeight(), 1);
+  // Time from the end of the constructor to the produced frame; ready = construct + this.
+  details.presentWaitMs = round(mounted.readyMs - mounted.constructMs);
+}
+
+// ----------------------------------------------------------------- scenarios
+
+async function runStatic(metrics: Record<string, number>, details: Record<string, DetailValue>): Promise<void> {
+  const cold = scenario.kind === "cold";
+  const heapBefore = cold ? null : await settledHeapBytes();
+  const data = buildData(fullSpec, library);
+  if (!cold) await discardedSetupRuns(fullSpec, data);
+  mount!.replaceChildren();
+  if (!cold) await settleFrames(2);
+  const mounted = await mountAndPresent(fullSpec, data, staticViewport(fullSpec));
+  metrics.readyMs = mounted.readyMs;
+  metrics.constructMs = mounted.constructMs;
+  recordSizes(mounted, details);
+  if (!cold) {
+    const heapAfter = await settledHeapBytes();
+    if (heapBefore !== null && heapAfter !== null) metrics.heapMiB = (heapAfter - heapBefore) / (1024 * 1024);
   }
+  mounted.handle.destroy();
+}
 
-  getX(index: number): number {
-    this.assertValidIndex(index);
-    return index;
-  }
+async function runPanOrStream(metrics: Record<string, number>, details: Record<string, DetailValue>): Promise<void> {
+  const rate = scenario.kind === "stream" ? (scenario.streamBatchSize ?? 1_024) * 60 : 0;
+  const spec: ChartSpec = scenario.kind === "stream"
+    ? { ...fullSpec, streamExtra: Math.ceil(((scenario.measureMs + scenario.warmupMs) / 1000) * rate * 1.8) + 4_096 }
+    : fullSpec;
+  const heapBefore = await settledHeapBytes();
+  const data = buildData(spec, library);
+  await discardedSetupRuns(spec, data);
+  mount!.replaceChildren();
+  await settleFrames(2);
+  const mounted = await mountAndPresent(spec, data, initialViewport(spec));
+  metrics.readyMs = mounted.readyMs;
+  metrics.constructMs = mounted.constructMs;
+  recordSizes(mounted, details);
+  const heapAfterReady = await settledHeapBytes();
+  if (heapBefore !== null && heapAfterReady !== null) metrics.heapMiB = (heapAfterReady - heapBefore) / (1024 * 1024);
 
-  getY(index: number): number {
-    this.assertValidIndex(index);
-    return sampleY(index);
-  }
+  // Warm the update path (JIT, buffer growth) with the same operation, then measure.
+  const op = scenario.kind === "stream" ? "stream" : "pan";
+  let nextX = spec.points;
+  if (scenario.warmupMs > 0) nextX = (await frameLoop(mounted.handle, spec, { op, durationMs: scenario.warmupMs, rate, startX: nextX })).nextX;
+  const loop = await frameLoop(mounted.handle, spec, { op, durationMs: scenario.measureMs, rate, startX: nextX });
+  recordLoop(loop, metrics, details);
+  mounted.handle.destroy();
+}
 
-  lowerBoundX(x: number): number {
-    return Math.max(0, Math.min(this.length, Math.ceil(x)));
-  }
+async function runSoak(metrics: Record<string, number>, details: Record<string, DetailValue>): Promise<void> {
+  const data = buildData(fullSpec, library);
+  await discardedSetupRuns(fullSpec, data);
+  mount!.replaceChildren();
+  await settleFrames(2);
+  const mounted = await mountAndPresent(fullSpec, data, staticViewport(fullSpec));
+  if (scenario.warmupMs > 0) await frameLoop(mounted.handle, fullSpec, { op: "pan", durationMs: scenario.warmupMs, rate: 0, startX: fullSpec.points });
+  const heapBefore = await settledHeapBytes();
+  const loop = await frameLoop(mounted.handle, fullSpec, { op: "pan", durationMs: scenario.measureMs, rate: 0, startX: fullSpec.points });
+  const heapAfter = await settledHeapBytes();
+  if (heapBefore !== null && heapAfter !== null) metrics.heapGrowthMiB = (heapAfter - heapBefore) / (1024 * 1024);
+  recordLoop(loop, metrics, details);
+  details.frames = loop.rafFrameMs.length;
+  mounted.handle.destroy();
+}
 
-  upperBoundX(x: number): number {
-    return Math.max(0, Math.min(this.length, Math.floor(x) + 1));
-  }
+function recordLoop(loop: LoopResult, metrics: Record<string, number>, details: Record<string, DetailValue>): void {
+  const raf = summarize(loop.rafFrameMs);
+  const work = summarize(loop.workMs);
+  const totalRafMs = sum(loop.rafFrameMs);
+  metrics.rafFps = totalRafMs > 0 ? (loop.rafFrameMs.length * 1000) / totalRafMs : 0;
+  metrics.rafP95Ms = raf.p95;
+  metrics.workP50Ms = work.p50;
+  metrics.workP95Ms = work.p95;
+  details.frames = loop.rafFrameMs.length;
+  details.appended = loop.appended;
+  if (loop.internalFrameMs.length > 0) details.internalFrameP50Ms = summarize(loop.internalFrameMs).p50;
+  if (loop.points.length > 0) details.pointsRenderedP50 = summarize(loop.points).p50;
+  if (loop.draws.length > 0) details.drawCallsP50 = summarize(loop.draws).p50;
+}
 
-  rangeMinMaxY(start: number, end: number): { minY: number; maxY: number } | null {
-    const from = Math.max(0, Math.floor(start));
-    const to = Math.min(this.length, Math.ceil(end));
-    return to > from ? { minY: ProceduralBenchmarkDataset.minY, maxY: ProceduralBenchmarkDataset.maxY } : null;
-  }
+interface LoopOptions {
+  readonly op: "pan" | "stream";
+  readonly durationMs: number;
+  /** Stream: samples per second. */
+  readonly rate: number;
+  readonly startX: number;
+}
 
-  copySamplesRange(
-    start: number,
-    end: number,
-    target: Float32Array,
-    maxPoints: number,
-    layout: SampleCopyLayout,
-    baseline: number,
-    xOrigin: number,
-  ): number {
-    return this.copyStridedSamples(Math.max(0, Math.floor(start)), Math.min(this.length, Math.ceil(end)), 1, target, maxPoints, layout, baseline, xOrigin);
-  }
+/**
+ * Drive one library through an automated pan or live append at one update per animation frame.
+ * Frame cost is the synchronous update/redraw call plus whatever the library does in its own
+ * animation-frame callbacks (BlazePlot renders there), so libraries that redraw synchronously and
+ * libraries that defer to the next frame are charged the same way. Frame cadence is the browser's
+ * actual requestAnimationFrame interval, which also reflects raster and GPU back-pressure.
+ */
+async function frameLoop(handle: ChartHandle, spec: ChartSpec, options: LoopOptions): Promise<LoopResult> {
+  const rafFrameMs: number[] = [];
+  const workMs: number[] = [];
+  const internalFrameMs: number[] = [];
+  const points: number[] = [];
+  const draws: number[] = [];
+  let nextX = options.startX;
+  let appended = 0;
+  let lastRafAt = await animationFrame();
+  takeRafCallbackWorkMs();
+  const startedAt = performance.now();
 
-  copyVisibleSamples(
-    viewport: Viewport,
-    target: Float32Array,
-    maxPoints: number,
-    layout: SampleCopyLayout,
-    baseline: number,
-    xOrigin: number,
-  ): number {
-    const start = this.lowerBoundX(viewport.xMin);
-    const end = this.upperBoundX(viewport.xMax);
-    const visible = Math.max(0, end - start);
-    const stride = Math.max(1, Math.ceil(visible / Math.max(1, maxPoints)));
-    const alignedStart = start + positiveModulo(-start, stride);
-    return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
-  }
-
-  copyMinMaxSegments(
-    viewport: Viewport,
-    target: Float32Array,
-    maxSegments: number,
-    xOrigin: number,
-  ): number {
-    if (maxSegments <= 0 || target.length < maxSegments * 3) return 0;
-
-    const start = this.lowerBoundX(viewport.xMin);
-    const end = this.upperBoundX(viewport.xMax);
-    const visible = end - start;
-    if (visible <= 0) return 0;
-
-    const stride = Math.max(1, Math.ceil(visible / maxSegments));
-    const alignedStart = start - (start % stride);
-    let written = 0;
-
-    for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += stride) {
-      const segmentStart = Math.max(0, bucketStart);
-      const segmentEnd = Math.min(this.length, bucketStart + stride);
-      if (segmentEnd <= start || segmentStart >= end) continue;
-
-      const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
-      const x = representative - xOrigin;
-      const offset = written * 3;
-      target[offset] = x;
-      target[offset + 1] = ProceduralBenchmarkDataset.minY;
-      target[offset + 2] = ProceduralBenchmarkDataset.maxY;
-      written++;
-    }
-
-    return written;
-  }
-
-  private copyStridedSamples(
-    from: number,
-    to: number,
-    stride: number,
-    target: Float32Array,
-    maxPoints: number,
-    layout: SampleCopyLayout,
-    baseline: number,
-    xOrigin: number,
-  ): number {
-    const floatsPerSample = layout === "points" ? 2 : 4;
-    if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
-
-    const count = Math.min(maxPoints, Math.max(0, Math.ceil((to - from) / stride)));
-    for (let i = 0, index = from; i < count; i++, index += stride) {
-      const x = index - xOrigin;
-      if (layout === "points") {
-        const offset = i * 2;
-        target[offset] = x;
-        target[offset + 1] = sampleY(index);
-      } else {
-        const offset = i * 4;
-        target[offset] = x;
-        target[offset + 1] = baseline;
-        target[offset + 2] = x;
-        target[offset + 3] = sampleY(index);
+  while (performance.now() - startedAt < options.durationMs) {
+    const elapsedMs = performance.now() - startedAt;
+    const operationStartedAt = performance.now();
+    if (options.op === "pan") {
+      handle.setViewport(panViewport(spec, elapsedMs, options.durationMs));
+    } else {
+      const targetX = options.startX + Math.floor((elapsedMs / 1000) * options.rate);
+      const count = targetX - nextX;
+      if (count > 0) {
+        handle.append(nextX, count, latestViewport(spec, targetX));
+        nextX = targetX;
+        appended += count;
       }
     }
-    return count;
+    const syncMs = performance.now() - operationStartedAt;
+    const rafAt = await animationFrame();
+    rafFrameMs.push(Math.max(0, rafAt - lastRafAt));
+    lastRafAt = rafAt;
+    workMs.push(syncMs + takeRafCallbackWorkMs());
+    const stats = handle.internalStats?.();
+    if (stats?.frameMs !== undefined) internalFrameMs.push(stats.frameMs);
+    if (stats?.pointsRendered !== undefined) points.push(stats.pointsRendered);
+    if (stats?.drawCalls !== undefined) draws.push(stats.drawCalls);
   }
+  return { rafFrameMs, workMs, internalFrameMs, points, draws, appended, nextX };
+}
 
-  private assertValidIndex(index: number): void {
-    if (!Number.isInteger(index) || index < 0 || index >= this.length) throw new RangeError(`Procedural benchmark dataset index out of range: ${index}`);
+async function runHover(metrics: Record<string, number>, details: Record<string, DetailValue>): Promise<void> {
+  const data = buildData(fullSpec, library);
+  await discardedSetupRuns(fullSpec, data);
+  const mounted = await mountAndPresent(fullSpec, data, staticViewport(fullSpec));
+  recordSizes(mounted, details);
+  const rect = mounted.host.getBoundingClientRect();
+  const left = rect.left + LEFT_GUTTER + 12;
+  const right = rect.right - 12;
+  const top = rect.top + 12;
+  const bottom = rect.bottom - BOTTOM_GUTTER - 12;
+  const pointAt = (i: number): [number, number] => [left + (right - left) * fraction(i * 0.6180339887), top + (bottom - top) * fraction(i * 0.4142135623 + 0.3)];
+
+  const [firstX, firstY] = pointAt(0);
+  const enterTarget = document.elementFromPoint(firstX, firstY) ?? mounted.host;
+  for (const type of ["pointerover", "pointerenter", "mouseover", "mouseenter"]) dispatchPointer(enterTarget, type, firstX, firstY);
+
+  const latencyMs: number[] = [];
+  const handlerMs: number[] = [];
+  const warmupMoves = 60;
+  const measuredMoves = 300;
+  for (let i = 0; i < warmupMoves + measuredMoves; i++) {
+    const [x, y] = pointAt(i + 1);
+    const target = document.elementFromPoint(x, y) ?? mounted.host;
+    const startedAt = performance.now();
+    dispatchPointer(target, "pointermove", x, y);
+    dispatchPointer(target, "mousemove", x, y);
+    const handledAt = performance.now();
+    const presentedAt = await nextFrameDone();
+    if (i >= warmupMoves) {
+      latencyMs.push(presentedAt - startedAt);
+      handlerMs.push(handledAt - startedAt);
+    }
   }
+  const latency = summarize(latencyMs);
+  metrics.hoverP50Ms = latency.p50;
+  metrics.hoverP95Ms = latency.p95;
+  details.handlerP50Ms = summarize(handlerMs).p50;
+  details.hoverActive = mounted.handle.hoverActive?.() ?? null;
+  mounted.handle.destroy();
 }
 
-function createBenchmarkData(scenario: ScenarioConfig, libraries: readonly LibraryId[]): BenchmarkData {
-  const sampleCount = scenario.sampleCount;
-  const needsBlazePlot = libraries.includes("blazeplot") && scenario.blazeplotDataPath !== "accelerated-dataset";
-  const needsUPlot = libraries.includes("uplot");
-  const needsChartJs = libraries.includes("chartjs");
-  const xFloat = needsBlazePlot ? new Float64Array(sampleCount) : undefined;
-  const yFloat = needsBlazePlot ? new Float32Array(sampleCount) : undefined;
-  const xArray = needsUPlot ? new Array<number>(sampleCount) : undefined;
-  const yArray = needsUPlot ? new Array<number>(sampleCount) : undefined;
-  const chartJsPoints = needsChartJs ? new Array<ChartJsPoint>(sampleCount) : undefined;
-
-  for (let i = 0; i < sampleCount; i++) {
-    const x = i;
-    const y = sampleY(x);
-    if (xFloat) xFloat[i] = x;
-    if (yFloat) yFloat[i] = y;
-    if (xArray) xArray[i] = x;
-    if (yArray) yArray[i] = y;
-    if (chartJsPoints) chartJsPoints[i] = { x, y };
-  }
-
-  return { sampleCount, xFloat, yFloat, xArray, yArray, chartJsPoints };
-}
-
-function requireBenchmarkData<T>(value: T | undefined, label: string): T {
-  if (value === undefined) throw new Error(`${label} was not prepared for this benchmark run.`);
-  return value;
-}
-
-function initialViewport(scenario: ScenarioConfig, totalSamples: number): ViewportRange {
-  if (scenario.operation === "stream") return latestViewport(scenario, totalSamples);
-  return {
-    xMin: 0,
-    xMax: Math.max(1, scenario.viewportSamples - 1),
-    yMin: scenario.yMin,
-    yMax: scenario.yMax,
-  };
-}
-
-function latestViewport(scenario: ScenarioConfig, nextX: number): ViewportRange {
-  const xMax = Math.max(1, nextX - 1);
-  const xMin = Math.max(0, xMax - scenario.viewportSamples + 1);
-  return { xMin, xMax, yMin: scenario.yMin, yMax: scenario.yMax };
-}
-
-function panViewport(scenario: ScenarioConfig, elapsedMs: number, totalSamples: number): ViewportRange {
-  const span = Math.max(1, Math.min(scenario.viewportSamples, totalSamples));
-  const maxStart = Math.max(0, totalSamples - span);
-  const t = elapsedMs / Math.max(1, scenario.measureMs);
-  const xMin = maxStart * (0.5 + 0.5 * Math.sin(t * Math.PI * 2));
-  return { xMin, xMax: xMin + span - 1, yMin: scenario.yMin, yMax: scenario.yMax };
-}
-
-function streamAppendCapacity(scenario: ScenarioConfig): number {
-  if (scenario.operation !== "stream") return 0;
-  const batchSize = scenario.streamBatchSize ?? 1;
-  return Math.ceil((Math.max(1, scenario.measureMs) / 1000) * batchSize * 90) + batchSize;
-}
-
-async function waitForBlazePlotFrame(chart: Chart): Promise<void> {
-  for (let i = 0; i < 120; i++) {
-    await animationFrame();
-    const stats = chart.getFrameStats();
-    if (stats.renderMode !== "none" && stats.drawCalls > 0) return;
-  }
-}
-
-function chartStats(chart: Chart): InstanceStats {
-  const stats = chart.getFrameStats();
-  return {
-    fps: round(stats.fps),
-    frameMs: round(stats.frameMs),
-    pointsRendered: stats.pointsRendered,
-    drawCalls: stats.drawCalls,
-    uploadBytes: stats.uploadBytes,
-    renderMode: stats.renderMode,
-  };
-}
-
-function appendBlazePlotSamples(series: SeriesStore, startX: number, count: number): void {
-  const xValues = new Float64Array(count);
-  const yValues = new Float32Array(count);
-  for (let i = 0; i < count; i++) {
-    const x = startX + i;
-    xValues[i] = x;
-    yValues[i] = sampleY(x);
-  }
-  series.append({ x: xValues, y: yValues });
-}
-
-function appendBlazePlotYOnlySamples(series: SeriesStore, startX: number, count: number): void {
-  const yValues = new Float32Array(count);
-  for (let i = 0; i < count; i++) yValues[i] = sampleY(startX + i);
-  series.append({ y: yValues });
-}
-
-function appendArraySamples(xValues: number[], yValues: number[], startX: number, count: number): void {
-  for (let i = 0; i < count; i++) {
-    const x = startX + i;
-    xValues.push(x);
-    yValues.push(sampleY(x));
-  }
-}
-
-function appendChartJsSamples(dataset: MutableChartJsDataset, startX: number, count: number): void {
-  const source = dataset._data ?? dataset.data;
-  for (let i = 0; i < count; i++) {
-    const x = startX + i;
-    source.push({ x, y: sampleY(x) });
-  }
-}
-
-function setUPlotViewport(plot: uPlot, viewport: ViewportRange): void {
-  plot.batch(() => {
-    applyUPlotViewport(plot, viewport);
-  }, true);
-}
-
-function setUPlotDataAndViewport(plot: uPlot, data: NonNullable<UPlotData>, viewport: ViewportRange): void {
-  plot.batch(() => {
-    plot.setData(data, false);
-    applyUPlotViewport(plot, viewport);
-  }, true);
-}
-
-function applyUPlotViewport(plot: uPlot, viewport: ViewportRange): void {
-  plot.setScale("x", { min: viewport.xMin, max: viewport.xMax });
-  plot.setScale("y", { min: viewport.yMin, max: viewport.yMax });
-}
-
-function setChartJsViewport(chart: ChartJs<"line", ChartJsPoint[], unknown>, viewport: ViewportRange): void {
-  const scales = chart.options.scales;
-  const xScale = scales?.x;
-  const yScale = scales?.y;
-  if (xScale) {
-    xScale.min = viewport.xMin;
-    xScale.max = viewport.xMax;
-  }
-  if (yScale) {
-    yScale.min = viewport.yMin;
-    yScale.max = viewport.yMax;
-  }
-}
-
-function sampleY(x: number): number {
-  return Math.sin(x * 0.004) * 0.62 + Math.sin(x * 0.00037) * 0.28 + (noise01(x) - 0.5) * 0.04;
-}
-
-function noise01(seed: number): number {
-  const value = Math.sin(seed * 12.9898 + 78.233) * 43_758.5453;
+function fraction(value: number): number {
   return value - Math.floor(value);
 }
+
+function dispatchPointer(target: Element, type: string, clientX: number, clientY: number): void {
+  const init = { bubbles: true, cancelable: true, composed: true, clientX, clientY, view: window, button: 0, buttons: 0 };
+  if (type.startsWith("pointer")) target.dispatchEvent(new PointerEvent(type, { ...init, pointerId: 1, pointerType: "mouse", isPrimary: true }));
+  else target.dispatchEvent(new MouseEvent(type, init));
+}
+
+async function runResize(metrics: Record<string, number>, details: Record<string, DetailValue>): Promise<void> {
+  const data = buildData(fullSpec, library);
+  await discardedSetupRuns(fullSpec, data);
+  const mounted = await mountAndPresent(fullSpec, data, staticViewport(fullSpec));
+  recordSizes(mounted, details);
+  const sizes = [
+    { width: canvasSize.width, height: canvasSize.height },
+    { width: Math.round(canvasSize.width * 0.8), height: Math.round(canvasSize.height * 0.85) },
+  ];
+  const rightGutter = fullSpec.dualAxis ? RIGHT_GUTTER : 0;
+  const latencyMs: number[] = [];
+  const warmupResizes = 10;
+  const measuredResizes = 60;
+  let current = 0;
+  for (let i = 0; i < warmupResizes + measuredResizes; i++) {
+    current = 1 - current;
+    const target = sizes[current]!;
+    const expectedWidth = target.width - LEFT_GUTTER - rightGutter;
+    const drawsBefore = mounted.handle.drawCount();
+    const startedAt = performance.now();
+    mounted.host.style.width = `${target.width}px`;
+    mounted.host.style.height = `${target.height}px`;
+    let guard = 0;
+    // Wait for the library to redraw at the new size (each reports draws through its own hook), then for that frame to be produced.
+    while (!(mounted.handle.drawCount() > drawsBefore && Math.abs(mounted.handle.plotWidth() - expectedWidth) <= 2) && guard++ < 600) await animationFrame();
+    if (guard >= 600) throw new Error(`Chart did not redraw at ${target.width}px (plot width ${mounted.handle.plotWidth()}, expected ${expectedWidth}).`);
+    const presentedAt = await nextFrameDone();
+    if (i >= warmupResizes) latencyMs.push(presentedAt - startedAt);
+  }
+  const latency = summarize(latencyMs);
+  metrics.resizeP50Ms = latency.p50;
+  metrics.resizeP95Ms = latency.p95;
+  mounted.handle.destroy();
+}
+
+async function runMany(metrics: Record<string, number>, details: Record<string, DetailValue>): Promise<void> {
+  const count = scenario.count ?? 50;
+  const cell = scenario.cell ?? { width: 400, height: 180 };
+  const spec: ChartSpec = { ...fullSpec, width: cell.width, height: cell.height };
+  const heapBefore = await settledHeapBytes();
+  const datasets = Array.from({ length: count }, () => buildData(spec, library));
+
+  const grid = document.createElement("div");
+  grid.style.display = "grid";
+  grid.style.gridTemplateColumns = `repeat(3, ${cell.width}px)`;
+
+  const mountAll = async (measure: boolean): Promise<{ handles: ChartHandle[]; hosts: HTMLElement[]; readyMs: number }> => {
+    mount!.replaceChildren(grid);
+    const handles: ChartHandle[] = [];
+    const hosts: HTMLElement[] = [];
+    const startedAt = performance.now();
+    for (let i = 0; i < count; i++) {
+      const host = createHost(cell.width, cell.height, grid);
+      hosts.push(host);
+      handles.push(createChart(library, host, spec, datasets[i]!, staticViewport(spec)));
+    }
+    let presentedAt = await nextFrameDone();
+    for (let guard = 0; !handles.every((handle) => handle.hasContent()) && guard < 480; guard++) presentedAt = await nextFrameDone();
+    if (measure && !handles.every((handle) => handle.hasContent())) throw new Error("Not every chart drew content within 480 frames.");
+    return { handles, hosts, readyMs: presentedAt - startedAt };
+  };
+  const destroyAll = (handles: ChartHandle[], hosts: HTMLElement[]): number => {
+    const startedAt = performance.now();
+    for (const handle of handles) handle.destroy();
+    const elapsed = performance.now() - startedAt;
+    for (const host of hosts) host.remove();
+    return elapsed;
+  };
+
+  // Discarded run: first-time shader compilation, context creation and JIT must not be charged to the measured run.
+  for (let i = 0; i < setupWarmupRuns; i++) {
+    const warm = await mountAll(false);
+    destroyAll(warm.handles, warm.hosts);
+    await settleFrames(2);
+  }
+  await settleFrames(2);
+  const measured = await mountAll(true);
+  metrics.readyMs = measured.readyMs;
+  const heapAfter = await settledHeapBytes();
+  if (heapBefore !== null && heapAfter !== null) metrics.heapMiB = (heapAfter - heapBefore) / (1024 * 1024);
+  details.charts = count;
+  details.plotWidth = round(measured.handles[0]!.plotWidth(), 1);
+  details.plotHeight = round(measured.handles[0]!.plotHeight(), 1);
+  metrics.destroyMs = destroyAll(measured.handles, measured.hosts);
+}
+
+async function runCycle(metrics: Record<string, number>, details: Record<string, DetailValue>): Promise<void> {
+  const cycles = scenario.count ?? 40;
+  const data = buildData(fullSpec, library);
+  await discardedSetupRuns(fullSpec, data);
+  mount!.replaceChildren();
+  await settleFrames(2);
+  const heapBefore = await settledHeapBytes();
+  const cycleMs: number[] = [];
+  for (let i = 0; i < cycles; i++) {
+    mount!.replaceChildren();
+    const host = createHost(fullSpec.width, fullSpec.height);
+    const startedAt = performance.now();
+    const handle = createChart(library, host, fullSpec, data, staticViewport(fullSpec));
+    await nextFrameDone();
+    for (let guard = 0; !handle.hasContent() && guard < 240; guard++) await nextFrameDone();
+    handle.destroy();
+    host.remove();
+    cycleMs.push(performance.now() - startedAt);
+  }
+  const cycle = summarize(cycleMs);
+  metrics.cycleP50Ms = cycle.p50;
+  metrics.cycleP95Ms = cycle.p95;
+  const heapAfter = await settledHeapBytes();
+  if (heapBefore !== null && heapAfter !== null) metrics.leakMiB = (heapAfter - heapBefore) / (1024 * 1024);
+  details.cycles = cycles;
+}
+
+async function runThroughput(metrics: Record<string, number>, details: Record<string, DetailValue>): Promise<void> {
+  const budgetMs = officialConfig.frameBudgetMs;
+  const rates: readonly number[] = scale === 1 ? THROUGHPUT_RATES : THROUGHPUT_RATES.slice(0, 4);
+  const spec: ChartSpec = fullSpec;
+  const data = buildData(spec, library);
+  await discardedSetupRuns(spec, data);
+  mount!.replaceChildren();
+  await settleFrames(2);
+  const mounted = await mountAndPresent(spec, data, initialViewport(spec));
+  let nextX = spec.points;
+  if (scenario.warmupMs > 0) nextX = (await frameLoop(mounted.handle, spec, { op: "stream", durationMs: scenario.warmupMs, rate: rates[0]!, startX: nextX })).nextX;
+  let best = 0;
+  for (const rate of rates) {
+    const loop = await frameLoop(mounted.handle, spec, { op: "stream", durationMs: scenario.measureMs, rate, startX: nextX });
+    nextX = loop.nextX;
+    const p95 = summarize(loop.rafFrameMs).p95;
+    details[`p95FrameMs@${rate / 1000}k`] = p95;
+    if (p95 > budgetMs) break;
+    best = rate;
+  }
+  metrics.maxSustainedKsps = best / 1000;
+  details.frameBudgetMs = budgetMs;
+  mounted.handle.destroy();
+}
+
+// --------------------------------------------------------------------- misc
 
 function collectBrowserEnvironment(): BrowserEnvironment {
   const canvas = document.createElement("canvas");
@@ -1040,6 +597,7 @@ function collectBrowserEnvironment(): BrowserEnvironment {
   const webglVendor = gl && debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)) : gl ? String(gl.getParameter(gl.VENDOR)) : null;
   const webglRenderer = gl && debugInfo ? String(gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)) : gl ? String(gl.getParameter(gl.RENDERER)) : null;
   const webglVersion = gl ? String(gl.getParameter(gl.VERSION)) : null;
+  gl?.getExtension("WEBGL_lose_context")?.loseContext();
 
   return {
     userAgent: navigator.userAgent,
@@ -1052,11 +610,8 @@ function collectBrowserEnvironment(): BrowserEnvironment {
     webglRenderer,
     webglVersion,
     headlessUserAgent: /HeadlessChrome/i.test(navigator.userAgent),
+    gcExposed: typeof window.gc === "function",
   };
-}
-
-function snapshot(): ReturnType<BenchmarkController["snapshot"]> {
-  return { state, progress, result, error };
 }
 
 function renderStatus(message: string): void {
@@ -1064,75 +619,22 @@ function renderStatus(message: string): void {
   statusTarget.textContent = [
     "BlazePlot comparison benchmark",
     `state: ${state}`,
-    `progress: ${(progress * 100).toFixed(1)}%`,
+    `scenario: ${scenarioName}`,
+    `library: ${library}`,
     `canvas: ${canvasSize.width}x${canvasSize.height}`,
-    `setup warmup runs: ${setupWarmupRuns}`,
-    `libraries: ${selectedLibraries.join(", ")}`,
-    `scenarios: ${selectedScenarioNames.join(", ")}`,
     `message: ${message}`,
     error ? `error: ${error}` : "",
   ].filter(Boolean).join("\n");
 }
 
-function readPositiveIntegerParam(name: string, fallback: number): number {
-  const raw = params.get(name);
-  if (!raw) return fallback;
-  const value = Number(raw);
-  return Number.isFinite(value) && value >= 0 && Math.floor(value) === value ? value : fallback;
+function readIntParam(name: string, fallback: number): number {
+  return readOptionalIntParam(name) ?? fallback;
 }
 
-function readOptionalPositiveIntegerParam(name: string): number | undefined {
+function readOptionalIntParam(name: string): number | undefined {
   const raw = params.get(name);
   if (!raw) return undefined;
   const value = Number(raw);
   return Number.isFinite(value) && value >= 0 && Math.floor(value) === value ? value : undefined;
 }
 
-function readHeapBytes(): number | null {
-  return performance.memory?.usedJSHeapSize ?? null;
-}
-
-async function collectGarbage(): Promise<void> {
-  window.gc?.();
-  await settleFrames(1);
-}
-
-function summarize(values: readonly number[]): NumericSummary {
-  if (values.length === 0) return { min: 0, max: 0, avg: 0, p50: 0, p95: 0 };
-  const sorted = [...values].sort((a, b) => a - b);
-  return {
-    min: round(sorted[0] ?? 0),
-    max: round(sorted[sorted.length - 1] ?? 0),
-    avg: round(sum(sorted) / sorted.length),
-    p50: round(percentile(sorted, 0.5)),
-    p95: round(percentile(sorted, 0.95)),
-  };
-}
-
-function percentile(sortedValues: readonly number[], p: number): number {
-  if (sortedValues.length === 0) return 0;
-  const index = Math.min(sortedValues.length - 1, Math.max(0, Math.ceil(sortedValues.length * p) - 1));
-  return sortedValues[index] ?? 0;
-}
-
-function sum(values: readonly number[]): number {
-  let total = 0;
-  for (const value of values) total += value;
-  return total;
-}
-
-function round(value: number): number {
-  return Math.round(value * 1000) / 1000;
-}
-
-function animationFrame(): Promise<number> {
-  return new Promise((resolve) => requestAnimationFrame(resolve));
-}
-
-async function settleFrames(count: number): Promise<void> {
-  for (let i = 0; i < count; i++) await animationFrame();
-}
-
-function waitMs(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}

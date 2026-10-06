@@ -1,19 +1,21 @@
 import { Chart } from "../../../../src/index.ts";
-import { buildFlameGraphModel, flameGraphPlugin } from "../../../../src/plugins/flamegraph.ts";
+import { flameGraphPlugin } from "../../../../src/plugins/flamegraph.ts";
 import { interactionsPlugin } from "../../../../src/plugins/interactions.ts";
 import { siteChartOptions } from "../charts/options.ts";
 import { PreviewResources } from "./resources.ts";
 
 export default class Preview extends PreviewResources {
   override mount(target: HTMLElement): void {
-    const model = buildFlameGraphModel(this.flameChartStacks(), { flameChart: true, countName: "ms" });
+    const stacks = this.flameChartStacks();
+    const maxDepth = stacks.reduce((max, entry) => Math.max(max, entry.stack.length - 1), 0);
     const flame = flameGraphPlugin({
-      model,
+      foldedStacks: stacks,
+      build: { flameChart: true, countName: "ms" },
       search: null,
       minFrameWidthPx: 1,
       labelMinWidthPx: 18,
       onFrameClick: ({ frame }) => {
-        chart.setViewport({ xMin: frame.start, xMax: frame.end, yMin: Math.max(0, frame.depth - 0.5), yMax: Math.min(model.maxDepth + 1, frame.depth + 3.5) });
+        chart.setViewport({ xMin: frame.start, xMax: frame.end, yMin: Math.max(0, frame.depth - 0.5), yMax: Math.min(maxDepth + 1, frame.depth + 3.5) });
       },
       tooltipFormatter: (pick) => `${pick.frame.name}\n${pick.frame.value.toFixed(1)} ms (${(pick.percent * 100).toFixed(2)}%)`,
     });
@@ -24,7 +26,7 @@ export default class Preview extends PreviewResources {
       accessibility: { label: "Flame chart preview" },
     }));
     this.previewCharts.push(chart);
-    chart.setViewport({ xMin: model.minX, xMax: model.maxX, yMin: 0, yMax: model.maxDepth + 1 });
+    flame.fitToData();
     chart.start();
   }
 

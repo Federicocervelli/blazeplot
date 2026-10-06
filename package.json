@@ -1,6 +1,6 @@
 {
   "name": "blazeplot",
-  "version": "0.5.8",
+  "version": "1.0.0",
   "packageManager": "bun@1.3.14",
   "description": "Real-time LOD time series rendering engine for the browser.",
   "keywords": [
@@ -13,7 +13,8 @@
     "realtime",
     "streaming",
     "dashboard",
-    "react"
+    "framework-agnostic",
+    "canvas"
   ],
   "author": {
     "name": "Federico Cervelli",
@@ -36,51 +37,68 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./linked": {
       "types": "./dist/linked.d.ts",
-      "import": "./dist/linked.js"
+      "import": "./dist/linked.js",
+      "default": "./dist/linked.js"
     },
     "./data": {
       "types": "./dist/data.d.ts",
-      "import": "./dist/data.js"
+      "import": "./dist/data.js",
+      "default": "./dist/data.js"
     },
     "./export": {
       "types": "./dist/export.d.ts",
-      "import": "./dist/export.js"
+      "import": "./dist/export.js",
+      "default": "./dist/export.js"
     },
     "./plugins/legend": {
       "types": "./dist/plugins/legend.d.ts",
-      "import": "./dist/plugins/legend.js"
+      "import": "./dist/plugins/legend.js",
+      "default": "./dist/plugins/legend.js"
     },
     "./plugins/tooltip": {
       "types": "./dist/plugins/tooltip.d.ts",
-      "import": "./dist/plugins/tooltip.js"
+      "import": "./dist/plugins/tooltip.js",
+      "default": "./dist/plugins/tooltip.js"
     },
     "./plugins/interactions": {
       "types": "./dist/plugins/interactions.d.ts",
-      "import": "./dist/plugins/interactions.js"
+      "import": "./dist/plugins/interactions.js",
+      "default": "./dist/plugins/interactions.js"
     },
     "./plugins/annotations": {
       "types": "./dist/plugins/annotations.d.ts",
-      "import": "./dist/plugins/annotations.js"
+      "import": "./dist/plugins/annotations.js",
+      "default": "./dist/plugins/annotations.js"
     },
     "./plugins/selection": {
       "types": "./dist/plugins/selection.d.ts",
-      "import": "./dist/plugins/selection.js"
+      "import": "./dist/plugins/selection.js",
+      "default": "./dist/plugins/selection.js"
     },
     "./plugins/crosshair": {
       "types": "./dist/plugins/crosshair.d.ts",
-      "import": "./dist/plugins/crosshair.js"
+      "import": "./dist/plugins/crosshair.js",
+      "default": "./dist/plugins/crosshair.js"
     },
     "./plugins/navigator": {
       "types": "./dist/plugins/navigator.d.ts",
-      "import": "./dist/plugins/navigator.js"
+      "import": "./dist/plugins/navigator.js",
+      "default": "./dist/plugins/navigator.js"
     },
     "./plugins/flamegraph": {
       "types": "./dist/plugins/flamegraph.d.ts",
-      "import": "./dist/plugins/flamegraph.js"
+      "import": "./dist/plugins/flamegraph.js",
+      "default": "./dist/plugins/flamegraph.js"
+    },
+    "./plugins/a11y": {
+      "types": "./dist/plugins/a11y.d.ts",
+      "import": "./dist/plugins/a11y.js",
+      "default": "./dist/plugins/a11y.js"
     },
     "./package.json": "./package.json"
   },
@@ -99,14 +117,24 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:coverage": "bun scripts/coverage-check.ts",
-    "check": "bun run typecheck && bun run lint && bun run test:coverage && bun run build && bun run test:generated-docs && bun run test:docs-snippets && bun run test:exports && bun run test:package && bun run test:bundle-size",
-    "test:browser": "bun run bench:ci && bun run test:visual && bun run test:interaction && bun run test:website",
+    "test:ui-engines": "bun scripts/ui-engines-test.ts",
+    "check": "bun run typecheck && bun run lint && bun run test:imports && bun run test:coverage && bun run test:ui-engines && bun run build && bun run test:generated-docs && bun run test:docs-snippets && bun run test:exports && bun run test:package && bun run test:api && bun run test:bundle-size",
+    "test:browser": "bun run test:browser:perf && bun run test:visual && bun run test:browser:ui && bun run test:browser:stability && bun run test:website",
+    "test:browser:perf": "bun run bench:ci && bun run bench:gate && bun run bench:gate:canvas2d",
+    "test:browser:visual-gl": "bun scripts/visual-test.ts --renderer webgl2,shared",
+    "test:browser:visual-fallback": "bun scripts/visual-test.ts --renderer webgl2,canvas2d,auto-no-webgl",
+    "test:browser:ui": "bun run test:interaction && bun run test:a11y && bun run test:interaction:canvas2d && bun run test:a11y:canvas2d",
+    "test:browser:stability": "bun run test:stability && bun run test:stability:canvas2d",
     "ci": "bun run check && bun run test:browser",
     "bench:ci": "bun run bench --scenario ci-smoke --measure-ms 500 --warmup-ms 100 --width 800 --height 450 --top 12 --setup-timeout-ms 60000",
+    "bench:gate": "bun scripts/perf-gate.ts",
+    "bench:gate:canvas2d": "bun scripts/perf-gate.ts --renderer canvas2d",
     "pages:build": "vite build --config vite.pages.config.ts",
     "pages:preview": "vite preview --config vite.pages.config.ts",
     "bench": "bun scripts/benchmark.ts",
     "bench:compare": "bun scripts/benchmark-compare.ts",
+    "bench:compare:smoke": "bun scripts/benchmark-compare.ts --smoke",
+    "bench:multi": "bun scripts/benchmark-multichart.ts",
     "bench:scatter": "bun scripts/scatter-profile.ts",
     "bench:report": "bun scripts/benchmark-report.ts",
     "release:benchmarks": "bun scripts/release-benchmarks.ts",
@@ -116,9 +144,19 @@
     "test:visual": "bun scripts/visual-test.ts",
     "test:exports": "bun scripts/package-export-smoke.ts",
     "test:package": "bun pm pack --dry-run",
+    "test:typescript-floor": "bun scripts/typescript-floor-test.ts",
+    "test:api": "bun scripts/api-snapshot.ts",
+    "test:imports": "bun scripts/check-import-graph.ts",
     "test:bundle-size": "bun scripts/bundle-size-check.ts",
     "release": "node scripts/prepare-release.js",
     "test:interaction": "bun scripts/interaction-test.ts",
+    "test:interaction:canvas2d": "bun scripts/interaction-test.ts --renderer canvas2d",
+    "test:forced-colors": "bun scripts/interaction-test.ts --case forced-colors",
+    "test:a11y": "bun scripts/axe-test.ts",
+    "test:a11y:canvas2d": "bun scripts/axe-test.ts --renderer canvas2d",
+    "test:cross-browser": "bun scripts/cross-browser-test.ts",
+    "test:stability": "bun scripts/stability-test.ts",
+    "test:stability:canvas2d": "bun scripts/stability-test.ts --renderer canvas2d",
     "docs:generate": "node scripts/generate-readme-docs.js && bun scripts/generate-docs-registry.ts",
     "test:generated-docs": "node scripts/generate-readme-docs.js --check && bun scripts/generate-docs-registry.ts --check",
     "test:docs-snippets": "bun scripts/typecheck-doc-snippets.ts",
@@ -132,14 +170,62 @@
     "@types/bun": "^1.3.14",
     "@types/react": "^19.2.14",
     "@typescript/typescript6": "^6.0.2",
+    "axe-core": "^4.13.0",
     "chart.js": "^4.5.1",
     "highlight.js": "^11.11.1",
     "lit": "^3.3.3",
     "oxlint": "^1.86.0",
+    "playwright": "^1.63.0",
     "react": "^19.2.6",
     "tailwindcss": "^4.3.0",
     "typescript": "^7.0.2",
     "uplot": "^1.6.32",
     "vite": "^8.0.13"
-  }
+  },
+  "typesVersions": {
+    "*": {
+      "linked": [
+        "./dist/linked.d.ts"
+      ],
+      "data": [
+        "./dist/data.d.ts"
+      ],
+      "export": [
+        "./dist/export.d.ts"
+      ],
+      "plugins/legend": [
+        "./dist/plugins/legend.d.ts"
+      ],
+      "plugins/tooltip": [
+        "./dist/plugins/tooltip.d.ts"
+      ],
+      "plugins/interactions": [
+        "./dist/plugins/interactions.d.ts"
+      ],
+      "plugins/annotations": [
+        "./dist/plugins/annotations.d.ts"
+      ],
+      "plugins/selection": [
+        "./dist/plugins/selection.d.ts"
+      ],
+      "plugins/crosshair": [
+        "./dist/plugins/crosshair.d.ts"
+      ],
+      "plugins/navigator": [
+        "./dist/plugins/navigator.d.ts"
+      ],
+      "plugins/flamegraph": [
+        "./dist/plugins/flamegraph.d.ts"
+      ],
+      "plugins/a11y": [
+        "./dist/plugins/a11y.d.ts"
+      ]
+    }
+  },
+  "browserslist": [
+    "chrome >= 93",
+    "edge >= 93",
+    "firefox >= 92",
+    "safari >= 15.4"
+  ]
 }

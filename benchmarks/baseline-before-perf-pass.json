@@ -1,0 +1,7233 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-05T14:28:26.350Z",
+  "command": "bun run bench:compare --no-baseline --port 41841 --debug-port 9421",
+  "publishable": true,
+  "warnings": [],
+  "noiseFloor": 0.05,
+  "metrics": {
+    "readyMs": {
+      "label": "Ready (construct to first presented frame)",
+      "short": "Ready",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "constructMs": {
+      "label": "Synchronous construct call",
+      "short": "Construct",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "heapMiB": {
+      "label": "JS heap held after ready (data + chart)",
+      "short": "Heap",
+      "unit": "MiB",
+      "direction": "min"
+    },
+    "heapGrowthMiB": {
+      "label": "JS heap growth during measurement (after GC)",
+      "short": "Heap growth",
+      "unit": "MiB",
+      "direction": "min"
+    },
+    "rafFps": {
+      "label": "Sustained frames per second",
+      "short": "FPS",
+      "unit": "fps",
+      "direction": "max"
+    },
+    "rafP95Ms": {
+      "label": "Frame interval p95",
+      "short": "Frame p95",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "workP50Ms": {
+      "label": "Main-thread frame cost p50",
+      "short": "Work p50",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "workP95Ms": {
+      "label": "Main-thread frame cost p95",
+      "short": "Work p95",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "hoverP50Ms": {
+      "label": "Pointer move to presented frame p50",
+      "short": "Hover p50",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "hoverP95Ms": {
+      "label": "Pointer move to presented frame p95",
+      "short": "Hover p95",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "resizeP50Ms": {
+      "label": "Container resize to presented frame p50",
+      "short": "Resize p50",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "resizeP95Ms": {
+      "label": "Container resize to presented frame p95",
+      "short": "Resize p95",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "destroyMs": {
+      "label": "Destroy all charts",
+      "short": "Destroy",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "cycleP50Ms": {
+      "label": "Mount + first frame + destroy p50",
+      "short": "Cycle p50",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "cycleP95Ms": {
+      "label": "Mount + first frame + destroy p95",
+      "short": "Cycle p95",
+      "unit": "ms",
+      "direction": "min"
+    },
+    "leakMiB": {
+      "label": "JS heap retained after all cycles (after GC)",
+      "short": "Retained",
+      "unit": "MiB",
+      "direction": "min"
+    },
+    "maxSustainedKsps": {
+      "label": "Max sustained append rate at 60 fps",
+      "short": "Max rate",
+      "unit": "k samples/s",
+      "direction": "max"
+    }
+  },
+  "options": {
+    "scenarios": [
+      "line-100k-static",
+      "line-1m-static",
+      "cold-first-chart",
+      "line-1m-pan",
+      "line-1m-stream",
+      "line-10m-accelerated-pan",
+      "multi-10x100k-pan",
+      "multi-100x20k-pan",
+      "area-1m-pan",
+      "scatter-1m-pan",
+      "bar-100k-pan",
+      "dual-axis-1m-pan",
+      "hover-1m",
+      "resize-1m",
+      "many-charts-50",
+      "mount-destroy-cycle",
+      "heap-soak-1m-pan",
+      "stream-throughput"
+    ],
+    "libraries": [
+      "blazeplot",
+      "blazeplot-canvas2d",
+      "uplot",
+      "chartjs"
+    ],
+    "width": 1280,
+    "height": 720,
+    "runs": 7,
+    "setupWarmupRuns": 1,
+    "headed": true
+  },
+  "environment": {
+    "machine": {
+      "label": "local machine",
+      "platform": "win32",
+      "release": "10.0.26200",
+      "arch": "x64",
+      "cpuModel": "AMD Ryzen 7 7800X3D 8-Core Processor           ",
+      "cpuCount": 16,
+      "totalMemoryBytes": 16280801280
+    },
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/153.0.8010.12",
+      "revision": "@971a7443b0c9b0a9b2860529b33331b76077ec62",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+      "jsVersion": "15.3.76.4"
+    },
+    "executable": "chrome.exe",
+    "page": {
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36",
+      "devicePixelRatio": 1,
+      "webglRenderer": "ANGLE (AMD, AMD Radeon RX 9070 (0x00007550) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+      "headlessUserAgent": false
+    }
+  },
+  "libraries": {
+    "blazeplot": {
+      "name": "BlazePlot",
+      "version": "1.0.0-rc.8"
+    },
+    "blazeplot-canvas2d": {
+      "name": "BlazePlot (Canvas 2D)",
+      "version": "1.0.0-rc.8"
+    },
+    "uplot": {
+      "name": "uPlot",
+      "version": "1.6.32"
+    },
+    "chartjs": {
+      "name": "Chart.js",
+      "version": "4.5.1"
+    }
+  },
+  "scenarios": [
+    {
+      "name": "line-100k-static",
+      "title": "100k point line, initial render",
+      "group": "Setup",
+      "primary": "readyMs",
+      "metricIds": [
+        "readyMs",
+        "constructMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 100000,
+        "visible": 100000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 6.715,
+              "mean": 6.756,
+              "p95": 6.995,
+              "min": 6.48,
+              "max": 6.995,
+              "spreadPct": 3.8,
+              "values": [
+                6.48,
+                6.67,
+                6.995,
+                6.835,
+                6.695,
+                6.905,
+                6.715
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 2.51,
+              "mean": 2.568,
+              "p95": 2.935,
+              "min": 2.42,
+              "max": 2.935,
+              "spreadPct": 10.3,
+              "values": [
+                2.51,
+                2.525,
+                2.46,
+                2.67,
+                2.455,
+                2.935,
+                2.42
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 1.908,
+              "mean": 1.907,
+              "p95": 1.909,
+              "min": 1.902,
+              "max": 1.909,
+              "spreadPct": 0.2,
+              "values": [
+                1.908,
+                1.909,
+                1.902,
+                1.908,
+                1.908,
+                1.909,
+                1.908
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 4.165
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 4.385,
+              "mean": 4.463,
+              "p95": 4.865,
+              "min": 4.155,
+              "max": 4.865,
+              "spreadPct": 8.1,
+              "values": [
+                4.385,
+                4.36,
+                4.35,
+                4.155,
+                4.865,
+                4.615,
+                4.51
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 0.595,
+              "mean": 0.587,
+              "p95": 0.675,
+              "min": 0.475,
+              "max": 0.675,
+              "spreadPct": 16.8,
+              "values": [
+                0.595,
+                0.675,
+                0.56,
+                0.475,
+                0.665,
+                0.52,
+                0.62
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 1.665,
+              "mean": 1.665,
+              "p95": 1.665,
+              "min": 1.665,
+              "max": 1.665,
+              "spreadPct": 0,
+              "values": [
+                1.665,
+                1.665,
+                1.665,
+                1.665,
+                1.665,
+                1.665,
+                1.665
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 3.79
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 3.13,
+              "mean": 3.244,
+              "p95": 3.595,
+              "min": 3.05,
+              "max": 3.595,
+              "spreadPct": 8.7,
+              "values": [
+                3.52,
+                3.13,
+                3.595,
+                3.07,
+                3.285,
+                3.05,
+                3.055
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 0.23,
+              "mean": 0.216,
+              "p95": 0.24,
+              "min": 0.16,
+              "max": 0.24,
+              "spreadPct": 17.4,
+              "values": [
+                0.23,
+                0.23,
+                0.24,
+                0.2,
+                0.235,
+                0.16,
+                0.215
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 1.583,
+              "mean": 1.583,
+              "p95": 1.583,
+              "min": 1.583,
+              "max": 1.583,
+              "spreadPct": 0,
+              "values": [
+                1.583,
+                1.583,
+                1.583,
+                1.583,
+                1.583,
+                1.583,
+                1.583
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 2.9
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 3.79,
+              "mean": 3.82,
+              "p95": 4.155,
+              "min": 3.53,
+              "max": 4.155,
+              "spreadPct": 8.2,
+              "values": [
+                4.11,
+                3.79,
+                3.66,
+                3.53,
+                4.155,
+                3.705,
+                3.79
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 3.35,
+              "mean": 3.384,
+              "p95": 3.715,
+              "min": 3.085,
+              "max": 3.715,
+              "spreadPct": 9.4,
+              "values": [
+                3.675,
+                3.38,
+                3.205,
+                3.085,
+                3.715,
+                3.275,
+                3.35
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 4.068,
+              "mean": 4.067,
+              "p95": 4.07,
+              "min": 4.062,
+              "max": 4.07,
+              "spreadPct": 0.1,
+              "values": [
+                4.062,
+                4.068,
+                4.068,
+                4.068,
+                4.07,
+                4.067,
+                4.068
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 0.44
+          }
+        }
+      ]
+    },
+    {
+      "name": "line-1m-static",
+      "title": "1M point line, initial render",
+      "group": "Setup",
+      "primary": "readyMs",
+      "metricIds": [
+        "readyMs",
+        "constructMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 1000000,
+        "visible": 1000000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 9.93,
+              "mean": 10.546,
+              "p95": 15.27,
+              "min": 9.43,
+              "max": 15.27,
+              "spreadPct": 29.4,
+              "values": [
+                10.095,
+                9.93,
+                15.27,
+                9.945,
+                9.505,
+                9.65,
+                9.43
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 2.88,
+              "mean": 2.926,
+              "p95": 3.19,
+              "min": 2.83,
+              "max": 3.19,
+              "spreadPct": 6.2,
+              "values": [
+                3.01,
+                3.19,
+                2.85,
+                2.885,
+                2.84,
+                2.88,
+                2.83
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 12.65,
+              "mean": 12.65,
+              "p95": 12.65,
+              "min": 12.649,
+              "max": 12.65,
+              "spreadPct": 0,
+              "values": [
+                12.65,
+                12.65,
+                12.649,
+                12.65,
+                12.65,
+                12.65,
+                12.65
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 6.77
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 8.115,
+              "mean": 9.093,
+              "p95": 15.295,
+              "min": 7.67,
+              "max": 15.295,
+              "spreadPct": 47,
+              "values": [
+                8.62,
+                8.065,
+                8.18,
+                15.295,
+                8.115,
+                7.705,
+                7.67
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 1.34,
+              "mean": 1.37,
+              "p95": 1.84,
+              "min": 1.15,
+              "max": 1.84,
+              "spreadPct": 25.7,
+              "values": [
+                1.34,
+                1.155,
+                1.42,
+                1.84,
+                1.415,
+                1.15,
+                1.27
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 12.406,
+              "mean": 12.406,
+              "p95": 12.407,
+              "min": 12.405,
+              "max": 12.407,
+              "spreadPct": 0,
+              "values": [
+                12.406,
+                12.407,
+                12.406,
+                12.405,
+                12.407,
+                12.406,
+                12.406
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 6.76
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 10.905,
+              "mean": 10.814,
+              "p95": 11.185,
+              "min": 10.295,
+              "max": 11.185,
+              "spreadPct": 4.1,
+              "values": [
+                11.185,
+                10.44,
+                10.73,
+                10.985,
+                10.905,
+                11.155,
+                10.295
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 0.26,
+              "mean": 0.247,
+              "p95": 0.285,
+              "min": 0.22,
+              "max": 0.285,
+              "spreadPct": 12.5,
+              "values": [
+                0.26,
+                0.26,
+                0.22,
+                0.285,
+                0.265,
+                0.22,
+                0.22
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 15.316,
+              "mean": 15.316,
+              "p95": 15.317,
+              "min": 15.316,
+              "max": 15.317,
+              "spreadPct": 0,
+              "values": [
+                15.316,
+                15.316,
+                15.316,
+                15.316,
+                15.317,
+                15.316,
+                15.316
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 10.64
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 15.69,
+              "mean": 15.732,
+              "p95": 16.545,
+              "min": 15.04,
+              "max": 16.545,
+              "spreadPct": 4.8,
+              "values": [
+                16.545,
+                16.11,
+                15.69,
+                16.43,
+                15.175,
+                15.135,
+                15.04
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 15.15,
+              "mean": 15.121,
+              "p95": 15.965,
+              "min": 14.22,
+              "max": 15.965,
+              "spreadPct": 5.8,
+              "values": [
+                15.965,
+                15.525,
+                15.15,
+                15.845,
+                14.58,
+                14.565,
+                14.22
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 35.011,
+              "mean": 35.01,
+              "p95": 35.011,
+              "min": 35.006,
+              "max": 35.011,
+              "spreadPct": 0,
+              "values": [
+                35.011,
+                35.011,
+                35.011,
+                35.011,
+                35.011,
+                35.006,
+                35.011
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 0.585
+          }
+        }
+      ]
+    },
+    {
+      "name": "cold-first-chart",
+      "title": "100k point line, first chart on a cold page (no prewarm, no warmup run)",
+      "group": "Setup",
+      "primary": "readyMs",
+      "metricIds": [
+        "readyMs",
+        "constructMs"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 100000,
+        "visible": 100000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 16.285,
+              "mean": 16.255,
+              "p95": 16.475,
+              "min": 15.995,
+              "max": 16.475,
+              "spreadPct": 1.5,
+              "values": [
+                16.475,
+                16.365,
+                16.285,
+                16.03,
+                15.995,
+                16.39,
+                16.245
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 6.825,
+              "mean": 6.804,
+              "p95": 6.975,
+              "min": 6.525,
+              "max": 6.975,
+              "spreadPct": 3.3,
+              "values": [
+                6.685,
+                6.975,
+                6.905,
+                6.525,
+                6.795,
+                6.825,
+                6.915
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 9.39
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 13.815,
+              "mean": 13.831,
+              "p95": 14.765,
+              "min": 13.325,
+              "max": 14.765,
+              "spreadPct": 5.2,
+              "values": [
+                13.685,
+                13.995,
+                13.325,
+                13.41,
+                13.815,
+                13.825,
+                14.765
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 3.695,
+              "mean": 3.739,
+              "p95": 4.345,
+              "min": 3.455,
+              "max": 4.345,
+              "spreadPct": 12,
+              "values": [
+                3.455,
+                3.765,
+                3.695,
+                3.775,
+                3.5,
+                3.64,
+                4.345
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 10.23
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 10.82,
+              "mean": 10.853,
+              "p95": 11.2,
+              "min": 10.595,
+              "max": 11.2,
+              "spreadPct": 2.8,
+              "values": [
+                10.705,
+                11.015,
+                11.01,
+                10.625,
+                10.595,
+                10.82,
+                11.2
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 2.15,
+              "mean": 2.084,
+              "p95": 2.23,
+              "min": 1.855,
+              "max": 2.23,
+              "spreadPct": 8.7,
+              "values": [
+                1.91,
+                2.18,
+                2.16,
+                2.15,
+                1.855,
+                2.105,
+                2.23
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 8.795
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 19.315,
+              "mean": 19.301,
+              "p95": 19.765,
+              "min": 18.685,
+              "max": 19.765,
+              "spreadPct": 2.8,
+              "values": [
+                19.595,
+                18.97,
+                19.575,
+                18.685,
+                19.205,
+                19.315,
+                19.765
+              ]
+            },
+            "constructMs": {
+              "n": 7,
+              "median": 18.01,
+              "mean": 18,
+              "p95": 18.385,
+              "min": 17.395,
+              "max": 18.385,
+              "spreadPct": 2.7,
+              "values": [
+                18.31,
+                17.765,
+                18.215,
+                17.395,
+                17.92,
+                18.01,
+                18.385
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 1.29
+          }
+        }
+      ]
+    },
+    {
+      "name": "line-1m-pan",
+      "title": "1M point line, automated pan over 100k visible samples",
+      "group": "Line",
+      "primary": "rafFps",
+      "metricIds": [
+        "rafFps",
+        "rafP95Ms",
+        "workP50Ms",
+        "workP95Ms",
+        "readyMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 1000000,
+        "visible": 100000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 992.753,
+              "mean": 992.586,
+              "p95": 996.22,
+              "min": 986.846,
+              "max": 996.22,
+              "spreadPct": 0.5,
+              "values": [
+                996.22,
+                986.846,
+                992.753,
+                995.108,
+                993.269,
+                992.718,
+                991.185
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 1.2,
+              "mean": 1.202,
+              "p95": 1.215,
+              "min": 1.195,
+              "max": 1.215,
+              "spreadPct": 0.8,
+              "values": [
+                1.195,
+                1.215,
+                1.2,
+                1.2,
+                1.205,
+                1.205,
+                1.195
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 0.61,
+              "mean": 0.611,
+              "p95": 0.615,
+              "min": 0.61,
+              "max": 0.615,
+              "spreadPct": 0.4,
+              "values": [
+                0.61,
+                0.615,
+                0.61,
+                0.61,
+                0.61,
+                0.615,
+                0.61
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 0.76,
+              "mean": 0.761,
+              "p95": 0.765,
+              "min": 0.76,
+              "max": 0.765,
+              "spreadPct": 0.3,
+              "values": [
+                0.76,
+                0.765,
+                0.76,
+                0.76,
+                0.76,
+                0.765,
+                0.76
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 9.78,
+              "mean": 10.589,
+              "p95": 15.29,
+              "min": 9.48,
+              "max": 15.29,
+              "spreadPct": 29.7,
+              "values": [
+                9.78,
+                15.29,
+                10.16,
+                9.78,
+                9.605,
+                9.48,
+                10.025
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 12.646,
+              "mean": 12.645,
+              "p95": 12.646,
+              "min": 12.644,
+              "max": 12.646,
+              "spreadPct": 0,
+              "values": [
+                12.644,
+                12.645,
+                12.646,
+                12.646,
+                12.646,
+                12.645,
+                12.646
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 6.79,
+            "frames": 2978,
+            "appended": 0,
+            "internalFrameP50Ms": 0.6,
+            "pointsRenderedP50": 24006,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 621.876,
+              "mean": 622.807,
+              "p95": 629.898,
+              "min": 618.125,
+              "max": 629.898,
+              "spreadPct": 0.9,
+              "values": [
+                618.125,
+                618.267,
+                619.17,
+                626.307,
+                629.898,
+                626.008,
+                621.876
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 1.915,
+              "mean": 1.914,
+              "p95": 1.925,
+              "min": 1.895,
+              "max": 1.925,
+              "spreadPct": 0.8,
+              "values": [
+                1.925,
+                1.91,
+                1.92,
+                1.905,
+                1.895,
+                1.915,
+                1.925
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.075,
+              "mean": 1.071,
+              "p95": 1.09,
+              "min": 1.05,
+              "max": 1.09,
+              "spreadPct": 1.9,
+              "values": [
+                1.08,
+                1.09,
+                1.085,
+                1.065,
+                1.05,
+                1.055,
+                1.075
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 1.335,
+              "mean": 1.339,
+              "p95": 1.355,
+              "min": 1.325,
+              "max": 1.355,
+              "spreadPct": 1.1,
+              "values": [
+                1.355,
+                1.33,
+                1.35,
+                1.33,
+                1.325,
+                1.335,
+                1.345
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 8.035,
+              "mean": 7.909,
+              "p95": 8.415,
+              "min": 7.55,
+              "max": 8.415,
+              "spreadPct": 5.4,
+              "values": [
+                8.07,
+                8.415,
+                8.035,
+                7.55,
+                7.575,
+                7.66,
+                8.055
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 12.402,
+              "mean": 12.402,
+              "p95": 12.403,
+              "min": 12.402,
+              "max": 12.403,
+              "spreadPct": 0,
+              "values": [
+                12.402,
+                12.402,
+                12.402,
+                12.403,
+                12.402,
+                12.402,
+                12.402
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 6.78,
+            "frames": 1865,
+            "appended": 0,
+            "internalFrameP50Ms": 1.07,
+            "pointsRenderedP50": 24006,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 679.805,
+              "mean": 678.437,
+              "p95": 687.833,
+              "min": 663.318,
+              "max": 687.833,
+              "spreadPct": 1.8,
+              "values": [
+                663.318,
+                681.984,
+                686.869,
+                679.805,
+                672.229,
+                687.833,
+                677.022
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 1.815,
+              "mean": 1.812,
+              "p95": 1.855,
+              "min": 1.78,
+              "max": 1.855,
+              "spreadPct": 2.1,
+              "values": [
+                1.855,
+                1.815,
+                1.785,
+                1.815,
+                1.805,
+                1.78,
+                1.83
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.25,
+              "mean": 1.253,
+              "p95": 1.285,
+              "min": 1.235,
+              "max": 1.285,
+              "spreadPct": 2,
+              "values": [
+                1.285,
+                1.245,
+                1.235,
+                1.25,
+                1.27,
+                1.235,
+                1.25
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 1.58,
+              "mean": 1.584,
+              "p95": 1.625,
+              "min": 1.555,
+              "max": 1.625,
+              "spreadPct": 2.2,
+              "values": [
+                1.625,
+                1.59,
+                1.56,
+                1.58,
+                1.58,
+                1.555,
+                1.6
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 3.14,
+              "mean": 3.171,
+              "p95": 3.51,
+              "min": 2.865,
+              "max": 3.51,
+              "spreadPct": 10.3,
+              "values": [
+                3.105,
+                3.14,
+                3.375,
+                3.02,
+                2.865,
+                3.18,
+                3.51
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 15.316,
+              "mean": 15.316,
+              "p95": 15.317,
+              "min": 15.316,
+              "max": 15.317,
+              "spreadPct": 0,
+              "values": [
+                15.317,
+                15.316,
+                15.316,
+                15.316,
+                15.316,
+                15.316,
+                15.316
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 2.885,
+            "frames": 2040,
+            "appended": 0
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 513.525,
+              "mean": 513.698,
+              "p95": 519.185,
+              "min": 508.445,
+              "max": 519.185,
+              "spreadPct": 1,
+              "values": [
+                509.513,
+                512.115,
+                519.185,
+                517.15,
+                513.525,
+                515.952,
+                508.445
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 2.405,
+              "mean": 2.414,
+              "p95": 2.455,
+              "min": 2.395,
+              "max": 2.455,
+              "spreadPct": 1.2,
+              "values": [
+                2.41,
+                2.4,
+                2.405,
+                2.395,
+                2.43,
+                2.405,
+                2.455
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.74,
+              "mean": 1.739,
+              "p95": 1.76,
+              "min": 1.72,
+              "max": 1.76,
+              "spreadPct": 1.1,
+              "values": [
+                1.76,
+                1.745,
+                1.72,
+                1.735,
+                1.74,
+                1.725,
+                1.745
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 2.185,
+              "mean": 2.194,
+              "p95": 2.245,
+              "min": 2.17,
+              "max": 2.245,
+              "spreadPct": 1.7,
+              "values": [
+                2.185,
+                2.185,
+                2.17,
+                2.17,
+                2.21,
+                2.195,
+                2.245
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 6.2,
+              "mean": 6.476,
+              "p95": 7.465,
+              "min": 5.61,
+              "max": 7.465,
+              "spreadPct": 15,
+              "values": [
+                5.61,
+                6.2,
+                6.075,
+                6.055,
+                7.465,
+                6.625,
+                7.3
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 34.967,
+              "mean": 34.965,
+              "p95": 34.968,
+              "min": 34.961,
+              "max": 34.968,
+              "spreadPct": 0,
+              "values": [
+                34.961,
+                34.967,
+                34.967,
+                34.967,
+                34.961,
+                34.967,
+                34.968
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 0.565,
+            "frames": 1541,
+            "appended": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "line-1m-stream",
+      "title": "1M point line, live append while following latest 100k samples",
+      "group": "Line",
+      "primary": "rafFps",
+      "metricIds": [
+        "rafFps",
+        "rafP95Ms",
+        "workP50Ms",
+        "workP95Ms",
+        "readyMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 1000000,
+        "visible": 100000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 1000.415,
+              "mean": 996.189,
+              "p95": 1005.543,
+              "min": 975.059,
+              "max": 1005.543,
+              "spreadPct": 1.5,
+              "values": [
+                1003.025,
+                999.168,
+                1002.729,
+                1000.415,
+                1005.543,
+                975.059,
+                987.386
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 1.18,
+              "mean": 1.189,
+              "p95": 1.235,
+              "min": 1.175,
+              "max": 1.235,
+              "spreadPct": 2.5,
+              "values": [
+                1.175,
+                1.175,
+                1.18,
+                1.175,
+                1.18,
+                1.235,
+                1.205
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 0.605,
+              "mean": 0.609,
+              "p95": 0.625,
+              "min": 0.6,
+              "max": 0.625,
+              "spreadPct": 2.1,
+              "values": [
+                0.6,
+                0.605,
+                0.605,
+                0.605,
+                0.605,
+                0.625,
+                0.615
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 0.755,
+              "mean": 0.756,
+              "p95": 0.775,
+              "min": 0.745,
+              "max": 0.775,
+              "spreadPct": 2,
+              "values": [
+                0.75,
+                0.75,
+                0.745,
+                0.755,
+                0.76,
+                0.775,
+                0.755
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 10.48,
+              "mean": 11.94,
+              "p95": 17.02,
+              "min": 9.905,
+              "max": 17.02,
+              "spreadPct": 33.9,
+              "values": [
+                9.905,
+                10.13,
+                10.565,
+                17.02,
+                10.48,
+                10.06,
+                15.42
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 14.838,
+              "mean": 14.838,
+              "p95": 14.839,
+              "min": 14.837,
+              "max": 14.839,
+              "spreadPct": 0,
+              "values": [
+                14.838,
+                14.839,
+                14.838,
+                14.837,
+                14.837,
+                14.839,
+                14.838
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 2.84,
+            "frames": 3001,
+            "appended": 184285,
+            "internalFrameP50Ms": 0.59,
+            "pointsRenderedP50": 24006,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 622.701,
+              "mean": 619.671,
+              "p95": 625.758,
+              "min": 606.498,
+              "max": 625.758,
+              "spreadPct": 1.5,
+              "values": [
+                625.758,
+                616.739,
+                624.09,
+                622.701,
+                623.876,
+                618.037,
+                606.498
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 1.905,
+              "mean": 1.911,
+              "p95": 1.97,
+              "min": 1.885,
+              "max": 1.97,
+              "spreadPct": 2.2,
+              "values": [
+                1.895,
+                1.92,
+                1.905,
+                1.9,
+                1.885,
+                1.905,
+                1.97
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.075,
+              "mean": 1.076,
+              "p95": 1.105,
+              "min": 1.06,
+              "max": 1.105,
+              "spreadPct": 2.1,
+              "values": [
+                1.06,
+                1.065,
+                1.07,
+                1.075,
+                1.075,
+                1.085,
+                1.105
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 1.345,
+              "mean": 1.339,
+              "p95": 1.36,
+              "min": 1.315,
+              "max": 1.36,
+              "spreadPct": 1.7,
+              "values": [
+                1.315,
+                1.345,
+                1.345,
+                1.345,
+                1.325,
+                1.34,
+                1.36
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 8.61,
+              "mean": 8.482,
+              "p95": 8.715,
+              "min": 8.065,
+              "max": 8.715,
+              "spreadPct": 3.8,
+              "values": [
+                8.715,
+                8.625,
+                8.26,
+                8.065,
+                8.68,
+                8.42,
+                8.61
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 14.594,
+              "mean": 14.594,
+              "p95": 14.594,
+              "min": 14.594,
+              "max": 14.594,
+              "spreadPct": 0,
+              "values": [
+                14.594,
+                14.594,
+                14.594,
+                14.594,
+                14.594,
+                14.594,
+                14.594
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 2.755,
+            "frames": 1868,
+            "appended": 184262,
+            "internalFrameP50Ms": 1.06,
+            "pointsRenderedP50": 24006,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 690.734,
+              "mean": 689.957,
+              "p95": 695.257,
+              "min": 680.532,
+              "max": 695.257,
+              "spreadPct": 1.1,
+              "values": [
+                688.168,
+                690.734,
+                693.424,
+                695.257,
+                689.991,
+                680.532,
+                691.592
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 1.815,
+              "mean": 1.83,
+              "p95": 1.9,
+              "min": 1.8,
+              "max": 1.9,
+              "spreadPct": 2.8,
+              "values": [
+                1.835,
+                1.815,
+                1.805,
+                1.8,
+                1.8,
+                1.9,
+                1.855
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.21,
+              "mean": 1.209,
+              "p95": 1.22,
+              "min": 1.195,
+              "max": 1.22,
+              "spreadPct": 1,
+              "values": [
+                1.215,
+                1.215,
+                1.195,
+                1.205,
+                1.22,
+                1.21,
+                1.205
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 1.595,
+              "mean": 1.602,
+              "p95": 1.665,
+              "min": 1.565,
+              "max": 1.665,
+              "spreadPct": 3.1,
+              "values": [
+                1.615,
+                1.595,
+                1.58,
+                1.585,
+                1.565,
+                1.665,
+                1.61
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 2.905,
+              "mean": 2.947,
+              "p95": 3.21,
+              "min": 2.825,
+              "max": 3.21,
+              "spreadPct": 6.6,
+              "values": [
+                2.87,
+                3.21,
+                2.865,
+                2.825,
+                2.905,
+                2.96,
+                2.995
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 15.503,
+              "mean": 15.503,
+              "p95": 15.503,
+              "min": 15.503,
+              "max": 15.503,
+              "spreadPct": 0,
+              "values": [
+                15.503,
+                15.503,
+                15.503,
+                15.503,
+                15.503,
+                15.503,
+                15.503
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 2.71,
+            "frames": 2073,
+            "appended": 184281
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 496.706,
+              "mean": 496.241,
+              "p95": 501.696,
+              "min": 486.078,
+              "max": 501.696,
+              "spreadPct": 1.6,
+              "values": [
+                495.834,
+                486.078,
+                496.935,
+                501.696,
+                500.595,
+                496.706,
+                495.843
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 2.485,
+              "mean": 2.486,
+              "p95": 2.55,
+              "min": 2.45,
+              "max": 2.55,
+              "spreadPct": 2,
+              "values": [
+                2.465,
+                2.55,
+                2.485,
+                2.45,
+                2.455,
+                2.505,
+                2.49
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.795,
+              "mean": 1.798,
+              "p95": 1.83,
+              "min": 1.78,
+              "max": 1.83,
+              "spreadPct": 1.4,
+              "values": [
+                1.8,
+                1.83,
+                1.795,
+                1.78,
+                1.795,
+                1.795,
+                1.79
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 2.245,
+              "mean": 2.255,
+              "p95": 2.325,
+              "min": 2.215,
+              "max": 2.325,
+              "spreadPct": 2.4,
+              "values": [
+                2.24,
+                2.325,
+                2.245,
+                2.215,
+                2.23,
+                2.26,
+                2.27
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 6.09,
+              "mean": 5.707,
+              "p95": 6.395,
+              "min": 4.005,
+              "max": 6.395,
+              "spreadPct": 19.6,
+              "values": [
+                6.145,
+                5.295,
+                6.09,
+                4.005,
+                6.395,
+                6.15,
+                5.87
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 38.965,
+              "mean": 38.965,
+              "p95": 38.97,
+              "min": 38.962,
+              "max": 38.97,
+              "spreadPct": 0,
+              "values": [
+                38.97,
+                38.962,
+                38.965,
+                38.965,
+                38.965,
+                38.965,
+                38.965
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 1.39,
+            "frames": 1491,
+            "appended": 184270
+          }
+        }
+      ]
+    },
+    {
+      "name": "line-10m-accelerated-pan",
+      "title": "10M point line, pan over 5M visible samples (BlazePlot uses its accelerated dataset path)",
+      "group": "Line",
+      "primary": "rafFps",
+      "metricIds": [
+        "rafFps",
+        "rafP95Ms",
+        "workP50Ms",
+        "workP95Ms",
+        "readyMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 10000000,
+        "visible": 5000000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 1808.637,
+              "mean": 1814.815,
+              "p95": 1851.485,
+              "min": 1800.36,
+              "max": 1851.485,
+              "spreadPct": 1.4,
+              "values": [
+                1808.637,
+                1800.36,
+                1803.309,
+                1851.485,
+                1820.485,
+                1813.131,
+                1806.3
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 0.705,
+              "mean": 0.703,
+              "p95": 0.715,
+              "min": 0.685,
+              "max": 0.715,
+              "spreadPct": 2.1,
+              "values": [
+                0.7,
+                0.715,
+                0.71,
+                0.685,
+                0.7,
+                0.705,
+                0.705
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 0.165,
+              "mean": 0.164,
+              "p95": 0.165,
+              "min": 0.16,
+              "max": 0.165,
+              "spreadPct": 1.5,
+              "values": [
+                0.165,
+                0.165,
+                0.16,
+                0.16,
+                0.165,
+                0.165,
+                0.165
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 0.26,
+              "mean": 0.26,
+              "p95": 0.265,
+              "min": 0.255,
+              "max": 0.265,
+              "spreadPct": 1.9,
+              "values": [
+                0.26,
+                0.265,
+                0.26,
+                0.255,
+                0.26,
+                0.26,
+                0.26
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 5.33,
+              "mean": 4.959,
+              "p95": 5.65,
+              "min": 4.15,
+              "max": 5.65,
+              "spreadPct": 14.1,
+              "values": [
+                5.65,
+                5.59,
+                4.15,
+                4.34,
+                5.41,
+                4.24,
+                5.33
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 0.682,
+              "mean": 0.682,
+              "p95": 0.682,
+              "min": 0.682,
+              "max": 0.682,
+              "spreadPct": 0,
+              "values": [
+                0.682,
+                0.682,
+                0.682,
+                0.682,
+                0.682,
+                0.682,
+                0.682
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 3.065,
+            "frames": 5426,
+            "appended": 0,
+            "internalFrameP50Ms": 0.155,
+            "pointsRenderedP50": 24576,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 904.193,
+              "mean": 901.387,
+              "p95": 927.042,
+              "min": 871.53,
+              "max": 927.042,
+              "spreadPct": 3.1,
+              "values": [
+                871.53,
+                903.769,
+                904.379,
+                920.257,
+                927.042,
+                904.193,
+                878.538
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 1.435,
+              "mean": 1.445,
+              "p95": 1.5,
+              "min": 1.4,
+              "max": 1.5,
+              "spreadPct": 3.5,
+              "values": [
+                1.5,
+                1.435,
+                1.445,
+                1.42,
+                1.4,
+                1.435,
+                1.48
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 0.565,
+              "mean": 0.567,
+              "p95": 0.59,
+              "min": 0.545,
+              "max": 0.59,
+              "spreadPct": 4,
+              "values": [
+                0.59,
+                0.56,
+                0.565,
+                0.545,
+                0.55,
+                0.57,
+                0.59
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 0.845,
+              "mean": 0.851,
+              "p95": 0.88,
+              "min": 0.825,
+              "max": 0.88,
+              "spreadPct": 3.3,
+              "values": [
+                0.87,
+                0.845,
+                0.85,
+                0.84,
+                0.825,
+                0.845,
+                0.88
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 2.755,
+              "mean": 2.631,
+              "p95": 2.93,
+              "min": 2.06,
+              "max": 2.93,
+              "spreadPct": 15.8,
+              "values": [
+                2.485,
+                2.86,
+                2.43,
+                2.06,
+                2.9,
+                2.93,
+                2.755
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 0.438,
+              "mean": 0.438,
+              "p95": 0.439,
+              "min": 0.438,
+              "max": 0.439,
+              "spreadPct": 0.1,
+              "values": [
+                0.438,
+                0.439,
+                0.438,
+                0.438,
+                0.438,
+                0.438,
+                0.438
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 2.255,
+            "frames": 2712,
+            "appended": 0,
+            "internalFrameP50Ms": 0.555,
+            "pointsRenderedP50": 24576,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 26.537,
+              "mean": 26.787,
+              "p95": 28.385,
+              "min": 25.687,
+              "max": 28.385,
+              "spreadPct": 5.1,
+              "values": [
+                25.918,
+                26.537,
+                26.017,
+                28.385,
+                28.371,
+                25.687,
+                26.594
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 50.05,
+              "mean": 49.611,
+              "p95": 50.885,
+              "min": 47.575,
+              "max": 50.885,
+              "spreadPct": 3.3,
+              "values": [
+                50.065,
+                47.575,
+                50.885,
+                50.035,
+                50.59,
+                50.05,
+                48.08
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 37.95,
+              "mean": 37.085,
+              "p95": 39.375,
+              "min": 33.845,
+              "max": 39.375,
+              "spreadPct": 7.3,
+              "values": [
+                38.43,
+                37.95,
+                36.695,
+                33.845,
+                34.08,
+                39.375,
+                39.22
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 45.64,
+              "mean": 46.184,
+              "p95": 51.12,
+              "min": 42.2,
+              "max": 51.12,
+              "spreadPct": 9.8,
+              "values": [
+                49.02,
+                45.335,
+                51.12,
+                42.2,
+                43.175,
+                46.795,
+                45.64
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 32,
+              "mean": 32.755,
+              "p95": 37.435,
+              "min": 31.045,
+              "max": 37.435,
+              "spreadPct": 10,
+              "values": [
+                33.765,
+                37.435,
+                32.21,
+                31.045,
+                31.765,
+                32,
+                31.065
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 152.647,
+              "mean": 152.647,
+              "p95": 152.647,
+              "min": 152.647,
+              "max": 152.647,
+              "spreadPct": 0,
+              "values": [
+                152.647,
+                152.647,
+                152.647,
+                152.647,
+                152.647,
+                152.647,
+                152.647
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 31.77,
+            "frames": 80,
+            "appended": 0
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 23.914,
+              "mean": 24.169,
+              "p95": 25.628,
+              "min": 23.424,
+              "max": 25.628,
+              "spreadPct": 4.6,
+              "values": [
+                23.783,
+                24.012,
+                23.424,
+                25.628,
+                24.8,
+                23.62,
+                23.914
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 50.05,
+              "mean": 49.713,
+              "p95": 50.47,
+              "min": 48.05,
+              "max": 50.47,
+              "spreadPct": 2.4,
+              "values": [
+                49.07,
+                50.05,
+                50.095,
+                48.05,
+                50.355,
+                50.47,
+                49.9
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 41.93,
+              "mean": 41.647,
+              "p95": 43.19,
+              "min": 39.385,
+              "max": 43.19,
+              "spreadPct": 4.5,
+              "values": [
+                42.015,
+                41.91,
+                43.19,
+                39.385,
+                40.26,
+                42.84,
+                41.93
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 48.055,
+              "mean": 47.666,
+              "p95": 48.565,
+              "min": 44.835,
+              "max": 48.565,
+              "spreadPct": 3.9,
+              "values": [
+                47.82,
+                47.595,
+                48.5,
+                44.835,
+                48.565,
+                48.295,
+                48.055
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 43.545,
+              "mean": 43.672,
+              "p95": 45.315,
+              "min": 42.925,
+              "max": 45.315,
+              "spreadPct": 2.7,
+              "values": [
+                45.315,
+                43.74,
+                42.97,
+                43.365,
+                42.925,
+                43.845,
+                43.545
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 344.021,
+              "mean": 344.018,
+              "p95": 344.021,
+              "min": 344.01,
+              "max": 344.021,
+              "spreadPct": 0,
+              "values": [
+                344.021,
+                344.021,
+                344.021,
+                344.01,
+                344.021,
+                344.016,
+                344.016
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 0.315,
+            "frames": 72,
+            "appended": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "multi-10x100k-pan",
+      "title": "10 line series of 100k samples, pan over 50k visible samples",
+      "group": "Series types",
+      "primary": "rafFps",
+      "metricIds": [
+        "rafFps",
+        "rafP95Ms",
+        "workP50Ms",
+        "workP95Ms",
+        "readyMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 100000,
+        "visible": 50000,
+        "seriesCount": 10,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 235.651,
+              "mean": 234.766,
+              "p95": 236.693,
+              "min": 231.913,
+              "max": 236.693,
+              "spreadPct": 1,
+              "values": [
+                235.904,
+                231.913,
+                233.487,
+                235.651,
+                236.693,
+                235.904,
+                233.813
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 4.795,
+              "mean": 4.795,
+              "p95": 4.92,
+              "min": 4.675,
+              "max": 4.92,
+              "spreadPct": 2.6,
+              "values": [
+                4.775,
+                4.92,
+                4.845,
+                4.71,
+                4.675,
+                4.795,
+                4.845
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 3.76,
+              "mean": 3.766,
+              "p95": 3.79,
+              "min": 3.755,
+              "max": 3.79,
+              "spreadPct": 0.5,
+              "values": [
+                3.76,
+                3.76,
+                3.79,
+                3.765,
+                3.76,
+                3.755,
+                3.775
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 4.31,
+              "mean": 4.301,
+              "p95": 4.395,
+              "min": 4.205,
+              "max": 4.395,
+              "spreadPct": 2.2,
+              "values": [
+                4.28,
+                4.395,
+                4.35,
+                4.23,
+                4.205,
+                4.31,
+                4.335
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 13.545,
+              "mean": 13.663,
+              "p95": 14.25,
+              "min": 13.31,
+              "max": 14.25,
+              "spreadPct": 3.5,
+              "values": [
+                14.09,
+                13.31,
+                13.755,
+                13.37,
+                13.545,
+                13.32,
+                14.25
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 7.712,
+              "mean": 7.711,
+              "p95": 7.714,
+              "min": 7.705,
+              "max": 7.714,
+              "spreadPct": 0.1,
+              "values": [
+                7.712,
+                7.714,
+                7.71,
+                7.71,
+                7.712,
+                7.712,
+                7.705
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 10.64,
+            "frames": 707,
+            "appended": 0,
+            "internalFrameP50Ms": 3.755,
+            "pointsRenderedP50": 230820,
+            "drawCallsP50": 10
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 97.238,
+              "mean": 97.009,
+              "p95": 98.373,
+              "min": 94.126,
+              "max": 98.373,
+              "spreadPct": 2.2,
+              "values": [
+                94.126,
+                97.615,
+                97.149,
+                97.238,
+                96.888,
+                98.373,
+                97.671
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 12.135,
+              "mean": 12.134,
+              "p95": 12.69,
+              "min": 11.695,
+              "max": 12.69,
+              "spreadPct": 4.1,
+              "values": [
+                12.69,
+                12.135,
+                11.905,
+                11.695,
+                12.3,
+                11.97,
+                12.24
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 8.02,
+              "mean": 8.044,
+              "p95": 8.145,
+              "min": 7.99,
+              "max": 8.145,
+              "spreadPct": 1,
+              "values": [
+                8.145,
+                8.095,
+                8.015,
+                8.02,
+                8.025,
+                8.02,
+                7.99
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 9.95,
+              "mean": 9.819,
+              "p95": 10.145,
+              "min": 9.45,
+              "max": 10.145,
+              "spreadPct": 3.5,
+              "values": [
+                10.145,
+                9.955,
+                9.52,
+                9.45,
+                9.95,
+                9.675,
+                10.035
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 17.36,
+              "mean": 17.549,
+              "p95": 18.96,
+              "min": 16.905,
+              "max": 18.96,
+              "spreadPct": 5.9,
+              "values": [
+                17.885,
+                16.905,
+                18.96,
+                17.41,
+                17.36,
+                17.065,
+                17.26
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 5.718,
+              "mean": 5.714,
+              "p95": 5.72,
+              "min": 5.707,
+              "max": 5.72,
+              "spreadPct": 0.1,
+              "values": [
+                5.718,
+                5.72,
+                5.709,
+                5.719,
+                5.707,
+                5.709,
+                5.718
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 16.31,
+            "frames": 291,
+            "appended": 0,
+            "internalFrameP50Ms": 8.01,
+            "pointsRenderedP50": 230820,
+            "drawCallsP50": 10
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 136.082,
+              "mean": 136.395,
+              "p95": 139.534,
+              "min": 134.161,
+              "max": 139.534,
+              "spreadPct": 2,
+              "values": [
+                134.161,
+                135.003,
+                136.318,
+                137.998,
+                136.082,
+                135.67,
+                139.534
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 8.865,
+              "mean": 8.8,
+              "p95": 9.23,
+              "min": 8.205,
+              "max": 9.23,
+              "spreadPct": 5.8,
+              "values": [
+                8.96,
+                9.23,
+                8.81,
+                8.66,
+                8.87,
+                8.865,
+                8.205
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 6.875,
+              "mean": 6.861,
+              "p95": 6.94,
+              "min": 6.79,
+              "max": 6.94,
+              "spreadPct": 1.1,
+              "values": [
+                6.94,
+                6.83,
+                6.875,
+                6.81,
+                6.895,
+                6.89,
+                6.79
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 8.545,
+              "mean": 8.486,
+              "p95": 8.895,
+              "min": 7.93,
+              "max": 8.895,
+              "spreadPct": 5.6,
+              "values": [
+                8.61,
+                8.895,
+                8.495,
+                8.355,
+                8.545,
+                8.575,
+                7.93
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 8.145,
+              "mean": 8.251,
+              "p95": 8.74,
+              "min": 7.915,
+              "max": 8.74,
+              "spreadPct": 5.1,
+              "values": [
+                8.53,
+                8,
+                8.45,
+                7.98,
+                7.915,
+                8.74,
+                8.145
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 8.496,
+              "mean": 8.478,
+              "p95": 8.512,
+              "min": 8.338,
+              "max": 8.512,
+              "spreadPct": 1,
+              "values": [
+                8.489,
+                8.496,
+                8.506,
+                8.496,
+                8.511,
+                8.512,
+                8.338
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 7.925,
+            "frames": 409,
+            "appended": 0
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 108.249,
+              "mean": 108.404,
+              "p95": 110.226,
+              "min": 106.701,
+              "max": 110.226,
+              "spreadPct": 1.6,
+              "values": [
+                106.701,
+                108.069,
+                108.249,
+                108.633,
+                110.226,
+                109.301,
+                107.648
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 11.72,
+              "mean": 11.657,
+              "p95": 11.86,
+              "min": 11.295,
+              "max": 11.86,
+              "spreadPct": 2.4,
+              "values": [
+                11.725,
+                11.86,
+                11.68,
+                11.72,
+                11.295,
+                11.48,
+                11.84
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 8.355,
+              "mean": 8.384,
+              "p95": 8.62,
+              "min": 8.3,
+              "max": 8.62,
+              "spreadPct": 1.9,
+              "values": [
+                8.62,
+                8.395,
+                8.355,
+                8.3,
+                8.305,
+                8.365,
+                8.345
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 11.295,
+              "mean": 11.29,
+              "p95": 11.505,
+              "min": 11.075,
+              "max": 11.505,
+              "spreadPct": 1.9,
+              "values": [
+                11.295,
+                11.505,
+                11.37,
+                11.26,
+                11.075,
+                11.08,
+                11.445
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 12.61,
+              "mean": 12.576,
+              "p95": 12.965,
+              "min": 12.1,
+              "max": 12.965,
+              "spreadPct": 3.4,
+              "values": [
+                12.61,
+                12.61,
+                12.33,
+                12.59,
+                12.965,
+                12.83,
+                12.1
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 38.887,
+              "mean": 38.889,
+              "p95": 38.893,
+              "min": 38.887,
+              "max": 38.893,
+              "spreadPct": 0,
+              "values": [
+                38.887,
+                38.887,
+                38.893,
+                38.887,
+                38.893,
+                38.887,
+                38.887
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 0.58,
+            "frames": 326,
+            "appended": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "multi-100x20k-pan",
+      "title": "100 line series of 20k samples, pan over 10k visible samples",
+      "group": "Series types",
+      "primary": "rafFps",
+      "metricIds": [
+        "rafFps",
+        "rafP95Ms",
+        "workP50Ms",
+        "workP95Ms",
+        "readyMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 20000,
+        "visible": 10000,
+        "seriesCount": 100,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 134.111,
+              "mean": 132.895,
+              "p95": 140.035,
+              "min": 126.089,
+              "max": 140.035,
+              "spreadPct": 5.2,
+              "values": [
+                135.787,
+                134.111,
+                127.9,
+                134.466,
+                131.874,
+                140.035,
+                126.089
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 10.7,
+              "mean": 10.536,
+              "p95": 11.18,
+              "min": 9.31,
+              "max": 11.18,
+              "spreadPct": 8.7,
+              "values": [
+                10.605,
+                10.755,
+                11.18,
+                10.365,
+                10.835,
+                9.31,
+                10.7
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 6.59,
+              "mean": 6.626,
+              "p95": 7.09,
+              "min": 6.425,
+              "max": 7.09,
+              "spreadPct": 5,
+              "values": [
+                6.425,
+                6.52,
+                6.655,
+                6.59,
+                6.6,
+                6.5,
+                7.09
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 10.245,
+              "mean": 10.097,
+              "p95": 10.635,
+              "min": 8.885,
+              "max": 10.635,
+              "spreadPct": 8.5,
+              "values": [
+                10.245,
+                10.385,
+                10.635,
+                9.87,
+                10.505,
+                8.885,
+                10.155
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 18.52,
+              "mean": 18.52,
+              "p95": 19.09,
+              "min": 17.89,
+              "max": 19.09,
+              "spreadPct": 3.2,
+              "values": [
+                17.89,
+                18.08,
+                19.09,
+                18.43,
+                18.98,
+                18.52,
+                18.65
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 16.346,
+              "mean": 16.346,
+              "p95": 16.347,
+              "min": 16.345,
+              "max": 16.347,
+              "spreadPct": 0,
+              "values": [
+                16.347,
+                16.346,
+                16.346,
+                16.345,
+                16.346,
+                16.346,
+                16.346
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 14.385,
+            "frames": 401,
+            "appended": 0,
+            "internalFrameP50Ms": 6.575,
+            "pointsRenderedP50": 1000100,
+            "drawCallsP50": 100
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 12.111,
+              "mean": 12.554,
+              "p95": 14.837,
+              "min": 11.12,
+              "max": 14.837,
+              "spreadPct": 15.3,
+              "values": [
+                11.609,
+                11.12,
+                11.54,
+                12.111,
+                12.577,
+                14.837,
+                14.082
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 148.055,
+              "mean": 144.208,
+              "p95": 169.62,
+              "min": 112.2,
+              "max": 169.62,
+              "spreadPct": 19.4,
+              "values": [
+                153.175,
+                163.11,
+                169.62,
+                148.055,
+                146.305,
+                116.99,
+                112.2
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 20.42,
+              "mean": 20.853,
+              "p95": 23.35,
+              "min": 19.645,
+              "max": 23.35,
+              "spreadPct": 9.1,
+              "values": [
+                20.215,
+                20.42,
+                21.755,
+                23.35,
+                19.9,
+                19.645,
+                20.685
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 28.74,
+              "mean": 28.554,
+              "p95": 29.83,
+              "min": 27.57,
+              "max": 29.83,
+              "spreadPct": 3.9,
+              "values": [
+                28.13,
+                29.17,
+                29.83,
+                28.74,
+                28.755,
+                27.68,
+                27.57
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 28.525,
+              "mean": 28.536,
+              "p95": 29.51,
+              "min": 27.115,
+              "max": 29.51,
+              "spreadPct": 4.2,
+              "values": [
+                28.09,
+                28.525,
+                27.97,
+                29.195,
+                27.115,
+                29.51,
+                29.345
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 8.356,
+              "mean": 8.355,
+              "p95": 8.357,
+              "min": 8.347,
+              "max": 8.357,
+              "spreadPct": 0.1,
+              "values": [
+                8.354,
+                8.356,
+                8.357,
+                8.356,
+                8.357,
+                8.347,
+                8.356
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 26.325,
+            "frames": 37,
+            "appended": 0,
+            "internalFrameP50Ms": 20.4,
+            "pointsRenderedP50": 1000100,
+            "drawCallsP50": 100
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 29.706,
+              "mean": 29.672,
+              "p95": 30.419,
+              "min": 28.709,
+              "max": 30.419,
+              "spreadPct": 2.9,
+              "values": [
+                30.419,
+                29.401,
+                29.706,
+                29.771,
+                29.999,
+                28.709,
+                29.698
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 49.58,
+              "mean": 48.403,
+              "p95": 51.05,
+              "min": 40.12,
+              "max": 51.05,
+              "spreadPct": 11,
+              "values": [
+                49.58,
+                40.12,
+                49.56,
+                47.605,
+                50.55,
+                50.355,
+                51.05
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 31.355,
+              "mean": 31.96,
+              "p95": 34.19,
+              "min": 30.365,
+              "max": 34.19,
+              "spreadPct": 6.1,
+              "values": [
+                30.365,
+                31.355,
+                31.205,
+                30.855,
+                32.645,
+                34.19,
+                33.105
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 38.86,
+              "mean": 38.524,
+              "p95": 39.195,
+              "min": 37.1,
+              "max": 39.195,
+              "spreadPct": 2.7,
+              "values": [
+                38.615,
+                39.195,
+                38.86,
+                39.185,
+                37.705,
+                39.01,
+                37.1
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 36.355,
+              "mean": 36.327,
+              "p95": 39.015,
+              "min": 33.575,
+              "max": 39.015,
+              "spreadPct": 7.5,
+              "values": [
+                36.165,
+                38.245,
+                37.09,
+                36.355,
+                39.015,
+                33.575,
+                33.845
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 15.608,
+              "mean": 15.608,
+              "p95": 15.616,
+              "min": 15.603,
+              "max": 15.616,
+              "spreadPct": 0,
+              "values": [
+                15.609,
+                15.603,
+                15.606,
+                15.604,
+                15.608,
+                15.611,
+                15.616
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 35.68,
+            "frames": 90,
+            "appended": 0
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 17.921,
+              "mean": 17.875,
+              "p95": 18.232,
+              "min": 17.331,
+              "max": 18.232,
+              "spreadPct": 2.5,
+              "values": [
+                17.615,
+                17.856,
+                17.921,
+                18.054,
+                17.331,
+                18.232,
+                18.114
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 75.175,
+              "mean": 73.861,
+              "p95": 81.85,
+              "min": 67.48,
+              "max": 81.85,
+              "spreadPct": 9.6,
+              "values": [
+                68.12,
+                81.85,
+                77.98,
+                78.625,
+                75.175,
+                67.48,
+                67.8
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 53.22,
+              "mean": 53.498,
+              "p95": 56.27,
+              "min": 51.125,
+              "max": 56.27,
+              "spreadPct": 4.8,
+              "values": [
+                55.125,
+                51.125,
+                52.485,
+                53.78,
+                56.27,
+                52.48,
+                53.22
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 68.735,
+              "mean": 68.064,
+              "p95": 71.1,
+              "min": 64.055,
+              "max": 71.1,
+              "spreadPct": 5.1,
+              "values": [
+                67.075,
+                70.96,
+                71.1,
+                68.735,
+                69.55,
+                64.97,
+                64.055
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 70.935,
+              "mean": 71.493,
+              "p95": 76.175,
+              "min": 67.545,
+              "max": 76.175,
+              "spreadPct": 6.1,
+              "values": [
+                70.935,
+                67.545,
+                68.69,
+                68.7,
+                74.52,
+                73.885,
+                76.175
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 107.391,
+              "mean": 107.391,
+              "p95": 107.394,
+              "min": 107.389,
+              "max": 107.394,
+              "spreadPct": 0,
+              "values": [
+                107.391,
+                107.391,
+                107.391,
+                107.389,
+                107.392,
+                107.394,
+                107.391
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 2.8,
+            "frames": 54,
+            "appended": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "area-1m-pan",
+      "title": "1M point area (filled line), pan over 100k visible samples",
+      "group": "Series types",
+      "primary": "rafFps",
+      "metricIds": [
+        "rafFps",
+        "rafP95Ms",
+        "workP50Ms",
+        "workP95Ms",
+        "readyMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 1000000,
+        "visible": 100000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 1246.172,
+              "mean": 1247.609,
+              "p95": 1270.329,
+              "min": 1228.337,
+              "max": 1270.329,
+              "spreadPct": 1.7,
+              "values": [
+                1246.172,
+                1252.271,
+                1244.706,
+                1239.971,
+                1251.479,
+                1228.337,
+                1270.329
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 0.98,
+              "mean": 0.982,
+              "p95": 1,
+              "min": 0.96,
+              "max": 1,
+              "spreadPct": 2,
+              "values": [
+                0.99,
+                0.98,
+                0.985,
+                0.98,
+                0.98,
+                1,
+                0.96
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 0.425,
+              "mean": 0.426,
+              "p95": 0.435,
+              "min": 0.42,
+              "max": 0.435,
+              "spreadPct": 1.8,
+              "values": [
+                0.43,
+                0.425,
+                0.425,
+                0.425,
+                0.42,
+                0.435,
+                0.42
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 0.53,
+              "mean": 0.53,
+              "p95": 0.545,
+              "min": 0.52,
+              "max": 0.545,
+              "spreadPct": 2.4,
+              "values": [
+                0.53,
+                0.53,
+                0.53,
+                0.525,
+                0.53,
+                0.545,
+                0.52
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 9.605,
+              "mean": 11.016,
+              "p95": 14.935,
+              "min": 9.135,
+              "max": 14.935,
+              "spreadPct": 30.2,
+              "values": [
+                9.605,
+                9.225,
+                9.135,
+                14.925,
+                14.935,
+                9.945,
+                9.345
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 12.64,
+              "mean": 12.64,
+              "p95": 12.64,
+              "min": 12.639,
+              "max": 12.64,
+              "spreadPct": 0,
+              "values": [
+                12.64,
+                12.639,
+                12.64,
+                12.639,
+                12.639,
+                12.64,
+                12.64
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 6.54,
+            "frames": 3738,
+            "appended": 0,
+            "internalFrameP50Ms": 0.42,
+            "pointsRenderedP50": 14640,
+            "drawCallsP50": 2
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 860.616,
+              "mean": 860.898,
+              "p95": 876.811,
+              "min": 848.589,
+              "max": 876.811,
+              "spreadPct": 1.6,
+              "values": [
+                848.589,
+                855.963,
+                854.164,
+                861.309,
+                860.616,
+                868.836,
+                876.811
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 1.42,
+              "mean": 1.421,
+              "p95": 1.455,
+              "min": 1.385,
+              "max": 1.455,
+              "spreadPct": 2.5,
+              "values": [
+                1.425,
+                1.42,
+                1.455,
+                1.41,
+                1.43,
+                1.42,
+                1.385
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 0.665,
+              "mean": 0.666,
+              "p95": 0.685,
+              "min": 0.65,
+              "max": 0.685,
+              "spreadPct": 2.6,
+              "values": [
+                0.685,
+                0.675,
+                0.665,
+                0.665,
+                0.66,
+                0.66,
+                0.65
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 0.88,
+              "mean": 0.879,
+              "p95": 0.89,
+              "min": 0.865,
+              "max": 0.89,
+              "spreadPct": 1.4,
+              "values": [
+                0.885,
+                0.885,
+                0.89,
+                0.875,
+                0.875,
+                0.88,
+                0.865
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 7.075,
+              "mean": 7.101,
+              "p95": 7.515,
+              "min": 6.83,
+              "max": 7.515,
+              "spreadPct": 4.8,
+              "values": [
+                7.215,
+                6.895,
+                6.83,
+                7.285,
+                7.075,
+                6.89,
+                7.515
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 12.407,
+              "mean": 12.407,
+              "p95": 12.407,
+              "min": 12.407,
+              "max": 12.407,
+              "spreadPct": 0,
+              "values": [
+                12.407,
+                12.407,
+                12.407,
+                12.407,
+                12.407,
+                12.407,
+                12.407
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 5.94,
+            "frames": 2582,
+            "appended": 0,
+            "internalFrameP50Ms": 0.655,
+            "pointsRenderedP50": 14640,
+            "drawCallsP50": 2
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 668.813,
+              "mean": 666.662,
+              "p95": 671.309,
+              "min": 659.262,
+              "max": 671.309,
+              "spreadPct": 0.9,
+              "values": [
+                668.621,
+                659.54,
+                659.262,
+                669.532,
+                668.813,
+                669.56,
+                671.309
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 1.86,
+              "mean": 1.864,
+              "p95": 1.905,
+              "min": 1.82,
+              "max": 1.905,
+              "spreadPct": 2.3,
+              "values": [
+                1.85,
+                1.905,
+                1.88,
+                1.855,
+                1.88,
+                1.86,
+                1.82
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.27,
+              "mean": 1.271,
+              "p95": 1.285,
+              "min": 1.26,
+              "max": 1.285,
+              "spreadPct": 1,
+              "values": [
+                1.275,
+                1.275,
+                1.285,
+                1.27,
+                1.265,
+                1.26,
+                1.27
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 1.615,
+              "mean": 1.623,
+              "p95": 1.66,
+              "min": 1.585,
+              "max": 1.66,
+              "spreadPct": 2.3,
+              "values": [
+                1.615,
+                1.66,
+                1.645,
+                1.6,
+                1.64,
+                1.615,
+                1.585
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 3.125,
+              "mean": 3.175,
+              "p95": 3.485,
+              "min": 2.945,
+              "max": 3.485,
+              "spreadPct": 8.6,
+              "values": [
+                3.485,
+                2.945,
+                3.21,
+                3.125,
+                3.36,
+                3.005,
+                3.095
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 15.316,
+              "mean": 15.316,
+              "p95": 15.316,
+              "min": 15.316,
+              "max": 15.316,
+              "spreadPct": 0,
+              "values": [
+                15.316,
+                15.316,
+                15.316,
+                15.316,
+                15.316,
+                15.316,
+                15.316
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 2.895,
+            "frames": 2007,
+            "appended": 0
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 459.473,
+              "mean": 459.723,
+              "p95": 466.097,
+              "min": 455.138,
+              "max": 466.097,
+              "spreadPct": 1.2,
+              "values": [
+                460.706,
+                457.475,
+                459.465,
+                455.138,
+                466.097,
+                459.704,
+                459.473
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 2.71,
+              "mean": 2.716,
+              "p95": 2.77,
+              "min": 2.66,
+              "max": 2.77,
+              "spreadPct": 2,
+              "values": [
+                2.71,
+                2.73,
+                2.71,
+                2.77,
+                2.66,
+                2.725,
+                2.705
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.95,
+              "mean": 1.947,
+              "p95": 1.96,
+              "min": 1.935,
+              "max": 1.96,
+              "spreadPct": 0.6,
+              "values": [
+                1.935,
+                1.955,
+                1.935,
+                1.96,
+                1.935,
+                1.95,
+                1.96
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 2.485,
+              "mean": 2.487,
+              "p95": 2.535,
+              "min": 2.43,
+              "max": 2.535,
+              "spreadPct": 2.1,
+              "values": [
+                2.485,
+                2.5,
+                2.485,
+                2.535,
+                2.43,
+                2.5,
+                2.475
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 7.385,
+              "mean": 7.644,
+              "p95": 9.16,
+              "min": 6.7,
+              "max": 9.16,
+              "spreadPct": 16.7,
+              "values": [
+                6.7,
+                7.005,
+                6.72,
+                8.68,
+                9.16,
+                7.855,
+                7.385
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 34.997,
+              "mean": 34.997,
+              "p95": 34.997,
+              "min": 34.997,
+              "max": 34.997,
+              "spreadPct": 0,
+              "values": [
+                34.997,
+                34.997,
+                34.997,
+                34.997,
+                34.997,
+                34.997,
+                34.997
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 0.84,
+            "frames": 1379,
+            "appended": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "scatter-1m-pan",
+      "title": "1M point scatter, pan over 100k visible samples",
+      "group": "Series types",
+      "primary": "rafFps",
+      "metricIds": [
+        "rafFps",
+        "rafP95Ms",
+        "workP50Ms",
+        "workP95Ms",
+        "readyMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 1000000,
+        "visible": 100000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 1493.415,
+              "mean": 1422.226,
+              "p95": 1519.866,
+              "min": 1001.7,
+              "max": 1519.866,
+              "spreadPct": 17.3,
+              "values": [
+                1516.255,
+                1493.415,
+                1453.884,
+                1001.7,
+                1499.622,
+                1470.843,
+                1519.866
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 0.855,
+              "mean": 0.954,
+              "p95": 1.535,
+              "min": 0.84,
+              "max": 1.535,
+              "spreadPct": 40.6,
+              "values": [
+                0.84,
+                0.855,
+                0.89,
+                1.535,
+                0.85,
+                0.865,
+                0.845
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 0.27,
+              "mean": 0.291,
+              "p95": 0.425,
+              "min": 0.26,
+              "max": 0.425,
+              "spreadPct": 30.6,
+              "values": [
+                0.26,
+                0.27,
+                0.28,
+                0.425,
+                0.27,
+                0.27,
+                0.26
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 0.42,
+              "mean": 0.446,
+              "p95": 0.625,
+              "min": 0.405,
+              "max": 0.625,
+              "spreadPct": 26.2,
+              "values": [
+                0.405,
+                0.42,
+                0.425,
+                0.625,
+                0.415,
+                0.42,
+                0.41
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 8.75,
+              "mean": 9.042,
+              "p95": 11.135,
+              "min": 8.29,
+              "max": 11.135,
+              "spreadPct": 16.3,
+              "values": [
+                8.625,
+                9.315,
+                8.32,
+                11.135,
+                8.86,
+                8.75,
+                8.29
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 12.635,
+              "mean": 12.634,
+              "p95": 12.635,
+              "min": 12.628,
+              "max": 12.635,
+              "spreadPct": 0,
+              "values": [
+                12.635,
+                12.635,
+                12.635,
+                12.628,
+                12.635,
+                12.635,
+                12.635
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 5.635,
+            "frames": 4480,
+            "appended": 0,
+            "internalFrameP50Ms": 0.265,
+            "pointsRenderedP50": 14321,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 286.426,
+              "mean": 257.304,
+              "p95": 295.718,
+              "min": 180.113,
+              "max": 295.718,
+              "spreadPct": 20.2,
+              "values": [
+                286.426,
+                287.83,
+                279.497,
+                180.113,
+                180.358,
+                291.183,
+                295.718
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 4.55,
+              "mean": 5.342,
+              "p95": 7.615,
+              "min": 4.12,
+              "max": 7.615,
+              "spreadPct": 38.4,
+              "values": [
+                4.55,
+                4.465,
+                4.72,
+                7.58,
+                7.615,
+                4.345,
+                4.12
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 2.9,
+              "mean": 3.313,
+              "p95": 4.4,
+              "min": 2.86,
+              "max": 4.4,
+              "spreadPct": 26.6,
+              "values": [
+                2.9,
+                2.885,
+                2.92,
+                4.36,
+                4.4,
+                2.865,
+                2.86
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 3.985,
+              "mean": 4.522,
+              "p95": 6.235,
+              "min": 3.59,
+              "max": 6.235,
+              "spreadPct": 33.2,
+              "values": [
+                3.985,
+                3.97,
+                4.195,
+                5.815,
+                6.235,
+                3.865,
+                3.59
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 9.54,
+              "mean": 11.233,
+              "p95": 17.445,
+              "min": 9,
+              "max": 17.445,
+              "spreadPct": 44.3,
+              "values": [
+                9.54,
+                9.055,
+                17.445,
+                13.18,
+                11.335,
+                9,
+                9.075
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 12.39,
+              "mean": 12.387,
+              "p95": 12.39,
+              "min": 12.375,
+              "max": 12.39,
+              "spreadPct": 0.1,
+              "values": [
+                12.39,
+                12.39,
+                12.388,
+                12.375,
+                12.39,
+                12.39,
+                12.389
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 8.305,
+            "frames": 859,
+            "appended": 0,
+            "internalFrameP50Ms": 2.89,
+            "pointsRenderedP50": 14321,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 32.978,
+              "mean": 30.009,
+              "p95": 37.635,
+              "min": 18.132,
+              "max": 37.635,
+              "spreadPct": 29.6,
+              "values": [
+                37.635,
+                32.978,
+                32.496,
+                18.32,
+                18.132,
+                34.714,
+                35.786
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 48.56,
+              "mean": 48.191,
+              "p95": 71.625,
+              "min": 32.03,
+              "max": 71.625,
+              "spreadPct": 40.8,
+              "values": [
+                32.96,
+                50.67,
+                48.56,
+                68.955,
+                71.625,
+                32.03,
+                32.535
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 27.8,
+              "mean": 34.488,
+              "p95": 52.95,
+              "min": 26.57,
+              "max": 52.95,
+              "spreadPct": 47.4,
+              "values": [
+                26.57,
+                27.955,
+                27.8,
+                51.7,
+                52.95,
+                27.685,
+                26.755
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 36.495,
+              "mean": 43.584,
+              "p95": 69.33,
+              "min": 31.55,
+              "max": 69.33,
+              "spreadPct": 51.8,
+              "values": [
+                31.635,
+                36.495,
+                39.125,
+                64.78,
+                69.33,
+                31.55,
+                32.17
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 31.2,
+              "mean": 41.284,
+              "p95": 71.555,
+              "min": 29.625,
+              "max": 71.555,
+              "spreadPct": 67.2,
+              "values": [
+                30.1,
+                31.2,
+                30.295,
+                64.515,
+                71.555,
+                31.7,
+                29.625
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 15.316,
+              "mean": 15.316,
+              "p95": 15.317,
+              "min": 15.316,
+              "max": 15.317,
+              "spreadPct": 0,
+              "values": [
+                15.316,
+                15.316,
+                15.316,
+                15.317,
+                15.317,
+                15.316,
+                15.316
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 30.665,
+            "frames": 99,
+            "appended": 0
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 3.252,
+              "mean": 3.032,
+              "p95": 3.274,
+              "min": 1.917,
+              "max": 3.274,
+              "spreadPct": 20.9,
+              "values": [
+                3.274,
+                3.112,
+                3.151,
+                1.917,
+                3.252,
+                3.252,
+                3.264
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 378.195,
+              "mean": 415.721,
+              "p95": 614.465,
+              "min": 365.59,
+              "max": 614.465,
+              "spreadPct": 32.9,
+              "values": [
+                378.195,
+                379.13,
+                423.285,
+                614.465,
+                365.59,
+                377.99,
+                371.395
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 316.775,
+              "mean": 350.279,
+              "p95": 536.545,
+              "min": 307.075,
+              "max": 536.545,
+              "spreadPct": 36.2,
+              "values": [
+                313.67,
+                340.045,
+                324.675,
+                536.545,
+                313.17,
+                316.775,
+                307.075
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 378.865,
+              "mean": 411.591,
+              "p95": 598.955,
+              "min": 364.22,
+              "max": 598.955,
+              "spreadPct": 31,
+              "values": [
+                378.865,
+                388.34,
+                414.52,
+                598.955,
+                367.58,
+                368.655,
+                364.22
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 321.585,
+              "mean": 366.897,
+              "p95": 618.25,
+              "min": 314.205,
+              "max": 618.25,
+              "spreadPct": 47.3,
+              "values": [
+                321.585,
+                321.38,
+                347.86,
+                618.25,
+                323.96,
+                321.04,
+                314.205
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 171.933,
+              "mean": 171.939,
+              "p95": 171.974,
+              "min": 171.931,
+              "max": 171.974,
+              "spreadPct": 0,
+              "values": [
+                171.933,
+                171.974,
+                171.933,
+                171.931,
+                171.935,
+                171.933,
+                171.933
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1225.5,
+            "plotHeight": 689.5,
+            "presentWaitMs": 6.165,
+            "frames": 10,
+            "appended": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "bar-100k-pan",
+      "title": "100k bars, pan over 10k visible bars",
+      "group": "Series types",
+      "primary": "rafFps",
+      "metricIds": [
+        "rafFps",
+        "rafP95Ms",
+        "workP50Ms",
+        "workP95Ms",
+        "readyMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 100000,
+        "visible": 10000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 1774.101,
+              "mean": 1744.135,
+              "p95": 1794.085,
+              "min": 1587.537,
+              "max": 1794.085,
+              "spreadPct": 5.8,
+              "values": [
+                1794.085,
+                1774.101,
+                1786.256,
+                1785.295,
+                1757.585,
+                1587.537,
+                1724.083
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 0.725,
+              "mean": 0.743,
+              "p95": 0.825,
+              "min": 0.715,
+              "max": 0.825,
+              "spreadPct": 7.6,
+              "values": [
+                0.715,
+                0.725,
+                0.725,
+                0.715,
+                0.73,
+                0.825,
+                0.765
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 0.175,
+              "mean": 0.182,
+              "p95": 0.21,
+              "min": 0.175,
+              "max": 0.21,
+              "spreadPct": 10,
+              "values": [
+                0.175,
+                0.175,
+                0.175,
+                0.175,
+                0.18,
+                0.21,
+                0.185
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 0.29,
+              "mean": 0.294,
+              "p95": 0.32,
+              "min": 0.285,
+              "max": 0.32,
+              "spreadPct": 6,
+              "values": [
+                0.285,
+                0.29,
+                0.29,
+                0.285,
+                0.29,
+                0.32,
+                0.295
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 4.935,
+              "mean": 5.056,
+              "p95": 5.81,
+              "min": 4.585,
+              "max": 5.81,
+              "spreadPct": 12.4,
+              "values": [
+                4.585,
+                4.97,
+                4.885,
+                4.935,
+                4.77,
+                5.81,
+                5.44
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 1.829,
+              "mean": 1.829,
+              "p95": 1.83,
+              "min": 1.828,
+              "max": 1.83,
+              "spreadPct": 0.1,
+              "values": [
+                1.828,
+                1.829,
+                1.83,
+                1.83,
+                1.829,
+                1.829,
+                1.83
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 1.995,
+            "frames": 5322,
+            "appended": 0,
+            "internalFrameP50Ms": 0.17,
+            "pointsRenderedP50": 10001,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 475.084,
+              "mean": 462.126,
+              "p95": 487.536,
+              "min": 427.376,
+              "max": 487.536,
+              "spreadPct": 6.3,
+              "values": [
+                475.084,
+                487.536,
+                475.443,
+                481.535,
+                427.376,
+                443.609,
+                444.3
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 2.77,
+              "mean": 3.025,
+              "p95": 3.555,
+              "min": 2.64,
+              "max": 3.555,
+              "spreadPct": 16.5,
+              "values": [
+                2.725,
+                2.64,
+                2.77,
+                2.69,
+                3.315,
+                3.555,
+                3.48
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.29,
+              "mean": 1.311,
+              "p95": 1.44,
+              "min": 1.25,
+              "max": 1.44,
+              "spreadPct": 7.4,
+              "values": [
+                1.29,
+                1.25,
+                1.29,
+                1.275,
+                1.44,
+                1.31,
+                1.325
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 1.715,
+              "mean": 1.76,
+              "p95": 1.855,
+              "min": 1.71,
+              "max": 1.855,
+              "spreadPct": 4.2,
+              "values": [
+                1.715,
+                1.71,
+                1.715,
+                1.71,
+                1.855,
+                1.79,
+                1.825
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 4.25,
+              "mean": 4.444,
+              "p95": 5.665,
+              "min": 3.915,
+              "max": 5.665,
+              "spreadPct": 20.6,
+              "values": [
+                3.99,
+                4.075,
+                4.365,
+                4.25,
+                3.915,
+                4.845,
+                5.665
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 1.587,
+              "mean": 1.587,
+              "p95": 1.588,
+              "min": 1.586,
+              "max": 1.588,
+              "spreadPct": 0.1,
+              "values": [
+                1.587,
+                1.588,
+                1.587,
+                1.588,
+                1.587,
+                1.588,
+                1.586
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 3.6,
+            "frames": 1425,
+            "appended": 0,
+            "internalFrameP50Ms": 1.28,
+            "pointsRenderedP50": 10001,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 755.012,
+              "mean": 747.042,
+              "p95": 767.404,
+              "min": 722.912,
+              "max": 767.404,
+              "spreadPct": 2.9,
+              "values": [
+                767.404,
+                730.523,
+                755.012,
+                765.631,
+                762.851,
+                722.912,
+                724.959
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 1.705,
+              "mean": 1.724,
+              "p95": 1.86,
+              "min": 1.615,
+              "max": 1.86,
+              "spreadPct": 7.2,
+              "values": [
+                1.615,
+                1.77,
+                1.705,
+                1.65,
+                1.665,
+                1.805,
+                1.86
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.08,
+              "mean": 1.091,
+              "p95": 1.14,
+              "min": 1.07,
+              "max": 1.14,
+              "spreadPct": 3.2,
+              "values": [
+                1.08,
+                1.095,
+                1.07,
+                1.07,
+                1.07,
+                1.14,
+                1.115
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 1.475,
+              "mean": 1.488,
+              "p95": 1.585,
+              "min": 1.39,
+              "max": 1.585,
+              "spreadPct": 6.6,
+              "values": [
+                1.39,
+                1.54,
+                1.475,
+                1.425,
+                1.445,
+                1.555,
+                1.585
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 3.02,
+              "mean": 3.236,
+              "p95": 3.86,
+              "min": 2.87,
+              "max": 3.86,
+              "spreadPct": 16.4,
+              "values": [
+                3.5,
+                3.48,
+                2.995,
+                3.02,
+                2.87,
+                2.925,
+                3.86
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 1.587,
+              "mean": 1.587,
+              "p95": 1.588,
+              "min": 1.587,
+              "max": 1.588,
+              "spreadPct": 0,
+              "values": [
+                1.588,
+                1.588,
+                1.587,
+                1.587,
+                1.587,
+                1.587,
+                1.587
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 2.82,
+            "frames": 2266,
+            "appended": 0
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 3.79,
+              "mean": 3.722,
+              "p95": 4.022,
+              "min": 3.132,
+              "max": 4.022,
+              "spreadPct": 11.7,
+              "values": [
+                4.022,
+                3.79,
+                3.945,
+                3.877,
+                3.666,
+                3.619,
+                3.132
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 320.525,
+              "mean": 344.319,
+              "p95": 545.47,
+              "min": 283.385,
+              "max": 545.47,
+              "spreadPct": 40.9,
+              "values": [
+                283.385,
+                319.59,
+                293.77,
+                320.525,
+                321.8,
+                325.69,
+                545.47
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 270.68,
+              "mean": 266.74,
+              "p95": 286.97,
+              "min": 244.34,
+              "max": 286.97,
+              "spreadPct": 7.9,
+              "values": [
+                248.845,
+                270.68,
+                244.34,
+                260.2,
+                276.03,
+                286.97,
+                280.115
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 297.045,
+              "mean": 322.383,
+              "p95": 512.27,
+              "min": 274.655,
+              "max": 512.27,
+              "spreadPct": 40,
+              "values": [
+                274.655,
+                292.96,
+                276.51,
+                297.045,
+                297.545,
+                305.695,
+                512.27
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 245.87,
+              "mean": 250.691,
+              "p95": 281.32,
+              "min": 236.575,
+              "max": 281.32,
+              "spreadPct": 9.1,
+              "values": [
+                236.575,
+                245.87,
+                237.665,
+                240.7,
+                262.175,
+                250.535,
+                281.32
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 19.782,
+              "mean": 19.782,
+              "p95": 19.782,
+              "min": 19.782,
+              "max": 19.782,
+              "spreadPct": 0,
+              "values": [
+                19.782,
+                19.782,
+                19.782,
+                19.782,
+                19.782,
+                19.782,
+                19.782
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 13.62,
+            "frames": 12,
+            "appended": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "dual-axis-1m-pan",
+      "title": "Two 500k point lines on left and right Y axes, pan over 100k visible samples",
+      "group": "Series types",
+      "primary": "rafFps",
+      "metricIds": [
+        "rafFps",
+        "rafP95Ms",
+        "workP50Ms",
+        "workP95Ms",
+        "readyMs",
+        "heapMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 500000,
+        "visible": 100000,
+        "seriesCount": 2,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 594.276,
+              "mean": 559.58,
+              "p95": 616.418,
+              "min": 489.946,
+              "max": 616.418,
+              "spreadPct": 10.6,
+              "values": [
+                616.418,
+                594.276,
+                495.819,
+                492.149,
+                489.946,
+                613.564,
+                614.89
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 2.005,
+              "mean": 2.292,
+              "p95": 2.86,
+              "min": 1.875,
+              "max": 2.86,
+              "spreadPct": 24.6,
+              "values": [
+                1.875,
+                2.005,
+                2.835,
+                2.68,
+                2.86,
+                1.895,
+                1.895
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 1.225,
+              "mean": 1.285,
+              "p95": 1.38,
+              "min": 1.21,
+              "max": 1.38,
+              "spreadPct": 6.9,
+              "values": [
+                1.21,
+                1.225,
+                1.37,
+                1.38,
+                1.38,
+                1.22,
+                1.21
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 1.48,
+              "mean": 1.599,
+              "p95": 1.795,
+              "min": 1.45,
+              "max": 1.795,
+              "spreadPct": 11.7,
+              "values": [
+                1.45,
+                1.48,
+                1.795,
+                1.795,
+                1.76,
+                1.455,
+                1.46
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 11.49,
+              "mean": 11.755,
+              "p95": 13.7,
+              "min": 10.195,
+              "max": 13.7,
+              "spreadPct": 15.3,
+              "values": [
+                10.45,
+                11.49,
+                13.7,
+                13.68,
+                12.155,
+                10.195,
+                10.615
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 9.085,
+              "mean": 9.085,
+              "p95": 9.088,
+              "min": 9.083,
+              "max": 9.088,
+              "spreadPct": 0,
+              "values": [
+                9.086,
+                9.085,
+                9.088,
+                9.083,
+                9.086,
+                9.084,
+                9.084
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1176,
+            "plotHeight": 692,
+            "presentWaitMs": 8.35,
+            "frames": 1783,
+            "appended": 0,
+            "internalFrameP50Ms": 1.215,
+            "pointsRenderedP50": 48012,
+            "drawCallsP50": 2
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 350.142,
+              "mean": 323.406,
+              "p95": 357.069,
+              "min": 247.715,
+              "max": 357.069,
+              "spreadPct": 15.6,
+              "values": [
+                356.745,
+                347.713,
+                350.142,
+                248.967,
+                247.715,
+                357.069,
+                355.49
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 3.425,
+              "mean": 4.079,
+              "p95": 5.98,
+              "min": 3.255,
+              "max": 5.98,
+              "spreadPct": 39.8,
+              "values": [
+                3.26,
+                3.505,
+                3.425,
+                5.98,
+                5.805,
+                3.255,
+                3.325
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 2.19,
+              "mean": 2.321,
+              "p95": 2.685,
+              "min": 2.165,
+              "max": 2.685,
+              "spreadPct": 11.9,
+              "values": [
+                2.19,
+                2.165,
+                2.165,
+                2.66,
+                2.685,
+                2.19,
+                2.19
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 2.625,
+              "mean": 2.92,
+              "p95": 3.795,
+              "min": 2.525,
+              "max": 3.795,
+              "spreadPct": 24.2,
+              "values": [
+                2.555,
+                2.625,
+                2.625,
+                3.73,
+                3.795,
+                2.525,
+                2.585
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 9.88,
+              "mean": 11.647,
+              "p95": 20.905,
+              "min": 9.185,
+              "max": 20.905,
+              "spreadPct": 59.3,
+              "values": [
+                9.88,
+                10.39,
+                9.185,
+                12.41,
+                20.905,
+                9.315,
+                9.445
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 8.604,
+              "mean": 8.603,
+              "p95": 8.606,
+              "min": 8.598,
+              "max": 8.606,
+              "spreadPct": 0,
+              "values": [
+                8.604,
+                8.598,
+                8.602,
+                8.6,
+                8.606,
+                8.605,
+                8.604
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1176,
+            "plotHeight": 692,
+            "presentWaitMs": 8.33,
+            "frames": 1050,
+            "appended": 0,
+            "internalFrameP50Ms": 2.18,
+            "pointsRenderedP50": 48012,
+            "drawCallsP50": 2
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 364.791,
+              "mean": 337.218,
+              "p95": 374.048,
+              "min": 263.742,
+              "max": 374.048,
+              "spreadPct": 15.1,
+              "values": [
+                369.567,
+                367.195,
+                266.522,
+                263.742,
+                354.659,
+                364.791,
+                374.048
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 3.385,
+              "mean": 3.995,
+              "p95": 5.98,
+              "min": 3.21,
+              "max": 5.98,
+              "spreadPct": 40.9,
+              "values": [
+                3.28,
+                3.385,
+                5.98,
+                5.315,
+                3.495,
+                3.3,
+                3.21
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 2.485,
+              "mean": 2.703,
+              "p95": 3.32,
+              "min": 2.435,
+              "max": 3.32,
+              "spreadPct": 17.8,
+              "values": [
+                2.44,
+                2.45,
+                3.26,
+                3.32,
+                2.53,
+                2.485,
+                2.435
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 3.11,
+              "mean": 3.632,
+              "p95": 5.335,
+              "min": 2.95,
+              "max": 5.335,
+              "spreadPct": 38.3,
+              "values": [
+                3.04,
+                3.11,
+                5.335,
+                4.695,
+                3.245,
+                3.05,
+                2.95
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 4.035,
+              "mean": 4.478,
+              "p95": 6.19,
+              "min": 3.33,
+              "max": 6.19,
+              "spreadPct": 35.4,
+              "values": [
+                5.165,
+                3.665,
+                3.795,
+                6.19,
+                5.165,
+                4.035,
+                3.33
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 11.547,
+              "mean": 11.547,
+              "p95": 11.547,
+              "min": 11.546,
+              "max": 11.547,
+              "spreadPct": 0,
+              "values": [
+                11.547,
+                11.547,
+                11.547,
+                11.546,
+                11.547,
+                11.547,
+                11.547
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1176,
+            "plotHeight": 692,
+            "presentWaitMs": 3.685,
+            "frames": 1095,
+            "appended": 0
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "rafFps": {
+              "n": 7,
+              "median": 251.322,
+              "mean": 247.851,
+              "p95": 291.919,
+              "min": 202.09,
+              "max": 291.919,
+              "spreadPct": 17.9,
+              "values": [
+                251.322,
+                286.236,
+                207.129,
+                202.09,
+                206.125,
+                291.919,
+                290.137
+              ]
+            },
+            "rafP95Ms": {
+              "n": 7,
+              "median": 5.44,
+              "mean": 5.613,
+              "p95": 7.18,
+              "min": 4.195,
+              "max": 7.18,
+              "spreadPct": 27.4,
+              "values": [
+                5.44,
+                4.26,
+                7.08,
+                7.18,
+                6.785,
+                4.195,
+                4.35
+              ]
+            },
+            "workP50Ms": {
+              "n": 7,
+              "median": 3.615,
+              "mean": 3.709,
+              "p95": 4.33,
+              "min": 3.09,
+              "max": 4.33,
+              "spreadPct": 17.2,
+              "values": [
+                3.615,
+                3.19,
+                4.31,
+                4.33,
+                4.31,
+                3.09,
+                3.115
+              ]
+            },
+            "workP95Ms": {
+              "n": 7,
+              "median": 4.825,
+              "mean": 5.216,
+              "p95": 6.705,
+              "min": 3.965,
+              "max": 6.705,
+              "spreadPct": 28.4,
+              "values": [
+                4.825,
+                3.97,
+                6.63,
+                6.705,
+                6.355,
+                3.965,
+                4.06
+              ]
+            },
+            "readyMs": {
+              "n": 7,
+              "median": 6.415,
+              "mean": 7.304,
+              "p95": 10.035,
+              "min": 5.795,
+              "max": 10.035,
+              "spreadPct": 33,
+              "values": [
+                5.98,
+                6.415,
+                8.565,
+                8.485,
+                10.035,
+                5.85,
+                5.795
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 35.406,
+              "mean": 35.406,
+              "p95": 35.413,
+              "min": 35.403,
+              "max": 35.413,
+              "spreadPct": 0,
+              "values": [
+                35.413,
+                35.406,
+                35.404,
+                35.403,
+                35.406,
+                35.406,
+                35.407
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1176,
+            "plotHeight": 692,
+            "presentWaitMs": 0.525,
+            "frames": 754,
+            "appended": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "hover-1m",
+      "title": "Pointer move over a 1M point line with crosshair, snapping marker and readout",
+      "group": "Interaction",
+      "primary": "hoverP50Ms",
+      "metricIds": [
+        "hoverP50Ms",
+        "hoverP95Ms"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 1000000,
+        "visible": 1000000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "hoverP50Ms": {
+              "n": 7,
+              "median": 0.47,
+              "mean": 0.482,
+              "p95": 0.565,
+              "min": 0.46,
+              "max": 0.565,
+              "spreadPct": 11.2,
+              "values": [
+                0.46,
+                0.47,
+                0.475,
+                0.48,
+                0.565,
+                0.465,
+                0.46
+              ]
+            },
+            "hoverP95Ms": {
+              "n": 7,
+              "median": 0.62,
+              "mean": 0.742,
+              "p95": 1.335,
+              "min": 0.59,
+              "max": 1.335,
+              "spreadPct": 60.1,
+              "values": [
+                0.59,
+                0.62,
+                0.79,
+                0.675,
+                1.335,
+                0.59,
+                0.595
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 7.13,
+            "handlerP50Ms": 0.105,
+            "hoverActive": true
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "hoverP50Ms": {
+              "n": 7,
+              "median": 0.465,
+              "mean": 0.471,
+              "p95": 0.505,
+              "min": 0.46,
+              "max": 0.505,
+              "spreadPct": 4.8,
+              "values": [
+                0.46,
+                0.505,
+                0.47,
+                0.48,
+                0.465,
+                0.46,
+                0.46
+              ]
+            },
+            "hoverP95Ms": {
+              "n": 7,
+              "median": 0.59,
+              "mean": 0.626,
+              "p95": 0.775,
+              "min": 0.55,
+              "max": 0.775,
+              "spreadPct": 19.1,
+              "values": [
+                0.55,
+                0.66,
+                0.65,
+                0.775,
+                0.59,
+                0.58,
+                0.58
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 7.505,
+            "handlerP50Ms": 0.105,
+            "hoverActive": true
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "hoverP50Ms": {
+              "n": 7,
+              "median": 0.225,
+              "mean": 0.227,
+              "p95": 0.24,
+              "min": 0.22,
+              "max": 0.24,
+              "spreadPct": 4.4,
+              "values": [
+                0.22,
+                0.23,
+                0.24,
+                0.225,
+                0.225,
+                0.225,
+                0.225
+              ]
+            },
+            "hoverP95Ms": {
+              "n": 7,
+              "median": 0.295,
+              "mean": 0.303,
+              "p95": 0.355,
+              "min": 0.285,
+              "max": 0.355,
+              "spreadPct": 11.9,
+              "values": [
+                0.29,
+                0.305,
+                0.355,
+                0.3,
+                0.285,
+                0.29,
+                0.295
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 12.245,
+            "handlerP50Ms": 0.03,
+            "hoverActive": true
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "hoverP50Ms": {
+              "n": 7,
+              "median": 0.355,
+              "mean": 0.355,
+              "p95": 0.37,
+              "min": 0.34,
+              "max": 0.37,
+              "spreadPct": 4.2,
+              "values": [
+                0.34,
+                0.355,
+                0.36,
+                0.36,
+                0.37,
+                0.35,
+                0.35
+              ]
+            },
+            "hoverP95Ms": {
+              "n": 7,
+              "median": 0.545,
+              "mean": 0.561,
+              "p95": 0.7,
+              "min": 0.47,
+              "max": 0.7,
+              "spreadPct": 21.1,
+              "values": [
+                0.47,
+                0.54,
+                0.7,
+                0.59,
+                0.55,
+                0.535,
+                0.545
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 0.285,
+            "handlerP50Ms": 0.01,
+            "hoverActive": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "resize-1m",
+      "title": "Container resize of a 1M point line",
+      "group": "Interaction",
+      "primary": "resizeP50Ms",
+      "metricIds": [
+        "resizeP50Ms",
+        "resizeP95Ms"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 1000000,
+        "visible": 1000000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "resizeP50Ms": {
+              "n": 7,
+              "median": 37.575,
+              "mean": 37.696,
+              "p95": 38.035,
+              "min": 37.565,
+              "max": 38.035,
+              "spreadPct": 0.6,
+              "values": [
+                37.975,
+                37.565,
+                37.58,
+                38.035,
+                37.575,
+                37.57,
+                37.57
+              ]
+            },
+            "resizeP95Ms": {
+              "n": 7,
+              "median": 38.495,
+              "mean": 38.485,
+              "p95": 38.805,
+              "min": 38.095,
+              "max": 38.805,
+              "spreadPct": 0.9,
+              "values": [
+                38.535,
+                38.44,
+                38.475,
+                38.805,
+                38.495,
+                38.55,
+                38.095
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 6.96
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "resizeP50Ms": {
+              "n": 7,
+              "median": 37.555,
+              "mean": 37.624,
+              "p95": 38.03,
+              "min": 37.54,
+              "max": 38.03,
+              "spreadPct": 0.7,
+              "values": [
+                37.565,
+                37.54,
+                37.585,
+                38.03,
+                37.545,
+                37.555,
+                37.545
+              ]
+            },
+            "resizeP95Ms": {
+              "n": 7,
+              "median": 38.555,
+              "mean": 38.449,
+              "p95": 38.89,
+              "min": 38.06,
+              "max": 38.89,
+              "spreadPct": 1.1,
+              "values": [
+                38.89,
+                38.11,
+                38.575,
+                38.625,
+                38.325,
+                38.555,
+                38.06
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 7.205
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "resizeP50Ms": {
+              "n": 7,
+              "median": 43.4,
+              "mean": 43.385,
+              "p95": 43.56,
+              "min": 43.09,
+              "max": 43.56,
+              "spreadPct": 0.5,
+              "values": [
+                43.35,
+                43.09,
+                43.4,
+                43.56,
+                43.4,
+                43.44,
+                43.455
+              ]
+            },
+            "resizeP95Ms": {
+              "n": 7,
+              "median": 46.345,
+              "mean": 46.235,
+              "p95": 47.035,
+              "min": 45.035,
+              "max": 47.035,
+              "spreadPct": 2.2,
+              "values": [
+                46.05,
+                46.1,
+                46.545,
+                47.035,
+                46.345,
+                46.535,
+                45.035
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 12.15
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "resizeP50Ms": {
+              "n": 7,
+              "median": 44.055,
+              "mean": 44.052,
+              "p95": 44.08,
+              "min": 44.02,
+              "max": 44.08,
+              "spreadPct": 0.1,
+              "values": [
+                44.07,
+                44.055,
+                44.035,
+                44.065,
+                44.08,
+                44.02,
+                44.04
+              ]
+            },
+            "resizeP95Ms": {
+              "n": 7,
+              "median": 47.045,
+              "mean": 46.915,
+              "p95": 47.185,
+              "min": 46.545,
+              "max": 47.185,
+              "spreadPct": 0.7,
+              "values": [
+                46.545,
+                46.64,
+                47.185,
+                47.045,
+                47.055,
+                47.07,
+                46.865
+              ]
+            }
+          },
+          "details": {
+            "plotWidth": 1228,
+            "plotHeight": 692,
+            "presentWaitMs": 0.23
+          }
+        }
+      ]
+    },
+    {
+      "name": "many-charts-50",
+      "title": "50 small charts (10k points each) mounted on one page",
+      "group": "Lifecycle",
+      "primary": "readyMs",
+      "metricIds": [
+        "readyMs",
+        "heapMiB",
+        "destroyMs"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 10000,
+        "visible": 10000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 42.165,
+              "mean": 42.32,
+              "p95": 43.305,
+              "min": 41.765,
+              "max": 43.305,
+              "spreadPct": 1.8,
+              "values": [
+                41.99,
+                42.015,
+                41.765,
+                42.64,
+                42.165,
+                42.36,
+                43.305
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 42.929,
+              "mean": 42.93,
+              "p95": 42.934,
+              "min": 42.929,
+              "max": 42.934,
+              "spreadPct": 0,
+              "values": [
+                42.934,
+                42.929,
+                42.929,
+                42.929,
+                42.929,
+                42.929,
+                42.929
+              ]
+            },
+            "destroyMs": {
+              "n": 7,
+              "median": 1.33,
+              "mean": 1.342,
+              "p95": 1.605,
+              "min": 1.17,
+              "max": 1.605,
+              "spreadPct": 16.4,
+              "values": [
+                1.605,
+                1.395,
+                1.33,
+                1.315,
+                1.365,
+                1.17,
+                1.215
+              ]
+            }
+          },
+          "details": {
+            "charts": 50,
+            "plotWidth": 348,
+            "plotHeight": 152
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 49.185,
+              "mean": 48.924,
+              "p95": 49.52,
+              "min": 48.02,
+              "max": 49.52,
+              "spreadPct": 1.5,
+              "values": [
+                49.32,
+                49.33,
+                49.185,
+                48.595,
+                48.495,
+                48.02,
+                49.52
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 42.681,
+              "mean": 42.681,
+              "p95": 42.681,
+              "min": 42.681,
+              "max": 42.681,
+              "spreadPct": 0,
+              "values": [
+                42.681,
+                42.681,
+                42.681,
+                42.681,
+                42.681,
+                42.681,
+                42.681
+              ]
+            },
+            "destroyMs": {
+              "n": 7,
+              "median": 0.775,
+              "mean": 0.803,
+              "p95": 1,
+              "min": 0.64,
+              "max": 1,
+              "spreadPct": 23.2,
+              "values": [
+                0.9,
+                1,
+                0.695,
+                0.87,
+                0.775,
+                0.64,
+                0.74
+              ]
+            }
+          },
+          "details": {
+            "charts": 50,
+            "plotWidth": 348,
+            "plotHeight": 152
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 21.805,
+              "mean": 21.709,
+              "p95": 22.075,
+              "min": 21.02,
+              "max": 22.075,
+              "spreadPct": 2.4,
+              "values": [
+                21.02,
+                21.6,
+                21.805,
+                21.935,
+                22.04,
+                22.075,
+                21.49
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 9.463,
+              "mean": 9.463,
+              "p95": 9.464,
+              "min": 9.462,
+              "max": 9.464,
+              "spreadPct": 0,
+              "values": [
+                9.463,
+                9.464,
+                9.463,
+                9.462,
+                9.463,
+                9.463,
+                9.463
+              ]
+            },
+            "destroyMs": {
+              "n": 7,
+              "median": 0.2,
+              "mean": 0.206,
+              "p95": 0.235,
+              "min": 0.175,
+              "max": 0.235,
+              "spreadPct": 15,
+              "values": [
+                0.205,
+                0.2,
+                0.175,
+                0.23,
+                0.2,
+                0.2,
+                0.235
+              ]
+            }
+          },
+          "details": {
+            "charts": 50,
+            "plotWidth": 348,
+            "plotHeight": 152
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "readyMs": {
+              "n": 7,
+              "median": 51.005,
+              "mean": 51.267,
+              "p95": 52.845,
+              "min": 50.14,
+              "max": 52.845,
+              "spreadPct": 2.7,
+              "values": [
+                52.045,
+                52.015,
+                50.14,
+                50.495,
+                52.845,
+                50.325,
+                51.005
+              ]
+            },
+            "heapMiB": {
+              "n": 7,
+              "median": 37.487,
+              "mean": 37.487,
+              "p95": 37.487,
+              "min": 37.486,
+              "max": 37.487,
+              "spreadPct": 0,
+              "values": [
+                37.487,
+                37.486,
+                37.487,
+                37.487,
+                37.486,
+                37.487,
+                37.487
+              ]
+            },
+            "destroyMs": {
+              "n": 7,
+              "median": 0.495,
+              "mean": 0.504,
+              "p95": 0.58,
+              "min": 0.455,
+              "max": 0.58,
+              "spreadPct": 12.6,
+              "values": [
+                0.53,
+                0.48,
+                0.495,
+                0.47,
+                0.58,
+                0.515,
+                0.455
+              ]
+            }
+          },
+          "details": {
+            "charts": 50,
+            "plotWidth": 348,
+            "plotHeight": 152
+          }
+        }
+      ]
+    },
+    {
+      "name": "mount-destroy-cycle",
+      "title": "Mount, first frame and destroy of a 100k point chart, repeated 40 times",
+      "group": "Lifecycle",
+      "primary": "cycleP50Ms",
+      "metricIds": [
+        "cycleP50Ms",
+        "cycleP95Ms",
+        "leakMiB"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 100000,
+        "visible": 100000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "cycleP50Ms": {
+              "n": 7,
+              "median": 4.835,
+              "mean": 4.832,
+              "p95": 4.875,
+              "min": 4.79,
+              "max": 4.875,
+              "spreadPct": 0.9,
+              "values": [
+                4.835,
+                4.83,
+                4.835,
+                4.79,
+                4.875,
+                4.79,
+                4.87
+              ]
+            },
+            "cycleP95Ms": {
+              "n": 7,
+              "median": 6.17,
+              "mean": 6.203,
+              "p95": 6.34,
+              "min": 6.045,
+              "max": 6.34,
+              "spreadPct": 2.4,
+              "values": [
+                6.315,
+                6.045,
+                6.17,
+                6.125,
+                6.34,
+                6.295,
+                6.13
+              ]
+            },
+            "leakMiB": {
+              "n": 7,
+              "median": 0.969,
+              "mean": 0.969,
+              "p95": 0.97,
+              "min": 0.968,
+              "max": 0.97,
+              "spreadPct": 0.1,
+              "values": [
+                0.97,
+                0.969,
+                0.969,
+                0.968,
+                0.969,
+                0.969,
+                0.969
+              ]
+            }
+          },
+          "details": {
+            "cycles": 40
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "cycleP50Ms": {
+              "n": 7,
+              "median": 2.615,
+              "mean": 2.607,
+              "p95": 2.67,
+              "min": 2.53,
+              "max": 2.67,
+              "spreadPct": 2.7,
+              "values": [
+                2.565,
+                2.595,
+                2.64,
+                2.53,
+                2.67,
+                2.635,
+                2.615
+              ]
+            },
+            "cycleP95Ms": {
+              "n": 7,
+              "median": 3.88,
+              "mean": 3.973,
+              "p95": 4.235,
+              "min": 3.82,
+              "max": 4.235,
+              "spreadPct": 5.3,
+              "values": [
+                3.995,
+                3.88,
+                3.875,
+                4.135,
+                3.82,
+                4.235,
+                3.87
+              ]
+            },
+            "leakMiB": {
+              "n": 7,
+              "median": 0.711,
+              "mean": 0.711,
+              "p95": 0.711,
+              "min": 0.711,
+              "max": 0.711,
+              "spreadPct": 0,
+              "values": [
+                0.711,
+                0.711,
+                0.711,
+                0.711,
+                0.711,
+                0.711,
+                0.711
+              ]
+            }
+          },
+          "details": {
+            "cycles": 40
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "cycleP50Ms": {
+              "n": 7,
+              "median": 1.76,
+              "mean": 1.75,
+              "p95": 1.825,
+              "min": 1.64,
+              "max": 1.825,
+              "spreadPct": 5.3,
+              "values": [
+                1.715,
+                1.64,
+                1.76,
+                1.805,
+                1.695,
+                1.825,
+                1.81
+              ]
+            },
+            "cycleP95Ms": {
+              "n": 7,
+              "median": 2.335,
+              "mean": 2.376,
+              "p95": 2.83,
+              "min": 2.16,
+              "max": 2.83,
+              "spreadPct": 14.3,
+              "values": [
+                2.41,
+                2.83,
+                2.375,
+                2.285,
+                2.235,
+                2.335,
+                2.16
+              ]
+            },
+            "leakMiB": {
+              "n": 7,
+              "median": 0.25,
+              "mean": 0.25,
+              "p95": 0.25,
+              "min": 0.25,
+              "max": 0.25,
+              "spreadPct": 0,
+              "values": [
+                0.25,
+                0.25,
+                0.25,
+                0.25,
+                0.25,
+                0.25,
+                0.25
+              ]
+            }
+          },
+          "details": {
+            "cycles": 40
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "cycleP50Ms": {
+              "n": 7,
+              "median": 2.33,
+              "mean": 2.343,
+              "p95": 2.46,
+              "min": 2.215,
+              "max": 2.46,
+              "spreadPct": 5.3,
+              "values": [
+                2.39,
+                2.46,
+                2.215,
+                2.3,
+                2.285,
+                2.42,
+                2.33
+              ]
+            },
+            "cycleP95Ms": {
+              "n": 7,
+              "median": 4.715,
+              "mean": 4.657,
+              "p95": 5.59,
+              "min": 3.475,
+              "max": 5.59,
+              "spreadPct": 22.4,
+              "values": [
+                3.475,
+                4.59,
+                5.59,
+                5.205,
+                4.985,
+                4.715,
+                4.04
+              ]
+            },
+            "leakMiB": {
+              "n": 7,
+              "median": 0.833,
+              "mean": 0.8,
+              "p95": 0.903,
+              "min": 0.679,
+              "max": 0.903,
+              "spreadPct": 13.4,
+              "values": [
+                0.695,
+                0.679,
+                0.903,
+                0.758,
+                0.87,
+                0.833,
+                0.865
+              ]
+            }
+          },
+          "details": {
+            "cycles": 40
+          }
+        }
+      ]
+    },
+    {
+      "name": "heap-soak-1m-pan",
+      "title": "1M point line panned for 8 seconds; JS heap growth after GC",
+      "group": "Lifecycle",
+      "primary": "heapGrowthMiB",
+      "metricIds": [
+        "heapGrowthMiB",
+        "rafFps"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 1000000,
+        "visible": 100000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "heapGrowthMiB": {
+              "n": 7,
+              "median": 0.394,
+              "mean": 0.396,
+              "p95": 0.404,
+              "min": 0.392,
+              "max": 0.404,
+              "spreadPct": 1.5,
+              "values": [
+                0.392,
+                0.394,
+                0.401,
+                0.394,
+                0.404,
+                0.394,
+                0.392
+              ]
+            },
+            "rafFps": {
+              "n": 7,
+              "median": 961.192,
+              "mean": 954.926,
+              "p95": 970.621,
+              "min": 904.302,
+              "max": 970.621,
+              "spreadPct": 3.4,
+              "values": [
+                970.457,
+                961.192,
+                959.023,
+                955.138,
+                904.302,
+                963.751,
+                970.621
+              ]
+            }
+          },
+          "details": {
+            "frames": 7687,
+            "appended": 0,
+            "internalFrameP50Ms": 0.625,
+            "pointsRenderedP50": 24006,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "heapGrowthMiB": {
+              "n": 7,
+              "median": 0.307,
+              "mean": 0.307,
+              "p95": 0.315,
+              "min": 0.298,
+              "max": 0.315,
+              "spreadPct": 2.8,
+              "values": [
+                0.298,
+                0.309,
+                0.307,
+                0.305,
+                0.315,
+                0.309,
+                0.307
+              ]
+            },
+            "rafFps": {
+              "n": 7,
+              "median": 600.898,
+              "mean": 596.626,
+              "p95": 605.591,
+              "min": 582.765,
+              "max": 605.591,
+              "spreadPct": 1.9,
+              "values": [
+                600.898,
+                593.887,
+                605.591,
+                601.569,
+                582.765,
+                588.448,
+                603.222
+              ]
+            }
+          },
+          "details": {
+            "frames": 4807,
+            "appended": 0,
+            "internalFrameP50Ms": 1.15,
+            "pointsRenderedP50": 24006,
+            "drawCallsP50": 1
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "heapGrowthMiB": {
+              "n": 7,
+              "median": 0.183,
+              "mean": 0.119,
+              "p95": 0.187,
+              "min": -0.05,
+              "max": 0.187,
+              "spreadPct": 64.8,
+              "values": [
+                0.186,
+                0.18,
+                0.183,
+                0.187,
+                -0.05,
+                0.187,
+                -0.042
+              ]
+            },
+            "rafFps": {
+              "n": 7,
+              "median": 653.234,
+              "mean": 644.023,
+              "p95": 661.876,
+              "min": 615.59,
+              "max": 661.876,
+              "spreadPct": 3.5,
+              "values": [
+                653.234,
+                653.762,
+                660.733,
+                615.682,
+                615.59,
+                647.287,
+                661.876
+              ]
+            }
+          },
+          "details": {
+            "frames": 5226,
+            "appended": 0
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "heapGrowthMiB": {
+              "n": 7,
+              "median": 0.441,
+              "mean": 0.453,
+              "p95": 0.493,
+              "min": 0.436,
+              "max": 0.493,
+              "spreadPct": 6.5,
+              "values": [
+                0.436,
+                0.441,
+                0.481,
+                0.44,
+                0.493,
+                0.436,
+                0.441
+              ]
+            },
+            "rafFps": {
+              "n": 7,
+              "median": 491.111,
+              "mean": 487.888,
+              "p95": 497.749,
+              "min": 461.338,
+              "max": 497.749,
+              "spreadPct": 3.7,
+              "values": [
+                489.35,
+                491.111,
+                497.749,
+                493.411,
+                461.338,
+                490.349,
+                491.91
+              ]
+            }
+          },
+          "details": {
+            "frames": 3929,
+            "appended": 0
+          }
+        }
+      ]
+    },
+    {
+      "name": "stream-throughput",
+      "title": "Highest live append rate that keeps 60 fps into a 100k-sample sliding window",
+      "group": "Lifecycle",
+      "primary": "maxSustainedKsps",
+      "metricIds": [
+        "maxSustainedKsps"
+      ],
+      "params": {
+        "width": 1280,
+        "height": 720,
+        "points": 100000,
+        "visible": 100000,
+        "seriesCount": 1,
+        "scale": 1
+      },
+      "results": [
+        {
+          "library": "blazeplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "maxSustainedKsps": {
+              "n": 7,
+              "median": 102400,
+              "mean": 102400,
+              "p95": 102400,
+              "min": 102400,
+              "max": 102400,
+              "spreadPct": 0,
+              "values": [
+                102400,
+                102400,
+                102400,
+                102400,
+                102400,
+                102400,
+                102400
+              ]
+            }
+          },
+          "details": {
+            "p95FrameMs@50k": 1.14,
+            "p95FrameMs@100k": 1.195,
+            "p95FrameMs@200k": 1.245,
+            "p95FrameMs@400k": 1.255,
+            "p95FrameMs@800k": 1.26,
+            "p95FrameMs@1600k": 1.29,
+            "p95FrameMs@3200k": 1.335,
+            "p95FrameMs@6400k": 1.425,
+            "p95FrameMs@12800k": 1.545,
+            "p95FrameMs@25600k": 1.825,
+            "p95FrameMs@51200k": 2.47,
+            "p95FrameMs@102400k": 3.235,
+            "frameBudgetMs": 16.7
+          }
+        },
+        {
+          "library": "blazeplot-canvas2d",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "maxSustainedKsps": {
+              "n": 7,
+              "median": 102400,
+              "mean": 102400,
+              "p95": 102400,
+              "min": 102400,
+              "max": 102400,
+              "spreadPct": 0,
+              "values": [
+                102400,
+                102400,
+                102400,
+                102400,
+                102400,
+                102400,
+                102400
+              ]
+            }
+          },
+          "details": {
+            "p95FrameMs@50k": 1.81,
+            "p95FrameMs@100k": 1.91,
+            "p95FrameMs@200k": 1.99,
+            "p95FrameMs@400k": 1.995,
+            "p95FrameMs@800k": 2.035,
+            "p95FrameMs@1600k": 2.045,
+            "p95FrameMs@3200k": 2.09,
+            "p95FrameMs@6400k": 2.235,
+            "p95FrameMs@12800k": 2.4,
+            "p95FrameMs@25600k": 2.76,
+            "p95FrameMs@51200k": 3.28,
+            "p95FrameMs@102400k": 4.39,
+            "frameBudgetMs": 16.7
+          }
+        },
+        {
+          "library": "uplot",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "maxSustainedKsps": {
+              "n": 7,
+              "median": 51200,
+              "mean": 58514.286,
+              "p95": 102400,
+              "min": 51200,
+              "max": 102400,
+              "spreadPct": 50,
+              "values": [
+                102400,
+                51200,
+                51200,
+                51200,
+                51200,
+                51200,
+                51200
+              ]
+            }
+          },
+          "details": {
+            "p95FrameMs@50k": 1.775,
+            "p95FrameMs@100k": 1.975,
+            "p95FrameMs@200k": 2.055,
+            "p95FrameMs@400k": 2.055,
+            "p95FrameMs@800k": 2.075,
+            "p95FrameMs@1600k": 2.09,
+            "p95FrameMs@3200k": 2.125,
+            "p95FrameMs@6400k": 2.16,
+            "p95FrameMs@12800k": 2.44,
+            "p95FrameMs@25600k": 2.57,
+            "p95FrameMs@51200k": 3.865,
+            "p95FrameMs@102400k": 23.14,
+            "frameBudgetMs": 16.7
+          }
+        },
+        {
+          "library": "chartjs",
+          "ok": true,
+          "runsRequested": 7,
+          "runsSucceeded": 7,
+          "runsFailed": 0,
+          "errors": [],
+          "metrics": {
+            "maxSustainedKsps": {
+              "n": 7,
+              "median": 3200,
+              "mean": 3200,
+              "p95": 3200,
+              "min": 3200,
+              "max": 3200,
+              "spreadPct": 0,
+              "values": [
+                3200,
+                3200,
+                3200,
+                3200,
+                3200,
+                3200,
+                3200
+              ]
+            }
+          },
+          "details": {
+            "p95FrameMs@50k": 5.325,
+            "p95FrameMs@100k": 6.42,
+            "p95FrameMs@200k": 6.83,
+            "p95FrameMs@400k": 7.205,
+            "p95FrameMs@800k": 7.43,
+            "p95FrameMs@1600k": 8.33,
+            "p95FrameMs@3200k": 12.16,
+            "p95FrameMs@6400k": 32.75,
+            "frameBudgetMs": 16.7
+          }
+        }
+      ]
+    }
+  ]
+}

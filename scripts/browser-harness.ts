@@ -197,7 +197,28 @@ function windowsBrowserPaths(): string[] {
   ]);
 }
 
-export function spawnChrome(cmd: string[]): Bun.Subprocess {
+/**
+ * Adjusts a browser command line from the environment:
+ * - `BLAZEPLOT_REAL_GPU=1` drops the SwiftShader software-GL flags so Chrome uses the machine's real GPU
+ *   (hardware ANGLE, e.g. D3D11 on Windows).
+ * - `BLAZEPLOT_CHROME_FLAGS="--flag --other=1"` appends extra flags before the final URL argument.
+ */
+export function applyChromeEnv(cmd: string[], env: Record<string, string | undefined> = process.env): string[] {
+  let out = cmd;
+  if (env.BLAZEPLOT_REAL_GPU === "1") {
+    // --disable-frame-rate-limit: otherwise a headless GPU-backed page can be throttled to ~10 rAF/s.
+    out = [...out.filter((arg) => arg !== "--use-angle=swiftshader" && arg !== "--enable-unsafe-swiftshader"), "--disable-frame-rate-limit"];
+  }
+  const extra = (env.BLAZEPLOT_CHROME_FLAGS ?? "").split(/\s+/).filter(Boolean);
+  if (extra.length) {
+    const last = out[out.length - 1] ?? "";
+    out = last.startsWith("about:") ? [...out.slice(0, -1), ...extra, last] : [...out, ...extra];
+  }
+  return out;
+}
+
+export function spawnChrome(rawCmd: string[]): Bun.Subprocess {
+  const cmd = applyChromeEnv(rawCmd);
   const proc = Bun.spawn({ cmd, stdout: "pipe", stderr: "pipe" });
   drain(proc.stdout, "chrome");
   drain(proc.stderr, "chrome");
@@ -220,4 +241,26 @@ function drain(stream: ReadableStream<Uint8Array> | null, label: string): void {
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Engines a browser suite can be pointed at with `--renderer` or `BLAZEPLOT_TEST_RENDERER`. */
+export const TEST_RENDERERS = ["webgl2", "canvas2d", "shared", "auto"] as const;
+export type TestRenderer = (typeof TEST_RENDERERS)[number];
+
+/** Validate an engine name from the command line or the environment. */
+export function parseTestRenderer(value: string): TestRenderer {
+  if (!(TEST_RENDERERS as readonly string[]).includes(value)) throw new Error(`Unknown renderer "${value}"; expected one of ${TEST_RENDERERS.join(", ")}.`);
+  return value as TestRenderer;
+}
+
+/** The engine requested through `BLAZEPLOT_TEST_RENDERER`, or `undefined` for each fixture's own default. */
+export function testRendererFromEnv(): TestRenderer | undefined {
+  const value = process.env.BLAZEPLOT_TEST_RENDERER;
+  return value ? parseTestRenderer(value) : undefined;
+}
+
+/** Add `?renderer=` to a fixture URL so the page builds its charts on that engine. */
+export function withTestRenderer(url: URL, renderer: TestRenderer | undefined): URL {
+  if (renderer) url.searchParams.set("renderer", renderer);
+  return url;
 }

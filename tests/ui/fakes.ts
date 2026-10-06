@@ -1,55 +1,94 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import type { BufferSpec, DrawSpec, GpuBackend, GpuBuffer, GpuCapabilities, GpuProgram, GpuResource } from "../../src/render/types.ts";
+import { describeRenderer } from "../../src/render/ChartRenderer.ts";
+import type { ChartRenderer, ChartRendererInfo, FrameReport, RendererLossState } from "../../src/render/ChartRenderer.ts";
 
-/** GPU backend that records every resource it hands out so tests can assert on leaks. */
-export class FakeBackend implements GpuBackend {
-  readonly capabilities: GpuCapabilities = { instancing: true };
-  readonly liveBuffers = new Set<GpuBuffer>();
-  readonly livePrograms = new Set<GpuProgram>();
-  createdBuffers = 0;
-  draws: DrawSpec[] = [];
-  destroyCount = 0;
-  contextLost = false;
-  readonly canvas: HTMLCanvasElement | null;
-  private readonly gl = { isContextLost: () => this.contextLost } as unknown as WebGL2RenderingContext;
+/** One draw call a chart made on a {@link RecordingRenderer}. */
+export interface RecordedDraw {
+  readonly method: "drawLines" | "drawClipLines" | "drawPoints" | "drawBarsInstanced" | "drawTriangles" | "fillRects";
+  readonly count: number;
+}
 
-  constructor(canvas: HTMLCanvasElement | null = null) {
-    this.canvas = canvas;
+/** Fake engine that records what a chart asks it to draw and lets tests simulate context loss. */
+export class RecordingRenderer implements ChartRenderer {
+  readonly kind = "webgl2" as const;
+  readonly info: ChartRendererInfo = describeRenderer("webgl2", { gpu: true, contextLoss: true, shared: false, maxDrawingBufferPixels: 1 << 24 });
+  /** Every draw call since the last reset, in order. */
+  draws: RecordedDraw[] = [];
+  /** Number of `endFrame` calls, i.e. frames the chart finished. */
+  frames = 0;
+  disposeCount = 0;
+  lost = false;
+  private listener: ((state: RendererLossState) => void) | null = null;
+  private frameDraws = 0;
+
+  get isLost(): boolean {
+    return this.lost;
+  }
+  setLossListener(listener: ((state: RendererLossState) => void) | null): void {
+    this.listener = listener;
+  }
+  /** Simulate the engine losing its context and telling the chart. */
+  lose(): void {
+    this.lost = true;
+    this.listener?.("lost");
+  }
+  /** Simulate the engine restoring its context and telling the chart. */
+  restore(): void {
+    this.lost = false;
+    this.listener?.("restored");
   }
 
-  get liveResourceCount(): number {
-    return this.liveBuffers.size + this.livePrograms.size;
+  beginFrame(): void {
+    this.frameDraws = 0;
   }
+  endFrame(): FrameReport {
+    this.frames++;
+    return { uploadBytes: 0, drawCalls: this.frameDraws };
+  }
+  drawLines(_data: Float32Array, count: number): void {
+    this.record("drawLines", count);
+  }
+  drawClipLines(_data: Float32Array, count: number): void {
+    this.record("drawClipLines", count);
+  }
+  drawPoints(_data: Float32Array, count: number): void {
+    this.record("drawPoints", count);
+  }
+  drawBarsInstanced(_data: Float32Array, count: number): void {
+    this.record("drawBarsInstanced", count);
+  }
+  drawTriangles(_data: Float32Array, count: number): void {
+    this.record("drawTriangles", count);
+  }
+  /** Copies of the rectangle data of every `fillRects` call: eight floats per rectangle. */
+  rectFills: Float32Array[] = [];
+  fillRects(rects: Float32Array, count: number): void {
+    this.rectFills.push(rects.slice(0, count * 8));
+    this.record("fillRects", count);
+  }
+  /** Surfaces created by plugins through this engine, in creation order. */
+  surfaces: RecordingRenderer[] = [];
+  createSurface(): ChartRenderer {
+    const surface = new RecordingRenderer();
+    this.surfaces.push(surface);
+    return surface;
+  }
+  dispose(): void {
+    this.disposeCount++;
+  }
+  private record(method: RecordedDraw["method"], count: number): void {
+    this.frameDraws++;
+    this.draws.push({ method, count });
+  }
+}
 
-  createBuffer(spec: BufferSpec): GpuBuffer {
-    const buffer: GpuBuffer = { kind: "buffer", length: spec.length, type: spec.type };
-    this.createdBuffers++;
-    this.liveBuffers.add(buffer);
-    return buffer;
-  }
-  updateBuffer(): void {}
-  createProgram(): GpuProgram {
-    const program: GpuProgram = { kind: "program" };
-    this.livePrograms.add(program);
-    return program;
-  }
-  draw(spec: DrawSpec): void {
-    this.draws.push(spec);
-  }
-  dispose(resource: GpuResource): void {
-    this.liveBuffers.delete(resource as GpuBuffer);
-    this.livePrograms.delete(resource as GpuProgram);
-  }
-  clear(): void {}
-  viewport(): void {}
-  getContext(): WebGL2RenderingContext | null {
-    return this.gl;
-  }
-  destroy(): void {
-    this.destroyCount++;
-    this.liveBuffers.clear();
-    this.livePrograms.clear();
-  }
+/** Renderer option that builds a {@link RecordingRenderer} and hands it to `sink`. */
+export function recordingRenderer(sink?: RecordingRenderer[]): (context: { canvas: HTMLCanvasElement }) => RecordingRenderer {
+  return () => {
+    const renderer = new RecordingRenderer();
+    sink?.push(renderer);
+    return renderer;
+  };
 }
 
 export class FakeResizeObserver {
@@ -98,6 +137,11 @@ export class FakeRaf {
 export interface ListenerLedger {
   /** Net registered listeners (adds minus removes). */
   net(): number;
+  /**
+   * Net listeners that can still fire: on non-Node targets (window, document) or on Nodes still
+   * attached to the document. Listeners left on a detached node are garbage-collected with it.
+   */
+  reachable(): number;
   restore(): void;
 }
 
@@ -125,6 +169,15 @@ export function trackListeners(): ListenerLedger {
     net() {
       let n = 0;
       for (const byType of live.values()) for (const set of byType.values()) n += set.size;
+      return n;
+    },
+    reachable() {
+      let n = 0;
+      for (const [target, byType] of live) {
+        const node = target as Partial<Node>;
+        if (node.nodeType !== undefined && !node.isConnected) continue;
+        for (const set of byType.values()) n += set.size;
+      }
       return n;
     },
     restore() {

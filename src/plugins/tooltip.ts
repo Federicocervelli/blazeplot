@@ -1,2 +1,2 @@
-export { tooltipPlugin } from "../ui/Tooltip.js";
-export type { TooltipPluginOptions } from "../ui/Tooltip.js";
+export { tooltipPlugin } from "./tooltip/Tooltip.js";
+export type { TooltipPluginOptions } from "./tooltip/Tooltip.js";

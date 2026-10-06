@@ -7,10 +7,10 @@ type PackageJson = {
 };
 
 const expectedExports = {
-  "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "histogram", "WebGL2Backend", "isWebGL2Available"],
+  "blazeplot": ["Chart", "RingBuffer", "UniformRingBuffer", "StaticDataset", "OhlcRingBuffer", "ServerSampledDataset", "HistogramDataset", "isWebGL2Available", "WebGL2UnavailableError", "webgl2Renderer", "canvas2dRenderer", "sharedRenderer", "autoRenderer", "createChartRenderContext", "Canvas2DUnavailableError"],
   "blazeplot/linked": ["createLinkedCharts"],
-  "blazeplot/data": ["exportChartData", "chartDataToCSV", "binSamples", "rollingMean"],
-  "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob"],
+  "blazeplot/data": ["binSamples", "histogramBins", "rollingMean"],
+  "blazeplot/export": ["downloadChartScreenshot", "copyChartScreenshotToClipboard", "downloadBlob", "exportChartData", "chartDataToCsv"],
   "blazeplot/plugins/legend": ["legendPlugin"],
   "blazeplot/plugins/tooltip": ["tooltipPlugin"],
   "blazeplot/plugins/interactions": ["interactionsPlugin"],
@@ -18,7 +18,8 @@ const expectedExports = {
   "blazeplot/plugins/selection": ["selectionPlugin"],
   "blazeplot/plugins/crosshair": ["crosshairPlugin"],
   "blazeplot/plugins/navigator": ["navigatorPlugin"],
-  "blazeplot/plugins/flamegraph": ["flameGraphPlugin", "buildFlameGraphModel", "buildStatusChartModel", "parseFoldedStacks"],
+  "blazeplot/plugins/flamegraph": ["flameGraphPlugin", "buildStatusChartModel", "parseFoldedStacks"],
+  "blazeplot/plugins/a11y": ["a11yPlugin"],
 } as const;
 
 const packageJsonPath = resolve(dirname(fileURLToPath(import.meta.url)), "../package.json");
@@ -49,9 +50,17 @@ for (const specifier of packageExportSpecifiers) {
   }
 }
 
+for (const [subpath, condition] of Object.entries(packageJson.exports)) {
+  if (typeof condition === "string") continue;
+  const conditions = condition as Record<string, string>;
+  if (conditions.default !== conditions.import) {
+    throw new Error(`package.json exports["${subpath}"] needs a "default" condition equal to "import" (Node require(esm), Jest, Vitest).`);
+  }
+}
+
 const rootSpecifier: string = "blazeplot";
 const rootExports = await import(rootSpecifier) as Record<string, unknown>;
-for (const removed of ["ReglBackend", "MinMaxPyramid", "SeriesStore", "DataCursor", "histogramDataset"]) {
+for (const removed of ["ReglBackend", "MinMaxPyramid", "SeriesStore", "DataCursor", "histogramDataset", "WebGL2Backend"]) {
   if (removed in rootExports) throw new Error(`blazeplot should not export ${removed}.`);
 }
 

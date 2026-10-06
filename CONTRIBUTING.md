@@ -29,6 +29,7 @@ For browser-backed benchmarks and visual/interaction tests, set Chrome explicitl
 export BLAZEPLOT_BENCH_CHROME=/path/to/chrome
 bun run test:visual
 bun run test:interaction
+bun run test:stability
 ```
 
 ## Before opening a pull request
@@ -62,6 +63,26 @@ A good PR description includes:
 - Checks run locally.
 - Screenshots or preview links for visible website/UI changes.
 - Known follow-ups, if any.
+
+## Code of conduct
+
+Participation in this project is covered by the [Code of Conduct](CODE_OF_CONDUCT.md). By contributing you agree to follow it.
+
+## Governance and continuity
+
+**Current model.** BlazePlot is maintained by [Federico Cervelli](https://cervelli.dev), who is the sole maintainer and makes final decisions on scope, API design, and releases. Anyone can propose a change through an issue or pull request. There is no committee or voting process.
+
+**How decisions are made.**
+
+- Bug fixes, docs, and tests that match existing behavior: a pull request is enough.
+- New public API, changed behavior, or anything affecting the [API stability](docs/stability.md) tiers: open an issue first and describe the use case. Breaking changes to stable APIs need a [deprecation](docs/versioning-and-migration.md#deprecation-process) path and land in a major release.
+- Direction and non-goals are tracked in the [roadmap](docs/roadmap.md).
+
+**Releases and access.** Releases are cut from pull requests that bump `package.json#version`. The release workflow publishes to npm with provenance (trusted publishing from GitHub Actions) and creates the tag and GitHub Release, so publishing does not depend on a personal npm token on a developer machine. See [`docs/internal/release-checklist.md`](docs/internal/release-checklist.md).
+
+**Continuity.** The code is MIT licensed, so anyone can fork and continue the project. Releases can be rebuilt from the repository and its CI workflows.
+
+**Maintenance and bus factor.** BlazePlot currently has one maintainer, so one person holds merge rights, npm publishing through the release workflow, and private vulnerability reports (see [`SECURITY.md`](SECURITY.md)). Contributors who want to help sustain the project, for example by reviewing pull requests or triaging issues, are welcome to say so in an issue.
 
 ## Maintainer notes
 

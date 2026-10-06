@@ -5,7 +5,7 @@ import { createLinkedCharts } from "@/linked.ts";
 /** Results of viewport-robustness and lifecycle probes, asserted by `scripts/interaction-test.ts`. */
 export type RobustnessResults = Awaited<ReturnType<typeof runRobustnessProbes>>;
 
-const failingBackend: ChartOptions["backendFactory"] = () => {
+const failingRenderer: ChartOptions["renderer"] = () => {
   throw new Error("WebGL2 unavailable (test)");
 };
 
@@ -91,15 +91,15 @@ export async function runRobustnessProbes() {
 
   const canvasHost = document.createElement("div");
   const canvas = canvasHost.appendChild(document.createElement("canvas"));
-  thrownMessage(() => new Chart(canvas, { backendFactory: failingBackend }));
+  thrownMessage(() => new Chart(canvas, { renderer: failingRenderer }));
   const canvasRestored = canvas.parentElement === canvasHost && canvasHost.childElementCount === 1;
 
   return {
     zoom,
     log,
     loop,
-    failedChartLeftDom: leftoverAfterFailure((host) => new Chart(host, { backendFactory: failingBackend })),
-    failedLinkedLeftDom: leftoverAfterFailure((host) => createLinkedCharts(host, { panels: [{}, { options: { backendFactory: failingBackend } }] })),
+    failedChartLeftDom: leftoverAfterFailure((host) => new Chart(host, { renderer: failingRenderer })),
+    failedLinkedLeftDom: leftoverAfterFailure((host) => createLinkedCharts(host, { panels: [{}, { options: { renderer: failingRenderer } }] })),
     canvasRestored,
   };
 }

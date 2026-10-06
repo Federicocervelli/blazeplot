@@ -1,29 +1,55 @@
 #!/usr/bin/env bun
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { readFile, readdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 interface Snippet {
   sourcePath: string;
   index: number;
+  language: "ts" | "tsx";
   code: string;
+}
+
+interface SkippedSnippet {
+  sourcePath: string;
+  index: number;
+  reason: string;
 }
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const docsDir = resolve(root, "docs");
-const snippetFence = /```(?:ts|typescript)\s*\n([\s\S]*?)```/g;
+// A fenced ts/tsx block, optionally preceded (ignoring blank lines) by a skip marker.
+const snippetFence = /(?:<!--\s*snippet:\s*([^>]*?)\s*-->[ \t]*\r?\n(?:[ \t]*\r?\n)*)?```(ts|typescript|tsx)[ \t]*\r?\n([\s\S]*?)```/g;
+const anyMarker = /<!--\s*snippet:/g;
 
-const skipPatterns = [
-  /import\.meta/,
-];
+/**
+ * Ambient context that docs snippets may rely on without declaring it. Every
+ * name here is a conventional placeholder (`chart`, `element`, sample data) so
+ * narrative fragments stay short. Keep this list in sync with the "Snippet
+ * typechecking" section of docs/documentation-contributions.md. A snippet that
+ * declares its own binding with the same name shadows the ambient one.
+ */
+const prelude = `
+declare const element: HTMLElement;
+declare const container: HTMLElement;
+declare const canvas: HTMLCanvasElement;
+declare const chart: import("blazeplot").Chart;
+declare const series: import("blazeplot").SeriesStore;
+declare const dataset: import("blazeplot").UniformRingBuffer;
+`;
 
 async function main(): Promise<void> {
-  const snippets = await collectSnippets();
+  if (!existsSync(join(root, "dist", "index.d.ts"))) {
+    throw new Error("dist/ declarations are missing. Run `bun run build` first: snippets are checked against the published declarations.");
+  }
+  const { snippets, skipped, total } = await collectSnippets();
   if (snippets.length === 0) throw new Error("No TypeScript documentation snippets found.");
 
-  const temp = mkdtempSync(join(tmpdir(), "blazeplot-doc-snippets-"));
+  // The scratch project lives under build/ (gitignored) so snippets resolve
+  // `react` and friends from the repository's node_modules.
+  mkdirSync(join(root, "build"), { recursive: true });
+  const temp = mkdtempSync(join(root, "build", "doc-snippets-"));
   try {
     writeSnippetProject(temp, snippets);
     const proc = Bun.spawnSync(["bunx", "tsc", "-p", join(temp, "tsconfig.json")], {
@@ -36,32 +62,47 @@ async function main(): Promise<void> {
       process.stderr.write(proc.stderr.toString());
       process.exit(proc.exitCode);
     }
-    console.log(`Typechecked ${snippets.length} documentation TypeScript snippets.`);
+    for (const skip of skipped) console.log(`Skipped ${skip.sourcePath} snippet ${skip.index}: ${skip.reason}`);
+    console.log(`Typechecked ${snippets.length} of ${total} documentation TypeScript snippets (${skipped.length} explicitly skipped).`);
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }
 }
 
-async function collectSnippets(): Promise<Snippet[]> {
+async function collectSnippets(): Promise<{ snippets: Snippet[]; skipped: SkippedSnippet[]; total: number }> {
   const files = [resolve(root, "README.md"), ...(await markdownFiles(docsDir))];
   const snippets: Snippet[] = [];
+  const skipped: SkippedSnippet[] = [];
+  let total = 0;
   for (const file of files) {
-    const markdown = await readFile(file, "utf8");
+    // Four-backtick fences hold literal markdown (for example the skip-marker example
+    // in docs/documentation-contributions.md), not snippets.
+    const markdown = (await readFile(file, "utf8")).replace(/^````[\s\S]*?^````/gm, "");
+    const sourcePath = relative(root, file).replaceAll("\\", "/");
+    const markerCount = markdown.match(anyMarker)?.length ?? 0;
+    let usedMarkers = 0;
     let index = 0;
     for (const match of markdown.matchAll(snippetFence)) {
       index += 1;
-      const code = match[1]?.trim() ?? "";
-      if (!code || code.includes("@blazeplot-docs-skip-typecheck") || skipPatterns.some((pattern) => pattern.test(code))) continue;
-      // Many guide snippets are intentionally partial continuations. Typecheck
-      // complete API snippets that import BlazePlot and declare their own setup
-      // so renamed public exports are caught without forcing every narrative
-      // fragment to become standalone.
-      if (!/from\s+["']blazeplot(?:\/[^"']*)?["']/.test(code)) continue;
-      if (referencesImplicitExampleContext(code)) continue;
-      snippets.push({ sourcePath: relative(root, file), index, code });
+      total += 1;
+      const marker = match[1];
+      const language = match[2] === "tsx" ? "tsx" : "ts";
+      const code = match[3]?.trim() ?? "";
+      if (marker !== undefined) {
+        usedMarkers += 1;
+        const parsed = /^skip\s+(\S[\s\S]*)$/.exec(marker);
+        if (!parsed) throw new Error(`${sourcePath} snippet ${index}: use "<!-- snippet: skip <reason> -->" with a non-empty reason.`);
+        skipped.push({ sourcePath, index, reason: parsed[1]!.trim() });
+        continue;
+      }
+      if (!code) throw new Error(`${sourcePath} snippet ${index}: empty TypeScript snippet.`);
+      snippets.push({ sourcePath, index, language, code });
+    }
+    if (usedMarkers !== markerCount) {
+      throw new Error(`${sourcePath}: a "<!-- snippet: ... -->" marker is not directly followed by a ts/tsx code fence.`);
     }
   }
-  return snippets;
+  return { snippets, skipped, total };
 }
 
 async function markdownFiles(dir: string): Promise<string[]> {
@@ -79,39 +120,15 @@ async function markdownFiles(dir: string): Promise<string[]> {
   return files.sort();
 }
 
-function referencesImplicitExampleContext(code: string): boolean {
-  const implicitNames = [
-    "element",
-    "dashboardElement",
-    "chart",
-    "x",
-    "high",
-    "low",
-    "socket",
-    "priceSeries",
-    "bucketStarts",
-    "bucketEnds",
-    "bucketMins",
-    "bucketMaxes",
-    "priceDataset",
-    "volumeDataset",
-    "latencyDataset",
-    "requestDataset",
-    "renderStaticFallback",
-    "showUnsupportedBrowserMessage",
-  ];
-  return implicitNames.some((name) => new RegExp(`\\b${name}\\b`).test(code) && !new RegExp(`(?:const|let|var|function)\\s+${name}\\b`).test(code));
-}
-
 function writeSnippetProject(temp: string, snippets: readonly Snippet[]): void {
   const files: string[] = [];
   snippets.forEach((snippet, i) => {
-    const safeName = `${String(i + 1).padStart(3, "0")}-${basename(snippet.sourcePath, ".md")}-${snippet.index}.ts`;
+    const safeName = `${String(i + 1).padStart(3, "0")}-${basename(snippet.sourcePath, ".md")}-${snippet.index}.${snippet.language}`;
     files.push(safeName);
     writeFileSync(join(temp, safeName), renderSnippet(snippet), "utf8");
   });
 
-  writeFileSync(join(temp, "env.d.ts"), 'declare module "*?raw" { const value: string; export default value; }\n', "utf8");
+  writeFileSync(join(temp, "env.d.ts"), `declare module "*?raw" { const value: string; export default value; }\n${prelude}`, "utf8");
 
   writeFileSync(join(temp, "tsconfig.json"), JSON.stringify({
     compilerOptions: {
@@ -119,24 +136,34 @@ function writeSnippetProject(temp: string, snippets: readonly Snippet[]): void {
       target: "ESNext",
       module: "ESNext",
       moduleResolution: "bundler",
+      jsx: "react-jsx",
       strict: true,
       skipLibCheck: true,
       noEmit: true,
       allowImportingTsExtensions: true,
-      paths: {
-        blazeplot: [join(root, "src/index.ts")],
-        "blazeplot/core": [join(root, "src/core/index.ts")],
-        "blazeplot/interaction": [join(root, "src/interaction/index.ts")],
-        "blazeplot/render": [join(root, "src/render/index.ts")],
-        "blazeplot/linked": [join(root, "src/linked.ts")],
-        "blazeplot/linked-core": [join(root, "src/linked-core.ts")],
-        "blazeplot/data": [join(root, "src/data.ts")],
-        "blazeplot/export": [join(root, "src/export.ts")],
-        "blazeplot/plugins/*": [join(root, "src/plugins/*.ts")],
-      },
+      paths: publishedEntryPaths(),
     },
     files: ["env.d.ts", ...files],
   }, null, 2));
+}
+
+/**
+ * Maps every public `blazeplot` specifier to its built declaration file, using
+ * `package.json#exports` as the source of truth. Subpaths that are not exported
+ * (removed entries, internal modules) therefore fail to resolve in snippets.
+ */
+function publishedEntryPaths(): Record<string, string[]> {
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+    name: string;
+    exports: Record<string, { types?: string } | string>;
+  };
+  const paths: Record<string, string[]> = {};
+  for (const [subpath, target] of Object.entries(pkg.exports)) {
+    if (typeof target === "string" || !target.types) continue;
+    const specifier = subpath === "." ? pkg.name : `${pkg.name}/${subpath.replace(/^\.\//, "")}`;
+    paths[specifier] = [resolve(root, target.types)];
+  }
+  return paths;
 }
 
 function renderSnippet(snippet: Snippet): string {

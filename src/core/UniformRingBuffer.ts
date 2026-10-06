@@ -1,6 +1,8 @@
 import { MinMaxTree } from "./MinMaxTree.js";
-import type { MinMaxY } from "./MinMaxTree.js";
+import type { MinMaxOut, MinMaxY } from "./MinMaxTree.js";
+import { nonFiniteXWarning } from "./search.js";
 import { createValueArray } from "./valueArray.js";
+import { assertEqualLengths } from "./validation.js";
 import type { AcceleratedDataset, AppendableDataset, SampleCopyLayout, TimeRange, ValuePrecision, Viewport } from "./types.js";
 
 function positiveModulo(value: number, modulo: number): number {
@@ -24,6 +26,10 @@ export interface UniformRingBufferOptions {
  * fastest built-in dataset for live telemetry, signals, and other fixed-rate
  * streams because appends copy a single typed array and min/max extraction uses
  * a block segment tree over the physical ring.
+ *
+ * Derived X is always finite and ascending, so no sample is ever rejected. X passed to
+ * `push`/`append` only seeds the stream; a non-finite seed is ignored with one console
+ * warning per buffer and the Y sample is still stored. Non-finite Y is a gap.
  */
 export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset {
   /** Maximum number of retained samples. */
@@ -36,6 +42,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
   private _length = 0;
   private _head = 0;
   private _nextX: number;
+  private readonly warnNonFiniteX = nonFiniteXWarning("UniformRingBuffer", "it was ignored as a seed and X continues from the current cursor");
 
   /** Create an implicit-X ring buffer with fixed spacing. */
   constructor(capacity: number, options: UniformRingBufferOptions = {}) {
@@ -48,9 +55,14 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
       throw new RangeError("UniformRingBuffer xStep must be a positive finite number.");
     }
 
+    const xStart = options.xStart ?? 0;
+    if (!Number.isFinite(xStart)) {
+      throw new RangeError("UniformRingBuffer xStart must be a finite number.");
+    }
+
     this.capacity = capacity;
     this.xStep = xStep;
-    this._nextX = options.xStart ?? 0;
+    this._nextX = xStart;
     this.yData = createValueArray(capacity, options.valuePrecision);
     this.tree = new MinMaxTree(this.yData, capacity);
   }
@@ -68,16 +80,12 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
   /** Append one sample, using `x` to seed the stream when empty. */
   push(x: number, y: number): void {
-    if (this._length === 0 && Number.isFinite(x)) this._nextX = x;
+    if (this._length === 0) this.seed(x);
     const physical = this._head;
     this.yData[physical] = y;
     this._head = (physical + 1) % this.capacity;
-    if (this._length < this.capacity) {
-      this._length++;
-      this.tree.include(physical, this.yData[physical]!);
-    } else {
-      this.tree.update(physical, physical + 1);
-    }
+    if (this._length < this.capacity) this._length++;
+    this.tree.update(physical, physical + 1, this.validEnd());
     this._nextX += this.xStep;
   }
 
@@ -88,18 +96,17 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
    * previous sample, even if the passed values differ; use `RingBuffer` for irregular X.
    */
   append(x: ArrayLike<number>, y: ArrayLike<number>): void {
-    const requested = Math.min(x.length, y.length);
+    assertEqualLengths("UniformRingBuffer.append", { x, y });
+    const requested = x.length;
     if (requested <= 0) return;
 
-    if (this._length === 0) {
-      const first = x[0];
-      if (Number.isFinite(first)) this._nextX = first!;
-    }
+    if (this._length === 0) this.seed(x[0]!);
 
     if (requested >= this.capacity) {
       const sourceOffset = requested - this.capacity;
       const retainedFirst = x[sourceOffset];
       const hasRetainedFirst = Number.isFinite(retainedFirst);
+      if (!hasRetainedFirst) this.warnNonFiniteX(retainedFirst!);
       if (hasRetainedFirst) this._nextX = retainedFirst!;
       this.replaceAll(y, sourceOffset, hasRetainedFirst ? this.capacity : requested);
       return;
@@ -125,7 +132,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
   clear(): void {
     this._length = 0;
     this._head = 0;
-    this.tree.reset();
+    this.tree.update(0, this.capacity, 0);
   }
 
   /** Replace the Y value at a logical index. */
@@ -149,6 +156,19 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     return this.yData[this.logicalToPhysical(index)]!;
   }
 
+  /** @internal Bulk-read logical samples `[start, end)` into Float64 scratch arrays (indices must be valid). */
+  readXYRange(start: number, end: number, xOut: Float64Array, yOut: Float64Array): void {
+    const count = end - start;
+    if (count <= 0) return;
+    const firstX = this.firstX();
+    const step = this.xStep;
+    for (let i = 0; i < count; i++) xOut[i] = firstX + (start + i) * step;
+    const physical = this.logicalToPhysical(start);
+    const first = Math.min(count, this.capacity - physical);
+    yOut.set(this.yData.subarray(physical, physical + first), 0);
+    if (first < count) yOut.set(this.yData.subarray(0, count - first), first);
+  }
+
   /** Return whether the sample should be rendered as a gap. */
   isGap(index: number): boolean {
     return !Number.isFinite(this.getY(index));
@@ -168,11 +188,20 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
 
   /** Return min/max Y values for a logical index range. */
   rangeMinMaxY(start: number, end: number): MinMaxY | null {
+    const out = { minY: 0, maxY: 0 };
+    return this.rangeMinMaxInto(start, end, out) ? out : null;
+  }
+
+  /** @internal Allocation-free `rangeMinMaxY`: writes into `out` and returns whether the range holds a finite value. */
+  rangeMinMaxInto(start: number, end: number, out: MinMaxOut): boolean {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this._length, Math.ceil(end));
-    if (to <= from) return null;
-    return this.tree.queryRing(this.logicalToPhysical(from), to - from);
+    if (to <= from) return false;
+    return this.tree.queryRingInto(this.logicalToPhysical(from), to - from, out);
   }
+
+  /** @internal Copy methods accept a trailing `yOrigin` that is subtracted in float64 before the render-buffer write. */
+  readonly supportsYOrigin = true;
 
   /** Ordinal of logical index 0 on the X grid, so `ordinalOffset + index` is stable while the buffer wraps. */
   get ordinalOffset(): number {
@@ -187,6 +216,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     layout: SampleCopyLayout,
     baseline: number,
     xOrigin: number,
+    yOrigin: number = 0,
   ): number {
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);
@@ -196,7 +226,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const stride = Math.max(1, Math.ceil(viewportSamples / maxPoints));
     const remainder = positiveModulo(this.ordinalOffset + start, stride);
     const alignedStart = start + positiveModulo(-remainder, stride);
-    return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin);
+    return this.copyStridedSamples(alignedStart, end, stride, target, maxPoints, layout, baseline, xOrigin, yOrigin);
   }
 
   /** Copy a logical sample range into a packed render buffer. */
@@ -208,8 +238,9 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     layout: SampleCopyLayout,
     baseline: number,
     xOrigin: number,
+    yOrigin: number = 0,
   ): number {
-    return this.copyStridedSamples(Math.max(0, Math.floor(start)), Math.min(this._length, Math.ceil(end)), 1, target, maxPoints, layout, baseline, xOrigin);
+    return this.copyStridedSamples(Math.max(0, Math.floor(start)), Math.min(this._length, Math.ceil(end)), 1, target, maxPoints, layout, baseline, xOrigin, yOrigin);
   }
 
   /** Copy `[x, minY, maxY]` buckets anchored to absolute sample ordinals, so streaming does not jitter them. */
@@ -218,6 +249,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     target: Float32Array,
     maxSegments: number,
     xOrigin: number,
+    yOrigin: number = 0,
   ): number {
     if (maxSegments <= 0 || target.length < maxSegments * 3) return 0;
 
@@ -231,23 +263,29 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const alignedStart = start - positiveModulo(this.ordinalOffset + start, stride);
 
     let written = 0;
+    const extent = { minY: 0, maxY: 0 };
     for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += stride) {
       const segmentStart = Math.max(0, bucketStart);
       const segmentEnd = Math.min(this._length, bucketStart + stride);
       if (segmentEnd <= start || segmentStart >= end) continue;
 
-      const range = this.rangeMinMaxY(segmentStart, segmentEnd);
-      if (!range) continue;
+      if (!this.rangeMinMaxInto(segmentStart, segmentEnd, extent)) continue;
 
       const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
       const offset = written * 3;
       target[offset] = this.firstX() + representative * this.xStep - xOrigin;
-      target[offset + 1] = range.minY;
-      target[offset + 2] = range.maxY;
+      target[offset + 1] = extent.minY - yOrigin;
+      target[offset + 2] = extent.maxY - yOrigin;
       written++;
     }
 
     return written;
+  }
+
+  /** Seed the X cursor from a supplied X; a non-finite seed is ignored (Y is still stored). */
+  private seed(x: number): void {
+    if (Number.isFinite(x)) this._nextX = x;
+    else this.warnNonFiniteX(x);
   }
 
   private replaceAll(y: ArrayLike<number>, sourceOffset: number, requested: number): void {
@@ -283,6 +321,7 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     layout: SampleCopyLayout,
     baseline: number,
     xOrigin: number,
+    yOrigin: number,
   ): number {
     const floatsPerSample = layout === "points" ? 2 : 4;
     if (maxPoints <= 0 || target.length < maxPoints * floatsPerSample) return 0;
@@ -308,12 +347,12 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
       const x = firstX + index * this.xStep - xOrigin;
       if (layout === "points") {
         target[offset] = x;
-        target[offset + 1] = y;
+        target[offset + 1] = y - yOrigin;
       } else {
         target[offset] = x;
-        target[offset + 1] = baseline;
+        target[offset + 1] = baseline - yOrigin;
         target[offset + 2] = x;
-        target[offset + 3] = y;
+        target[offset + 3] = y - yOrigin;
       }
       count++;
       lastWasGap = false;

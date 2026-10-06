@@ -5,13 +5,9 @@ import { StaticOhlcDataset } from "../../src/core/OhlcDataset.ts";
 import { SeriesStore } from "../../src/core/SeriesStore.ts";
 import type { SeriesMode, SeriesYAxis, Viewport } from "../../src/core/types.ts";
 import type { Chart, ChartSeriesState } from "../../src/ui/Chart.ts";
-import type { SelectionState } from "../../src/ui/Selection.ts";
-import {
-  binSamples,
-  chartDataToCSV,
-  exportChartData,
-  rollingMean,
-} from "../../src/data.ts";
+import type { SelectionState } from "../../src/plugins/selection/Selection.ts";
+import { binSamples, rollingMean } from "../../src/data.ts";
+import { chartDataToCsv, exportChartData } from "../../src/export.ts";
 
 const STYLE = testStyle({ color: [1, 1, 1, 1] as const, lineWidth: 1 });
 const LEFT_VIEWPORT: Viewport = { xMin: 1, xMax: 3, yMin: 15, yMax: 35 };
@@ -78,7 +74,7 @@ describe("chart data export helpers", () => {
       { index: 2, x: 2, y: 30 },
     ]);
 
-    const csv = chartDataToCSV(data);
+    const csv = chartDataToCsv(data);
     expect(csv).toContain('"s,1","quoted ""name"""');
     expect(csv.split("\n")).toHaveLength(3);
 
@@ -89,10 +85,10 @@ describe("chart data export helpers", () => {
     const state = makeSeries("line", [0, 1], [-5, 2], { id: "=HYPERLINK(\"x\")", name: "+cmd" });
     const data = exportChartData(makeChart([state]), { range: "all" });
 
-    const [, row] = chartDataToCSV(data).split("\n");
+    const [, row] = chartDataToCsv(data).split("\n");
     expect(row).toContain(`"'=HYPERLINK(""x"")",'+cmd`);
     expect(row).toContain(",-5,");
-    expect(chartDataToCSV(data, { escapeFormulas: false }).split("\n")[1]).toContain(`"=HYPERLINK(""x"")",+cmd`);
+    expect(chartDataToCsv(data, { escapeFormulas: false }).split("\n")[1]).toContain(`"=HYPERLINK(""x"")",+cmd`);
   });
 
   it("can filter visible exports by y viewport", () => {

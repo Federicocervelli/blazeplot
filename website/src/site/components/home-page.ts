@@ -41,14 +41,16 @@ const FEATURES: ReadonlyArray<{ label: string; title: string; body: string }> = 
 
 interface BenchRow { readonly library: string; readonly name: string; readonly value: number }
 
+interface BenchResult { readonly library: string; readonly ok: boolean; readonly metrics?: Record<string, { readonly median: number } | undefined> }
+
 function benchmarkRows(scenarioName: string, metric: "fps" | "work"): BenchRow[] {
-  const scenario = benchmarks.scenarios.find((candidate) => candidate.name === scenarioName);
+  const scenario = (benchmarks.scenarios as ReadonlyArray<{ readonly name: string; readonly results: readonly BenchResult[] }>).find((candidate) => candidate.name === scenarioName);
   if (!scenario) return [];
   const libraries = benchmarks.libraries as Record<string, { name: string; version: string }>;
+  const metricId = metric === "fps" ? "rafFps" : "workP95Ms";
   return scenario.results.flatMap((result) => {
-    const measurement = (result as { measurement?: { rafFps: number; updateMs: { p95: number }; chartFrameMs?: { p95: number } } }).measurement;
-    if (!result.ok || !measurement) return [];
-    const value = metric === "fps" ? measurement.rafFps : (measurement.chartFrameMs ?? measurement.updateMs).p95;
+    const value = result.metrics?.[metricId]?.median;
+    if (!result.ok || value === undefined) return [];
     return [{ library: result.library, name: libraries[result.library]?.name ?? result.library, value }];
   });
 }
@@ -282,7 +284,7 @@ export class BlazeplotHomePage extends LitElement {
     };
     const viewportPolicy: ViewportPolicy = {
       beforeRender: (camera) => {
-        if (this.homeChart?.getXFollowState() !== "following") return;
+        if (this.homeChart?.getFollowXState() !== "following") return;
         const { yMin, yMax } = homeViewport(nextX - initialCount, nextX - 1);
         camera.setViewport({ yMin, yMax });
       },
@@ -314,12 +316,12 @@ export class BlazeplotHomePage extends LitElement {
       this.homeChart = chart;
       const stream = this.addHomeSeries(chart, initialCount);
       chart.setViewport(resetViewport());
-      if (stream) chart.followLatestX({ window: initialCount - 1, pauseOnInteraction: true });
-      this.unsubscribeHomeState = chart.subscribe("render", () => { this.followingLive = chart.getXFollowState() === "following"; });
+      if (stream) chart.followX({ window: initialCount - 1, pauseOnInteraction: true });
+      this.unsubscribeHomeState = chart.subscribe("render", () => { this.followingLive = chart.getFollowXState() === "following"; });
       chart.start();
       this.resumeLive = () => {
         chart.setViewport(resetViewport());
-        chart.setXFollowPaused(false);
+        chart.setFollowXPaused(false);
       };
 
       if (stream) {

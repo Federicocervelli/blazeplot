@@ -36,6 +36,13 @@ export const DOC_PAGES: readonly DocPage[] = [
     loadMarkdown: () => import("../../docs/examples.md?raw").then((module) => module.default),
   },
   {
+    slug: "framework-integration",
+    title: "Frameworks",
+    description: "Use BlazePlot with React, Vue, Svelte, SSR frameworks, and a no-WebGL2 fallback.",
+    sourcePath: "docs/framework-integration.md",
+    loadMarkdown: () => import("../../docs/framework-integration.md?raw").then((module) => module.default),
+  },
+  {
     slug: "live-data",
     title: "Live data",
     description: "Streaming appends, fixed-rate shortcuts, sample updates, and follow-latest behavior.",
@@ -66,7 +73,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   {
     slug: "built-in-plugins",
     title: "Plugins",
-    description: "Use optional interaction, tooltip, legend, annotation, selection, crosshair, and navigator plugins.",
+    description: "Use the optional interaction, tooltip, legend, annotation, selection, crosshair, navigator, accessibility, and flame graph plugins.",
     sourcePath: "docs/built-in-plugins.md",
     loadMarkdown: () => import("../../docs/built-in-plugins.md?raw").then((module) => module.default),
   },
@@ -80,7 +87,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   {
     slug: "plugin-authoring",
     title: "Author plugins",
-    description: "Build lightweight chart plugins without coupling them to the core renderer.",
+    description: "Build chart plugins on the stable plugin context: mount slots, pointer claims, lifecycle hooks, and typed events.",
     sourcePath: "docs/plugin-authoring.md",
     loadMarkdown: () => import("../../docs/plugin-authoring.md?raw").then((module) => module.default),
   },
@@ -99,11 +106,39 @@ export const DOC_PAGES: readonly DocPage[] = [
     loadMarkdown: () => import("../../docs/browser-support.md?raw").then((module) => module.default),
   },
   {
+    slug: "migrating-to-1.0",
+    title: "Migrating to 1.0",
+    description: "Breaking changes and new features from 0.x to 1.0 with before and after code and an upgrade checklist.",
+    sourcePath: "docs/migrating-to-1.0.md",
+    loadMarkdown: () => import("../../docs/migrating-to-1.0.md?raw").then((module) => module.default),
+  },
+  {
     slug: "versioning-and-migration",
     title: "Migration",
     description: "Semver policy, migration expectations, and public API stability notes.",
     sourcePath: "docs/versioning-and-migration.md",
     loadMarkdown: () => import("../../docs/versioning-and-migration.md?raw").then((module) => module.default),
+  },
+  {
+    slug: "stability",
+    title: "Stability",
+    description: "What is stable, experimental, and internal in each BlazePlot export and subpath.",
+    sourcePath: "docs/stability.md",
+    loadMarkdown: () => import("../../docs/stability.md?raw").then((module) => module.default),
+  },
+  {
+    slug: "error-handling",
+    title: "Errors",
+    description: "Errors thrown, console output, and how invalid data, viewports, and renderer failures are handled.",
+    sourcePath: "docs/error-handling.md",
+    loadMarkdown: () => import("../../docs/error-handling.md?raw").then((module) => module.default),
+  },
+  {
+    slug: "accessibility",
+    title: "Accessibility",
+    description: "Chart semantics, the a11y plugin (data table, keyboard inspection), key map, high contrast, and known limits.",
+    sourcePath: "docs/accessibility.md",
+    loadMarkdown: () => import("../../docs/accessibility.md?raw").then((module) => module.default),
   },
   {
     slug: "api-reference",
@@ -136,10 +171,10 @@ export const DOC_PAGES: readonly DocPage[] = [
 ];
 
 export const DOC_NAV_SECTIONS: readonly DocNavSection[] = [
-  { title: "Start", slugs: ["overview","docs-map","examples"] },
+  { title: "Start", slugs: ["overview","docs-map","examples","framework-integration"] },
   { title: "Data and performance", slugs: ["live-data","data-semantics","performance-recipes","benchmarks"] },
   { title: "UI", slugs: ["built-in-plugins","theming-and-layout","plugin-authoring"] },
-  { title: "Reference", slugs: ["troubleshooting","browser-support","versioning-and-migration","api-reference"] },
+  { title: "Reference", slugs: ["troubleshooting","browser-support","migrating-to-1.0","versioning-and-migration","stability","error-handling","accessibility","api-reference"] },
 ] as const;
 
 export function getDocPage(slug: string): DocPage | undefined {

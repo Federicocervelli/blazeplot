@@ -1,8 +1,12 @@
 import { MinMaxTree } from "./MinMaxTree.js";
-import type { MinMaxY } from "./MinMaxTree.js";
+import type { MinMaxOut, MinMaxY } from "./MinMaxTree.js";
 import { lowerBound, upperBound } from "./search.js";
 import type { Dataset, TimeRange, ValuePrecision } from "./types.js";
 import { createValueArray } from "./valueArray.js";
+import { assertEqualLengths, assertSortedFiniteX, invalidXError, stableFiniteXOrder } from "./validation.js";
+
+const STATIC_HINT =
+  "Use StaticDataset.sorted(x, y) to sort and drop non-finite X, or pass { assumeSorted: true } to skip this check for data you trust.";
 
 /** Object-row field selector used by `StaticDataset.fromObjects`. */
 export type StaticDatasetField<Row> = keyof Row | ((row: Row, index: number) => number);
@@ -14,8 +18,25 @@ export interface StaticDatasetFromObjectsOptions<Row> {
   /**
    * Sort copied rows by X before constructing the dataset. Enable this when
    * source rows come from APIs that do not guarantee chronological order.
+   * Rows with equal X keep their input order.
    */
   readonly sort?: boolean;
+  /** Y storage for the copied values. Defaults to `"float32"`; use `"float64"` to keep large values exact. */
+  readonly valuePrecision?: ValuePrecision;
+}
+
+/** Options for the `StaticDataset` constructor. */
+export interface StaticDatasetOptions {
+  /**
+   * Skip the O(n) check that X is finite and non-decreasing, at construction and on
+   * `replace`. Only for large data you already trust; unsorted X then makes searches,
+   * culling, and picking unreliable.
+   */
+  readonly assumeSorted?: boolean;
+}
+
+/** Options for `StaticDataset.sorted`. */
+export interface StaticDatasetSortedOptions {
   /** Y storage for the copied values. Defaults to `"float32"`; use `"float64"` to keep large values exact. */
   readonly valuePrecision?: ValuePrecision;
 }
@@ -35,21 +56,27 @@ export interface StaticDatasetData {
 /**
  * Sorted XY dataset backed by typed arrays, which are read in place rather than copied.
  *
+ * X must be finite and non-decreasing: the constructor and `replace` check it in one pass and
+ * throw a `RangeError` naming the first bad index. Use `StaticDataset.sorted(x, y)` for
+ * unsorted input, or `{ assumeSorted: true }` to skip the check. Non-finite Y is a gap.
+ *
  * Change the data with `series.replace({ y })`, or overwrite the arrays and call
- * `series.markDirty()`.
+ * `series.markDirty()` (in-place edits are not re-checked).
  */
 export class StaticDataset implements Dataset {
   readonly rangeMinMaxExcludesGaps = true;
   private tree: MinMaxTree | null = null;
-  private treeStale = false;
   private count: number;
+  private readonly assumeSorted: boolean;
+  /** Leading samples of the current X array already checked, so Y-only replaces skip the X check. */
+  private checkedLength = 0;
 
   /**
    * Copy object rows into a static X/Y dataset.
    *
    * Field names are convenient for API responses, while accessor functions cover
-   * tuples, Dates, nested values, or computed units. X values must be sorted
-   * unless `sort: true` is passed.
+   * tuples, Dates, nested values, or computed units. Throws a `RangeError` naming the
+   * row when an X is non-finite, or when X decreases and `sort: true` is not passed.
    */
   static fromObjects<Row>(
     rows: readonly Row[],
@@ -57,14 +84,18 @@ export class StaticDataset implements Dataset {
   ): StaticDataset {
     const pairs = rows.map((row, index) => {
       const x = readNumericField(row, index, options.x);
-      if (!Number.isFinite(x)) {
-        throw new TypeError(`StaticDataset.fromObjects expected a finite x value at row ${index}.`);
-      }
+      if (!Number.isFinite(x)) throw invalidXError("StaticDataset.fromObjects", x, index, NaN, "Filter out rows without a valid X.", "row");
       return { x, y: readNumericField(row, index, options.y) };
     });
 
     if (options.sort === true) {
       pairs.sort((a, b) => a.x - b.x);
+    } else {
+      for (let i = 1; i < pairs.length; i++) {
+        if (pairs[i]!.x < pairs[i - 1]!.x) {
+          throw invalidXError("StaticDataset.fromObjects", pairs[i]!.x, i, pairs[i - 1]!.x, "Pass { sort: true } to sort rows by X.", "row");
+        }
+      }
     }
 
     const y = createValueArray(pairs.length, options.valuePrecision);
@@ -74,12 +105,35 @@ export class StaticDataset implements Dataset {
     return new StaticDataset(Float64Array.from(pairs, (pair) => pair.x), y);
   }
 
-  /** Create an XY dataset from parallel arrays. */
+  /**
+   * Copy X/Y arrays into a dataset sorted by X. Samples with a non-finite X are dropped;
+   * samples with equal X keep their input order. Non-finite Y values are kept as gaps.
+   */
+  static sorted(x: ArrayLike<number>, y: ArrayLike<number>, options: StaticDatasetSortedOptions = {}): StaticDataset {
+    assertEqualLengths("StaticDataset.sorted", { x, y });
+    const order = stableFiniteXOrder(x, x.length);
+    const xs = new Float64Array(order.length);
+    const ys = createValueArray(order.length, options.valuePrecision);
+    for (let i = 0; i < order.length; i++) {
+      xs[i] = x[order[i]!]!;
+      ys[i] = y[order[i]!]!;
+    }
+    return new StaticDataset(xs, ys);
+  }
+
+  /**
+   * Create an XY dataset from parallel arrays, read in place. Throws a `RangeError` when an
+   * X is non-finite or decreasing, unless `assumeSorted` is set.
+   */
   constructor(
     private xData: ArrayLike<number>,
     private yData: ArrayLike<number>,
+    options: StaticDatasetOptions = {},
   ) {
-    this.count = Math.min(xData.length, yData.length);
+    this.assumeSorted = options.assumeSorted === true;
+    assertEqualLengths("StaticDataset", { x: xData, y: yData });
+    this.count = xData.length;
+    this.checkX(xData, this.count);
   }
 
   /** Number of samples. */
@@ -87,19 +141,27 @@ export class StaticDataset implements Dataset {
     return this.count;
   }
 
-  /** Swap in new arrays without copying them. Prefer `series.replace(...)`, which also redraws. */
+  /**
+   * Swap in new arrays without copying them. Prefer `series.replace(...)`, which also redraws.
+   * Throws a `RangeError` and keeps the current data when the new X is non-finite or decreasing.
+   */
   replace(data: StaticDatasetData): void {
+    const xData = data.x ?? this.xData;
+    assertEqualLengths("StaticDataset.replace", { x: xData, y: data.y });
+    const count = xData.length;
+    if (data.x !== undefined) this.checkedLength = 0;
+    this.checkX(xData, count);
     const sameY = data.y === this.yData;
-    this.xData = data.x ?? this.xData;
+    this.xData = xData;
     this.yData = data.y;
-    this.count = Math.min(this.xData.length, this.yData.length);
+    this.count = count;
     if (sameY && this.tree?.capacity === this.count) this.invalidate();
     else this.tree = null;
   }
 
   /** Drop cached min/max summaries after the arrays were mutated in place. Called by `series.markDirty()`. */
   invalidate(): void {
-    this.treeStale = true;
+    this.tree?.update(0, this.count);
   }
 
   /** X range covered by samples, or `null` when empty. */
@@ -120,6 +182,16 @@ export class StaticDataset implements Dataset {
     return this.yData[index]!;
   }
 
+  /** @internal Bulk-read logical samples `[start, end)` into Float64 scratch arrays (indices must be valid). */
+  readXYRange(start: number, end: number, xOut: Float64Array, yOut: Float64Array): void {
+    const xs = this.xData;
+    const ys = this.yData;
+    for (let i = start; i < end; i++) {
+      xOut[i - start] = xs[i]!;
+      yOut[i - start] = ys[i]!;
+    }
+  }
+
   /** Return whether the sample should be rendered as a gap. */
   isGap(index: number): boolean {
     return !Number.isFinite(this.getY(index));
@@ -135,20 +207,26 @@ export class StaticDataset implements Dataset {
     return upperBound(this.length, (index) => this.xData[index]!, x);
   }
 
-  /** Return min/max Y values for a logical index range. The summary index is built on first use. */
+  /** Return min/max Y values for a logical index range. Summaries are built lazily, only for the blocks queried. */
   rangeMinMaxY(start: number, end: number): MinMaxY | null {
+    const out = { minY: 0, maxY: 0 };
+    return this.rangeMinMaxInto(start, end, out) ? out : null;
+  }
+
+  /** @internal Allocation-free `rangeMinMaxY`: writes into `out` and returns whether the range holds a finite value. */
+  rangeMinMaxInto(start: number, end: number, out: MinMaxOut): boolean {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
-    if (to <= from) return null;
-    if (!this.tree) {
-      this.tree = new MinMaxTree(this.yData, this.length);
-      this.treeStale = true;
-    }
-    if (this.treeStale) {
-      this.tree.update(0, this.length);
-      this.treeStale = false;
-    }
-    return this.tree.query(from, to);
+    if (to <= from) return false;
+    if (!this.tree) this.tree = new MinMaxTree(this.yData, this.length);
+    return this.tree.queryInto(from, to, out);
+  }
+
+  /** Check the first `count` X values unless trusted or already checked for this array. */
+  private checkX(x: ArrayLike<number>, count: number): void {
+    if (this.assumeSorted || count <= this.checkedLength) return;
+    assertSortedFiniteX("StaticDataset", x, count, STATIC_HINT);
+    this.checkedLength = count;
   }
 
   private assertValidIndex(index: number): void {

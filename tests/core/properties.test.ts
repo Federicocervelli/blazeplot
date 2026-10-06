@@ -1,6 +1,7 @@
 import { describe, it, expect, spyOn } from "bun:test";
 import { testStyle } from "../helpers.ts";
 import { MinMaxTree } from "../../src/core/MinMaxTree.ts";
+import { query, queryRing } from "./minMaxQuery.ts";
 import { RingBuffer } from "../../src/core/RingBuffer.ts";
 import { UniformRingBuffer } from "../../src/core/UniformRingBuffer.ts";
 import { StaticDataset } from "../../src/core/StaticDataset.ts";
@@ -86,7 +87,7 @@ describe("MinMaxTree vs brute force", () => {
         const op = r();
         if (op < 0.4 && filled < capacity) {
           values[filled] = randomY(r);
-          tree.include(filled, values[filled]!);
+          tree.update(filled, filled + 1, filled + 1);
           filled++;
         } else if (filled > 0) {
           const a = int(r, 0, filled - 1);
@@ -99,7 +100,7 @@ describe("MinMaxTree vs brute force", () => {
           const to = int(r, from - 2, filled + 10);
           const expected = bruteMinMax(values.subarray(0, filled), from, to);
           // Unfilled slots are not summarized; callers only query the filled prefix.
-          expect(tree.query(Math.max(0, from), Math.min(filled, to))).toEqual(expected);
+          expect(query(tree, Math.max(0, from), Math.min(filled, to))).toEqual(expected);
         }
       }
     });
@@ -117,7 +118,7 @@ describe("MinMaxTree vs brute force", () => {
       const count = int(r, 1, capacity);
       const idx: number[] = [];
       for (let i = 0; i < count; i++) idx.push(values[(start + i) % capacity]!);
-      expect(tree.queryRing(start, count)).toEqual(bruteMinMax(idx, 0, idx.length));
+      expect(queryRing(tree, start, count)).toEqual(bruteMinMax(idx, 0, idx.length));
     }
   });
 });
@@ -225,7 +226,7 @@ describe("UniformRingBuffer vs reference model", () => {
       for (let step = 0; step < 60; step++) {
         const n = r() < 0.5 ? 1 : int(r, 0, cap * 3);
         const ys = Array.from({ length: n }, () => randomY(r));
-        if (n === 1) buf.push(NaN, ys[0]!);
+        if (n === 1) buf.push(buf.length === 0 ? xStart : 0, ys[0]!); // x only seeds an empty buffer
         else buf.appendY(ys);
         all = all.concat(ys);
         const ret = all.slice(-cap);
@@ -417,7 +418,7 @@ describe("invalid input: documented current behavior", () => {
     expect(() => new MinMaxTree(new Float64Array(4), 4, 0)).toThrow(RangeError);
   });
 
-  it("RingBuffer accepts unsorted X with a one-time warning and keeps the sample", () => {
+  it("RingBuffer skips unsorted X with a one-time warning", () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       const ring = new RingBuffer(8);
@@ -425,55 +426,61 @@ describe("invalid input: documented current behavior", () => {
       ring.push(3, 2);
       ring.push(1, 3);
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(ring.length).toBe(3);
-      expect([ring.getX(0), ring.getX(1), ring.getX(2)]).toEqual([5, 3, 1]);
-      // Bounds are binary searches over unsorted data: results are unspecified but stay in [0, length].
-      for (const x of [0, 2, 4, 6]) {
-        expect(ring.lowerBoundX(x)).toBeGreaterThanOrEqual(0);
-        expect(ring.upperBoundX(x)).toBeLessThanOrEqual(3);
-      }
+      expect(ring.length).toBe(1);
+      expect(ring.rejectedSamples).toBe(2);
+      expect(ring.getX(0)).toBe(5);
     } finally {
       warn.mockRestore();
     }
   });
 
-  it("RingBuffer NaN X is stored and defeats the order check silently", () => {
+  it("RingBuffer skips NaN X and out-of-order X with a single warning per buffer", () => {
     const warn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       const ring = new RingBuffer(8);
       ring.push(1, 1);
       ring.push(NaN, 2);
-      ring.push(0, 3); // after NaN, out-of-order is not detected (NaN comparisons are false)
-      expect(warn).not.toHaveBeenCalled();
-      expect(ring.length).toBe(3);
-      expect(Number.isNaN(ring.getX(1))).toBe(true);
+      expect(ring.length).toBe(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+      ring.push(0, 3); // out of order: compared with 1 because NaN was never stored
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(ring.length).toBe(1);
+      expect(ring.rejectedSamples).toBe(2);
+      expect(ring.getX(0)).toBe(1);
     } finally {
       warn.mockRestore();
     }
   });
 
-  it("RingBuffer stores +/-Infinity X without error", () => {
-    const ring = new RingBuffer(4);
-    ring.append([-Infinity, 0, Infinity], [1, 2, 3]);
-    expect(ring.length).toBe(3);
-    expect(ring.lowerBoundX(0)).toBe(1);
-    expect(ring.upperBoundX(0)).toBe(2);
-    expect(ring.lowerBoundX(Infinity)).toBe(2);
-    expect(ring.upperBoundX(Infinity)).toBe(3);
+  it("RingBuffer skips +/-Infinity X in bulk appends and keeps the finite samples", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const ring = new RingBuffer(4);
+      ring.append([-Infinity, 0, Infinity], [1, 2, 3]);
+      expect(ring.length).toBe(1);
+      expect(ring.getX(0)).toBe(0);
+      expect(ring.getY(0)).toBe(2);
+      expect(ring.lowerBoundX(0)).toBe(0);
+      expect(ring.upperBoundX(0)).toBe(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
-  it("StaticDataset does not validate X order; fromObjects rejects non-finite X", () => {
-    const stat = new StaticDataset([3, 1, 2], [1, 2, 3]);
-    expect(stat.length).toBe(3);
-    expect(stat.range).toEqual({ start: 3, end: 2 }); // first/last, not min/max
-    expect(() => StaticDataset.fromObjects([{ x: NaN, y: 1 }], { x: "x", y: "y" })).toThrow(TypeError);
+  it("StaticDataset rejects unsorted or non-finite X unless assumeSorted is set", () => {
+    expect(() => new StaticDataset([3, 1, 2], [1, 2, 3])).toThrow(RangeError);
+    const trusted = new StaticDataset([3, 1, 2], [1, 2, 3], { assumeSorted: true });
+    expect(trusted.length).toBe(3);
+    expect(trusted.range).toEqual({ start: 3, end: 2 }); // first/last, not min/max
+    expect(() => StaticDataset.fromObjects([{ x: NaN, y: 1 }], { x: "x", y: "y" })).toThrow(RangeError);
   });
 
-  it("mismatched X/Y lengths use the shorter array", () => {
-    expect(new StaticDataset([1, 2, 3], [1, 2]).length).toBe(2);
+  it("mismatched X/Y lengths throw and leave the data unchanged", () => {
+    expect(() => new StaticDataset([1, 2, 3], [1, 2])).toThrow(RangeError);
     const ring = new RingBuffer(8);
-    ring.append([1, 2, 3], [1, 2]);
-    expect(ring.length).toBe(2);
+    expect(() => ring.append([1, 2, 3], [1, 2])).toThrow(RangeError);
+    expect(ring.length).toBe(0);
   });
 
   it("UniformRingBuffer ignores X passed to append after seeding", () => {
@@ -485,8 +492,15 @@ describe("invalid input: documented current behavior", () => {
 
   it("UniformRingBuffer keeps the previous cursor when seeded with a non-finite X", () => {
     const buf = new UniformRingBuffer(4, { xStart: 5 });
-    buf.append([NaN], [1]);
-    expect(buf.getX(0)).toBe(5);
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      buf.append([NaN], [1]);
+      expect(buf.getX(0)).toBe(5);
+      expect(buf.length).toBe(1);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("out-of-range or non-integer indices: updateY returns false, getters throw", () => {

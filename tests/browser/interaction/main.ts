@@ -1,12 +1,22 @@
+import { chartInternals } from "@/ui/ChartInternals.ts";
 import { Chart, StaticDataset } from "@/index.ts";
 import { createLinkedCharts } from "@/linked.ts";
-import type { ChartHoverState, ChartPlugin, Viewport } from "@/index.ts";
+import type { ChartHoverState, ChartPlugin, SeriesStore, Viewport } from "@/index.ts";
+import { a11yPlugin } from "@/plugins/a11y.ts";
+import { annotationsPlugin } from "@/plugins/annotations.ts";
+import type { AnnotationsPlugin } from "@/plugins/annotations.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
+import { legendPlugin } from "@/plugins/legend.ts";
+import { navigatorPlugin } from "@/plugins/navigator.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
 import { tooltipPlugin } from "@/plugins/tooltip.ts";
 import type { SelectionPlugin } from "@/plugins/selection.ts";
 import { runRobustnessProbes } from "./robustness.ts";
+import { testRenderer } from "../test-renderer.ts";
+
+/** Engine for every chart on the page: WebGL2 unless the driving script passes `?renderer=`. */
+const pageRenderer = testRenderer();
 
 interface RectSnapshot {
   readonly left: number;
@@ -39,27 +49,90 @@ interface InteractionSnapshot {
   readonly renderEvents: number;
   readonly followingLatestX: boolean;
   readonly latestXFollowPaused: boolean;
+  readonly a11y: A11ySnapshot;
   readonly error: string | null;
+}
+
+/** Keyboard-only state for the `a11y` case. */
+interface A11ySnapshot {
+  /** `chart-root`, `annotation:<name>`, `legend:<name>`, the element's role, or `body`. */
+  readonly active: string;
+  /** Computed outline of the focused element, to check visible focus styles. */
+  readonly activeOutline: string;
+  readonly announcement: string;
+  readonly selectionStatus: string;
+  readonly hoverSource: string | null;
+  readonly hoverSeries: string | null;
+  readonly hoverIndex: number | null;
+  readonly annotationCount: number;
+  readonly annotationClicks: number;
+  readonly tableRows: number;
+  readonly describedBy: string;
+}
+
+/** Theme and computed overlay colors, for the forced-colors (high-contrast) check. */
+interface ColorSnapshot {
+  readonly forcedColorsMatches: boolean;
+  readonly themeChanges: number;
+  /** System colors as the browser resolves them right now. */
+  readonly system: Readonly<Record<"Canvas" | "CanvasText" | "Highlight" | "LinkText" | "GrayText", string>>;
+  readonly theme: {
+    readonly backgroundCssColor: string;
+    readonly backgroundColor: readonly number[];
+    readonly seriesColors: readonly (readonly number[])[];
+    readonly axisColor: string;
+  };
+  /** `style.color` of each series, in order. */
+  readonly seriesColors: readonly (readonly number[])[];
+  readonly rootBackground: string;
+  readonly axisLabelColor: string | null;
+  readonly titleColor: string | null;
+  readonly legend: OverlayColors | null;
+  readonly tooltip: OverlayColors | null;
+  readonly selectionBorderColor: string | null;
+  readonly activeOutlineColor: string | null;
+  /** Computed `color` of the legend swatches and of the series swatches in the tooltip. */
+  readonly legendSwatchColors: readonly string[];
+  readonly tooltipSwatchColors: readonly string[];
+  /** Computed `background-color` of the visible hover/inspection markers on the plot. */
+  readonly pickMarkerBackgrounds: readonly string[];
+  /** Computed SVG `fill` of the navigator's visible-range window. */
+  readonly navigatorWindowFill: string | null;
+}
+
+interface OverlayColors {
+  readonly background: string;
+  readonly color: string;
+  readonly borderColor: string;
+  readonly borderStyle: string;
 }
 
 interface InteractionController {
   snapshot(): InteractionSnapshot;
+  colors(): ColorSnapshot;
   resetViewport(): void;
   setViewport(viewport: Partial<Viewport>): void;
+  /** Viewport and canvas rectangle (page coordinates) of every chart, for multi-chart cases. */
+  panels(): Array<{ viewport: Viewport; canvasRect: RectSnapshot }>;
+  /** Fraction of plot pixels in a fresh `chart.screenshot()` that differ from the background. */
+  screenshotInk(): Promise<number>;
 }
 
 declare global {
   interface Window {
     __blazeplotInteractionTest: InteractionController;
     __blazeplotRobustness?: typeof runRobustnessProbes;
+    /** iframe case: calls made from `src/` into the parent window or document (there should be none). */
+    __blazeplotIframeProbe?: { hits(): string[] };
   }
 }
 
-type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow" | "robustness";
+type InteractionCase = "interactions" | "selection" | "linked" | "mobile" | "mobile-longpress" | "lifecycle" | "render-loop" | "continuous-render-loop" | "live-follow" | "robustness" | "a11y" | "arbitration" | "plain" | "cooperative" | "iframe" | "site-linked";
 
 const params = new URLSearchParams(window.location.search);
 const rawCase = params.get("case");
 const caseName: InteractionCase = rawCase === "selection"
+  || rawCase === "a11y"
   || rawCase === "linked"
   || rawCase === "mobile"
   || rawCase === "mobile-longpress"
@@ -68,6 +141,11 @@ const caseName: InteractionCase = rawCase === "selection"
   || rawCase === "continuous-render-loop"
   || rawCase === "live-follow"
   || rawCase === "robustness"
+  || rawCase === "arbitration"
+  || rawCase === "plain"
+  || rawCase === "cooperative"
+  || rawCase === "iframe"
+  || rawCase === "site-linked"
   ? rawCase
   : "interactions";
 const chartTarget = requireElement<HTMLElement>("chart");
@@ -88,10 +166,54 @@ let selectionCommits = 0;
 let selectionBounds: InteractionSnapshot["selectionBounds"] = null;
 
 const charts: Chart[] = [];
+const seriesHandles: SeriesStore[] = [];
+let themeChanges = 0;
 let selection: SelectionPlugin | null = null;
+let annotations: AnnotationsPlugin | null = null;
+let annotationClicks = 0;
 
-if (caseName === "linked") {
+if (caseName === "a11y") {
+  // Every keyboard-reachable built-in, for keyboard-only and axe checks.
+  selection = selectionPlugin({
+    mode: "x-range",
+    onChange: (event) => {
+      if (event.type !== "commit") return;
+      selectionCommits++;
+      selectionBounds = event.selection?.bounds ?? null;
+    },
+  });
+  annotations = annotationsPlugin({
+    annotations: [
+      { type: "x-line", x: 300, label: "Deploy", removable: true },
+      { type: "x-range", xMin: 600, xMax: 700, label: "Incident" },
+    ],
+    onClick: () => { annotationClicks++; },
+  });
+  charts.push(new Chart(chartTarget, {
+    renderer: pageRenderer,
+    title: "Accessible interaction chart",
+    axes: { x: { position: "outside" }, y: { position: "outside" } },
+    plugins: [a11yPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }), selection, annotations, legendPlugin(), navigatorPlugin({ heightPx: 48 })],
+  }));
+} else if (caseName === "iframe") {
+  charts.push(createIframeChart());
+} else if (caseName === "site-linked") {
+  // The website feature preview: synced time/log panels with default box zoom, shift pan, and a shared crosshair.
+  const panelPlugins = (): ChartPlugin[] => [interactionsPlugin({ minDragDistancePx: 4, shiftDragPan: true }), crosshairPlugin({ syncGroup: "site-linked", snap: "nearest-x" })];
   const linked = createLinkedCharts(chartTarget, {
+    renderer: pageRenderer,
+    rows: 2,
+    spacing: 8,
+    syncX: true,
+    panels: [
+      { options: { axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside" } }, plugins: panelPlugins() } },
+      { options: { axes: { x: { position: "outside", scale: "time", timezone: "utc" }, y: { position: "outside", scale: "log", logBase: 10 } }, plugins: panelPlugins() } },
+    ],
+  });
+  charts.push(...linked.charts);
+} else if (caseName === "linked") {
+  const linked = createLinkedCharts(chartTarget, {
+    renderer: pageRenderer,
     rows: 2,
     panels: [{}, {}],
     panelPlugins: (syncGroup) => [crosshairPlugin({ syncGroup }), tooltipPlugin({ syncGroup })],
@@ -99,7 +221,22 @@ if (caseName === "linked") {
   });
   charts.push(...linked.charts);
 } else {
-  const plugins: ChartPlugin[] = caseName === "selection"
+  const plugins: ChartPlugin[] = caseName === "plain"
+    ? []
+    : caseName === "cooperative"
+    ? [interactionsPlugin({ minDragDistancePx: 4, wheelZoom: "modifier" })] // touchPan stays at its default, "two-finger"
+    : caseName === "arbitration"
+    // Both plugins at their defaults: one plain drag must do exactly one thing.
+    ? [interactionsPlugin({ minDragDistancePx: 4 }), selection = selectionPlugin({
+        mode: "xy",
+        minDragDistancePx: 4,
+        onChange: (event) => {
+          if (event.type !== "commit") return;
+          selectionCommits++;
+          selectionBounds = event.selection?.bounds ?? null;
+        },
+      })]
+    : caseName === "selection"
     ? [selection = selectionPlugin({
         mode: "xy",
         minDragDistancePx: 4,
@@ -111,7 +248,7 @@ if (caseName === "linked") {
       })]
     : caseName === "mobile"
       ? [
-          interactionsPlugin({ minDragDistancePx: 4 }),
+          interactionsPlugin({ minDragDistancePx: 4, touchPan: true }),
           tooltipPlugin(),
           crosshairPlugin({ snap: "nearest-x", label: true, onMove: () => { crosshairMoves++; } }),
         ]
@@ -123,6 +260,7 @@ if (caseName === "linked") {
             crosshairPlugin({ snap: "none", label: true, onMove: () => { crosshairMoves++; } }),
           ];
   charts.push(new Chart(chartTarget, {
+    renderer: pageRenderer,
     axes: { x: { position: "outside" }, y: { position: "outside" }, y2: { position: "outside", reversed: true } },
     grid: true,
     plugins,
@@ -140,6 +278,9 @@ for (const item of charts) {
   item.subscribe("render", () => {
     renderEvents++;
   });
+  item.subscribe("themechange", () => {
+    themeChanges++;
+  });
 }
 
 window.__blazeplotInteractionTest = {
@@ -150,9 +291,9 @@ window.__blazeplotInteractionTest = {
     rightViewport: chart.getViewport("right"),
     initialViewport,
     initialRightViewport,
-    canvasRect: rectOf(chart.canvas),
-    xAxisRect: rectOf(chart.xAxisElement),
-    yAxisRect: rectOf(chart.yAxisElement),
+    canvasRect: rectOf(chartInternals(chart).canvas),
+    xAxisRect: rectOf(chartInternals(chart).xAxisElement),
+    yAxisRect: rectOf(chartInternals(chart).yAxisElement),
     hoverItems,
     hoverEvents,
     crosshairMoves,
@@ -165,10 +306,27 @@ window.__blazeplotInteractionTest = {
     crosshairX: crosshairX(),
     tooltipLeft: tooltipLeft(),
     renderEvents,
-    followingLatestX: chart.getXFollowState() === "following",
-    latestXFollowPaused: chart.getXFollowState() === "paused",
+    followingLatestX: chart.getFollowXState() === "following",
+    latestXFollowPaused: chart.getFollowXState() === "paused",
+    a11y: a11ySnapshot(),
     error,
   }),
+  colors: colorSnapshot,
+  panels: () => charts.map((item) => ({ viewport: item.getViewport(), canvasRect: rectOf(chartInternals(item).canvas) })),
+  screenshotInk: async () => {
+    const bitmap = await createImageBitmap(await chart.screenshot());
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    ctx.drawImage(bitmap, 0, 0);
+    const { data } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    let ink = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (Math.max(Math.abs(data[i]! - data[0]!), Math.abs(data[i + 1]! - data[1]!), Math.abs(data[i + 2]! - data[2]!)) > 40) ink++;
+    }
+    return ink / (bitmap.width * bitmap.height);
+  },
   setViewport: (viewport) => chart.setViewport(viewport),
   resetViewport: () => {
     for (const item of charts) {
@@ -189,13 +347,24 @@ if (caseName === "selection") {
 
 try {
   for (const [chartIndex, item] of charts.entries()) {
+    if (caseName === "site-linked") {
+      const xs = Float64Array.from({ length: 1_000 }, (_, i) => i);
+      const ys = Float32Array.from(xs, (value) => 5 + 4 * Math.sin(value * 0.025 + chartIndex));
+      item.addLine({ dataset: new StaticDataset(xs, ys), name: `site line ${chartIndex + 1}` }, { lineWidth: 2 });
+      item.setViewport(chartIndex === 0 ? { xMin: 0, xMax: 999, yMin: 0, yMax: 10 } : { xMin: 0, xMax: 999, yMin: 1, yMax: 12 });
+      item.start();
+      continue;
+    }
     const x = Float64Array.from({ length: 1_000 }, (_, i) => i);
     const y = Float32Array.from({ length: 1_000 }, (_, i) => Math.sin(i * 0.025 + chartIndex * 0.8));
     if (caseName === "render-loop") {
       const series = item.addLine({ capacity: 1_000, xStart: 0, xStep: 1, name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
       series.append({ y });
     } else {
-      item.addLine({ dataset: new StaticDataset(x, y), name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 });
+      seriesHandles.push(item.addLine({ dataset: new StaticDataset(x, y), name: `interaction line ${chartIndex + 1}` }, { lineWidth: 2 }));
+    }
+    if (caseName === "a11y") {
+      seriesHandles.push(item.addLine({ dataset: new StaticDataset(x, Float32Array.from(x, (value) => Math.cos(value * 0.025))), name: "interaction cosine" }, { lineWidth: 2 }));
     }
     if (caseName === "interactions") {
       const rightY = Float32Array.from(y, (value) => value * 1_000 + 5_000);
@@ -206,7 +375,7 @@ try {
     if (caseName === "live-follow") {
       const clockStartedAt = performance.now();
       const epochLikeX = 1_700_000_000_000;
-      item.followLatestX({ window: 100, pauseOnInteraction: true, resumeAfterMs: 120, currentX: () => epochLikeX + 1_020 + performance.now() - clockStartedAt });
+      item.followX({ window: 100, pauseOnInteraction: true, resumeAfterMs: 120, currentX: () => epochLikeX + 1_020 + performance.now() - clockStartedAt });
     }
     if (caseName === "lifecycle") {
       item.start();
@@ -216,6 +385,8 @@ try {
       item.start();
     }
   }
+  // A requested engine must be the one in use, so a suite never passes by quietly measuring a fallback.
+  for (const item of charts) if (pageRenderer !== "auto" && item.renderer !== pageRenderer) throw new Error(`Expected the ${pageRenderer} engine, got ${item.renderer}.`);
   window.setTimeout(() => {
     state = "ready";
     renderStatus();
@@ -234,19 +405,76 @@ function requireElement<T extends HTMLElement>(id: string): T {
 
 function rectOf(el: Element): RectSnapshot {
   const rect = el.getBoundingClientRect();
-  return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+  // Elements inside an iframe are measured in the frame; add the frame offset to get page coordinates.
+  const frame = el.ownerDocument.defaultView?.frameElement?.getBoundingClientRect();
+  return { left: rect.left + (frame?.left ?? 0), top: rect.top + (frame?.top ?? 0), width: rect.width, height: rect.height };
+}
+
+/** A chart that lives in an iframe, with traps on the parent window/document to catch global DOM access from `src/`. */
+function createIframeChart(): Chart {
+  const hits: string[] = [];
+  const record = (label: string): void => {
+    const stack = new Error().stack ?? "";
+    const frames = stack.split("\n").slice(2);
+    const origin = frames.find((frame) => frame.includes("/src/"));
+    if (origin) hits.push(`${label} <- ${origin.trim()}`);
+  };
+  const wrap = (target: object, name: string, label: string): void => {
+    const original = (target as Record<string, unknown>)[name];
+    if (typeof original !== "function") return;
+    (target as Record<string, unknown>)[name] = function (this: unknown, ...args: unknown[]): unknown {
+      record(label);
+      return (original as (...a: unknown[]) => unknown).apply(this, args);
+    };
+  };
+  for (const name of ["createElement", "createElementNS", "createTextNode", "querySelector", "querySelectorAll", "getElementById", "addEventListener", "removeEventListener", "createRange", "createTreeWalker", "elementFromPoint", "elementsFromPoint"]) {
+    wrap(Document.prototype, name, `document.${name}`);
+  }
+  for (const name of ["requestAnimationFrame", "cancelAnimationFrame", "getComputedStyle", "addEventListener", "removeEventListener", "matchMedia"]) {
+    wrap(window, name, `window.${name}`);
+  }
+  for (const name of ["devicePixelRatio", "innerWidth", "innerHeight"]) {
+    const value = (window as unknown as Record<string, number>)[name];
+    Object.defineProperty(window, name, { configurable: true, get: () => { record(`window.${name}`); return value; } });
+  }
+  const activeElement = Object.getOwnPropertyDescriptor(Document.prototype, "activeElement");
+  if (activeElement?.get) Object.defineProperty(Document.prototype, "activeElement", { configurable: true, get() { record("document.activeElement"); return activeElement.get!.call(this); } });
+  window.__blazeplotIframeProbe = { hits: () => [...hits] };
+
+  const frame = document.createElement("iframe");
+  frame.style.cssText = "display:block;width:100%;height:100%;border:0";
+  frame.title = "chart frame";
+  chartTarget.appendChild(frame);
+  const doc = frame.contentDocument;
+  if (!doc) throw new Error("iframe has no document");
+  doc.documentElement.style.cssText = "height:100%";
+  doc.body.style.cssText = "margin:0;height:100%;background:#000";
+  const host = doc.createElement("div");
+  host.style.cssText = "width:100%;height:100%";
+  doc.body.appendChild(host);
+  return new Chart(host, {
+    renderer: pageRenderer,
+    title: "Chart in an iframe",
+    axes: { x: { position: "outside" }, y: { position: "outside" } },
+    grid: true,
+    plugins: [interactionsPlugin({ minDragDistancePx: 4 }), legendPlugin(), tooltipPlugin(), crosshairPlugin({ snap: "none", label: true, onMove: () => { crosshairMoves++; } })],
+  });
+}
+
+function chartDocument(): Document {
+  return charts[0]?.rootElement.ownerDocument ?? document;
 }
 
 function countVisible(selector: string): number {
   let total = 0;
-  for (const element of document.querySelectorAll<HTMLElement>(selector)) {
+  for (const element of chartDocument().querySelectorAll<HTMLElement>(selector)) {
     if (getComputedStyle(element).display !== "none") total++;
   }
   return total;
 }
 
 function crosshairX(): number | null {
-  const crosshair = document.querySelector<HTMLElement>(".blazeplot-crosshair");
+  const crosshair = chartDocument().querySelector<HTMLElement>(".blazeplot-crosshair");
   const vertical = crosshair?.querySelector<HTMLElement>(".blazeplot-crosshair-lines > div");
   if (!crosshair || !vertical || getComputedStyle(crosshair).display === "none") return null;
   const value = Number.parseFloat(vertical.style.left);
@@ -265,6 +493,94 @@ function tooltipLeft(): number | null {
   const translated = /translate\(([-0-9.]+)px/.exec(tooltip.style.transform)?.[1];
   const value = Number.parseFloat(translated ?? tooltip.style.left);
   return Number.isFinite(value) ? value : null;
+}
+
+function describeActive(): string {
+  const active = document.activeElement as HTMLElement | null;
+  if (!active || active === document.body) return "body";
+  if (active === chart?.rootElement) return "chart-root";
+  if (active.classList.contains("blazeplot-annotation-focus")) return `annotation:${active.getAttribute("aria-label") ?? ""}`;
+  if (active.closest(".blazeplot-legend")) return `legend:${active.getAttribute("aria-label") ?? ""}`;
+  return active.getAttribute("role") ?? active.tagName.toLowerCase();
+}
+
+function a11ySnapshot(): A11ySnapshot {
+  const hover = chart?.getHoverState() ?? null;
+  const active = document.activeElement as HTMLElement | null;
+  const outline = active && active !== document.body ? getComputedStyle(active) : null;
+  const describedBy = chart?.rootElement.getAttribute("aria-describedby");
+  return {
+    active: describeActive(),
+    activeOutline: outline ? `${outline.outlineStyle} ${outline.outlineWidth} ${outline.outlineColor}` : "",
+    announcement: (document.querySelector(".blazeplot-a11y-announcer")?.textContent ?? "").trim(),
+    selectionStatus: (document.querySelector(".blazeplot-selection-status")?.textContent ?? "").trim(),
+    hoverSource: hover?.source ?? null,
+    hoverSeries: hover?.items[0]?.name ?? null,
+    hoverIndex: hover?.items[0]?.index ?? null,
+    annotationCount: annotations?.getAnnotations().length ?? 0,
+    annotationClicks,
+    tableRows: document.querySelectorAll(".blazeplot-a11y tbody tr").length,
+    describedBy: describedBy ? document.getElementById(describedBy)?.textContent ?? "" : "",
+  };
+}
+
+function colorSnapshot(): ColorSnapshot {
+  const root = chart!.rootElement;
+  const resolveSystem = (name: string): string => {
+    const probe = document.createElement("span");
+    probe.style.color = name;
+    root.appendChild(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    return resolved;
+  };
+  const overlay = (selector: string): OverlayColors | null => {
+    const element = document.querySelector<HTMLElement>(selector);
+    if (!element || getComputedStyle(element).display === "none") return null;
+    const style = getComputedStyle(element);
+    return { background: style.backgroundColor, color: style.color, borderColor: style.borderTopColor, borderStyle: style.borderTopStyle };
+  };
+  const colorOf = (selector: string): string | null => {
+    const element = root.querySelector<HTMLElement>(selector);
+    return element ? getComputedStyle(element).color : null;
+  };
+  const brush = document.querySelector<HTMLElement>(".blazeplot-selection-brush");
+  const active = document.activeElement as HTMLElement | null;
+  const theme = chart!.theme;
+  return {
+    forcedColorsMatches: window.matchMedia("(forced-colors: active)").matches,
+    themeChanges,
+    system: {
+      Canvas: resolveSystem("Canvas"),
+      CanvasText: resolveSystem("CanvasText"),
+      Highlight: resolveSystem("Highlight"),
+      LinkText: resolveSystem("LinkText"),
+      GrayText: resolveSystem("GrayText"),
+    },
+    theme: {
+      backgroundCssColor: theme.backgroundCssColor,
+      backgroundColor: [...theme.backgroundColor],
+      seriesColors: theme.seriesColors.map((color) => [...color]),
+      axisColor: theme.axisColor,
+    },
+    seriesColors: seriesHandles.map((series) => [...series.style.color]),
+    rootBackground: getComputedStyle(root).backgroundColor,
+    axisLabelColor: colorOf(".blazeplot-axis-y div"),
+    titleColor: colorOf(".blazeplot-title"),
+    legend: overlay(".blazeplot-legend"),
+    tooltip: overlay(".blazeplot-tooltip"),
+    selectionBorderColor: brush && getComputedStyle(brush).display !== "none" ? getComputedStyle(brush).borderTopColor : null,
+    activeOutlineColor: active && active !== document.body ? getComputedStyle(active).outlineColor : null,
+    legendSwatchColors: [...document.querySelectorAll<HTMLElement>(".blazeplot-legend-swatch")].map((swatch) => getComputedStyle(swatch).color),
+    tooltipSwatchColors: [...document.querySelectorAll<HTMLElement>(".blazeplot-tooltip .blazeplot-pick-swatch")].map((swatch) => getComputedStyle(swatch).color),
+    pickMarkerBackgrounds: [...document.querySelectorAll<HTMLElement>(".blazeplot-tooltip-markers .blazeplot-pick-marker")]
+      .filter((marker) => getComputedStyle(marker).display !== "none")
+      .map((marker) => getComputedStyle(marker).backgroundColor),
+    navigatorWindowFill: (() => {
+      const windowRect = document.querySelector<SVGElement>(".blazeplot-navigator-window");
+      return windowRect ? getComputedStyle(windowRect).fill : null;
+    })(),
+  };
 }
 
 function renderStatus(): void {

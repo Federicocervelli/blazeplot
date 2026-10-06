@@ -1,6 +1,6 @@
 # Release checklist
 
-Use this checklist for the release PR that publishes a new npm version from `main`.
+Use this checklist for the release PR that publishes a new npm version from `main` (stable) or `v1` (release candidate; see the section before "Rollback notes").
 
 Related workflow reference: [GitHub workflow runbook](./github-workflows.md).
 
@@ -14,11 +14,11 @@ bun install
 bun run release patch      # or minor / major
 ```
 
-This bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates `dist/`, `docs/api-reference.md`, and the README docs block. Edit the changelog into user-facing notes and commit. Benchmark tables are appended by the release workflow.
+This bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates `dist/`, `docs/api-reference.md`, and the README docs block. Edit the changelog into user-facing notes, add the release to the top of the list in the root `CHANGELOG.md`, and commit. Benchmark tables are appended by the release workflow.
 
 ## 2. Open the release PR
 
-Push the branch and open a PR to `main`. CI runs the typecheck, unit tests, build, generated-docs check, package contents and exports checks, bundle budgets, and the browser suites, so there is no need to repeat them locally. Mention any known risk areas, especially rendering, package exports, or release workflow changes.
+Push the branch and open a PR to `main`. CI runs `bun run check` (typecheck, lint, unit tests with coverage floors, build, generated-docs and snippet checks, package contents and exports checks, the public API snapshot, bundle budgets), the TypeScript 5.0 floor check, the browser suites (`bun run test:browser`), and the Firefox/WebKit smoke job, so there is no need to repeat them locally. If the release changes the public API, the PR must already contain the regenerated `api/public-api.md` (`bun run build && bun run test:api -- --update`). Mention any known risk areas, especially rendering, package exports, or release workflow changes.
 
 ## 3. Merge and monitor
 
@@ -38,6 +38,16 @@ Monitor:
 - GitHub Releases for the matching tag.
 - GitHub Pages deployment for the stable site and the `/next/` preview.
 
+## Release candidates from v1
+
+Until 1.0 ships, candidates (`1.0.0-rc.N`) are published from the long-lived `v1` branch to the npm `rc` dist-tag. See [The v1 branch](../release-and-benchmarks.md#the-v1-branch-10-release-candidates) for the branch policy and sync cadence.
+
+1. Sync: open a `sync/main-into-v1-*` PR (base `v1`) that merges `main` into `v1`, and land it with a merge commit.
+2. Prepare: from an updated `v1`, create `release/v1.0.0-rc.N` and run `bun run release 1.0.0-rc.1` (first candidate) or `bun run release rc` (later ones). Use `--dry-run` first if unsure. Edit `changelogs/v1.0.0-rc.N.md`; do not add rc entries to the root `CHANGELOG.md`.
+3. PR: open it with base `v1`, wait for `validate` (it includes the Firefox and WebKit `cross-browser` job), then squash-merge. Note the browser versions from that job's log and complete the manual Safari/Firefox/Chrome preview pass described in [Verified browsers per release](../browser-support.md#verified-browsers-per-release).
+4. Monitor the release run on `v1`: `version`, `ci`, `release`; the `pages` job must be skipped. Check that `npm view blazeplot dist-tags` shows the new `rc` and an unchanged `latest`, and that the GitHub release is marked pre-release and is not "Latest".
+5. Final release: see "Shipping 1.0" in the release notes doc linked above.
+
 ## Rollback notes
 
-npm versions cannot be overwritten. If a bad version publishes, prepare a new patch version with the fix and document the issue in the next changelog. Only delete tags/releases when no npm publish happened.
+npm versions cannot be overwritten. If a bad version publishes, prepare a new patch version with the fix (or the next `rc.N` for a candidate) and document the issue in the next changelog. Only delete tags/releases when no npm publish happened.

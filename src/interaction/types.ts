@@ -1,5 +1,3 @@
-import type { Camera2D } from "./Camera2D.js";
-
 /** Pan request expressed in data units or screen pixels. */
 export interface PanIntent {
   readonly dx: number;
@@ -15,11 +13,4 @@ export interface ZoomIntent {
   readonly cx: number;
   readonly cy: number;
   readonly axis: ZoomAxis;
-}
-
-/** Optional hooks that can constrain or react to viewport changes. */
-export interface ViewportPolicy {
-  beforePan?(camera: Camera2D, intent: PanIntent): PanIntent | null;
-  beforeZoom?(camera: Camera2D, intent: ZoomIntent): ZoomIntent | null;
-  beforeRender?(camera: Camera2D): void;
 }

@@ -202,7 +202,7 @@ describe("RingBuffer", () => {
     expect(buf.ordinalOffset).toBe(12);
   });
 
-  it("warns once when X goes backwards", () => {
+  it("skips samples whose X goes backwards and warns once", () => {
     const original = console.warn;
     const warnings: string[] = [];
     console.warn = (message: string) => {
@@ -215,11 +215,89 @@ describe("RingBuffer", () => {
       expect(warnings).toHaveLength(0);
       buf.push(1, 0);
       buf.append([0, -1], [0, 0]);
-      buf.update(0, 99, 0);
+      expect(buf.update(0, 99, 0)).toBe(false);
+      expect(buf.length).toBe(4);
+      expect([0, 1, 2, 3].map((i) => buf.getX(i))).toEqual([0, 1, 2, 2]);
+      expect(buf.rejectedSamples).toBe(4);
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toContain("RingBuffer received X 1 after 2");
+      expect(warnings[0]).toContain("RingBuffer skipped a sample with X 1 after 2 (decreasing-x)");
     } finally {
       console.warn = original;
     }
+  });
+
+  describe("non-finite X", () => {
+    function withWarnings(run: (warnings: string[]) => void): void {
+      const original = console.warn;
+      const warnings: string[] = [];
+      console.warn = (message: string) => {
+        warnings.push(message);
+      };
+      try {
+        run(warnings);
+      } finally {
+        console.warn = original;
+      }
+    }
+
+    it("push skips NaN and infinities and warns once", () => {
+      withWarnings((warnings) => {
+        const buf = new RingBuffer(4);
+        buf.push(NaN, 1);
+        buf.push(Infinity, 1);
+        buf.push(-Infinity, 1);
+        expect(buf.length).toBe(0);
+        expect(buf.ordinalOffset).toBe(0);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain("non-finite X");
+      });
+    });
+
+    it("append compacts finite samples and does not count skipped ones", () => {
+      withWarnings((warnings) => {
+        const buf = new RingBuffer(3, { overflow: "error" });
+        buf.append([1, NaN, 2, Infinity, 3], [10, 20, 30, 40, 50]);
+        expect(buf.length).toBe(3);
+        expect([0, 1, 2].map((i) => [buf.getX(i), buf.getY(i)])).toEqual([[1, 10], [2, 30], [3, 50]]);
+        expect(() => buf.append([4], [1])).toThrow(RangeError);
+        expect(warnings).toHaveLength(1);
+      });
+    });
+
+    it("an all-invalid batch is a no-op even in error mode on a full buffer", () => {
+      withWarnings(() => {
+        const buf = new RingBuffer(1, { overflow: "error" });
+        buf.push(1, 1);
+        expect(() => buf.append([NaN], [1])).not.toThrow();
+        expect(() => buf.push(NaN, 1)).not.toThrow();
+        expect(buf.length).toBe(1);
+      });
+    });
+
+    it("wrap and drop-new accounting only counts finite samples", () => {
+      withWarnings(() => {
+        const wrap = new RingBuffer(2);
+        wrap.append([1, NaN, 2, 3, NaN], [1, 0, 2, 3, 0]);
+        expect(wrap.length).toBe(2);
+        expect(wrap.getX(0)).toBe(2);
+        expect(wrap.ordinalOffset).toBe(1);
+
+        const drop = new RingBuffer(2, { overflow: "drop-new" });
+        drop.append([1, NaN, 2, 3], [1, 0, 2, 3]);
+        expect(drop.length).toBe(2);
+        expect(drop.getX(1)).toBe(2);
+      });
+    });
+
+    it("update rejects a non-finite X and leaves the sample unchanged", () => {
+      withWarnings((warnings) => {
+        const buf = new RingBuffer(3);
+        buf.append([1, 2], [1, 2]);
+        expect(buf.update(1, NaN, 9)).toBe(false);
+        expect(buf.getX(1)).toBe(2);
+        expect(buf.getY(1)).toBe(2);
+        expect(warnings).toHaveLength(1);
+      });
+    });
   });
 });

@@ -1,34 +1,39 @@
 import type { RgbaColor, ThemeColor } from "../core/types.js";
 
-/** Partial chart theme supplied by callers. */
+/**
+ * Partial chart theme supplied by callers. Every `*Color` field takes a CSS color string or an RGBA
+ * tuple (0-1 channels). `chart.theme` reports DOM colors as CSS strings and canvas colors as RGBA tuples.
+ */
 export interface ChartTheme {
   readonly backgroundColor?: ThemeColor;
   readonly gridColor?: ThemeColor;
-  readonly axisColor?: string;
+  readonly axisColor?: ThemeColor;
   readonly axisFont?: string;
   readonly seriesColors?: readonly ThemeColor[];
-  readonly tooltipBackgroundColor?: string;
-  readonly tooltipTextColor?: string;
+  readonly tooltipBackgroundColor?: ThemeColor;
+  readonly tooltipTextColor?: ThemeColor;
   readonly tooltipFont?: string;
-  readonly legendBackgroundColor?: string;
-  readonly legendBorderColor?: string;
-  readonly legendTextColor?: string;
-  readonly legendMutedTextColor?: string;
+  readonly legendBackgroundColor?: ThemeColor;
+  readonly legendBorderColor?: ThemeColor;
+  readonly legendTextColor?: ThemeColor;
+  readonly legendMutedTextColor?: ThemeColor;
   readonly legendFont?: string;
-  readonly titleColor?: string;
+  readonly titleColor?: ThemeColor;
   readonly titleFont?: string;
-  readonly subtitleColor?: string;
+  readonly subtitleColor?: ThemeColor;
   readonly subtitleFont?: string;
-  readonly axisTitleColor?: string;
+  readonly axisTitleColor?: ThemeColor;
   readonly axisTitleFont?: string;
   /** Box-zoom and selection rectangle fill. */
-  readonly selectionFillColor?: string;
+  readonly selectionFillColor?: ThemeColor;
   /** Box-zoom and selection rectangle border. */
-  readonly selectionStrokeColor?: string;
+  readonly selectionStrokeColor?: ThemeColor;
   /** Crosshair and ruler line color. */
-  readonly crosshairColor?: string;
+  readonly crosshairColor?: ThemeColor;
   /** Outline of hover/crosshair point markers. */
-  readonly markerStrokeColor?: string;
+  readonly markerStrokeColor?: ThemeColor;
+  /** Keyboard focus ring around the chart root, legend items, navigator, and annotations. */
+  readonly focusRingColor?: ThemeColor;
 }
 
 /** Fully resolved chart theme with concrete RGBA values. */
@@ -57,6 +62,7 @@ export interface ResolvedChartTheme {
   readonly selectionStrokeColor: string;
   readonly crosshairColor: string;
   readonly markerStrokeColor: string;
+  readonly focusRingColor: string;
 }
 
 const DEFAULT_SERIES_COLORS: readonly RgbaColor[] = [
@@ -94,7 +100,101 @@ export const DEFAULT_CHART_THEME: ResolvedChartTheme = {
   selectionStrokeColor: "rgba(147, 197, 253, 0.95)",
   crosshairColor: "rgba(148, 163, 184, 0.55)",
   markerStrokeColor: "#f8fafc",
+  focusRingColor: "#60a5fa",
 };
+
+const LIGHT_SERIES_COLORS: readonly RgbaColor[] = [
+  [29 / 255, 78 / 255, 216 / 255, 1],
+  [185 / 255, 28 / 255, 28 / 255, 1],
+  [21 / 255, 128 / 255, 61 / 255, 1],
+  [180 / 255, 83 / 255, 9 / 255, 1],
+  [126 / 255, 34 / 255, 206 / 255, 1],
+  [14 / 255, 116 / 255, 144 / 255, 1],
+];
+
+/**
+ * Light chart theme. Pass it as `theme`, or spread it and override a few tokens. Text tokens
+ * meet a 4.5:1 and series, selection, crosshair, and focus colors a 3:1 contrast ratio against
+ * its background.
+ */
+export const LIGHT_CHART_THEME: ResolvedChartTheme = {
+  backgroundColor: [1, 1, 1, 1],
+  backgroundCssColor: "rgba(255, 255, 255, 1)",
+  gridColor: [0.06, 0.09, 0.16, 0.12],
+  axisColor: "#404040",
+  axisFont: DEFAULT_CHART_THEME.axisFont,
+  seriesColors: LIGHT_SERIES_COLORS,
+  tooltipBackgroundColor: "rgba(255, 255, 255, 0.96)",
+  tooltipTextColor: "#171717",
+  tooltipFont: DEFAULT_CHART_THEME.tooltipFont,
+  legendBackgroundColor: "rgba(255, 255, 255, 0.92)",
+  legendBorderColor: "#d4d4d4",
+  legendTextColor: "#171717",
+  legendMutedTextColor: "#525252",
+  legendFont: DEFAULT_CHART_THEME.legendFont,
+  titleColor: "#0a0a0a",
+  titleFont: DEFAULT_CHART_THEME.titleFont,
+  subtitleColor: "#404040",
+  subtitleFont: DEFAULT_CHART_THEME.subtitleFont,
+  axisTitleColor: "#404040",
+  axisTitleFont: DEFAULT_CHART_THEME.axisTitleFont,
+  selectionFillColor: "rgba(37, 99, 235, 0.14)",
+  selectionStrokeColor: "rgba(29, 78, 216, 0.95)",
+  crosshairColor: "rgba(64, 64, 64, 0.8)",
+  markerStrokeColor: "#0a0a0a",
+  focusRingColor: "#1d4ed8",
+};
+
+/** CSS system colors tried, in order, for series in forced-colors (high-contrast) mode. */
+const FORCED_SERIES_SYSTEM_COLORS = ["Highlight", "LinkText", "CanvasText", "VisitedText", "ActiveText", "GrayText"] as const;
+
+/**
+ * @internal Theme used while the OS forces a high-contrast palette (`forced-colors: active`).
+ * DOM overlays use CSS system colors directly; the WebGL canvas gets the same colors resolved to RGBA.
+ */
+export function forcedColorsTheme(base: ResolvedChartTheme, context?: Element): ResolvedChartTheme {
+  // System colors can resolve translucent (Chromium on Linux reports Highlight at 0.8 alpha);
+  // draw them opaque so high-contrast lines keep their full contrast against Canvas.
+  const resolveOpaque = (name: string, fallback: RgbaColor): RgbaColor => {
+    const [r, g, b] = resolveThemeColor(name, fallback, context);
+    return [r, g, b, 1];
+  };
+  const canvas = resolveOpaque("Canvas", base.backgroundColor);
+  const text = resolveOpaque("CanvasText", [1, 1, 1, 1]);
+  const gray = resolveOpaque("GrayText", text);
+  const seen = new Set<string>([rgbaCss(canvas)]);
+  const seriesColors: RgbaColor[] = [];
+  for (const name of FORCED_SERIES_SYSTEM_COLORS) {
+    const color = resolveOpaque(name, text);
+    const key = rgbaCss(color);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    seriesColors.push(color);
+  }
+  if (seriesColors.length === 0) seriesColors.push(text);
+  return {
+    ...base,
+    backgroundColor: canvas,
+    backgroundCssColor: "Canvas",
+    gridColor: [gray[0], gray[1], gray[2], 0.6],
+    axisColor: "CanvasText",
+    seriesColors,
+    tooltipBackgroundColor: "Canvas",
+    tooltipTextColor: "CanvasText",
+    legendBackgroundColor: "Canvas",
+    legendBorderColor: "CanvasText",
+    legendTextColor: "CanvasText",
+    legendMutedTextColor: "GrayText",
+    titleColor: "CanvasText",
+    subtitleColor: "CanvasText",
+    axisTitleColor: "CanvasText",
+    selectionFillColor: "transparent",
+    selectionStrokeColor: "Highlight",
+    crosshairColor: "CanvasText",
+    markerStrokeColor: "CanvasText",
+    focusRingColor: "Highlight",
+  };
+}
 
 /** Merge a partial theme with defaults and resolve CSS colors. */
 export function resolveChartTheme(theme: ChartTheme | undefined, context?: Element): ResolvedChartTheme {
@@ -109,7 +209,8 @@ export function resolveChartTheme(theme: ChartTheme | undefined, context?: Eleme
     ))
     : DEFAULT_CHART_THEME.seriesColors;
 
-  const overrides = Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined));
+  // RGBA tuples become CSS strings for DOM tokens; background, grid, and series colors are resolved below.
+  const overrides = Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined).map(([key, value]) => [key, Array.isArray(value) ? rgbaCss(value as unknown as RgbaColor) : value]));
   return {
     ...DEFAULT_CHART_THEME,
     ...overrides,
@@ -125,9 +226,16 @@ export function resolveThemeColor(color: ThemeColor | undefined, fallback: RgbaC
   if (!color) return fallback;
   if (typeof color !== "string") return color;
 
+  // An opaque hex color means the same thing everywhere, so it needs no probe element, forced
+  // style recalculation or scratch canvas. Everything else (names, var(), color-mix(), system
+  // colors) is resolved by the browser, and the canvas normalization is only a last resort.
+  const hex = color.trim();
+  if (hex.length === 4 || hex.length === 7) {
+    const direct = parseHexColor(hex);
+    if (direct) return direct;
+  }
   const resolved = resolveCssColor(color, context);
-  const normalized = normalizeCanvasColor(resolved ?? color, context);
-  return parseCssColor(resolved ?? color) ?? parseCssColor(normalized ?? "") ?? fallback;
+  return parseCssColor(resolved ?? color) ?? parseCssColor(normalizeCanvasColor(resolved ?? color, context) ?? "") ?? fallback;
 }
 
 /** Convert a theme color to a CSS color string. */
@@ -144,9 +252,9 @@ export function rgbaCss(color: RgbaColor): string {
 /** Resolve a CSS color to a computed RGB(A) string. */
 export function resolveCssColor(color: string, context?: Element): string | null {
   const doc = context?.ownerDocument ?? globalThis.document;
-  if (!doc?.documentElement || typeof getComputedStyle === "undefined") return null;
+  if (!doc?.documentElement || typeof (doc.defaultView ?? globalThis).getComputedStyle === "undefined") return null;
 
-  const parent = context instanceof HTMLElement ? context : doc.documentElement;
+  const parent = context?.nodeType === 1 ? (context as HTMLElement) : doc.documentElement;
   const el = doc.createElement("span");
   el.style.position = "absolute";
   el.style.visibility = "hidden";
@@ -154,7 +262,7 @@ export function resolveCssColor(color: string, context?: Element): string | null
   el.style.color = color;
   parent.appendChild(el);
 
-  const resolved = getComputedStyle(el).color;
+  const resolved = (doc.defaultView ?? globalThis).getComputedStyle(el).color;
   el.remove();
   return resolved || null;
 }

@@ -23,15 +23,15 @@ export interface SeriesStyleOptions {
   readonly color?: ThemeColor;
   /** Line width in CSS pixels for line, area outline, and OHLC series. Defaults to 1. */
   readonly lineWidth?: number;
-  /** Scatter point diameter in device pixels. Defaults to 4. */
+  /** Scatter point diameter in CSS pixels. Defaults to 4. */
   readonly pointSize?: number;
-  /** Bar and candlestick body width in data X units. Defaults to 0.8. */
+  /** Bar and candlestick body width in data X units (not pixels: it scales with zoom; milliseconds on a time axis). Defaults to 0.8, or the bin width for a histogram. */
   readonly barWidth?: number;
-  /** Y value bars and areas grow from. Defaults to 0. */
+  /** Y value, in data Y units, that bars and areas grow from. Defaults to 0. */
   readonly baseline?: number;
   /** Area fill color. Defaults to `color` at 25% opacity. */
   readonly fillColor?: ThemeColor;
-  /** OHLC open/close tick width in data X units. Defaults to `barWidth`. */
+  /** OHLC open/close tick length in data X units (not pixels; milliseconds on a time axis). Defaults to `barWidth`. */
   readonly tickWidth?: number;
   /** Color for rising OHLC/candlestick samples. Defaults to `color`. */
   readonly upColor?: ThemeColor;
@@ -56,7 +56,7 @@ export interface SeriesStyle {
 }
 
 /** Built-in renderer mode for a series. */
-export type SeriesMode = "line" | "area" | "envelope" | "scatter" | "bar" | "ohlc" | "candlestick";
+export type SeriesMode = "line" | "area" | "scatter" | "bar" | "ohlc" | "candlestick";
 /** Y axis used to scale and render a series. */
 export type SeriesYAxis = "left" | "right";
 
@@ -90,12 +90,20 @@ export interface XRange {
   readonly xEnd: number;
 }
 
-/** Dataset whose sample X values represent intervals rather than points. */
+/**
+ * Dataset whose sample X values represent intervals rather than points.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export interface XRangeDataset extends Dataset {
   getXRange(index: number): XRange | null;
 }
 
-/** Dataset that can answer min/max Y queries for index ranges. */
+/**
+ * Dataset that can answer min/max Y queries for index ranges.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
 export interface RangeMinMaxDataset extends Dataset {
   /** Set when range queries exclude samples marked by `isGap()`. */
   readonly rangeMinMaxExcludesGaps?: boolean;
@@ -105,6 +113,8 @@ export interface RangeMinMaxDataset extends Dataset {
 /**
  * Vertex layout requested when copying raw samples into a render buffer:
  * `"points"` writes `[x, y]` pairs, `"area"` writes `[x, baseline, x, y]` strip pairs.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export type SampleCopyLayout = "points" | "area";
 
@@ -112,6 +122,8 @@ export type SampleCopyLayout = "points" | "area";
  * Optional high-performance extraction capability for datasets that can copy raw
  * samples without going through repeated getX/getY calls. Implement this for
  * very large datasets, implicit-X datasets, or remote/memory-mapped sources.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface RangeSampleCopyDataset extends Dataset {
   copySamplesRange(
@@ -130,6 +142,8 @@ export interface RangeSampleCopyDataset extends Dataset {
  * copySamplesRange, this method may stride/downsample, but should choose samples
  * anchored to data coordinates so streamed appends do not make existing sampled
  * points jitter.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface VisibleSampleCopyDataset extends Dataset {
   copyVisibleSamples(
@@ -146,6 +160,8 @@ export interface VisibleSampleCopyDataset extends Dataset {
  * Optional high-performance extraction capability for point/scatter datasets.
  * Implementations should cull against the full 2D viewport and may sample in
  * screen space so dense point clouds respond to both X and Y zoom.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface VisiblePointCopyDataset extends Dataset {
   copyVisiblePoints(
@@ -164,6 +180,8 @@ export interface VisiblePointCopyDataset extends Dataset {
  * Implementations can use pyramids, segment trees, database aggregates, or
  * analytic/procedural envelopes. Write up to `maxSegments` `[x - xOrigin, minY, maxY]`
  * triples into `target` and return how many were written.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface MinMaxSegmentCopyDataset extends Dataset {
   copyMinMaxSegments(
@@ -178,6 +196,8 @@ export interface MinMaxSegmentCopyDataset extends Dataset {
  * Convenience contract for maximum-performance custom datasets. Implement this
  * when a dataset can provide fast exact sample copies, stable viewport sampling,
  * range min/max queries, and renderer-ready min/max buckets.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
  */
 export interface AcceleratedDataset extends
   Dataset,
@@ -218,9 +238,41 @@ export interface YUpdatableDataset extends Dataset {
 }
 
 /** Downsampling strategy used when a series is denser than the plot. */
-export type LODStrategy = "minmax" | "none" | "server";
+export type DownsampleStrategy = "minmax" | "none" | "server";
 /** Behavior when a fixed-capacity streaming buffer is full. */
 export type BufferOverflowStrategy = "wrap" | "drop-new" | "error";
+
+/**
+ * Why a sample broke the dataset X rule (X finite and non-decreasing):
+ * `"non-finite-x"` for `NaN`/`Infinity`/`-Infinity`, `"decreasing-x"` for an X below the
+ * previous accepted X (or, for `update`, outside its neighbors).
+ */
+export type InvalidSampleReason = "non-finite-x" | "decreasing-x";
+
+/** A sample a streaming buffer skipped, passed to its `onInvalidSample` callback. */
+export interface InvalidSample {
+  readonly reason: InvalidSampleReason;
+  /** Buffer method that received the sample. */
+  readonly operation: "push" | "append" | "update";
+  /** Position in the arrays passed to `append`, the logical index for `update`, or `0` for `push`. */
+  readonly index: number;
+  readonly x: number;
+  /** Y value; the close for OHLC buffers. */
+  readonly y: number;
+  /**
+   * For `"decreasing-x"`, the accepted X the sample violated: the previous X it fell below, or for
+   * `update` the following X it exceeded. `NaN` for `"non-finite-x"`.
+   */
+  readonly neighborX: number;
+}
+
+/** An OHLC candle an `OhlcRingBuffer` skipped, passed to its `onInvalidSample` callback. */
+export interface InvalidOhlcSample extends InvalidSample {
+  readonly open: number;
+  readonly high: number;
+  readonly low: number;
+  readonly close: number;
+}
 
 /**
  * Storage for Y and OHLC price values. `"float32"` (the default) halves memory and keeps
@@ -242,19 +294,25 @@ export interface SeriesConfig {
   readonly mode: SeriesMode;
   readonly capacity?: number;
   /**
-   * Optional X value for the first sample when BlazePlot creates an implicit-X
+   * Optional X value (in X data units) for the first sample when BlazePlot creates an implicit-X
    * dataset for this series. Only used when `dataset` is omitted and `xStep` is
    * provided.
    */
   readonly xStart?: number;
   /**
-   * Optional fixed X spacing for live streams. When `dataset` is omitted,
+   * Optional fixed X spacing for live streams, in X data units (milliseconds on a time axis). When `dataset` is omitted,
    * `{ capacity, xStep }` creates a `UniformRingBuffer`, so callers can append
    * with `series.append({ y })` without manually constructing a dataset.
    */
   readonly xStep?: number;
-  readonly downsample?: LODStrategy;
+  readonly downsample?: DownsampleStrategy;
   readonly overflow?: BufferOverflowStrategy;
+  /**
+   * Called for each sample the chart-owned `RingBuffer` skips because its X is non-finite or
+   * goes backwards. Only used when `dataset` is omitted and no `xStep`/`xStart` is given.
+   * See `RingBufferOptions.onInvalidSample`.
+   */
+  readonly onInvalidSample?: (sample: InvalidSample) => void;
   /** Value storage for the dataset BlazePlot creates when `dataset` is omitted. Defaults to `"float32"`. */
   readonly valuePrecision?: ValuePrecision;
   readonly dataset?: Dataset;

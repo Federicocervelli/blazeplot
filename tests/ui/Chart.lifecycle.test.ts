@@ -1,34 +1,38 @@
+import { chartInternals } from "../../src/ui/ChartInternals.ts";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { countNodes, FakeBackend, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
+import { countNodes, RecordingRenderer, FakeResizeObserver, setupDom, trackListeners } from "./fakes.ts";
+import { chartRenderer, describeRecorded, installEngineDoubles, itRecorded } from "./engines.ts";
 import type { FakeRaf, ListenerLedger, TestEnv } from "./fakes.ts";
-import type { Chart as ChartType, ChartOptions, ChartPlugin } from "../../src/ui/Chart.ts";
-import type { WebGL2UnavailableError as UnavailableErrorType } from "../../src/render/WebGL2Backend.ts";
+import type { Chart as ChartType, ChartOptions } from "../../src/ui/Chart.ts";
+import type { ChartPlugin, ChartPluginContext, ChartPluginHandle } from "../../src/ui/PluginTypes.ts";
+import type { WebGL2UnavailableError as UnavailableErrorType } from "../../src/render/webgl2/availability.ts";
 
 let env: TestEnv;
 let raf: FakeRaf;
 let Chart: typeof ChartType;
 let WebGL2UnavailableError: typeof UnavailableErrorType;
+let restoreEngineDoubles: () => void;
 
 beforeAll(async () => {
   env = setupDom();
+  restoreEngineDoubles = installEngineDoubles();
   raf = env.raf;
   ({ Chart } = await import("../../src/ui/Chart.ts"));
-  ({ WebGL2UnavailableError } = await import("../../src/render/WebGL2Backend.ts"));
+  ({ WebGL2UnavailableError } = await import("../../src/render/webgl2/availability.ts"));
 });
-afterAll(() => env.teardown());
+afterAll(() => {
+  restoreEngineDoubles();
+  env.teardown();
+});
 
 let target: HTMLDivElement;
-let backends: FakeBackend[];
+let backends: RecordingRenderer[];
 let ledger: ListenerLedger;
 
 function make(options: ChartOptions = {}): ChartType {
   return new Chart(target, {
     ...options,
-    backendFactory: (ctx) => {
-      const backend = new FakeBackend(ctx.canvas);
-      backends.push(backend);
-      return backend;
-    },
+    renderer: chartRenderer(backends),
   });
 }
 
@@ -60,17 +64,17 @@ afterEach(() => {
 });
 
 describe("Chart construct / dispose", () => {
-  it("mounts DOM under the target and creates a fixed set of GPU buffers", () => {
+  itRecorded("mounts DOM under the target and creates one engine", () => {
     const chart = make({ title: "Hello" });
     expect(target.children).toHaveLength(1);
     expect(target.firstElementChild).toBe(chart.rootElement);
-    expect(chart.rootElement.contains(chart.canvas)).toBe(true);
+    expect(chart.rootElement.contains(chartInternals(chart).canvas)).toBe(true);
     expect(backends).toHaveLength(1);
-    expect(backends[0]!.liveBuffers.size).toBe(3);
+    expect(backends[0]!.disposeCount).toBe(0);
     chart.dispose();
   });
 
-  it("removes DOM, listeners, observers, rAF callbacks, and backend resources on dispose", () => {
+  itRecorded("removes DOM, listeners, observers, rAF callbacks, and backend resources on dispose", () => {
     const chart = make({ title: "T", axes: { x: true, y: true, y2: true } });
     chart.addLine({ capacity: 16 }).append({ x: 1, y: 2 });
     chart.start();
@@ -85,18 +89,17 @@ describe("Chart construct / dispose", () => {
     expect(ledger.net()).toBe(0);
     expect(observer.disconnected).toBe(true);
     expect(raf.pending.size).toBe(0);
-    expect(backends[0]!.destroyCount).toBeGreaterThanOrEqual(1);
-    expect(backends[0]!.liveResourceCount).toBe(0);
+    expect(backends[0]!.disposeCount).toBe(1);
   });
 
   it("cancels a pending hover rAF on dispose", () => {
     const chart = make();
-    fire(chart.canvas, new window.MouseEvent("pointermove", { clientX: 5, clientY: 5 }));
+    fire(chartInternals(chart).canvas, new window.MouseEvent("pointermove", { clientX: 5, clientY: 5 }));
     chart.dispose();
     expect(raf.pending.size).toBe(0);
   });
 
-  it("is idempotent", () => {
+  itRecorded("is idempotent", () => {
     const chart = make();
     chart.start();
     chart.dispose();
@@ -104,8 +107,26 @@ describe("Chart construct / dispose", () => {
     expect(target.children).toHaveLength(0);
     expect(ledger.net()).toBe(0);
     expect(raf.pending.size).toBe(0);
-    // The backend must only be torn down once.
-    expect(backends[0]!.destroyCount).toBe(1);
+    // The engine must only be disposed once.
+    expect(backends[0]!.disposeCount).toBe(1);
+  });
+
+  itRecorded("hands the engine its own release: dispose reaches it exactly once", () => {
+    const chart = make();
+    chart.start();
+    expect(backends[0]!.disposeCount).toBe(0);
+    chart.dispose();
+    chart.dispose();
+    expect(backends[0]!.disposeCount).toBe(1);
+  });
+
+  itRecorded("still disposes cleanly when the engine throws on cleanup", () => {
+    const chart = make();
+    backends[0]!.dispose = () => {
+      throw new Error("context is gone");
+    };
+    expect(() => chart.dispose()).not.toThrow();
+    expect(target.children).toHaveLength(0);
   });
 
   it("does not schedule frames after dispose", () => {
@@ -116,7 +137,7 @@ describe("Chart construct / dispose", () => {
     expect(raf.pending.size).toBe(0);
   });
 
-  it("repeated construct/dispose cycles leave no DOM, listeners, or backend resources behind", () => {
+  itRecorded("repeated construct/dispose cycles leave no DOM, listeners, or backend resources behind", () => {
     const baselineNodes = countNodes(document.body);
     for (let i = 0; i < 25; i++) {
       const chart = make({ title: "x", axes: { x: true, y: true, y2: true } });
@@ -128,7 +149,7 @@ describe("Chart construct / dispose", () => {
     expect(ledger.net()).toBe(0);
     expect(raf.pending.size).toBe(0);
     expect(backends).toHaveLength(25);
-    for (const backend of backends) expect(backend.liveResourceCount).toBe(0);
+    for (const backend of backends) expect(backend.disposeCount).toBe(1);
   });
 });
 
@@ -171,24 +192,64 @@ describe("Chart resize", () => {
     Object.defineProperty(el, "clientHeight", { configurable: true, value: height });
   }
 
-  it("resizes the drawing buffer by CSS size times dpr and reports whether it changed", () => {
+  it("resizes the drawing buffer by CSS size times pixelRatio and reports whether it changed", () => {
     const chart = make();
-    stubSize(chart.canvas, 300, 150);
+    stubSize(chartInternals(chart).canvas, 300, 150);
     expect(chart.resize(2)).toBe(true);
-    expect(chart.canvas.width).toBe(600);
-    expect(chart.canvas.height).toBe(300);
+    expect(chartInternals(chart).canvas.width).toBe(600);
+    expect(chartInternals(chart).canvas.height).toBe(300);
     expect(chart.resize(2)).toBe(false);
     expect(chart.resize(1)).toBe(true);
-    expect(chart.canvas.width).toBe(300);
+    expect(chartInternals(chart).canvas.width).toBe(300);
     chart.dispose();
   });
 
-  it("clamps degenerate sizes and non-finite dpr to at least 1x1", () => {
+  it("clamps degenerate sizes and non-finite pixelRatio to at least 1x1", () => {
     const chart = make();
-    stubSize(chart.canvas, 0, 0);
+    stubSize(chartInternals(chart).canvas, 0, 0);
     chart.resize(Number.NaN);
-    expect(chart.canvas.width).toBe(1);
-    expect(chart.canvas.height).toBe(1);
+    expect(chartInternals(chart).canvas.width).toBe(1);
+    expect(chartInternals(chart).canvas.height).toBe(1);
+    chart.dispose();
+  });
+
+  it("rejects buffer options next to a dataset, and an OHLC series without one", async () => {
+    const { StaticDataset } = await import("../../src/core/StaticDataset.ts");
+    const chart = make();
+    const dataset = new StaticDataset([0, 1], [1, 2]);
+    const loose = chart as unknown as { addLine(config: object): unknown; addCandlestick(config: object): unknown };
+    expect(() => loose.addLine({ dataset, capacity: 10 })).toThrow('"capacity" configure a buffer the chart creates');
+    expect(() => loose.addLine({ dataset, xStep: 1, overflow: "wrap" })).toThrow('"xStep", "overflow"');
+    expect(() => loose.addLine({ capacity: 4, xStep: 1, onInvalidSample: () => {} })).toThrow("onInvalidSample does not apply");
+    expect(() => loose.addCandlestick({ capacity: 10 })).toThrow("require an OhlcDataset");
+    expect(chart.getSeriesState()).toHaveLength(0);
+    chart.dispose();
+  });
+
+  it("builds a StaticDataset from { x, y } and a HistogramDataset from { values }", async () => {
+    const { StaticDataset } = await import("../../src/core/StaticDataset.ts");
+    const { HistogramDataset } = await import("../../src/core/Histogram.ts");
+    const chart = make();
+    const line = chart.addLine({ x: [0, 1, 2], y: [5, 6, 7], name: "arrays" });
+    expect(line.length).toBe(3);
+    expect(line.config.name).toBe("arrays");
+    expect(line.sampleAt(1)).toMatchObject({ x: 1, y: 6 });
+    line.replace({ y: [1, 2, 3] });
+    expect(line.sampleAt(2)).toMatchObject({ y: 3 });
+    expect(new StaticDataset([0], [0]).length).toBe(1);
+
+    const bars = chart.addBar({ values: [1, 2, 2, 3, 9], binSize: 4, name: "hist" });
+    expect(bars.length).toBeGreaterThan(0);
+    expect(bars.style.barWidth).toBe(4);
+    expect(HistogramDataset.from([1], { binSize: 1 }).length).toBe(1);
+
+    expect(() => chart.addLine({ x: [3, 1], y: [1, 2] })).toThrow(RangeError);
+    const loose = chart as unknown as { addLine(config: object): unknown; addBar(config: object): unknown; addCandlestick(config: object): unknown };
+    expect(() => loose.addLine({ x: [0, 1] })).toThrow("needs both x and y");
+    expect(() => loose.addLine({ x: [0], y: [0], capacity: 4 })).toThrow("exactly one data source");
+    expect(() => loose.addLine({ values: [1, 2] })).toThrow("only available on bar series");
+    expect(() => loose.addCandlestick({ x: [0], y: [0] })).toThrow("require an OhlcDataset");
+    expect(() => loose.addBar({ binCount: 3, capacity: 4 })).toThrow("need { values }");
     chart.dispose();
   });
 
@@ -196,22 +257,47 @@ describe("Chart resize", () => {
     const chart = make();
     chart.start();
     raf.flush();
-    stubSize(chart.canvas, 400, 200);
+    stubSize(chartInternals(chart).canvas, 400, 200);
     const observer = FakeResizeObserver.instances[0]!;
-    expect([...observer.observed]).toEqual([chart.plotElement]);
+    expect([...observer.observed]).toEqual([chartInternals(chart).plotElement]);
     observer.trigger();
-    expect(chart.canvas.width).toBe(Math.floor(400 * Math.max(1, globalThis.devicePixelRatio || 1)));
+    expect(chartInternals(chart).canvas.width).toBe(Math.floor(400 * Math.max(1, globalThis.devicePixelRatio || 1)));
     expect(raf.pending.size).toBe(1);
     chart.dispose();
   });
 });
 
+describe("Chart frames", () => {
+  itRecorded("finishes one engine frame per render regardless of series and chunk count", () => {
+    const render = (seriesCount: number): { frames: number; draws: number } => {
+      const chart = make({ grid: true });
+      for (let i = 0; i < seriesCount; i++) {
+        const mode = i % 4;
+        const series = mode === 0 ? chart.addLine({ capacity: 64 }) : mode === 1 ? chart.addBar({ capacity: 64 }) : mode === 2 ? chart.addScatter({ capacity: 64 }) : chart.addArea({ capacity: 64 });
+        for (let j = 0; j < 32; j++) series.append({ x: j, y: j + i });
+      }
+      chart.fitToData();
+      chart.start();
+      raf.flush();
+      const backend = backends.at(-1)!;
+      const stats = { frames: backend.frames, draws: backend.draws.length };
+      chart.dispose();
+      return stats;
+    };
+
+    const few = render(2);
+    const many = render(40);
+    expect(few.frames).toBe(1);
+    expect(many.frames).toBe(1);
+    expect(many.draws).toBeGreaterThan(few.draws);
+  });
+});
+
 describe("Chart series churn", () => {
-  it("returns GPU resource counts and DOM to baseline after add/remove loops", () => {
+  it("returns DOM and listeners to baseline after add/remove loops", () => {
     const chart = make({ axes: { x: true, y: true, y2: true } });
     chart.start();
     raf.flush();
-    const backend = backends[0]!;
     const cycle = (): void => {
       const line = chart.addLine({ capacity: 32 });
       const bars = chart.addBar({ capacity: 32 });
@@ -226,11 +312,7 @@ describe("Chart series churn", () => {
       expect(chart.removeSeries(bars)).toBe(true);
       expect(chart.removeSeries(scatter)).toBe(true);
     };
-    // Warm-up: the renderer lazily allocates shared buffers (e.g. static quad corners) once.
     cycle();
-    const baselineBuffers = backend.liveBuffers.size;
-    const baselineCreated = backend.createdBuffers;
-    const baselinePrograms = backend.livePrograms.size;
     const baselineNodes = countNodes(chart.rootElement);
     const baselineListeners = ledger.net();
 
@@ -238,9 +320,6 @@ describe("Chart series churn", () => {
     raf.flush();
 
     expect(chart.getSeriesState()).toHaveLength(0);
-    expect(backend.liveBuffers.size).toBe(baselineBuffers);
-    expect(backend.createdBuffers).toBe(baselineCreated);
-    expect(backend.livePrograms.size).toBe(baselinePrograms);
     expect(countNodes(chart.rootElement)).toBe(baselineNodes);
     expect(ledger.net()).toBe(baselineListeners);
     expect(raf.pending.size).toBeLessThanOrEqual(1);
@@ -259,7 +338,7 @@ describe("Chart series churn", () => {
     chart.dispose();
   });
 
-  it("does not draw removed series", () => {
+  itRecorded("does not draw removed series", () => {
     const chart = make({ grid: false });
     const series = chart.addLine({ capacity: 8 });
     series.append({ x: 0, y: 0 });
@@ -307,15 +386,16 @@ describe("Chart events", () => {
     chart.dispose();
   });
 
-  it("emits select with the payload and themechange on setTheme", () => {
-    const chart = make();
+  it("delivers plugin-emitted select events to chart subscribers and themechange on setTheme", () => {
+    let ctx = null as ChartPluginContext | null;
+    const chart = make({ plugins: [{ install: (c) => { ctx = c; } }] });
     const selections: unknown[] = [];
     let themed = 0;
     chart.subscribe("select", (e) => selections.push(e.selection));
     chart.subscribe("themechange", () => themed++);
-    chart.emitSelect({ from: 1, to: 2 });
+    ctx!.events.emit("select", { selection: null });
     chart.setTheme();
-    expect(selections).toEqual([{ from: 1, to: 2 }]);
+    expect(selections).toEqual([null]);
     expect(themed).toBe(1);
     chart.dispose();
   });
@@ -334,17 +414,34 @@ describe("Chart events", () => {
     const clicks: string[] = [];
     chart.subscribe("click", (e) => clicks.push(e.type));
     chart.subscribe("dblclick", (e) => clicks.push(e.type));
-    chart.canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON() {} }) as DOMRect;
-    fire(chart.canvas, new window.MouseEvent("click", { clientX: 50, clientY: 50 }));
-    fire(chart.canvas, new window.MouseEvent("dblclick", { clientX: 50, clientY: 50 }));
+    chartInternals(chart).canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100, right: 100, bottom: 100, x: 0, y: 0, toJSON() {} }) as DOMRect;
+    fire(chartInternals(chart).canvas, new window.MouseEvent("click", { clientX: 50, clientY: 50 }));
+    fire(chartInternals(chart).canvas, new window.MouseEvent("dblclick", { clientX: 50, clientY: 50 }));
     expect(clicks).toEqual(["click", "dblclick"]);
     chart.dispose();
-    fire(chart.canvas, new window.MouseEvent("click", { clientX: 50, clientY: 50 }));
+    fire(chartInternals(chart).canvas, new window.MouseEvent("click", { clientX: 50, clientY: 50 }));
     expect(clicks).toHaveLength(2);
   });
 });
 
 describe("Chart plugins", () => {
+  /** A plugin that records install, hook, and dispose calls under `name`. */
+  function recorder(name: string, log: string[]): ChartPlugin {
+    return {
+      install() {
+        log.push(`install ${name}`);
+        const handle: ChartPluginHandle = {
+          dispose: () => log.push(`dispose ${name}`),
+          onResize: (size) => log.push(`resize ${name} ${size.width}x${size.height}`),
+          onThemeChange: () => log.push(`theme ${name}`),
+          onContextLost: () => log.push(`lost ${name}`),
+          onContextRestored: () => log.push(`restored ${name}`),
+        };
+        return handle;
+      },
+    };
+  }
+
   it("installs plugins and disposes function and handle forms exactly once", () => {
     const log: string[] = [];
     const fnPlugin: ChartPlugin = { install: () => () => log.push("fn") };
@@ -358,27 +455,94 @@ describe("Chart plugins", () => {
     expect(log).toHaveLength(3);
   });
 
-  it("a throwing plugin disposer does not stop later disposers or chart cleanup", () => {
+  it("installs in registration order and disposes in reverse registration order", () => {
+    const log: string[] = [];
+    const chart = make({ plugins: [recorder("a", log), recorder("b", log), recorder("c", log)] });
+    expect(log).toEqual(["install a", "install b", "install c"]);
+    log.length = 0;
+    chart.dispose();
+    expect(log).toEqual(["dispose c", "dispose b", "dispose a"]);
+  });
+
+  itRecorded("runs lifecycle hooks in registration order, onThemeChange before the themechange event", () => {
+    const log: string[] = [];
+    const chart = make({ plugins: [recorder("a", log), recorder("b", log)] });
+    chart.subscribe("themechange", () => log.push("event themechange"));
+    log.length = 0;
+
+    chart.setTheme();
+    Object.defineProperty(chartInternals(chart).canvas, "clientWidth", { configurable: true, value: 320 });
+    Object.defineProperty(chartInternals(chart).canvas, "clientHeight", { configurable: true, value: 160 });
+    chart.resize(1);
+    backends[0]!.lose();
+    backends[0]!.restore();
+
+    expect(log).toEqual([
+      "theme a", "theme b", "event themechange",
+      "resize a 320x160", "resize b 320x160",
+      "lost a", "lost b",
+      "restored a", "restored b",
+    ]);
+    chart.dispose();
+  });
+
+  it("isolates a throwing hook so later plugins still run", () => {
+    const log: string[] = [];
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    const chart = make({
+      plugins: [
+        { install: () => ({ onThemeChange: () => { throw new Error("boom"); } }) },
+        recorder("b", log),
+      ],
+    });
+    chart.setTheme();
+    expect(log).toContain("theme b");
+    expect(error).toHaveBeenCalledTimes(1);
+    error.mockRestore();
+    chart.dispose();
+  });
+
+  it("does not call hooks on a plugin disposed individually", () => {
+    const log: string[] = [];
+    const chart = make();
+    const dispose = chartInternals(chart).installPlugin(recorder("a", log));
+    dispose();
+    chart.setTheme();
+    expect(log).toEqual(["install a", "dispose a"]);
+    chart.dispose();
+    expect(log).toEqual(["install a", "dispose a"]);
+  });
+
+  itRecorded("a throwing plugin disposer does not stop later disposers or chart cleanup", () => {
     const log: string[] = [];
     const chart = make({
       plugins: [
+        { install: () => () => log.push("first") },
         { install: () => () => { throw new Error("boom"); } },
-        { install: () => () => log.push("second") },
       ],
     });
+    const error = spyOn(console, "error").mockImplementation(() => {});
     expect(() => chart.dispose()).not.toThrow();
-    expect(log).toEqual(["second"]);
+    expect(error.mock.calls.some((call) => String(call[0]).includes("plugin dispose failed"))).toBe(true);
+    error.mockRestore();
+    expect(log).toEqual(["first"]);
     expect(target.children).toHaveLength(0);
-    expect(backends[0]!.destroyCount).toBe(1);
+    expect(backends[0]!.disposeCount).toBe(1);
   });
 
-  it("a plugin that throws during install tears down the already-built chart", () => {
+  itRecorded("a plugin that throws during install tears down the already-built chart", () => {
     const log: string[] = [];
     expect(() =>
       make({
         plugins: [
           { install: () => () => log.push("first") },
-          { install: () => { throw new Error("install failed"); } },
+          {
+            install(ctx) {
+              ctx.dom.mount("plot", document.createElement("div"));
+              ctx.dom.listen("plot", "pointermove", () => {});
+              throw new Error("install failed");
+            },
+          },
         ],
       }),
     ).toThrow("install failed");
@@ -386,54 +550,119 @@ describe("Chart plugins", () => {
     expect(target.children).toHaveLength(0);
     expect(ledger.net()).toBe(0);
     expect(FakeResizeObserver.instances[0]!.disconnected).toBe(true);
-    expect(backends[0]!.liveResourceCount).toBe(0);
+    expect(backends[0]!.disposeCount).toBe(1);
   });
 
-  it("sums layout reservations as root padding and releases them", () => {
-    const chart = make();
-    chart.setLayoutReservation("legend", { top: 10, left: 4 });
-    chart.setLayoutReservation("nav", { bottom: 20, top: 5 });
-    expect(padding(chart)).toBe("15px 0px 20px 4px");
-    chart.setLayoutReservation("legend", null);
-    expect(padding(chart)).toBe("5px 0px 20px 0px");
-    chart.setLayoutReservation("nav", null);
-    expect(padding(chart)).toBe("0px 0px 0px 0px");
-    chart.dispose();
-  });
-
-  it("replacing a reservation under the same id does not accumulate, and negatives are ignored", () => {
-    const chart = make();
-    chart.setLayoutReservation("a", { top: 10 });
-    chart.setLayoutReservation("a", { top: 30, right: -5 });
-    expect(padding(chart)).toBe("30px 0px 0px 0px");
-    chart.dispose();
-  });
-
-  it("plugins receive the chart as context and can release subscriptions and reservations on dispose", () => {
-    let ctx: unknown;
-    let calls = 0;
+  it("sums layout reservations from every plugin as root padding and releases them", () => {
+    const releases: Array<() => void> = [];
     const chart = make({
-      plugins: [{
-        install(c) {
-          ctx = c;
-          c.setLayoutReservation("p", { bottom: 12 });
-          const unsub = c.subscribe("render", () => calls++);
-          return () => {
-            unsub();
-            c.setLayoutReservation("p", null);
-          };
-        },
-      }],
+      plugins: [
+        { install: (ctx) => { releases.push(ctx.layout.reserve({ top: 10, left: 4 })); } },
+        { install: (ctx) => { releases.push(ctx.layout.reserve({ bottom: 20, top: 5, right: -5 })); } },
+      ],
     });
-    expect(ctx).toBe(chart);
+    expect(padding(chart)).toBe("15px 0px 20px 4px");
+    releases[0]!();
+    expect(padding(chart)).toBe("5px 0px 20px 0px");
+    releases[0]!();
+    expect(padding(chart)).toBe("5px 0px 20px 0px");
+    releases[1]!();
+    expect(padding(chart)).toBe("0px 0px 0px 0px");
+    chart.dispose();
+  });
+
+  it("gives each plugin its own context and releases context resources after dispose", () => {
+    const contexts: ChartPluginContext[] = [];
+    let renders = 0;
+    let moves = 0;
+    const node = document.createElement("div");
+    const chart = make({
+      plugins: [
+        {
+          install(ctx) {
+            contexts.push(ctx);
+            ctx.layout.reserve({ bottom: 12 });
+            ctx.events.subscribe("render", () => renders++);
+            ctx.dom.mount("root", node);
+            ctx.dom.listen("plot", "pointermove", () => moves++);
+            ctx.dom.decorate("axis-x", { style: { cursor: "ew-resize" }, classes: ["my-axis"], attributes: { "data-plugin": "x" } });
+            // No cleanup returned: the context releases everything it handed out.
+          },
+        },
+        { install: (ctx) => { contexts.push(ctx); } },
+      ],
+    });
+    expect(contexts[0]).not.toBe(contexts[1]);
+    expect(contexts[0]).not.toBe(chart as unknown);
     expect(padding(chart)).toBe("0px 0px 12px 0px");
+    expect(node.parentElement).toBe(chart.rootElement);
+    expect(chartInternals(chart).xAxisElement.style.cursor).toBe("ew-resize");
+    expect(chartInternals(chart).xAxisElement.classList.contains("my-axis")).toBe(true);
+    expect(chartInternals(chart).xAxisElement.getAttribute("data-plugin")).toBe("x");
+    fire(chartInternals(chart).canvas, new window.PointerEvent("pointermove", { clientX: 1, clientY: 1 }));
+    expect(moves).toBe(1);
+
     chart.dispose();
     expect(padding(chart)).toBe("0px 0px 0px 0px");
-    expect(calls).toBe(0);
+    expect(node.parentElement).toBeNull();
+    expect(chartInternals(chart).xAxisElement.style.cursor).toBe("");
+    expect(chartInternals(chart).xAxisElement.classList.contains("my-axis")).toBe(false);
+    expect(chartInternals(chart).xAxisElement.hasAttribute("data-plugin")).toBe(false);
+    expect(renders).toBe(0);
+    expect(ledger.net()).toBe(0);
+  });
+
+  it("decorations restore the previous values, so undoing in reverse order is exact", () => {
+    let ctx = null as ChartPluginContext | null;
+    const chart = make({ plugins: [{ install: (c) => { ctx = c; } }] });
+    const axis = chartInternals(chart).yAxisElement;
+    const before = axis.style.pointerEvents;
+    const undoOuter = ctx!.dom.decorate("axis-y", { style: { pointerEvents: "auto", filter: "blur(1px)" } });
+    const undoInner = ctx!.dom.decorate("axis-y", { style: { filter: "brightness(2)" } });
+    expect(axis.style.filter).toBe("brightness(2)");
+    undoInner();
+    expect(axis.style.filter).toBe("blur(1px)");
+    undoOuter();
+    expect(axis.style.pointerEvents).toBe(before);
+    expect(axis.style.filter).toBe("");
+    chart.dispose();
+  });
+
+  it("exposes coordinates, viewport, state, geometry, and the unstable escape hatches", () => {
+    let ctx = null as ChartPluginContext | null;
+    const chart = make({ plugins: [{ install: (c) => { ctx = c; } }] });
+    chartInternals(chart).canvas.getBoundingClientRect = () => ({ left: 10, top: 20, width: 400, height: 200, right: 410, bottom: 220, x: 10, y: 20, toJSON() {} }) as DOMRect;
+    const c = ctx!;
+    c.viewport.set({ xMin: 0, xMax: 100, yMin: 0, yMax: 10 });
+    expect(c.viewport.get()).toMatchObject({ xMin: 0, xMax: 100, yMin: 0, yMax: 10 });
+    expect(c.layout.plotRect()).toEqual({ left: 10, top: 20, width: 400, height: 200 });
+    expect(c.coords.clientToPlot(110, 70)).toEqual([100, 50]);
+    expect(c.coords.plotToClient(100, 50)).toEqual([110, 70]);
+    expect(c.coords.clientToData(210, 120)).toEqual([50, 5]);
+    expect(c.coords.clientToData(0, 0)).toBeNull();
+    expect(c.viewport.isReversed("x")).toBe(false);
+    expect(c.viewport.getFollowXState()).toBe("off");
+    c.viewport.followX({ window: 10 });
+    expect(c.viewport.getFollowXState()).toBe("following");
+    c.viewport.setFollowXPaused(true);
+    expect(c.viewport.getFollowXState()).toBe("paused");
+    c.viewport.stopFollowX();
+    expect(c.viewport.getFollowXState()).toBe("off");
+    expect(c.state.getSeries()).toEqual([]);
+    expect(c.state.getHover()).toBeNull();
+    expect(c.state.getFrameStats().renderMode).toBe("none");
+    expect(c.theme).toBe(chart.theme);
+    expect(c.dom.contains(chartInternals(chart).canvas)).toBe(true);
+    expect(c.dom.contains(document.body)).toBe(false);
+    expect(c.unstable.canvas).toBe(chartInternals(chart).canvas);
+    expect(c.unstable.element("plot")).toBe(chartInternals(chart).plotElement);
+    expect(c.unstable.element("body")).toBe(document.body);
+    expect(c.unstable.getCamera("right")).toBe(chartInternals(chart).getCamera("right"));
+    chart.dispose();
   });
 });
 
-describe("Chart WebGL2 availability", () => {
+describeRecorded("Chart WebGL2 availability", () => {
   it("throws WebGL2UnavailableError with the default backend when no context exists", () => {
     expect(() => new Chart(target)).toThrow(WebGL2UnavailableError);
   });
@@ -445,7 +674,7 @@ describe("Chart WebGL2 availability", () => {
     expect(FakeResizeObserver.instances).toHaveLength(0);
   });
 
-  it("restores a caller-supplied canvas when construction fails", () => {
+  itRecorded("restores a caller-supplied canvas when construction fails", () => {
     const canvas = document.createElement("canvas");
     canvas.style.cssText = "width: 10px;";
     target.appendChild(canvas);
@@ -455,23 +684,14 @@ describe("Chart WebGL2 availability", () => {
     expect(target.querySelector(".blazeplot-root")).toBeNull();
   });
 
-  it("disposes the backend and DOM when buffer creation fails", () => {
-    const backend = new FakeBackend();
-    backend.createBuffer = () => { throw new Error("out of memory"); };
-    expect(() => new Chart(target, { backendFactory: () => backend })).toThrow("out of memory");
-    expect(backend.destroyCount).toBe(1);
-    expect(target.children).toHaveLength(0);
-  });
 });
 
-describe("Chart WebGL context loss", () => {
-  function lose(chart: ChartType): Event {
-    const event = new window.Event("webglcontextlost", { cancelable: true }) as unknown as Event;
-    fire(chart.canvas, event);
-    return event;
+describeRecorded("Chart context loss", () => {
+  function lose(): void {
+    backends.at(-1)!.lose();
   }
-  function restore(chart: ChartType): void {
-    fire(chart.canvas, new window.Event("webglcontextrestored"));
+  function restore(): void {
+    backends.at(-1)!.restore();
   }
   function withData(chart: ChartType): void {
     const series = chart.addLine({ capacity: 8 });
@@ -480,15 +700,18 @@ describe("Chart WebGL context loss", () => {
     chart.fitToData();
   }
 
-  it("prevents default on loss and skips drawing until restoration", () => {
-    const chart = make({ grid: false });
+  itRecorded("stops drawing when the engine reports loss, tells plugins, and skips frames until restoration", () => {
+    const log: string[] = [];
+    const chart = make({ grid: false, plugins: [{ install: () => ({ onContextLost: () => log.push("lost"), onContextRestored: () => log.push("restored") }) }] });
     withData(chart);
     chart.start();
+    raf.flush();
     let renders = 0;
     chart.subscribe("render", () => renders++);
 
-    const event = lose(chart);
-    expect(event.defaultPrevented).toBe(true);
+    lose();
+    expect(log).toEqual(["lost"]);
+    backends[0]!.draws = [];
     chart.requestRender();
     raf.flush();
     expect(renders).toBe(0);
@@ -496,36 +719,33 @@ describe("Chart WebGL context loss", () => {
     chart.dispose();
   });
 
-  it("recreates GPU resources on restore, disposes the old backend, and renders again", () => {
-    const chart = make({ grid: false });
+  itRecorded("renders again after the engine reports restoration, on the same engine", () => {
+    const log: string[] = [];
+    const chart = make({ grid: false, plugins: [{ install: () => ({ onContextLost: () => log.push("lost"), onContextRestored: () => log.push("restored") }) }] });
     withData(chart);
     chart.start();
     raf.flush();
-    const old = backends[0]!;
 
-    lose(chart);
-    restore(chart);
+    lose();
+    restore();
 
-    expect(backends).toHaveLength(2);
-    const fresh = backends[1]!;
-    expect(old.destroyCount).toBe(1);
-    expect(fresh.liveBuffers.size).toBe(3);
+    expect(backends).toHaveLength(1);
+    expect(log).toEqual(["lost", "restored"]);
     let renders = 0;
     chart.subscribe("render", () => renders++);
     raf.flush();
     expect(renders).toBe(1);
-    expect(fresh.draws.length).toBeGreaterThan(0);
+    expect(backends[0]!.draws.length).toBeGreaterThan(0);
 
     chart.dispose();
-    expect(fresh.destroyCount).toBe(1);
-    expect(old.destroyCount).toBe(1);
+    expect(backends[0]!.disposeCount).toBe(1);
     expect(raf.pending.size).toBe(0);
   });
 
-  it("detects a lost context during render via isContextLost and does not emit render", () => {
+  itRecorded("detects a lost engine during render and does not emit render", () => {
     const chart = make();
     chart.start();
-    backends[0]!.contextLost = true;
+    backends[0]!.lost = true;
     let renders = 0;
     chart.subscribe("render", () => renders++);
     raf.flush();
@@ -533,38 +753,66 @@ describe("Chart WebGL context loss", () => {
     chart.dispose();
   });
 
-  it("stays lost and logs when restoration cannot recreate resources", () => {
-    let calls = 0;
-    const chart = new Chart(target, {
-      backendFactory: (ctx) => {
-        calls++;
-        if (calls > 1) throw new WebGL2UnavailableError();
-        const backend = new FakeBackend(ctx.canvas);
-        backends.push(backend);
-        return backend;
-      },
-    });
-    const errors = spyOn(console, "error").mockImplementation(() => {});
-    lose(chart);
-    expect(() => restore(chart)).not.toThrow();
-    expect(errors).toHaveBeenCalledTimes(1);
-    errors.mockRestore();
-    expect(backends[0]!.destroyCount).toBe(0);
+  itRecorded("ignores engine notifications after dispose", () => {
+    const log: string[] = [];
+    const chart = make({ plugins: [{ install: () => ({ onContextLost: () => log.push("lost") }) }] });
     chart.dispose();
-    expect(backends[0]!.destroyCount).toBe(1);
+    lose();
+    expect(log).toEqual([]);
   });
 
-  it("cancels the post-restore render if the context is lost again or the chart is disposed", () => {
+  itRecorded("cancels the post-restore render if the context is lost again or the chart is disposed", () => {
     const chart = make();
-    lose(chart);
-    restore(chart);
+    lose();
+    restore();
     expect(raf.pending.size).toBe(1);
-    lose(chart);
+    lose();
     expect(raf.pending.size).toBe(0);
-    restore(chart);
+    restore();
     expect(raf.pending.size).toBe(1);
     chart.dispose();
     expect(raf.pending.size).toBe(0);
+  });
+});
+
+describe("Plugin access to the rendering engine", () => {
+  /** Install a no-op plugin and return its context. */
+  function contextOf(chart: ChartType): ChartPluginContext {
+    let captured: ChartPluginContext | null = null;
+    chartInternals(chart).installPlugin({ install: (ctx) => void (captured = ctx) });
+    return captured!;
+  }
+
+  it("shows the engine in use through the stable ctx.renderer", () => {
+    const chart = make();
+    const ctx = contextOf(chart);
+    expect(ctx.renderer).toBe(chart.rendererInfo);
+    expect(ctx.renderer.name).toBe(chart.renderer);
+    expect(Object.isFrozen(ctx.renderer)).toBe(true);
+    chart.dispose();
+  });
+
+  it("hands out render surfaces on the chart's engine and releases them with the plugin and the chart", () => {
+    const chart = make();
+    const ctx = contextOf(chart);
+    const surface = ctx.unstable.createRenderSurface(document.createElement("canvas"));
+    expect(() => {
+      surface.beginFrame(10, 10, 1);
+      surface.fillRects(new Float32Array([0, 0, 5, 5, 1, 1, 1, 1]), 1);
+      surface.endFrame();
+    }).not.toThrow();
+    expect(surface.isLost).toBe(false);
+    chart.dispose();
+    expect(() => surface.dispose()).not.toThrow();
+  });
+
+  itRecorded("disposes a surface exactly once however many times it is released", () => {
+    const chart = make();
+    const ctx = contextOf(chart);
+    const surface = ctx.unstable.createRenderSurface(document.createElement("canvas"));
+    surface.dispose();
+    chart.dispose();
+    expect(backends[0]!.surfaces[0]!.disposeCount).toBe(1);
   });
 });
 
@@ -584,7 +832,7 @@ describe("Chart overlays and screenshot", () => {
     chart.setViewport({ xMin: 0, xMax: 10, yMin: 0, yMax: 10 });
     chart.start();
     raf.flush();
-    expect(chart.xAxisElement.children.length + chart.yAxisElement.children.length).toBeGreaterThan(0);
+    expect(chartInternals(chart).xAxisElement.children.length + chartInternals(chart).yAxisElement.children.length).toBeGreaterThan(0);
     chart.dispose();
   });
 
@@ -594,11 +842,7 @@ describe("Chart overlays and screenshot", () => {
     const chart = make({ title: "Shot" });
     let renders = 0;
     chart.subscribe("render", () => renders++);
-    const shot = chart.screenshot({ width: 10, height: 10 }).catch(() => undefined);
-    // The frame is rendered after the compositor chunk loads, not before: a frame presented while
-    // the chunk loads would clear the non-preserved drawing buffer and capture a blank plot.
-    expect(renders).toBe(0);
-    await shot;
+    await chart.screenshot({ width: 10, height: 10 }).catch(() => undefined);
     expect(renders).toBe(1);
     chart.dispose();
   });

@@ -1,4 +1,4 @@
-import { Chart, ServerSampledDataset, StaticDataset, StaticOhlcDataset, type ChartOptions } from "../../../../src/index.ts";
+import { Chart, HistogramDataset, ServerSampledDataset, StaticDataset, StaticOhlcDataset, type ChartOptions } from "../../../../src/index.ts";
 import { createLinkedCharts } from "../../../../src/linked.ts";
 import { annotationsPlugin } from "../../../../src/plugins/annotations.ts";
 import { crosshairPlugin } from "../../../../src/plugins/crosshair.ts";
@@ -76,7 +76,7 @@ class DocChartGroup {
       axes: { x: { position: "outside", title: "Latency ms" }, y: { position: "outside", title: "Count" } },
       plugins: [interactionsPlugin({ doubleClickReset: true }), tooltipPlugin({ mode: "nearest-x" })],
     });
-    chart.addHistogram({ values, binSize: 5, name: "latency" }, { color: [0.988, 0.29, 0.02, 0.75] });
+    chart.addBar({ name: "latency", dataset: HistogramDataset.from(values, { binSize: 5 }) }, { color: [0.988, 0.29, 0.02, 0.75] });
     chart.fitToData({ includeZero: true, padding: { x: 0.04, y: 0.1 } });
     chart.start();
   }
@@ -179,16 +179,16 @@ class DocChartGroup {
     const lowWatermark = Math.min(...Array.from(low));
     const priceAnnotations = annotationsPlugin({
       annotations: [
-        { type: "y-line", y: lastClose, color: "#f59e0b", width: 1, dash: "4 4", label: { text: `last ${lastClose.toFixed(2)}`, position: "right", color: "#fbbf24" } },
+        { type: "y-line", y: lastClose, color: "#f59e0b", widthPx: 1, dash: "4 4", label: { text: `last ${lastClose.toFixed(2)}`, position: "right", color: "#fbbf24" } },
         { type: "y-range", yMin: lowWatermark, yMax: highWatermark, fillColor: "rgba(59,130,246,0.06)", borderColor: "rgba(59,130,246,0.22)", label: "range" },
         { type: "x-range", xMin: x[86]!, xMax: x[92]!, fillColor: "rgba(245,158,11,0.10)", borderColor: "rgba(245,158,11,0.35)", label: "event" },
-        { type: "point", x: x[54]!, y: low[54]!, shape: "diamond", radius: 5, color: "#22c55e", strokeColor: "#052e16", strokeWidth: 1, label: { text: "buy", position: "bottom", color: "#86efac" } },
-        { type: "point", x: x[142]!, y: high[142]!, shape: "diamond", radius: 5, color: "#ef4444", strokeColor: "#450a0a", strokeWidth: 1, label: { text: "sell", position: "top", color: "#fca5a5" } },
+        { type: "point", x: x[54]!, y: low[54]!, shape: "diamond", radiusPx: 5, color: "#22c55e", strokeColor: "#052e16", strokeWidthPx: 1, label: { text: "buy", position: "bottom", color: "#86efac" } },
+        { type: "point", x: x[142]!, y: high[142]!, shape: "diamond", radiusPx: 5, color: "#ef4444", strokeColor: "#450a0a", strokeWidthPx: 1, label: { text: "sell", position: "top", color: "#fca5a5" } },
       ],
     });
     const linked = createLinkedCharts(target, {
       rows: 2,
-      sharedX: true,
+      syncX: true,
       spacing: 0,
       panels: [
         {
@@ -245,7 +245,7 @@ class DocChartGroup {
   private mountLinkedDocChart(target: HTMLElement): void {
     const linked = createLinkedCharts(target, {
       rows: 2,
-      sharedX: true,
+      syncX: true,
       panelPlugins: (syncGroup) => [crosshairPlugin({ syncGroup })],
       panels: [
         { options: this.docChartOptions({ axes: { x: { position: "outside" }, y: { position: "outside" } }, grid: true }) },
@@ -285,7 +285,7 @@ class DocChartGroup {
           annotations: [
             { type: "x-line", x: 80, label: "event", color: "#fc4a05" },
             { type: "x-range", xMin: 112, xMax: 134, label: "deploy", fillColor: "rgba(252,74,5,0.14)", borderColor: "rgba(252,74,5,0.45)" },
-            { type: "point", x: 80, y: data.y[80] ?? 0, radius: 5, color: "#fc4a05" },
+            { type: "point", x: 80, y: data.y[80] ?? 0, radiusPx: 5, color: "#fc4a05" },
           ],
         }),
       ],

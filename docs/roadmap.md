@@ -1,74 +1,53 @@
 # BlazePlot Roadmap
 
-BlazePlot is a fast WebGL2 plotting engine for dense browser time-series charts.
+BlazePlot is a fast, GPU-accelerated plotting engine, with an automatic Canvas 2D fallback, for dense browser time-series charts.
 
-## Current status
+## Current status (1.0 release candidates)
 
-- Core chart API, typed datasets, ring buffers, OHLC datasets, server-sampled datasets, min/max LOD, gaps, picking, and data export helpers are implemented.
-- WebGL2 rendering covers line, area, scatter, bar, OHLC, candlestick, dense min/max paths, screenshots, context restore, and built-in DOM/SVG overlays.
-- Interaction/plugin layer covers pan, zoom, box zoom, touch gestures, crosshair, tooltip, legend, annotations, selection, navigator, linked charts, React wrapper, and theming.
-- Package output is split into tree-shakable entry points: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and `blazeplot/plugins/*`.
-- CI validates typecheck, unit tests, build, package exports, package contents, bundle-size budgets, benchmark smoke, visual tests, and browser interaction tests.
+- **Charts and data:** core chart API, typed datasets, ring buffers, OHLC datasets, server-sampled datasets, histograms, min/max LOD, gaps, picking, and data export. Every dataset follows one input rule (finite, non-decreasing X); static data is validated at construction and streaming buffers skip and count invalid samples.
+- **Rendering:** a native WebGL2 backend (one stream upload per frame) covers line, area, scatter, bar, OHLC, candlestick, dense min/max paths, screenshots, and context loss/restore, with DOM/SVG overlays for axes and plugins. Three engines ship in the core package: WebGL2, Canvas 2D, and a shared WebGL context that lets many charts share one context. The default `renderer: "auto"` uses WebGL2 and falls back to Canvas 2D without WebGL2. Charts work in iframes and popup windows.
+- **Plugins:** pan, zoom, box zoom, keyboard and touch gestures (with cooperative modes for scrolling pages), crosshair, tooltip, legend, annotations, selection, navigator, flamegraph, and accessibility, all built on a stable, documented plugin contract that third-party plugins can use too.
+- **Accessibility:** chart semantics with a generated summary, a hidden data table, a keyboard inspection cursor, keyboard selection and annotations, focus rings, and forced-colors support.
+- **Packaging:** tree-shakable entry points (`blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, `blazeplot/plugins/*`), ESM only, with bundle-size budgets and a public API snapshot.
+- **Quality gates in CI:** typecheck, lint, unit and property tests with coverage floors, the TypeScript 5.0 floor, export and package checks, typechecked docs snippets, a performance regression gate, pixel-baseline visual tests, browser interaction and keyboard tests, axe-core and forced-colors checks, a leak/stability suite, and a Firefox/WebKit smoke job.
 
-## Near-term priorities
+## After 1.0
 
-1. **Native WebGL2 backend / regl removal**
-   - [x] Add a native `WebGL2Backend` implementing the existing `GpuBackend` interface.
-   - [ ] Validate lines, min/max, scatter, bars, area, OHLC, candlesticks, context restore, and screenshots with pixel-visible browser tests.
-   - [x] Switch the default backend after native parity work.
-   - [x] Remove the `regl` dependency to reduce real consumer bundle size.
+These are additive and can ship in 1.x minor releases.
 
-2. **Renderer correctness and regression coverage**
-   - [ ] Strengthen visual tests so they fail when draw calls happen but pixels are not visibly rendered.
-   - [ ] Add preview smoke coverage for main, features, server-sampled, mobile, linked, and React previews.
-   - [ ] Add screenshot image-comparison baselines for plot + DOM/SVG plugin overlays.
-   - [ ] Add broader browser coverage for Chrome/Chromium, Firefox, Safari/WebKit, and mobile WebGL2.
+1. **Annotations and editing**
+   - [ ] Drag/edit handles for annotation lines, ranges, boxes, points, and labels.
+   - [ ] Keyboard and touch editing (focus, activate, and delete already work).
 
-3. **Bundle-size and packaging discipline**
-   - [x] Keep optional plugins behind subpath entries.
-   - [x] Add bundle-size budgets and source-map analyzer tooling.
-   - [x] Exclude source maps from the published npm package.
+2. **Mobile and responsive UX**
+   - [ ] Better hover-free workflows for selection, navigator, legend, tooltip, and annotations on touch screens.
+   - [ ] Responsive presets for axes, tick density, gutters, legends, and compact dashboard panels.
+   - [ ] Mobile WebGL2 coverage in the browser test suite, including real-device checks of one-finger page scrolling with the default `touchPan: "two-finger"` (verified through touch emulation only so far).
+
+3. **Data pipeline helpers**
+   - [ ] Optional ingestion helpers for CSV, JSON, typed arrays, and worker-fed batches.
+   - [ ] Worker and server-side transform guidance for high-rate streams.
+   - [ ] Transfer-friendly and `SharedArrayBuffer` dataset update patterns.
+
+4. **Bundle and performance**
    - [ ] Track total loaded graph sizes for common import scenarios, not just individual chunks.
-   - [ ] Continue splitting optional chart features only when behavior remains synchronous and compatible.
+   - [ ] Memory benchmarks for long-running streaming dashboards.
 
-4. **Production polish**
-   - [ ] Add dispose/resource leak stress tests for repeated chart/plugin mount, unmount, resize, screenshot, and series churn.
-   - [ ] Add memory/resource benchmarks for long-running streaming dashboards.
-   - [ ] Improve WebGL context-loss/context-restore coverage.
-   - [ ] Document fallback UI patterns for browsers without WebGL2.
-
-5. **Mobile and responsive UX**
-   - [x] Touch pan, pinch zoom, double-tap reset, and long-press crosshair/tooltip.
-   - [ ] Improve hover-free selection, navigator, legend, tooltip, and annotation workflows.
-   - [ ] Add responsive presets for axes, tick density, gutters, legends, and compact dashboard panels.
-
-6. **Annotations and editing**
-   - [x] First-party annotation overlay plugin with lines, ranges, boxes, points, labels, hit testing, screenshots, and runtime APIs.
-   - [ ] Add drag/edit handles for movable annotation lines, ranges, boxes, points, and labels.
-   - [ ] Add keyboard and mobile editing affordances.
-
-7. **Data pipeline helpers**
-   - [x] `blazeplot/data` export and transform helpers.
-   - [x] Add first-class histogram helpers for one-dimensional value distributions.
-   - [ ] Add optional ingestion helpers for CSV, JSON, typed arrays, and worker-fed batches.
-   - [ ] Document worker/server-side transform guidance for high-rate streams.
-   - [ ] Investigate transfer-friendly and `SharedArrayBuffer` dataset update patterns.
-
-8. **Plugin API stability**
-   - [ ] Separate stable plugin-facing contracts from internal `ui/` implementation details.
-   - [ ] Add plugin compatibility tests for lifecycle, layout reservations, events, theme extension, screenshot inclusion, and disposal.
-   - [ ] Publish plugin migration/deprecation guidance.
-
-9. **Future visualization modes**
+5. **Visualization modes**
    - [ ] Error bars and confidence bands.
-   - [ ] Stacked area/bar overlays and variable-width histogram bar rendering.
+   - [ ] Stacked area/bar overlays and variable-width histogram bars.
    - [ ] Heatmap, spectrogram, FFT, and waterfall views if they fit the GPU-first dense-data niche.
-   - [ ] Multiple independent Y axes beyond left/right.
-   - [ ] WebGPU backend after the native WebGL2 backend and lifecycle tests are mature.
+   - [ ] More than two independent Y axes.
+   - [ ] A WebGPU backend.
+
+6. **Experimental APIs**
+   - [ ] Promote the custom fast-path dataset interfaces and the flamegraph plugin to stable once real users have exercised them (see [API stability](./stability.md)).
 
 ## Non-goals for now
 
-- Canvas2D/SVG fallback renderer for core plot drawing.
+- An SVG renderer for core plot drawing (a Canvas 2D engine ships in the core package).
 - Large chart-type expansion that bloats the time-series core.
 - Bundling timezone databases or heavyweight data-processing libraries.
-- Breaking existing synchronous chart construction for optional feature splitting.
+- Breaking synchronous chart construction for optional feature splitting.
+- Third-party renderers: the `ChartRenderer` drawing interface is internal, and only the built-in renderers implement it.
+- Adding or removing plugins on a live chart; plugins are fixed at construction so layout, ordering, and cleanup stay predictable.

@@ -3,12 +3,15 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CdpClient, createTarget, evaluate, resolveChrome, sleep, waitForHttp } from "./browser-harness.js";
+import { CdpClient, applyChromeEnv, createTarget, evaluate, resolveChrome, sleep, waitForHttp } from "./browser-harness.js";
 
 const only = process.argv[2];
 const port = await freePort();
 const debugPort = await freePort();
 const base = `http://127.0.0.1:${port}${(process.env.BLAZEPLOT_PAGES_BASE ?? "/").replace(/\/$/, "")}`;
+// Vite serves absolute files at /@fs/<path>; normalise Windows backslashes (they would be JS escapes inside the injected code).
+const fsPath = process.cwd().replaceAll("\\", "/");
+const viteFsRoot = fsPath.startsWith("/") ? `/@fs${fsPath}` : `/@fs/${fsPath}`;
 const profile = await mkdtemp(join(tmpdir(), "blazeplot-website-"));
 const server = Bun.spawn(["node", "node_modules/vite/bin/vite.js", ...(only === "production" ? ["preview"] : []), "--config", "vite.pages.config.ts", "--host", "127.0.0.1", "--port", String(port), "--strictPort", "--open", "false"], { stdout: "ignore", stderr: "ignore", env: { ...process.env, BLAZEPLOT_WEBSITE_TEST: "1", BLAZEPLOT_PAGES_BASE: process.env.BLAZEPLOT_PAGES_BASE ?? "/" } });
 let chrome: Bun.Subprocess | undefined;
@@ -20,7 +23,7 @@ let tabId: string | null = null;
 let viewportWidth = 1280;
 try {
   await waitForHttp(base, 30_000);
-  chrome = Bun.spawn([resolveChrome(undefined), "--headless=new", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, "--no-sandbox", "--disable-dev-shm-usage", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--no-first-run", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "about:blank"], { stdout: "ignore", stderr: "ignore" });
+  chrome = Bun.spawn(applyChromeEnv([resolveChrome(undefined), "--headless=new", `--remote-debugging-port=${debugPort}`, `--user-data-dir=${profile}`, "--no-sandbox", "--disable-dev-shm-usage", "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows", "--no-first-run", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "about:blank"]), { stdout: "ignore", stderr: "ignore" });
   await waitForHttp(`http://127.0.0.1:${debugPort}/json/version`, 30_000);
   await openTab();
   await run("responsive", async () => {
@@ -59,7 +62,7 @@ try {
     const before = await js("scrollY") as number;
     await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", ...rect, deltaX: 0, deltaY: 180 });
     await wait(`scrollY > ${before}`);
-    await check("pageHost.homeChart.getXFollowState() === 'following'", "wheel over the landing chart scrolls the page instead of zooming");
+    await check("pageHost.homeChart.getFollowXState() === 'following'", "wheel over the landing chart scrolls the page instead of zooming");
     await js("window.scrollTo({top:0, behavior:'instant'}); pageHost.homeChart.pan({dx:0.1,dy:0})");
     await wait("page.querySelector('[data-home-resume]')");
     await js("page.querySelector('[data-home-resume]').click()");
@@ -128,7 +131,11 @@ try {
       await wait("page.querySelector('site-drawer').shadowRoot.querySelector('dialog').open");
       await screenshot(component! + "-drawer");
       await check("document.body.style.overflow === 'hidden'", "modal prevents background scrolling");
-      for (let i = 0; i < 20; i++) {
+      // Native modal dialogs cycle through the browser UI (document.body) once per lap, so a fixed
+      // Tab count can land on that stop depending on how many drawer links exist. Never let focus
+      // rest on the page behind the drawer, and take one more Tab if it stopped on the browser stop.
+      for (let i = 0; i < 21; i++) {
+        if (i >= 20 && await js("document.activeElement === document.body") !== true) break;
         await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
         await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
       }
@@ -208,12 +215,12 @@ try {
     await goto("/", "blazeplot-home");
     for (const mode of ["line", "multi", "ohlc"]) {
       await js(`page.querySelector('[data-home-option="mode:${mode}"]').click()`);
-      await wait("pageHost.homeChart?.getXFollowState() === 'following'");
+      await wait("pageHost.homeChart?.getFollowXState() === 'following'");
       await check("Math.abs((pageHost.homeChart.getViewport().xMax - pageHost.homeChart.getViewport().xMin) - 419) < 0.01", "live window retains its original span");
       await js("pageHost.homeChart.pan({dx:0.1,dy:0})");
       await wait("page.querySelector('[data-home-resume]')");
       await js("page.querySelector('[data-home-resume]').click()");
-      await wait("pageHost.homeChart.getXFollowState() === 'following' && !page.querySelector('[data-home-resume]')");
+      await wait("pageHost.homeChart.getFollowXState() === 'following' && !page.querySelector('[data-home-resume]')");
       await check("Number.isFinite(pageHost.homeChart.getViewport().yMin)", "each chart mode retains a valid Y range");
     }
   });
@@ -231,8 +238,8 @@ try {
   await run("legend", async () => {
     await goto("/", "blazeplot-home");
     await js(`(async () => {
-      const { Chart, StaticDataset } = await import('/@fs${process.cwd()}/src/index.ts');
-      const { legendPlugin } = await import('/@fs${process.cwd()}/src/plugins/legend.ts');
+      const { Chart, StaticDataset } = await import('${viteFsRoot}/src/index.ts');
+      const { legendPlugin } = await import('${viteFsRoot}/src/plugins/legend.ts');
       window.legendHost = document.createElement('div'); legendHost.style.cssText = 'width:500px;height:300px'; document.body.append(legendHost);
       window.legendChart = new Chart(legendHost, { plugins: [legendPlugin()] });
       window.legendSeries = legendChart.addLine({ dataset:new StaticDataset([0,1],[0,1]), name:'Signal' });
@@ -252,7 +259,7 @@ try {
     await check("legendHost.querySelectorAll('.blazeplot-legend button').length === 0", "removed series disappear from legend");
     await js("legendChart.dispose(); legendHost.remove()");
     await js(`(async () => {
-      const { Chart } = await import('/@fs${process.cwd()}/src/index.ts');
+      const { Chart } = await import('${viteFsRoot}/src/index.ts');
       window.legendHost = document.createElement('div'); legendHost.style.cssText = 'width:500px;height:300px'; document.body.append(legendHost);
       window.legendChart = new Chart(legendHost, { plugins: [legendFactory({toggleOnClick:false})] });
       legendChart.addLine({capacity:10,name:'Read only'});

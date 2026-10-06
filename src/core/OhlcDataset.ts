@@ -1,8 +1,32 @@
-import { lowerBound, unsortedXWarning, upperBound } from "./search.js";
+import { lowerBound, upperBound } from "./search.js";
 import { createValueArray } from "./valueArray.js";
-import type { BufferOverflowStrategy, OhlcDataset, TimeRange, ValuePrecision } from "./types.js";
+import type { BufferOverflowStrategy, InvalidOhlcSample, OhlcDataset, TimeRange, ValuePrecision } from "./types.js";
+import { assertEqualLengths, MAX_X, MIN_X, assertSortedFiniteX, firstInvalidX, invalidSampleWarning, invalidXReason, stableFiniteXOrder } from "./validation.js";
 
-/** Immutable OHLC dataset backed by parallel arrays. */
+const STATIC_OHLC_HINT =
+  "Use StaticOhlcDataset.sorted(x, open, high, low, close) to sort and drop non-finite X, or pass { assumeSorted: true } to skip this check for data you trust.";
+
+/** Options for `StaticOhlcDataset`. */
+export interface StaticOhlcDatasetOptions {
+  /**
+   * Skip the O(n) construction check that X is finite and non-decreasing. Only for large
+   * data you already trust; unsorted X then makes searches, culling, and picking unreliable.
+   */
+  readonly assumeSorted?: boolean;
+}
+
+/** Options for `StaticOhlcDataset.sorted`. */
+export interface StaticOhlcDatasetSortedOptions {
+  /** Open/high/low/close storage for the copied values. Defaults to `"float32"`. */
+  readonly valuePrecision?: ValuePrecision;
+}
+
+/**
+ * Immutable OHLC dataset backed by parallel arrays.
+ *
+ * X must be finite and non-decreasing; the constructor checks it and throws a `RangeError`
+ * naming the first bad index. A candle with any non-finite price is a gap.
+ */
 export class StaticOhlcDataset implements OhlcDataset {
   /** Number of OHLC samples. */
   readonly length: number;
@@ -12,15 +36,53 @@ export class StaticOhlcDataset implements OhlcDataset {
   private readonly lows: ArrayLike<number>;
   private readonly closes: ArrayLike<number>;
 
-  /** Create an immutable OHLC dataset from parallel arrays. */
+  /**
+   * Copy parallel arrays into a dataset sorted by X. Candles with a non-finite X are dropped;
+   * candles with equal X keep their input order.
+   */
+  static sorted(
+    x: ArrayLike<number>,
+    open: ArrayLike<number>,
+    high: ArrayLike<number>,
+    low: ArrayLike<number>,
+    close: ArrayLike<number>,
+    options: StaticOhlcDatasetSortedOptions = {},
+  ): StaticOhlcDataset {
+    assertEqualLengths("StaticOhlcDataset.sorted", { x, open, high, low, close });
+    const count = x.length;
+    const order = stableFiniteXOrder(x, count);
+    const n = order.length;
+    const xs = new Float64Array(n);
+    const opens = createValueArray(n, options.valuePrecision);
+    const highs = createValueArray(n, options.valuePrecision);
+    const lows = createValueArray(n, options.valuePrecision);
+    const closes = createValueArray(n, options.valuePrecision);
+    for (let i = 0; i < n; i++) {
+      const source = order[i]!;
+      xs[i] = x[source]!;
+      opens[i] = open[source]!;
+      highs[i] = high[source]!;
+      lows[i] = low[source]!;
+      closes[i] = close[source]!;
+    }
+    return new StaticOhlcDataset(xs, opens, highs, lows, closes, { assumeSorted: true });
+  }
+
+  /**
+   * Create an immutable OHLC dataset from parallel arrays, read in place. Throws a `RangeError`
+   * when an X is non-finite or decreasing, unless `assumeSorted` is set.
+   */
   constructor(
     x: ArrayLike<number>,
     open: ArrayLike<number>,
     high: ArrayLike<number>,
     low: ArrayLike<number>,
     close: ArrayLike<number>,
+    options: StaticOhlcDatasetOptions = {},
   ) {
-    this.length = Math.min(x.length, open.length, high.length, low.length, close.length);
+    assertEqualLengths("StaticOhlcDataset", { x, open, high, low, close });
+    this.length = x.length;
+    if (options.assumeSorted !== true) assertSortedFiniteX("StaticOhlcDataset", x, this.length, STATIC_OHLC_HINT);
     this.xs = x;
     this.opens = open;
     this.highs = high;
@@ -69,6 +131,11 @@ export class StaticOhlcDataset implements OhlcDataset {
     return this.closes[index]!;
   }
 
+  /** Return whether the candle is a gap: any of open, high, low, or close is non-finite. */
+  isGap(index: number): boolean {
+    return !Number.isFinite(this.getOpen(index) + this.getHigh(index) + this.getLow(index) + this.getClose(index));
+  }
+
   /** Return the first logical index whose X value is at least `x`. */
   lowerBoundX(x: number): number {
     return lowerBound(this.length, (index) => this.xs[index]!, x);
@@ -91,9 +158,21 @@ export interface OhlcRingBufferOptions {
   readonly overflow?: BufferOverflowStrategy;
   /** Open/high/low/close storage. Defaults to `"float32"`; use `"float64"` to keep large prices exact. */
   readonly valuePrecision?: ValuePrecision;
+  /**
+   * Called for each candle skipped because its X is non-finite or below the last accepted X.
+   * When set, the one-time console warning is not logged.
+   */
+  readonly onInvalidSample?: (sample: InvalidOhlcSample) => void;
 }
 
-/** Fixed-capacity streaming buffer for OHLC/candlestick data. */
+/**
+ * Fixed-capacity streaming buffer for OHLC/candlestick data.
+ *
+ * X must be finite and non-decreasing. A candle that breaks that rule is skipped (never
+ * thrown), counted in `rejectedSamples`, reported to `onInvalidSample`, and logged with one
+ * console warning per buffer when no callback is set. A candle with a non-finite price is
+ * stored and treated as a gap.
+ */
 export class OhlcRingBuffer implements OhlcDataset {
   /** Maximum number of retained candles. */
   readonly capacity: number;
@@ -105,7 +184,9 @@ export class OhlcRingBuffer implements OhlcDataset {
   private readonly closeData: Float32Array | Float64Array;
   private _length = 0;
   private _head = 0;
-  private readonly checkOrder = unsortedXWarning("OhlcRingBuffer");
+  private _rejected = 0;
+  private readonly onInvalidSample: ((sample: InvalidOhlcSample) => void) | undefined;
+  private readonly warnInvalid: ReturnType<typeof invalidSampleWarning>;
 
   /** Create a fixed-capacity streaming OHLC buffer. */
   constructor(capacity: number, options: OhlcRingBufferOptions = {}) {
@@ -115,6 +196,8 @@ export class OhlcRingBuffer implements OhlcDataset {
 
     this.capacity = capacity;
     this.overflow = options.overflow ?? "wrap";
+    this.onInvalidSample = options.onInvalidSample;
+    this.warnInvalid = invalidSampleWarning("OhlcRingBuffer", options.onInvalidSample !== undefined);
     this.xData = new Float64Array(capacity);
     this.openData = createValueArray(capacity, options.valuePrecision);
     this.highData = createValueArray(capacity, options.valuePrecision);
@@ -127,31 +210,32 @@ export class OhlcRingBuffer implements OhlcDataset {
     return this._length;
   }
 
+  /** Candles skipped since creation because their X was non-finite or went backwards. Not reset by `clear()`. */
+  get rejectedSamples(): number {
+    return this._rejected;
+  }
+
   /** X range covered by retained candles, or `null` when empty. */
   get range(): TimeRange | null {
     if (this._length === 0) return null;
     return { start: this.getX(0), end: this.getX(this._length - 1) };
   }
 
-  /** Append one OHLC candle. */
+  /** Append one OHLC candle. A non-finite `x`, or one below the last accepted X, skips the candle. */
   push(x: number, open: number, high: number, low: number, close: number): void {
+    const floor = this.acceptFloor();
+    if (!(x >= floor && x <= MAX_X)) {
+      this.reject("push", 0, x, open, high, low, close, floor);
+      return;
+    }
     if (this._length >= this.capacity) {
       if (this.overflow === "drop-new") return;
       if (this.overflow === "error") throw new RangeError("OhlcRingBuffer capacity exceeded.");
     }
-
-    const lastX = this._length > 0 ? this.xData[this._head === 0 ? this.capacity - 1 : this._head - 1]! : NaN;
-    if (x < lastX) this.checkOrder(lastX, x);
-    this.xData[this._head] = x;
-    this.openData[this._head] = open;
-    this.highData[this._head] = high;
-    this.lowData[this._head] = low;
-    this.closeData[this._head] = close;
-    this._head = (this._head + 1) % this.capacity;
-    if (this._length < this.capacity) this._length++;
+    this.write(x, open, high, low, close);
   }
 
-  /** Replace candle values at a logical index. */
+  /** Replace candle values at a logical index. X is unchanged; non-finite prices make the candle a gap. */
   updateAt(index: number, open: number, high: number, low: number, close: number): boolean {
     if (!this.isValidIndex(index)) return false;
     const physical = this.logicalToPhysical(index);
@@ -162,7 +246,10 @@ export class OhlcRingBuffer implements OhlcDataset {
     return true;
   }
 
-  /** Append OHLC candles from parallel arrays. */
+  /**
+   * Append OHLC candles from parallel arrays. Candles whose X is non-finite or below the
+   * previous accepted X are skipped and do not count toward capacity or overflow.
+   */
   append(
     x: ArrayLike<number>,
     open: ArrayLike<number>,
@@ -170,24 +257,58 @@ export class OhlcRingBuffer implements OhlcDataset {
     low: ArrayLike<number>,
     close: ArrayLike<number>,
   ): void {
-    const requested = Math.min(x.length, open.length, high.length, low.length, close.length);
+    assertEqualLengths("OhlcRingBuffer.append", { x, open, high, low, close });
+    const requested = x.length;
     if (requested <= 0) return;
 
-    if (this.overflow !== "wrap") {
-      const available = this.capacity - this._length;
-      if (requested > available && this.overflow === "error") {
-        throw new RangeError("OhlcRingBuffer capacity exceeded.");
+    // drop-new stores at most `limit` candles; later valid candles are dropped without
+    // moving the X floor, exactly as if each candle were pushed.
+    const limit = this.overflow === "drop-new" ? this.capacity - this._length : requested;
+    const storable = Math.min(requested, limit);
+    const floor = this.acceptFloor();
+    const firstInvalid = firstInvalidX(x, storable, floor);
+    let indexes: Uint32Array | null = null;
+    let count = storable;
+    if (firstInvalid < storable) {
+      indexes = new Uint32Array(storable);
+      count = 0;
+      let next = floor;
+      for (let i = 0; i < requested; i++) {
+        const xi = x[i]!;
+        if (!(xi >= next && xi <= MAX_X)) {
+          this.reject("append", i, xi, open[i]!, high[i]!, low[i]!, close[i]!, next);
+          continue;
+        }
+        if (count >= limit) continue;
+        next = xi;
+        indexes[count++] = i;
       }
-      const count = Math.min(requested, available);
-      for (let i = 0; i < count; i++) this.push(x[i]!, open[i]!, high[i]!, low[i]!, close[i]!);
-      return;
+    } else {
+      const frozen = storable > 0 ? x[storable - 1]! : floor;
+      for (let i = storable; i < requested; i++) {
+        const xi = x[i]!;
+        if (!(xi >= frozen && xi <= MAX_X)) this.reject("append", i, xi, open[i]!, high[i]!, low[i]!, close[i]!, frozen);
+      }
     }
 
-    const sourceStart = Math.max(0, requested - this.capacity);
-    for (let i = sourceStart; i < requested; i++) this.push(x[i]!, open[i]!, high[i]!, low[i]!, close[i]!);
+    let from = 0;
+    let to = count;
+    if (this.overflow !== "wrap") {
+      const available = this.capacity - this._length;
+      if (count > available && this.overflow === "error") {
+        throw new RangeError("OhlcRingBuffer capacity exceeded.");
+      }
+      to = Math.min(count, available);
+    } else {
+      from = Math.max(0, count - this.capacity);
+    }
+    for (let k = from; k < to; k++) {
+      const i = indexes ? indexes[k]! : k;
+      this.write(x[i]!, open[i]!, high[i]!, low[i]!, close[i]!);
+    }
   }
 
-  /** Remove all retained candles. */
+  /** Remove all retained candles. The next candle may start at any finite X. */
   clear(): void {
     this._length = 0;
     this._head = 0;
@@ -228,6 +349,13 @@ export class OhlcRingBuffer implements OhlcDataset {
     return this.closeData[this.logicalToPhysical(index)]!;
   }
 
+  /** Return whether the candle is a gap: any of open, high, low, or close is non-finite. */
+  isGap(index: number): boolean {
+    this.assertValidIndex(index);
+    const physical = this.logicalToPhysical(index);
+    return !Number.isFinite(this.openData[physical]! + this.highData[physical]! + this.lowData[physical]! + this.closeData[physical]!);
+  }
+
   /** Return the first logical index whose X value is at least `x`. */
   lowerBoundX(x: number): number {
     return lowerBound(this._length, (index) => this.getX(index), x);
@@ -236,6 +364,40 @@ export class OhlcRingBuffer implements OhlcDataset {
   /** Return the first logical index whose X value is greater than `x`. */
   upperBoundX(x: number): number {
     return upperBound(this._length, (index) => this.getX(index), x);
+  }
+
+  /** Store an already-validated candle, overwriting the oldest one when full. */
+  private write(x: number, open: number, high: number, low: number, close: number): void {
+    const physical = this._head;
+    this.xData[physical] = x;
+    this.openData[physical] = open;
+    this.highData[physical] = high;
+    this.lowData[physical] = low;
+    this.closeData[physical] = close;
+    this._head = (physical + 1) % this.capacity;
+    if (this._length < this.capacity) this._length++;
+  }
+
+  /** Lowest X the next candle may have: the newest retained X, or `MIN_X` when empty. */
+  private acceptFloor(): number {
+    return this._length > 0 ? this.xData[this._head === 0 ? this.capacity - 1 : this._head - 1]! : MIN_X;
+  }
+
+  private reject(
+    operation: InvalidOhlcSample["operation"],
+    index: number,
+    x: number,
+    open: number,
+    high: number,
+    low: number,
+    close: number,
+    neighborX: number,
+  ): void {
+    this._rejected++;
+    const reason = invalidXReason(x);
+    const neighbor = reason === "decreasing-x" ? neighborX : NaN;
+    this.warnInvalid(reason, x, neighbor);
+    this.onInvalidSample?.({ reason, operation, index, x, y: close, neighborX: neighbor, open, high, low, close });
   }
 
   private logicalToPhysical(index: number): number {
