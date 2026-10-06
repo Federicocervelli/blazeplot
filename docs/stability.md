@@ -14,7 +14,7 @@ Stability tiers are defined here and apply per export. The [API reference](./api
 
 Anything not exported from a documented entry point is private, even if you can reach it through a bundler or deep import. The `exports` map in `package.json` blocks deep imports such as `blazeplot/dist/...`. Members marked `@internal` in source are stripped from the published `.d.ts` files (`stripInternal`), so they do not appear in your editor.
 
-Before 1.0, minor releases (`0.x`) can still contain breaking changes, even for stable items; the [migration guide](./versioning-and-migration.md#migrating-to-05) lists the last round. The same holds for the `1.0.0-rc.N` release candidates, which have still changed names and defaults between candidates (see the changelogs). The tiers below describe the contract that starts at 1.0.
+Before 1.0, minor releases (`0.x`) could contain breaking changes, even for stable items; the [migration guide](./versioning-and-migration.md#migrating-to-05) lists the last round. The tiers below describe the contract that starts at 1.0 (released as `1.0.0`).
 
 ## Package format
 

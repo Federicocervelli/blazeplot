@@ -20,7 +20,7 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout workflow actions
         uses: actions/checkout@v7
@@ -39,7 +39,7 @@ jobs:
         id: release
         working-directory: branches/next
         run: |
-          # Stable releases only: skip -rc.N tags published from v1.
+          # Stable releases only: skip any prerelease tags.
           TAG=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
           if [ -z "$TAG" ]; then
             echo "::error::No release tag found."
@@ -49,7 +49,7 @@ jobs:
           echo "sha=$(git rev-list -n 1 "$TAG")" >> "$GITHUB_OUTPUT"
 
       # A released site never changes, so only the first deploy after a release builds it.
-      # Bump the v1 segment to force a rebuild when the stable build steps change.
+      # Bump the version segment of the cache key to force a rebuild when the stable build steps change.
       - name: Restore stable site
         id: stable-cache
         uses: actions/cache@v6

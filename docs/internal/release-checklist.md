@@ -1,6 +1,6 @@
 # Release checklist
 
-Use this checklist for the release PR that publishes a new npm version from `main` (stable) or `v1` (release candidate; see the section before "Rollback notes").
+Use this checklist for the release PR that publishes a new npm version from `main`.
 
 Related workflow reference: [GitHub workflow runbook](./github-workflows.md).
 
@@ -38,16 +38,6 @@ Monitor:
 - GitHub Releases for the matching tag.
 - GitHub Pages deployment for the stable site and the `/next/` preview.
 
-## Release candidates from v1
-
-Until 1.0 ships, candidates (`1.0.0-rc.N`) are published from the long-lived `v1` branch to the npm `rc` dist-tag. See [The v1 branch](../release-and-benchmarks.md#the-v1-branch-10-release-candidates) for the branch policy and sync cadence.
-
-1. Sync: open a `sync/main-into-v1-*` PR (base `v1`) that merges `main` into `v1`, and land it with a merge commit.
-2. Prepare: from an updated `v1`, create `release/v1.0.0-rc.N` and run `bun run release 1.0.0-rc.1` (first candidate) or `bun run release rc` (later ones). Use `--dry-run` first if unsure. Edit `changelogs/v1.0.0-rc.N.md`; do not add rc entries to the root `CHANGELOG.md`.
-3. PR: open it with base `v1`, wait for `validate` (it includes the Firefox and WebKit `cross-browser` job), then squash-merge. Note the browser versions from that job's log and complete the manual Safari/Firefox/Chrome preview pass described in [Verified browsers per release](../browser-support.md#verified-browsers-per-release).
-4. Monitor the release run on `v1`: `version`, `ci`, `release`; the `pages` job must be skipped. Check that `npm view blazeplot dist-tags` shows the new `rc` and an unchanged `latest`, and that the GitHub release is marked pre-release and is not "Latest".
-5. Final release: see "Shipping 1.0" in the release notes doc linked above.
-
 ## Rollback notes
 
-npm versions cannot be overwritten. If a bad version publishes, prepare a new patch version with the fix (or the next `rc.N` for a candidate) and document the issue in the next changelog. Only delete tags/releases when no npm publish happened.
+npm versions cannot be overwritten. If a bad version publishes, prepare a new patch version with the fix and document the issue in the next changelog. Only delete tags/releases when no npm publish happened.

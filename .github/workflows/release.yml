@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - v1
   workflow_dispatch:
 
 concurrency:
@@ -14,15 +13,13 @@ concurrency:
 jobs:
   # Cheap gate: decide whether this push publishes before spending time on CI.
   version:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     outputs:
       publish: ${{ steps.version.outputs.publish }}
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
-      npm_tag: ${{ steps.version.outputs.npm_tag }}
-      prerelease: ${{ steps.version.outputs.prerelease }}
       pages: ${{ steps.version.outputs.pages }}
     steps:
       - uses: actions/checkout@v7
@@ -42,28 +39,18 @@ jobs:
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          # Channels: main publishes stable versions to npm "latest"; v1 publishes
-          # 1.0.0-rc.N candidates to npm "rc". Anything else (a prerelease on main, a stable
-          # version on v1 after merging main into it, any other branch) never publishes.
+          # main publishes stable x.y.z versions to npm "latest". A prerelease version never
+          # publishes (so it can never take the "latest" dist-tag), and neither does any other branch.
           # Pages deploys from main only.
           if [ "$BRANCH" = main ]; then echo "pages=true" >> "$GITHUB_OUTPUT"; else echo "pages=false" >> "$GITHUB_OUTPUT"; fi
-          if [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            KIND=stable
-            echo "npm_tag=latest" >> "$GITHUB_OUTPUT"
-            echo "prerelease=false" >> "$GITHUB_OUTPUT"
-          elif [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
-            KIND=rc
-            echo "npm_tag=rc" >> "$GITHUB_OUTPUT"
-            echo "prerelease=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::Unsupported version ${VERSION}; expected x.y.z or x.y.z-rc.N."
-            exit 1
-          fi
-          if { [ "$BRANCH" = main ] && [ "$KIND" = stable ]; } || { [ "$BRANCH" = v1 ] && [ "$KIND" = rc ]; }; then
-            :
-          else
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::${VERSION} (${KIND}) is not published from ${BRANCH}; main publishes stable versions and v1 publishes -rc.N versions."
+            echo "::notice::${VERSION} is not a stable x.y.z version; prereleases are never published from this workflow."
+            exit 0
+          fi
+          if [ "$BRANCH" != main ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::${VERSION} is not published from ${BRANCH}; only main publishes."
             exit 0
           fi
           if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
@@ -89,7 +76,7 @@ jobs:
   release:
     needs: [version, ci]
     if: needs.version.outputs.publish == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       id-token: write
@@ -110,12 +97,9 @@ jobs:
       - name: Write release notes
         env:
           VERSION: ${{ needs.version.outputs.version }}
-          PRERELEASE: ${{ needs.version.outputs.prerelease }}
         run: |
-          # Stable notes list commits since the last stable tag; rc notes since the last tag of any kind.
-          EXCLUDE=()
-          if [ "$PRERELEASE" != "true" ]; then EXCLUDE=(--exclude 'v*-*'); fi
-          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${EXCLUDE[@]}" HEAD^ 2>/dev/null || true)
+          # Notes list commits since the last stable tag.
+          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude 'v*-*' HEAD^ 2>/dev/null || true)
           {
             if [ -f "changelogs/v${VERSION}.md" ]; then cat "changelogs/v${VERSION}.md"; printf '\n\n'; fi
             if [ -n "$PREV_TAG" ]; then
@@ -135,23 +119,16 @@ jobs:
 
       # Authenticates with npm trusted publishing (OIDC); no npm token secret is needed.
       - name: Publish to npm
-        env:
-          NPM_TAG: ${{ needs.version.outputs.npm_tag }}
-        run: npm publish ./blazeplot-*.tgz --provenance --access public --tag "$NPM_TAG"
+        run: npm publish ./blazeplot-*.tgz --provenance --access public --tag latest
 
       - name: Tag and create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.version.outputs.tag }}
-          PRERELEASE: ${{ needs.version.outputs.prerelease }}
         run: |
-          FLAGS=()
-          # Release candidates are pre-releases and must never become the repository's "Latest" release.
-          if [ "$PRERELEASE" = "true" ]; then FLAGS=(--prerelease --latest=false); fi
-          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file release-notes.md "${FLAGS[@]}"
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --notes-file release-notes.md
 
   # The only Pages deploy for main: right away for ordinary merges, after the new tag exists for releases.
-  # Never runs for v1: release candidates do not change the public site.
   pages:
     needs: [version, release]
     if: ${{ !cancelled() && needs.version.result == 'success' && needs.version.outputs.pages == 'true' && (needs.version.outputs.publish == 'false' || needs.release.result == 'success') }}

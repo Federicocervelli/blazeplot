@@ -54,12 +54,10 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 ## Branch and Release Flow
 
 - `main` is the default branch and the stable line. It is protected: changes land through PRs that pass the `validate` check. Branch from an updated `main`.
-- `v1` is a temporary long-lived integration branch for the 1.0 release candidates (`1.0.0-rc.N`), deleted after 1.0 ships. For 1.0 work, branch from an updated `v1` and open the PR with base `v1`. Merge `main` into `v1` via a `sync/main-into-v1-*` PR (merge commit, not squash) at least weekly, after every stable release, and before each rc; keep `v1`'s rc version on `package.json` conflicts. At 1.0, `v1` merges into `main` with a merge commit. See `docs/release-and-benchmarks.md`.
-- Release candidates: on a branch from `v1`, run `bun run release rc` (or `bun run release 1.0.0-rc.1` for the first; `--dry-run` previews), PR to `v1`. Pushes to `v1` publish `-rc.N` versions to npm `rc` with a GitHub pre-release and never deploy Pages; `main` never publishes prereleases and `v1` never publishes stable versions.
 - Implement each requested feature/fix on its own branch, for example `feature/<topic>`, `fix/<topic>`, or `docs/<topic>`. Keep commits and PRs focused.
 - Open a focused PR from that branch to `main`. PRs are squash-merged and the branch is deleted on merge.
 - Commit `AGENTS.md`/process-guide updates separately from product code, tests, generated docs, or release changes.
-- Merging to `main` (or `v1`) does not publish unless the PR bumps `package.json#version`. Open release PRs only when the user explicitly asks for one.
+- Merging to `main` does not publish unless the PR bumps `package.json#version`. Open release PRs only when the user explicitly asks for one.
 - Do not push tags manually for releases. Tags are outputs of `.github/workflows/release.yml`.
 - GitHub Pages deploys once per push to `main`, from the release workflow (after publishing when it is a release). Stable site (latest release tag): `https://blazeplot.cervelli.dev/`; stable previews: `https://blazeplot.cervelli.dev/previews`; unreleased `main` site: `https://blazeplot.cervelli.dev/next/`; unreleased previews: `https://blazeplot.cervelli.dev/next/previews`.
 - Maintainers can request feature-branch browser previews with the manual `Cloudflare Pages Preview` workflow. See `docs/release-and-benchmarks.md` and `docs/internal/github-workflows.md` for alias rules and safety notes.
@@ -68,8 +66,9 @@ Keep this file as a quick operational guide, not the canonical source. When upda
   2. Run `bun run release patch` (or `minor` / `major`). It bumps `package.json`, drafts `changelogs/vX.Y.Z.md` from the commits since the last tag, and regenerates the docs.
   3. Edit the changelog notes and commit.
   4. Push the branch, open a PR to `main`, wait for the `validate` check, then squash-merge when approved/authorized. Benchmark tables are appended by the release workflow.
-- Every push to `main` runs the release workflow. If the `package.json` version has no tag yet, it runs reusable CI, inserts benchmark results if missing, publishes to npm with provenance (trusted publishing), and creates the `vX.Y.Z` tag and GitHub Release from `changelogs/vX.Y.Z.md` plus commits. Either way it then deploys Pages once. Ordinary merges do not rerun CI on `main`; the pull request already passed it on an up-to-date branch.
+- Every push to `main` runs the release workflow. Only stable `x.y.z` versions on `main` publish (npm `latest`); a prerelease version never publishes, and there is no `rc`/prerelease channel. If the `package.json` version has no tag yet, it runs reusable CI, inserts benchmark results if missing, publishes to npm with provenance (trusted publishing), and creates the `vX.Y.Z` tag and GitHub Release from `changelogs/vX.Y.Z.md` plus commits. Either way it then deploys Pages once. Ordinary merges do not rerun CI on `main`; the pull request already passed it on an up-to-date branch.
 - If the `vX.Y.Z` tag already exists, the release workflow skips publishing for that version.
+- All workflows pin `runs-on: ubuntu-24.04` (not `ubuntu-latest`); benchmark and visual baselines depend on the runner image, so move the pin deliberately.
 
 ## Project Shape
 

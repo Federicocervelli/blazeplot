@@ -176,7 +176,7 @@ Playwright WebKit is a build of the WebKit engine, not Safari itself, and the CI
 
 ### Verified browsers per release
 
-For each release candidate and the final 1.0 release, the release checklist records:
+For each minor release, the release checklist records:
 
 1. The Chromium, Firefox, and WebKit versions the `cross-browser` and `browser` jobs ran against (printed in the job logs).
 2. A manual pass of the interactive previews at <https://blazeplot.cervelli.dev/previews> in the latest stable Safari (macOS and iOS), Firefox, and Chrome on real hardware, since CI runs only software WebGL2.
