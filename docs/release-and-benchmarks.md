@@ -8,15 +8,14 @@ BlazePlot releases are driven by pull requests into `main`. Tags are outputs of 
 
 ## Site previews
 
-GitHub Pages publishes two builds into one site:
+GitHub Pages publishes the website built from `main`:
 
-- Stable site, built from the latest release tag: <https://blazeplot.cervelli.dev/>
-- Stable integrated previews: <https://blazeplot.cervelli.dev/previews>
-- Unreleased `main` site: <https://blazeplot.cervelli.dev/next/>
-- Unreleased integrated previews: <https://blazeplot.cervelli.dev/next/previews>
+- Site: <https://blazeplot.cervelli.dev/>
+- Integrated previews: <https://blazeplot.cervelli.dev/previews>
+- Links to the old `/next/` site redirect to the same page at the root.
 - Legacy `previews.html` index is not generated; use the app preview routes directly.
 
-The release workflow deploys Pages once per push to `main`: immediately for ordinary merges, and after the new tag exists for releases. The Pages workflow builds the latest stable `vX.Y.Z` tag (prerelease tags are ignored) and `main` with the correct Vite `base`, then deploys a combined artifact. Legacy preview routes redirect to the integrated `#previews` view.
+The release workflow deploys Pages once per push to `main`: immediately for ordinary merges, and after the new tag exists for releases. The site is built from `main` at the root on every deploy, so website changes (docs, demos, benchmark pages) ship without a library release. The site can therefore document behavior that is on `main` but not yet on npm; changelogs and the migration guide state which version introduced a change. Legacy preview routes redirect to the integrated `#previews` view.
 
 Feature branch browser previews can be requested by maintainers with the `Cloudflare Pages Preview` manual GitHub Actions workflow. The workflow deploys the selected feature branch's website build to the `blazeplot` Pages project and exposes a branch alias:
 

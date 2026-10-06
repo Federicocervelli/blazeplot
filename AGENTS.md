@@ -59,7 +59,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 - Commit `AGENTS.md`/process-guide updates separately from product code, tests, generated docs, or release changes.
 - Merging to `main` does not publish unless the PR bumps `package.json#version`. Open release PRs only when the user explicitly asks for one.
 - Do not push tags manually for releases. Tags are outputs of `.github/workflows/release.yml`.
-- GitHub Pages deploys once per push to `main`, from the release workflow (after publishing when it is a release). Stable site (latest release tag): `https://blazeplot.cervelli.dev/`; stable previews: `https://blazeplot.cervelli.dev/previews`; unreleased `main` site: `https://blazeplot.cervelli.dev/next/`; unreleased previews: `https://blazeplot.cervelli.dev/next/previews`.
+- GitHub Pages deploys the website from `main` once per push, from the release workflow (after publishing when it is a release), so website changes never wait for a library release. Site: `https://blazeplot.cervelli.dev/`; previews: `https://blazeplot.cervelli.dev/previews`. The old `/next/` URLs redirect to the root. The site documents `main`, which can be ahead of the latest npm release.
 - Maintainers can request feature-branch browser previews with the manual `Cloudflare Pages Preview` workflow. See `docs/release-and-benchmarks.md` and `docs/internal/github-workflows.md` for alias rules and safety notes.
 - To prepare a release PR:
   1. From updated `main`, create `release/vX.Y.Z`.

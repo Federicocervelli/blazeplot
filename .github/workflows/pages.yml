@@ -1,7 +1,7 @@
 name: Pages
 
-# Deploys for main come from the release workflow, so each merge deploys once and
-# a release never ships a stable site built from the previous tag.
+# The website is deployed from `main` on every push, from the release workflow (so each merge deploys
+# once, and a release deploys after its tag exists). Website changes never wait for a library release.
 on:
   workflow_call:
   workflow_dispatch:
@@ -22,78 +22,31 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout workflow actions
-        uses: actions/checkout@v7
-        with:
-          sparse-checkout: .github
-
       - name: Checkout main
         uses: actions/checkout@v7
         with:
           ref: main
-          path: branches/next
-          fetch-depth: 0
-
-      # The stable site documents the latest npm release, not unreleased work on main.
-      - name: Resolve latest release tag
-        id: release
-        working-directory: branches/next
-        run: |
-          # Stable releases only: skip any prerelease tags.
-          TAG=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)
-          if [ -z "$TAG" ]; then
-            echo "::error::No release tag found."
-            exit 1
-          fi
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "sha=$(git rev-list -n 1 "$TAG")" >> "$GITHUB_OUTPUT"
-
-      # A released site never changes, so only the first deploy after a release builds it.
-      # Bump the version segment of the cache key to force a rebuild when the stable build steps change.
-      - name: Restore stable site
-        id: stable-cache
-        uses: actions/cache@v6
-        with:
-          path: branches/stable/build/pages
-          key: pages-stable-v1-${{ steps.release.outputs.sha }}
-
-      - name: Checkout latest release
-        if: steps.stable-cache.outputs.cache-hit != 'true'
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ steps.release.outputs.tag }}
-          path: branches/stable
-
-      - if: steps.stable-cache.outputs.cache-hit != 'true'
-        uses: ./.github/actions/setup
-        with:
-          working-directory: branches/stable
-
-      - name: Build stable site
-        if: steps.stable-cache.outputs.cache-hit != 'true'
-        working-directory: branches/stable
-        run: bun run pages:build
 
       - uses: ./.github/actions/setup
-        with:
-          working-directory: branches/next
 
-      - name: Build next site
-        working-directory: branches/next
-        env:
-          BLAZEPLOT_PAGES_BASE: /next/
+      - name: Build site
         run: bun run pages:build
 
       - name: Assemble site
         run: |
-          rm -rf build/pages
-          mkdir -p build/pages/next
-          cp -a branches/stable/build/pages/. build/pages/
-          cp -a branches/next/build/pages/. build/pages/next/
-          rm -rf build/pages/visual build/pages/interaction build/pages/next/visual build/pages/next/interaction
-          mkdir -p build/pages/previews build/pages/next/previews
+          rm -rf build/pages/visual build/pages/interaction
+          # SPA fallback for the previews route, and a redirect for links to the old /next/ site.
+          mkdir -p build/pages/previews build/pages/next
           cp build/pages/index.html build/pages/previews/index.html
-          cp build/pages/next/index.html build/pages/next/previews/index.html
+          cat > build/pages/next/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>Redirecting…</title>
+          <link rel="canonical" href="/">
+          <meta http-equiv="refresh" content="0; url=/">
+          <script>location.replace("/" + location.pathname.replace(/^\/next\/?/, "") + location.search + location.hash);</script>
+          <a href="/">BlazePlot</a>
+          HTML
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

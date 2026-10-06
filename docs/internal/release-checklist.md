@@ -36,7 +36,7 @@ Monitor:
 - GitHub Actions release job.
 - npm package page for the new version.
 - GitHub Releases for the matching tag.
-- GitHub Pages deployment for the stable site and the `/next/` preview.
+- GitHub Pages deployment of the site built from `main`.
 
 ## Rollback notes
 
