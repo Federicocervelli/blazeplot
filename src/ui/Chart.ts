@@ -27,8 +27,9 @@ import type { RawSeriesConfig } from "./ChartConfig.js";
 import { ChartSeriesStyles } from "./ChartSeriesStyles.js";
 import { fitCameras } from "./ChartFit.js";
 import type { ResolvedAxesConfig } from "./ChartConfig.js";
+import { observeResize } from "./SharedResizeObserver.js";
 import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
-import type { ChartSummary } from "./ChartSummary.js";
+import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 
 const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "bar", "ohlc", "candlestick"]);
 /** Two vertices per grid line; tick generators may add one extra tick at each edge. */
@@ -78,7 +79,8 @@ export class Chart {
     hoverDefaults: () => this.options.hover,
   });
   private readonly painter = new SeriesPainter(this.stats, GRID_LINE_VERTEX_CAPACITY);
-  private resizeObserver: ResizeObserver | null = null;
+  private stopObservingResize: (() => void) | null = null;
+  private summaryMessages: ChartSummaryMessages | null = null;
   private readonly plugins: PluginHost;
   private readonly events = new ChartEmitter();
   private readonly layoutReservations = new Map<string, ChartLayoutReservation>();
@@ -219,7 +221,7 @@ export class Chart {
       this.engine.setLossListener(this.onRendererState);
     } catch (error) {
       // E.g. the chosen engine is unavailable: remove the half-built DOM and hand back a caller-supplied canvas.
-      this.a11y.unwatchForcedColors();
+      this.a11y.dispose();
       this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
       this.layout.dispose();
       throw error;
@@ -230,11 +232,8 @@ export class Chart {
 
     this.toggleDomListeners("addEventListener");
 
-    const ResizeObserverCtor = this.layout.view.ResizeObserver ?? globalThis.ResizeObserver;
-    if (typeof ResizeObserverCtor !== "undefined") {
-      this.resizeObserver = new ResizeObserverCtor(() => this.resize());
-      this.resizeObserver.observe(this.layout.plot);
-    }
+    // One observer per window serves every chart in it.
+    this.stopObservingResize = observeResize(this.layout.view, this.layout.plot, () => this.resize());
 
     registerChartInternals(this, {
       get canvas() {
@@ -537,13 +536,13 @@ export class Chart {
    * most once a second from the same data.
    */
   getSummary(): ChartSummary {
-    const option = this.options.accessibility;
-    const config = typeof option === "object" ? option : undefined;
-    return buildChartSummary(
-      this.series,
-      (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis),
-      createSummaryMessages(config?.locale ?? "en-US", config?.messages?.summary),
-    );
+    if (!this.summaryMessages) {
+      // Options are fixed at construction, so the wording is built once per chart.
+      const option = this.options.accessibility;
+      const config = typeof option === "object" ? option : undefined;
+      this.summaryMessages = createSummaryMessages(config?.locale ?? "en-US", config?.messages?.summary);
+    }
+    return buildChartSummary(this.series, (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis), this.summaryMessages);
   }
 
   /** Return metadata for all attached series. */
@@ -777,7 +776,8 @@ export class Chart {
     this.disposed = true;
     this.stop();
     this.followXPolicy.clearTimer();
-    this.resizeObserver?.disconnect();
+    this.stopObservingResize?.();
+    this.stopObservingResize = null;
     this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
     this.schemeQuery = null;
     if (this.startWarnTimer !== undefined) this.layout.view.clearTimeout(this.startWarnTimer);
@@ -908,10 +908,17 @@ export class Chart {
     }
   }
 
-  /** Attached series that pass the visibility and explicit-series filters. */
-  private candidateSeries(options: { readonly series?: readonly SeriesStore[]; readonly includeHidden?: boolean }): SeriesStore[] {
+  /**
+   * Attached series that pass the visibility and explicit-series filters. Returns `this.series`
+   * itself when nothing is filtered out (every frame of a follow-X chart), so callers only iterate.
+   */
+  private candidateSeries(options: { readonly series?: readonly SeriesStore[]; readonly includeHidden?: boolean }): readonly SeriesStore[] {
     const candidates = options.series ? options.series.filter((series) => this.series.includes(series)) : this.series;
-    return options.includeHidden ? candidates : candidates.filter((series) => series.visible);
+    if (options.includeHidden) return candidates;
+    for (const series of candidates) {
+      if (!series.visible) return candidates.filter((item) => item.visible);
+    }
+    return candidates;
   }
 
   /**

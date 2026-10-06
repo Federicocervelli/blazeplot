@@ -97,6 +97,21 @@ describe("WebGL2Renderer", () => {
     expect(commands.map((c) => c.first)).toEqual([0, 4, 12]);
   });
 
+  it("reuses its command list across frames without leaking one frame's draws into the next", () => {
+    const { renderer, backend } = makeRenderer();
+    renderer.beginFrame(800, 400, 1);
+    renderer.drawLines(positions, 4, [1, 0, 0, 1], 1, projection);
+    renderer.drawPoints(positions, 3, [0, 0, 1, 1], 5, projection);
+    expect(renderer.endFrame().drawCalls).toBe(2);
+    renderer.beginFrame(800, 400, 1);
+    renderer.drawTriangles(positions, 8, [0, 1, 0, 0.5], projection);
+    expect(renderer.endFrame().drawCalls).toBe(1);
+
+    expect(backend.submits.map((s) => s.commands.length)).toEqual([2, 1]);
+    const { scaleX, scaleY, offsetX, offsetY } = projection;
+    expect(backend.submits[1]!.commands[0]).toMatchObject({ kind: "solid", scaleX, scaleY, offsetX, offsetY });
+  });
+
   it("does not submit empty frames", () => {
     const { renderer, backend } = makeRenderer();
     renderer.beginFrame(800, 400, 1);

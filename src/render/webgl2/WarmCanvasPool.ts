@@ -78,6 +78,15 @@ export function acquirePlotCanvas(doc: Document): HTMLCanvasElement {
   return canvas;
 }
 
+/**
+ * Whether a canvas from {@link acquirePlotCanvas} still carries a warm backend that its renderer
+ * has not adopted yet. Its context and drawing buffer already exist, so sizing the canvas first
+ * saves nothing. Does not consume the backend.
+ */
+export function hasWarmBackend(canvas: HTMLCanvasElement): boolean {
+  return owned.get(canvas) != null;
+}
+
 /** The warm backend that came with a canvas from {@link acquirePlotCanvas}, once; `undefined` for any other canvas. */
 export function adoptWarmBackend(canvas: HTMLCanvasElement): GpuBackend | undefined {
   const backend = owned.get(canvas);

@@ -71,7 +71,7 @@ beforeEach(() => {
   target = document.createElement("div");
   document.body.appendChild(target);
   raf.pending.clear();
-  FakeResizeObserver.instances = [];
+  FakeResizeObserver.reset();
   glContexts = [];
   blits = [];
   twoD = new WeakMap();

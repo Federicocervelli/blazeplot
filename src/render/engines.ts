@@ -3,7 +3,7 @@ import type { ChartRenderer, ChartRendererFactory, RendererChoice, RendererOrigi
 import type { ChartRenderContext } from "./webgl2/SharedWebGL.js";
 import { SharedWebGLContext } from "./webgl2/SharedWebGL.js";
 import { WebGL2Renderer } from "./webgl2/WebGL2Renderer.js";
-import { acquirePlotCanvas } from "./webgl2/WarmCanvasPool.js";
+import { acquirePlotCanvas, hasWarmBackend } from "./webgl2/WarmCanvasPool.js";
 
 export type { ChartRenderContext } from "./webgl2/SharedWebGL.js";
 export { Canvas2DUnavailableError } from "./canvas2d/Canvas2DRenderer.js";
@@ -18,7 +18,8 @@ export { Canvas2DUnavailableError } from "./canvas2d/Canvas2DRenderer.js";
  * created: Canvas 2D (a 2D context takes whatever size the canvas has later) and the shared WebGL2
  * context (the chart canvas is only a blit target). Every other factory, including the native
  * WebGL2 engine and any custom one, wants the canvas at its final size first, because a WebGL
- * drawing buffer created at the default 300x150 and then resized is reallocated.
+ * drawing buffer created at the default 300x150 and then resized is reallocated. (A warm canvas
+ * from the pool already has its context and buffer, so `createEngine` never pre-sizes it either.)
  */
 const sizesCanvasLater = new WeakSet<ChartRendererFactory>();
 
@@ -166,7 +167,9 @@ export function createEngine(option: RendererChoice | ChartRendererFactory | und
   else throw new TypeError(`ChartOptions.renderer must be one of ${rendererChoices.map((name) => `"${name}"`).join(", ")} or a factory such as canvas2dRenderer(), got ${typeof option === "string" ? `"${option}"` : typeof option}.`);
   // Sizing needs the plot's laid-out size, which forces a synchronous layout, so engines that can
   // be sized later skip it and the chart sizes the canvas on its first frame (many charts mounted in
-  // one task then share one layout instead of each forcing their own).
-  if (!sizesCanvasLater.has(factory)) sizeCanvas?.();
+  // one task then share one layout instead of each forcing their own). A warm canvas skips it too:
+  // its context and drawing buffer already exist at the previous chart's size, so sizing it first
+  // saves no reallocation, and the first frame resizes it only if the plot area differs.
+  if (!sizesCanvasLater.has(factory) && !hasWarmBackend(canvas)) sizeCanvas?.();
   return factory({ canvas }) as ChartRenderer;
 }
