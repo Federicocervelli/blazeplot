@@ -156,6 +156,40 @@ describe("Canvas2DRenderer", () => {
   });
 
 
+  it("sets context style state only when it changes, and again after each beginFrame", () => {
+    const { renderer, ctx } = setup();
+    const writes: Record<string, number> = { fillStyle: 0, strokeStyle: 0, lineWidth: 0, lineJoin: 0 };
+    for (const key of Object.keys(writes)) {
+      let current = (ctx as unknown as Record<string, unknown>)[key];
+      Object.defineProperty(ctx, key, {
+        get: () => current,
+        set: (value) => {
+          writes[key]!++;
+          current = value;
+        },
+      });
+    }
+    const red: [number, number, number, number] = [1, 0, 0, 1];
+    const line = upload(renderer, [0, 0, 10, 5]);
+    for (let i = 0; i < 3; i++) {
+      renderer.drawLines(line, 2, red, 2, projection);
+      renderer.drawPoints(line, 2, red, 4, projection);
+      renderer.fillRects(new Float32Array([0, 0, 10, 10, 1, 0, 0, 1, 20, 0, 10, 10, 1, 0, 0, 1]), 2);
+    }
+    expect(writes).toEqual({ fillStyle: 1, strokeStyle: 1, lineWidth: 1, lineJoin: 1 });
+    expect(ctx.calls.filter((c) => c[0] === "fillRect").every((c) => c[1] === "rgba(255,0,0,1)")).toBe(true);
+
+    renderer.beginFrame(100, 50, 1);
+    renderer.drawLines(line, 2, red, 2, projection);
+    expect(writes).toEqual({ fillStyle: 1, strokeStyle: 2, lineWidth: 2, lineJoin: 2 });
+
+    // A fill-style change from a draw call must not leave a stale rect color behind.
+    renderer.drawPoints(line, 2, [0, 0, 1, 1], 4, projection);
+    ctx.calls.length = 0;
+    renderer.fillRects(new Float32Array([0, 0, 10, 10, 1, 0, 0, 1]), 1);
+    expect(ctx.calls).toEqual([["fillRect", "rgba(255,0,0,1)", 0, 0, 10, 10]]);
+  });
+
   it("fills triangle strips as one ribbon polygon", () => {
     const { renderer, ctx } = setup();
     // Area fill: (x, y) / (x, baseline) pairs.
