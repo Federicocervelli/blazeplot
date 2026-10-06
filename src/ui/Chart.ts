@@ -27,6 +27,7 @@ import type { RawSeriesConfig } from "./ChartConfig.js";
 import { ChartSeriesStyles } from "./ChartSeriesStyles.js";
 import { fitCameras } from "./ChartFit.js";
 import type { ResolvedAxesConfig } from "./ChartConfig.js";
+import { observeResize } from "./SharedResizeObserver.js";
 import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
 import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 
@@ -78,7 +79,7 @@ export class Chart {
     hoverDefaults: () => this.options.hover,
   });
   private readonly painter = new SeriesPainter(this.stats, GRID_LINE_VERTEX_CAPACITY);
-  private resizeObserver: ResizeObserver | null = null;
+  private stopObservingResize: (() => void) | null = null;
   private summaryMessages: ChartSummaryMessages | null = null;
   private readonly plugins: PluginHost;
   private readonly events = new ChartEmitter();
@@ -223,11 +224,8 @@ export class Chart {
 
     this.toggleDomListeners("addEventListener");
 
-    const ResizeObserverCtor = this.layout.view.ResizeObserver ?? globalThis.ResizeObserver;
-    if (typeof ResizeObserverCtor !== "undefined") {
-      this.resizeObserver = new ResizeObserverCtor(() => this.resize());
-      this.resizeObserver.observe(this.layout.plot);
-    }
+    // One observer per window serves every chart in it.
+    this.stopObservingResize = observeResize(this.layout.view, this.layout.plot, () => this.resize());
 
     registerChartInternals(this, {
       get canvas() {
@@ -757,7 +755,8 @@ export class Chart {
     this.disposed = true;
     this.stop();
     this.followXPolicy.clearTimer();
-    this.resizeObserver?.disconnect();
+    this.stopObservingResize?.();
+    this.stopObservingResize = null;
     this.schemeQuery?.removeEventListener?.("change", this.onSchemeChange);
     this.schemeQuery = null;
     if (this.startWarnTimer !== undefined) this.layout.view.clearTimeout(this.startWarnTimer);
