@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { acquirePlotCanvas } from "../../src/render/webgl2/WarmCanvasPool.ts";
+import { createEngine } from "../../src/render/engines.ts";
+import { acquirePlotCanvas, hasWarmBackend } from "../../src/render/webgl2/WarmCanvasPool.ts";
 import { releaseWarm } from "../../src/render/webgl2/warm.ts";
 import { WebGL2Renderer } from "../../src/render/webgl2/WebGL2Renderer.ts";
 import { FakeGl } from "./fakeGl.ts";
@@ -71,6 +72,26 @@ describe("WebGL2Renderer and the warm canvas pool", () => {
     canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
     renderer.dispose();
     expect(acquirePlotCanvas(doc)).not.toBe(canvas);
+  });
+
+  it("pre-sizes a new WebGL2 canvas in createEngine but not a warm one", () => {
+    const { doc } = makeDoc();
+    const fresh = acquirePlotCanvas(doc);
+    expect(hasWarmBackend(fresh)).toBe(false);
+    let sized = 0;
+    const first = createEngine("webgl2", fresh, () => void sized++);
+    expect(sized).toBe(1);
+    first.dispose();
+
+    const warm = acquirePlotCanvas(doc);
+    expect(warm).toBe(fresh);
+    expect(hasWarmBackend(warm)).toBe(true);
+    // A pre-size would force a layout read for nothing: the context and drawing buffer already exist.
+    const second = createEngine("webgl2", warm, () => void sized++);
+    expect(sized).toBe(1);
+    // The renderer adopted the backend, so the predicate does not stay true.
+    expect(hasWarmBackend(warm)).toBe(false);
+    second.dispose();
   });
 
   it("builds its own backend when the backend is injected, never touching the pool", () => {
