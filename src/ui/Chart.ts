@@ -28,7 +28,7 @@ import { ChartSeriesStyles } from "./ChartSeriesStyles.js";
 import { fitCameras } from "./ChartFit.js";
 import type { ResolvedAxesConfig } from "./ChartConfig.js";
 import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
-import type { ChartSummary } from "./ChartSummary.js";
+import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 
 const SERIES_MODES: ReadonlySet<string> = new Set(["line", "area", "scatter", "bar", "ohlc", "candlestick"]);
 /** Two vertices per grid line; tick generators may add one extra tick at each edge. */
@@ -79,6 +79,7 @@ export class Chart {
   });
   private readonly painter = new SeriesPainter(this.stats, GRID_LINE_VERTEX_CAPACITY);
   private resizeObserver: ResizeObserver | null = null;
+  private summaryMessages: ChartSummaryMessages | null = null;
   private readonly plugins: PluginHost;
   private readonly events = new ChartEmitter();
   private readonly layoutReservations = new Map<string, ChartLayoutReservation>();
@@ -518,13 +519,13 @@ export class Chart {
    * most once a second from the same data.
    */
   getSummary(): ChartSummary {
-    const option = this.options.accessibility;
-    const config = typeof option === "object" ? option : undefined;
-    return buildChartSummary(
-      this.series,
-      (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis),
-      createSummaryMessages(config?.locale ?? "en-US", config?.messages?.summary),
-    );
+    if (!this.summaryMessages) {
+      // Options are fixed at construction, so the wording is built once per chart.
+      const option = this.options.accessibility;
+      const config = typeof option === "object" ? option : undefined;
+      this.summaryMessages = createSummaryMessages(config?.locale ?? "en-US", config?.messages?.summary);
+    }
+    return buildChartSummary(this.series, (value, axis, yAxis) => this.formatAxisValue(value, axis, yAxis), this.summaryMessages);
   }
 
   /** Return metadata for all attached series. */

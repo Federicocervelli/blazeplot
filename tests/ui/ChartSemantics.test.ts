@@ -30,6 +30,18 @@ afterEach(() => {
 });
 
 describe("chart summary", () => {
+  it("keeps its locale and message overrides across repeated summaries", () => {
+    const chart = make({ accessibility: { locale: "de-DE", messages: { summary: { noSeries: "Keine Daten." } } } });
+    expect(chart.getSummary().text).toBe("Keine Daten.");
+    expect(chart.getSummary().text).toBe("Keine Daten.");
+    addRamp(chart, "CPU", 1000, 3);
+    const first = chart.getSummary().text;
+    expect(first).toContain("3 points");
+    expect(chart.getSummary().text).toBe(first);
+    expect(describedText(chart)).not.toBe("Chart with no data series.");
+    chart.dispose();
+  });
+
   it("describes series names, X and Y ranges, sample counts, and latest values", () => {
     const chart = make();
     addRamp(chart, "CPU", 10);
