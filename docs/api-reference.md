@@ -56,15 +56,15 @@ Generated from `dist/` after the package build.
 | selection plugin | `dist/plugins/selection.js` | 8 KiB |
 | legend plugin | `dist/plugins/legend.js` | 5 KiB |
 | tooltip plugin | `dist/plugins/tooltip.js` | 4 KiB |
-| crosshair plugin | `dist/plugins/crosshair.js` | 9 KiB |
+| crosshair plugin | `dist/plugins/crosshair.js` | 10 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 17 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
 | shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 178 KiB |
 | shared theme chunk | `dist/theme-*.js` | 7 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
-| shared PickOverlay chunk | `dist/PickOverlay-*.js` | 5 KiB |
-| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 202 KiB |
+| shared PickOverlay chunk | `dist/PickOverlay-*.js` | 6 KiB |
+| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 203 KiB |
 
 ### All public exports
 
