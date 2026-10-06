@@ -103,7 +103,7 @@ When `webgl2` runs in the same invocation (the `visual-gl` shard runs `webgl2,sh
 
 Parity is not a promise of identical pixels: the supported contract is the feature set and the documented differences in [Browser support](../browser-support.md#rendering-engines). The `gaps` case (NaN gaps in a line and an area series) exists so every renderer has to break paths at missing samples; the first cross-engine run found Canvas 2D bridging area fills across gaps, which the engine contract suite now pins.
 
-GPU, driver, and OS differences change anti-aliasing and text, so baselines must be generated in the CI environment (headless Chrome on `ubuntu-latest` with SwiftShader/ANGLE software GL), not on a laptop. For that reason the pixel comparison only runs on Linux by default; on other platforms it is skipped with a note and only the blank-canvas guard runs. `--compare-baselines` forces the comparison and `--skip-baselines` disables it.
+GPU, driver, and OS differences change anti-aliasing and text, so baselines must be generated in the CI environment (headless Chrome on `ubuntu-24.04` with SwiftShader/ANGLE software GL), not on a laptop. For that reason the pixel comparison only runs on Linux by default; on other platforms it is skipped with a note and only the blank-canvas guard runs. `--compare-baselines` forces the comparison and `--skip-baselines` disables it.
 
 To regenerate baselines after an intentional rendering change, or to add a case:
 
@@ -174,7 +174,7 @@ bun run test:typescript-floor
 
 Use `bun run docs:bundle-size` to print the current bundle-size table and `bun run bundle:analyze` when a chunk grows unexpectedly.
 
-## Release candidate checklist
+## Release checklist
 
 Release commands and branch policy live in [Release and benchmark notes](../release-and-benchmarks.md), with a copy-paste checklist in [Release checklist](./release-checklist.md). The short version:
 

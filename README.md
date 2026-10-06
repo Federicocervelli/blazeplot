@@ -110,7 +110,7 @@ bun run build      # package build (JS + declarations)
 bun run ci         # full local CI: checks plus browser tests
 ```
 
-Open feature and fix PRs against `main` (against `v1` while the 1.0 release candidates are in progress); releases are separate version-bump PRs. See [Release and benchmarks](docs/release-and-benchmarks.md) and [Documentation contributions](docs/documentation-contributions.md) for the full workflow.
+Open feature and fix PRs against `main`; releases are separate version-bump PRs. See [Release and benchmarks](docs/release-and-benchmarks.md) and [Documentation contributions](docs/documentation-contributions.md) for the full workflow.
 
 ## License
 

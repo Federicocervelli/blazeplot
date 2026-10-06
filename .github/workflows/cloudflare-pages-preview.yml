@@ -17,7 +17,7 @@ concurrency:
 jobs:
   deploy-preview:
     name: Deploy branch preview
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: cloudflare-pages-preview
       url: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.deploy.outputs.deployment-url }}
