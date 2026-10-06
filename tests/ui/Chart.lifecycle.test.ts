@@ -55,7 +55,7 @@ beforeEach(() => {
   document.body.appendChild(target);
   backends = [];
   raf.pending.clear();
-  FakeResizeObserver.instances = [];
+  FakeResizeObserver.reset();
   ledger = trackListeners();
 });
 afterEach(() => {

@@ -307,7 +307,7 @@ describe("plugin-owned styles", () => {
   it("keeps plugin rules out of charts without the plugin", () => {
     const chart = h.make();
     expect(sheets()).toEqual([]);
-    expect(chart.rootElement.querySelector("style.blazeplot-style")!.textContent).not.toContain("blazeplot-tooltip");
+    expect(chart.rootElement.ownerDocument.head.querySelector("style.blazeplot-style")!.textContent).not.toContain("blazeplot-tooltip");
     chart.dispose();
   });
 });
