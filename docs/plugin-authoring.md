@@ -28,7 +28,7 @@ export function examplePlugin(): ChartPlugin {
 | Group | Members | Use it for |
 |---|---|---|
 | `ctx.theme` | The current `ResolvedChartTheme` (read-only). | Colors and fonts for plugin UI. Re-read it in `onThemeChange`. |
-| `ctx.coords` | `dataToPlot(x, y, yAxis?)`, `clientToData(clientX, clientY, yAxis?)`, `clientToPlot(clientX, clientY)`, `plotToClient(plotX, plotY)`, `format(value, axis, yAxis?)` | Converting between data, plot-local CSS pixels, and pointer (client) coordinates, and formatting values like the axis labels. Data conversions honor log and custom axis scales. |
+| `ctx.coords` | `dataToPlot(x, y, yAxis?)`, `clientToData(clientX, clientY, yAxis?)`, `clientToPlot(clientX, clientY)`, `plotToClient(plotX, plotY)`, `format(value, axis, yAxis?)`, `formatReadout(value, axis, yAxis?)` | Converting between data, plot-local CSS pixels, and pointer (client) coordinates, and formatting values like the axis labels. Data conversions honor log and custom axis scales. |
 | `ctx.viewport` | `get(yAxis?)`, `set(viewport, yAxis?, options?)`, `pan(intent, yAxis?, options?)`, `zoom(intent, yAxis?, options?)`, `fitToData(options?)`, `isReversed(axis, yAxis?)`, `followX(options?)`, `stopFollowX()`, `setFollowXPaused(paused)`, `getFollowXState()` | Reading and changing the visible domain. Changes go through the chart's `ViewportPolicy` and pause latest-X following like a user gesture (`set` accepts `{ pauseFollow: false }` to opt out). Pass `{ source: "user" }` from gesture handlers: it is reported as `viewportchange.source` (`"user" \| "follow" \| "fit" \| "api" \| "linked"`, `"api"` by default). |
 | `ctx.state` | `getSeries()`, `getHover()`, `pick(clientX, clientY, options?)`, `getFrameStats(target?)`, `inspect(target)`, `getInspection()` | Series metadata, the current hover hit, hit-testing, render metrics, and keyboard inspection (see below). |
 | `ctx.layout` | `plotRect()`, `rootRect()`, `reserve(reservation)` | Plot and chart geometry in client coordinates, and space around the plot for plugin UI. `reserve` returns a release function. |
@@ -231,7 +231,7 @@ export function latestSamplePlugin(): ChartPlugin {
 }
 ```
 
-`ctx.coords.format(value, axis, yAxis?)` formats a value the way the axis labels it, which keeps announcements consistent with what sighted users read. `blazeplot/plugins/a11y` is built on exactly these calls; see [Accessibility](./accessibility.md).
+`ctx.coords.format(value, axis, yAxis?)` formats a value the way the axis labels it, which keeps announcements consistent with what sighted users read. `ctx.coords.formatReadout(value, axis, yAxis?)` is the self-contained variant for readouts such as tooltips: a time axis gives a full timestamp and a categorical axis gives the category name, while numeric axes return `null` so you can print the number at your own precision. `blazeplot/plugins/a11y` is built on exactly these calls; see [Accessibility](./accessibility.md).
 
 ## Layout guidance
 

@@ -145,7 +145,9 @@ With `pauseOnInteraction` enabled (the default), every `chart.pan(...)` and `cha
 
 ### Telling user changes from automatic ones
 
-Every `viewportchange` event carries a `source`: `"user"` (gestures from the interactions, navigator, and a11y plugins), `"follow"` (latest-X following), `"fit"` (`fitToData` and `autoFitY`), `"linked"` (a linked panel mirroring another), or `"api"` (your own `setViewport`, `pan`, or `zoom` call). Filter on it to persist "the user zoomed to ..." or to show a "jump to live" button without reacting to the stream of follow updates. `chart.subscribe("followxchange", ({ state }) => ...)` fires when following starts, stops, pauses, or resumes.
+A chart you have not given a viewport fits itself to its visible data on every frame, so a streaming chart created with `capacity` shows its samples from the first append. The first `setViewport`, `fitToData`, `followX`, `pan`, `zoom`, or `autoFitY` option ends that automatic fit for good.
+
+Every `viewportchange` event carries a `source`: `"user"` (gestures from the interactions, navigator, and a11y plugins), `"follow"` (latest-X following), `"fit"` (`fitToData`, `autoFitY`, and the automatic initial fit), `"linked"` (a linked panel mirroring another), or `"api"` (your own `setViewport`, `pan`, or `zoom` call). Filter on it to persist "the user zoomed to ..." or to show a "jump to live" button without reacting to the stream of follow updates. `chart.subscribe("followxchange", ({ state }) => ...)` fires when following starts, stops, pauses, or resumes.
 
 ```ts
 chart.subscribe("viewportchange", ({ viewport, source }) => {

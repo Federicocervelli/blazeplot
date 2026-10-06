@@ -1,6 +1,6 @@
 import type { Camera2D } from "./Camera2D.js";
 import type { Viewport } from "../core/types.js";
-import { advanceTime, chooseTimeInterval, floorTime, formatTimeValue } from "./timeAxis.js";
+import { advanceTime, chooseTimeInterval, floorTime, formatTimePattern, formatTimeValue } from "./timeAxis.js";
 import type { AxisTimeZone, TimeInterval } from "./timeAxis.js";
 
 
@@ -304,6 +304,22 @@ export class AxisController {
 
     const step = axisOptions?.scale === "log" || axisOptions?.scale === "symlog" ? null : axis === "x" ? this.lastXStep : this.lastYStep;
     return this.formatLinearValue(value, step);
+  }
+
+  /**
+   * Format a value for a readout (tooltip, crosshair label) instead of an axis tick. Time axes get a full
+   * self-contained timestamp (the tick format string when one is set, else `%Y-%m-%d %H:%M:%S` plus `.%L`
+   * when the value has milliseconds) and categorical axes get the category name; a function `tickFormat` is
+   * used as-is. Returns `null` for numeric axes, where readouts print the number at their own precision.
+   */
+  formatReadout(value: number, axis: AxisRenderTarget = "y"): string | null {
+    const axisOptions = axis === "x" ? this.options.x : this.options.y;
+    if (axisOptions?.scale === "categorical") return this.formatValue(value, axis);
+    if (axisOptions?.scale !== "time") return null;
+    const tickFormat = axisOptions.tickFormat;
+    if (typeof tickFormat === "function") return tickFormat(value, axis);
+    const pattern = tickFormat ?? (value % 1000 === 0 ? "%Y-%m-%d %H:%M:%S" : "%Y-%m-%d %H:%M:%S.%L");
+    return formatTimePattern(new Date(value), pattern, axisOptions.timezone ?? "local");
   }
 
   private lastTimeInterval: TimeInterval | null = null;

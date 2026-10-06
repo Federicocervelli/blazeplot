@@ -302,3 +302,38 @@ describe("crosshairPlugin lifecycle", () => {
     expect(h.ledger().reachable()).toBe(0);
   });
 });
+
+describe("crosshairPlugin default X label", () => {
+  it("shows a full timestamp on a time X axis", () => {
+    const T0 = Date.UTC(2024, 0, 1);
+    const chart = h.make({ axes: { x: { scale: "time", timezone: "utc" } }, plugins: [crosshairPlugin()] });
+    chart.addLine({ capacity: 4, name: "A" }).append({ x: [T0, T0 + 100_000], y: [0, 100] });
+    chart.setViewport({ xMin: T0, xMax: T0 + 100_000, yMin: 0, yMax: 100 });
+    move(chart, 200, 100);
+    expect(lines(chart).label.textContent).toBe("x 2024-01-01 00:00:50  y 50");
+    chart.dispose();
+  });
+
+  it("shows the category name on a categorical X axis", () => {
+    const categories = Array.from({ length: 11 }, (_, i) => `cat-${i}`);
+    const chart = h.make({ axes: { x: { scale: "categorical", categories } }, plugins: [crosshairPlugin({ snap: "nearest-x" })] });
+    seed(chart);
+    move(chart, 200, 100);
+    expect(lines(chart).label.textContent).toContain("(cat-5, 50)");
+    chart.dispose();
+  });
+
+  it("keeps compact numbers on a linear X axis, and an explicit formatX wins on a time axis", () => {
+    const { chart } = make();
+    move(chart, 200, 100);
+    expect(lines(chart).label.textContent).toBe("x 5  y 50");
+    chart.dispose();
+
+    const timed = h.make({ axes: { x: { scale: "time", timezone: "utc" } }, plugins: [crosshairPlugin({ formatX: (v) => `ms ${v}` })] });
+    timed.addLine({ capacity: 4, name: "A" }).append({ x: [0, 1000], y: [0, 100] });
+    timed.setViewport({ xMin: 0, xMax: 1000, yMin: 0, yMax: 100 });
+    move(timed, 200, 100);
+    expect(lines(timed).label.textContent).toBe("x ms 500  y 50");
+    timed.dispose();
+  });
+});
