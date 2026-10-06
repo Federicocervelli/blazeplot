@@ -181,6 +181,34 @@ describe("forced colors", () => {
     }
   });
 
+  it("shares one media query list per window and lets go of it with the last chart", () => {
+    const media = stubForcedColors(false);
+    const stubbed = window.matchMedia;
+    let calls = 0;
+    window.matchMedia = ((query: string) => {
+      calls++;
+      return stubbed.call(window, query);
+    }) as typeof window.matchMedia;
+    try {
+      const a = make();
+      const b = make();
+      expect(calls).toBe(1);
+      expect(media.listeners()).toBe(2);
+      media.set(true);
+      expect(a.theme.backgroundCssColor).toBe("Canvas");
+      expect(b.theme.backgroundCssColor).toBe("Canvas");
+      a.dispose();
+      expect(media.listeners()).toBe(1);
+      b.dispose();
+      expect(media.listeners()).toBe(0);
+      make().dispose();
+      expect(calls).toBe(2);
+    } finally {
+      window.matchMedia = stubbed;
+      media.restore();
+    }
+  });
+
   it("draws translucent system colors opaque", () => {
     // Chromium on Linux resolves Highlight with 0.8 alpha; series must not be drawn translucent.
     // happy-dom drops system color keywords, so answer by resolution order: Canvas, CanvasText,
