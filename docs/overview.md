@@ -13,7 +13,7 @@ bun add blazeplot
 
 ## Quick start
 
-Create a sized container, construct `Chart`, add a dataset-backed series, fit the camera, and start rendering. Without plugins the chart has no pointer or keyboard interaction; pass `plugins: [interactionsPlugin(), tooltipPlugin()]` (from `blazeplot/plugins/interactions` and `blazeplot/plugins/tooltip`) for pan, zoom, and hover (see [Examples](./examples.md#built-in-plugins)).
+Create a sized container, construct `Chart`, add a dataset-backed series, and start rendering. Until you set a viewport, the chart shows all of its data. Without plugins the chart has no pointer or keyboard interaction; pass `plugins: [interactionsPlugin(), tooltipPlugin()]` (from `blazeplot/plugins/interactions` and `blazeplot/plugins/tooltip`) for pan, zoom, and hover (see [Examples](./examples.md#built-in-plugins)).
 
 ```html
 <div id="chart" style="width:100%;height:400px"></div>
@@ -29,14 +29,13 @@ Create a sized container, construct `Chart`, add a dataset-backed series, fit th
 
   const chart = new Chart(element);
   chart.addLine({ x, y, name: "sine" });
-  chart.fitToData();
   chart.start();
 </script>
 ```
 
 Call `chart.dispose()` when the chart is removed from the page.
 
-If the chart appears blank, check that the host element has a non-zero height, WebGL2 is available, and the viewport has been initialized. See [Troubleshooting](./troubleshooting.md) for the full checklist.
+If the chart appears blank, check that the host element has a non-zero height, WebGL2 is available, and the data is finite and sorted. A chart you have not given a viewport shows all its data on every frame, so a blank chart usually means the viewport you set does not contain the data (in development the console warns once). `fitToData()` is optional here; call it to pick padding or `includeZero`, or to reset the view. See [Troubleshooting](./troubleshooting.md) for the full checklist.
 
 ## Documentation map
 
@@ -81,6 +80,6 @@ For a maintainer-oriented page list, see [Documentation map](./README.md).
 - Datasets passed as parallel arrays must have equal lengths; a mismatch throws a `RangeError`.
 - Plugins are opt-in so the base chart stays small. Create a new plugin instance for each chart: the stateful built-ins (a11y, annotations, crosshair, flame graph, navigator, selection) throw if one instance is installed on a second chart.
 - Dense line and bar views use level-of-detail extraction by default; use `downsample: "none"` only when the visible point count is bounded.
-- `fitToData()` is an explicit fit/reset operation. For live charts, use `followX` and `autoFitY` instead of fitting on every sample.
+- `fitToData()` is an explicit fit/reset operation (a chart with no viewport set already shows all its data). For live charts, use `followX` and `autoFitY` instead of fitting on every sample.
 
 Maintainers should follow the [documentation contribution guide](./documentation-contributions.md) before adding or restructuring docs.
