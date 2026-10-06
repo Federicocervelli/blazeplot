@@ -68,7 +68,7 @@ There is deliberately no prerelease channel. If a 2.0 prerelease series is ever 
 3. `release`: appends release benchmarks to `changelogs/vX.Y.Z.md` if missing.
 4. `release`: packs and publishes to npm with provenance through npm trusted publishing (OIDC), always with an explicit `--tag latest`. No npm token secret is used; the trusted publisher on npm is bound to this workflow file name (not to a branch).
 5. `release`: creates the tag and GitHub release from the changelog plus the commit list. The notes list commits since the last stable tag.
-6. `pages`: calls the Pages workflow, only for `main` pushes. This is the only Pages deploy for `main`: it runs right after `version` for ordinary merges and after the tag is created for releases, so a release never deploys a stable site built from the previous tag.
+6. `pages`: calls the Pages workflow, only for `main` pushes. This is the only Pages deploy for `main`: it runs right after `version` for ordinary merges and after the tag is created for releases, so a release deploys after its tag exists.
 
 Every other push to `main` skips CI and publishing and only deploys Pages, because its `package.json` version already has a tag.
 
@@ -76,14 +76,9 @@ Every other push to `main` skips CI and publishing and only deploys Pages, becau
 
 File: `.github/workflows/pages.yml`
 
-Called by the release workflow on every push to `main`, and by manual dispatch. It has no push trigger of its own. Builds two sites into one Pages artifact:
+Called by the release workflow on every push to `main`, and by manual dispatch. It has no push trigger of its own. It builds the website from `main` at `/` with `bun run pages:build`, removes the visual and interaction fixtures, and adds a SPA fallback copy for `/previews`. A small `/next/index.html` redirects links to the former unreleased-site URL to the same page at the root. There is no per-release build or cache: the site always reflects `main`, so website changes never wait for a library release.
 
-- The latest stable `vX.Y.Z` release tag at `/`, so the stable docs match what is on `npm i blazeplot` (`latest`). Prerelease tags are ignored.
-- `main` at `/next/`, for unreleased work.
-
-The stable build is cached by the release tag's commit, so it is only rebuilt on the first deploy after a release. Bump the version segment of its cache key (`pages-stable-v1-`) when the stable build steps change, to force a rebuild.
-
-Keep the copy step in sync with website routes that need SPA fallbacks, such as `/previews` and `/next/previews`.
+Keep the assemble step in sync with website routes that need SPA fallbacks, such as `/previews`.
 
 ## Cloudflare Pages Preview
 
@@ -106,7 +101,7 @@ Do not dispatch it for unreviewed external-contributor branches: the job runs wi
 |---|---|---|
 | `bun install --frozen-lockfile` fails | `package.json` and `bun.lock` disagree | Run `bun install` and commit the lockfile. |
 | `checks` fails on generated docs | Public API changed without regenerating docs | Run `bun run docs:readme` and commit the result. |
-| Pages deploys but `/next/...` routes 404 | Vite base or artifact assembly changed | Rebuild `main` with `BLAZEPLOT_PAGES_BASE=/next/` and keep SPA fallback copies. |
+| Pages deploys but `/previews` 404s | Vite base or artifact assembly changed | Build `main` with the default base `/` and keep the SPA fallback copy in the assemble step. |
 | Release skips publish | Tag `vX.Y.Z` already exists | Expected on reruns. Bump the version for a new publish. |
 | Release skips publish with a "not published" notice | The version is a prerelease, or the push is not on `main` | Expected. Only stable `x.y.z` versions on `main` publish. |
 | Release fails because the npm version exists | npm published but tag is missing | Investigate manually; never overwrite npm. Release a patch if needed. |
