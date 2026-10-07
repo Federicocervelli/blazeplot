@@ -15,6 +15,13 @@ export interface MinMaxOut {
 
 const DEFAULT_BLOCK_SIZE = 64;
 
+/** Bucket-extent cache: slots (a power of two, at least a frame's worth of buckets), shortest bucket cached, and the passes that must repeat before the cache is allocated. */
+const BUCKET_CACHE_SLOTS = 4096;
+const BUCKET_CACHE_MIN_LENGTH = 16;
+const BUCKET_CACHE_AFTER_PASSES = 4;
+/** Bucket lengths below this pack into a cache key together with the physical start. */
+const BUCKET_KEY_RADIX = 256;
+
 /**
  * Buckets whose extents one bulk call computes, with the result slots every dense min/max pass shares (a
  * frame is synchronous, so one pair serves every chart).
@@ -51,6 +58,14 @@ export class MinMaxTree {
   private readonly valid: Uint8Array;
   /** Physical samples at or beyond this index hold no data yet (a ring buffer fills from index 0). */
   private validEnd: number;
+  /** Counts `update` calls; a cached bucket is current while no block it covers was written after it was cached. */
+  private clock = 0;
+  /** Clock of the last write per block; allocated together with the bucket cache. */
+  private blockStamp: Float64Array | null = null;
+  /** `[key, clock, minY, maxY]` per slot, direct-mapped by bucket position; see `bucketExtentsInto`. */
+  private bucketCache: Float64Array | null = null;
+  /** Dense passes seen so far; the cache is only allocated once a series is redrawn repeatedly. */
+  private bucketPasses = 0;
 
   constructor(
     private readonly values: ArrayLike<number>,
@@ -72,6 +87,12 @@ export class MinMaxTree {
    */
   update(start: number, end: number, validEnd: number = this.capacity): void {
     this.validEnd = validEnd;
+    this.clock++;
+    const stamps = this.blockStamp;
+    if (stamps !== null) {
+      const last = Math.min(stamps.length - 1, ((end - 1) / this.blockSize) | 0);
+      for (let block = (start / this.blockSize) | 0; block <= last; block++) stamps[block] = this.clock;
+    }
     let left = this.base + ((start / this.blockSize) | 0);
     let right = this.base + (((end - 1) / this.blockSize) | 0);
     while (left >= 1) {
@@ -125,6 +146,7 @@ export class MinMaxTree {
     const capacity = this.capacity;
     const scanLimit = this.blockSize * 2;
     const slot = { minY: 0, maxY: 0 };
+    const cached = scanLimit < BUCKET_KEY_RADIX && this.enableBucketCache();
     for (let b = 0; b < count; b++) {
       let s = first + b * width;
       let e = s + width;
@@ -138,6 +160,18 @@ export class MinMaxTree {
         if (p >= capacity) p -= capacity;
         if (length <= scanLimit && p + length <= capacity) {
           const stop = p + length;
+          let cache = cached ? this.bucketCache : null;
+          let slot = 0;
+          if (cache !== null && length >= BUCKET_CACHE_MIN_LENGTH) {
+            slot = ((((p / width) | 0) & (BUCKET_CACHE_SLOTS - 1)) << 2);
+            if (cache[slot] === p * BUCKET_KEY_RADIX + length && cache[slot + 1]! >= this.newestWrite(p, stop)) {
+              minOut[b] = cache[slot + 2]!;
+              maxOut[b] = cache[slot + 3]!;
+              continue;
+            }
+          } else {
+            cache = null;
+          }
           for (let i = p; i < stop; i++) {
             const value = values[i]!;
             if (value < minY) minY = value;
@@ -153,6 +187,12 @@ export class MinMaxTree {
               if (value > maxY) maxY = value;
             }
           }
+          if (cache !== null) {
+            cache[slot] = p * BUCKET_KEY_RADIX + length;
+            cache[slot + 1] = this.clock;
+            cache[slot + 2] = minY;
+            cache[slot + 3] = maxY;
+          }
         } else {
           this.queryRingInto(p, length, slot);
           minY = slot.minY;
@@ -162,6 +202,30 @@ export class MinMaxTree {
       minOut[b] = minY;
       maxOut[b] = maxY;
     }
+  }
+
+  /**
+   * Whether bucket extents may be cached, allocating the cache from the fourth dense pass on. Panning
+   * and live charts ask for the same ordinal-aligned buckets frame after frame (only the buckets at
+   * the edges change), so a repeat is answered from the cache instead of rescanning its samples; a
+   * chart drawn once or twice never pays the memory.
+   */
+  private enableBucketCache(): boolean {
+    if (this.bucketCache !== null) return true;
+    if (++this.bucketPasses < BUCKET_CACHE_AFTER_PASSES) return false;
+    this.bucketCache = new Float64Array(BUCKET_CACHE_SLOTS * 4);
+    this.blockStamp = new Float64Array(Math.max(1, Math.ceil(this.capacity / this.blockSize)));
+    return true;
+  }
+
+  /** Clock of the latest write to any block of physical `[start, end)` (0 when none was recorded). */
+  private newestWrite(start: number, end: number): number {
+    const stamps = this.blockStamp!;
+    let newest = 0;
+    for (let block = (start / this.blockSize) | 0, last = ((end - 1) / this.blockSize) | 0; block <= last; block++) {
+      if (stamps[block]! > newest) newest = stamps[block]!;
+    }
+    return newest;
   }
 
   /**
