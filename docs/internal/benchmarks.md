@@ -136,3 +136,7 @@ The first version of the comparison ran every library and scenario one after ano
 - **Dev-server bundles.** All libraries were served unminified through Vite's dev module graph. Now a production build of the page is served.
 - **Warmup.** Pan and stream scenarios only idled during warmup. Now the same operation is run (and discarded) before measuring, and the prewarm chart uses the scenario's series type.
 - **Coverage.** The suite had five line scenarios. It now covers the series types, interaction latency, lifecycle and memory scenarios listed above.
+
+## A/B comparison of two checkouts
+
+`bun run bench:ab --a <baseline checkout> --b <candidate checkout> --scenarios hover-1m,line-1m-pan` answers "did this change make BlazePlot faster or slower" without trusting two separate runs on a drifting machine. It runs `benchmark-compare` headless on the real GPU, alternating the two checkouts round by round (default 4 rounds x 3 runs), pools the runs, and prints each metric with the direction-adjusted ratio (above 1.00 means B is better), a Mann-Whitney p-value, and a verdict that needs both p < 0.01 and a 2% effect. uPlot runs on both sides as a control: its ratio should be about 1.00, and a larger drift means the machine was busy. It holds the GPU lock (`~/bench.lock`, or `BLAZEPLOT_BENCH_LOCK`) for the whole run so concurrent comparisons never overlap. Set `BLAZEPLOT_BENCH_CHROME` to a Chrome executable if it cannot find the cached Puppeteer one. It is a development aid, not part of CI, and its numbers are not publishable.
