@@ -72,6 +72,7 @@ interface ScenarioConfig {
   name: string;
   group: string;
   title: string;
+  label?: string;
   metrics: string[];
   primary: string;
   notes?: string[];
@@ -343,6 +344,7 @@ async function createReport(options: Options, executable: string, browser: Brows
     scenarios.push({
       name,
       title: config.title,
+      ...(config.label ? { label: config.label } : {}),
       group: config.group,
       primary: config.primary,
       metricIds: config.metrics,

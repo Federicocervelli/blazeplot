@@ -114,6 +114,9 @@ export function renderMarkdown(markdown: string, options: RenderMarkdownOptions 
       continue;
     }
 
+    // A single-line HTML comment (the "generated file" notice) is not content.
+    if (/^<!--.*-->$/u.test(trimmed)) continue;
+
     const detailsTag = /^<\/?details>$/iu.exec(trimmed);
     if (detailsTag) {
       closeFlow();
