@@ -24,6 +24,81 @@ function upload(_renderer: Canvas2DRenderer, values: number[]): Float32Array {
   return new Float32Array(values);
 }
 
+/**
+ * The pixel-column reduction as it was written before the points were staged: it records each call while
+ * scanning. The renderer must emit exactly these `moveTo`/`lineTo` calls.
+ */
+function referencePolyline(d: Float32Array, n: number, sx: number, ox: number, sy: number, oy: number, reduce: boolean): Array<readonly [string, number, number]> {
+  const calls: Array<readonly [string, number, number]> = [];
+  let pen = false;
+  let i = 0;
+  while (i < n) {
+    const fx = d[i * 2]!;
+    const fy = d[i * 2 + 1]!;
+    i++;
+    if (!Number.isFinite(fx + fy)) {
+      pen = false;
+      continue;
+    }
+    const firstX = fx * sx + ox;
+    const firstY = fy * sy + oy;
+    const key = Math.floor(firstX);
+    let lastX = firstX;
+    let lastY = firstY;
+    let minY = firstY;
+    let maxY = firstY;
+    let minAt = 0;
+    let maxAt = 0;
+    let count = 1;
+    for (; i < n; i++) {
+      const dx = d[i * 2]!;
+      const dy = d[i * 2 + 1]!;
+      if (!Number.isFinite(dx + dy)) break;
+      const x = dx * sx + ox;
+      if (!reduce || Math.floor(x) !== key) break;
+      const y = dy * sy + oy;
+      lastX = x;
+      lastY = y;
+      if (y < minY) {
+        minY = y;
+        minAt = count;
+      }
+      if (y > maxY) {
+        maxY = y;
+        maxAt = count;
+      }
+      count++;
+    }
+    calls.push([pen ? "lineTo" : "moveTo", firstX, firstY]);
+    pen = true;
+    if (count === 1) continue;
+    const lowFirst = minAt < maxAt;
+    const firstAt = lowFirst ? minAt : maxAt;
+    const secondAt = lowFirst ? maxAt : minAt;
+    if (firstAt > 0 && firstAt < count - 1) calls.push(["lineTo", key + 0.5, lowFirst ? minY : maxY]);
+    if (secondAt > 0 && secondAt < count - 1) calls.push(["lineTo", key + 0.5, lowFirst ? maxY : minY]);
+    calls.push(["lineTo", lastX, lastY]);
+  }
+  return calls;
+}
+
+/** Device pixels covered by the whole-pixel `rect` calls in `calls`. */
+function coverage(calls: readonly (readonly unknown[])[], width: number, height: number): Set<number> {
+  const covered = new Set<number>();
+  for (const c of calls) {
+    if (c[0] !== "rect") continue;
+    const [x, y, w, h] = c.slice(1) as number[];
+    // The canvas clips what hangs over its edges.
+    for (let px = Math.max(0, x!); px < Math.min(width, x! + w!); px++) for (let py = Math.max(0, y!); py < Math.min(height, y! + h!); py++) covered.add(px * 1000 + py);
+  }
+  return covered;
+}
+
+/** The two triangles of the rectangle `[x0, x1] x [y0, y1]`, in the order the painter writes them. */
+function rectVertices(x0: number, x1: number, y0: number, y1: number): number[] {
+  return [x0, y0, x1, y0, x0, y1, x0, y1, x1, y0, x1, y1];
+}
+
 describe("Canvas2DRenderer", () => {
   it("reports its kind and exposes no WebGL context", () => {
     const { renderer } = setup();
@@ -155,6 +230,85 @@ describe("Canvas2DRenderer", () => {
     expect(path.map((c) => c[0])).toEqual(["moveTo", "moveTo", "lineTo"]);
   });
 
+
+  it("merges snapped rectangles of one pixel column that touch or overlap, and keeps separated ones apart", () => {
+    const { renderer, ctx } = setup();
+    // Data x 1.0 .. 1.08 is pixel column 10 (10 px per data unit); y 1..2, 1.5..3, 3..4 chain together, 4.5..5 is separate.
+    const verts = [...rectVertices(1.0, 1.04, 1, 2), ...rectVertices(1.04, 1.08, 1.5, 3), ...rectVertices(1.0, 1.04, 3, 4), ...rectVertices(1.0, 1.04, 4.5, 5)];
+    renderer.drawTriangles(upload(renderer, verts), 24, [0, 0, 0, 1], projection);
+    // y 1..4 is device y 40..10 (flipped); y 4.5..5 is device y 5..0.
+    expect(ctx.calls.filter((c) => c[0] === "rect")).toEqual([
+      ["rect", 10, 10, 1, 30],
+      ["rect", 10, 0, 1, 5],
+    ]);
+  });
+
+  it("fills exactly the pixels the unmerged rectangles would, for dense and ragged bucket batches", () => {
+    let seed = 12345;
+    const random = (): number => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    for (let trial = 0; trial < 60; trial++) {
+      const { renderer, ctx } = setup();
+      const verts: number[] = [];
+      const expected = new Set<number>();
+      const count = 1 + Math.floor(random() * 120);
+      const bucketWidth = random() < 0.5 ? 0.025 : 0.15 + random() * 0.4;
+      let x = random() * 3;
+      for (let i = 0; i < count; i++) {
+        const y0 = random() * 5;
+        const y1 = y0 + 0.05 + random() * (random() < 0.5 ? 0.3 : 3);
+        verts.push(...rectVertices(x, x + bucketWidth, y0, y1));
+        // The reference: each rectangle snapped on its own, as before merging existed.
+        const left = Math.round(x * 10);
+        const right = Math.max(Math.round((x + bucketWidth) * 10), left + 1);
+        const top = Math.round(50 - y1 * 10);
+        const bottom = Math.max(Math.round(50 - y0 * 10), top + 1);
+        for (let px = Math.max(0, left); px < Math.min(100, right); px++) for (let py = Math.max(0, top); py < Math.min(50, bottom); py++) expected.add(px * 1000 + py);
+        x += random() < 0.7 ? bucketWidth * random() : bucketWidth * (1 + random());
+      }
+      renderer.drawTriangles(upload(renderer, verts), count * 6, [0, 0, 0, 1], projection);
+      const got = coverage(ctx.calls, 100, 50);
+      expect(got.size).toBe(expected.size);
+      for (const key of expected) expect(got.has(key)).toBe(true);
+      expect(ctx.calls.filter((c) => c[0] === "fill")).toHaveLength(1);
+    }
+  });
+
+  it("traces the same path as the pixel-column reduction it replaced, across gaps and wide strokes", () => {
+    let seed = 987654;
+    const random = (): number => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+    for (let trial = 0; trial < 80; trial++) {
+      const { renderer, ctx } = setup();
+      const n = 1 + Math.floor(random() * 400);
+      const values: number[] = [];
+      let x = random() * 2;
+      for (let i = 0; i < n; i++) {
+        x += random() * (trial % 3 === 0 ? 0.5 : 0.04);
+        const gap = random() < 0.05;
+        values.push(gap ? NaN : x, gap && random() < 0.5 ? 1 : random() * 5);
+      }
+      const lineWidth = trial % 4 === 0 ? 3 : 1;
+      const data = upload(renderer, values);
+      renderer.drawLines(data, n, [1, 0, 0, 1], lineWidth, projection);
+      const got = ctx.calls.filter((c) => c[0] === "moveTo" || c[0] === "lineTo");
+      expect(got).toEqual(referencePolyline(data, n, 10, 0, -10, 50, lineWidth <= 1.5));
+    }
+  });
+
+  it("traces a window with a large offset identically", () => {
+    const { renderer, ctx } = setup();
+    const values: number[] = [];
+    for (let i = 0; i < 200; i++) values.push(5 + i * 0.004, 2.5 + Math.sin(i) * 2);
+    const data = upload(renderer, values);
+    renderer.drawLines(data, 200, [0, 1, 0, 1], 1, { scaleX: 0.2, scaleY: 0.4, offsetX: -1.00003, offsetY: -1 });
+    const got = ctx.calls.filter((c) => c[0] === "moveTo" || c[0] === "lineTo");
+    expect(got).toEqual(referencePolyline(data, 200, 0.2 * 100 * 0.5, (-1.00003 + 1) * 100 * 0.5, -0.4 * 50 * 0.5, (1 + 1) * 50 * 0.5, true));
+  });
+
+  it("skips tracing when the projection is not finite", () => {
+    const { renderer, ctx } = setup();
+    renderer.drawLines(upload(renderer, [0, 0, 1, 1, 2, 2]), 3, [1, 0, 0, 1], 1, { scaleX: NaN, scaleY: 1, offsetX: 0, offsetY: 0 });
+    expect(ctx.calls.filter((c) => c[0] === "moveTo" || c[0] === "lineTo")).toEqual([]);
+  });
 
   it("sets context style state only when it changes, and again after each beginFrame", () => {
     const { renderer, ctx } = setup();
