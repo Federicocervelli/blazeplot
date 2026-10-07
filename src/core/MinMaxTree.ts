@@ -155,29 +155,80 @@ export class MinMaxTree {
     out.maxY = maxY;
   }
 
-  /** Bring a node summary up to date: children first, a leaf by scanning its block. */
+  /**
+   * Bring a node summary up to date. A leaf scans its block. An internal node refreshes its whole stale
+   * subtree level by level, leaves first and then each level above them, instead of recursing node by
+   * node: summarizing a large series for the first time touches tens of thousands of nodes, and the
+   * recursive form cost several times the scan of the samples themselves.
+   */
   private refresh(node: number): void {
     if (this.valid[node] !== 0) return;
-    let minY = Infinity;
-    let maxY = -Infinity;
     if (node >= this.base) {
-      const from = (node - this.base) * this.blockSize;
-      const to = Math.min(this.validEnd, from + this.blockSize);
-      for (let i = from; i < to; i++) {
-        const value = this.values[i]!;
-        if (!Number.isFinite(value)) continue;
-        if (value < minY) minY = value;
-        if (value > maxY) maxY = value;
-      }
-    } else {
-      const left = node << 1;
-      this.refresh(left);
-      this.refresh(left + 1);
-      minY = Math.min(this.minTree[left]!, this.minTree[left + 1]!);
-      maxY = Math.max(this.maxTree[left]!, this.maxTree[left + 1]!);
+      this.refreshLeaf(node);
+      return;
     }
-    this.minTree[node] = minY;
-    this.maxTree[node] = maxY;
+    const valid = this.valid;
+    let low = node;
+    let high = node + 1;
+    while (low < this.base) {
+      low <<= 1;
+      high <<= 1;
+    }
+    const minTree = this.minTree;
+    const maxTree = this.maxTree;
+    const { values, base, blockSize, validEnd } = this;
+    for (let leaf = low; leaf < high; leaf++) {
+      if (valid[leaf] !== 0) continue;
+      const from = (leaf - base) * blockSize;
+      summarizeBlock(values, from, Math.min(validEnd, from + blockSize), minTree, maxTree, leaf);
+      valid[leaf] = 1;
+    }
+    // Each level above the leaves, bottom-up, so both children are current when a parent is computed.
+    for (low >>= 1, high >>= 1; low >= node; low >>= 1, high >>= 1) {
+      for (let parent = low; parent < high; parent++) {
+        if (valid[parent] !== 0) continue;
+        const left = parent << 1;
+        minTree[parent] = Math.min(minTree[left]!, minTree[left + 1]!);
+        maxTree[parent] = Math.max(maxTree[left]!, maxTree[left + 1]!);
+        valid[parent] = 1;
+      }
+    }
+  }
+
+  /** Summarize one block by scanning its samples below `validEnd`. */
+  private refreshLeaf(node: number): void {
+    const from = (node - this.base) * this.blockSize;
+    summarizeBlock(this.values, from, Math.min(this.validEnd, from + this.blockSize), this.minTree, this.maxTree, node);
     this.valid[node] = 1;
   }
+}
+
+/**
+ * Write the finite extent of `values[from, to)` to `minTree[node]` / `maxTree[node]` (an empty block
+ * gets `Infinity` / `-Infinity`). A free function over its arguments rather than a method: the engine
+ * compiles a scan loop over typed arrays it receives as parameters much tighter than one over arrays
+ * read from instance fields, and summarizing a large series for the first time runs this once per block.
+ * NaN fails both comparisons, so the plain loop already skips gaps. Only an infinity gets through, and it
+ * shows up as an infinite extreme, which sends the block to the exact loop.
+ */
+function summarizeBlock(values: ArrayLike<number>, from: number, to: number, minTree: Float32Array | Float64Array, maxTree: Float32Array | Float64Array, node: number): void {
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = from; i < to; i++) {
+    const value = values[i]!;
+    if (value < minY) minY = value;
+    if (value > maxY) maxY = value;
+  }
+  if (minY === -Infinity || maxY === Infinity) {
+    minY = Infinity;
+    maxY = -Infinity;
+    for (let i = from; i < to; i++) {
+      const value = values[i]!;
+      if (!Number.isFinite(value)) continue;
+      if (value < minY) minY = value;
+      if (value > maxY) maxY = value;
+    }
+  }
+  minTree[node] = minY;
+  maxTree[node] = maxY;
 }

@@ -45,6 +45,29 @@ describe("MinMaxTree", () => {
     expect(query(tree, 1, 4)).toBeNull();
   });
 
+  it("summarizes blocks that mix finite values with gaps and infinities exactly like a brute-force scan", () => {
+    const random = seeded(23);
+    const specials = [NaN, Infinity, -Infinity];
+    for (const Storage of [Float32Array, Float64Array]) {
+      const values = new Storage(96);
+      for (let i = 0; i < values.length; i++) {
+        values[i] = random() < 0.2 ? specials[Math.floor(random() * specials.length)]! : (random() - 0.5) * 100;
+      }
+      // A whole block of gaps and a whole block of infinities summarize to "no finite value".
+      values.fill(NaN, 8, 12);
+      values.fill(Infinity, 16, 20);
+      const tree = new MinMaxTree(values, values.length, 4);
+      tree.update(0, values.length);
+      for (let start = 0; start < values.length; start += 3) {
+        for (let end = start; end <= values.length; end += 5) {
+          expect(query(tree, start, end)).toEqual(brute(values, start, end));
+        }
+      }
+      expect(query(tree, 8, 12)).toBeNull();
+      expect(query(tree, 16, 20)).toBeNull();
+    }
+  });
+
   it("tracks point updates, incremental includes, and reset", () => {
     const values = new Float32Array(16);
     const tree = new MinMaxTree(values, 16, 4);
