@@ -77,12 +77,25 @@ async function acquireLock(): Promise<() => Promise<void>> {
       };
     } catch {
       const age = Date.now() - (await stat(LOCK).then((s) => s.mtimeMs).catch(() => Date.now()));
-      if (age > STALE_LOCK_MS) await rm(LOCK, { force: true });
+      const text = await readFile(LOCK, "utf8").catch(() => "");
+      if (age > STALE_LOCK_MS || (text !== "" && !holderAlive(text))) await rm(LOCK, { force: true });
       else {
         console.error(`GPU lock held (${LOCK}); waiting...`);
         await Bun.sleep(10_000);
       }
     }
+  }
+}
+
+/** Whether the process that wrote the lock (`... pid N ...`) is still running; a dead holder never releases it. */
+function holderAlive(text: string): boolean {
+  const pid = Number(/pid (d+)/.exec(text)?.[1]);
+  if (!pid) return true;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
   }
 }
 
