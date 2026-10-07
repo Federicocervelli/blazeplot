@@ -1,8 +1,8 @@
 # Plugin authoring
 
-A BlazePlot plugin is a small object installed with `new Chart(target, { plugins: [...] })`. Use plugins for UI or behavior that should stay outside the core renderer: legends, tooltips, custom overlays, interaction modes, or app-specific controls.
+A BlazePlot plugin is a small object installed with `new Chart(target, { plugins: [...] })`. Plugins hold UI or behavior that stays outside the core renderer: legends, tooltips, custom overlays, interaction modes, or app-specific controls.
 
-The plugin contract is **stable** from 1.0: `ChartPlugin`, `ChartPluginContext` and its groups, `ChartPluginHandle`, `ChartPluginEventMap`, the mount slots and surfaces, and `ChartLayoutReservation`. Only `ctx.unstable` is experimental; see [API stability](./stability.md). The nine built-in plugins use nothing but this contract (a unit test enforces it), so anything they do, your plugin can do too.
+The plugin contract is stable from 1.0: `ChartPlugin`, `ChartPluginContext` and its groups, `ChartPluginHandle`, `ChartPluginEventMap`, the mount slots and surfaces, and `ChartLayoutReservation`. Only `ctx.unstable` is experimental; see [API stability](./stability.md). The nine built-in plugins use only this contract (a unit test enforces it), so your plugin can do anything they do.
 
 ```ts
 import type { ChartPlugin } from "blazeplot";
@@ -44,7 +44,7 @@ Everything a plugin creates *through the context* (listeners, subscriptions, mou
 
 ## Mount slots and surfaces
 
-Plugins never receive raw chart elements. They attach DOM to named **mount slots** and listen on named **surfaces**:
+Plugins never receive raw chart elements. They attach DOM to named mount slots and listen on named surfaces:
 
 | Slot | `ctx.dom.mount(slot, el)` appends to | Typical content |
 |---|---|---|
@@ -63,7 +63,7 @@ Plugins never receive raw chart elements. They attach DOM to named **mount slots
 
 ## Claiming pointer gestures
 
-Several plugins may want the same drag. `ctx.dom.claimPointer(event)` decides who gets it:
+When several plugins want the same drag, `ctx.dom.claimPointer(event)` decides who gets it:
 
 ```ts
 import type { ChartPlugin } from "blazeplot";
@@ -80,12 +80,13 @@ export const brushPlugin: ChartPlugin = {
 
 - Call it from `pointerdown`, only when your gesture would actually start (check the button and modifier keys first).
 - It returns `true` when your plugin now owns the pointer and `false` when another plugin claimed it first. Calling it again from the same plugin returns `true`.
-- The first claimer wins, and listeners on a surface run in plugin install order. A listener registered with `{ capture: true }` runs before non-capture listeners on the same surface, which is how `selectionPlugin` takes a plain drag ahead of box zoom whatever the install order.- A claim lasts until that `pointerId` is released (`pointerup` or `pointercancel`) or the plugin is disposed.
+- The first claimer wins, and listeners on a surface run in plugin install order. A listener registered with `{ capture: true }` runs before non-capture listeners on the same surface, which is how `selectionPlugin` takes a plain drag ahead of box zoom whatever the install order.
+- A claim lasts until that `pointerId` is released (`pointerup` or `pointercancel`) or the plugin is disposed.
 - The built-in drag plugins (box zoom, shift and axis pan, touch pan and pinch, selection, ruler measurement) claim before they start and skip pointers claimed by others, so a third-party drag plugin that claims first keeps them out of its way. Give your gesture a modifier option so users can resolve genuine conflicts, as `selectionPlugin({ modifier })` and `interactionsPlugin({ boxZoomModifier })` do.
 
 ## Lifecycle
 
-- `install(ctx)` runs once while the chart is constructed, after the chart root, plot, canvas, axes, and event plumbing exist. Plugins install **in the order they appear in `plugins`**.
+- `install(ctx)` runs once while the chart is constructed, after the chart root, plot, canvas, axes, and event plumbing exist. Plugins install in the order they appear in `plugins`.
 - `install` returns nothing, a cleanup function, or a `ChartPluginHandle`. Every handle member is optional:
 
 | Hook | Called when |
@@ -96,12 +97,12 @@ export const brushPlugin: ChartPlugin = {
 | `onContextLost()` | The chart's WebGL context is lost (also the shared context behind `sharedRenderer()`). The chart stops drawing until it is restored. Never called with the Canvas 2D renderer. |
 | `onContextRestored()` | The context is restored and the chart's GPU resources are rebuilt. |
 
-- Hooks run in **registration order**. Disposal runs in **reverse registration order**, so a plugin can rely on plugins installed before it still being alive during its own cleanup.
+- Hooks run in registration order. Disposal runs in reverse registration order, so a plugin can rely on plugins installed before it still being alive during its own cleanup.
 - A hook that throws is reported with `console.error` and does not stop other plugins. A `dispose` or cleanup that throws is logged and never prevents chart-owned resources from being released.
 - If `install` throws, the context releases what it handed out, the plugins already installed are disposed in reverse order, and the chart constructor rethrows.
-- **One plugin instance per chart.** Keep per-chart state inside `install` (or throw if your instance is already installed). The built-in stateful plugins (a11y, annotations, crosshair, flame graph, navigator, selection) keep state in the factory closure and throw `<name> plugin instance is already installed on a chart. Create one plugin instance per chart.` when the same instance is installed on a second chart, so call the factory once per chart instead of sharing a `plugins` array of instances. Disposing the chart (or the plugin) frees the instance. The legend, tooltip, and interactions plugins keep their state inside `install`, so one instance may be installed on several charts.
+- One plugin instance per chart. Keep per-chart state inside `install` (or throw if your instance is already installed). The built-in stateful plugins (a11y, annotations, crosshair, flame graph, navigator, selection) keep state in the factory closure and throw `<name> plugin instance is already installed on a chart. Create one plugin instance per chart.` when the same instance is installed on a second chart, so call the factory once per chart instead of sharing a `plugins` array of instances. Disposing the chart (or the plugin) frees the instance. The legend, tooltip, and interactions plugins keep their state inside `install`, so one instance may be installed on several charts.
 
-The app that owns the chart controls `chart.start()` and `chart.stop()`. Plugin code should update plugin-owned DOM or state from chart events and hooks.
+The app that owns the chart controls `chart.start()` and `chart.stop()`. Update plugin-owned DOM or state from chart events and hooks.
 
 ## Plugin events
 
@@ -134,7 +135,7 @@ export function bookmarksPlugin(): ChartPlugin {
 
 ## Example: a last-value badge
 
-A complete third-party plugin. It draws a badge at the latest sample of one series, keeps it on theme, follows resizes, and emits a typed event when the value changes.
+A complete third-party plugin that draws a badge at the latest sample of one series, keeps it on theme, follows resizes, and emits a typed event when the value changes.
 
 ```ts
 import { Chart, type ChartPlugin } from "blazeplot";
@@ -231,11 +232,11 @@ export function latestSamplePlugin(): ChartPlugin {
 }
 ```
 
-`ctx.coords.format(value, axis, yAxis?)` formats a value the way the axis labels it, which keeps announcements consistent with what sighted users read. `ctx.coords.formatReadout(value, axis, yAxis?)` is the self-contained variant for readouts such as tooltips: a time axis gives a full timestamp and a categorical axis gives the category name, while numeric axes return `null` so you can print the number at your own precision. `blazeplot/plugins/a11y` is built on exactly these calls; see [Accessibility](./accessibility.md).
+`ctx.coords.format(value, axis, yAxis?)` formats a value the way the axis labels it, so announcements match what sighted users read. `ctx.coords.formatReadout(value, axis, yAxis?)` is the self-contained variant for readouts such as tooltips: a time axis gives a full timestamp and a categorical axis gives the category name, while numeric axes return `null` so you can print the number at your own precision. `blazeplot/plugins/a11y` is built on these calls; see [Accessibility](./accessibility.md).
 
 ## Layout guidance
 
-Mount plot overlays in the `"plot"` slot so they move and clip with the plot. For UI outside the plot, mount it in `"root"` and reserve space with `ctx.layout.reserve(...)` instead of hard-coding margins over the canvas. Reservations from all plugins add up as padding around the chart's grid. This keeps axes, screenshots, and responsive layout predictable.
+Mount plot overlays in the `"plot"` slot so they move and clip with the plot. For UI outside the plot, mount it in `"root"` and reserve space with `ctx.layout.reserve(...)` instead of hard-coding margins over the canvas. Reservations from all plugins add up as padding around the chart's grid.
 
 ```ts
 import type { ChartPlugin } from "blazeplot";
@@ -265,8 +266,8 @@ See [Theming and layout](./theming-and-layout.md).
 
 ## Escape hatches
 
-`ctx.unstable` exposes the raw plot canvas (a WebGL canvas, or the 2D canvas with the Canvas 2D renderer), the raw element behind a slot or surface, the chart's `WebGL2RenderingContext` (`null` with the Canvas 2D renderer and with `sharedRenderer()`, where the context is not the chart's), and the `Camera2D` for each Y axis. They are `@experimental`: they may change in a minor release, and they bypass guarantees the stable groups give you (camera changes skip `ViewportPolicy`; GL state you change can interfere with rendering and is rebuilt after context loss). Use them for prototypes, and open an issue describing what the stable groups are missing.
+`ctx.unstable` exposes the raw plot canvas (a WebGL canvas, or the 2D canvas with the Canvas 2D renderer), the raw element behind a slot or surface, the chart's `WebGL2RenderingContext` (`null` with the Canvas 2D renderer and with `sharedRenderer()`, where the context is not the chart's), and the `Camera2D` for each Y axis. They are `@experimental`: they may change in a minor release, and they bypass guarantees the stable groups give you (camera changes skip `ViewportPolicy`; GL state you change can interfere with rendering and is rebuilt after context loss). Use them for prototypes and open an issue describing what the stable groups are missing.
 
 ## Importing built-in plugins
 
-Built-in plugins live under subpaths such as `blazeplot/plugins/tooltip` and `blazeplot/plugins/interactions`. Import only the plugins you use. See [Examples](./examples.md#built-in-plugins) and the [API reference](./api-reference.md#package-entry-points).
+Built-in plugins live under subpaths such as `blazeplot/plugins/tooltip` and `blazeplot/plugins/interactions`. See [Examples](./examples.md#built-in-plugins) and the [API reference](./api-reference.md#package-entry-points).
