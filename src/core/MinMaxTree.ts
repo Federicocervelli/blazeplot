@@ -18,7 +18,7 @@ const DEFAULT_BLOCK_SIZE = 64;
 /** Bucket-extent cache: slots (a power of two, at least a frame's worth of buckets), shortest bucket cached, and the passes that must repeat before the cache is allocated. */
 const BUCKET_CACHE_SLOTS = 4096;
 const BUCKET_CACHE_MIN_LENGTH = 16;
-const BUCKET_CACHE_AFTER_PASSES = 64;
+const BUCKET_CACHE_AFTER_PASSES = 512;
 /** Bucket lengths below this pack into a cache key together with the physical start. */
 const BUCKET_KEY_RADIX = 256;
 
@@ -205,7 +205,7 @@ export class MinMaxTree {
   }
 
   /**
-   * Whether bucket extents may be cached, allocating the cache once a tree has served 64 dense passes (sustained panning or streaming, not a first paint or a few warm-up frames). Panning
+   * Whether bucket extents may be cached, allocating the cache once a tree has served 512 dense passes (sustained panning or streaming, not a first paint or a few warm-up frames). Panning
    * and live charts ask for the same ordinal-aligned buckets frame after frame (only the buckets at
    * the edges change), so a repeat is answered from the cache instead of rescanning its samples; a
    * chart drawn once or twice never pays the memory.
