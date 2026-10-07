@@ -769,19 +769,8 @@ export class Chart {
       this.layout.view.cancelAnimationFrame(this.rafId);
       this.rafId = 0;
     }
-    this.dropPlotRead();
-  }
-
-  /** Forget a queued or batch-read plot size that no frame will consume, so the next frame measures afresh. */
-  private dropPlotRead(): void {
-    const read = this.plotRead;
-    if (!read) return;
-    unqueuePlotRead(this.layout.view, read);
-    if (read.read) {
-      read.read = false;
-      this.plotSize.width = -1;
-      this.plotSize.height = -1;
-    }
+    // A chart that stops before its first frame leaves the frame batch; starting again queues it afresh.
+    if (this.plotRead) unqueuePlotRead(this.layout.view, this.plotRead);
   }
 
   /** Schedule a frame. Chart-owned changes call this automatically. */
