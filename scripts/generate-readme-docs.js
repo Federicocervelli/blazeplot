@@ -6,7 +6,7 @@ import { dirname, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import ts from "@typescript/typescript6";
-import { REPORT_SCHEMA_VERSION, readmeSummaryLines, renderReportMarkdown, renderSummaryMarkdown } from "./benchmark-compare-report.js";
+import { REPORT_SCHEMA_VERSION, renderReportMarkdown, renderSummaryMarkdown } from "./benchmark-compare-report.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const apiReferencePath = resolve(root, "docs/api-reference.md");
@@ -409,7 +409,7 @@ function browserProduct(report) {
 function shortGpuName(renderer) {
   if (!renderer) return "unknown GPU";
   const match = /ANGLE \(([^,]+), ([^,/]+)/.exec(renderer);
-  return match ? match[2].replace(/s*(0x[0-9a-f]+).*$/i, "").trim() : renderer;
+  return match ? match[2].replace(/\s*\(0x[0-9a-f]+\).*$/i, "").trim() : renderer;
 }
 
 function assertPublishableComparisonReport(report) {

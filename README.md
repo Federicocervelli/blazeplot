@@ -55,7 +55,7 @@ For streaming data, pass `capacity` to `addLine` and append samples; see [Live d
 
 The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **216 KiB raw**. Plugins and helpers ship as separate subpath entries.
 
-Panning a 1M-point line runs at 1,090 fps, against 721 for uPlot and 546 for Chart.js (Chrome 153, AMD Ryzen 7 7800X3D, AMD Radeon RX 9070 (, median of 7 runs).
+Panning a 1M-point line runs at 1,090 fps, against 721 for uPlot and 546 for Chart.js (Chrome 153, AMD Ryzen 7 7800X3D, AMD Radeon RX 9070, median of 7 runs).
 
 The [benchmarks page](docs/benchmarks.md) covers seven common scenarios, including the ones where uPlot is faster. Every metric with spreads is in [docs/benchmark-results.md](docs/benchmark-results.md). Reproduce with `bun run bench:compare`.
 <!-- README_PERFORMANCE_END -->
