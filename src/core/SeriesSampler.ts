@@ -1,13 +1,15 @@
+import { BUCKET_CHUNK, BUCKET_MAX, BUCKET_MIN } from "./MinMaxTree.js";
 import type { MinMaxOut } from "./MinMaxTree.js";
 import { honorsYOrigin, shiftY, AREA_Y_OFFSETS, MINMAX_Y_OFFSETS, POINT_Y_OFFSETS } from "./datasetCaps.js";
-import type { DatasetCaps } from "./datasetCaps.js";
+import type { DatasetCaps, MinMaxBucketDataset } from "./datasetCaps.js";
 import type { SeriesLod } from "./SeriesLod.js";
 import { SeriesSource } from "./SeriesSource.js";
 import type { Dataset, Viewport } from "./types.js";
 
 const RAW_SCRATCH_BLOCK = 2048;
-const RAW_SCRATCH_X = new Float64Array(RAW_SCRATCH_BLOCK + 1);
-const RAW_SCRATCH_Y = new Float64Array(RAW_SCRATCH_BLOCK + 1);
+// Shared with the bucket-extent slots: a frame runs one extraction at a time.
+const RAW_SCRATCH_X = BUCKET_MIN;
+const RAW_SCRATCH_Y = BUCKET_MAX;
 
 function interpolateY(x0: number, y0: number, x1: number, y1: number, x: number): number {
   if (x1 === x0) return y0;
@@ -177,6 +179,8 @@ export class SeriesSampler extends SeriesSource {
 
     const bucketWidth = this.stableSampleBucketWidthForViewport(viewport, maxSegments);
     const alignedStart = this.alignBucketStart(start, bucketWidth);
+    const buckets = this.caps.minMaxBuckets;
+    if (buckets) return this.copyMinMaxBuckets(buckets, start, end, alignedStart, bucketWidth, target, maxSegments, xOrigin, yOrigin);
     let written = 0;
     const extent = { minY: 0, maxY: 0 };
     for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += bucketWidth) {
@@ -194,6 +198,46 @@ export class SeriesSampler extends SeriesSource {
       written++;
     }
 
+    return written;
+  }
+
+  /**
+   * `copyMinMaxInstanced` for datasets that answer bucket extents in bulk: the same buckets, skip rules
+   * and representative X as the per-bucket loop above, with the Y extents computed a chunk at a time.
+   */
+  private copyMinMaxBuckets(
+    buckets: MinMaxBucketDataset,
+    start: number,
+    end: number,
+    alignedStart: number,
+    bucketWidth: number,
+    target: Float32Array,
+    maxSegments: number,
+    xOrigin: number,
+    yOrigin: number,
+  ): number {
+    const length = this.dataset.length;
+    let written = 0;
+    for (let chunkStart = alignedStart; chunkStart < end && written < maxSegments; chunkStart += BUCKET_CHUNK * bucketWidth) {
+      const count = Math.min(BUCKET_CHUNK, Math.ceil((end - chunkStart) / bucketWidth));
+      buckets.minMaxBucketsInto(chunkStart, bucketWidth, count, BUCKET_MIN, BUCKET_MAX);
+      for (let k = 0; k < count && written < maxSegments; k++) {
+        const minY = BUCKET_MIN[k]!;
+        const maxY = BUCKET_MAX[k]!;
+        if (!(minY <= maxY)) continue;
+        const bucketStart = chunkStart + k * bucketWidth;
+        const bucketEnd = Math.min(length, bucketStart + bucketWidth);
+        const segmentStart = Math.max(0, bucketStart);
+        if (bucketEnd <= start || segmentStart >= end) continue;
+
+        const representative = Math.max(segmentStart, Math.min(bucketEnd - 1, bucketStart + (bucketWidth >> 1)));
+        const offset = written * 3;
+        target[offset] = buckets.xAtUnchecked(representative) - xOrigin;
+        target[offset + 1] = minY - yOrigin;
+        target[offset + 2] = maxY - yOrigin;
+        written++;
+      }
+    }
     return written;
   }
 

@@ -222,6 +222,17 @@ export class StaticDataset implements Dataset {
     return this.tree.queryInto(from, to, out);
   }
 
+  /** @internal Extents of consecutive buckets in one call (see `MinMaxTree.bucketExtentsInto`). */
+  minMaxBucketsInto(first: number, width: number, count: number, minOut: Float64Array, maxOut: Float64Array): void {
+    if (!this.tree) this.tree = new MinMaxTree(this.yData, this.length);
+    this.tree.bucketExtentsInto(first, width, count, 0, this.count, 0, minOut, maxOut);
+  }
+
+  /** @internal X at an index known to be valid. */
+  xAtUnchecked(index: number): number {
+    return this.xData[index]!;
+  }
+
   /** Check the first `count` X values unless trusted or already checked for this array. */
   private checkX(x: ArrayLike<number>, count: number): void {
     if (this.assumeSorted || count <= this.checkedLength) return;

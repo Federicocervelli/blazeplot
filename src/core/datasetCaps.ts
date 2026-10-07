@@ -54,6 +54,17 @@ export interface RangeMinMaxIntoDataset extends RangeMinMaxDataset {
 }
 
 /**
+ * Built-in datasets backed by a `MinMaxTree`: Y extents of consecutive buckets in one call plus an
+ * unchecked X read, so the dense min/max loop makes no per-bucket dataset calls.
+ */
+export interface MinMaxBucketDataset extends Dataset {
+  /** Extents (`minOut`/`maxOut`, `Infinity`/`-Infinity` when empty) of `count` buckets of `width` samples from logical `first`, clamped to `[0, length)`. */
+  minMaxBucketsInto(first: number, width: number, count: number, minOut: Float64Array, maxOut: Float64Array): void;
+  /** X at a logical index known to be valid (no range check). */
+  xAtUnchecked(index: number): number;
+}
+
+/**
  * Optional dataset abilities, detected once when the series is created. A dataset's capabilities are
  * fixed for its lifetime: methods added to a dataset after construction are not picked up.
  */
@@ -65,6 +76,7 @@ export interface DatasetCaps {
   readonly rangeMinMax: RangeMinMaxDataset | null;
   /** Built-in datasets also answer `rangeMinMax` into a caller-owned slot, so bucket loops allocate nothing. */
   readonly rangeMinMaxInto: RangeMinMaxIntoDataset | null;
+  readonly minMaxBuckets: MinMaxBucketDataset | null;
   readonly minMaxSegments: MinMaxSegmentCopyDataset | null;
   readonly copyVisibleSamples: VisibleSampleCopyDataset | null;
   readonly copySamplesRange: RangeSampleCopyDataset | null;
@@ -107,6 +119,7 @@ export function resolveCaps(dataset: Dataset): DatasetCaps {
     xRange: "getXRange" in dataset ? (dataset as XRangeDataset) : null,
     rangeMinMax: "rangeMinMaxY" in dataset ? (dataset as RangeMinMaxDataset) : null,
     rangeMinMaxInto: "rangeMinMaxInto" in dataset ? (dataset as RangeMinMaxIntoDataset) : null,
+    minMaxBuckets: "minMaxBucketsInto" in dataset ? (dataset as MinMaxBucketDataset) : null,
     minMaxSegments: "copyMinMaxSegments" in dataset ? (dataset as MinMaxSegmentCopyDataset) : null,
     copyVisibleSamples: "copyVisibleSamples" in dataset ? (dataset as VisibleSampleCopyDataset) : null,
     copySamplesRange: "copySamplesRange" in dataset ? (dataset as RangeSampleCopyDataset) : null,

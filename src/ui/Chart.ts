@@ -779,18 +779,21 @@ export class Chart {
     const view = this.layout.view;
     // A chart that has not read its plot size yet joins the frame's batch read.
     if (this.plotSize.width < 0) queuePlotRead(view, (this.plotRead ??= { element: this.canvas, size: this.plotSize, read: false }));
-    this.rafId = view.requestAnimationFrame(() => {
-      this.rafId = 0;
-      if (!this.running) return;
-      readQueuedPlots(view);
-      try {
-        this.render();
-      } finally {
-        // Keep a continuous loop alive even if one frame throws.
-        if (this.running && this.options.renderLoop === "continuous") this.requestRender();
-      }
-    });
+    this.rafId = view.requestAnimationFrame(this.onAnimationFrame);
   }
+
+  /** The animation-frame callback, created once so scheduling a frame allocates nothing. */
+  private readonly onAnimationFrame = (): void => {
+    this.rafId = 0;
+    if (!this.running) return;
+    readQueuedPlots(this.layout.view);
+    try {
+      this.render();
+    } finally {
+      // Keep a continuous loop alive even if one frame throws.
+      if (this.running && this.options.renderLoop === "continuous") this.requestRender();
+    }
+  };
 
   /** Stop rendering and release DOM, plugin, and GPU resources. */
   dispose(): void {
@@ -954,7 +957,7 @@ export class Chart {
     if (!changed) return;
     this.syncRightCameraX();
     // The frame that called this is already drawing, so skip `emitViewportChange`'s extra render request.
-    this.events.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source: "fit" });
+    if (this.events.has("viewportchange")) this.events.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source: "fit" });
   }
 
   /**
@@ -1110,7 +1113,8 @@ export class Chart {
   }
 
   private emitViewportChange(source: ChartViewportChangeSource): void {
-    this.events.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source });
+    // Building the payload copies both viewports, so skip it when nobody listens.
+    if (this.events.has("viewportchange")) this.events.emit("viewportchange", { viewport: this.camera.viewport, rightViewport: this.rightCamera.viewport, source });
     this.requestRender();
   }
 

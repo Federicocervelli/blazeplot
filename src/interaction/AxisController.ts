@@ -153,6 +153,12 @@ export class AxisController {
     return scale === "log" || scale === "symlog" || (typeof scale === "object" && typeof scale.toScreen === "function");
   }
 
+  /** Whether `scaleValue` and `unscaleValue` return their input on this axis (anything but log, symlog, or a custom scale), so hot loops may skip them. @internal */
+  isIdentityScale(axis: AxisRenderTarget): boolean {
+    const scale = (axis === "x" ? this.options.x : this.options.y)?.scale;
+    return scale === undefined || (typeof scale === "string" && scale !== "log" && scale !== "symlog");
+  }
+
   /** Map a data value into the configured scale's coordinate space. */
   scaleValue(value: number, axis: AxisRenderTarget): number {
     const options = axis === "x" ? this.options.x : this.options.y;
