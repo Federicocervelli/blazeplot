@@ -20,8 +20,10 @@ const DEFAULT_BLOCK_SIZE = 64;
  * frame is synchronous, so one pair serves every chart).
  */
 export const BUCKET_CHUNK = 1024;
-export const BUCKET_MIN = new Float64Array(BUCKET_CHUNK);
-export const BUCKET_MAX = new Float64Array(BUCKET_CHUNK);
+/** Both slots also serve as the raw-segment scratch of `SeriesSampler` (never in use at the same time), so they are sized for it and add no memory. */
+const RAW_SCRATCH_LENGTH = 2049;
+export const BUCKET_MIN = new Float64Array(RAW_SCRATCH_LENGTH);
+export const BUCKET_MAX = new Float64Array(RAW_SCRATCH_LENGTH);
 
 /**
  * Lazily built block min/max segment tree over a fixed-capacity array of Y values.

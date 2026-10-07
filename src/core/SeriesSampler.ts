@@ -7,8 +7,9 @@ import { SeriesSource } from "./SeriesSource.js";
 import type { Dataset, Viewport } from "./types.js";
 
 const RAW_SCRATCH_BLOCK = 2048;
-const RAW_SCRATCH_X = new Float64Array(RAW_SCRATCH_BLOCK + 1);
-const RAW_SCRATCH_Y = new Float64Array(RAW_SCRATCH_BLOCK + 1);
+// Shared with the bucket-extent slots: a frame runs one extraction at a time.
+const RAW_SCRATCH_X = BUCKET_MIN;
+const RAW_SCRATCH_Y = BUCKET_MAX;
 
 function interpolateY(x0: number, y0: number, x1: number, y1: number, x: number): number {
   if (x1 === x0) return y0;
