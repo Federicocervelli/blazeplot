@@ -8,6 +8,9 @@ import { assertEqualLengths, assertSortedFiniteX, invalidXError, stableFiniteXOr
 const STATIC_HINT =
   "Use StaticDataset.sorted(x, y) to sort and drop non-finite X, or pass { assumeSorted: true } to skip this check for data you trust.";
 
+/** Series at least this long may summarize their whole min/max tree in one pass (see `StaticDataset.createTree`). */
+const ONE_PASS_SUMMARY_MIN_SAMPLES = 262_144;
+
 /** Object-row field selector used by `StaticDataset.fromObjects`. */
 export type StaticDatasetField<Row> = keyof Row | ((row: Row, index: number) => number);
 
@@ -222,10 +225,14 @@ export class StaticDataset implements Dataset {
     return this.tree.queryInto(from, to, out);
   }
 
-  /** The summary tree; a first query that covers a quarter of the series or more (a full-range first view is queried in chunks of about a third) summarizes it in one pass. */
+  /**
+   * The summary tree. On a large series, a first query that covers a quarter of it or more (a full-range
+   * first view is queried in chunks of about a third) summarizes it in one pass. Small series keep the lazy
+   * walk: it is cheap there, and a chart mounted per route or tab then pays nothing extra.
+   */
   private createTree(firstSpan: number): StaticMinMaxTree {
     const tree = new StaticMinMaxTree(this.yData, this.length);
-    if (firstSpan * 4 >= this.count) tree.summarizeAll();
+    if (this.count >= ONE_PASS_SUMMARY_MIN_SAMPLES && firstSpan * 4 >= this.count) tree.summarizeAll();
     return tree;
   }
 
