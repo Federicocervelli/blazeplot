@@ -1,4 +1,4 @@
-import { MinMaxTree } from "./MinMaxTree.js";
+import { StaticMinMaxTree } from "./StaticMinMaxTree.js";
 import type { MinMaxOut, MinMaxY } from "./MinMaxTree.js";
 import { lowerBoundTyped, upperBoundTyped } from "./search.js";
 import type { Dataset, TimeRange, ValuePrecision } from "./types.js";
@@ -65,7 +65,7 @@ export interface StaticDatasetData {
  */
 export class StaticDataset implements Dataset {
   readonly rangeMinMaxExcludesGaps = true;
-  private tree: MinMaxTree | null = null;
+  private tree: StaticMinMaxTree | null = null;
   private count: number;
   private readonly assumeSorted: boolean;
   /** Leading samples of the current X array already checked, so Y-only replaces skip the X check. */
@@ -218,13 +218,20 @@ export class StaticDataset implements Dataset {
     const from = Math.max(0, Math.floor(start));
     const to = Math.min(this.length, Math.ceil(end));
     if (to <= from) return false;
-    if (!this.tree) this.tree = new MinMaxTree(this.yData, this.length);
+    if (!this.tree) this.tree = this.createTree(to - from);
     return this.tree.queryInto(from, to, out);
+  }
+
+  /** The summary tree; a first query that covers a quarter of the series or more (a full-range first view is queried in chunks of about a third) summarizes it in one pass. */
+  private createTree(firstSpan: number): StaticMinMaxTree {
+    const tree = new StaticMinMaxTree(this.yData, this.length);
+    if (firstSpan * 4 >= this.count) tree.summarizeAll();
+    return tree;
   }
 
   /** @internal Extents of consecutive buckets in one call (see `MinMaxTree.bucketExtentsInto`). */
   minMaxBucketsInto(first: number, width: number, count: number, minOut: Float64Array, maxOut: Float64Array): void {
-    if (!this.tree) this.tree = new MinMaxTree(this.yData, this.length);
+    if (!this.tree) this.tree = this.createTree(count * width);
     this.tree.bucketExtentsInto(first, width, count, 0, this.count, 0, minOut, maxOut);
   }
 
