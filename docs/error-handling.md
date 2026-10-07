@@ -1,8 +1,6 @@
 # Error handling
 
-This page lists what BlazePlot throws, what it logs, and what it does silently with bad input. It is for app developers who feed charts from untrusted or imperfect sources. Every behavior here was checked against the source and unit tests; if the code and this page disagree, the code wins and the page is a bug.
-
-The short version: **constructors, static data, and explicit configuration throw early; streaming data never throws.** Static datasets reject non-finite or decreasing X with a `RangeError` when they are built, streaming buffers skip such samples and report them, non-finite Y values are gaps, and a broken viewport skips the frame instead of stopping the render loop.
+Constructors, static data, and explicit configuration throw early. Streaming data never throws. Static datasets reject non-finite or decreasing X with a `RangeError` when you build them, streaming buffers skip such samples and report them, non-finite Y values are gaps, and a broken viewport skips the frame instead of stopping the render loop.
 
 ## Error types
 
@@ -14,17 +12,17 @@ The short version: **constructors, static data, and explicit configuration throw
 | `TypeError` | `Chart` constructor, `Chart.addSeries`/`add*`, `SeriesStore` mutators, `histogram` | The call does not fit the dataset or option shape: appending `{ y }` to a dataset without implicit X, mixing OHLC and XY rows, OHLC series without an `OhlcDataset`, an unknown series mode, `series.setStyle` on a series that is not attached to a chart, a `renderer` option that is neither one of `"auto"`, `"webgl2"`, `"canvas2d"`, `"shared"` nor a factory (the message lists the valid names), conflicting histogram options. |
 | `Error` | `blazeplot/export`, `chart.screenshot()`, built-in stateful plugins, flame graph plugin, `sharedRenderer()`, WebGL internals | Browser feature missing (`ClipboardItem`, Clipboard API, 2D canvas), a plugin instance installed on a second chart, a shared render context without a DOM, or a shader/program failed to compile or link. |
 
-`WebGL2UnavailableError` and `Canvas2DUnavailableError` are the only named classes. Match other failures with `instanceof RangeError` / `instanceof TypeError`, not by message text; messages are for humans and can be reworded in any release.
+`WebGL2UnavailableError` and `Canvas2DUnavailableError` are the only named classes. Match other failures with `instanceof RangeError` / `instanceof TypeError`. Do not match message text: messages can be reworded in any release.
 
 ## Creating a chart
 
-`new Chart(target, ...)` and `createLinkedCharts(target, ...)` throw a `TypeError` such as `Chart: target must be an HTMLElement (got null). Is the element mounted?` when `target` is not a DOM element, typically a `document.getElementById(...)` or framework ref that is still `null`. Create the chart after the element is mounted.
+`new Chart(target, ...)` and `createLinkedCharts(target, ...)` throw a `TypeError` such as `Chart: target must be an HTMLElement (got null). Is the element mounted?` when `target` is not a DOM element, usually a `document.getElementById(...)` or framework ref that is still `null`. Create the chart after the element is mounted.
 
 By default (`renderer: "auto"`) `new Chart(target, options)` uses WebGL2 and falls back to Canvas 2D without logging anything; `chart.rendererInfo.fallbackFrom` is `"webgl2"` when it did. A strictly requested engine throws instead: `WebGL2UnavailableError` for `"webgl2"` and `"shared"` when no WebGL2 context is available, `Canvas2DUnavailableError` for `"canvas2d"` when no 2D context is available. Before it throws it removes the DOM it created and hands back any canvas you supplied, so a failed construction leaves your container as it was. `createLinkedCharts(...)` behaves the same way.
 
 If a plugin's `install()` throws, the chart disposes everything already set up and rethrows that error from the constructor. That includes installing one stateful built-in plugin instance (annotations, crosshair, selection, navigator, a11y, flame graph) on a second chart: create one instance per chart.
 
-The default already keeps drawing without WebGL2 (see [Browser support](./browser-support.md#rendering-engines)). To show your own fallback UI instead, request the strict engine and check availability first or catch the error:
+The default already keeps drawing without WebGL2 (see [Browser support](./browser-support.md#rendering-engines)). To show your own fallback UI instead, request the strict engine and check availability first, or catch the error:
 
 ```ts
 import { Chart, WebGL2UnavailableError, isWebGL2Available } from "blazeplot";
@@ -48,7 +46,7 @@ export function mountChart(element: HTMLElement): Chart | null {
 }
 ```
 
-`isWebGL2Available()` creates a throwaway canvas and returns `false` when `document` does not exist (server-side). A `true` result does not guarantee the real chart canvas will get a context, for example when the browser is out of GPU contexts, so keep the `try`/`catch` if the fallback matters. See [Browser support](./browser-support.md).
+`isWebGL2Available()` creates a throwaway canvas and returns `false` when `document` does not exist (server-side). A `true` result does not guarantee the real chart canvas will get a context, for example when the browser is out of GPU contexts,, so keep the `try`/`catch` if the fallback matters.
 
 ## Adding and changing series
 
@@ -78,7 +76,7 @@ Dataset constructors validate their arguments: `RingBuffer`, `OhlcRingBuffer`, a
 | `StaticDataset.fromObjects(rows, options)` | A row's X is non-finite, or X decreases and `sort: true` was not passed. The message names the row. |
 | `new ServerSampledDataset(data)`, `replace(data)` | A point X, bucket `xStart`, or bucket `xEnd` is non-finite or decreasing, or a bucket has `xEnd < xStart` (`inverted-bucket`). The current data is kept. |
 
-Messages follow one format, for example:
+Messages look like this:
 
 ```text
 StaticDataset: X at index 2 is 1, below 2 at index 1 (decreasing-x). X values must be finite and non-decreasing. Use StaticDataset.sorted(x, y) to sort and drop non-finite X, or pass { assumeSorted: true } to skip this check for data you trust.
@@ -121,7 +119,7 @@ Errors thrown by chart event listeners (`chart.subscribe`, `ctx.events.subscribe
 
 ## Invalid data values
 
-Every built-in dataset follows one rule: X is finite and non-decreasing, and a non-finite Y is a gap. Static data that breaks the X rule throws (see [Static data](#static-data)); streaming buffers skip the sample instead, so one bad packet cannot crash a live dashboard. The check costs one comparison per appended sample. See [Data semantics](./data-semantics.md#the-x-rule) for the data contract.
+Every built-in dataset requires finite, non-decreasing X and treats a non-finite Y as a gap. Static data that breaks the X rule throws (see [Static data](#static-data)). Streaming buffers skip the sample instead, so one bad packet cannot crash a live dashboard; the check costs one comparison per appended sample. See [Data semantics](./data-semantics.md#the-x-rule).
 
 | Input | Behavior |
 |---|---|
@@ -134,7 +132,7 @@ Every built-in dataset follows one rule: X is finite and non-decreasing, and a n
 | Duplicate X | Allowed. |
 | Data mutated in place followed by `series.markDirty()` | Not re-checked. Keep in-place edits sorted and finite. |
 | Custom `Dataset` with unsorted X | Not checked. Samples can be hidden, drawn in the wrong place, or missed by picking and export. |
-| Mismatched array lengths | Every dataset constructor, `replace`, and `append(x, y, ...)` (`RingBuffer`, `UniformRingBuffer`, `OhlcRingBuffer`, `StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`) throws `RangeError`, for example `RingBuffer.append: x has 100 values but y has 99.`, and leaves existing data unchanged. A mismatch is almost always a bug in the data pipeline, so the tail is not silently dropped. |
+| Mismatched array lengths | Every dataset constructor, `replace`, and `append(x, y, ...)` (`RingBuffer`, `UniformRingBuffer`, `OhlcRingBuffer`, `StaticDataset`, `StaticOhlcDataset`, `ServerSampledDataset`) throws `RangeError`, for example `RingBuffer.append: x has 100 values but y has 99.`, and leaves existing data unchanged. A mismatch is almost always a pipeline bug, so the tail is not silently dropped. |
 | Values beyond float32 precision | Stored as `float32` by default and rounded; pass `valuePrecision: "float64"` for exact storage. X is always `float64`. |
 | `UniformRingBuffer` with explicit X | X is ignored; the buffer derives X from `xStart + index * xStep`. |
 | Buffer full with `overflow: "wrap"` (default) | Oldest samples are dropped. |
@@ -142,7 +140,7 @@ Every built-in dataset follows one rule: X is finite and non-decreasing, and a n
 | Buffer full with `overflow: "error"` | `RangeError("... capacity exceeded.")`. |
 | Empty dataset | Reports `range: null`, renders nothing, returns no pick, is skipped by `fitToData` and auto-fit, and exports no samples. Not an error. |
 
-Helper functions are stricter than datasets because they are pure and run once:
+Helper functions are stricter than datasets:
 
 | Helper | Behavior |
 |---|---|
@@ -156,7 +154,7 @@ Helper functions are stricter than datasets because they are pure and run once:
 
 - **Render-loop errors.** `chart.start()` schedules frames with `requestAnimationFrame`. A domain error (see above) is caught, logged once, and the frame is skipped. Any other exception inside a frame propagates out of the animation-frame callback, so it shows up in `window.onerror` and the console like any uncaught error. With `renderLoop: "continuous"` the loop keeps running after a thrown frame.
 - **Context loss.** Every engine owns its loss handling and reports it to the chart, which stops drawing, runs plugins' `onContextLost` hook, and runs `onContextRestored` once the engine is ready again. Data and viewport are untouched. A WebGL engine calls `preventDefault()` on `webglcontextlost` and rebuilds its GPU resources on `webglcontextrestored`; if rebuilding fails it logs `BlazePlot failed to restore WebGL resources after context restoration.` with `console.error` and the chart stays blank, so recreate it. With the shared engine the one shared context handles loss once for every attached chart and a failed rebuild logs the same message. Canvas 2D handles the canvas `contextlost` and `contextrestored` events in browsers that fire them and has nothing to rebuild.
-- **Context events.** The chart also emits `contextlost` and `contextrestored` events (`chart.subscribe("contextlost", ...)`) when the engine reports loss and recovery, for apps that want to show their own "GPU reset" notice. Nothing needs to be done for the chart itself to recover.
+- **Context events.** The chart also emits `contextlost` and `contextrestored` events (`chart.subscribe("contextlost", ...)`) when the engine reports loss and recovery, if you want to show your own "GPU reset" notice. The chart recovers on its own.
 - **After `dispose()`.** Disposal releases DOM, listeners, plugins, and GPU resources. Calling `start()`, `resize()`, or series methods on a disposed chart is unsupported and has no defined behavior. Plugin `dispose` and cleanup functions that throw are logged and do not stop the rest of disposal.
 - **Resize.** `ResizeObserver` is optional. Without it, call `chart.resize()` yourself. `resize()` returns whether the canvas size changed.
 
@@ -168,7 +166,7 @@ Helper functions are stricter than datasets because they are pure and run once:
 | `copyChartScreenshotToClipboard` | Rejects with `Error` when `ClipboardItem` or the Clipboard API is missing. The browser can also reject for permissions or lack of a user gesture. |
 | `downloadBlob`, `downloadChartScreenshot` | Need `document`; they do not guard against server-side use. |
 
-Catch and show a fallback:
+Catch the error and fall back:
 
 ```ts
 import type { Chart } from "blazeplot";
@@ -196,4 +194,4 @@ export async function copyOrDownload(chart: Chart): Promise<void> {
 | `BlazePlot: the plot area is WxHpx at the first render because the host element has zero height ... ` | `warn` (once per chart, development builds only) | The host element has zero width or height at the first frame, so nothing is visible. Give it an explicit size, attach it, or call `chart.resize()` when it gets one. A chart in a hidden tab or `display: none` host warns too, and draws as soon as it is shown. |
 | `BlazePlot: a series was added but chart.start() was never called ...` | `warn` (once per chart, development builds only) | A second after the first series was added, `chart.start()` still had not been called, so nothing is drawn. |
 
-The two development-only warnings are silent when `process.env.NODE_ENV === "production"`, which bundlers replace statically. BlazePlot has no other runtime logging. There is no debug flag. Deprecated APIs, once any exist, log a single development-only `BlazePlot: ... is deprecated` warning per API per page load; production builds are silent. See the [deprecation process](./versioning-and-migration.md#deprecation-process).
+The two development-only warnings are silent when `process.env.NODE_ENV === "production"`, which bundlers replace statically. BlazePlot has no other runtime logging and no debug flag. Deprecated APIs, once any exist, log a single development-only `BlazePlot: ... is deprecated` warning per API per page load; production builds are silent. See the [deprecation process](./versioning-and-migration.md#deprecation-process).
