@@ -1,8 +1,8 @@
 # BlazePlot overview
 
-BlazePlot is a GPU-accelerated charting library, with an automatic Canvas 2D fallback, for large, interactive time-series plots in the browser. It is a good fit when SVG, Canvas2D, or general-purpose chart libraries start to struggle with live data, dense history, or many redraws per second.
+BlazePlot is a charting library for large, interactive time-series plots in the browser. Use it when SVG, Canvas2D, or general-purpose chart libraries struggle with live data, dense history, or many redraws per second.
 
-The core chart renders on the GPU through WebGL2 and keeps DOM work limited to labels, overlays, and plugin UI. The default `renderer: "auto"` uses WebGL2 and falls back to Canvas 2D where WebGL2 is unavailable (`renderer: "canvas2d"` asks for Canvas 2D directly, at lower throughput on very large visible point counts), while a shared WebGL context (`renderer: "shared"`) lets a page mount many charts without hitting the browser's WebGL context cap; see [Browser support](./browser-support.md) and [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
+The chart renders on the GPU through WebGL2; the DOM handles only labels, overlays, and plugin UI. The default `renderer: "auto"` uses WebGL2 and falls back to Canvas 2D where WebGL2 is unavailable. `renderer: "canvas2d"` asks for Canvas 2D directly, at lower throughput on very large visible point counts. A shared WebGL context (`renderer: "shared"`) lets a page mount many charts without hitting the browser's WebGL context cap. See [Browser support](./browser-support.md) and [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
 
 ## Install
 
@@ -13,7 +13,7 @@ bun add blazeplot
 
 ## Quick start
 
-Create a sized container, construct `Chart`, add a dataset-backed series, and start rendering. Until you set a viewport, the chart shows all of its data. Without plugins the chart has no pointer or keyboard interaction; pass `plugins: [interactionsPlugin(), tooltipPlugin()]` (from `blazeplot/plugins/interactions` and `blazeplot/plugins/tooltip`) for pan, zoom, and hover (see [Examples](./examples.md#built-in-plugins)).
+Create a sized container, construct `Chart`, add a series, and start rendering. Until you set a viewport, the chart shows all of its data. Without plugins the chart has no pointer or keyboard interaction; pass `plugins: [interactionsPlugin(), tooltipPlugin()]` (from `blazeplot/plugins/interactions` and `blazeplot/plugins/tooltip`) for pan, zoom, and hover (see [Examples](./examples.md#built-in-plugins)).
 
 ```html
 <div id="chart" style="width:100%;height:400px"></div>
@@ -35,7 +35,7 @@ Create a sized container, construct `Chart`, add a dataset-backed series, and st
 
 Call `chart.dispose()` when the chart is removed from the page.
 
-If the chart appears blank, check that the host element has a non-zero height, WebGL2 is available, and the data is finite and sorted. A chart you have not given a viewport shows all its data on every frame, so a blank chart usually means the viewport you set does not contain the data (in development the console warns once). `fitToData()` is optional here; call it to pick padding or `includeZero`, or to reset the view. See [Troubleshooting](./troubleshooting.md) for the full checklist.
+If the chart is blank, check that the host element has a non-zero height, WebGL2 is available, and the data is finite and sorted. A chart with no viewport set shows all its data on every frame, so a blank chart usually means the viewport you set does not contain the data (in development the console warns once). `fitToData()` is optional here; call it to pick padding or `includeZero`, or to reset the view. See [Troubleshooting](./troubleshooting.md) for the full checklist.
 
 ## Documentation map
 
@@ -56,7 +56,7 @@ If the chart appears blank, check that the host element has a non-zero height, W
 | See what is stable, experimental, or internal | [API stability](./stability.md) |
 | Review import paths and public symbols | [API reference](./api-reference.md) |
 
-For a maintainer-oriented page list, see [Documentation map](./README.md).
+Maintainers: see the [Documentation map](./README.md) and the [documentation contribution guide](./documentation-contributions.md).
 
 ## What is included
 
@@ -70,7 +70,7 @@ For a maintainer-oriented page list, see [Documentation map](./README.md).
 | Plugins | Interactions, legend, tooltip, crosshair, annotations, selection, navigator, accessibility, and flame graph plugins. See [Built-in plugins](./built-in-plugins.md). |
 | Layout and themes | Theme tokens, inside/outside axes with optional auto-sized gutters, titles, and plugin layout reservations. See [Theming and layout](./theming-and-layout.md). |
 | Renderers | `"auto"` by default (WebGL2, with a Canvas 2D fallback), plus a shared WebGL context for many charts. See [Browser support](./browser-support.md). |
-| Frameworks | Create and dispose the same `Chart` API in an effect, `onMounted`, or an action. See [Framework integration](./framework-integration.md). |
+| Frameworks | The same `Chart` API, created and disposed in an effect, `onMounted`, or an action. See [Framework integration](./framework-integration.md). |
 | Exports | Screenshot, clipboard, and CSV/JSON data helpers. |
 
 ## Main tradeoffs
@@ -80,6 +80,4 @@ For a maintainer-oriented page list, see [Documentation map](./README.md).
 - Datasets passed as parallel arrays must have equal lengths; a mismatch throws a `RangeError`.
 - Plugins are opt-in so the base chart stays small. Create a new plugin instance for each chart: the stateful built-ins (a11y, annotations, crosshair, flame graph, navigator, selection) throw if one instance is installed on a second chart.
 - Dense line and bar views use level-of-detail extraction by default; use `downsample: "none"` only when the visible point count is bounded.
-- `fitToData()` is an explicit fit/reset operation (a chart with no viewport set already shows all its data). For live charts, use `followX` and `autoFitY` instead of fitting on every sample.
-
-Maintainers should follow the [documentation contribution guide](./documentation-contributions.md) before adding or restructuring docs.
+- `fitToData()` is an explicit fit/reset operation. For live charts, use `followX` and `autoFitY` instead of fitting on every sample.
