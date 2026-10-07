@@ -210,10 +210,14 @@ export function resolveChartTheme(theme: ChartTheme | undefined, context?: Eleme
     : DEFAULT_CHART_THEME.seriesColors;
 
   // RGBA tuples become CSS strings for DOM tokens; background, grid, and series colors are resolved below.
-  const overrides = Object.fromEntries(Object.entries(theme).filter(([, value]) => value !== undefined).map(([key, value]) => [key, Array.isArray(value) ? rgbaCss(value as unknown as RgbaColor) : value]));
+  // One pass over the caller's keys, without the entry arrays a chained `Object.entries` would build.
+  const merged: Record<string, unknown> = { ...DEFAULT_CHART_THEME };
+  for (const key of Object.keys(theme)) {
+    const value = (theme as Record<string, unknown>)[key];
+    if (value !== undefined) merged[key] = Array.isArray(value) ? rgbaCss(value as unknown as RgbaColor) : value;
+  }
   return {
-    ...DEFAULT_CHART_THEME,
-    ...overrides,
+    ...(merged as unknown as ResolvedChartTheme),
     backgroundColor,
     backgroundCssColor: themeColorToCss(theme.backgroundColor, DEFAULT_CHART_THEME.backgroundCssColor),
     gridColor: resolveThemeColor(theme.gridColor, DEFAULT_CHART_THEME.gridColor, context),
