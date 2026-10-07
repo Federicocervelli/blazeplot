@@ -22,11 +22,11 @@ bun add blazeplot
 # or: npm install blazeplot
 ```
 
-Works in Chrome and Edge 93+, Firefox 92+, and Safari 15.4+. WebGL2 is used when available and Canvas 2D otherwise, with nothing to configure (see [Browser support](docs/browser-support.md)). Using React, Vue, Svelte, or an SSR framework? See [Framework integration](docs/framework-integration.md).
+Works in Chrome and Edge 93+, Firefox 92+, and Safari 15.4+. WebGL2 is used when available and Canvas 2D otherwise (see [Browser support](docs/browser-support.md)). Using React, Vue, Svelte, or an SSR framework? See [Framework integration](docs/framework-integration.md).
 
 ## Quick start
 
-A chart needs a sized host element and the `Chart` constructor. Add the optional plugins you want from `blazeplot/plugins/*`.
+A chart needs a sized host element. Add optional plugins from `blazeplot/plugins/*`.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -62,11 +62,11 @@ Measured 2026-10-05 on AMD Ryzen 7 7800X3D 8-Core Processor, AMD Radeon RX 9070 
 
 ## Features
 
-- **WebGL2 rendering with a Canvas 2D fallback.** GPU-accelerated plots by default, falling back to Canvas 2D when WebGL2 is unavailable (`renderer: "auto"`, the default). Axis labels and grid use lightweight DOM layers and DPR-aware sizing.
+- **WebGL2 rendering with a Canvas 2D fallback.** Plots draw on the GPU, or on Canvas 2D when WebGL2 is unavailable (`renderer: "auto"`, the default). Axis labels and grid use DOM layers with DPR-aware sizing.
 - **Many charts on one page.** `renderer: "shared"` draws every chart through one WebGL context, so dashboards are not limited by the browser's per-page context cap.
 - **Series types.** Line, area, scatter, bar, histogram (`addBar` with `HistogramDataset`), OHLC, and candlestick, each with independent data, style (`series.setStyle`), and visibility.
 - **Live and large data.** Streaming ring buffers (including fixed-rate `UniformRingBuffer`), static typed arrays, and a custom dataset contract for remote or procedural sources.
-- **Level-of-detail downsampling.** Min/max extraction keeps dense views accurate and cheap at any zoom; `ServerSampledDataset` renders server-reduced buckets directly.
+- **Level-of-detail downsampling.** Min/max extraction keeps dense views accurate at any zoom; `ServerSampledDataset` renders server-reduced buckets directly.
 - **Plugins.** Legend, tooltip, interactions (pan, zoom, reset, keyboard, touch), annotations, selection, crosshair, navigator, accessibility, and flame graph, built on the same public APIs available to custom plugins. Touch pan is cooperative by default (one finger scrolls the page, two fingers pan and pinch), and `wheelZoom: "modifier"` keeps the wheel for page scrolling.
 - **Accessibility.** Charts are named figures with a generated data summary, focus rings, and forced-colors support; `interactionsPlugin` adds keyboard pan/zoom, and `blazeplot/plugins/a11y` adds a hidden data table and a keyboard inspection cursor. Built-in text can be localized (see [Accessibility](docs/accessibility.md)).
 - **Linked charts.** `blazeplot/linked` synchronizes multi-panel layouts.

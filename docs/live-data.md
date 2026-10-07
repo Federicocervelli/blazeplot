@@ -1,10 +1,10 @@
 # Live data
 
-Use the series object returned by `chart.addLine(...)`, `chart.addOhlc(...)`, and related helpers for live writes. Series APIs update LOD state and wake the default on-demand render loop; direct dataset mutation is advanced and needs `series.markDirty()` afterward.
+Write live data through the series object returned by `chart.addLine(...)`, `chart.addOhlc(...)`, and related helpers. Series APIs update LOD state and wake the default on-demand render loop. Direct dataset mutation needs `series.markDirty()` afterward.
 
 ## Irregular samples
 
-For timestamps or uneven X spacing, create a bounded ring buffer by passing `capacity` and append `{ x, y }` objects or typed-array batches.
+For timestamps or uneven X spacing, pass `capacity` to create a bounded ring buffer, then append `{ x, y }` objects or typed-array batches.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -32,11 +32,11 @@ const valueArray = new Float32Array([0.2, 0.4]);
 series.append({ x: timestampArray, y: valueArray });
 ```
 
-Keep X values sorted in append order. Picking, binary search, and LOD assume sorted logical X values. The chart-owned buffer skips (and counts) a sample whose X is non-finite or lower than the newest one instead of throwing; pass `onInvalidSample` in the series config to observe them. When the buffer is full the oldest samples are dropped; set `overflow: "drop-new"` or `"error"` in the series config for other behavior. See [Data semantics](./data-semantics.md#streaming-skip-count-report).
+Keep X values sorted in append order. Picking, binary search, and LOD assume sorted logical X values. The chart-owned buffer skips (and counts) a sample whose X is non-finite or lower than the newest one instead of throwing; pass `onInvalidSample` in the series config to observe them. When the buffer is full, the oldest samples are dropped; set `overflow: "drop-new"` or `"error"` in the series config for other behavior. See [Data semantics](./data-semantics.md#streaming-skip-count-report).
 
 ## Fixed-rate samples
 
-For signals with constant sample spacing, use the `{ capacity, xStart, xStep }` shorthand. BlazePlot creates an implicit-X `UniformRingBuffer`, so you only append Y values. Passing either `xStart` or `xStep` selects it (`xStart` defaults to 0 and `xStep` to 1), in X data units. A uniform buffer always wraps, so combining the shorthand with `overflow: "drop-new"` or `"error"` throws a `TypeError`.
+For signals with constant sample spacing, use the `{ capacity, xStart, xStep }` shorthand. It creates an implicit-X `UniformRingBuffer`, so you append only Y values. Passing either `xStart` or `xStep` selects it (`xStart` defaults to 0 and `xStep` to 1, in X data units). A uniform buffer always wraps, so combining the shorthand with `overflow: "drop-new"` or `"error"` throws a `TypeError`.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -55,7 +55,7 @@ chart.start();
 series.append({ y: new Float32Array([0.2, 0.4, 0.3]) });
 ```
 
-Use typed arrays for frequent or large batches. Object-row batches are convenient for moderate-rate feeds:
+Use typed arrays for frequent or large batches. Object-row batches suit moderate-rate feeds:
 
 ```ts
 series.append([{ y: 0.2 }, { y: 0.4 }, { y: 0.3 }]);
@@ -83,7 +83,7 @@ series.updateAt(42, { y: correctedValue });
 
 ## Replacing a whole signal
 
-For spectra, waveforms, or any chart that redraws all of its points each frame, keep one series and swap its data instead of removing and re-adding the line. The series keeps its color, legend entry, and hover state.
+For spectra, waveforms, or any chart that redraws all of its points each frame, swap the data of one series instead of removing and re-adding the line. The series keeps its color, legend entry, and hover state.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -101,11 +101,11 @@ function onFrame(next: Float32Array) {
 }
 ```
 
-`replace` adopts the arrays you pass without copying them, so give it a fresh array per frame or stop writing to the old one. If you prefer to reuse one buffer, overwrite it and call `series.markDirty()` instead. Both rebuild the dense min/max index lazily (about 1 ms per frame at one million points) and request a redraw. `ServerSampledDataset` supports the same `series.replace(...)` call for pre-reduced data.
+`replace` adopts the arrays you pass without copying them, so give it a fresh array per frame or stop writing to the old one. To reuse one buffer, overwrite it and call `series.markDirty()` instead. Both rebuild the dense min/max index lazily (about 1 ms per frame at one million points) and request a redraw. `ServerSampledDataset` supports the same `series.replace(...)` call for pre-reduced data.
 
 ## OHLC and candlesticks
 
-Live candle feeds often append a new candle, then update it until the interval closes.
+Append a new candle, then update it until the interval closes.
 
 ```ts
 import { OhlcRingBuffer } from "blazeplot";
@@ -122,7 +122,7 @@ candles.updateAt(0, { open, high, low, close });
 
 ## Following the latest X value
 
-`followX` or `chart.followX(...)` keeps a rolling X window pinned to the newest visible series sample. It is applied during rendering, so it cooperates with the on-demand render loop and built-in interaction plugins.
+`followX` (or `chart.followX(...)`) pins a rolling X window to the newest visible series sample. It is applied during rendering, so it works with the on-demand render loop and the built-in interaction plugins.
 
 ```ts
 chart.followX({
@@ -133,10 +133,10 @@ chart.followX({
 });
 ```
 
-- `window` controls the visible X span.
-- `pauseOnInteraction` lets pan/zoom and box zoom stop live-follow while the user inspects history.
-- `resumeAfterMs` optionally resumes after interaction inactivity.
-- `currentX` is useful for timestamped real-time streams; it lets the viewport move continuously with the clock instead of stepping only when batches arrive.
+- `window` is the visible X span.
+- `pauseOnInteraction` stops live-follow on pan/zoom and box zoom so the user can inspect history.
+- `resumeAfterMs` resumes after that much interaction inactivity.
+- `currentX` moves the viewport continuously with the clock instead of stepping only when batches arrive; use it for timestamped real-time streams.
 - `chart.setFollowXPaused(false)` jumps back to live immediately; `chart.getFollowXState()` returns `"off"`, `"following"`, or `"paused"` for your UI.
 - `chart.stopFollowX()` disables live-follow.
 - With the built-in interactions plugin, double-click/tap reset resumes follow by default. Pass `interactionsPlugin({ resumeFollowOnReset: false })` to keep reset on a historical viewport.
@@ -159,11 +159,11 @@ Plugins pass the source through the viewport API, for example `ctx.viewport.pan(
 
 ### Linked charts and live follow
 
-With `createLinkedCharts`, panels that all use `followX` stay in sync and keep following while data streams: mirrored updates do not pause the receiving panel. Pausing and resuming follow is shared, so a user pan on one panel pauses every following panel, and `setFollowXPaused(false)` on any panel resumes them all.
+With `createLinkedCharts`, panels that all use `followX` stay in sync and keep following while data streams; mirrored updates do not pause the receiving panel. Pause and resume are shared: a user pan on one panel pauses every following panel, and `setFollowXPaused(false)` on any panel resumes them all.
 
 ## Direct dataset mutation
 
-If you intentionally mutate a dataset directly, call `series.markDirty()` afterward:
+After mutating a dataset directly, call `series.markDirty()`:
 
 ```ts
 const batch = new Float32Array([0.2, 0.4, 0.3]);
@@ -172,4 +172,4 @@ dataset.appendY(batch);
 series.markDirty();
 ```
 
-Prefer series APIs unless you are implementing a custom ingestion layer.
+Prefer series APIs unless you are writing a custom ingestion layer.
