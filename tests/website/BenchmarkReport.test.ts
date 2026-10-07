@@ -149,17 +149,16 @@ describe("benchmark report rendering", () => {
 describe("benchmark summary page", () => {
   const winning = report([2, 2.1, 2, 2.05, 2], [4, 4.1, 4.2, 4, 4.1], [2000, 2010, 1990, 2000, 2005], [1000, 1010, 990, 1000, 1000]);
   const losing = report([8, 8.5, 8.2, 8, 8.1], [3, 3.1, 3.2, 3, 3.1], [2000, 2010, 1990, 2000, 2005], [1000, 1010, 990, 1000, 1000]);
+  const lines = (markdown: string): string[] => markdown.split(/\r?\n/u);
 
-  test("is a short page: area counts, one scoreboard row per scenario, and the losses", () => {
+  test("is one short table: no area breakdown, no win counts, no list of losses", () => {
     const markdown = renderSummaryMarkdown(losing, { title: "# Benchmarks" });
     expect(markdown.startsWith("# Benchmarks")).toBe(true);
-    expect(markdown).toContain("BlazePlot is ahead of uPlot on 1, level on 0, and behind on 1");
-    expect(markdown).toContain("| Setup | 1 | 1 behind |");
-    expect(markdown).toContain("| Line | 1 | 1 ahead |");
-    expect(markdown).toContain("## Where uPlot is faster");
-    expect(markdown).toContain("| Static | Ready (ms) |");
-    expect(markdown).not.toContain("## Results by scenario");
-    expect(markdown.split(/\r?\n/u).length).toBeLessThan(60);
+    expect(markdown).toContain("| Scenario | Metric | BlazePlot | uPlot | Chart.js |");
+    expect(markdown).not.toContain("## By area");
+    expect(markdown).not.toContain("ahead of uPlot on");
+    expect(markdown).not.toContain("## Where uPlot is faster");
+    expect(lines(markdown).length).toBeLessThan(25);
   });
 
   test("shows FPS without repeating its unit and links to the full results", () => {
@@ -168,17 +167,15 @@ describe("benchmark summary page", () => {
     expect(markdown).toContain("(./benchmark-results.md)");
   });
 
-  test("says so when uPlot is never clearly ahead", () => {
-    expect(renderSummaryMarkdown(winning)).toContain("never clearly behind uPlot");
+  test("names the scenarios where uPlot is still faster, and only those", () => {
+    expect(renderSummaryMarkdown(losing)).toContain("uPlot is still faster on: static");
+    expect(renderSummaryMarkdown(losing)).not.toContain("faster on: static; pan");
+    expect(renderSummaryMarkdown(winning)).not.toContain("uPlot is still faster");
   });
 
-  test("lists each scenario at most once in the losses table, with its ratio", () => {
-    const withTwoLosses = report([8, 8.5, 8.2, 8, 8.1], [3, 3.1, 3.2, 3, 3.1], [500, 510, 490, 500, 505], [1000, 1010, 990, 1000, 1000]);
-    const lines = renderSummaryMarkdown(withTwoLosses).split(/\r?\n/u);
-    const losses = lines.slice(lines.indexOf("## Where uPlot is faster"), lines.indexOf("## How it was measured"));
-    expect(losses.filter((line) => line.startsWith("| Static |"))).toHaveLength(1);
-    expect(losses.filter((line) => line.startsWith("| Pan |"))).toHaveLength(1);
-    expect(losses.some((line) => line.startsWith("| Static |") && line.endsWith("2.61× |"))).toBe(true);
+  test("bolds the best library in each row", () => {
+    const row = lines(renderSummaryMarkdown(losing)).find((line) => line.startsWith("| Static |"))!;
+    expect(row).toContain("**3.10**");
   });
 });
 
@@ -190,6 +187,12 @@ describe("benchmark config", () => {
       for (const id of scenario.metrics) expect(metricIds).toContain(id);
     }
     expect(new Set(officialConfig.scenarios.map((scenario) => scenario.name)).size).toBe(officialConfig.scenarios.length);
+  });
+
+  test("a handful of scenarios are flagged as the headline ones the summary page shows", () => {
+    const headline = officialConfig.scenarios.filter((scenario) => (scenario as { headline?: boolean }).headline === true);
+    expect(headline.length).toBeGreaterThanOrEqual(5);
+    expect(headline.length).toBeLessThanOrEqual(9);
   });
 
   test("every scenario has a short label for the summary page", () => {

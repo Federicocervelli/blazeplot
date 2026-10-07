@@ -459,149 +459,79 @@ function shortBrowser(product) {
   return match ? `${match[1]} ${match[2]}` : String(product ?? "unknown browser");
 }
 
-/** How a pipeline stands against uPlot on a scenario's headline metric. */
-function standing(report, scenario, pipelineId) {
-  const def = metricDef(report, scenario.primary);
-  const subject = metricOf(scenario, pipelineId, scenario.primary);
-  const reference = metricOf(scenario, "uplot", scenario.primary);
-  if (!subject || !reference) return null;
-  const verdict = compareMetric(subject, reference, def, report.noiseFloor ?? 0.05).verdict;
-  return verdict === "win" ? "ahead" : verdict === "loss" ? "behind" : "level";
-}
-
-/** "5 ahead, 1 level" (zero counts omitted). */
-function standingText(counts) {
-  const parts = ["ahead", "level", "behind"].filter((key) => counts[key] > 0).map((key) => `${counts[key]} ${key}`);
-  return parts.length > 0 ? parts.join(", ") : "—";
-}
-
-function standingCounts(report, scenarios, pipelineId) {
-  const counts = { ahead: 0, level: 0, behind: 0 };
-  for (const scenario of scenarios) {
-    const result = standing(report, scenario, pipelineId);
-    if (result) counts[result]++;
-  }
-  return counts;
-}
-
 /** "Ready (ms)", or just "FPS" when the unit repeats the name. */
 function metricHeading(def) {
   return def.short.toLowerCase() === def.unit.toLowerCase() ? def.short : `${def.short} (${def.unit})`;
 }
 
-/** One row per scenario: the metric where uPlot is furthest ahead of any pipeline, worst first. */
-function worstLossPerScenario(report, pipelineIds) {
-  const worst = new Map();
-  for (const pipelineId of pipelineIds) {
-    for (const entry of collectNonWins(report, pipelineId, ["uplot"])) {
-      if (entry.verdict !== "loss") continue;
-      const known = worst.get(entry.scenario.name);
-      if (!known || entry.advantage < known.advantage) worst.set(entry.scenario.name, entry);
-    }
-  }
-  return [...worst.values()].sort((a, b) => a.advantage - b.advantage);
-}
+/** Short labels and headline flags from the official config, for results written before scenarios carried them. */
+let configInfo = null;
 
-/** Short scenario names from the official config, for results written before scenarios carried a `label`. */
-let configLabels = null;
-
-function scenarioLabel(scenario) {
-  if (scenario.label) return scenario.label;
-  if (!configLabels) {
-    configLabels = new Map();
+function scenarioInfo(scenario) {
+  if (!configInfo) {
+    configInfo = new Map();
     try {
       const config = JSON.parse(readFileSync(new URL("./benchmark-config.json", import.meta.url), "utf8"));
-      for (const entry of config.scenarios ?? []) if (entry.label) configLabels.set(entry.name, entry.label);
+      for (const entry of config.scenarios ?? []) configInfo.set(entry.name, entry);
     } catch {
-      // Without the config the full scenario title is used.
+      // Without the config, full titles are used and every scenario is shown.
     }
   }
-  return configLabels.get(scenario.name) ?? scenario.title;
+  const known = configInfo.get(scenario.name);
+  return { label: scenario.label ?? known?.label ?? scenario.title, headline: (scenario.headline ?? known?.headline) === true };
+}
+
+/** The scenarios where uPlot is clearly faster than either BlazePlot engine, in the order given. */
+function uplotLeads(report, scenarios, pipelineIds) {
+  const names = new Set();
+  for (const pipelineId of pipelineIds) {
+    for (const entry of collectNonWins(report, pipelineId, ["uplot"])) {
+      if (entry.verdict === "loss" && scenarios.includes(entry.scenario) && entry.metricId === entry.scenario.primary) names.add(entry.scenario.name);
+    }
+  }
+  return scenarios.filter((scenario) => names.has(scenario.name));
 }
 
 /**
- * Short, readable benchmark page: where BlazePlot stands by area, one headline number per scenario, the
- * metrics where uPlot is clearly faster, and how the numbers were measured. The per-metric detail lives in
- * `renderReportMarkdown` (docs/benchmark-results.md).
+ * Short benchmark page: the handful of scenarios people care most about (flagged `headline` in
+ * benchmark-config.json) as one table, with a line on where uPlot is still faster. Every metric of every
+ * scenario is in `renderReportMarkdown` (docs/benchmark-results.md).
  */
 export function renderSummaryMarkdown(report, options = {}) {
   const page = report.environment?.page;
   const machine = report.environment?.machine;
-  const runs = report.options?.runs ?? "?";
   const pipelines = [PRIMARY_LIBRARY, CANVAS_LIBRARY].filter((id) => report.libraries?.[id]);
-  const webgl = libraryName(report, PRIMARY_LIBRARY);
-  const total = standingCounts(report, report.scenarios, PRIMARY_LIBRARY);
+  const libs = [...pipelines, "uplot", "chartjs"].filter((id) => report.libraries?.[id]);
+  const featured = report.scenarios.filter((scenario) => scenarioInfo(scenario).headline);
+  const shown = featured.length > 0 ? featured : report.scenarios;
+  const cpu = String(machine?.cpuModel ?? "unknown CPU").replace(/\s+\d+-Core Processor/, "").trim();
   const lines = [
     options.title ?? "# Benchmarks",
     "",
-    `BlazePlot against uPlot and Chart.js on identical data, in a real browser on a real GPU. Every number is the median of ${runs} fresh-page runs. BlazePlot is measured on both of its rendering engines, WebGL2 and Canvas 2D.`,
+    `BlazePlot against uPlot and Chart.js on the same data in ${shortBrowser(report.environment?.browser?.product ?? page?.userAgent)}, on ${cpu} and ${shortGpu(page?.webglRenderer)}. Each number is the median of ${report.options?.runs ?? "?"} fresh-page runs, and BlazePlot is shown on both of its rendering engines. Lower is better, except for FPS.`,
     "",
-    `Across ${report.scenarios.length} scenarios, ${webgl} is ahead of uPlot on ${total.ahead}, level on ${total.level}, and behind on ${total.behind}, judged on each scenario's headline metric.`,
-    "",
-    "## By area",
-    "",
-    row(["Area", "Scenarios", ...pipelines.map((id) => `${libraryName(report, id)} vs uPlot`)]),
-    `|---|---:|${pipelines.map(() => "---").join("|")}|`,
+    row(["Scenario", "Metric", ...libs.map((id) => libraryName(report, id))]),
+    `|---|---|${libs.map(() => "---:").join("|")}|`,
   ];
-  const groups = [...new Set(report.scenarios.map((scenario) => scenario.group))];
-  for (const group of groups) {
-    const scenarios = report.scenarios.filter((scenario) => scenario.group === group);
-    lines.push(row([group, String(scenarios.length), ...pipelines.map((id) => standingText(standingCounts(report, scenarios, id)))]));
-  }
-
-  const libs = [...pipelines, "uplot", "chartjs"].filter((id) => report.libraries?.[id]);
-  lines.push(
-    "",
-    "## Scoreboard",
-    "",
-    `The headline metric of each scenario. Lower is better, except FPS and the append rate. Bold is the best of ${[webgl, libraryName(report, "uplot"), libraryName(report, "chartjs")].join(", ")}; the last column is how many times better (above 1.00×) or worse (below) ${webgl} is than uPlot.`,
-    "",
-    row(["Scenario", "Metric", ...libs.map((id) => libraryName(report, id)), "vs uPlot"]),
-    `|---|---|${libs.map(() => "---:").join("|")}|---:|`,
-  );
-  for (const scenario of report.scenarios) {
+  for (const scenario of shown) {
     const def = metricDef(report, scenario.primary);
-    const [vsUplot] = ratioCells(report, scenario, scenario.primary);
     lines.push(row([
-      scenarioLabel(scenario),
+      scenarioInfo(scenario).label,
       metricHeading(def),
       ...libs.map((id) => cell(def, metricOf(scenario, id, scenario.primary), boldFor(report, scenario, scenario.primary, id))),
-      vsUplot,
     ]));
   }
 
-  lines.push("", "## Where uPlot is faster", "");
-  const losses = worstLossPerScenario(report, pipelines);
-  if (losses.length === 0) {
-    lines.push("BlazePlot is never clearly behind uPlot on any measured metric.");
+  const behind = uplotLeads(report, shown, pipelines);
+  lines.push("");
+  if (behind.length > 0) {
+    lines.push(`Bold is the best of ${libraryName(report, PRIMARY_LIBRARY)}, uPlot and Chart.js. uPlot is still faster on: ${behind.map((scenario) => scenarioInfo(scenario).label.replace(/^./, (letter) => letter.toLowerCase())).join("; ")}.`);
   } else {
-    lines.push(
-      "One row per scenario: the metric where uPlot is furthest ahead of either BlazePlot engine. Differences inside the noise are not listed; every metric is on the [results page](./benchmark-results.md).",
-      "",
-      row(["Scenario", "Metric", ...pipelines.map((id) => libraryName(report, id)), "uPlot", "uPlot is"]),
-      `|---|---|${pipelines.map(() => "---:").join("|")}|---:|---:|`,
-    );
-    for (const entry of losses) {
-      lines.push(row([
-        scenarioLabel(entry.scenario),
-        `${entry.def.short} (${entry.def.unit})`,
-        ...pipelines.map((id) => cell(entry.def, metricOf(entry.scenario, id, entry.metricId), false)),
-        formatValue(entry.def, entry.reference.median),
-        formatRatio(1 / entry.advantage),
-      ]));
-    }
+    lines.push(`Bold is the best of ${libraryName(report, PRIMARY_LIBRARY)}, uPlot and Chart.js.`);
   }
-
   lines.push(
     "",
-    "## How it was measured",
-    "",
-    `- **Setup:** ${shortBrowser(report.environment?.browser?.product ?? page?.userAgent)} on ${String(machine?.cpuModel ?? "unknown CPU").replace(/\s+\d+-Core Processor/, "").trim()}, ${shortGpu(page?.webglRenderer)}, a ${report.options?.width ?? "?"}×${report.options?.height ?? "?"} px chart, ${report.generatedAt.slice(0, 10)}.`,
-    "- **Fair inputs:** every library gets the same data, 1 px lines, no grid, and the same plot rectangle.",
-    "- **Fresh pages:** each sample is one new browser page measuring one scenario and one library, warmed up and then garbage-collected. Libraries run interleaved so none always goes first.",
-    "- **What the numbers mean:** *Ready* is construction to the first drawn frame. *FPS* is the real frame cadence with the browser's frame-rate limit off. *Work* is the time spent in the library's own update and frame callbacks.",
-    "",
-    "Every metric with p95 and spread, the change since the baseline, and the full method are on [Benchmark results](./benchmark-results.md). Reproduce with `bun run bench:compare`.",
+    `All ${report.scenarios.length} scenarios, every metric with p95 and spread, and the full method are on [Benchmark results](./benchmark-results.md). Reproduce with \`bun run bench:compare\`.`,
     "",
   );
   return lines.join("\n");

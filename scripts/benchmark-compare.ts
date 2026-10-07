@@ -73,6 +73,7 @@ interface ScenarioConfig {
   group: string;
   title: string;
   label?: string;
+  headline?: boolean;
   metrics: string[];
   primary: string;
   notes?: string[];
@@ -345,6 +346,7 @@ async function createReport(options: Options, executable: string, browser: Brows
       name,
       title: config.title,
       ...(config.label ? { label: config.label } : {}),
+      ...(config.headline ? { headline: true } : {}),
       group: config.group,
       primary: config.primary,
       metricIds: config.metrics,
