@@ -36,6 +36,7 @@ export interface ScenarioResult {
   name: string;
   title: string;
   label?: string;
+  headline?: boolean;
   group: string;
   primary: string;
   metricIds: string[];
