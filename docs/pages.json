@@ -58,10 +58,18 @@
   {
     "slug": "benchmarks",
     "title": "Benchmarks",
-    "description": "Generated headed-browser comparisons against uPlot and Chart.js.",
+    "description": "How BlazePlot compares with uPlot and Chart.js, at a glance.",
     "sourcePath": "docs/benchmarks.md",
     "section": "Data and performance",
     "order": 65
+  },
+  {
+    "slug": "benchmark-results",
+    "title": "Benchmark results",
+    "description": "Every metric of every benchmark scenario, with spreads and the change since the baseline.",
+    "sourcePath": "docs/benchmark-results.md",
+    "section": "Data and performance",
+    "order": 66
   },
   {
     "slug": "built-in-plugins",

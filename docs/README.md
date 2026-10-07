@@ -34,7 +34,8 @@ These pages are visible on the docs site and should be useful to package users.
 - [Live data](./live-data.md) — streaming appends, fixed-rate shorthand, sample updates, OHLC live candles, and follow-latest behavior.
 - [Data semantics](./data-semantics.md) — sorted X values, gaps, bounds, ring buffers, server-sampled data, picking, and export behavior.
 - [Performance recipes](./performance-recipes.md) — data-shape choices, LOD guidance, streaming patterns, and browser budgets.
-- [Benchmarks](./benchmarks.md) — generated headed-browser comparison tables from the latest publishable local run.
+- [Benchmarks](./benchmarks.md) — short, generated summary of the latest publishable local comparison run.
+- [Benchmark results](./benchmark-results.md) — every metric of every scenario, with spreads, from the same run.
 
 ### UI and extension
 
@@ -74,4 +75,4 @@ These pages are primarily for contributors and release maintainers.
 - Keep plugin usage in `built-in-plugins.md`; custom plugin lifecycle belongs in `plugin-authoring.md`.
 - Keep support promises in `stability.md` (what is stable), `error-handling.md` (what throws or logs), and `versioning-and-migration.md` (versions, TypeScript, deprecation). Do not restate them elsewhere; link instead.
 - Keep maintainer-only process in `documentation-contributions.md` or `docs/internal/*`.
-- Do not hand-edit generated sections in `README.md`, `docs/api-reference.md`, or `docs/benchmarks.md`; run `bun run docs:readme` instead.
+- Do not hand-edit generated sections in `README.md`, `docs/api-reference.md`, `docs/benchmarks.md`, or `docs/benchmark-results.md`; run `bun run docs:readme` instead.

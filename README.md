@@ -57,7 +57,7 @@ The core runtime (`import { Chart } from "blazeplot"`, without optional plugins)
 
 Across 19 scenarios and 154 metric comparisons against uPlot and Chart.js, BlazePlot (WebGL) clearly wins 117, is within noise on 13, and loses 24.
 
-Measured 2026-10-05 on AMD Ryzen 7 7800X3D 8-Core Processor, AMD Radeon RX 9070 (0x00007550) Direct3D11 vs_5_0 ps_5_0, Chrome/153.0.8010.12, 7 fresh-page runs per cell. The per-scenario tables, spreads, and every scenario where BlazePlot does not clearly win are in [docs/benchmarks.md](docs/benchmarks.md). Reproduce with `bun run bench:compare`.
+Measured 2026-10-05 on AMD Ryzen 7 7800X3D 8-Core Processor, AMD Radeon RX 9070 (0x00007550) Direct3D11 vs_5_0 ps_5_0, Chrome/153.0.8010.12, 7 fresh-page runs per cell. A short summary, including where uPlot is faster, is in [docs/benchmarks.md](docs/benchmarks.md); every metric with spreads is in [docs/benchmark-results.md](docs/benchmark-results.md). Reproduce with `bun run bench:compare`.
 <!-- README_PERFORMANCE_END -->
 
 ## Features
@@ -75,7 +75,7 @@ Measured 2026-10-05 on AMD Ryzen 7 7800X3D 8-Core Processor, AMD Radeon RX 9070 
 <!-- README_DOCS_START -->
 ## Documentation
 
-Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](docs/examples.md), [Frameworks](docs/framework-integration.md), [Live data](docs/live-data.md), [Data semantics](docs/data-semantics.md), [Performance](docs/performance-recipes.md), [Benchmarks](docs/benchmarks.md), [Plugins](docs/built-in-plugins.md), [Theme & layout](docs/theming-and-layout.md), [Author plugins](docs/plugin-authoring.md), [Troubleshooting](docs/troubleshooting.md), [Browser](docs/browser-support.md), [Migrating to 1.0](docs/migrating-to-1.0.md), [Migration](docs/versioning-and-migration.md), [Stability](docs/stability.md), [Errors](docs/error-handling.md), [Accessibility](docs/accessibility.md), [Roadmap](docs/roadmap.md).
+Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](docs/examples.md), [Frameworks](docs/framework-integration.md), [Live data](docs/live-data.md), [Data semantics](docs/data-semantics.md), [Performance](docs/performance-recipes.md), [Benchmarks](docs/benchmarks.md), [Benchmark results](docs/benchmark-results.md), [Plugins](docs/built-in-plugins.md), [Theme & layout](docs/theming-and-layout.md), [Author plugins](docs/plugin-authoring.md), [Troubleshooting](docs/troubleshooting.md), [Browser](docs/browser-support.md), [Migrating to 1.0](docs/migrating-to-1.0.md), [Migration](docs/versioning-and-migration.md), [Stability](docs/stability.md), [Errors](docs/error-handling.md), [Accessibility](docs/accessibility.md), [Roadmap](docs/roadmap.md).
 
 ### Package entry points
 

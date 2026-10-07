@@ -35,6 +35,7 @@ export interface LibraryResult {
 export interface ScenarioResult {
   name: string;
   title: string;
+  label?: string;
   group: string;
   primary: string;
   metricIds: string[];
@@ -90,4 +91,5 @@ export function scoreboardLines(report: CompareReport): string[];
 export function nonWinLines(report: CompareReport): string[];
 export function methodologyLines(report: CompareReport, link?: string): string[];
 export function renderReportMarkdown(report: CompareReport, options?: { title?: string; baseline?: CompareReport | null; methodologyLink?: string }): string;
+export function renderSummaryMarkdown(report: CompareReport, options?: { title?: string }): string;
 export function readmeSummaryLines(report: CompareReport): { scoreboard: string[]; summary: string };

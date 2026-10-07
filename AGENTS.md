@@ -119,7 +119,7 @@ Keep this file as a quick operational guide, not the canonical source. When upda
 ## Documentation Rules
 
 - Use `docs/README.md` to decide where a topic belongs before adding or moving docs.
-- Do not hand-edit generated sections in `README.md`, `docs/api-reference.md`, or `docs/benchmarks.md`; run `bun run docs:readme` instead.
+- Do not hand-edit generated sections in `README.md`, `docs/api-reference.md`, `docs/benchmarks.md`, or `docs/benchmark-results.md`; run `bun run docs:readme` instead.
 - Verify documented APIs against source, tests, or generated declarations.
 - Complete docs snippets should include imports and lifecycle cleanup for charts, timers, workers, object URLs, and plugin handles.
 - For docs changes, run the smallest relevant checks from `docs/documentation-contributions.md`; run `bun run pages:build` when website routing/rendering changes.

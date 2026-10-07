@@ -66,9 +66,16 @@ export const DOC_PAGES: readonly DocPage[] = [
   {
     slug: "benchmarks",
     title: "Benchmarks",
-    description: "Generated headed-browser comparisons against uPlot and Chart.js.",
+    description: "How BlazePlot compares with uPlot and Chart.js, at a glance.",
     sourcePath: "docs/benchmarks.md",
     loadMarkdown: () => import("../../docs/benchmarks.md?raw").then((module) => module.default),
+  },
+  {
+    slug: "benchmark-results",
+    title: "Benchmark results",
+    description: "Every metric of every benchmark scenario, with spreads and the change since the baseline.",
+    sourcePath: "docs/benchmark-results.md",
+    loadMarkdown: () => import("../../docs/benchmark-results.md?raw").then((module) => module.default),
   },
   {
     slug: "built-in-plugins",
@@ -172,7 +179,7 @@ export const DOC_PAGES: readonly DocPage[] = [
 
 export const DOC_NAV_SECTIONS: readonly DocNavSection[] = [
   { title: "Start", slugs: ["overview","docs-map","examples","framework-integration"] },
-  { title: "Data and performance", slugs: ["live-data","data-semantics","performance-recipes","benchmarks"] },
+  { title: "Data and performance", slugs: ["live-data","data-semantics","performance-recipes","benchmarks","benchmark-results"] },
   { title: "UI", slugs: ["built-in-plugins","theming-and-layout","plugin-authoring"] },
   { title: "Reference", slugs: ["troubleshooting","browser-support","migrating-to-1.0","versioning-and-migration","stability","error-handling","accessibility","api-reference"] },
 ] as const;
