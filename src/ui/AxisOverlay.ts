@@ -194,8 +194,8 @@ export class AxisOverlay {
     const outside = this.config[axis].position === "outside";
     // Outside Y labels hug the plot-facing edge of their gutter, inside ones the plot edge itself.
     const side = axis === "x" ? (outside ? "top" : "bottom") : (outside === (axis === "y2") ? "left" : "right");
-    el.style.cssText = `position:absolute;pointer-events:none;white-space:nowrap;user-select:none;${side}:4px`;
-    this.styleLabel(el);
+    // One cssText write (a single style parse) carries the constant style and the theme font and color.
+    el.style.cssText = `position:absolute;pointer-events:none;white-space:nowrap;user-select:none;${side}:4px;font:${this.font};color:${this.options.color ?? DEFAULT_CHART_THEME.axisColor}`;
     parent.appendChild(el);
     return { el, text: "", value: NaN, generation: -1, shown: true, pos: NaN, start: 0, end: 0, edge: false, wanted: false };
   }
