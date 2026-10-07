@@ -142,66 +142,100 @@ export class MinMaxTree {
    * through, so the result equals the guarded query. Wider buckets still use the tree.
    */
   bucketExtentsInto(first: number, width: number, count: number, lo: number, hi: number, shift: number, minOut: Float64Array, maxOut: Float64Array): void {
-    const values = this.values;
+    if (this.blockSize * 2 < BUCKET_KEY_RADIX && this.enableBucketCache()) {
+      this.cachedBucketExtents(first, width, count, lo, hi, shift, minOut, maxOut);
+      return;
+    }
     const capacity = this.capacity;
     const scanLimit = this.blockSize * 2;
     const slot = { minY: 0, maxY: 0 };
-    const cached = scanLimit < BUCKET_KEY_RADIX && this.enableBucketCache();
     for (let b = 0; b < count; b++) {
       let s = first + b * width;
       let e = s + width;
       if (s < lo) s = lo;
       if (e > hi) e = hi;
-      let minY = Infinity;
-      let maxY = -Infinity;
+      slot.minY = Infinity;
+      slot.maxY = -Infinity;
+      const length = e - s;
+      if (length > 0) {
+        let p = s + shift;
+        if (p >= capacity) p -= capacity;
+        if (length <= scanLimit && p + length <= capacity) this.scanExtent(p, p + length, slot);
+        else this.queryRingInto(p, length, slot);
+      }
+      minOut[b] = slot.minY;
+      maxOut[b] = slot.maxY;
+    }
+  }
+
+  /** `bucketExtentsInto` once the cache exists: the same buckets, with repeats answered from it. A separate method so charts that never get this far never compile it. */
+  private cachedBucketExtents(first: number, width: number, count: number, lo: number, hi: number, shift: number, minOut: Float64Array, maxOut: Float64Array): void {
+    const capacity = this.capacity;
+    const scanLimit = this.blockSize * 2;
+    const cache = this.bucketCache!;
+    const slot = { minY: 0, maxY: 0 };
+    for (let b = 0; b < count; b++) {
+      let s = first + b * width;
+      let e = s + width;
+      if (s < lo) s = lo;
+      if (e > hi) e = hi;
+      slot.minY = Infinity;
+      slot.maxY = -Infinity;
       const length = e - s;
       if (length > 0) {
         let p = s + shift;
         if (p >= capacity) p -= capacity;
         if (length <= scanLimit && p + length <= capacity) {
-          const stop = p + length;
-          let cache = cached ? this.bucketCache : null;
-          let slot = 0;
-          if (cache !== null && length >= BUCKET_CACHE_MIN_LENGTH) {
-            slot = ((((p / width) | 0) & (BUCKET_CACHE_SLOTS - 1)) << 2);
-            if (cache[slot] === p * BUCKET_KEY_RADIX + length && cache[slot + 1]! >= this.newestWrite(p, stop)) {
-              minOut[b] = cache[slot + 2]!;
-              maxOut[b] = cache[slot + 3]!;
+          if (length >= BUCKET_CACHE_MIN_LENGTH) {
+            const at = ((((p / width) | 0) & (BUCKET_CACHE_SLOTS - 1)) << 2);
+            const key = p * BUCKET_KEY_RADIX + length;
+            if (cache[at] === key && cache[at + 1]! >= this.newestWrite(p, p + length)) {
+              minOut[b] = cache[at + 2]!;
+              maxOut[b] = cache[at + 3]!;
               continue;
             }
+            this.scanExtent(p, p + length, slot);
+            cache[at] = key;
+            cache[at + 1] = this.clock;
+            cache[at + 2] = slot.minY;
+            cache[at + 3] = slot.maxY;
           } else {
-            cache = null;
-          }
-          for (let i = p; i < stop; i++) {
-            const value = values[i]!;
-            if (value < minY) minY = value;
-            if (value > maxY) maxY = value;
-          }
-          if (minY === -Infinity || maxY === Infinity) {
-            minY = Infinity;
-            maxY = -Infinity;
-            for (let i = p; i < stop; i++) {
-              const value = values[i]!;
-              if (!Number.isFinite(value)) continue;
-              if (value < minY) minY = value;
-              if (value > maxY) maxY = value;
-            }
-          }
-          if (cache !== null) {
-            cache[slot] = p * BUCKET_KEY_RADIX + length;
-            cache[slot + 1] = this.clock;
-            cache[slot + 2] = minY;
-            cache[slot + 3] = maxY;
+            this.scanExtent(p, p + length, slot);
           }
         } else {
           this.queryRingInto(p, length, slot);
-          minY = slot.minY;
-          maxY = slot.maxY;
         }
       }
-      minOut[b] = minY;
-      maxOut[b] = maxY;
+      minOut[b] = slot.minY;
+      maxOut[b] = slot.maxY;
     }
+  }
+
+  /**
+   * Y extent of physical `[start, stop)` by scanning, into `out`. No per-sample finite test (a NaN never
+   * compares less or greater); only when an infinity got through is the range read again with the test.
+   */
+  private scanExtent(start: number, stop: number, out: MinMaxOut): void {
+    const values = this.values;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (let i = start; i < stop; i++) {
+      const value = values[i]!;
+      if (value < minY) minY = value;
+      if (value > maxY) maxY = value;
+    }
+    if (minY === -Infinity || maxY === Infinity) {
+      minY = Infinity;
+      maxY = -Infinity;
+      for (let i = start; i < stop; i++) {
+        const value = values[i]!;
+        if (!Number.isFinite(value)) continue;
+        if (value < minY) minY = value;
+        if (value > maxY) maxY = value;
+      }
+    }
+    out.minY = minY;
+    out.maxY = maxY;
   }
 
   /**

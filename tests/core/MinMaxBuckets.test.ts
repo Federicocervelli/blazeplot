@@ -38,6 +38,8 @@ describe("MinMaxTree.bucketExtentsInto bucket cache", () => {
       let shift = 0;
       let length = capacity;
       let cacheHits = 0;
+      // The cache only exists after a tree has served many dense passes.
+      for (let k = 0; k < 520; k++) tree.bucketExtentsInto(0, 25, 1, 0, capacity, 0, minOut, maxOut);
       for (let step = 0; step < 400; step++) {
         const roll = r();
         if (roll < 0.4) {
