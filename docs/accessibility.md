@@ -1,12 +1,12 @@
 # Accessibility
 
-This page states what BlazePlot does for keyboard and assistive-technology users, and what it does not. Charts are drawn on a WebGL canvas, so a screen reader cannot read pixels. BlazePlot exposes the chart through three layers:
+Charts are drawn on a canvas, so a screen reader cannot read pixels. BlazePlot exposes the chart through three layers:
 
-1. **The chart itself** (always on): a named, focusable `figure` with a generated text summary, visible focus rings, and forced-colors (high-contrast) support.
-2. **`blazeplot/plugins/a11y`** (opt in): a visually hidden data table of the visible data, a keyboard inspection cursor that drives the tooltip and crosshair, and an optional live summary for streaming charts.
-3. **Keyboard support in the built-in plugins**: arrow-key pan and zoom (`interactionsPlugin`), legend buttons, the navigator slider, keyboard range selection, and focusable annotations.
+1. The chart itself (always on): a named, focusable `figure` with a generated text summary, visible focus rings, and forced-colors (high-contrast) support.
+2. `blazeplot/plugins/a11y` (opt in): a visually hidden data table of the visible data, a keyboard inspection cursor that drives the tooltip and crosshair, and an optional live summary for streaming charts.
+3. Keyboard support in the built-in plugins: arrow-key pan and zoom (`interactionsPlugin`), legend buttons, the navigator slider, keyboard range selection, and focusable annotations.
 
-Everything below is checked against the source in `src/ui/` and `src/plugins/` and verified by unit tests in `tests/ui/`, keyboard-only browser tests (`bun run test:interaction`), automated axe-core checks of every built-in plugin (`bun run test:a11y`, which fails on serious or critical violations), and an automated forced-colors check in headless Chrome (`bun run test:forced-colors`, part of `bun run test:interaction`). BlazePlot has not been tested manually with screen readers. Nothing here is a claim of conformance with WCAG or any other standard: BlazePlot has not been audited against one.
+The behavior below is covered by unit tests in `tests/ui/`, keyboard-only browser tests (`bun run test:interaction`), automated axe-core checks of every built-in plugin (`bun run test:a11y`, which fails on serious or critical violations), and an automated forced-colors check in headless Chrome (`bun run test:forced-colors`, part of `bun run test:interaction`). BlazePlot has not been tested manually with screen readers. Nothing here is a claim of conformance with WCAG or any other standard: BlazePlot has not been audited against one.
 
 ## What the chart provides
 
@@ -40,15 +40,15 @@ chart.start();
 // Call chart.dispose() when the element is removed.
 ```
 
-Always set a meaningful label. A default of `"BlazePlot chart"` tells a screen-reader user nothing about the data.
+Always set a label: the default `"BlazePlot chart"` tells a screen-reader user nothing about the data.
 
 ## The accessibility plugin
 
-`a11yPlugin` from `blazeplot/plugins/a11y` adds what the core keeps out to stay small:
+`a11yPlugin` from `blazeplot/plugins/a11y` adds what the core leaves out:
 
-- **Data table.** A visually hidden `<table>` per visible series with a caption (`"CPU: 100 points, evenly sampled from 4,812 visible points"`), column headers, and the X value as each row's header. Rows come from the visible range, evenly sampled down to `table.maxRows` (default 100, first and last point always kept). The table follows the viewport and data, rebuilt at most every `table.updateMs` (default 500 ms) and only when something changed. OHLC and candlestick series list open, high, low, and close.
-- **Inspection cursor.** With the chart root focused, Enter starts a keyboard cursor on the sample nearest the plot center. Each move is announced through a polite live region (`"CPU: x 12:00:05, y 45.2. Point 13 of 100."`), and the tooltip and crosshair plugins render at the inspected sample. Moving past the edge of the plot scrolls the viewport. Moving the mouse over the plot, Escape, or moving focus away ends it.
-- **Live summary** (opt in). `live: { intervalMs }` announces the latest value of each visible series through a polite live region at most every `intervalMs` (default 10 s, minimum 1 s), only when the text changed, and not while inspecting.
+- Data table: a visually hidden `<table>` per visible series with a caption (`"CPU: 100 points, evenly sampled from 4,812 visible points"`), column headers, and the X value as each row's header. Rows come from the visible range, evenly sampled down to `table.maxRows` (default 100, first and last point always kept). The table follows the viewport and data, rebuilt at most every `table.updateMs` (default 500 ms) and only when something changed. OHLC and candlestick series list open, high, low, and close.
+- Inspection cursor: with the chart root focused, Enter starts a keyboard cursor on the sample nearest the plot center. Each move is announced through a polite live region (`"CPU: x 12:00:05, y 45.2. Point 13 of 100."`), and the tooltip and crosshair plugins render at the inspected sample. Moving past the edge of the plot scrolls the viewport. Moving the mouse over the plot, Escape, or moving focus away ends it.
+- Live summary (opt in): `live: { intervalMs }` announces the latest value of each visible series through a polite live region at most every `intervalMs` (default 10 s, minimum 1 s), only when the text changed, and not while inspecting.
 
 Values are formatted like the axis labels (time, categorical, and custom tick formats included). Override with `formatX`, `formatY`, and `formatAnnouncement`.
 
@@ -80,7 +80,7 @@ The inspection cursor uses `ctx.state.inspect(...)` from the stable plugin contr
 
 ## Key map
 
-All chart keys work while the **chart root itself** has focus (Tab to it). Keys typed in a control inside the chart (a legend button, an annotation, the navigator, an `input`) are handled by that control. Keys with Alt, Ctrl, or Meta held are ignored, and a key is only prevented from its default browser action when it was handled.
+All chart keys work while the chart root itself has focus (Tab to it). Keys typed in a control inside the chart (a legend button, an annotation, the navigator, an `input`) are handled by that control. Keys with Alt, Ctrl, or Meta held are ignored, and a key is only prevented from its default browser action when it was handled.
 
 ### Navigation mode (default)
 
@@ -150,7 +150,7 @@ Keyboard pan and zoom pass through `ViewportPolicy.beforePan` and `beforeZoom`, 
 
 ## Localization
 
-Every user-facing string can be replaced, so a non-English app can ship a fully localized chart. Each piece takes an object of strings and small formatter functions; only the keys you pass change.
+Every user-facing string can be replaced. Each piece takes an object of strings and small formatter functions; only the keys you pass change.
 
 - Core: `accessibility: { locale, messages: { defaultLabel, summary } }` (the generated summary, see `ChartSummaryMessages`).
 - `a11yPlugin({ locale, messages })`: keyboard instructions, table captions and headers, inspection announcements, and the live summary (`A11yMessages`).
@@ -160,7 +160,7 @@ Every user-facing string can be replaced, so a non-English app can ship a fully 
 - `annotationsPlugin({ messages })`: the `aria-roledescription` and the generated names of annotations without `ariaLabel` or label text (`AnnotationsMessages`).
 - `interactionsPlugin({ messages })`: the cooperative-gesture hints (`InteractionsMessages`); `gestureHint: { wheelText, touchText }` still wins when set.
 
-Counts use `Intl.NumberFormat` semantics for `locale` (default `"en-US"`). Axis tick text is formatted by your `tickFormat`; time ticks use English month and weekday names unless you format them yourself. Text you supply (series names, titles, annotation labels and `ariaLabel`) is shown as given. The default crosshair readout (`x ... y ...` when no series is picked) and the tooltip rows are built from your formatters and series names; use `crosshairPlugin({ render, formatter })` and `tooltipPlugin({ formatter })` to control their wording. Every other string BlazePlot generates is listed above, so with those messages set no English remains in the chart.
+Counts use `Intl.NumberFormat` semantics for `locale` (default `"en-US"`). Axis tick text is formatted by your `tickFormat`; time ticks use English month and weekday names unless you format them yourself. Text you supply (series names, titles, annotation labels and `ariaLabel`) is shown as given. The default crosshair readout (`x ... y ...` when no series is picked) and the tooltip rows are built from your formatters and series names; use `crosshairPlugin({ render, formatter })` and `tooltipPlugin({ formatter })` to control their wording. With those messages set, no English remains in the chart.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -192,14 +192,14 @@ In forced-colors mode the chart follows the OS palette as described above. The f
 
 ## What BlazePlot does not provide
 
-- **No sonification or non-color series encoding.** Series are told apart by color and legend labels. Choose palette colors that stay distinct for color-vision differences and set `style.color` explicitly for critical series.
-- **No reduced-motion switch.** BlazePlot runs no CSS transitions. Live charts update as data arrives; pause the feed or call `chart.setFollowXPaused(true)` if motion is a problem for your users.
-- **Live data under the inspection cursor.** The cursor holds a logical sample index. On a wrapping ring buffer at capacity, new data shifts which sample that index points at; the announcement updates on the next key press.
-- **Linked charts** use the same defaults per panel. Set a label for each panel with `panels: [{ options: { accessibility: { label: "..." } } }]`, and add `a11yPlugin()` through `panelPlugins` where needed.
+- No sonification or non-color series encoding. Series are told apart by color and legend labels. Choose palette colors that stay distinct for color-vision differences and set `style.color` explicitly for critical series.
+- No reduced-motion switch. BlazePlot runs no CSS transitions. Live charts update as data arrives; pause the feed or call `chart.setFollowXPaused(true)` if motion is a problem for your users.
+- Live data under the inspection cursor: the cursor holds a logical sample index. On a wrapping ring buffer at capacity, new data shifts which sample that index points at; the announcement updates on the next key press.
+- Linked charts use the same defaults per panel. Set a label for each panel with `panels: [{ options: { accessibility: { label: "..." } } }]`, and add `a11yPlugin()` through `panelPlugins` where needed.
 
 ## Testing with a screen reader
 
-Automated checks cannot tell whether announcements make sense, so test your own charts with a screen reader before relying on them. Contributors can run the same steps against the website previews and the `a11y` interaction fixture (`bun run fixtures:dev`, then `/interaction/?case=a11y`). Note the browser and screen reader versions when you report a problem.
+Automated checks cannot tell whether announcements make sense, so test your own charts with a screen reader. Contributors can run the same steps against the website previews and the `a11y` interaction fixture (`bun run fixtures:dev`, then `/interaction/?case=a11y`). Note the browser and screen reader versions when you report a problem.
 
 Common combinations: NVDA with Firefox or Chrome on Windows; VoiceOver with Safari on macOS.
 
@@ -224,4 +224,4 @@ Common combinations: NVDA with Firefox or Chrome on Windows; VoiceOver with Safa
 
 ## Stability
 
-The roles, ARIA attributes, key map, the `accessibility` options, and `blazeplot/plugins/a11y` with its documented options are part of the stable surface described in [API stability](./stability.md). Wording of generated summaries and announcements is not; it may improve in minor releases (pass `description` or `formatAnnouncement` to control it). Additional accessibility features can be added in minor releases.
+The roles, ARIA attributes, key map, the `accessibility` options, and `blazeplot/plugins/a11y` with its documented options are part of the stable surface described in [API stability](./stability.md). Wording of generated summaries and announcements is not; it may improve in minor releases (pass `description` or `formatAnnouncement` to control it). Minor releases can add accessibility features.
