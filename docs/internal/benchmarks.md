@@ -14,9 +14,9 @@ bun run bench:report --scenario mixed-1m-live --measure-ms 5000
 
 By default this appends to `docs/internal/benchmark-results.md`. Use `--out-md path/to/file.md` to write elsewhere, and pass comma-separated scenarios such as `--scenario mixed-1m-live,line-5m-static`.
 
-The harness starts Vite, opens `/bench/` in headless Chrome/Chromium, waits for the chart scene to load and warm up, starts the Chrome CPU profiler, runs the scenario, then prints a JSON report. The report includes chart/RAF FPS summaries, frame timing, draw/upload stats, Chrome performance metrics, and a top-N bottom-up CPU profile table.
+The harness starts Vite, opens `/bench/` in headless Chrome/Chromium, waits for the chart scene to load and warm up, starts the Chrome CPU profiler, runs the scenario, then prints a JSON report: chart/RAF FPS summaries, frame timing, draw/upload stats, Chrome performance metrics, and a top-N bottom-up CPU profile table.
 
-Useful options:
+Options:
 
 ```sh
 bun run bench -- --help
@@ -37,7 +37,7 @@ Built-in scenarios live in `tests/browser/bench/main.ts`:
 - `mixed-1m-live` (default): line + scatter + bars with live appends.
 - `mixed-1m-hover` and `mixed-1m-pan`: the same scene without live appends, with synthetic pointer hover (`mixed-1m-hover`) or automated panning (`mixed-1m-pan`).
 - `line-5m-static`: static downsampled line scene.
-- `mixed-10m-live`: heavier version of the preview-style mixed live scene.
+- `mixed-10m-live`: the preview-style mixed live scene at 10M samples.
 - `line-1b-procedural`: billion-point line stress test backed by a procedural dataset, kept out of the interactive preview.
 - `flamechart-360k-pan`: flame chart scene (75,000 stacks) panning through the flame graph plugin.
 - `many-series-100x20k-pan`: 100 line series of 20k samples each, panned; per-series LOD, upload, and draw overhead dominates.
@@ -47,11 +47,11 @@ Built-in scenarios live in `tests/browser/bench/main.ts`:
 
 For many small charts on one page (one WebGL context per chart, a shared context, Canvas 2D), use `bun run bench:multi [--charts 50] [--renderers webgl2,shared,canvas2d] [--measure-ms 4000]`; for the public library comparison use `bun run bench:compare` (see [Release and benchmark notes](../release-and-benchmarks.md)).
 
-The benchmark page exposes `window.__blazeplotBench` for automation. It does not start measurement until the harness calls `start()`, so the emitted CPU profile covers only the measured interval rather than initial data loading.
+The benchmark page exposes `window.__blazeplotBench` for automation. Measurement starts when the harness calls `start()`, so the CPU profile covers only the measured interval, not initial data loading.
 
 ## Library comparison methodology
 
-`bun run bench:compare` is the public BlazePlot, uPlot and Chart.js comparison. This section is the contract for what it measures and why the numbers are fair. Collect publishable numbers with `BLAZEPLOT_REAL_GPU=1 BLAZEPLOT_BENCH_CHROME=/path/to/chrome bun run bench:compare` on the official machine (see [Local development](./local-development.md#browser-backed-checks)); the generated report is [docs/benchmarks.md](../benchmarks.md).
+`bun run bench:compare` is the public BlazePlot, uPlot and Chart.js comparison. This section defines what it measures and the fairness rules. Collect publishable numbers with `BLAZEPLOT_REAL_GPU=1 BLAZEPLOT_BENCH_CHROME=/path/to/chrome bun run bench:compare` on the official machine (see [Local development](./local-development.md#browser-backed-checks)); the generated report is [docs/benchmarks.md](../benchmarks.md).
 
 ### How a sample is taken
 
@@ -72,7 +72,7 @@ The benchmark page exposes `window.__blazeplotBench` for automation. It does not
 
 ### What each metric means
 
-- **Ready** (`readyMs`) is library construction through the end of the first frame in which the chart's content has been drawn, including layout, axes and first paint. A library that draws synchronously in its constructor (uPlot, Chart.js) is timed through the next frame boundary; BlazePlot draws in its first animation frame and is timed through the frame that drew it. The frame boundary is an animation frame followed by a task, which runs after that frame's style, layout and paint work. `constructMs` is the synchronous constructor call alone, and the JSON details keep `presentWaitMs` (end of constructor to produced frame), so ready = construct + present wait for every library. Differences of about a millisecond or less between libraries sit at the animation-frame wait floor of the machine (roughly 2 to 3 ms here) and are noise, not wins or losses.
+- **Ready** (`readyMs`) is library construction through the end of the first frame in which the chart's content has been drawn, including layout, axes and first paint. A library that draws synchronously in its constructor (uPlot, Chart.js) is timed through the next frame boundary; BlazePlot draws in its first animation frame and is timed through the frame that drew it. The frame boundary is an animation frame followed by a task, which runs after that frame's style, layout and paint work. `constructMs` is the synchronous constructor call alone, and the JSON details keep `presentWaitMs` (end of constructor to produced frame), so ready = construct + present wait for every library. Differences of about a millisecond or less between libraries sit at the machine's animation-frame wait floor (roughly 2 to 3 ms here) and are noise, not wins or losses.
 - **Frame cost** (`workP50Ms`, `workP95Ms`) is, per update, the synchronous update/redraw call plus the time the library spends inside its own `requestAnimationFrame` callbacks (the harness wraps `requestAnimationFrame` before any library loads). That charges a library that redraws immediately (uPlot, Chart.js) and one that defers to its next frame (BlazePlot) identically. BlazePlot's own `frameMs` is kept in the details as `internalFrameP50Ms` and is not used for comparison. GPU execution time is not in this number.
 - **FPS and frame interval** (`rafFps`, `rafP95Ms`) are the browser's real animation-frame cadence with the frame-rate limit disabled, so they also reflect raster and GPU back-pressure. This is the end-to-end number; frame cost is its main-thread part.
 - **Hover latency** dispatches `pointerover`, `pointerenter`, `mouseover` and `mouseenter` once, then one `pointermove` followed by a `mousemove` per sample on the element under the point (`document.elementFromPoint`), and measures from just before the dispatch until the end of the next produced frame. `hoverP50Ms` is over 300 moves after 60 discarded ones.
@@ -107,7 +107,7 @@ bun run bench:compare -- --aggregate-only benchmarks/latest-runs.jsonl
 
 ### Hover fairness
 
-The measured thing is the same for every library: a synthetic `pointermove` plus `mousemove` on the element under the point, until the end of the next produced frame. What each library must show in that frame differs, so the scenario states a feature set and every library is configured to exactly that, no more:
+The measured thing is the same for every library: a synthetic `pointermove` plus `mousemove` on the element under the point, until the end of the next produced frame. What each library must show in that frame differs, so each scenario states a feature set and every library is configured to exactly that:
 
 - **`hover-1m` (feature-equivalent, the published hover number).** Cursor lines, one point marker on the nearest sample, and one value readout. BlazePlot: `crosshairPlugin({ label: false })` (free-following lines) plus `tooltipPlugin()` (marker and readout). uPlot: the default cursor (lines and per-series point) plus the live legend (value readout). Chart.js: the nearest-point tooltip with a 3 px hover point. Chart.js has no cursor lines, so it does less work than the others and a Chart.js win here is partly that.
 - **`hover-1m-rich` (BlazePlot heavier, clearly labelled).** The earlier configuration: BlazePlot also shows the crosshair's own coordinate label next to the tooltip's readout, a second readout that neither uPlot nor Chart.js draws. uPlot and Chart.js are identical to `hover-1m`. It exists to show what the extra label costs; do not read it as a like for like comparison.
@@ -116,7 +116,7 @@ Before this split `hover-1m` used the rich configuration, so the baseline's `hov
 
 ### Lifecycle and setup fairness
 
-Checked in both directions; things that are not apples to apples:
+Checked in both directions. These are not apples to apples:
 
 - **Warm WebGL pool (favours BlazePlot, only where intended).** A disposed BlazePlot WebGL chart parks its canvas, context and compiled programs for 2 s so the next chart can reuse them. In `mount-destroy-cycle` and `many-charts-50` that is the behaviour under test (a page that mounts and unmounts charts), the 40 cycles run well inside the hold window, so after the first cycle BlazePlot never creates a context while uPlot and Chart.js create a canvas each cycle (cheap for them). Every other scenario releases the pool (`releaseWarm()`, after the discarded setup runs) before the measured chart so context creation and program compilation are in BlazePlot's "ready" like canvas creation is in the others; `cold-first-chart` is the no-pool, no-JIT-warmup case. The 2 s hold itself is outside every timed region: the release timer fires after the cycle loop (or the page) has ended, so its cost (and the `WEBGL_lose_context` call) is not counted, in BlazePlot's favour. A real page pays it on the main thread once, 2 s after the last chart is disposed.
 - **Destroy is not equivalent.** BlazePlot `dispose()` deletes GPU buffers and programs (or parks them) and detaches listeners and overlays; uPlot `destroy()` removes listeners and its root element; Chart.js `destroy()` removes listeners and resets the canvas. The canvas libraries leave their backing store to the garbage collector, which is not timed, so `destroyMs` and the cycle time exclude that for them. GPU and canvas backing memory is in no library's heap number.
@@ -126,7 +126,7 @@ Checked in both directions; things that are not apples to apples:
 
 ### Fairness fixes over the earlier single-page harness
 
-The first version of the comparison ran every library and scenario one after another inside a single page, once, from the Vite dev server. This version fixes what that made unfair or unrepresentative, in either direction:
+The first version ran every library and scenario one after another in a single page, once, from the Vite dev server. The current harness fixes what that made unfair or unrepresentative, in either direction:
 
 - **Single run, shared page.** Results were one sample each and later libraries inherited earlier libraries' heap, GC state and GPU state. Now each sample is a fresh browser context and the report uses medians over runs with a rotating library order.
 - **Mismatched work measure.** BlazePlot's "work" was its internal `frameMs`, which excludes the `append`/`setViewport` call made before the frame, while uPlot and Chart.js were charged for their whole synchronous redraw. Now every library is charged the update call plus its own animation-frame callbacks.
@@ -139,4 +139,4 @@ The first version of the comparison ran every library and scenario one after ano
 
 ## A/B comparison of two checkouts
 
-`bun run bench:ab --a <baseline checkout> --b <candidate checkout> --scenarios hover-1m,line-1m-pan` answers "did this change make BlazePlot faster or slower" without trusting two separate runs on a drifting machine. It runs `benchmark-compare` headless on the real GPU, alternating the two checkouts round by round (default 2 rounds x 3 runs), pools the runs, and prints each metric with the direction-adjusted ratio (above 1.00 means B is better), a Mann-Whitney p-value, and a verdict that needs both p < 0.01 and a 2% effect. `--control` adds uPlot on both sides as a drift check (its ratio should be about 1.00). `--core` runs the seven scenarios worth checking on every change (sustained pan and stream, dual-axis, multi-series, hover, 1M static load, mount/destroy) and reports only the metrics they are judged on plus the memory rows (`--metrics` or `--all-metrics` to change that); the default libraries are the two BlazePlot pipelines. `--fast` shortens the pan and stream windows to roughly halve the time per page: verdicts between two checkouts hold, absolute numbers do not. It holds the GPU lock (`~/bench.lock`, or `BLAZEPLOT_BENCH_LOCK`) for the whole run so concurrent comparisons never overlap. Set `BLAZEPLOT_BENCH_CHROME` to a Chrome executable if it cannot find the cached Puppeteer one. It is a development aid, not part of CI, and its numbers are not publishable.
+`bun run bench:ab --a <baseline checkout> --b <candidate checkout> --scenarios hover-1m,line-1m-pan` compares BlazePlot's speed between two checkouts without relying on two separate runs on a drifting machine. It runs `benchmark-compare` headless on the real GPU, alternating the two checkouts round by round (default 2 rounds x 3 runs), pools the runs, and prints each metric with the direction-adjusted ratio (above 1.00 means B is better), a Mann-Whitney p-value, and a verdict that needs both p < 0.01 and a 2% effect. `--control` adds uPlot on both sides as a drift check (its ratio should be about 1.00). `--core` runs the seven scenarios worth checking on every change (sustained pan and stream, dual-axis, multi-series, hover, 1M static load, mount/destroy) and reports only the metrics they are judged on plus the memory rows (`--metrics` or `--all-metrics` to change that); the default libraries are the two BlazePlot pipelines. `--fast` shortens the pan and stream windows to roughly halve the time per page: verdicts between two checkouts hold, absolute numbers do not. It holds the GPU lock (`~/bench.lock`, or `BLAZEPLOT_BENCH_LOCK`) for the whole run so concurrent comparisons never overlap. Set `BLAZEPLOT_BENCH_CHROME` to a Chrome executable if it cannot find the cached Puppeteer one. It is a development aid, not part of CI; its numbers are not publishable.
