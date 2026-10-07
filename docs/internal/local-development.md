@@ -1,8 +1,6 @@
 # Local development runbook
 
-This runbook collects the commands maintainers use most often while changing BlazePlot. It is intentionally operational: copy the command, run it, and know what it proves.
-
-Related workflow reference: [GitHub workflow runbook](./github-workflows.md).
+Commands maintainers use most often while changing BlazePlot. Workflow reference: [GitHub workflow runbook](./github-workflows.md).
 
 ## Setup
 
@@ -12,26 +10,26 @@ bun run typecheck
 bun test
 ```
 
-Use Bun for repo work. `packageManager` pins the expected Bun version; CI also uses that version.
+Use Bun. `packageManager` pins the Bun version, and CI uses the same one.
 
 ## Daily development loop
 
 | Goal | Command | Notes |
 |---|---|---|
-| Type-check all source, tests, scripts, and website code | `bun run typecheck` | Fastest broad correctness check. |
+| Type-check all source, tests, scripts, and website code | `bun run typecheck` | Fastest broad check. |
 | Lint with Oxlint | `bun run lint` | Correctness rules only; config in `.oxlintrc.json`. Included in `bun run check`. |
 | Check the import graph | `bun run test:imports` | Fails on any import cycle (type-only imports included) or layering violation in `src/` (see `scripts/import-graph.ts`). Included in `bun run check`. |
 | Run unit tests | `bun test` | Covers datasets, render helpers, interactions, and data export helpers. |
 | Run unit tests with coverage floors | `bun run test:coverage` | Runs `bun test --coverage` via `scripts/coverage-check.ts` and fails if `src/core`, overall `src/`, the built-in plugin implementations (`src/plugins/*/` and `src/linked/`), or the public entry barrels (`src/index.ts`, `src/linked.ts`, `src/plugins/*`) drop below the line/function floors in that script. Included in `bun run check`. Floors sit just under the baseline (core ~94% lines, `src/` ~90%, plugins ~98%, public API 100%, excluding browser-only `theme.ts`); raise them when coverage improves, never lower them. Plugin tests live in `tests/ui` and run under happy-dom with the fake GPU backend; drawing that needs a real WebGL2 or 2D canvas (`WebGL2Backend`, screenshot compositing, flame graph pixels) stays in `bun run test:browser`. |
 | Build the library package | `bun run build` | Emits `dist/` and declarations. |
-| Build only JS output | `bun run build:js` | Useful before bundle analysis when declarations are irrelevant. |
+| Build only JS output | `bun run build:js` | Use before bundle analysis, when declarations are irrelevant. |
 | Run the docs/site dev server | `bun run dev` | Serves the Lit documentation site. |
 | Serve browser test fixtures | `bun run fixtures:dev` | Serves `tests/browser/` for debugging visual, interaction, and benchmark pages. |
 | Preview the built docs/site | `bun run pages:build && bun run pages:preview` | Mirrors the GitHub Pages build. |
 
 ## Browser-backed checks
 
-Visual, interaction, stability, and benchmark checks need Chrome/Chromium/Brave. The scripts check `BLAZEPLOT_BENCH_CHROME`, then `CHROME_PATH`, then common browser binaries.
+Visual, interaction, stability, and benchmark checks need Chrome, Chromium, or Brave. The scripts check `BLAZEPLOT_BENCH_CHROME`, then `CHROME_PATH`, then common browser binaries.
 
 ```bash
 export BLAZEPLOT_BENCH_CHROME=/path/to/chrome
@@ -45,7 +43,7 @@ bun run bench:ci
 bun run bench:gate
 ```
 
-By default every script launches Chrome with software WebGL (SwiftShader) so results match CI. To exercise a real GPU, set `BLAZEPLOT_REAL_GPU=1`: the SwiftShader flags are dropped and `--disable-frame-rate-limit` is added (a headless GPU-backed page is otherwise throttled to about 10 rAF/s). `BLAZEPLOT_CHROME_FLAGS="--flag --other=1"` appends extra browser flags. On Windows, a Playwright-installed Chromium under a packaged-app profile can fail with "Sandbox cannot access executable"; copy the `chrome-win64` folder to an ordinary path and point `BLAZEPLOT_BENCH_CHROME` at it. Pixel baselines are only compared on Linux, so a real-GPU run checks behaviour, not pixels. Verify the renderer via `WEBGL_debug_renderer_info` (it should name your GPU, not SwiftShader); `bun run bench:compare` records it in `benchmarks/latest.md`.
+By default every script launches Chrome with software WebGL (SwiftShader) so results match CI. To exercise a real GPU, set `BLAZEPLOT_REAL_GPU=1`: the SwiftShader flags are dropped and `--disable-frame-rate-limit` is added (a headless GPU-backed page is otherwise throttled to about 10 rAF/s). `BLAZEPLOT_CHROME_FLAGS="--flag --other=1"` appends extra browser flags. On Windows, a Playwright-installed Chromium under a packaged-app profile can fail with "Sandbox cannot access executable"; copy the `chrome-win64` folder to an ordinary path and point `BLAZEPLOT_BENCH_CHROME` at it. Pixel baselines are compared only on Linux, so a real-GPU run checks behaviour, not pixels. Verify the renderer with `WEBGL_debug_renderer_info` (it should name your GPU, not SwiftShader); `bun run bench:compare` records it in `benchmarks/latest.md`.
 
 `bun run test:stability` is the real-browser leak and stability suite (`scripts/stability-test.ts`, fixture in `tests/browser/stability/`). It runs these cases, each on a fresh page:
 
@@ -76,10 +74,10 @@ bun run test:stability:canvas2d             # the same suite on the Canvas 2D en
 
 ### Visual pixel baselines
 
-`bun run test:visual` renders each case in headless Chrome and checks two things beyond "it rendered":
+`bun run test:visual` renders each case in headless Chrome and checks two more things:
 
-1. **Blank-canvas guard (every case).** After the draw-call assertions, the grid is hidden and the plot canvas (or the flamegraph canvas) is captured. A case fails when the fraction of pixels that differ from the border background color is below its `minInkRatio` in `CASE_CHECKS` (`scripts/visual-test.ts`). This catches "draw calls happened but nothing reached the canvas". Ratios are loose lower bounds; do not tighten them to the current render.
-2. **Pixel baselines (focused, deterministic cases).** Cases with a `baseline` entry in `CASE_CHECKS` are compared with the committed PNGs in `tests/browser/visual/baselines/`. A pixel counts as different when any channel differs by more than 32/255, and the case fails when more than 0.2% of pixels differ (1% for the cases that include DOM text: `axes-title-grid`, `annotations`, `flamegraph`). The diff is a small in-script PNG codec (`scripts/png-image.ts`, unit tested in `tests/scripts/`), so there are no extra dependencies.
+1. **Blank-canvas guard (every case).** After the draw-call assertions, the grid is hidden and the plot canvas (or the flamegraph canvas) is captured. A case fails when the fraction of pixels that differ from the border background color is below its `minInkRatio` in `CASE_CHECKS` (`scripts/visual-test.ts`). This catches draws that never reach the canvas. Ratios are loose lower bounds; do not tighten them to the current render.
+2. **Pixel baselines (focused, deterministic cases).** Cases with a `baseline` entry in `CASE_CHECKS` are compared with the committed PNGs in `tests/browser/visual/baselines/`. A pixel counts as different when any channel differs by more than 32/255, and the case fails when more than 0.2% of pixels differ (1% for the cases that include DOM text: `axes-title-grid`, `annotations`, `flamegraph`). The diff uses an in-script PNG codec (`scripts/png-image.ts`, unit tested in `tests/scripts/`), with no extra dependencies.
 
 Artifacts land in `build/visual-tests/`: `<case>.png` (full page), `actual/<case>.png` (the exact crop compared with the baseline, ready to commit), and `diff/<case>.png` (expected dimmed with differing pixels in red, only on failure). Missing baselines fail the run.
 
@@ -101,9 +99,9 @@ When `webgl2` runs in the same invocation (the `visual-gl` shard runs `webgl2,sh
 - Every kind also checks the coverage-weighted ink ratio (Canvas 2D over WebGL, within about 4% to 12% depending on the kind) and that the ink bounding boxes agree to one pixel (the engines break rasterization ties differently).
 - A failure writes both crops to `build/visual-tests/cross-engine/<renderer>/`; every run writes `build/visual-tests/cross-engine.json`. `--cross-engine-report` prints the numbers without failing, for recalibration. The thresholds sit at roughly twice the worst case measured on a real GPU and on CI's SwiftShader; recalibrate them from CI logs, not a laptop alone.
 
-Parity is not a promise of identical pixels: the supported contract is the feature set and the documented differences in [Browser support](../browser-support.md#rendering-engines). The `gaps` case (NaN gaps in a line and an area series) exists so every renderer has to break paths at missing samples; the first cross-engine run found Canvas 2D bridging area fills across gaps, which the engine contract suite now pins.
+Parity does not mean identical pixels: the contract is the feature set and the documented differences in [Browser support](../browser-support.md#rendering-engines). The `gaps` case (NaN gaps in a line and an area series) exists so every renderer has to break paths at missing samples; the first cross-engine run found Canvas 2D bridging area fills across gaps, which the engine contract suite now pins.
 
-GPU, driver, and OS differences change anti-aliasing and text, so baselines must be generated in the CI environment (headless Chrome on `ubuntu-24.04` with SwiftShader/ANGLE software GL), not on a laptop. For that reason the pixel comparison only runs on Linux by default; on other platforms it is skipped with a note and only the blank-canvas guard runs. `--compare-baselines` forces the comparison and `--skip-baselines` disables it.
+GPU, driver, and OS differences change anti-aliasing and text, so baselines must be generated in the CI environment (headless Chrome on `ubuntu-24.04` with SwiftShader/ANGLE software GL), not on a laptop. So the pixel comparison runs only on Linux by default; elsewhere it is skipped with a note and only the blank-canvas guard runs. `--compare-baselines` forces the comparison and `--skip-baselines` disables it.
 
 To regenerate baselines after an intentional rendering change, or to add a case:
 
@@ -117,7 +115,6 @@ On a Linux machine that matches CI (for example a container with the same Chrome
 To add a baselined case, add a `baseline` entry (and a `minInkRatio`) to its `CASE_CHECKS` record. Only baseline cases that need no pointer input and use static data, and prefer `region: "plot"` (the WebGL canvas only) over `"chart"` when DOM text is not what is being tested.
 
 `bun run bench:gate` is the performance regression gate: it runs the deterministic `perf-gate` scenario in 1 discarded plus 5 measured repetitions (10 if the first attempt fails), normalises timings by an in-page calibration workload, and compares medians with `benchmarks/thresholds.json`. Use `-- --report-only` to print the table without failing, and `-- --inject-slowdown-ms 2` to confirm the gate still catches a synthetic regression. Locally it is a sanity check: absolute numbers differ from the GitHub-hosted runners the baselines come from, so do not update `benchmarks/thresholds.json` from a laptop run. Methodology, hardware assumptions, and the update procedure are in [Release and benchmark notes](../release-and-benchmarks.md#performance-regression-gate).
-
 
 ### Cross-browser smoke (Firefox and WebKit)
 
@@ -145,7 +142,7 @@ bun run ci             # both (cross-browser is a separate CI job: bun run test:
 
 ## Documentation changes
 
-When docs mention public APIs, verify names against source, tests, or generated declarations. Complete examples should include imports and cleanup.
+Verify public API names in docs against source, tests, or generated declarations. Complete examples include imports and cleanup.
 
 Run these when generated docs, README links, website routing, or examples change:
 
@@ -176,7 +173,7 @@ Use `bun run docs:bundle-size` to print the current bundle-size table and `bun r
 
 ## Release checklist
 
-Release commands and branch policy live in [Release and benchmark notes](../release-and-benchmarks.md), with a copy-paste checklist in [Release checklist](./release-checklist.md). The short version:
+Release commands and branch policy: [Release and benchmark notes](../release-and-benchmarks.md). Checklist: [Release checklist](./release-checklist.md). Summary:
 
 1. Create a `release/vX.Y.Z` branch from updated `main`.
 2. Run `bun run release patch` (or `minor` / `major`): bumps the version, drafts the changelog, and regenerates docs.

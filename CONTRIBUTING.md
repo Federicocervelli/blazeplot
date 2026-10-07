@@ -1,6 +1,6 @@
 # Contributing to BlazePlot
 
-Thanks for helping improve BlazePlot. The project is still moving quickly, so the most useful contributions are focused, source-checked, and easy to review.
+Focused, source-checked, easy-to-review contributions are the most useful.
 
 ## Workflow
 
@@ -44,12 +44,12 @@ bun run test:stability
 
 ## Documentation standards
 
-Documentation should be practical rather than broad marketing copy:
+Documentation standards:
 
 - Show complete imports for code snippets.
 - Include lifecycle cleanup when a snippet creates a chart, timer, worker, object URL, or plugin handle.
 - Verify API names against source, tests, or generated declarations.
-- Prefer one complete example over several partial fragments.
+- Prefer one complete example to several partial fragments.
 - Update `docs/api-reference.md` and the generated README section through `bun run docs:readme`; do not edit those generated sections by hand.
 
 See [`docs/documentation-contributions.md`](docs/documentation-contributions.md) for the docs-specific workflow and [`docs/internal/local-development.md`](docs/internal/local-development.md) for local validation commands.

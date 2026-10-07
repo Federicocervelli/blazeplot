@@ -1,6 +1,6 @@
 # Documentation contributions
 
-BlazePlot docs should help a developer decide what to build, copy a correct starting point, and understand the tradeoffs that matter for performance. Avoid broad claims unless the page also says when the advice stops applying.
+BlazePlot docs help a developer decide what to build, copy a correct starting point, and understand the performance tradeoffs. A broad claim needs a statement of when it stops applying.
 
 ## Contribution workflow
 
@@ -10,7 +10,7 @@ BlazePlot docs should help a developer decide what to build, copy a correct star
 4. Prefer one small, complete example over several partial snippets.
 5. Run the smallest relevant checks before opening or merging the change.
 
-For generated reference updates, run `bun run docs:readme`. That command builds the package, regenerates `docs/api-reference.md`, and updates the generated README section. Do not hand-edit `docs/api-reference.md` or the generated README section.
+For generated reference updates, run `bun run docs:readme`. The command builds the package, regenerates `docs/api-reference.md`, and updates the generated README section. Do not hand-edit `docs/api-reference.md` or the generated README section.
 
 Related maintainer runbook: [Local development](./internal/local-development.md). Page map: [Documentation map](./README.md).
 
@@ -26,7 +26,7 @@ Related maintainer runbook: [Local development](./internal/local-development.md)
 
 - Marketing adjectives without evidence.
 - Snippets that omit the import, chart lifecycle, or dataset type needed to run them.
-- Repeating the same feature list across pages.
+- Feature lists repeated across pages.
 - Documenting internal implementation details as public API.
 - Adding a new page when an existing guide can be improved with a short section.
 
@@ -34,7 +34,7 @@ Related maintainer runbook: [Local development](./internal/local-development.md)
 
 `bun run test:docs-snippets` typechecks every `ts`, `typescript`, and `tsx` code fence in `README.md` and `docs/` (except `docs/internal/`). It runs inside `bun run check`, after the build, and checks snippets against the published declarations in `dist/` and the subpaths in `package.json#exports`, so run `bun run build` first. Snippets that use a removed or unexported import path fail.
 
-The checker never skips a snippet silently. A snippet either typechecks or fails the run. The output reports how many snippets were checked and how many were explicitly skipped.
+The checker never skips a snippet silently: a snippet typechecks or fails the run. The output reports how many snippets were checked and how many were explicitly skipped.
 
 A snippet may rely on this ambient context without declaring it. The names are conventional placeholders, declared as the `prelude` constant in `scripts/typecheck-doc-snippets.ts`:
 
@@ -62,7 +62,7 @@ The reason is required and is printed on every run. Use it for internal maintain
 
 ## Verification checklist
 
-Use this checklist in PR descriptions for docs changes.
+Put this checklist in PR descriptions for docs changes.
 
 | Check | When to run |
 |---|---|
