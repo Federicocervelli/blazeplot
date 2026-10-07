@@ -1,6 +1,6 @@
 # Built-in plugins
 
-Built-in plugins are optional. Import them from subpaths so unused plugin code can stay out of your bundle. Every built-in plugin except `blazeplot/plugins/flamegraph` is stable; flamegraph is experimental (see [API stability](./stability.md)). Keyboard and screen-reader behavior of each plugin is listed in [Accessibility](./accessibility.md#built-in-plugins).
+Built-in plugins are optional. Import them from subpaths to keep unused plugin code out of your bundle. Every built-in plugin except `blazeplot/plugins/flamegraph` is stable; flamegraph is experimental (see [API stability](./stability.md)). Keyboard and screen-reader behavior of each plugin is listed in [Accessibility](./accessibility.md#built-in-plugins).
 
 ```ts
 import { Chart } from "blazeplot";
@@ -21,17 +21,17 @@ const chart = new Chart(element, {
 
 `interactionsPlugin` adds wheel zoom, shift-drag plot pan, axis drag pan, plot box zoom, double-click reset, touch pan, and pinch zoom. Touch pan and pinch zoom are enabled by default unless you set them to `false`. With the focused chart root it also pans, zooms, and fits by keyboard (arrows, `+`/`-`, PageUp/PageDown, Home or `0`); tune with `keyboard: { panFraction, zoomFactor }` or pass `keyboard: false`. A chart without this plugin does not navigate by keyboard.
 
-Use it when users should control the viewport directly. If your app owns all camera changes, leave it out and call chart camera/viewport APIs yourself.
+If your app owns all camera changes, leave the plugin out and call the chart camera/viewport APIs yourself.
 
-For live charts using `chart.followX(...)`, double-click/tap reset resumes latest-X follow by default so a reset action behaves like a "back to live" action. Set `resumeFollowOnReset: false` if your reset button should keep the chart paused on a historical viewport.
+For live charts using `chart.followX(...)`, double-click/tap reset resumes latest-X follow by default, like a "back to live" action. Set `resumeFollowOnReset: false` if your reset button should keep the chart paused on a historical viewport.
 
-Gestures made through this plugin (drag, wheel, touch, keyboard) report `viewportchange` with `source: "user"`, so apps can tell them from `follow`, `fit`, `api`, and `linked` changes (`ChartViewportChangeSource`).
+Gestures made through this plugin (drag, wheel, touch, keyboard) report `viewportchange` with `source: "user"`, which tells them apart from `follow`, `fit`, `api`, and `linked` changes (`ChartViewportChangeSource`).
 
 Without `interactionsPlugin` a chart sets no `touch-action`, so one-finger swipes scroll the page. The plugin sets `touch-action: none` on the plot (and axis gutters) while touch pan or pinch zoom is on, which makes a touch drag pan the chart instead of the page. Touch input uses Pointer Events only.
 
 ### Cooperative gestures on scrolling pages
 
-On a page that scrolls (docs, reports, dashboards), a chart that always handles the wheel or one-finger drag traps scrolling. Two options hand those gestures back to the page:
+On a scrolling page, a chart that always handles the wheel or one-finger drag traps scrolling. Two options hand those gestures back to the page:
 
 ```ts
 import { Chart } from "blazeplot";
@@ -51,11 +51,11 @@ const chart = new Chart(element, {
 - `touchPan: "two-finger"` (the default): the plot keeps `touch-action: pan-x pan-y`, so one finger scrolls the page; two fingers pan and zoom the chart (pinch zoom needs `pinchZoom` left on). Axis gutters still pan with one finger. Double-tap reset keeps working.
 - `gestureHint` (default `true`) shows a short overlay when the user scrolls without the modifier or drags with one finger: "Use Ctrl + scroll to zoom" ("Use ⌘ + scroll to zoom" on Apple devices) or "Use two fingers to move the chart". It is `aria-hidden`, takes its colors and font from the theme's tooltip tokens, and can be customized with `gestureHint: { wheelText, touchText, durationMs, backgroundColor, textColor, font, className }` or turned off with `gestureHint: false`.
 
-The defaults are `wheelZoom: true` and `touchPan: "two-finger"`: the wheel zooms the plot, while on touch screens one finger scrolls the page and two fingers pan and pinch. A full-viewport chart that should pan with one finger opts in with `touchPan: true` (the plot then gets `touch-action: none` and blocks page scrolling over it); `touchPan: false` disables touch panning.
+The defaults are `wheelZoom: true` and `touchPan: "two-finger"`. A full-viewport chart that should pan with one finger opts in with `touchPan: true` (the plot then gets `touch-action: none` and blocks page scrolling over it); `touchPan: false` disables touch panning.
 
 ### Drags shared with selection
 
-Box zoom (`boxZoom`, on by default) and `selectionPlugin` both start from a plain left-button drag. When both are installed, the drag runs exactly one action: the pointer is claimed through `ctx.dom.claimPointer`, and `selectionPlugin` claims first, so a plain drag selects and does not also zoom. Shift-drag still pans. To keep both gestures, move one of them to a modifier key:
+Box zoom (`boxZoom`, on by default) and `selectionPlugin` both start from a plain left-button drag. When both are installed, the drag runs exactly one action: `selectionPlugin` claims the pointer first through `ctx.dom.claimPointer`, so a plain drag selects and does not also zoom. Shift-drag still pans. To keep both gestures, move one of them to a modifier key:
 
 ```ts
 import { Chart } from "blazeplot";
@@ -128,7 +128,7 @@ Each visible annotation is keyboard focusable (`role="button"`, named by `ariaLa
 
 ## Selection
 
-`selectionPlugin` adds brush/range selection UI and emits chart selection events. Use it for zoom-to-selection, comparing ranges, or selecting data windows for export.
+`selectionPlugin` adds brush/range selection UI and emits chart selection events, for zoom-to-selection, comparing ranges, or selecting data windows for export.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -176,7 +176,7 @@ chart.start();
 
 ## Navigator
 
-`navigatorPlugin` adds an overview control. It reserves top or bottom space by default so it does not overlap the plot (`reserveSpace: false` overlays it instead). This is useful for dense history where the main chart shows a small moving window.
+`navigatorPlugin` adds an overview control for dense history where the main chart shows a small moving window. It reserves top or bottom space by default so it does not overlap the plot (`reserveSpace: false` overlays it instead).
 
 ```ts
 import { Chart } from "blazeplot";
@@ -205,7 +205,7 @@ The overview takes its X and Y domain from each series' `dataBounds()`, so gaps,
 
 ## Flame graphs and status spans
 
-`flameGraphPlugin` adds an optional overlay for FlameGraph-style stack traces and lane/status charts. It lives in its own subpath so the core XY renderer stays small. Its rectangle layer draws through the chart's own rendering engine (WebGL2, Canvas 2D, or the shared WebGL2 context), so it follows `ChartOptions.renderer` and joins a shared context instead of opening another. Labels use a 2D canvas.
+`flameGraphPlugin` adds an overlay for FlameGraph-style stack traces and lane/status charts. Its rectangle layer draws through the chart's own rendering engine (WebGL2, Canvas 2D, or the shared WebGL2 context), so it follows `ChartOptions.renderer` and joins a shared context instead of opening another. Labels use a 2D canvas.
 
 > **Experimental.** `blazeplot/plugins/flamegraph` and its exports (`flameGraphPlugin`, `parseFoldedStacks`, `buildStatusChartModel`, and their types) are tagged `@experimental` and may change in a minor release. See [API stability](./stability.md#experimental).
 
@@ -235,6 +235,6 @@ const chart = new Chart(element, {
 
 ## Linked charts
 
-For dashboards with shared X ranges, use `blazeplot/linked`. Its `panelPlugins` option is a factory called once per panel (so each panel gets fresh plugin instances), typically to add synced crosshair and tooltip plugins, and its `renderer` option passes a renderer such as `sharedRenderer()` to every panel. See [Examples](./examples.md#linked-charts).
+For dashboards with shared X ranges, use `blazeplot/linked`. Its `panelPlugins` option is a factory called once per panel (so each panel gets fresh plugin instances), usually to add synced crosshair and tooltip plugins, and its `renderer` option passes a renderer such as `sharedRenderer()` to every panel. See [Examples](./examples.md#linked-charts).
 
 All plugin entry points are listed in the [API reference](./api-reference.md#package-entry-points).
