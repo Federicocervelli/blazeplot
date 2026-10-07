@@ -252,6 +252,16 @@ export class RingBuffer {
     return this.tree.queryRingInto(this.logicalToPhysical(from), to - from, out);
   }
 
+  /** @internal Extents of consecutive buckets in one call (see `MinMaxTree.bucketExtentsInto`). */
+  minMaxBucketsInto(first: number, width: number, count: number, minOut: Float64Array, maxOut: Float64Array): void {
+    this.tree.bucketExtentsInto(first, width, count, 0, this._length, this.logicalToPhysical(0), minOut, maxOut);
+  }
+
+  /** @internal X at an index known to be valid. */
+  xAtUnchecked(index: number): number {
+    return this.xData[this.logicalToPhysical(index)]!;
+  }
+
   /** Remove all retained samples. The next sample may start at any finite X. */
   clear(): void {
     this._length = 0;

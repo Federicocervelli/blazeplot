@@ -16,6 +16,14 @@ export interface MinMaxOut {
 const DEFAULT_BLOCK_SIZE = 64;
 
 /**
+ * Buckets whose extents one bulk call computes, with the result slots every dense min/max pass shares (a
+ * frame is synchronous, so one pair serves every chart).
+ */
+export const BUCKET_CHUNK = 1024;
+export const BUCKET_MIN = new Float64Array(BUCKET_CHUNK);
+export const BUCKET_MAX = new Float64Array(BUCKET_CHUNK);
+
+/**
  * Lazily built block min/max segment tree over a fixed-capacity array of Y values.
  *
  * Leaves summarize `blockSize` physical samples, so memory stays small while range queries cost one
@@ -97,6 +105,63 @@ export class MinMaxTree {
       this.fold(0, end - this.capacity, out);
     }
     return out.minY <= out.maxY;
+  }
+
+  /**
+   * Y extents of `count` consecutive equal-width buckets, one `queryRingInto` result per bucket, in one
+   * call. Bucket `b` covers logical `[first + b * width, first + (b + 1) * width)` clamped to
+   * `[lo, hi)`; logical index `l` lives at physical `(l + shift) % capacity`. An empty bucket or one
+   * without a finite value gets `minOut = Infinity` and `maxOut = -Infinity`.
+   *
+   * Dense min/max extraction asks for thousands of small buckets per frame. For buckets that fit in a
+   * few blocks, a call per bucket (range split, two scans, tree walk) costs several times more than the
+   * samples themselves, so those buckets are scanned directly: consecutive buckets read consecutive
+   * memory and the loop carries no per-bucket call. The scan skips the per-sample finite test (a NaN
+   * never compares less or greater) and only re-reads a bucket with the test when an infinity made it
+   * through, so the result equals the guarded query. Wider buckets still use the tree.
+   */
+  bucketExtentsInto(first: number, width: number, count: number, lo: number, hi: number, shift: number, minOut: Float64Array, maxOut: Float64Array): void {
+    const values = this.values;
+    const capacity = this.capacity;
+    const scanLimit = this.blockSize * 2;
+    const slot = { minY: 0, maxY: 0 };
+    for (let b = 0; b < count; b++) {
+      let s = first + b * width;
+      let e = s + width;
+      if (s < lo) s = lo;
+      if (e > hi) e = hi;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      const length = e - s;
+      if (length > 0) {
+        let p = s + shift;
+        if (p >= capacity) p -= capacity;
+        if (length <= scanLimit && p + length <= capacity) {
+          const stop = p + length;
+          for (let i = p; i < stop; i++) {
+            const value = values[i]!;
+            if (value < minY) minY = value;
+            if (value > maxY) maxY = value;
+          }
+          if (minY === -Infinity || maxY === Infinity) {
+            minY = Infinity;
+            maxY = -Infinity;
+            for (let i = p; i < stop; i++) {
+              const value = values[i]!;
+              if (!Number.isFinite(value)) continue;
+              if (value < minY) minY = value;
+              if (value > maxY) maxY = value;
+            }
+          }
+        } else {
+          this.queryRingInto(p, length, slot);
+          minY = slot.minY;
+          maxY = slot.maxY;
+        }
+      }
+      minOut[b] = minY;
+      maxOut[b] = maxY;
+    }
   }
 
   /**
