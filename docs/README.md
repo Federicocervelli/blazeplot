@@ -1,6 +1,6 @@
 # BlazePlot documentation map
 
-Use this map to decide where a topic belongs before adding or moving documentation.
+Where each topic belongs. Check it before adding or moving documentation.
 
 ## Reader paths
 
@@ -20,7 +20,7 @@ Use this map to decide where a topic belongs before adding or moving documentati
 
 ## Public docs
 
-These pages are visible on the docs site and should be useful to package users.
+Shown on the docs site, written for package users.
 
 ### Start here
 
@@ -56,7 +56,7 @@ These pages are visible on the docs site and should be useful to package users.
 
 ## Maintainer docs
 
-These pages are primarily for contributors and release maintainers.
+For contributors and release maintainers.
 
 - [Documentation contributions](./documentation-contributions.md) — docs writing standards, verification, and page ownership.
 - [Release and benchmark notes](./release-and-benchmarks.md) — release branch policy, benchmark commands, and generated table expectations.
