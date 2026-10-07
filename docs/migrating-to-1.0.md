@@ -1,16 +1,29 @@
 # Migrating from 0.x to 1.0
 
-This guide is for applications and plugins written against BlazePlot 0.x. It lists every breaking change between 0.5.5 and 1.0, with before and after code, and a checklist at the end.
+This guide covers every breaking change between 0.5.5 and 1.0 for applications and plugins written against BlazePlot 0.x, with before and after code and a checklist at the end.
 
-The list was produced by comparing the published declarations of 0.5.5 with the 1.0 declarations (the `api/public-api.md` snapshot), plus the changelogs of the release candidates (`changelogs/v1.0.0-rc.*.md`) for the changes that alter runtime behavior. If you are on 0.4 or older, apply the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) first (most upgrades there are mechanical renames), then come back here.
+The list comes from comparing the published declarations of 0.5.5 with the 1.0 declarations (the `api/public-api.md` snapshot), plus the release candidate changelogs (`changelogs/v1.0.0-rc.*.md`) for changes that alter runtime behavior. If you are on 0.4 or older, apply the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) first (most of it is mechanical renames), then come back here.
 
-Most applications need no code changes beyond the checklist: the 1.0 surface is the 0.5.5 surface minus GPU internals, two flame graph helpers, and `chart.addHistogram`, with chart data export moved to `blazeplot/export`, one typing fix, one data-ingestion rule (X must be finite and non-decreasing; see change 3), a reshaped (now stable) plugin contract that only custom plugin authors touch, accessibility semantics on the chart root (`role="figure"`, a generated description, focus rings, and keyboard navigation that moved into `interactionsPlugin`; see change 9), a final naming pass that renames a few methods, types, and options and removes the raw camera, GL, and element getters from `Chart` (change 10), stricter dataset input (mismatched lengths throw, change 11), cooperative touch and wheel handling (change 12), a few rendering and layout differences (changes 13 and 15), and runtime behavior changes in events and plugins (change 14). Everything new and additive (renderers, localization, axis sizing, and so on) is listed under [New in 1.0](#new-in-10).
+Most applications need no code changes beyond the checklist. The 1.0 surface is the 0.5.5 surface minus GPU internals, two flame graph helpers, and `chart.addHistogram`, plus these changes:
+
+- Chart data export moved to `blazeplot/export`.
+- One typing fix.
+- One data-ingestion rule: X must be finite and non-decreasing (change 3).
+- A reshaped, now stable plugin contract, which only custom plugin authors touch.
+- Accessibility semantics on the chart root (`role="figure"`, a generated description, focus rings), and keyboard navigation that moved into `interactionsPlugin` (change 9).
+- A naming pass that renames a few methods, types, and options and removes the raw camera, GL, and element getters from `Chart` (change 10).
+- Stricter dataset input: mismatched lengths throw (change 11).
+- Cooperative touch and wheel handling (change 12).
+- A few rendering and layout differences (changes 13 and 15).
+- Runtime behavior changes in events and plugins (change 14).
+
+New additive features (renderers, localization, axis sizing, and so on) are listed under [New in 1.0](#new-in-10).
 
 ## What did not change
 
 - The `Chart` constructor, `addLine`/`addArea`/`addScatter`/`addBar`/`addOhlc`/`addCandlestick`, dataset classes, and every built-in plugin option keep their signatures, except that the custom `render`/`renderHighlight` callbacks of the legend, tooltip, and crosshair plugins now receive the plugin context instead of the `Chart` (see change 8), the renames in change 10, and the removed or moved options in changes 9, 11, and 12. Datasets gained optional validation options (change 3).
 - The existing entry points and subpaths still exist: `blazeplot`, `blazeplot/linked`, `blazeplot/data`, `blazeplot/export`, and the `blazeplot/plugins/*` entries. What lives in `blazeplot/data` and `blazeplot/export` changed (see change 6). 1.0 adds `blazeplot/plugins/a11y`, and the Canvas 2D and shared WebGL2 renderers ship in the core package (see [New in 1.0](#new-in-10)).
-- The package was already ESM only; 1.0 states that as policy. 0.5 required WebGL2 and threw `WebGL2UnavailableError` without it; 1.0 falls back to Canvas 2D by default (change 16), and `renderer: "webgl2"` keeps the old strict behavior.
+- The package was already ESM only; 1.0 makes that policy. 0.5 required WebGL2 and threw `WebGL2UnavailableError` without it. 1.0 falls back to Canvas 2D by default (change 16), and `renderer: "webgl2"` keeps the old strict behavior.
 
 ## Breaking changes
 
@@ -28,7 +41,7 @@ const backendFactory: ChartBackendFactory = ({ canvas }) => new WebGL2Backend(ca
 const chart = new Chart(element, { backendFactory });
 ```
 
-After (1.0): remove the option. The chart creates its own WebGL2 backend. Use `isWebGL2Available()` and `WebGL2UnavailableError`, which stay public, to handle unsupported browsers.
+After (1.0): remove the option. The chart creates its own backend. `isWebGL2Available()` and `WebGL2UnavailableError` stay public for handling unsupported browsers.
 
 ```ts
 import { Chart, WebGL2UnavailableError, isWebGL2Available } from "blazeplot";
@@ -44,11 +57,11 @@ if (isWebGL2Available()) {
 }
 ```
 
-Custom backends are not supported, and the internal `backendFactory` option no longer exists. To test code that mounts charts, render in a real browser (see [Troubleshooting](./troubleshooting.md)). To draw without WebGL2, pass `renderer: "auto"` (the default) instead of writing a backend (change 16).
+Custom backends are not supported, and the internal `backendFactory` option no longer exists. To test code that mounts charts, render in a real browser (see [Troubleshooting](./troubleshooting.md)). To draw without WebGL2, use `renderer: "auto"` (the default) instead of writing a backend (change 16).
 
 ### 2. `emitSelect` is removed, and `ChartSelectEvent` is no longer generic
 
-`chart.emitSelect(selection: unknown)` is gone from both `Chart` and the plugin context. `select` is now a typed plugin event: plugins emit it with `ctx.events.emit("select", { selection })` (see change 8), and apps keep receiving it through `chart.subscribe("select", ...)`. `ChartSelectEvent<T = unknown>` became a plain `ChartSelectEvent` whose `selection` is `SelectionState | null` (`null` means the selection was cleared). Every `select` subscriber therefore sees a typed payload without a cast.
+`chart.emitSelect(selection: unknown)` is gone from both `Chart` and the plugin context. `select` is now a typed plugin event: plugins emit it with `ctx.events.emit("select", { selection })` (see change 8), and apps keep receiving it through `chart.subscribe("select", ...)`. `ChartSelectEvent<T = unknown>` became a plain `ChartSelectEvent` whose `selection` is `SelectionState | null` (`null` means the selection was cleared), so every `select` subscriber sees a typed payload without a cast.
 
 Before (0.5):
 
@@ -64,7 +77,7 @@ chart.subscribe("select", (event: ChartSelectEvent<MySelection>) => {
 chart.emitSelect({ from: 1, to: 2 });
 ```
 
-After (1.0): read `SelectionState`, and emit it from a plugin. If you used `emitSelect` to carry your own payload, declare your own typed plugin event instead (see [Plugin events](./plugin-authoring.md#plugin-events)).
+After (1.0): read `SelectionState` and emit it from a plugin. If you used `emitSelect` to carry your own payload, declare your own typed plugin event instead (see [Plugin events](./plugin-authoring.md#plugin-events)).
 
 ```ts
 import { Chart, type ChartPlugin } from "blazeplot";
@@ -95,14 +108,14 @@ Code that only subscribed to `select` and let `event.selection` be inferred need
 
 ### 3. Datasets enforce one X rule: finite and non-decreasing
 
-Every built-in dataset now follows the same rule: **X is finite and non-decreasing; a non-finite Y is a gap.** In 0.5, unsorted X only logged a warning (or nothing) and left searches, LOD, picking, and exports silently wrong. 1.0 enforces the rule at the boundary instead:
+Every built-in dataset now requires finite, non-decreasing X, and treats a non-finite Y as a gap. In 0.5, unsorted X only logged a warning (or nothing) and left searches, LOD, picking, and exports silently wrong. 1.0 enforces the rule at the boundary:
 
 - **Static data throws.** `new StaticDataset(x, y)`, `StaticDataset.replace(...)` / `series.replace(...)`, `new StaticOhlcDataset(...)`, and `ServerSampledDataset` check X in one O(n) pass and throw a `RangeError` naming the first bad index and reason, for example `StaticDataset: X at index 2 is 1, below 2 at index 1 (decreasing-x). ...`. `StaticDataset.fromObjects(...)` throws `RangeError` (was `TypeError`) for a non-finite X and now also for decreasing X unless `sort: true` is passed.
-- **Streaming data skips.** `RingBuffer` and `OhlcRingBuffer` skip any sample whose X is `NaN`, `Infinity`, `-Infinity`, or below the last accepted X, instead of storing it. Skipped samples do not count toward capacity or the `overflow` strategy, and the rest of an `append` batch is still stored. They never throw for bad X: one bad packet should not crash a dashboard. One `console.warn` is logged per buffer, `rejectedSamples` counts the skips, and the new `onInvalidSample` option (also on `SeriesConfig`) reports each one. `RingBuffer.update(...)` returns `false` for an X outside its neighbors.
+- **Streaming data skips.** `RingBuffer` and `OhlcRingBuffer` skip any sample whose X is `NaN`, `Infinity`, `-Infinity`, or below the last accepted X, instead of storing it. Skipped samples do not count toward capacity or the `overflow` strategy, and the rest of an `append` batch is still stored. They never throw for bad X, so one bad packet cannot crash a dashboard. One `console.warn` is logged per buffer, `rejectedSamples` counts the skips, and the new `onInvalidSample` option (also on `SeriesConfig`) reports each one. `RingBuffer.update(...)` returns `false` for an X outside its neighbors.
 - `UniformRingBuffer` derives X, so it never rejects samples. A non-finite seed X is ignored (Y is kept) with one warning, and a non-finite `xStart` option now throws `RangeError`.
 - An OHLC candle with any non-finite open, high, low, or close is stored and treated as a gap.
 
-It matters if you passed unsorted arrays to `StaticDataset`, relied on `length` growing for every pushed sample, caught `TypeError` from `fromObjects`, or encoded a gap with an `x` of `NaN`. Gaps belong in Y.
+This affects you if you passed unsorted arrays to `StaticDataset`, relied on `length` growing for every pushed sample, caught `TypeError` from `fromObjects`, or encoded a gap with an `x` of `NaN`. Encode gaps in Y.
 
 Before (0.5): unsorted static data was accepted and drew wrong; a `NaN` or backwards X in a ring buffer was stored and broke later queries.
 
@@ -132,18 +145,18 @@ console.log(unsorted.length, trusted.length, buffer.rejectedSamples);
 
 ### 4. Fast-path interfaces and escape hatches are experimental
 
-Nothing was removed here, but the tier changed. These are now tagged `@experimental` in the declarations and may change in a minor release (the changelog will say so):
+Nothing was removed, but the tier changed. These are now tagged `@experimental` in the declarations and may change in a minor release (the changelog says so):
 
 - The custom fast-path dataset interfaces: `AcceleratedDataset`, `RangeMinMaxDataset`, `RangeSampleCopyDataset`, `VisibleSampleCopyDataset`, `VisiblePointCopyDataset`, `MinMaxSegmentCopyDataset`, `XRangeDataset`, `SampleCopyLayout`.
 - Camera access (`Camera2D`, reached through `ctx.unstable.getCamera()` and the `ViewportPolicy` hooks; `chart.getCamera()` is removed, see change 10), the plugin context's `ctx.unstable` escape hatches, and every export of `blazeplot/plugins/flamegraph`.
 
 The plugin contract itself is stable in 1.0, in its new shape (change 8).
 
-Action: if you implement a fast-path dataset interface or use `ctx.unstable`, pin a compatible 1.x range, read the changelog on minor upgrades, and prefer the stable `Dataset` contract and context groups where possible. The built-in datasets' copy methods gained an optional trailing `yOrigin` argument (the Y shift of change 13); a custom fast-path dataset keeps working without it, because the chart shifts its output after the copy. `ctx.unstable.getWebGLContext()` returns `null` with the Canvas 2D and shared renderers (change 16). See [API stability](./stability.md#experimental).
+Action: if you implement a fast-path dataset interface or use `ctx.unstable`, pin a compatible 1.x range, read the changelog on minor upgrades, and prefer the stable `Dataset` contract and context groups. The built-in datasets' copy methods gained an optional trailing `yOrigin` argument (the Y shift of change 13); a custom fast-path dataset keeps working without it, because the chart shifts its output after the copy. `ctx.unstable.getWebGLContext()` returns `null` with the Canvas 2D and shared renderers (change 16). See [API stability](./stability.md#experimental).
 
 ### 5. Newly exported helper types
 
-These types appeared in public signatures but were not exported in 0.5.5. They are now exported, so you can name them; this is additive.
+These types appeared in public signatures but were not exported in 0.5.5. They are now exported (additive).
 
 | Type | Entry |
 |---|---|
@@ -178,7 +191,7 @@ chart.dispose();
 
 ### 7. `buildFlameGraphModel` and `pickFrame` are no longer exported
 
-`blazeplot/plugins/flamegraph` no longer exports `buildFlameGraphModel` or `pickFrame`; both are now internal. The plugin already builds and picks for you. `FlameGraphModel`, `FlameGraphRenderableFrame`, and `FlameGraphLevelIndex` stay exported because `setModel`, `FlameGraphPick`, and `tooltipFormatter` use them, and `parseFoldedStacks` and `buildStatusChartModel` stay public.
+`blazeplot/plugins/flamegraph` no longer exports `buildFlameGraphModel` or `pickFrame`; both are now internal. The plugin builds and picks for you. `FlameGraphModel`, `FlameGraphRenderableFrame`, and `FlameGraphLevelIndex` stay exported because `setModel`, `FlameGraphPick`, and `tooltipFormatter` use them, and `parseFoldedStacks` and `buildStatusChartModel` stay public.
 
 Before (0.5):
 
@@ -264,7 +277,7 @@ const footerPlugin: ChartPlugin = {
 };
 ```
 
-After (1.0): everything handed out by the context is released when the plugin is disposed, so the cleanup is optional.
+After (1.0): the plugin releases everything the context handed out when it is disposed, so cleanup is optional.
 
 ```ts
 import type { ChartPlugin } from "blazeplot";
@@ -284,11 +297,11 @@ export { footerPlugin };
 
 Later release candidates added to `ctx.dom` and `ctx.viewport`: `ctx.dom.document` and `ctx.dom.view` (the chart's own document and window, which differ from the globals inside an iframe, popup, or Picture-in-Picture window), `ctx.dom.create(tag)` and `createSvg(tag)` (create elements with these instead of `document.createElement`), `ctx.dom.claimPointer(event)` (change 12), and an optional trailing `{ source }` argument on `ctx.viewport.set`/`pan`/`zoom` (change 14).
 
-See [Plugin authoring](./plugin-authoring.md) for the full contract, mount slots, lifecycle hooks, and typed plugin events.
+See [Plugin authoring](./plugin-authoring.md) for the contract, mount slots, lifecycle hooks, and typed plugin events.
 
 ### 9. Chart semantics and keyboard changes
 
-1.0 makes charts readable by assistive technology and adds keyboard paths through the built-in plugins (see [Accessibility](./accessibility.md)). Behavior that changed:
+Charts are now readable by assistive technology, and the built-in plugins have keyboard paths (see [Accessibility](./accessibility.md)). What changed:
 
 | 0.5 | 1.0 |
 |---|---|
@@ -308,9 +321,9 @@ New: `blazeplot/plugins/a11y`, `chart.getSummary()`, `LIGHT_CHART_THEME`, `ctx.s
 
 ### 10. Final naming pass
 
-1.0 renames the names that broke a pattern used everywhere else, and removes `Chart` members that only plugins needed. There are no deprecated aliases: the old names fail to compile ("Property 'followLatestX' does not exist", "Module has no exported member 'chartDataToCSV'").
+1.0 renames the names that broke a pattern used elsewhere in the API, and removes `Chart` members that only plugins needed. There are no deprecated aliases; the old names fail to compile ("Property 'followLatestX' does not exist", "Module has no exported member 'chartDataToCSV'").
 
-Conventions, which the rest of the API already followed:
+Conventions:
 
 - Latest-X follow is one verb family named after the `followX` option: `followX`, `stopFollowX`, `setFollowXPaused`, `getFollowXState`, with the same names on `Chart` and `ctx.viewport`.
 - Plugin context groups drop the noun the group already names (`ctx.viewport.get()` for `chart.getViewport()`, `ctx.state.getHover()` for `chart.getHoverState()`); everything else keeps the `Chart` name.
@@ -390,7 +403,7 @@ chart.addBar({ name: "latency", dataset: HistogramDataset.from(values, { binSize
 chart.dispose();
 ```
 
-- **`downsample: "none"` line and bar series draw every visible sample.** Past the per-draw upload budget (16,384 samples for a line) they used to stop drawing partway across the plot; they are now drawn in chunks. No code change is needed.
+- **`downsample: "none"` line and bar series draw every visible sample.** Past the per-draw upload budget (16,384 samples for a line) they used to stop drawing partway across the plot. They are now drawn in chunks. No code change is needed.
 
 ### 12. Gesture handling
 
@@ -419,7 +432,7 @@ chart.dispose();
 - **`viewportchange` reports a `source`.** The payload gained a required `source`: `"user"` (interaction, navigator, and keyboard gestures), `"follow"` (latest-X following), `"fit"` (`fitToData`, `autoFitY`), `"linked"` (a linked chart mirroring another panel), or `"api"` (everything else, the default). Pass `{ source }` as the last argument of `chart.pan`, `zoom`, and `setViewport` (and in `fitToData` options) to tag your own changes, and `{ pauseFollow: false }` to `setViewport` to keep latest-X following running. A new `followxchange` event reports `ChartFollowXState` transitions (`"off"`, `"following"`, `"paused"`). Listeners that only read `viewport` are unaffected; code that builds a `ChartViewportChangeEvent` by hand needs `source`.
 - **Stateful built-in plugin instances are single-chart.** Installing the same a11y, annotations, crosshair, flame graph, navigator, or selection instance on a second chart throws `<name> plugin instance is already installed on a chart. Create one plugin instance per chart.` Create plugins inside a function that runs once per chart; `createLinkedCharts({ panelPlugins })` already does. The legend, tooltip, and interactions plugins can still be shared.
 - **Charts own their document and window.** The chart, its overlays, and the built-in plugins use the document and window of the element you mount into, so charts work in iframes, popup windows, and Document Picture-in-Picture windows instead of reading the global `document` and `window`. Custom plugins should use `ctx.dom.document`, `ctx.dom.view`, and `ctx.dom.create` (change 8).
-- **Plugin CSS ships with the plugin.** See the last row of the table in change 9.
+- **Plugin CSS ships with the plugin.** See the third row of the table in change 9.
 
 ### 15. Layout and axis changes
 
@@ -429,14 +442,14 @@ chart.dispose();
 
 ### 16. Rendering engines and internals
 
-1.0 draws with one of three engines, chosen with `ChartOptions.renderer`: WebGL2, Canvas 2D, or WebGL2 through one context shared by many charts. All three are in the core package and are fully supported. **The default is now `"auto"`**: WebGL2 when it is available, Canvas 2D otherwise, with no console output; the old default threw `WebGL2UnavailableError` from the constructor. What changed:
+1.0 draws with one of three engines, chosen with `ChartOptions.renderer`: WebGL2, Canvas 2D, or WebGL2 through one context shared by many charts. All three are in the core package and are fully supported. The default is now `"auto"`: WebGL2 when available, Canvas 2D otherwise, with no console output. The old default threw `WebGL2UnavailableError` from the constructor. Details:
 
 - **`ChartOptions.renderer`** accepts `"auto"` (the default), `"webgl2"` (strict: throws `WebGL2UnavailableError`), `"canvas2d"` (strict: throws `Canvas2DUnavailableError`), `"shared"` (strict; one hidden WebGL context for many charts), or a factory (`autoRenderer()`, `webgl2Renderer()`, `canvas2dRenderer()`, `sharedRenderer(context?)`, `createChartRenderContext().renderer()`) exported from `blazeplot`. A name is shorthand for its factory, and any other value throws a `TypeError` listing the valid names. `createLinkedCharts` takes the same `renderer` for every panel.
 - **What you can read.** `chart.renderer` is `"webgl2"`, `"canvas2d"`, or `"shared"`; `chart.rendererInfo` adds `requested`, `fallbackFrom` (`"webgl2"` when `"auto"` fell back), and `capabilities`; plugins read the same as `ctx.renderer`. `isWebGL2Available()`, `WebGL2UnavailableError`, and `Canvas2DUnavailableError` are root exports.
-- **Fewer WebGL code paths.** The non-instanced scatter and bar fallbacks and the internal buffer pool are gone; every frame is recorded into one vertex stream and uploaded once. This is internal, with no API change.
+- **Fewer WebGL code paths.** The non-instanced scatter and bar fallbacks and the internal buffer pool are gone; every frame is recorded into one vertex stream and uploaded once. No API change.
 - **Context loss belongs to the engine.** Every engine reports loss and restore to the chart, so plugins' `onContextLost` and `onContextRestored` hooks run for every engine that can lose a context (WebGL2, shared, and Canvas 2D in browsers that fire `contextlost`). `ctx.unstable.getWebGLContext()` is `null` on Canvas 2D and on the shared engine, whose context belongs to every attached chart.
 - **Plugin layers follow the engine.** `ctx.unstable.createRenderSurface(canvas)` (experimental) gives a plugin-owned canvas a drawing surface on the chart's engine. The flame graph plugin uses it, so its rectangle layer no longer opens a second WebGL context, follows `renderer`, and joins the shared context.
-- **Pixels are not a contract.** Engines draw the same data through the same pipeline, but antialiasing, rasterization ties, and join shapes differ and may change in a minor release; the feature set is what semver covers (see [API stability](./stability.md#stable-surface-inside-blazeplot) and [Browser support](./browser-support.md#rendering-engines)). If you compare screenshots, pin the engine and the library version.
+- **Pixels are not a contract.** Antialiasing, rasterization ties, and join shapes differ between engines and may change in a minor release. Semver covers the feature set (see [API stability](./stability.md#stable-surface-inside-blazeplot) and [Browser support](./browser-support.md#rendering-engines)). If you compare screenshots, pin the engine and the library version.
 
 Before (0.5): no way to render without WebGL2; the constructor threw without it.
 
@@ -453,7 +466,7 @@ chart.dispose();
 
 To keep the 0.5 behavior (fail instead of falling back, for example to show your own UI), pass `renderer: "webgl2"` and catch `WebGL2UnavailableError`.
 
-**From 1.0.0-rc.N.** Earlier release candidates shipped the Canvas 2D and shared renderers as separate entry points and defaulted to WebGL2 only. Update these:
+**From 1.0.0-rc.N.** Earlier release candidates shipped the Canvas 2D and shared renderers as separate entry points and defaulted to WebGL2 only. Update:
 
 | Release candidate | 1.0 |
 |---|---|
@@ -467,7 +480,7 @@ See [Browser support](./browser-support.md#rendering-engines) and [Performance r
 
 ### 17. API consistency pass
 
-Late 1.0 release candidates removed a few leaky or inconsistent names. There are no deprecated aliases: the old names fail to compile.
+Late 1.0 release candidates removed a few leaky or inconsistent names. There are no deprecated aliases; the old names fail to compile.
 
 | rc / 0.5 | 1.0 |
 |---|---|
@@ -498,7 +511,7 @@ Unit conventions after this pass: plugin options measured in CSS pixels end in `
 
 ## New in 1.0
 
-Additive features that need no migration work but are easy to miss:
+Additive features that need no migration work:
 
 - **Accessibility:** `blazeplot/plugins/a11y` (data table, keyboard inspection, live summary), `chart.getSummary()`, `LIGHT_CHART_THEME` (change 9, [Accessibility](./accessibility.md)).
 - **Theme:** `theme: "auto"` follows `prefers-color-scheme` (dark by default, `LIGHT_CHART_THEME` when the user prefers light), also accepted by `chart.setTheme`.
@@ -517,7 +530,7 @@ Additive features that need no migration work but are easy to miss:
 
 ### ESM only
 
-The package declares `"type": "module"` and every export has `import` and `default` conditions. Use `import` or `await import("blazeplot")`; `require("blazeplot")` works only on Node.js 22.12+, which can `require()` ES modules. There is no CommonJS or UMD build, and none is planned.
+The package declares `"type": "module"` and every export has `import` and `default` conditions. Use `import` or `await import("blazeplot")`. `require("blazeplot")` works only on Node.js 22.12+, which can `require()` ES modules. There is no CommonJS or UMD build, and none is planned.
 
 Before:
 
@@ -543,7 +556,7 @@ In a CommonJS project, use dynamic `import()` or move the chart code into an ES 
 
 ### TypeScript 5.0 or newer
 
-The declarations are checked against TypeScript 5.0 and newer. Use a `moduleResolution` that reads package `exports` (`bundler`, `node16`, or `nodenext`); the legacy `node`/`node10` setting also resolves every subpath through `typesVersions`. Include `"DOM"` in `lib`. Details: [TypeScript support](./versioning-and-migration.md#typescript-support).
+The declarations are checked against TypeScript 5.0 and newer. Use a `moduleResolution` that reads package `exports` (`bundler`, `node16`, or `nodenext`). The legacy `node`/`node10` setting also resolves every subpath through `typesVersions`. Include `"DOM"` in `lib`. Details: [TypeScript support](./versioning-and-migration.md#typescript-support).
 
 ```json
 {
@@ -557,7 +570,7 @@ The declarations are checked against TypeScript 5.0 and newer. Use a `moduleReso
 
 ## Renames and removals since 0.1 that still matter
 
-These landed before 1.0 and are covered in the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) and the changelogs. The ones that most often break an upgrade from an older 0.x:
+These landed before 1.0 and are covered in the [0.5 migration table](./versioning-and-migration.md#migrating-to-05) and the changelogs. The ones that most often break an upgrade from an older 0.x are:
 
 | Since | Before | After |
 |---|---|---|
@@ -571,9 +584,9 @@ These landed before 1.0 and are covered in the [0.5 migration table](./versionin
 | 0.5.0 | `selectionPlugin({ onStart, onUpdate, onCommit, onClear })` | `selectionPlugin({ onChange })` |
 | 0.5.0 | `ReglBackend` | `WebGL2Backend` (now internal; see change 1) |
 
-The 0.5 renames in this table are the only deprecation path: they were removed in 0.5 without aliases, and 1.0 does not carry any deprecated names. No API is deprecated at 1.0; the [deprecation process](./versioning-and-migration.md#deprecation-process) applies from here on.
+The 0.5 renames in this table were removed in 0.5 without aliases, and 1.0 carries no deprecated names. No API is deprecated at 1.0; the [deprecation process](./versioning-and-migration.md#deprecation-process) applies from here on.
 
-A minimal "after" for the most common one, the append signature:
+The most common one, the append signature, in 1.0 form:
 
 ```ts
 series.append({ x: Date.now(), y: 1 });
