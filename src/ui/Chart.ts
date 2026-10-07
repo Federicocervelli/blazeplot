@@ -29,6 +29,8 @@ import { ChartSeriesStyles } from "./ChartSeriesStyles.js";
 import { fitCameras } from "./ChartFit.js";
 import type { ResolvedAxesConfig } from "./ChartConfig.js";
 import { observeResize } from "./SharedResizeObserver.js";
+import { queuePlotRead, readQueuedPlots, unqueuePlotRead } from "./SharedPlotSize.js";
+import type { PlotSizeRead } from "./SharedPlotSize.js";
 import { buildChartSummary, createSummaryMessages } from "./ChartSummary.js";
 import type { ChartSummary, ChartSummaryMessages } from "./ChartSummary.js";
 
@@ -105,6 +107,8 @@ export class Chart {
    * animation frame would pay one per chart per frame.
    */
   private readonly plotSize = { width: -1, height: -1 };
+  /** The pending first size read of this chart (see `SharedPlotSize`), created with the first scheduled frame. */
+  private plotRead: PlotSizeRead | null = null;
   private readonly followXPolicy: FollowXController = new FollowXController({
     camera: () => this.camera,
     axis: () => this.axis,
@@ -765,14 +769,31 @@ export class Chart {
       this.layout.view.cancelAnimationFrame(this.rafId);
       this.rafId = 0;
     }
+    this.dropPlotRead();
+  }
+
+  /** Forget a queued or batch-read plot size that no frame will consume, so the next frame measures afresh. */
+  private dropPlotRead(): void {
+    const read = this.plotRead;
+    if (!read) return;
+    unqueuePlotRead(this.layout.view, read);
+    if (read.read) {
+      read.read = false;
+      this.plotSize.width = -1;
+      this.plotSize.height = -1;
+    }
   }
 
   /** Schedule a frame. Chart-owned changes call this automatically. */
   requestRender(): void {
     if (!this.running || this.rafId !== 0) return;
-    this.rafId = this.layout.view.requestAnimationFrame(() => {
+    const view = this.layout.view;
+    // A chart that has not read its plot size yet joins the frame's batch read.
+    if (this.plotSize.width < 0) queuePlotRead(view, (this.plotRead ??= { element: this.canvas, size: this.plotSize, read: false }));
+    this.rafId = view.requestAnimationFrame(() => {
       this.rafId = 0;
       if (!this.running) return;
+      readQueuedPlots(view);
       try {
         this.render();
       } finally {
@@ -824,7 +845,7 @@ export class Chart {
       return;
     }
 
-    if (this.plotSize.width < 0) this.applyCanvasSize();
+    if (this.plotSize.width < 0 || this.plotRead?.read) this.applyCanvasSize();
     const { width: plotWidth, height: plotHeight } = this.plotSize;
     if (!this.sizeChecked) {
       this.sizeChecked = true;
@@ -1048,8 +1069,15 @@ export class Chart {
   private applyCanvasSize(pixelRatio: number = this.layout.view.devicePixelRatio): boolean {
     const scale = Number.isFinite(pixelRatio) ? Math.max(1, pixelRatio) : 1;
     const size = this.plotSize;
-    size.width = this.canvas.clientWidth;
-    size.height = this.canvas.clientHeight;
+    const read = this.plotRead;
+    if (read?.read) {
+      // The frame's batch already read this size (see `SharedPlotSize`).
+      read.read = false;
+    } else {
+      if (read) unqueuePlotRead(this.layout.view, read);
+      size.width = this.canvas.clientWidth;
+      size.height = this.canvas.clientHeight;
+    }
     const width = Math.max(1, Math.floor(size.width * scale));
     const height = Math.max(1, Math.floor(size.height * scale));
     if (this.canvas.width === width && this.canvas.height === height) return false;
