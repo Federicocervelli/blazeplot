@@ -30,10 +30,10 @@ Empty datasets:
 
 Every built-in dataset follows one rule:
 
-- **X is finite and non-decreasing.** Duplicate X values are allowed; `NaN`, `Infinity`, `-Infinity`, and an X below the previous one are not.
-- **A non-finite Y is a gap**, not an error (see [Gaps](#gaps)).
+- X is finite and non-decreasing. Duplicate X values are allowed; `NaN`, `Infinity`, `-Infinity`, and an X below the previous one are not.
+- A non-finite Y is a gap, not an error (see [Gaps](#gaps)).
 
-Range searches, LOD extraction, culling, picking, and exports binary-search X, so a dataset that broke the rule would silently hide samples or draw them in the wrong place. Instead, each dataset enforces the rule where data enters:
+Range searches, LOD extraction, culling, picking, and exports binary-search X, so a dataset that broke the rule would silently hide samples or draw them in the wrong place. Each dataset enforces the rule where data enters:
 
 | Dataset | Bad X | Cost |
 |---|---|---|
@@ -46,13 +46,13 @@ Range searches, LOD extraction, culling, picking, and exports binary-search X, s
 
 Static errors read like `StaticDataset: X at index 2 is 1, below 2 at index 1 (decreasing-x). X values must be finite and non-decreasing. ...` or `StaticDataset: X at index 1 is NaN (non-finite-x). ...`. Match them with `instanceof RangeError`, not by message text.
 
-To fix unsorted static input, copy it through `StaticDataset.sorted(x, y)` or `StaticOhlcDataset.sorted(x, open, high, low, close)`. They sort stably by X (equal X values keep their input order), carry Y or the OHLC columns along, and **drop** samples whose X is non-finite. For object rows, use `StaticDataset.fromObjects(rows, { x, y, sort: true })`. Pass `{ assumeSorted: true }` only for large data you already trust; if it is in fact unsorted, results are unreliable.
+To fix unsorted static input, copy it through `StaticDataset.sorted(x, y)` or `StaticOhlcDataset.sorted(x, open, high, low, close)`. They sort stably by X (equal X values keep their input order), carry Y or the OHLC columns along, and drop samples whose X is non-finite. For object rows, use `StaticDataset.fromObjects(rows, { x, y, sort: true })`. Pass `{ assumeSorted: true }` only for large data you already trust; if it is in fact unsorted, results are unreliable.
 
 Custom `Dataset` implementations must expose the same sorted logical order; BlazePlot does not check them. The optional capabilities of a dataset (`isGap`, `rangeMinMaxY`, the fast-path copy methods, `getXRange`, and so on) are detected once when the series is created, so methods added to a dataset afterwards are not picked up.
 
 ### Streaming: skip, count, report
 
-Streaming buffers skip bad samples instead of throwing, so one malformed packet cannot take down a live dashboard. A sample is invalid when its X is non-finite or lower than the newest accepted X. Skipped samples are not stored and do not count toward capacity or the `overflow` strategy, so `overflow: "error"` never throws because of them. In an `append` batch, the valid samples are still stored; the result is the same as calling `push` for each sample in order (except that `overflow: "error"` throws before storing anything). After `clear()`, any finite X is accepted again. `RingBuffer.update(index, x, y)` returns `false` and counts a rejection when `x` is non-finite or outside its neighbors' X values.
+Streaming buffers skip bad samples instead of throwing. A sample is invalid when its X is non-finite or lower than the newest accepted X. Skipped samples are not stored and do not count toward capacity or the `overflow` strategy, so `overflow: "error"` never throws because of them. In an `append` batch, the valid samples are still stored; the result is the same as calling `push` for each sample in order (except that `overflow: "error"` throws before storing anything). After `clear()`, any finite X is accepted again. `RingBuffer.update(index, x, y)` returns `false` and counts a rejection when `x` is non-finite or outside its neighbors' X values.
 
 ```ts
 import { RingBuffer, type InvalidSample } from "blazeplot";
@@ -95,7 +95,7 @@ You can mark a gap in either of these ways:
 - store a non-finite Y value such as `NaN` at the sorted X position where the break should happen;
 - implement `isGap(index): boolean` on a custom `Dataset`.
 
-If a custom dataset also implements accelerated methods such as `rangeMinMaxY`, `copySamplesRange`, `copyVisibleSamples`, `copyVisiblePoints`, or `copyMinMaxSegments`, those methods are renderer-ready fast paths. They should skip or encode gaps consistently themselves.
+If a custom dataset also implements accelerated methods such as `rangeMinMaxY`, `copySamplesRange`, `copyVisibleSamples`, `copyVisiblePoints`, or `copyMinMaxSegments`, those methods are renderer fast paths and must skip or encode gaps themselves.
 
 For finite-to-finite session breaks, insert an explicit gap marker sample.
 
@@ -105,11 +105,11 @@ For finite-to-finite session breaks, insert an explicit gap marker sample.
 
 X values must be finite and non-decreasing; see [Streaming: skip, count, report](#streaming-skip-count-report) for what happens to samples that are not.
 
-`UniformRingBuffer` is for fixed-rate data. It stores Y values and derives X as `xStart + index * xStep`; `xStep` must be positive. It always wraps at capacity (it has no overflow option). Prefer it for telemetry or signal data where every sample is evenly spaced. For chart-owned series, `chart.addLine({ capacity, xStart, xStep })` creates this dataset for you. Passed X values only seed the stream: `series.append({ x, y })` uses the first X when the buffer is empty (or when one batch is at least as long as the buffer), and otherwise ignores X and keeps deriving it from `xStep`; use `RingBuffer` when spacing varies. Because X is derived, `series.updateAt(index, { x, y })` throws a `TypeError` on it; update Y with `{ y }`.
+`UniformRingBuffer` is for fixed-rate data. It stores Y values and derives X as `xStart + index * xStep`; `xStep` must be positive. It always wraps at capacity (it has no overflow option). Use it for telemetry or signal data with evenly spaced samples. For chart-owned series, `chart.addLine({ capacity, xStart, xStep })` creates this dataset for you. Passed X values only seed the stream: `series.append({ x, y })` uses the first X when the buffer is empty (or when one batch is at least as long as the buffer), and otherwise ignores X and keeps deriving it from `xStep`; use `RingBuffer` when spacing varies. Because X is derived, `series.updateAt(index, { x, y })` throws a `TypeError` on it; update Y with `{ y }`.
 
 ### Value precision
 
-Built-in buffers store Y (and OHLC prices) as `float32` by default, which halves memory and keeps about 7 significant digits. Values such as `123456789.12` or prices above 100,000 with cents get rounded, and the rounded value is what tooltips and `chart.pick()` report. Pass `valuePrecision: "float64"` to `RingBuffer`, `UniformRingBuffer`, `OhlcRingBuffer`, `StaticDataset.fromObjects`, or a chart-owned series (`chart.addLine({ capacity, valuePrecision: "float64" })`) to store values exactly (`StaticDataset.sorted` takes the same option). `new StaticDataset(x, y)` reads your arrays in place, so a `Float64Array` stays exact. `ServerSampledDataset` always stores Y as `float32`. X values are always stored as `float64`.
+Built-in buffers store Y (and OHLC prices) as `float32` by default: half the memory, about 7 significant digits. Values such as `123456789.12` or prices above 100,000 with cents get rounded, and the rounded value is what tooltips and `chart.pick()` report. Pass `valuePrecision: "float64"` to `RingBuffer`, `UniformRingBuffer`, `OhlcRingBuffer`, `StaticDataset.fromObjects`, or a chart-owned series (`chart.addLine({ capacity, valuePrecision: "float64" })`) to store values exactly (`StaticDataset.sorted` takes the same option). `new StaticDataset(x, y)` reads your arrays in place, so a `Float64Array` stays exact. `ServerSampledDataset` always stores Y as `float32`. X values are always stored as `float64`.
 
 Rendering has its own precision. The GPU works in `float32`, so the chart subtracts a per-frame origin from X and from Y (the left edge and bottom of each linear axis's viewport) in `float64` before uploading vertices. A line such as `1e6 + sin(t) * 0.01` therefore draws smoothly when zoomed to fit. Logarithmic and other nonlinear Y axes are transformed on the CPU and are not shifted. Custom datasets that implement the experimental fast-path copy interfaces are shifted after their `float32` copy, so very large Y offsets can still quantize there.
 
@@ -123,7 +123,7 @@ Variable-width explicit histogram thresholds are supported by the pure `histogra
 
 ## Server-sampled datasets
 
-`ServerSampledDataset` is for data that was already reduced before it reached the browser.
+`ServerSampledDataset` holds data that was already reduced before it reached the browser.
 
 - Point data represents concrete X/Y samples. Use it with `downsample: "none"`.
 - Min/max bucket data represents `{ xStart, xEnd, minY, maxY }` envelopes. Use it with `downsample: "server"` so BlazePlot renders those envelopes directly.

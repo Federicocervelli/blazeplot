@@ -11,17 +11,7 @@ chart.setTheme({
 });
 ```
 
-Theme values are merged with the default theme, so you can override only the tokens you need. Colors accept CSS color strings, including `var(--accent)` references; `backgroundColor`, `gridColor`, and `seriesColors` (the renderer-facing colors) also accept RGBA arrays in 0-1 range. CSS values are resolved against the chart root when the theme is applied, so call `chart.setTheme(...)` again after your CSS variables or color scheme change. `chart.theme` returns the resolved theme, and a `themechange` event fires after each update.
-
-## Quick decisions
-
-| Goal | Use |
-|---|---|
-| Brand colors or dark mode | `theme` at construction time, then `chart.setTheme(...)` for runtime changes. |
-| Compact dashboards | Inside axes, fewer visible axes, smaller title/axis fonts, and plugin layout reservations. |
-| External controls or legends | A plugin that mounts into the `"root"` slot and calls `ctx.layout.reserve(...)`; avoid hard-coded margins. |
-| Screenshot-safe overlays | Built-in DOM/SVG overlays or plugin-owned elements inside the chart root. |
-| Mobile layouts | Inside axes, fewer ticks, touch interactions, and controls outside the plot. |
+Theme values are merged with the default theme, so you only need to override the tokens you change. Colors accept CSS color strings, including `var(--accent)` references; `backgroundColor`, `gridColor`, and `seriesColors` (the renderer-facing colors) also accept RGBA arrays in 0-1 range. CSS values are resolved against the chart root when the theme is applied, so call `chart.setTheme(...)` again after your CSS variables or color scheme change. `chart.theme` returns the resolved theme, and a `themechange` event fires after each update.
 
 ## Theme tokens
 
@@ -65,12 +55,12 @@ Translucent colors blend with what is already drawn.
 
 ### Units
 
-Every numeric option states its unit in its name or its JSDoc. The conventions:
+Every numeric option states its unit in its name or its JSDoc.
 
-- **`*Px` names are CSS pixels** (`offsetXPx`, `widthPx`, `radiusPx`, `heightPx`, `maxDistancePx`, `minDragDistancePx`, `hitTolerancePx`, `strokeWidthPx`). Series style `lineWidth` and `pointSize` are CSS pixels too (documented, unsuffixed). The renderer multiplies by the pixel ratio.
-- **`barWidth` and `tickWidth` are data X units**, not pixels, so bars keep their width relative to the data when you zoom. On a time axis X is epoch milliseconds, so a one-minute bar is `60_000`.
-- **`*Ms` names are milliseconds** of wall-clock time (`resumeAfterMs`, `longPressMs`, `updateMs`). Everything else about X (`window`, `xStep`, `xStart`, `binSize`) is in X data units.
-- **Screenshot `width` and `height` are device pixels** of the output image; `pixelRatio` is device pixels per CSS pixel.
+- `*Px` names are CSS pixels (`offsetXPx`, `widthPx`, `radiusPx`, `heightPx`, `maxDistancePx`, `minDragDistancePx`, `hitTolerancePx`, `strokeWidthPx`). Series style `lineWidth` and `pointSize` are CSS pixels too (documented, unsuffixed). The renderer multiplies by the pixel ratio.
+- `barWidth` and `tickWidth` are data X units, not pixels, so bars keep their width relative to the data when you zoom. On a time axis X is epoch milliseconds, so a one-minute bar is `60_000`.
+- `*Ms` names are milliseconds of wall-clock time (`resumeAfterMs`, `longPressMs`, `updateMs`). Everything else about X (`window`, `xStep`, `xStart`, `binSize`) is in X data units.
+- Screenshot `width` and `height` are device pixels of the output image; `pixelRatio` is device pixels per CSS pixel.
 - Padding options such as `fitToData({ padding })` are fractions of the data span (0.05 is 5%).
 
 Series without an explicit `color` take the first theme palette color no other attached series uses, so removing a series and adding another never repeats a color that is still on screen. Those palette-colored series follow `chart.setTheme(...)`; series with an explicit `color` keep it.
@@ -91,7 +81,7 @@ chart.dispose();
 - The chart root fills its host element. Give the host an explicit width and height.
 - The plot canvas is sized to the plot area, not the full outer chart: outside axes, titles, and plugin layout reservations take their space from the chart root first.
 - `ResizeObserver` is used when available so charts follow container size changes; without it, call `chart.resize()` after the host changes size.
-- The chart belongs to the document and window of its host element, so it works in iframes and popup windows without extra setup: observers, animation frames, `matchMedia`, computed colors, and elements the chart or its plugins create use the host's own window and document instead of the globals. Plugins read them from `ctx.dom.document` and `ctx.dom.view`.
+- The chart belongs to the document and window of its host element, so it works in iframes and popup windows: observers, animation frames, `matchMedia`, computed colors, and elements the chart or its plugins create use the host's own window and document instead of the globals. Plugins read them from `ctx.dom.document` and `ctx.dom.view`.
 - The chart injects one `<style class="blazeplot-style">` inside its root. The legend, tooltip, crosshair, selection, and navigator plugins each add a small deduplicated `<style data-blazeplot-plugin-style>` with forced-colors rules to the host document (removed when the last chart using it is disposed), and `interactionsPlugin` adds an axis-hover `<style>` inside the chart root. A strict `style-src` Content Security Policy has to allow these elements.
 - Call `chart.dispose()` when removing the host element.
 
@@ -100,8 +90,7 @@ chart.dispose();
 - Outside axes are the default and reserve real CSS-pixel gutters for tick labels: 52px on the left/right Y sides and 28px on the bottom X side. Gutters expand (by 24px for Y, 20px for X) when an outside axis has a title.
 - Set `size` on an axis to change its gutter: `axes: { y: { size: 80 } }` is a fixed size in CSS pixels, not counting the title allowance. `size: "auto"` measures the widest (Y, Y2) or tallest (X) tick label and adds padding. It grows at once and shrinks only after the smaller size has held for about a second, so live charts with changing label lengths do not jitter.
 - A chart title and subtitle get their own row above the plot (26px for a title, 20px more for a subtitle), so they never cover the plot area.
-- Inside axes draw labels over the plot and are useful for compact layouts.
-- Use `axes: { x: { position: "inside" }, y: { position: "inside" } }` when space is tight.
+- Inside axes draw labels over the plot, which saves space: `axes: { x: { position: "inside" }, y: { position: "inside" } }`.
 - Titles and axis titles are built-in DOM text overlays and are included in `chart.screenshot()` output.
 
 Axis options live under `ChartOptions.axes`. Use them for time ticks, log/symlog scales, category labels, custom tick formatting, reversed axes, and left/right Y-axis placement.
@@ -141,15 +130,13 @@ chart.dispose();
 
 ## Plugin layout
 
-Plugins that need space outside the plot should mount their UI into the `"root"` slot and call `ctx.layout.reserve(reservation)`, which returns a release function. This avoids overlapping axes and keeps screenshots consistent. Plot overlays, such as crosshairs or custom markers, should mount into the `"plot"` slot with `ctx.dom.mount("plot", element)`. See [Plugin authoring](./plugin-authoring.md#mount-slots-and-surfaces).
+Plugins that need space outside the plot should mount their UI into the `"root"` slot and call `ctx.layout.reserve(reservation)`, which returns a release function, so the UI does not overlap axes and screenshots stay consistent. Plot overlays, such as crosshairs or custom markers, should mount into the `"plot"` slot with `ctx.dom.mount("plot", element)`. See [Plugin authoring](./plugin-authoring.md#mount-slots-and-surfaces).
 
-The built-in legend defaults to a corner inside the plot and does not reserve space. Pass `legendPlugin({ position: "bottom" })` (or `"top"`, `"left"`, `"right"`) to place it outside the plot: it reserves its measured size through `ctx.layout.reserve` and the plot shrinks to fit. The navigator can reserve top or bottom space. For external legends or controls, create a plugin with a layout reservation.
-
-For plugin lifecycle details, see [Plugin authoring](./plugin-authoring.md).
+The built-in legend defaults to a corner inside the plot and does not reserve space. Pass `legendPlugin({ position: "bottom" })` (or `"top"`, `"left"`, `"right"`) to place it outside the plot: it reserves its measured size through `ctx.layout.reserve` and the plot shrinks to fit. The navigator can reserve top or bottom space. For other external legends or controls, create a plugin with a layout reservation; see [Plugin authoring](./plugin-authoring.md).
 
 ## Mobile layouts
 
-For small screens, prefer:
+For small screens, use:
 
 - inside axes or fewer visible axes,
 - fewer ticks through axis scale/tick options,
@@ -159,7 +146,7 @@ For small screens, prefer:
 
 ## Localizing built-in text
 
-Strings that BlazePlot generates are overridable, and unset keys keep their English defaults:
+Generated strings are overridable. Unset keys keep their English defaults:
 
 - `accessibility: { locale, messages }` on the chart sets the default accessible name and the wording of the generated summary; `locale` (a BCP 47 tag, default `"en-US"`) formats the counts in it.
 - `legendPlugin({ messages })` overrides the legend's group label, hide/show tooltips, and fallback series names.
@@ -167,11 +154,11 @@ Strings that BlazePlot generates are overridable, and unset keys keep their Engl
 - `selectionPlugin`, `navigatorPlugin`, `annotationsPlugin`, and `interactionsPlugin` take `messages` too; the full list is in [Accessibility](./accessibility.md#localization).
 - `interactionsPlugin({ gestureHint: { wheelText, touchText, durationMs } })` rewords the cooperative-gesture hint.
 
-Axis tick text comes from your `tickFormat`; time ticks use English month and weekday names unless you format them yourself. See [Accessibility](./accessibility.md) for the full message lists.
+Axis tick text comes from your `tickFormat`; time ticks use English month and weekday names unless you format them yourself.
 
 ## Accessibility and contrast
 
-Provide accessible text at chart construction time. BlazePlot marks the canvas as hidden from assistive technology and puts the label on the chart root.
+Set accessible text when you create the chart. BlazePlot marks the canvas as hidden from assistive technology and puts the label on the chart root.
 
 ```ts
 import { Chart } from "blazeplot";
