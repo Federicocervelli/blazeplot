@@ -48,6 +48,12 @@ export class Canvas2DRenderer implements ChartRenderer {
   private strokeJoin: string | null = null;
   /** Scratch for the float color of the rect being filled (compared with `fill` before a string is built). */
   private readonly rectColor: [number, number, number, number] = [0, 0, 0, 0];
+  /** The snapped rectangle `addSnappedRect` has not yet added to the path (it may still absorb the next ones). */
+  private rectOpen = false;
+  private rectLeft = 0;
+  private rectTop = 0;
+  private rectRight = 0;
+  private rectBottom = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement, origin?: RendererOrigin) {
     const ctx = canvas.getContext("2d");
@@ -94,11 +100,13 @@ export class Canvas2DRenderer implements ChartRenderer {
     primitive: "line_strip" | "lines" = "line_strip",
   ): void {
     this.drawCalls++;
-    const n = Math.min(vertexCount, d.length >> 1);
+    let n = Math.min(vertexCount, d.length >> 1);
     const { sx, ox, sy, oy } = this.project(projection);
     const ctx = this.ctx;
     const width = Math.max(1, lineWidth * this.pixelRatio);
     ctx.beginPath();
+    // A non-finite projection puts every vertex off the canvas; the staged path marks subpaths with NaN, so skip it.
+    if (!Number.isFinite(sx + ox + sy + oy)) n = 0;
     if (primitive === "line_strip") this.tracePolyline(d, n, sx, ox, sy, oy, width <= THIN_STROKE_PX);
     else this.traceSegments(d, n, sx, ox, sy, oy, false);
     this.stroke(color, width);
@@ -122,7 +130,12 @@ export class Canvas2DRenderer implements ChartRenderer {
    * spread of a column visible. Each column is scanned in one inner loop so all of its state lives in locals.
    */
   private tracePolyline(d: Float32Array, n: number, sx: number, ox: number, sy: number, oy: number, reduce: boolean): void {
-    const ctx = this.ctx;
+    // The reduced points are staged and replayed into the canvas in a second, tight loop: interleaving the
+    // reduction arithmetic with the native `lineTo` calls is about a quarter slower than running each alone.
+    // At most one point per vertex plus one subpath marker per vertex.
+    if (pathScratch.length < n * 4 + 8) pathScratch = new Float64Array(n * 4 + 8);
+    const out = pathScratch;
+    let o = 0;
     let pen = false;
     let i = 0;
     while (i < n) {
@@ -163,19 +176,43 @@ export class Canvas2DRenderer implements ChartRenderer {
         count++;
       }
 
-      if (pen) ctx.lineTo(firstX, firstY);
-      else {
-        ctx.moveTo(firstX, firstY);
+      if (!pen) {
+        // A NaN x marks the start of a subpath: the next point is a `moveTo`.
+        out[o++] = NaN;
+        out[o++] = 0;
         pen = true;
       }
+      out[o++] = firstX;
+      out[o++] = firstY;
       if (count === 1) continue;
       // Extremes strictly inside the column; the first and last vertices are emitted anyway.
       const lowFirst = minAt < maxAt;
       const firstAt = lowFirst ? minAt : maxAt;
       const secondAt = lowFirst ? maxAt : minAt;
-      if (firstAt > 0 && firstAt < count - 1) ctx.lineTo(key + 0.5, lowFirst ? minY : maxY);
-      if (secondAt > 0 && secondAt < count - 1) ctx.lineTo(key + 0.5, lowFirst ? maxY : minY);
-      ctx.lineTo(lastX, lastY);
+      if (firstAt > 0 && firstAt < count - 1) {
+        out[o++] = key + 0.5;
+        out[o++] = lowFirst ? minY : maxY;
+      }
+      if (secondAt > 0 && secondAt < count - 1) {
+        out[o++] = key + 0.5;
+        out[o++] = lowFirst ? maxY : minY;
+      }
+      out[o++] = lastX;
+      out[o++] = lastY;
+    }
+
+    const ctx = this.ctx;
+    let move = false;
+    for (let k = 0; k < o; k += 2) {
+      const x = out[k]!;
+      if (x !== x) {
+        move = true;
+        continue;
+      }
+      if (move) {
+        ctx.moveTo(x, out[k + 1]!);
+        move = false;
+      } else ctx.lineTo(x, out[k + 1]!);
     }
   }
 
@@ -239,6 +276,7 @@ export class Canvas2DRenderer implements ChartRenderer {
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       this.addSnappedRect((x - half) * sx + ox, y * sy + oy, (x + half) * sx + ox, base);
     }
+    this.flushRect();
     this.ctx.fill();
   }
 
@@ -309,6 +347,7 @@ export class Canvas2DRenderer implements ChartRenderer {
         generic.closePath();
       }
     }
+    this.flushRect();
     ctx.fill();
     // Free triangles keep their own path: its winding is unrelated to the rects', and a shared nonzero fill
     // would cancel where opposite windings overlap.
@@ -396,7 +435,13 @@ export class Canvas2DRenderer implements ChartRenderer {
 
   /**
    * Add the rectangle spanned by two device-pixel corners to the current path, snapped to whole pixels and
-   * at least 1px each way. Callers fill a whole batch of these with one `fill()`.
+   * at least 1px each way. Callers fill a whole batch of these with one `fill()`, after `flushRect()`.
+   *
+   * Dense min/max buckets can be several per pixel column (the sampler takes up to 4096 buckets whatever the
+   * plot width), and after snapping each is a whole-pixel rectangle. A rectangle with exactly the same
+   * snapped columns as the pending one that touches or overlaps it vertically is merged into it: both are
+   * unions of whole device pixels, so their union is the merged rectangle and the filled pixels are exactly
+   * the same, with a fraction of the path-building calls into the native canvas.
    */
   private addSnappedRect(xa: number, ya: number, xb: number, yb: number): void {
     if (!Number.isFinite(xa + ya + xb + yb)) return;
@@ -406,10 +451,32 @@ export class Canvas2DRenderer implements ChartRenderer {
     const right = Math.max(Math.round(Math.max(xa, xb)), left + 1);
     const bottom = Math.max(Math.round(Math.max(ya, yb)), top + 1);
     if (right < 0 || bottom < 0 || left > this.width || top > this.height) return;
-    this.ctx.rect(left, top, right - left, bottom - top);
+    if (this.rectOpen) {
+      if (left === this.rectLeft && right === this.rectRight && top <= this.rectBottom && bottom >= this.rectTop) {
+        if (top < this.rectTop) this.rectTop = top;
+        if (bottom > this.rectBottom) this.rectBottom = bottom;
+        return;
+      }
+      this.ctx.rect(this.rectLeft, this.rectTop, this.rectRight - this.rectLeft, this.rectBottom - this.rectTop);
+    }
+    this.rectOpen = true;
+    this.rectLeft = left;
+    this.rectTop = top;
+    this.rectRight = right;
+    this.rectBottom = bottom;
+  }
+
+  /** Emit the pending merged rectangle (see `addSnappedRect`) into the path; call before filling it. */
+  private flushRect(): void {
+    if (!this.rectOpen) return;
+    this.rectOpen = false;
+    this.ctx.rect(this.rectLeft, this.rectTop, this.rectRight - this.rectLeft, this.rectBottom - this.rectTop);
   }
 }
 
+
+/** Reduced polyline points staged by `tracePolyline`; shared by every chart (a trace is synchronous). */
+let pathScratch = new Float64Array(8192);
 
 /** CSS strings by color tuple: series styles are resolved once, so every frame after the first hits. */
 const cssCache = new WeakMap<RgbaColor, string>();

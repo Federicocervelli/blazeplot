@@ -322,11 +322,15 @@ async function runSoak(metrics: Record<string, number>, details: Record<string, 
   const mounted = await mountAndPresent(fullSpec, data, staticViewport(fullSpec));
   if (scenario.warmupMs > 0) await frameLoop(mounted.handle, fullSpec, { op: "pan", durationMs: scenario.warmupMs, rate: 0, startX: fullSpec.points });
   const heapBefore = await settledHeapBytes();
-  const loop = await frameLoop(mounted.handle, fullSpec, { op: "pan", durationMs: scenario.measureMs, rate: 0, startX: fullSpec.points });
-  const heapAfter = await settledHeapBytes();
-  if (heapBefore !== null && heapAfter !== null) metrics.heapGrowthMiB = (heapAfter - heapBefore) / (1024 * 1024);
+  // The loop records one sample per frame per metric. Summarize them and drop the arrays before the final
+  // measurement: left alive they count as heap growth in proportion to the frame count, which would charge a
+  // library for rendering more frames (and for the extra stats arrays only some handles provide).
+  let loop: LoopResult | null = await frameLoop(mounted.handle, fullSpec, { op: "pan", durationMs: scenario.measureMs, rate: 0, startX: fullSpec.points });
   recordLoop(loop, metrics, details);
   details.frames = loop.rafFrameMs.length;
+  loop = null;
+  const heapAfter = await settledHeapBytes();
+  if (heapBefore !== null && heapAfter !== null) metrics.heapGrowthMiB = (heapAfter - heapBefore) / (1024 * 1024);
   mounted.handle.destroy();
 }
 
