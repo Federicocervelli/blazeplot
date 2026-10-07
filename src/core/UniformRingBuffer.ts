@@ -1,4 +1,4 @@
-import { MinMaxTree } from "./MinMaxTree.js";
+import { BUCKET_CHUNK, BUCKET_MAX, BUCKET_MIN, MinMaxTree } from "./MinMaxTree.js";
 import type { MinMaxOut, MinMaxY } from "./MinMaxTree.js";
 import { nonFiniteXWarning } from "./search.js";
 import { createValueArray } from "./valueArray.js";
@@ -263,20 +263,27 @@ export class UniformRingBuffer implements AppendableDataset, AcceleratedDataset 
     const alignedStart = start - positiveModulo(this.ordinalOffset + start, stride);
 
     let written = 0;
-    const extent = { minY: 0, maxY: 0 };
-    for (let bucketStart = alignedStart; bucketStart < end && written < maxSegments; bucketStart += stride) {
-      const segmentStart = Math.max(0, bucketStart);
-      const segmentEnd = Math.min(this._length, bucketStart + stride);
-      if (segmentEnd <= start || segmentStart >= end) continue;
+    const firstX = this.firstX();
+    const shift = this.logicalToPhysical(0);
+    for (let chunkStart = alignedStart; chunkStart < end && written < maxSegments; chunkStart += BUCKET_CHUNK * stride) {
+      const count = Math.min(BUCKET_CHUNK, Math.ceil((end - chunkStart) / stride));
+      this.tree.bucketExtentsInto(chunkStart, stride, count, 0, this._length, shift, BUCKET_MIN, BUCKET_MAX);
+      for (let k = 0; k < count && written < maxSegments; k++) {
+        const minY = BUCKET_MIN[k]!;
+        const maxY = BUCKET_MAX[k]!;
+        if (!(minY <= maxY)) continue;
+        const bucketStart = chunkStart + k * stride;
+        const segmentStart = Math.max(0, bucketStart);
+        const segmentEnd = Math.min(this._length, bucketStart + stride);
+        if (segmentEnd <= start || segmentStart >= end) continue;
 
-      if (!this.rangeMinMaxInto(segmentStart, segmentEnd, extent)) continue;
-
-      const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
-      const offset = written * 3;
-      target[offset] = this.firstX() + representative * this.xStep - xOrigin;
-      target[offset + 1] = extent.minY - yOrigin;
-      target[offset + 2] = extent.maxY - yOrigin;
-      written++;
+        const representative = Math.max(segmentStart, Math.min(segmentEnd - 1, bucketStart + (stride >> 1)));
+        const offset = written * 3;
+        target[offset] = firstX + representative * this.xStep - xOrigin;
+        target[offset + 1] = minY - yOrigin;
+        target[offset + 2] = maxY - yOrigin;
+        written++;
+      }
     }
 
     return written;

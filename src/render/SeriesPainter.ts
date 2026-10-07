@@ -383,6 +383,21 @@ export class SeriesPainter {
   /** Grow min/max buckets to at least `lineWidth` CSS pixels tall so flat stretches of dense lines stay visible. */
   private padBucketsToLineWidth(bucketCount: number, viewport: Viewport, series: SeriesStore): void {
     const controller = this.controllerFor(series.config.yAxis);
+    if (controller.isIdentityScale("y")) {
+      // Linear-like axis: scale and unscale are the identity, so the per-bucket calls are skipped.
+      const half = (series.style.lineWidth * 0.5 * Math.abs(viewport.yMax - viewport.yMin)) / Math.max(1, this.canvas.clientHeight);
+      const buckets = this.minMaxBucketData;
+      for (let i = 0; i < bucketCount; i++) {
+        const offset = i * FLOATS_PER_MINMAX_BUCKET;
+        const low = buckets[offset + 1]!;
+        const high = buckets[offset + 2]!;
+        if (high - low >= half * 2) continue;
+        const center = (low + high) * 0.5;
+        buckets[offset + 1] = center - half;
+        buckets[offset + 2] = center + half;
+      }
+      return;
+    }
     const scaledMin = controller.scaleValue(viewport.yMin, "y");
     const scaledMax = controller.scaleValue(viewport.yMax, "y");
     const halfHeight = (series.style.lineWidth * 0.5 * Math.abs(scaledMax - scaledMin)) / Math.max(1, this.canvas.clientHeight);
@@ -407,6 +422,7 @@ export class SeriesPainter {
     if (count <= 0) return;
 
     const data = this.minMaxBucketData;
+    const out = this.barTriangleData;
     const viewportXMin = viewport.xMin - this.currentXOrigin;
     const viewportXMax = viewport.xMax - this.currentXOrigin;
     for (let i = 0; i < count; i++) {
@@ -430,7 +446,25 @@ export class SeriesPainter {
       }
       const low = data[i * 3 + 1]!;
       const high = data[i * 3 + 2]!;
-      this.writeBarTriangles(i, Math.max(viewportXMin, x0), Math.min(viewportXMax, x1), baseline === undefined ? low : Math.min(baseline, low), baseline === undefined ? high : Math.max(baseline, high));
+      // Written in place (the body of `writeBarTriangles`): a call with four double arguments allocates a
+      // heap number per argument unless it is inlined, which is hundreds of KB of garbage per dense frame.
+      const left = Math.max(viewportXMin, x0);
+      const right = Math.min(viewportXMax, x1);
+      const bottom = baseline === undefined ? low : Math.min(baseline, low);
+      const top = baseline === undefined ? high : Math.max(baseline, high);
+      const o = i * FLOATS_PER_BAR_TRIANGLES;
+      out[o] = left;
+      out[o + 1] = bottom;
+      out[o + 2] = right;
+      out[o + 3] = bottom;
+      out[o + 4] = left;
+      out[o + 5] = top;
+      out[o + 6] = left;
+      out[o + 7] = top;
+      out[o + 8] = right;
+      out[o + 9] = bottom;
+      out[o + 10] = right;
+      out[o + 11] = top;
     }
     this.drawTriangleBatch(count * 6, color, projection, mode);
   }
