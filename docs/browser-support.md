@@ -1,6 +1,6 @@
 # Browser support
 
-BlazePlot targets modern browsers with WebGL2 and draws with Canvas 2D where WebGL2 is unavailable or unreliable. Both engines ship in the core package and are fully supported; the default `renderer: "auto"` picks between them.
+BlazePlot targets modern browsers with WebGL2 and draws with Canvas 2D where WebGL2 is unavailable or unreliable. Both engines ship in the core package and are fully supported. The default `renderer: "auto"` picks between them.
 
 ## Minimum browser versions
 
@@ -10,7 +10,7 @@ BlazePlot targets modern browsers with WebGL2 and draws with Canvas 2D where Web
 | Firefox | 92 |
 | Safari (macOS and iOS) | 15.4 |
 
-These are set by the language and platform features the package uses without a fallback (`Object.hasOwn`, logical assignment operators, CSS `inset`); the library is built for `esnext` and does not transpile or polyfill them. The crosshair marker fill uses CSS `color-mix()` and simply renders without that tint on older browsers. WebGL2 itself is available from Chrome 56, Firefox 51, and Safari 15; charts on browsers or machines without it use Canvas 2D. Older browsers are not tested and are not supported. The same targets are declared in `package.json#browserslist`.
+These minimums come from the language and platform features the package uses without a fallback (`Object.hasOwn`, logical assignment operators, CSS `inset`). The library is built for `esnext` and does not transpile or polyfill them. The crosshair marker fill uses CSS `color-mix()` and renders without that tint on older browsers. WebGL2 itself is available from Chrome 56, Firefox 51, and Safari 15; charts on browsers or machines without it use Canvas 2D. Older browsers are not tested and are not supported. The same targets are declared in `package.json#browserslist`.
 
 ## Requirements
 
@@ -18,11 +18,11 @@ These are set by the language and platform features the package uses without a f
 |---|---|---|
 | WebGL2 | Plot rendering | Preferred by the default renderer. With `renderer: "webgl2"` or `"shared"` BlazePlot throws `WebGL2UnavailableError` when a chart cannot create a WebGL2 context; the default `"auto"` falls back to Canvas 2D instead. See [Rendering engines](#rendering-engines). |
 | Canvas 2D | Plot rendering without WebGL2 | Used by `renderer: "canvas2d"` and by `"auto"` when WebGL2 fails. Available in every browser that can draw a `<canvas>`. |
-| Pointer Events | Built-in interactions | Used for pan, zoom, box selection, touch gestures, and plugin hit testing. |
+| Pointer Events | Built-in interactions | Pan, zoom, box selection, touch gestures, and plugin hit testing. |
 | `ResizeObserver` | Automatic layout updates | Optional. Without it, call `chart.resize()` after container size changes. |
 | Async Clipboard API + `ClipboardItem` | Clipboard export helpers | Optional. Browsers usually require HTTPS and a user gesture. Download helpers still work without clipboard support. |
 
-A chart keeps drawing without WebGL2 by default. If your app would rather show its own fallback UI, check `isWebGL2Available()` before creating a chart and ask for the strict `"webgl2"` engine.
+A chart keeps drawing without WebGL2 by default. To show your own fallback UI instead, check `isWebGL2Available()` before creating a chart and ask for the strict `"webgl2"` engine.
 
 ```ts
 import { Chart, isWebGL2Available } from "blazeplot";
@@ -37,7 +37,7 @@ if (isWebGL2Available()) {
 
 ## Rendering engines
 
-A chart draws through one of three engines, chosen with `ChartOptions.renderer`. All three ship in the core `blazeplot` package (nothing extra to import), and all three are stable: every series type (line, area, bar, scatter, OHLC, candlestick, histogram), gaps, log/symlog and reversed axes, dual Y axes, wide lines, `chart.screenshot()`, every built-in plugin, and the flame graph plugin work on each.
+A chart draws through one of three engines, chosen with `ChartOptions.renderer`. All three ship in the core `blazeplot` package and are stable. Every series type (line, area, bar, scatter, OHLC, candlestick, histogram), gaps, log/symlog and reversed axes, dual Y axes, wide lines, `chart.screenshot()`, every built-in plugin, and the flame graph plugin work on each.
 
 | `renderer` | Factory | Draws with | If it cannot start |
 |---|---|---|---|
@@ -46,7 +46,7 @@ A chart draws through one of three engines, chosen with `ChartOptions.renderer`.
 | `"canvas2d"` | `canvas2dRenderer()` | Canvas 2D (CPU-projected) | Throws `Canvas2DUnavailableError` (rare: the canvas cannot create a 2D context). |
 | `"shared"` | `sharedRenderer(context?)` | One WebGL2 context shared by every chart on the document, or by the charts of one `createChartRenderContext()` | Throws `WebGL2UnavailableError`. See [Many charts on one page](./performance-recipes.md#many-charts-on-one-page). |
 
-Dashboards that want one shared context where it is available, and Canvas 2D elsewhere, use `autoRenderer({ shared: true })` (or `autoRenderer({ shared: context })` with a `createChartRenderContext()` result): it uses the shared WebGL2 context and falls back to Canvas 2D without WebGL2, with `rendererInfo.fallbackFrom` set to `"shared"`. The `"shared"` name itself stays strict. To warm WebGL2 before the first chart mounts, call `preloadWebGL()` (optional; it creates and releases a context at idle time and does nothing without WebGL2 or on the server).
+For one shared context where available and Canvas 2D elsewhere, use `autoRenderer({ shared: true })` (or `autoRenderer({ shared: context })` with a `createChartRenderContext()` result). It uses the shared WebGL2 context and falls back to Canvas 2D without WebGL2, with `rendererInfo.fallbackFrom` set to `"shared"`. The `"shared"` name itself stays strict. To warm WebGL2 before the first chart mounts, call `preloadWebGL()` (optional; it creates and releases a context at idle time and does nothing without WebGL2 or on the server).
 
 A name is shorthand for its factory, and an unknown value throws a `TypeError` that lists the valid names. `createLinkedCharts` takes the same `renderer` option for every panel. Read the outcome from the chart:
 
@@ -76,11 +76,11 @@ console.log(chart.rendererInfo);
 
 ### Context loss
 
-Every engine reports context loss and restore the same way. The chart stops drawing while its context is lost, plugins' `onContextLost` and `onContextRestored` hooks run, and the engine rebuilds what it needs before drawing resumes (see [Error handling](./error-handling.md)). WebGL engines handle `webglcontextlost` and `webglcontextrestored`, the shared engine reports its one context to every attached chart, and Canvas 2D handles the canvas `contextlost` and `contextrestored` events in browsers that fire them.
+All engines report context loss and restore the same way. The chart stops drawing while its context is lost, plugins' `onContextLost` and `onContextRestored` hooks run, and the engine rebuilds what it needs before drawing resumes (see [Error handling](./error-handling.md)). WebGL engines handle `webglcontextlost` and `webglcontextrestored`, the shared engine reports its one context to every attached chart, and Canvas 2D handles the canvas `contextlost` and `contextrestored` events in browsers that fire them.
 
 ### What the engines share, and what they do not
 
-The engines run the same data pipeline: the same level-of-detail extraction, the same cameras and axes, and the same series painter. They differ in how primitives reach pixels, so the semantic contract is shared and the pixels are not identical. The contract is tested per engine (one behavior suite runs against WebGL2, Canvas 2D, and the shared engine) and by comparing renders of the same chart across engines in the visual suite.
+The engines run the same data pipeline: the same level-of-detail extraction, cameras, axes, and series painter. They differ in how primitives reach pixels, so behavior is shared and pixels are not identical. The behavior is tested per engine (one behavior suite runs against WebGL2, Canvas 2D, and the shared engine) and by comparing renders of the same chart across engines in the visual suite.
 
 | Behavior | WebGL2 and shared | Canvas 2D |
 |---|---|---|
@@ -102,7 +102,7 @@ The visual suite (`bun run test:visual`) renders every case with each engine and
 
 ## Unsupported-browser fallback
 
-If you would rather show your own UI than a Canvas 2D chart, keep the fallback outside the chart constructor and ask for the strict engine, so users without WebGL2 get a useful page instead of a slower chart.
+To show your own UI instead of a Canvas 2D chart, ask for the strict engine and keep the fallback outside the chart constructor.
 
 ```ts
 import { Chart, isWebGL2Available } from "blazeplot";
@@ -128,7 +128,7 @@ function renderTelemetryChart(element: HTMLElement, x: number[], y: number[]) {
 }
 ```
 
-Good fallback options:
+Fallback options:
 
 - a small static PNG/SVG generated by your backend;
 - a table or summary statistics for the selected range;
@@ -136,7 +136,7 @@ Good fallback options:
 
 ## Server-side rendering
 
-Charts are browser-only. In SSR apps, create charts after client mount or dynamically import chart components on the client (see [Framework integration](./framework-integration.md)). `isWebGL2Available()` returns `false` when `document` is unavailable, so do not treat a server-side `false` result as a browser capability check.
+Charts are browser-only. In SSR apps, create charts after client mount or dynamically import chart components on the client (see [Framework integration](./framework-integration.md)). `isWebGL2Available()` returns `false` when `document` is unavailable, so a server-side `false` says nothing about the browser.
 
 ```tsx
 import { useEffect, useRef } from "react";
@@ -183,11 +183,11 @@ For each minor release, the release checklist records:
 
 Mobile WebGL2 verification is manual and not yet automated.
 
-Mobile browsers should use touch-friendly interaction options and compact axis/layout settings. Touch input uses Pointer Events only (there are no separate touch-event handlers). `interactionsPlugin` defaults to `touchPan: "two-finger"` (one finger scrolls the page, two fingers pan and pinch) so charts do not trap page scrolling; add `wheelZoom: "modifier"` to keep the mouse wheel for the page too, or `touchPan: true` for one-finger pan. One-finger page scrolling in the default mode is verified through touch emulation, not yet on a physical phone. See [Theming and layout](./theming-and-layout.md#mobile-layouts) and [Troubleshooting](./troubleshooting.md#page-scrolling-and-chart-gestures).
+Touch input uses Pointer Events only (there are no separate touch-event handlers). `interactionsPlugin` defaults to `touchPan: "two-finger"` (one finger scrolls the page, two fingers pan and pinch) so charts do not trap page scrolling; add `wheelZoom: "modifier"` to keep the mouse wheel for the page too, or `touchPan: true` for one-finger pan. One-finger page scrolling in the default mode is verified through touch emulation, not yet on a physical phone. See [Theming and layout](./theming-and-layout.md#mobile-layouts) and [Troubleshooting](./troubleshooting.md#page-scrolling-and-chart-gestures).
 
 ## Iframes, popups, and multiple documents
 
-A chart uses the document and window that own its host element, so it works inside an iframe, a popup window, or a Document Picture-in-Picture window: create it with a host element from that document. Resize observation, animation frames, theme color resolution, `matchMedia` (forced colors), overlays, and plugin DOM use the host's window rather than the global one. `sharedRenderer()` creates its hidden canvas in the document that owns each chart's canvas (one default context per document), and `downloadChartScreenshot` attaches its link to the chart's document. Two standalone helpers default to the global `document`: `isWebGL2Available(doc?)` probes with a throwaway canvas from it, and `downloadBlob(blob, filename, doc?)` attaches its download link to it. Pass the iframe or popup document (for example `host.ownerDocument`) to act on that window; `createChartRenderContext(doc?)` takes one too.
+A chart uses the document and window that own its host element, so it works inside an iframe, a popup window, or a Document Picture-in-Picture window: create it with a host element from that document. Resize observation, animation frames, theme color resolution, `matchMedia` (forced colors), overlays, and plugin DOM use the host's window, not the global one. `sharedRenderer()` creates its hidden canvas in the document that owns each chart's canvas (one default context per document), and `downloadChartScreenshot` attaches its link to the chart's document. Two standalone helpers default to the global `document`: `isWebGL2Available(doc?)` probes with a throwaway canvas from it, and `downloadBlob(blob, filename, doc?)` attaches its download link to it. Pass the iframe or popup document (for example `host.ownerDocument`) to act on that window; `createChartRenderContext(doc?)` takes one too.
 
 ## Clipboard and downloads
 
@@ -201,4 +201,4 @@ BlazePlot is ESM-only and ships its own type declarations (minimum TypeScript 5.
 
 ## Dependencies
 
-The renderer uses native WebGL2 directly and has no runtime rendering dependency.
+The renderer calls WebGL2 directly and has no runtime rendering dependency.
