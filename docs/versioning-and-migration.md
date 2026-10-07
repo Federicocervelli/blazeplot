@@ -1,6 +1,6 @@
 # Versioning and migration
 
-BlazePlot follows npm semver. Use this page to decide whether a change is patch/minor/major and to plan upgrades between versions.
+BlazePlot follows npm semver.
 
 ## Semver policy
 
@@ -13,29 +13,29 @@ BlazePlot follows npm semver. Use this page to decide whether a change is patch/
 ## Stability expectations
 
 - `blazeplot` and the documented subpath exports are intended to stay stable within a major version. [API stability](./stability.md) classifies each export as stable, experimental, or internal.
-- Built-in plugin options may grow over time, but existing option names should be preserved when practical.
+- Built-in plugin options may grow, but existing option names should be preserved when practical.
 - Low-level renderer/backend types are internal and the most likely to change before a future backend is added.
 - Deprecated names follow the [deprecation process](#deprecation-process) below.
-- Generated docs and package export smoke tests should reflect the shipped package, not only source files.
+- Generated docs and package export smoke tests should reflect the shipped package.
 - Errors, console warnings, and invalid-input behavior are documented in [Error handling](./error-handling.md); changing a documented behavior there is a breaking change.
 
 ## TypeScript support
 
-BlazePlot ships its own `.d.ts` files; no `@types` package is needed.
+BlazePlot ships its own `.d.ts` files, so you need no `@types` package.
 
 - **Minimum supported TypeScript: 5.0.** The published declarations were compiled and checked with `skipLibCheck: false` against a consumer importing every entry point and subpath, under `moduleResolution: "bundler"` and `"node16"`, with TypeScript 5.0.4, 5.4.5, 5.9.3, 6.0.2, and 7.0.2 (checked on 0.5.5). Older compilers are not tested; 4.9 also accepted the declarations under `node16` resolution during that check, but it is outside the support policy.
 - Use `moduleResolution` `bundler`, `node16`, or `nodenext`, which read package `exports`. The legacy `node`/`node10` setting also resolves every subpath, through `typesVersions` in `package.json`, and is checked in CI.
 - The declarations reference DOM types (`HTMLElement`, `WebGL2RenderingContext`), so your `lib` must include `"DOM"`.
-- Raising the minimum TypeScript version happens only in a minor release (never in a patch) and is announced in the changelog; the new minimum will already be well past its release date.
+- The minimum TypeScript version is raised only in a minor release (never in a patch) and announced in the changelog. The new minimum will already be well past its release date.
 
-The minimum is enforced in CI: the `typescript-floor` job installs the packed package into a consumer project and typechecks every entry point with TypeScript 5.0.4 and the latest 5.x under all three resolution modes (`bundler`, `node16`, legacy `node10`) (`bun run test:typescript-floor`).
+CI enforces the minimum: the `typescript-floor` job installs the packed package into a consumer project and typechecks every entry point with TypeScript 5.0.4 and the latest 5.x under all three resolution modes (`bundler`, `node16`, legacy `node10`) (`bun run test:typescript-floor`).
 
 ## Module format and runtime
 
 - **ESM only.** `package.json` declares `"type": "module"`; every export has `import` and `default` conditions pointing at the ES module build. `import` and `await import("blazeplot")` work everywhere, and `require("blazeplot")` works on Node.js 22.12+ (which can `require()` ES modules) and in Jest/Vitest resolvers that fall back to `default`. There is no CommonJS or UMD build and none is planned.
-- **Output target** is modern browsers with WebGL2 (see [Browser support](./browser-support.md)). The library is built with the Vite `esnext` target, so the published JavaScript is not transpiled for older engines; if you need to support one, transpile `node_modules/blazeplot` with your bundler.
+- **Output target:** modern browsers with WebGL2 (see [Browser support](./browser-support.md)). The library is built with the Vite `esnext` target, so the published JavaScript is not transpiled for older engines. To support one, transpile `node_modules/blazeplot` with your bundler.
 - **Bundlers** such as Vite, esbuild, Rollup, and webpack 5 resolve the `exports` map. Import only the documented entry points; deep paths into `dist/` are not exported.
-- **Node.js** can import the package for tooling and type checks, but charts only run in a browser DOM with WebGL2.
+- **Node.js** can import the package for tooling and type checks, but charts run only in a browser DOM with WebGL2.
 
 ## Migrating to 1.0
 
@@ -43,7 +43,7 @@ See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes 
 
 ## Migrating to 0.5
 
-0.5 removes duplicate and dead APIs so each task has one way to do it. Most upgrades are mechanical renames.
+0.5 removed duplicate and dead APIs. Most upgrades are mechanical renames.
 
 | Before (0.4) | After (0.5) |
 |---|---|
@@ -88,7 +88,7 @@ See [Migrating from 0.x to 1.0](./migrating-to-1.0.md) for the breaking changes 
 | `SeriesDataBounds`, `SelectionBounds` | `Viewport` |
 | `RingBufferOverflow` | `BufferOverflowStrategy` |
 
-Behavior changes worth checking:
+Behavior changes to check:
 
 - Series colors accept any CSS color (`"#3b82f6"`, `"var(--accent)"`) as well as RGBA tuples.
 - `lineWidth` now renders: lines, area outlines, OHLC ticks, and wicks are drawn `lineWidth` CSS pixels wide (previously always one device pixel).
@@ -101,16 +101,16 @@ Behavior changes worth checking:
 
 1. Read the changelog for every version between your current version and target version.
 2. Check the [API reference](./api-reference.md) for renamed, moved, or newly added exports.
-3. Run your chart interaction flows, not just unit tests. Pan, zoom, tooltips, selection, screenshots, and exports can depend on browser behavior.
+3. Run your chart interaction flows, not just unit tests: pan, zoom, tooltips, selection, screenshots, and exports depend on browser behavior.
 4. If you use custom datasets, re-check the assumptions in [Data semantics](./data-semantics.md).
 5. If you use React, verify that the effect creating `Chart` disposes it on cleanup.
-6. If you use subpath imports, run your bundler against the production build so export-map mistakes are caught early.
+6. If you use subpath imports, run your bundler against the production build to catch export-map mistakes.
 7. If you use plugins, create one instance per chart, and re-check wheel and touch behavior on scrolling pages (see the cooperative-gesture options in [Troubleshooting](./troubleshooting.md#page-scrolling-and-chart-gestures)).
 8. If you filter `viewportchange` events, use the `source` field to tell user gestures from follow, fit, linked, and API updates.
 
 ## Migration-risk checklist
 
-Use this when reviewing a PR that changes public behavior.
+Use this table when reviewing a PR that changes public behavior.
 
 | Area | What to verify |
 |---|---|
@@ -124,7 +124,7 @@ Use this when reviewing a PR that changes public behavior.
 
 ## Deprecation process
 
-This is the process for retiring a public API. Which APIs it covers depends on their tier in [API stability](./stability.md): stable APIs always follow it, experimental APIs may skip it with a changelog note, and internal APIs are not covered.
+This process retires a public API. Coverage depends on the tier in [API stability](./stability.md): stable APIs always follow it, experimental APIs may skip it with a changelog note, and internal APIs are not covered.
 
 > The warning helper is implemented (internal, not exported). No API is currently deprecated. The minimum removal window is in step 7.
 
@@ -137,7 +137,7 @@ When replacing a public API:
    /** @deprecated Since 1.3.0. Use `chart.setViewport(viewport, axis)` instead. Removed in 2.0.0. */
    ```
 
-   The tag shows as a strikethrough in editors and in the generated declarations.
+   Editors show the tag as a strikethrough.
 3. **Keep the old API working** with its previous behavior. Prefer an alias that forwards to the new API.
 4. **Warn once in development.** When the deprecated API is used, log one `console.warn` per API per page load, in the form `BlazePlot: chart.foo() is deprecated since 1.3.0; use chart.bar() instead. It will be removed in 2.0.0.` Rules:
    - Warn from constructors, option parsing, and one-off calls only. Never warn inside per-frame, per-sample, or per-append code; for those APIs rely on `@deprecated` and the changelog.
@@ -159,8 +159,6 @@ foo(): void {
   this.bar();
 }
 ```
-
-Chart rendering and ingestion code should avoid per-frame deprecation work.
 
 ## For maintainers changing public APIs
 
