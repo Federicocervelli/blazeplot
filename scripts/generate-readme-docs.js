@@ -6,7 +6,7 @@ import { dirname, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import ts from "@typescript/typescript6";
-import { REPORT_SCHEMA_VERSION, readmeSummaryLines, renderReportMarkdown, renderSummaryMarkdown } from "./benchmark-compare-report.js";
+import { REPORT_SCHEMA_VERSION, renderReportMarkdown, renderSummaryMarkdown } from "./benchmark-compare-report.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const apiReferencePath = resolve(root, "docs/api-reference.md");
@@ -371,11 +371,24 @@ function renderBenchmarkComparisonDocs(kind) {
 }
 
 function renderComparisonPerformanceBlock(report, size) {
-  const { summary } = readmeSummaryLines(report);
-  const date = typeof report.generatedAt === "string" ? report.generatedAt.slice(0, 10) : "unknown date";
   const machine = report.environment?.machine;
   const page = report.environment?.page;
-  const browser = report.environment?.browser;
+  const browser = String(browserProduct(report) ?? "");
+  const browserName = /^([^/]+)\/(\d+)/.exec(browser);
+  const setup = [
+    browserName ? `${browserName[1]} ${browserName[2]}` : browser || "unknown browser",
+    String(machine?.cpuModel ?? "unknown CPU").replace(/\s+\d+-Core Processor/, "").trim(),
+    shortGpuName(page?.webglRenderer),
+    `median of ${report.options?.runs ?? "?"} runs`,
+  ].join(", ");
+
+  const pan = report.scenarios?.find((scenario) => scenario.name === "line-1m-pan");
+  const fps = (id) => pan?.results?.find((result) => result.library === id)?.metrics?.rafFps?.median;
+  const [blazeplot, uplot, chartjs] = ["blazeplot", "uplot", "chartjs"].map(fps);
+  const round = (value) => Math.round(value).toLocaleString("en-US");
+  const headline = [blazeplot, uplot, chartjs].every((value) => typeof value === "number")
+    ? [`Panning a 1M-point line runs at ${round(blazeplot)} fps, against ${round(uplot)} for uPlot and ${round(chartjs)} for Chart.js (${setup}).`, ""]
+    : [];
 
   return [
     performanceStartMarker,
@@ -383,17 +396,20 @@ function renderComparisonPerformanceBlock(report, size) {
     "",
     `The core runtime (\`import { Chart } from "blazeplot"\`, without optional plugins) is about **${size}**. Plugins and helpers ship as separate subpath entries.`,
     "",
-    summary,
-    "",
-    `Measured ${date} on ${String(machine?.cpuModel ?? "local machine").trim()}, ${shortGpuName(page?.webglRenderer)}, ${browser?.product ?? page?.userAgent ?? "unknown browser"}, ${report.options?.runs ?? "?"} fresh-page runs per cell. A short summary, including where uPlot is faster, is in [docs/benchmarks.md](docs/benchmarks.md); every metric with spreads is in [docs/benchmark-results.md](docs/benchmark-results.md). Reproduce with \`bun run bench:compare\`.`,
+    ...headline,
+    "The [benchmarks page](docs/benchmarks.md) covers seven common scenarios, including the ones where uPlot is faster. Every metric with spreads is in [docs/benchmark-results.md](docs/benchmark-results.md). Reproduce with `bun run bench:compare`.",
     performanceEndMarker,
   ].join("\n");
+}
+
+function browserProduct(report) {
+  return report.environment?.browser?.product ?? report.environment?.page?.userAgent;
 }
 
 function shortGpuName(renderer) {
   if (!renderer) return "unknown GPU";
   const match = /ANGLE \(([^,]+), ([^,/]+)/.exec(renderer);
-  return match ? match[2].trim() : renderer;
+  return match ? match[2].replace(/\s*\(0x[0-9a-f]+\).*$/i, "").trim() : renderer;
 }
 
 function assertPublishableComparisonReport(report) {
