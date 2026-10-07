@@ -2,12 +2,11 @@
 /**
  * A/B performance comparison of two checkouts of this repo on the real GPU.
  *
- *   bun scripts/bench-ab.ts --a ../baseline --b . --scenarios hover-1m,line-1m-pan [--rounds 4] [--runs 3]
+ *   bun scripts/bench-ab.ts --a ../baseline --b . [--scenarios hover-1m,line-1m-pan | --core] [--rounds 2] [--runs 3]
  *
  * Each round runs `scripts/benchmark-compare.ts` (headless, real GPU) once per side, alternating which side
- * goes first, so machine drift hits both sides equally; run values are pooled across rounds. uPlot runs in
- * both sides as a control: its A-to-B ratio should be about 1.00, and a larger drift means the machine was
- * not quiet. Verdicts use a Mann-Whitney U test (p < 0.01) on the pooled runs plus a minimum effect size, so a change is
+ * goes first, so machine drift hits both sides equally; run values are pooled across rounds. `--control` also runs
+ * uPlot on both sides: its A-to-B ratio should be about 1.00, and a larger drift means the machine was not quiet. Verdicts use a Mann-Whitney U test (p < 0.01) on the pooled runs plus a minimum effect size, so a change is
  * only called better or worse when it is both statistically and practically real.
  *
  * The whole comparison holds the GPU lock (`C:\Users\proyo\bench.lock` or `BLAZEPLOT_BENCH_LOCK`), so concurrent
@@ -17,6 +16,11 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, open, readFile, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+
+/** The scenarios worth checking on every change: sustained frame rate, pointer latency, load, lifecycle. */
+const CORE_SCENARIOS = ["line-1m-pan", "line-1m-stream", "dual-axis-1m-pan", "multi-10x100k-pan", "hover-1m", "line-1m-static", "mount-destroy-cycle"];
+/** The metric each core scenario is judged on, plus the memory rows a change must not worsen. */
+const CORE_METRICS = ["rafFps", "workP50Ms", "readyMs", "constructMs", "hoverP50Ms", "cycleP50Ms", "leakMiB", "heapMiB"];
 
 interface Options {
   a: string;
@@ -29,6 +33,8 @@ interface Options {
   minEffect: number;
   /** Only print rows with these metric ids (default: every metric of the scenario). */
   metrics: string[] | null;
+  /** Shorter pan/stream windows (about 2x faster per page); relative A/B verdicts hold, absolute numbers are not publishable. */
+  fast: boolean;
 }
 
 interface MetricValues {
@@ -44,7 +50,8 @@ const LOCK = process.env.BLAZEPLOT_BENCH_LOCK ?? join(homedir(), "bench.lock");
 const STALE_LOCK_MS = 2 * 60 * 60 * 1000;
 
 function parse(args: readonly string[]): Options {
-  const out: Options = { a: "", b: "", scenarios: [], libraries: ["blazeplot", "blazeplot-canvas2d", "uplot"], rounds: 4, runs: 3, minEffect: 0.02, metrics: null };
+  const out: Options = { a: "", b: "", scenarios: [], libraries: ["blazeplot", "blazeplot-canvas2d"], rounds: 2, runs: 3, minEffect: 0.02, metrics: null, fast: false };
+  let explicitMetrics = false;
   for (let i = 0; i < args.length; i++) {
     const flag = args[i]!;
     const value = (): string => {
@@ -59,10 +66,17 @@ function parse(args: readonly string[]): Options {
     else if (flag === "--rounds") out.rounds = Number(value());
     else if (flag === "--runs") out.runs = Number(value());
     else if (flag === "--min-effect") out.minEffect = Number(value());
-    else if (flag === "--metrics") out.metrics = value().split(",");
+    else if (flag === "--metrics") {
+      out.metrics = value().split(",");
+      explicitMetrics = true;
+    } else if (flag === "--core") out.scenarios = [...CORE_SCENARIOS];
+    else if (flag === "--control") out.libraries = [...new Set([...out.libraries, "uplot"])];
+    else if (flag === "--fast") out.fast = true;
+    else if (flag === "--all-metrics") explicitMetrics = true;
     else throw new Error(`Unknown argument: ${flag}`);
   }
-  if (!out.a || !out.b || out.scenarios.length === 0) throw new Error("Usage: bun scripts/bench-ab.ts --a <baseline dir> --b <candidate dir> --scenarios <csv> [--libraries csv] [--rounds 4] [--runs 3] [--metrics csv] [--min-effect 0.02]");
+  if (!out.a || !out.b || out.scenarios.length === 0) throw new Error("Usage: bun scripts/bench-ab.ts --a <baseline dir> --b <candidate dir> (--core | --scenarios <csv>) [--libraries csv] [--control] [--rounds 2] [--runs 3] [--metrics csv | --all-metrics] [--fast] [--min-effect 0.02]");
+  if (!explicitMetrics) out.metrics = CORE_METRICS;
   return out;
 }
 
@@ -115,7 +129,7 @@ function chromePath(): string {
 async function runSide(dir: string, options: Options, outDir: string, chrome: string): Promise<ReportJson> {
   await mkdir(outDir, { recursive: true });
   const proc = Bun.spawn({
-    cmd: ["bun", "scripts/benchmark-compare.ts", "--headless", "--no-baseline", "--scenarios", options.scenarios.join(","), "--libraries", options.libraries.join(","), "--runs", String(options.runs), "--out-dir", outDir],
+    cmd: ["bun", "scripts/benchmark-compare.ts", "--headless", "--no-baseline", "--scenarios", options.scenarios.join(","), "--libraries", options.libraries.join(","), "--runs", String(options.runs), "--out-dir", outDir, ...(options.fast ? ["--measure-ms", "1500", "--warmup-ms", "250"] : [])],
     cwd: dir,
     env: { ...process.env, BLAZEPLOT_REAL_GPU: "1", BLAZEPLOT_BENCH_CHROME: chrome },
     stdout: "ignore",
