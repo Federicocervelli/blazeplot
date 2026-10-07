@@ -29,10 +29,30 @@ export function firstInvalidX(x: ArrayLike<number>, count: number, previous: num
 }
 
 /**
+ * @internal Whether `x[0..count)` is finite and non-decreasing: the same verdict as `firstInvalidX(x, count) >= count`,
+ * with one comparison per sample. A `>=` chain fails on any NaN, and a chain that never decreases runs from
+ * `x[0]` up to `x[count - 1]`, so every sample is finite exactly when both ends are. That drops the per-sample
+ * finiteness test of `firstInvalidX`, which matters on the million-sample inputs that construct static datasets.
+ * A failing array is rescanned by `firstInvalidX` to name the first bad index.
+ */
+export function isSortedFiniteX(x: ArrayLike<number>, count: number): boolean {
+  if (count <= 0) return true;
+  let previous = x[0]!;
+  if (!(previous >= MIN_X && x[count - 1]! <= MAX_X)) return false;
+  for (let i = 1; i < count; i++) {
+    const value = x[i]!;
+    if (!(value >= previous)) return false;
+    previous = value;
+  }
+  return true;
+}
+
+/**
  * @internal Throw a `RangeError` naming the first X that is non-finite or decreasing.
  * `label` names the position ("index", "row"), `hint` says how to fix it.
  */
 export function assertSortedFiniteX(owner: string, x: ArrayLike<number>, count: number, hint: string, label: string = "index"): void {
+  if (isSortedFiniteX(x, count)) return;
   const bad = firstInvalidX(x, count);
   if (bad >= count) return;
   throw invalidXError(owner, x[bad]!, bad, bad > 0 ? x[bad - 1]! : NaN, hint, label);

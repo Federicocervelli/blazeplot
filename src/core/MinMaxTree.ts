@@ -46,18 +46,18 @@ export const BUCKET_MAX: Float64Array = new Float64Array(RAW_SCRATCH_LENGTH);
  * for the default float32 value storage.
  */
 export class MinMaxTree {
-  private readonly base: number;
-  private readonly minTree: Float32Array | Float64Array;
-  private readonly maxTree: Float32Array | Float64Array;
+  protected readonly base: number;
+  protected readonly minTree: Float32Array | Float64Array;
+  protected readonly maxTree: Float32Array | Float64Array;
   /** 1 once the node's summary matches the data. */
-  private readonly valid: Uint8Array;
+  protected readonly valid: Uint8Array;
   /** Physical samples at or beyond this index hold no data yet (a ring buffer fills from index 0). */
-  private validEnd: number;
+  protected validEnd: number;
 
   constructor(
-    private readonly values: ArrayLike<number>,
+    protected readonly values: ArrayLike<number>,
     readonly capacity: number,
-    private readonly blockSize: number = DEFAULT_BLOCK_SIZE,
+    protected readonly blockSize: number = DEFAULT_BLOCK_SIZE,
   ) {
     const blockCount = Math.max(1, Math.ceil(capacity / blockSize));
     this.base = 2 ** Math.ceil(Math.log2(blockCount));
