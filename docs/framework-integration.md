@@ -1,16 +1,16 @@
 # Framework integration
 
-This page is for developers embedding BlazePlot in React, Vue 3, Svelte 5, or a server-rendering framework such as Next.js, Nuxt, or SvelteKit. BlazePlot is framework-agnostic: a `Chart` owns one DOM subtree and, by default, one WebGL2 context (or none with the Canvas 2D renderer, or a shared one with `sharedRenderer()`), so every integration follows the same three rules.
+BlazePlot works in React, Vue 3, Svelte 5, and server-rendering frameworks such as Next.js, Nuxt, and SvelteKit. A `Chart` owns one DOM subtree and, by default, one WebGL2 context (none with the Canvas 2D renderer, a shared one with `sharedRenderer()`), so every integration follows the same three rules.
 
 1. Create the chart after the host element exists in the browser, never during render or on the server.
 2. Dispose the chart when the owner unmounts. `chart.dispose()` is idempotent, so calling it twice is safe.
-3. Give the host element an explicit size. The chart observes its plot area with a `ResizeObserver` and resizes itself; you do not call `resize()` from your framework.
+3. Give the host element an explicit size. The chart observes its plot area with a `ResizeObserver` and resizes itself; do not call `resize()` from your framework.
 
-Those rules are what keep a chart from leaking a WebGL context. Browsers cap live contexts, and a chart that is created on every re-render without disposal eventually loses older contexts. See [Troubleshooting](./troubleshooting.md#react-chart-is-duplicated-or-leaks) for the symptoms. A component library that mounts dozens of charts at once can avoid the cap with one shared context; see [Many charts](#many-charts-in-one-page).
+These rules keep a chart from leaking a WebGL context. Browsers cap live contexts, and a chart created on every re-render without disposal eventually loses older contexts. See [Troubleshooting](./troubleshooting.md#react-chart-is-duplicated-or-leaks) for the symptoms. A component library that mounts dozens of charts at once can avoid the cap with one shared context; see [Many charts](#many-charts-in-one-page).
 
 ## The lifecycle in plain TypeScript
 
-A framework wrapper is a thin shell around this function. It returns a cleanup function, which maps directly onto React's effect cleanup, Vue's `onBeforeUnmount`, and Svelte's action `destroy`.
+A framework wrapper is a thin shell around this function. Its cleanup function maps onto React's effect cleanup, Vue's `onBeforeUnmount`, and Svelte's action `destroy`.
 
 ```ts
 import { Chart } from "blazeplot";
@@ -26,7 +26,7 @@ export function mountChart(host: HTMLElement, x: number[], y: number[]): () => v
 
 ## React
 
-Create the chart in an effect and dispose it in that effect's cleanup. Keep the dependency array to values that should rebuild the chart.
+Create the chart in an effect and dispose it in that effect's cleanup. List only values that should rebuild the chart in the dependency array.
 
 ```tsx
 import { useEffect, useRef } from "react";
@@ -58,11 +58,11 @@ In development, React `StrictMode` mounts every component, runs its cleanup, and
 - Storing the chart in a module-level variable or a ref and skipping creation when it already exists. The first cleanup disposes it, and the second mount then reuses a disposed chart.
 - Constructing the chart in the component body or in `useMemo`. Render can run more than once without a matching cleanup.
 
-Dispose removes the DOM BlazePlot created inside the host, so the same `<div>` can be reused by the second mount without clearing it yourself.
+Dispose removes the DOM BlazePlot created inside the host, so the second mount can reuse the same `<div>` without clearing it.
 
 ### Plugins and options
 
-Plugins are fixed when the chart is constructed, and most built-in plugin instances are stateful: `a11yPlugin`, `annotationsPlugin`, `crosshairPlugin`, `flameGraphPlugin`, `navigatorPlugin`, and `selectionPlugin` throw if one instance is installed on a second chart while the first is alive. Create plugin instances inside the effect, one set per chart, never at module scope or in a shared constant.
+Plugins are fixed when the chart is constructed, and most built-in plugin instances are stateful: `a11yPlugin`, `annotationsPlugin`, `crosshairPlugin`, `flameGraphPlugin`, `navigatorPlugin`, and `selectionPlugin` throw if one instance is installed on a second chart while the first is alive. Create plugin instances inside the effect, one set per chart; never at module scope or in a shared constant.
 
 ```tsx
 import { useEffect, useRef } from "react";
@@ -93,7 +93,7 @@ export function InteractiveChart({ x, y }: { x: number[]; y: number[] }) {
 }
 ```
 
-`chart.dispose()` disposes the plugins too, in reverse order, so a StrictMode remount gets a fresh set. Changing plugin options means rebuilding the chart, so keep them out of props that change often; use `chart.setTheme(...)`, `chart.setAxes(...)`, and `series.setStyle(...)` for runtime restyling instead of rebuilding.
+`chart.dispose()` disposes the plugins too, in reverse order, so a StrictMode remount gets a fresh set. Changing plugin options means rebuilding the chart, so keep them out of props that change often. Restyle at runtime with `chart.setTheme(...)`, `chart.setAxes(...)`, and `series.setStyle(...)`.
 
 ### Streaming data without rebuilding the chart
 
@@ -134,11 +134,11 @@ Pass a stable `subscribe` (module-level or wrapped in `useCallback`). A new func
 
 ### Resizing
 
-Do not add a `window` resize listener. The chart's own `ResizeObserver` reacts to the host changing size for any reason, including sidebars, tabs, and CSS grid changes. Make sure the host has a height: a block `<div>` with no content and no `height` collapses to zero and renders nothing. Use a fixed `height`, or a parent with a definite height and `height: 100%`.
+Do not add a `window` resize listener. The chart's own `ResizeObserver` reacts when the host changes size for any reason, including sidebars, tabs, and CSS grid changes. Give the host a height: a block `<div>` with no content and no `height` collapses to zero and renders nothing. Use a fixed `height`, or a parent with a definite height and `height: 100%`.
 
 ### A reusable hook
 
-When several components create charts, move the lifecycle into a hook. The hook runs your `setup` callback once per mount and disposes whatever chart it returns.
+When several components create charts, move the lifecycle into a hook. It runs your `setup` callback once per mount and disposes the chart it returns.
 
 ```tsx
 import { useEffect, useRef, type DependencyList, type RefObject } from "react";
@@ -179,7 +179,7 @@ export function Telemetry({ x, y }: { x: number[]; y: number[] }) {
 
 ## Vue 3
 
-Use a template ref, create the chart in `onMounted`, and dispose it in `onBeforeUnmount`. Keep the chart in a plain variable, not in `ref()` or `reactive()`: Vue would wrap it in a deep reactive proxy, which adds cost and can break private-field access. If you need a reactive handle, use `shallowRef` with `markRaw`.
+Use a template ref, create the chart in `onMounted`, and dispose it in `onBeforeUnmount`. Keep the chart in a plain variable, not in `ref()` or `reactive()`: Vue wraps those values in a deep reactive proxy, which adds cost and can break private-field access. For a reactive handle, use `shallowRef` with `markRaw`.
 
 <!-- snippet: skip needs the vue package, which is not a dependency of this repository -->
 ```ts
@@ -257,7 +257,7 @@ export const lineChart: Action<HTMLElement, { x: number[]; y: number[] }> = (hos
 // <div use:lineChart={{ x, y }} style="width: 100%; height: 320px"></div>
 ```
 
-When the component owns the data and should react to runes, use `$effect`. Its returned function runs before the effect re-runs and when the component is destroyed.
+To react to runes, use `$effect`. Its returned function runs before the effect re-runs and when the component is destroyed.
 
 <!-- snippet: skip needs svelte, which is not a dependency of this repository -->
 ```ts
@@ -283,7 +283,7 @@ $effect(() => {
 
 ## Many charts in one page
 
-Each chart opens its own WebGL context by default, and browsers keep only about 16 per page, evicting the oldest. A list, grid, or table with a chart per row should draw through one shared context. `"shared"` needs no extra wiring in the component: pass it as the `renderer` option, and the hidden context is created with the first chart and released two seconds after the last one is disposed (charts mounted in between reuse it, with its compiled programs).
+Each chart opens its own WebGL context by default, and browsers keep only about 16 per page, evicting the oldest. A list, grid, or table with a chart per row should draw through one shared context. Pass `"shared"` as the `renderer` option; the hidden context is created with the first chart and released two seconds after the last one is disposed (charts mounted in between reuse it, with its compiled programs).
 
 ```tsx
 import { useEffect, useRef } from "react";
@@ -308,7 +308,7 @@ export function Sparkline({ y }: { y: number[] }) {
 }
 ```
 
-If WebGL2 may be missing, choose the factory yourself with `isWebGL2Available() ? sharedRenderer() : canvas2dRenderer()` (both from `blazeplot`). Details and measurements are in [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
+If WebGL2 may be missing, choose the factory yourself with `isWebGL2Available() ? sharedRenderer() : canvas2dRenderer()` (both from `blazeplot`). Details and measurements: [Performance recipes](./performance-recipes.md#many-charts-on-one-page).
 
 ## Iframes, portals, and popups
 
@@ -316,17 +316,17 @@ A chart uses the document and window of its host element. To render into an ifra
 
 ## Server-side rendering
 
-BlazePlot has no server renderer, and a chart needs a real DOM element and a WebGL2 context. What is safe on the server is narrower than "everything":
+BlazePlot has no server renderer; a chart needs a real DOM element and a WebGL2 context.
 
-- **Importing is safe.** Importing `blazeplot` or any subpath (`blazeplot/linked`, `blazeplot/plugins/*`, and so on) has no side effects and does not touch `window` or `document`. `tests/api/entrypoints.test.ts` imports every entry point in a fresh process with no DOM and asserts that nothing global is created. Importing a chart module from a server-rendered component therefore does not crash the build.
-- **Constructing is not safe.** `new Chart(...)`, `createLinkedCharts(...)`, and plugin installs need the DOM. Run them only in code that executes in the browser: `useEffect`, `onMounted`, an action, `$effect`, or a client-only component.
-- **`isWebGL2Available()` returns `false` on the server** because there is no `document`. That `false` means "not in a browser", not "this browser lacks WebGL2". Do not render an "unsupported browser" message from a server-side check, or users with working browsers see it flash during hydration. Check it only after mount.
+- **Importing is safe.** Importing `blazeplot` or any subpath (`blazeplot/linked`, `blazeplot/plugins/*`, and so on) has no side effects and does not touch `window` or `document`. `tests/api/entrypoints.test.ts` imports every entry point in a fresh process with no DOM and asserts that nothing global is created. Importing a chart module from a server-rendered component does not crash the build.
+- **Constructing is not safe.** `new Chart(...)`, `createLinkedCharts(...)`, and plugin installs need the DOM. Run them only in browser code: `useEffect`, `onMounted`, an action, `$effect`, or a client-only component.
+- **`isWebGL2Available()` returns `false` on the server** because there is no `document`. That `false` means "not in a browser", not "this browser lacks WebGL2". Check it only after mount; a server-side check that renders an "unsupported browser" message flashes it to users with working browsers during hydration.
 
 Render a same-sized placeholder on the server so the layout does not jump when the chart appears.
 
 ### Next.js
 
-Client components still render on the server for the first HTML, but effects do not run there, so a component that creates the chart in `useEffect` (like the React examples above) is already safe. Add `next/dynamic` with `ssr: false` when you want to keep the chart code out of the server render entirely.
+Client components still render on the server for the first HTML, but effects do not run there, so a component that creates the chart in `useEffect` (like the React examples above) is already safe. Use `next/dynamic` with `ssr: false` to keep the chart code out of the server render entirely.
 
 <!-- snippet: skip needs next, which is not a dependency of this repository -->
 ```tsx
@@ -366,7 +366,7 @@ Wrap the chart in the built-in `<ClientOnly>` component, or name the file `Chart
 
 ### SvelteKit
 
-`onMount`, actions, and `$effect` do not run on the server, so the Svelte patterns above are SSR-safe as written, and a static `import ... from "blazeplot"` is fine because importing has no side effects. If you prefer to load the library only in the browser, import it dynamically inside `onMount`.
+`onMount`, actions, and `$effect` do not run on the server, so the Svelte patterns above are SSR-safe as written, and a static `import ... from "blazeplot"` is fine because importing has no side effects. To load the library only in the browser, import it dynamically inside `onMount`.
 
 <!-- snippet: skip needs svelte, which is not a dependency of this repository -->
 ```ts
@@ -393,11 +393,11 @@ onMount(() => {
 // <div bind:this={host} style="width: 100%; height: 320px"></div>
 ```
 
-The `dispose` indirection matters: the dynamic import resolves after `onMount` returns, so the cleanup must read the latest `dispose` when it runs. If the component is destroyed before the import resolves, the chart is created on a detached host; add a `destroyed` flag if that matters for your page.
+The `dispose` indirection is required: the dynamic import resolves after `onMount` returns, so the cleanup must read the latest `dispose` when it runs. If the component is destroyed before the import resolves, the chart is created on a detached host; add a `destroyed` flag if that matters for your page.
 
 ## No-WebGL2 fallback
 
-By default (`renderer: "auto"`) a browser without WebGL2 draws the chart with Canvas 2D; read `chart.renderer` or `chart.rendererInfo` to see which engine you got (see [Browser support](./browser-support.md#rendering-engines)). If you would rather show your own UI (a static image, a table, a message), decide what those users see. There are two ways to detect it, and they behave differently:
+By default (`renderer: "auto"`) a browser without WebGL2 draws the chart with Canvas 2D; read `chart.renderer` or `chart.rendererInfo` to see which engine you got (see [Browser support](./browser-support.md#rendering-engines)). To show your own UI instead (a static image, a table, a message), detect the missing engine in one of two ways:
 
 | Check | What it tells you | Behavior |
 |---|---|---|
@@ -455,7 +455,7 @@ export function SafeChart({ x, y }: { x: number[]; y: number[] }) {
 }
 ```
 
-The host stays mounted (hidden when unsupported) so the ref remains valid across effect runs. The same shape works in every framework: probe after mount, construct inside `try`, and swap in your own UI (a static image from your backend, a table, a download link) on `WebGL2UnavailableError`. For a framework-free version, see [Browser support](./browser-support.md#unsupported-browser-fallback).
+The host stays mounted (hidden when unsupported) so the ref remains valid across effect runs. The same shape works in every framework: probe after mount, construct inside `try`, and swap in your own UI (a static image from your backend, a table, a download link) on `WebGL2UnavailableError`. Framework-free version: [Browser support](./browser-support.md#unsupported-browser-fallback).
 
 ## Where to go next
 
