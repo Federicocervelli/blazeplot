@@ -219,7 +219,7 @@ export class BlazeplotHomePage extends LitElement {
           <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p class="eyebrow mb-3">Benchmarks</p>
-              <h2 id="bench-title" class="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-fg">Measured, not claimed.</h2>
+              <h2 id="bench-title" class="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-fg">How it compares.</h2>
             </div>
             <a class="link text-sm" href=${appHref("docs/benchmarks")}>Full results and method</a>
           </div>
@@ -246,7 +246,7 @@ export class BlazeplotHomePage extends LitElement {
           <div class="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p class="eyebrow mb-3">Demos</p>
-              <h2 id="demos-title" class="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-fg">See it run in your browser.</h2>
+              <h2 id="demos-title" class="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-fg">Live demos.</h2>
             </div>
             <a class="link text-sm" href=${appHref("previews")}>All demos</a>
           </div>
