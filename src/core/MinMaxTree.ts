@@ -15,13 +15,6 @@ export interface MinMaxOut {
 
 const DEFAULT_BLOCK_SIZE = 64;
 
-/** Bucket-extent cache: slots (a power of two, at least a frame's worth of buckets), shortest bucket cached, and the passes that must repeat before the cache is allocated. */
-const BUCKET_CACHE_SLOTS = 4096;
-const BUCKET_CACHE_MIN_LENGTH = 16;
-const BUCKET_CACHE_AFTER_PASSES = 512;
-/** Bucket lengths below this pack into a cache key together with the physical start. */
-const BUCKET_KEY_RADIX = 256;
-
 /**
  * Buckets whose extents one bulk call computes, with the result slots every dense min/max pass shares (a
  * frame is synchronous, so one pair serves every chart).
@@ -58,14 +51,6 @@ export class MinMaxTree {
   private readonly valid: Uint8Array;
   /** Physical samples at or beyond this index hold no data yet (a ring buffer fills from index 0). */
   private validEnd: number;
-  /** Counts `update` calls; a cached bucket is current while no block it covers was written after it was cached. */
-  private clock = 0;
-  /** Clock of the last write per block; allocated together with the bucket cache. */
-  private blockStamp: Float64Array | null = null;
-  /** `[key, clock, minY, maxY]` per slot, direct-mapped by bucket position; see `bucketExtentsInto`. */
-  private bucketCache: Float64Array | null = null;
-  /** Dense passes seen so far; the cache is only allocated once a series is redrawn repeatedly. */
-  private bucketPasses = 0;
 
   constructor(
     private readonly values: ArrayLike<number>,
@@ -87,12 +72,6 @@ export class MinMaxTree {
    */
   update(start: number, end: number, validEnd: number = this.capacity): void {
     this.validEnd = validEnd;
-    this.clock++;
-    const stamps = this.blockStamp;
-    if (stamps !== null) {
-      const last = Math.min(stamps.length - 1, ((end - 1) / this.blockSize) | 0);
-      for (let block = (start / this.blockSize) | 0; block <= last; block++) stamps[block] = this.clock;
-    }
     let left = this.base + ((start / this.blockSize) | 0);
     let right = this.base + (((end - 1) / this.blockSize) | 0);
     while (left >= 1) {
@@ -142,10 +121,6 @@ export class MinMaxTree {
    * through, so the result equals the guarded query. Wider buckets still use the tree.
    */
   bucketExtentsInto(first: number, width: number, count: number, lo: number, hi: number, shift: number, minOut: Float64Array, maxOut: Float64Array): void {
-    if (this.blockSize * 2 < BUCKET_KEY_RADIX && this.enableBucketCache()) {
-      this.cachedBucketExtents(first, width, count, lo, hi, shift, minOut, maxOut);
-      return;
-    }
     const capacity = this.capacity;
     const scanLimit = this.blockSize * 2;
     const slot = { minY: 0, maxY: 0 };
@@ -162,49 +137,6 @@ export class MinMaxTree {
         if (p >= capacity) p -= capacity;
         if (length <= scanLimit && p + length <= capacity) this.scanExtent(p, p + length, slot);
         else this.queryRingInto(p, length, slot);
-      }
-      minOut[b] = slot.minY;
-      maxOut[b] = slot.maxY;
-    }
-  }
-
-  /** `bucketExtentsInto` once the cache exists: the same buckets, with repeats answered from it. A separate method so charts that never get this far never compile it. */
-  private cachedBucketExtents(first: number, width: number, count: number, lo: number, hi: number, shift: number, minOut: Float64Array, maxOut: Float64Array): void {
-    const capacity = this.capacity;
-    const scanLimit = this.blockSize * 2;
-    const cache = this.bucketCache!;
-    const slot = { minY: 0, maxY: 0 };
-    for (let b = 0; b < count; b++) {
-      let s = first + b * width;
-      let e = s + width;
-      if (s < lo) s = lo;
-      if (e > hi) e = hi;
-      slot.minY = Infinity;
-      slot.maxY = -Infinity;
-      const length = e - s;
-      if (length > 0) {
-        let p = s + shift;
-        if (p >= capacity) p -= capacity;
-        if (length <= scanLimit && p + length <= capacity) {
-          if (length >= BUCKET_CACHE_MIN_LENGTH) {
-            const at = ((((p / width) | 0) & (BUCKET_CACHE_SLOTS - 1)) << 2);
-            const key = p * BUCKET_KEY_RADIX + length;
-            if (cache[at] === key && cache[at + 1]! >= this.newestWrite(p, p + length)) {
-              minOut[b] = cache[at + 2]!;
-              maxOut[b] = cache[at + 3]!;
-              continue;
-            }
-            this.scanExtent(p, p + length, slot);
-            cache[at] = key;
-            cache[at + 1] = this.clock;
-            cache[at + 2] = slot.minY;
-            cache[at + 3] = slot.maxY;
-          } else {
-            this.scanExtent(p, p + length, slot);
-          }
-        } else {
-          this.queryRingInto(p, length, slot);
-        }
       }
       minOut[b] = slot.minY;
       maxOut[b] = slot.maxY;
@@ -236,30 +168,6 @@ export class MinMaxTree {
     }
     out.minY = minY;
     out.maxY = maxY;
-  }
-
-  /**
-   * Whether bucket extents may be cached, allocating the cache once a tree has served 512 dense passes (sustained panning or streaming, not a first paint or a few warm-up frames). Panning
-   * and live charts ask for the same ordinal-aligned buckets frame after frame (only the buckets at
-   * the edges change), so a repeat is answered from the cache instead of rescanning its samples; a
-   * chart drawn once or twice never pays the memory.
-   */
-  private enableBucketCache(): boolean {
-    if (this.bucketCache !== null) return true;
-    if (++this.bucketPasses < BUCKET_CACHE_AFTER_PASSES) return false;
-    this.bucketCache = new Float64Array(BUCKET_CACHE_SLOTS * 4);
-    this.blockStamp = new Float64Array(Math.max(1, Math.ceil(this.capacity / this.blockSize)));
-    return true;
-  }
-
-  /** Clock of the latest write to any block of physical `[start, end)` (0 when none was recorded). */
-  private newestWrite(start: number, end: number): number {
-    const stamps = this.blockStamp!;
-    let newest = 0;
-    for (let block = (start / this.blockSize) | 0, last = ((end - 1) / this.blockSize) | 0; block <= last; block++) {
-      if (stamps[block]! > newest) newest = stamps[block]!;
-    }
-    return newest;
   }
 
   /**

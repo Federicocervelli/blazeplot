@@ -25,56 +25,6 @@ function noisyValues(count: number, r: () => number, Storage: typeof Float32Arra
   return values;
 }
 
-describe("MinMaxTree.bucketExtentsInto bucket cache", () => {
-  it("stays equal to fresh queries while the data is rewritten, shifted, and re-queried at the same buckets", () => {
-    const r = rng(23);
-    for (const Storage of [Float32Array, Float64Array]) {
-      const capacity = 20_000;
-      const values = noisyValues(capacity, r, Storage);
-      const tree = new MinMaxTree(values, capacity);
-      const out: MinMaxOut = { minY: 0, maxY: 0 };
-      const minOut = new Float64Array(600);
-      const maxOut = new Float64Array(600);
-      let shift = 0;
-      let length = capacity;
-      let cacheHits = 0;
-      // The cache only exists after a tree has served many dense passes.
-      for (let k = 0; k < 520; k++) tree.bucketExtentsInto(0, 25, 1, 0, capacity, 0, minOut, maxOut);
-      for (let step = 0; step < 400; step++) {
-        const roll = r();
-        if (roll < 0.4) {
-          // A write somewhere (single sample, short run, or the whole range), reported like the datasets do.
-          const start = Math.floor(r() * (capacity - 1));
-          const end = roll < 0.05 ? capacity : Math.min(capacity, start + 1 + Math.floor(r() * 300));
-          for (let i = start; i < end; i++) values[i] = r() < 0.05 ? NaN : (r() - 0.5) * 100;
-          tree.update(start, end);
-        } else if (roll < 0.45) {
-          shift = Math.floor(r() * capacity);
-          length = 1 + Math.floor(r() * capacity);
-        }
-        const width = [16, 25, 64, 100, 128][step % 5]!;
-        const first = Math.floor(r() * 5) * width - width * 3;
-        const count = 1 + Math.floor(r() * 600);
-        tree.bucketExtentsInto(first, width, count, 0, length, shift, minOut, maxOut);
-        for (let b = 0; b < count; b++) {
-          const s = Math.max(0, first + b * width);
-          const e = Math.min(length, first + (b + 1) * width);
-          const has = e > s && tree.queryRingInto((s + shift) % capacity, e - s, out);
-          if (!has) {
-            expect(minOut[b]!).toBe(Infinity);
-            expect(maxOut[b]!).toBe(-Infinity);
-          } else {
-            expect(minOut[b]!).toBe(out.minY);
-            expect(maxOut[b]!).toBe(out.maxY);
-            cacheHits++;
-          }
-        }
-      }
-      expect(cacheHits).toBeGreaterThan(1000);
-    }
-  });
-});
-
 describe("MinMaxTree.bucketExtentsInto", () => {
   it("matches one queryRingInto per bucket for every width, offset, and ring shift", () => {
     const r = rng(7);
