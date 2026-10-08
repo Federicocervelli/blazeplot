@@ -30,7 +30,8 @@ export function downloadBlob(blob: Blob, filename = "blazeplot.png", doc: Docume
   doc.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  // Revoking right after click() can cancel the download in some browsers, which start reading the blob asynchronously.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 /** Capture a chart screenshot, download it, and return the created blob. */

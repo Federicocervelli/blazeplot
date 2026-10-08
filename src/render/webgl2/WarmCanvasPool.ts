@@ -65,6 +65,11 @@ export function acquirePlotCanvas(doc: Document): HTMLCanvasElement {
       continue;
     }
     unpark(entry);
+    // Listen for context loss again; a loss and restore while parked leaves the backend's objects invalid.
+    if (entry.backend.attachCanvasListeners?.() === false) {
+      destroyBackend(entry.backend);
+      continue;
+    }
     const { canvas } = entry;
     // Drop what the last chart's layout and plugins put on the element (class, style, ARIA). The width and
     // height attributes stay: they are the drawing buffer, and removing them resets (reallocates) it. The
@@ -104,6 +109,8 @@ export function parkPlotCanvas(canvas: HTMLCanvasElement, backend: GpuBackend): 
   // mount/destroy cycle, and a parked canvas holds it for at most WARM_IDLE_MS, after which the context
   // (and the buffer with it) is released.
   canvas.remove();
+  // A parked backend must not keep a listener on the canvas; `acquirePlotCanvas` re-attaches it.
+  backend.detachCanvasListeners?.();
   while (parked.length >= MAX_PARKED) release(parked[0]!);
   const entry: Parked = { canvas, backend, cancel: keepWarm(() => release(entry)) };
   parked.push(entry);
