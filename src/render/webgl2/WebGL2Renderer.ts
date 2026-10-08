@@ -7,6 +7,9 @@ import type { ProgramName } from "./ShaderPrograms.js";
 import { destroyBackend } from "./releaseWebGLContext.js";
 import { adoptWarmBackend, parkPlotCanvas } from "./WarmCanvasPool.js";
 
+/** Delays before each retry of a failed backend rebuild after a context restore; the last failure is final. */
+const RESTORE_RETRY_DELAYS_MS: readonly number[] = [250, 1000, 4000];
+
 /** The frame stream starts small and doubles on demand, so a sparse chart does not hold the 256 KiB a dense one needs. */
 const INITIAL_STREAM_FLOATS = 1 << 10;
 const DEFAULT_MAX_DRAWING_BUFFER_PIXELS = 16_384 * 16_384;
@@ -42,6 +45,8 @@ export class WebGL2Renderer implements ChartRenderer {
   private lossListener: ((state: RendererLossState) => void) | null = null;
   private lost = false;
   private disposed = false;
+  private restoreAttempts = 0;
+  private restoreTimer: ReturnType<typeof setTimeout> | null = null;
   /** Programs hinted so far, started again on a new backend after a context restore. */
   private readonly prepared = new Set<ProgramName>();
 
@@ -212,6 +217,7 @@ export class WebGL2Renderer implements ChartRenderer {
     this.canvas.removeEventListener("webglcontextrestored", this.handleContextRestored);
     this.lossListener = null;
     this.commands.length = 0;
+    this.cancelRestoreRetry();
     // A healthy chart canvas stays warm for the next chart instead of paying for a context release now and a new context later.
     if (this.poolable && !this.lost && parkPlotCanvas(this.canvas, this.backend)) return;
     destroyBackend(this.backend);
@@ -221,18 +227,38 @@ export class WebGL2Renderer implements ChartRenderer {
     // Allow the browser to restore the context; the chart stops drawing until it does.
     event.preventDefault();
     this.lost = true;
+    this.cancelRestoreRetry();
     this.commands.length = 0;
     this.lossListener?.("lost");
   };
 
   private readonly handleContextRestored = (): void => {
+    this.cancelRestoreRetry();
+    this.restoreAttempts = 0;
+    this.restoreBackend();
+  };
+
+  /** Rebuild the backend on the restored context; on failure stay lost and retry a bounded number of times. */
+  private restoreBackend(): void {
+    if (this.disposed) return;
     // A restored context is a new generation: every object from the old one is invalid, so rebuild the backend.
     const previous = this.backend;
     let next: GpuBackend;
     try {
       next = this.createBackend(this.canvas);
     } catch (error) {
-      console.error("BlazePlot failed to restore WebGL resources after context restoration.", error);
+      const delay = RESTORE_RETRY_DELAYS_MS[this.restoreAttempts];
+      console.error(
+        delay === undefined ? "BlazePlot failed to restore WebGL resources after context restoration; giving up." : "BlazePlot failed to restore WebGL resources after context restoration; retrying.",
+        error,
+      );
+      if (delay !== undefined) {
+        this.restoreAttempts++;
+        this.restoreTimer = setTimeout(() => {
+          this.restoreTimer = null;
+          this.restoreBackend();
+        }, delay);
+      }
       return;
     }
     next.prepare?.([...this.prepared]);
@@ -244,7 +270,12 @@ export class WebGL2Renderer implements ChartRenderer {
     }
     this.lost = false;
     this.lossListener?.("restored");
-  };
+  }
+
+  private cancelRestoreRetry(): void {
+    if (this.restoreTimer !== null) clearTimeout(this.restoreTimer);
+    this.restoreTimer = null;
+  }
 
   private drawSolid(data: Float32Array, vertexCount: number, color: RgbaColor, projection: RenderProjection, primitive: SolidPrimitive): void {
     if (vertexCount <= 0) return;

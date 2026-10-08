@@ -83,5 +83,9 @@ export interface GpuBackend {
   getContext?(): WebGL2RenderingContext | null;
   /** Pixels in the largest drawing buffer the context supports, when known. */
   readonly maxDrawingBufferPixels?: number;
+  /** Stop listening to the canvas while parked in the warm pool; GPU objects stay alive. */
+  detachCanvasListeners?(): void;
+  /** Listen again when taken from the warm pool; false when the context was lost and restored meanwhile (the backend is unusable). */
+  attachCanvasListeners?(): boolean;
   destroy(): void;
 }

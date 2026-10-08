@@ -166,6 +166,26 @@ export class WebGL2Backend implements GpuBackend {
     return this.gl;
   }
 
+  /**
+   * Stop listening to the canvas without touching GPU objects, for a backend parked in the warm pool.
+   * Pair with {@link attachCanvasListeners}.
+   */
+  detachCanvasListeners(): void {
+    this.canvas.removeEventListener("webglcontextlost", this.handleContextLost);
+  }
+
+  /**
+   * Listen to the canvas again after {@link detachCanvasListeners}. A loss and restore may have happened
+   * in between unseen, which leaves a live context holding none of this backend's objects: returns false
+   * then (and marks the backend lost so teardown skips `gl.delete*`), and the caller must not draw with it.
+   */
+  attachCanvasListeners(): boolean {
+    this.canvas.removeEventListener("webglcontextlost", this.handleContextLost);
+    this.canvas.addEventListener("webglcontextlost", this.handleContextLost);
+    if (this.gl.isContextLost() || !this.gl.isBuffer(this.stream)) this.contextLost = true;
+    return !this.contextLost;
+  }
+
   /** Release GPU objects owned by the backend. */
   destroy(): void {
     this.canvas.removeEventListener("webglcontextlost", this.handleContextLost);

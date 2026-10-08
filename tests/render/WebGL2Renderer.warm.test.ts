@@ -55,6 +55,30 @@ describe("WebGL2Renderer and the warm canvas pool", () => {
     expect(made[0]!.gl.validDeletes).toContain("buffer");
   });
 
+  it("removes the backend's context-loss listener while parked and restores it when adopted", () => {
+    const { doc, made } = makeDoc();
+    const canvas = acquirePlotCanvas(doc);
+    const added: string[] = [];
+    const removed: string[] = [];
+    const target = canvas as unknown as EventTarget;
+    const { addEventListener, removeEventListener } = target;
+    target.addEventListener = (type: string, ...rest: [never]) => (added.push(type), addEventListener.call(target, type, ...rest));
+    target.removeEventListener = (type: string, ...rest: [never]) => (removed.push(type), removeEventListener.call(target, type, ...rest));
+    const first = new WebGL2Renderer(canvas);
+    first.dispose();
+    // Both the renderer's and the backend's loss listeners are gone from the parked canvas.
+    expect(added.filter((t) => t === "webglcontextlost")).toHaveLength(2);
+    expect(removed.filter((t) => t === "webglcontextlost").length).toBeGreaterThanOrEqual(2);
+
+    // A loss and restore while parked is caught on adoption: the stale backend is dropped, not reused.
+    made[0]!.gl.lost = true;
+    made[0]!.gl.generation++;
+    made[0]!.gl.lost = false;
+    const next = acquirePlotCanvas(doc);
+    expect(next).not.toBe(canvas);
+    expect(made[0]!.gl.invalidDeletes).toEqual([]);
+  });
+
   it("releases a canvas it does not own straight away, as before", () => {
     const { doc, made } = makeDoc();
     const canvas = doc.createElement("canvas");
