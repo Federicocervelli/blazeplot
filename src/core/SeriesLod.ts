@@ -15,17 +15,15 @@ export class SeriesLod {
   dirty: boolean = false;
   /** Raw min/max scans replace the pyramid until the next full rebuild (a shift that cannot be tracked exactly). */
   useRawScan: boolean = false;
-  private forceFullRebuild: boolean = false;
-  private lastBuildLength: number;
+  private forceRebuild: boolean = false;
+  private builtLength: number = 0;
   private lastOrdinal: number | undefined;
-  /** Samples appended since the last rebuild; `undefined` once any mutation did not report a count. */
-  private pendingAppended: number | undefined = 0;
+  /** Samples appended since the last rebuild; NaN once any mutation did not report a count. */
+  private appended: number = 0;
 
   constructor(dataset: Dataset, downsampled: boolean, datasetAnswersRangeMinMax: boolean) {
     this.pyramid = downsampled && !datasetAnswersRangeMinMax ? new MinMaxPyramid() : null;
-    if (this.pyramid && dataset.length > 0) this.pyramid.build(dataset);
-    this.lastBuildLength = dataset.length;
-    this.lastOrdinal = dataset.ordinalOffset;
+    this.reset(dataset);
   }
 
   /**
@@ -34,59 +32,46 @@ export class SeriesLod {
    */
   markMutated(force: boolean, appended?: number): void {
     this.dirty = true;
-    this.forceFullRebuild ||= force;
-    this.pendingAppended =
-      appended === undefined || this.pendingAppended === undefined ? undefined : this.pendingAppended + appended;
-  }
-
-  /** The dataset was replaced wholesale: leave raw-scan mode (the next rebuild is forced by `markMutated`). */
-  resetRawScan(): void {
-    this.useRawScan = false;
+    this.forceRebuild ||= force;
+    this.appended += appended ?? NaN;
   }
 
   /** The dataset was cleared: rebuild immediately and forget pending changes. */
   reset(dataset: Dataset): void {
-    this.useRawScan = false;
-    this.forceFullRebuild = false;
     this.pyramid?.build(dataset);
-    this.lastBuildLength = dataset.length;
+    this.builtLength = dataset.length;
     this.lastOrdinal = dataset.ordinalOffset;
-    this.pendingAppended = 0;
-    this.dirty = false;
+    this.useRawScan = this.forceRebuild = this.dirty = false;
+    this.appended = 0;
   }
 
   /** Rebuild or extend LOD state after data changes. Called by the chart before drawing. */
   rebuild(dataset: Dataset): void {
     if (!this.dirty) return;
-    if (this.pyramid) {
+    const pyramid = this.pyramid;
+    if (pyramid) {
       const length = dataset.length;
       const ordinal = dataset.ordinalOffset;
-      const appended = this.pendingAppended;
       const exact = ordinal !== undefined && this.lastOrdinal !== undefined;
-      // Samples dropped from the front since the last build, or null when it cannot be determined.
-      let shift: number | null = null;
-      if (exact) {
-        shift = ordinal - this.lastOrdinal!;
-        // The ordinal advance must agree with the reported append count, else rebuild.
-        if (appended !== undefined && this.lastBuildLength + appended - length !== shift) shift = null;
-      } else if (appended !== undefined) {
-        shift = this.lastBuildLength + appended - length;
-      }
+      // Samples dropped from the front since the last build, or NaN when it cannot be determined.
+      const dropped = this.builtLength + this.appended - length;
+      let shift = exact ? ordinal - this.lastOrdinal! : dropped;
+      // The ordinal advance must agree with the reported append count, else rebuild.
+      if (exact && dropped !== shift && !Number.isNaN(dropped)) shift = NaN;
 
-      if (this.forceFullRebuild || shift === null || shift < 0) {
-        this.pyramid.build(dataset);
+      if (this.forceRebuild || !(shift >= 0)) {
+        pyramid.build(dataset);
         this.useRawScan = false;
       } else if (shift > 0 && !exact) {
         // Cannot tell a real shift from dropped appends; scan raw ranges instead of trusting the pyramid.
         this.useRawScan = true;
       } else if (!this.useRawScan) {
-        this.pyramid.incrementalBuild(dataset, shift);
+        pyramid.incrementalBuild(dataset, shift);
       }
-      this.lastBuildLength = length;
+      this.builtLength = length;
       this.lastOrdinal = ordinal;
     }
-    this.pendingAppended = 0;
-    this.forceFullRebuild = false;
-    this.dirty = false;
+    this.appended = 0;
+    this.forceRebuild = this.dirty = false;
   }
 }

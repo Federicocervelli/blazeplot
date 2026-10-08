@@ -180,9 +180,8 @@ export class WebGL2Backend implements GpuBackend {
    * then (and marks the backend lost so teardown skips `gl.delete*`), and the caller must not draw with it.
    */
   attachCanvasListeners(): boolean {
-    this.canvas.removeEventListener("webglcontextlost", this.handleContextLost);
     this.canvas.addEventListener("webglcontextlost", this.handleContextLost);
-    if (this.gl.isContextLost() || !this.gl.isBuffer(this.stream)) this.contextLost = true;
+    this.contextLost ||= this.gl.isContextLost() || !this.gl.isBuffer(this.stream);
     return !this.contextLost;
   }
 
@@ -215,38 +214,42 @@ export class WebGL2Backend implements GpuBackend {
     gl.uniform2f(state.uCanvasSize, command.canvasWidth, command.canvasHeight);
     gl.uniform1f(state.uLineWidth, command.lineWidth);
     const stride = command.layout === "strip" ? BYTES_PER_VERTEX : BYTES_PER_VERTEX * 2;
-    this.pointInstanceAttribute(state.aStart, stride, command.first * BYTES_PER_VERTEX);
-    this.pointInstanceAttribute(state.aEnd, stride, (command.first + 1) * BYTES_PER_VERTEX);
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, command.segments);
+    this.aimAttribute(state.aStart, stride, command.first * BYTES_PER_VERTEX);
+    this.aimAttribute(state.aEnd, stride, (command.first + 1) * BYTES_PER_VERTEX);
+    this.drawQuads(command.segments);
   }
 
   private drawPoints(state: ProgramState, command: PointDraw): void {
     const gl = this.gl;
     gl.uniform2f(state.uCanvasSize, command.canvasWidth, command.canvasHeight);
     gl.uniform1f(state.uPointSize, command.pointSize);
-    this.pointInstanceAttribute(state.aStart, BYTES_PER_VERTEX, command.first * BYTES_PER_VERTEX);
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, command.instances);
+    this.aimAttribute(state.aStart, BYTES_PER_VERTEX, command.first * BYTES_PER_VERTEX);
+    this.drawQuads(command.instances);
   }
 
   private drawBars(state: ProgramState, command: BarDraw): void {
     const gl = this.gl;
     gl.uniform1f(state.uBarWidth, command.barWidth);
     gl.uniform1f(state.uBaseline, command.baseline);
-    this.pointInstanceAttribute(state.aStart, BYTES_PER_VERTEX, command.first * BYTES_PER_VERTEX);
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, command.instances);
+    this.aimAttribute(state.aStart, BYTES_PER_VERTEX, command.first * BYTES_PER_VERTEX);
+    this.drawQuads(command.instances);
   }
 
   private drawRects(state: ProgramState, command: RectsDraw): void {
     const gl = this.gl;
     gl.uniform2f(state.uCanvasSize, command.canvasWidth, command.canvasHeight);
     // Bounds and color are interleaved per rectangle; first counts four two-float vertices per rectangle.
-    this.pointInstanceAttribute(state.aStart, BYTES_PER_RECT, command.first * BYTES_PER_VERTEX, 4);
-    this.pointInstanceAttribute(state.aEnd, BYTES_PER_RECT, command.first * BYTES_PER_VERTEX + 4 * Float32Array.BYTES_PER_ELEMENT, 4);
-    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, command.instances);
+    this.aimAttribute(state.aStart, BYTES_PER_RECT, command.first * BYTES_PER_VERTEX, 4);
+    this.aimAttribute(state.aEnd, BYTES_PER_RECT, command.first * BYTES_PER_VERTEX + 4 * Float32Array.BYTES_PER_ELEMENT, 4);
+    this.drawQuads(command.instances);
+  }
+
+  private drawQuads(instances: number): void {
+    this.gl.drawArraysInstanced(this.gl.TRIANGLE_STRIP, 0, 4, instances);
   }
 
   /** Re-aim a per-instance attribute of the bound VAO at the frame stream (WebGL2 has no base instance). */
-  private pointInstanceAttribute(location: number, stride: number, byteOffset: number, size = 2): void {
+  private aimAttribute(location: number, stride: number, byteOffset: number, size = 2): void {
     this.gl.vertexAttribPointer(location, size, this.gl.FLOAT, false, stride, byteOffset);
   }
 

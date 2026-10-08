@@ -7,8 +7,8 @@ import type { ProgramName } from "./ShaderPrograms.js";
 import { destroyBackend } from "./releaseWebGLContext.js";
 import { adoptWarmBackend, parkPlotCanvas } from "./WarmCanvasPool.js";
 
-/** Delays before each retry of a failed backend rebuild after a context restore; the last failure is final. */
-const RESTORE_RETRY_DELAYS_MS: readonly number[] = [250, 1000, 4000];
+/** A failed backend rebuild after a context restore is retried after 250, 1000 and 4000 ms; the next failure is final. */
+const RESTORE_RETRIES = 3;
 
 /** The frame stream starts small and doubles on demand, so a sparse chart does not hold the 256 KiB a dense one needs. */
 const INITIAL_STREAM_FLOATS = 1 << 10;
@@ -45,8 +45,8 @@ export class WebGL2Renderer implements ChartRenderer {
   private lossListener: ((state: RendererLossState) => void) | null = null;
   private lost = false;
   private disposed = false;
-  private restoreAttempts = 0;
-  private restoreTimer: ReturnType<typeof setTimeout> | null = null;
+  private retries = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | undefined;
   /** Programs hinted so far, started again on a new backend after a context restore. */
   private readonly prepared = new Set<ProgramName>();
 
@@ -146,10 +146,7 @@ export class WebGL2Renderer implements ChartRenderer {
       canvasWidth: this.canvasWidth,
       canvasHeight: this.canvasHeight,
       color,
-      scaleX: projection.scaleX,
-      scaleY: projection.scaleY,
-      offsetX: projection.offsetX,
-      offsetY: projection.offsetY,
+      ...projection,
     });
   }
 
@@ -169,10 +166,7 @@ export class WebGL2Renderer implements ChartRenderer {
       canvasWidth: this.canvasWidth,
       canvasHeight: this.canvasHeight,
       color,
-      scaleX: projection.scaleX,
-      scaleY: projection.scaleY,
-      offsetX: projection.offsetX,
-      offsetY: projection.offsetY,
+      ...projection,
     });
   }
 
@@ -186,10 +180,7 @@ export class WebGL2Renderer implements ChartRenderer {
       barWidth: style.barWidth,
       baseline: style.baseline - yOrigin,
       color: style.color,
-      scaleX: projection.scaleX,
-      scaleY: projection.scaleY,
-      offsetX: projection.offsetX,
-      offsetY: projection.offsetY,
+      ...projection,
     });
   }
 
@@ -217,7 +208,7 @@ export class WebGL2Renderer implements ChartRenderer {
     this.canvas.removeEventListener("webglcontextrestored", this.handleContextRestored);
     this.lossListener = null;
     this.commands.length = 0;
-    this.cancelRestoreRetry();
+    clearTimeout(this.retryTimer);
     // A healthy chart canvas stays warm for the next chart instead of paying for a context release now and a new context later.
     if (this.poolable && !this.lost && parkPlotCanvas(this.canvas, this.backend)) return;
     destroyBackend(this.backend);
@@ -227,19 +218,19 @@ export class WebGL2Renderer implements ChartRenderer {
     // Allow the browser to restore the context; the chart stops drawing until it does.
     event.preventDefault();
     this.lost = true;
-    this.cancelRestoreRetry();
+    clearTimeout(this.retryTimer);
     this.commands.length = 0;
     this.lossListener?.("lost");
   };
 
   private readonly handleContextRestored = (): void => {
-    this.cancelRestoreRetry();
-    this.restoreAttempts = 0;
-    this.restoreBackend();
+    this.retries = 0;
+    this.restore();
   };
 
   /** Rebuild the backend on the restored context; on failure stay lost and retry a bounded number of times. */
-  private restoreBackend(): void {
+  private restore(): void {
+    clearTimeout(this.retryTimer);
     if (this.disposed) return;
     // A restored context is a new generation: every object from the old one is invalid, so rebuild the backend.
     const previous = this.backend;
@@ -247,18 +238,8 @@ export class WebGL2Renderer implements ChartRenderer {
     try {
       next = this.createBackend(this.canvas);
     } catch (error) {
-      const delay = RESTORE_RETRY_DELAYS_MS[this.restoreAttempts];
-      console.error(
-        delay === undefined ? "BlazePlot failed to restore WebGL resources after context restoration; giving up." : "BlazePlot failed to restore WebGL resources after context restoration; retrying.",
-        error,
-      );
-      if (delay !== undefined) {
-        this.restoreAttempts++;
-        this.restoreTimer = setTimeout(() => {
-          this.restoreTimer = null;
-          this.restoreBackend();
-        }, delay);
-      }
+      console.error("BlazePlot failed to restore WebGL resources after context restoration.", error);
+      if (this.retries < RESTORE_RETRIES) this.retryTimer = setTimeout(() => this.restore(), 250 * 4 ** this.retries++);
       return;
     }
     next.prepare?.([...this.prepared]);
@@ -272,14 +253,9 @@ export class WebGL2Renderer implements ChartRenderer {
     this.lossListener?.("restored");
   }
 
-  private cancelRestoreRetry(): void {
-    if (this.restoreTimer !== null) clearTimeout(this.restoreTimer);
-    this.restoreTimer = null;
-  }
-
   private drawSolid(data: Float32Array, vertexCount: number, color: RgbaColor, projection: RenderProjection, primitive: SolidPrimitive): void {
     if (vertexCount <= 0) return;
-    this.commands.push({ kind: "solid", primitive, first: this.stage(data, vertexCount), count: vertexCount, color, scaleX: projection.scaleX, scaleY: projection.scaleY, offsetX: projection.offsetX, offsetY: projection.offsetY });
+    this.commands.push({ kind: "solid", primitive, first: this.stage(data, vertexCount), count: vertexCount, color, ...projection });
   }
 
   /** Append the first `vertexCount` `[x, y]` vertices of `data` to the frame stream; returns their first vertex index. */
