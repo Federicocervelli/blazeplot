@@ -366,27 +366,18 @@ export class AxisController {
       const value = safeBase ** exp;
       if (value >= min / safeBase && value <= max * safeBase) target.push(value);
     }
-    let inside = 0;
-    for (const value of target) if (value >= min && value <= max) inside++;
-    if (inside >= 2) return target;
-    return this.getLogSubdecadeTickValues(min, max, maxTicks, safeBase, pixelSize, minPixelSpacing, target);
-  }
+    if (target.filter((value) => value >= min && value <= max).length >= 2) return target;
 
-  /** Ticks for log domains spanning fewer than two powers of the base: multiples per decade, inside the domain. */
-  private getLogSubdecadeTickValues(min: number, max: number, maxTicks: number, base: number, pixelSize: number, minPixelSpacing: number, target: number[]): number[] {
-    target.length = 0;
+    // Domain spanning fewer than two powers of the base: multiples per decade, inside the domain.
     const limit = Math.max(2, maxTicks);
-    const firstExp = Math.floor(Math.log(min) / Math.log(base)) - 1;
-    const lastExp = Math.ceil(Math.log(max) / Math.log(base)) + 1;
-    const mantissaSets: number[][] = [[1, 2, 5], [1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9]];
-    for (const set of mantissaSets) {
-      const mantissas = set.filter((m) => m < base);
+    const lowExp = firstExp - 1;
+    const highExp = lastExp + 1;
+    for (const set of ["1 2 5", "1 1.5 2 3 4 5 6 7 8 9"]) {
       target.length = 0;
-      for (let exp = firstExp; exp <= lastExp; exp++) {
-        const decade = base ** exp;
-        for (const m of mantissas) {
-          const value = Number((m * decade).toPrecision(12));
-          if (value >= min && value <= max) target.push(value);
+      for (let exp = lowExp; exp <= highExp; exp++) {
+        for (const m of set.split(" ").map(Number)) {
+          const value = Number((m * safeBase ** exp).toPrecision(12));
+          if (m < safeBase && value >= min && value <= max) target.push(value);
         }
       }
       if (target.length >= 2) break;
@@ -399,12 +390,11 @@ export class AxisController {
       this.lastLinearStep = null;
     }
     if (target.length === 0) target.push(min, max);
-    if (target.length > limit) {
-      const stride = Math.ceil(target.length / limit);
-      const thinned: number[] = [];
-      for (let i = 0; i < target.length; i += stride) thinned.push(target[i]!);
-      target.length = 0;
-      for (const value of thinned) target.push(value);
+    const stride = Math.ceil(target.length / limit);
+    if (stride > 1) {
+      let kept = 0;
+      for (let i = 0; i < target.length; i += stride) target[kept++] = target[i]!;
+      target.length = kept;
     }
     return target;
   }
@@ -458,7 +448,7 @@ export class AxisController {
     const targetTicks = Math.max(2, Math.min(maxTicks, Math.floor(pixelSize / minPixelSpacing)));
     const maxGeneratedTicks = maxTicks + 2;
     let step = this.niceStep(range / (targetTicks - 1));
-    if (!Number.isFinite(step) || step <= 0) return target;
+    if (!(step > 0 && step < Infinity)) return target;
     let firstIndex = Math.floor(min / step);
     let lastIndex = Math.ceil(max / step);
 
@@ -468,14 +458,9 @@ export class AxisController {
       lastIndex = Math.ceil(max / step);
     }
 
-    if (!Number.isFinite(firstIndex) || !Number.isFinite(lastIndex) || lastIndex - firstIndex + 1 > maxGeneratedTicks) return target;
+    if (!(lastIndex - firstIndex < maxGeneratedTicks)) return target;
     this.lastLinearStep = step;
-    for (let index = firstIndex, n = 0; index <= lastIndex && n < maxGeneratedTicks; index++, n++) {
-      target.push(this.normalizeTick(index * step, step));
-    }
-
-    if (target.length > maxGeneratedTicks) target.length = maxGeneratedTicks;
-
+    for (let index = firstIndex; index <= lastIndex; index++) target.push(this.normalizeTick(index * step, step));
     return target;
   }
 
@@ -548,9 +533,7 @@ export class AxisController {
   }
 
   private normalizeTick(value: number, step: number): number {
-    const raw = -Math.floor(Math.log10(step)) + 2;
-    const decimals = Number.isFinite(raw) ? Math.min(100, Math.max(0, raw)) : 0;
-    const normalized = Number(value.toFixed(decimals));
+    const normalized = Number(value.toFixed(Math.min(100, Math.max(0, 2 - Math.floor(Math.log10(step))))));
     return Object.is(normalized, -0) ? 0 : normalized;
   }
 }

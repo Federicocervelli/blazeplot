@@ -60,16 +60,12 @@ function usable(backend: GpuBackend): boolean {
 export function acquirePlotCanvas(doc: Document): HTMLCanvasElement {
   for (const entry of parked.slice()) {
     if (entry.canvas.ownerDocument !== doc) continue;
-    if (!usable(entry.backend)) {
+    // Listen for context loss again; a loss and restore while parked leaves the backend's objects invalid.
+    if (!usable(entry.backend) || entry.backend.attachCanvasListeners?.() === false) {
       release(entry);
       continue;
     }
     unpark(entry);
-    // Listen for context loss again; a loss and restore while parked leaves the backend's objects invalid.
-    if (entry.backend.attachCanvasListeners?.() === false) {
-      destroyBackend(entry.backend);
-      continue;
-    }
     const { canvas } = entry;
     // Drop what the last chart's layout and plugins put on the element (class, style, ARIA). The width and
     // height attributes stay: they are the drawing buffer, and removing them resets (reallocates) it. The

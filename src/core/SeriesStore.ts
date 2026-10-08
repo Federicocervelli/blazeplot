@@ -276,7 +276,7 @@ export class SeriesStore<D extends Dataset = any> {
       throw unsupported("series.replace(...)", "a dataset with replace(...) support, such as StaticDataset or ServerSampledDataset");
     }
     dataset.replace(data);
-    this.lod.resetRawScan();
+    this.lod.useRawScan = false;
     this.markDataMutated(true);
   }
 
