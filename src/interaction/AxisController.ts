@@ -366,6 +366,46 @@ export class AxisController {
       const value = safeBase ** exp;
       if (value >= min / safeBase && value <= max * safeBase) target.push(value);
     }
+    let inside = 0;
+    for (const value of target) if (value >= min && value <= max) inside++;
+    if (inside >= 2) return target;
+    return this.getLogSubdecadeTickValues(min, max, maxTicks, safeBase, pixelSize, minPixelSpacing, target);
+  }
+
+  /** Ticks for log domains spanning fewer than two powers of the base: multiples per decade, inside the domain. */
+  private getLogSubdecadeTickValues(min: number, max: number, maxTicks: number, base: number, pixelSize: number, minPixelSpacing: number, target: number[]): number[] {
+    target.length = 0;
+    const limit = Math.max(2, maxTicks);
+    const firstExp = Math.floor(Math.log(min) / Math.log(base)) - 1;
+    const lastExp = Math.ceil(Math.log(max) / Math.log(base)) + 1;
+    const mantissaSets: number[][] = [[1, 2, 5], [1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9]];
+    for (const set of mantissaSets) {
+      const mantissas = set.filter((m) => m < base);
+      target.length = 0;
+      for (let exp = firstExp; exp <= lastExp; exp++) {
+        const decade = base ** exp;
+        for (const m of mantissas) {
+          const value = Number((m * decade).toPrecision(12));
+          if (value >= min && value <= max) target.push(value);
+        }
+      }
+      if (target.length >= 2) break;
+    }
+    if (target.length < 2) {
+      // Very narrow domain: fall back to linear ticks, clipped to the domain.
+      const linear = this.getLinearTickValues(min, max, pixelSize, limit, minPixelSpacing, []);
+      target.length = 0;
+      for (const value of linear) if (value >= min && value <= max) target.push(value);
+      this.lastLinearStep = null;
+    }
+    if (target.length === 0) target.push(min, max);
+    if (target.length > limit) {
+      const stride = Math.ceil(target.length / limit);
+      const thinned: number[] = [];
+      for (let i = 0; i < target.length; i += stride) thinned.push(target[i]!);
+      target.length = 0;
+      for (const value of thinned) target.push(value);
+    }
     return target;
   }
 
@@ -418,17 +458,19 @@ export class AxisController {
     const targetTicks = Math.max(2, Math.min(maxTicks, Math.floor(pixelSize / minPixelSpacing)));
     const maxGeneratedTicks = maxTicks + 2;
     let step = this.niceStep(range / (targetTicks - 1));
+    if (!Number.isFinite(step) || step <= 0) return target;
     let firstIndex = Math.floor(min / step);
     let lastIndex = Math.ceil(max / step);
 
-    while (lastIndex - firstIndex + 1 > maxGeneratedTicks) {
+    for (let guard = 0; lastIndex - firstIndex + 1 > maxGeneratedTicks && guard < 2200; guard++) {
       step = this.nextNiceStep(step);
       firstIndex = Math.floor(min / step);
       lastIndex = Math.ceil(max / step);
     }
 
+    if (!Number.isFinite(firstIndex) || !Number.isFinite(lastIndex) || lastIndex - firstIndex + 1 > maxGeneratedTicks) return target;
     this.lastLinearStep = step;
-    for (let index = firstIndex; index <= lastIndex; index++) {
+    for (let index = firstIndex, n = 0; index <= lastIndex && n < maxGeneratedTicks; index++, n++) {
       target.push(this.normalizeTick(index * step, step));
     }
 
@@ -506,7 +548,8 @@ export class AxisController {
   }
 
   private normalizeTick(value: number, step: number): number {
-    const decimals = Math.max(0, -Math.floor(Math.log10(step)) + 2);
+    const raw = -Math.floor(Math.log10(step)) + 2;
+    const decimals = Number.isFinite(raw) ? Math.min(100, Math.max(0, raw)) : 0;
     const normalized = Number(value.toFixed(decimals));
     return Object.is(normalized, -0) ? 0 : normalized;
   }
