@@ -75,6 +75,7 @@ interface Domain {
 type DragMode = "pan" | "left" | "right";
 
 interface DragState {
+  readonly pointerId: number;
   readonly mode: DragMode;
   readonly startClientX: number;
   readonly startXMin: number;
@@ -411,7 +412,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       applyTheme();
 
       const onPointerDown = (event: PointerEvent): void => {
-        if (!root || !domain || event.button !== 0) return;
+        if (!root || !domain || drag || event.button !== 0 || !chart.dom.claimPointer(event)) return;
         const rect = root.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const viewport = chart.viewport.get();
@@ -423,14 +424,14 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           : target === rightHandleHit || Math.abs(x - right) <= handleHitWidth * 0.5
             ? "right"
             : "pan";
-        drag = { mode, startClientX: event.clientX, startXMin: viewport.xMin, startXMax: viewport.xMax };
+        drag = { pointerId: event.pointerId, mode, startClientX: event.clientX, startXMin: viewport.xMin, startXMax: viewport.xMax };
         if (windowRect) windowRect.style.cursor = mode === "pan" ? "grabbing" : "ew-resize";
         root.setPointerCapture(event.pointerId);
         event.preventDefault();
       };
 
       const onPointerMove = (event: PointerEvent): void => {
-        if (!drag || !root || !domain) return;
+        if (!drag || event.pointerId !== drag.pointerId || !root || !domain) return;
         const rect = root.getBoundingClientRect();
         const dx = xToData(event.clientX - drag.startClientX, rect.width) - xToData(0, rect.width);
         if (drag.mode === "left") applyRange(drag.startXMin + dx, drag.startXMax);
@@ -439,6 +440,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       };
 
       const onPointerUp = (event: PointerEvent): void => {
+        if (!drag || event.pointerId !== drag.pointerId) return;
         if (root?.hasPointerCapture(event.pointerId)) root.releasePointerCapture(event.pointerId);
         if (windowRect) windowRect.style.cursor = "grab";
         drag = null;
