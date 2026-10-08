@@ -75,10 +75,11 @@ interface Domain {
 type DragMode = "pan" | "left" | "right";
 
 interface DragState {
+  readonly pointerId: number;
   readonly mode: DragMode;
   readonly startClientX: number;
-  readonly startXMin: number;
-  readonly startXMax: number;
+  readonly xMin: number;
+  readonly xMax: number;
 }
 
 function seriesList(chart: ChartPluginContext, option: NavigatorPluginOptions["series"]): SeriesStore[] {
@@ -411,7 +412,7 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
       applyTheme();
 
       const onPointerDown = (event: PointerEvent): void => {
-        if (!root || !domain || event.button !== 0) return;
+        if (!root || !domain || drag || event.button !== 0 || !chart.dom.claimPointer(event)) return;
         const rect = root.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const viewport = chart.viewport.get();
@@ -423,22 +424,21 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
           : target === rightHandleHit || Math.abs(x - right) <= handleHitWidth * 0.5
             ? "right"
             : "pan";
-        drag = { mode, startClientX: event.clientX, startXMin: viewport.xMin, startXMax: viewport.xMax };
+        drag = { pointerId: event.pointerId, mode, startClientX: event.clientX, xMin: viewport.xMin, xMax: viewport.xMax };
         if (windowRect) windowRect.style.cursor = mode === "pan" ? "grabbing" : "ew-resize";
         root.setPointerCapture(event.pointerId);
         event.preventDefault();
       };
 
       const onPointerMove = (event: PointerEvent): void => {
-        if (!drag || !root || !domain) return;
+        if (drag?.pointerId !== event.pointerId || !root || !domain) return;
         const rect = root.getBoundingClientRect();
         const dx = xToData(event.clientX - drag.startClientX, rect.width) - xToData(0, rect.width);
-        if (drag.mode === "left") applyRange(drag.startXMin + dx, drag.startXMax);
-        else if (drag.mode === "right") applyRange(drag.startXMin, drag.startXMax + dx);
-        else applyRange(drag.startXMin + dx, drag.startXMax + dx);
+        applyRange(drag.xMin + (drag.mode === "right" ? 0 : dx), drag.xMax + (drag.mode === "left" ? 0 : dx));
       };
 
       const onPointerUp = (event: PointerEvent): void => {
+        if (drag?.pointerId !== event.pointerId) return;
         if (root?.hasPointerCapture(event.pointerId)) root.releasePointerCapture(event.pointerId);
         if (windowRect) windowRect.style.cursor = "grab";
         drag = null;
@@ -452,32 +452,16 @@ export function navigatorPlugin(options: NavigatorPluginOptions = {}): Navigator
         if (!domain || !chartRef) return;
         const viewport = chartRef.viewport.get();
         const span = viewport.xMax - viewport.xMin;
-        const step = span * (event.shiftKey ? 0.25 : 0.1);
-        let nextMin = viewport.xMin;
-        let nextMax = viewport.xMax;
-        let handled = true;
-        switch (event.key) {
-          case "ArrowLeft":
-            nextMin -= step;
-            nextMax -= step;
-            break;
-          case "ArrowRight":
-            nextMin += step;
-            nextMax += step;
-            break;
-          case "Home":
-            nextMin = domain.xMin;
-            nextMax = domain.xMin + span;
-            break;
-          case "End":
-            nextMax = domain.xMax;
-            nextMin = domain.xMax - span;
-            break;
-          default:
-            handled = false;
-            break;
-        }
-        if (!handled) return;
+        const shift = span * (event.shiftKey ? 0.25 : 0.1) * (event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0);
+        let nextMin = viewport.xMin + shift;
+        let nextMax = viewport.xMax + shift;
+        if (event.key === "Home") {
+          nextMin = domain.xMin;
+          nextMax = domain.xMin + span;
+        } else if (event.key === "End") {
+          nextMax = domain.xMax;
+          nextMin = domain.xMax - span;
+        } else if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
         event.preventDefault();
         applyRange(nextMin, nextMax);
       };

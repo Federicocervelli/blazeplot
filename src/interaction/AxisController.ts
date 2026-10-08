@@ -366,6 +366,36 @@ export class AxisController {
       const value = safeBase ** exp;
       if (value >= min / safeBase && value <= max * safeBase) target.push(value);
     }
+    if (target.filter((value) => value >= min && value <= max).length >= 2) return target;
+
+    // Domain spanning fewer than two powers of the base: multiples per decade, inside the domain.
+    const limit = Math.max(2, maxTicks);
+    const lowExp = firstExp - 1;
+    const highExp = lastExp + 1;
+    for (const set of ["1 2 5", "1 1.5 2 3 4 5 6 7 8 9"]) {
+      target.length = 0;
+      for (let exp = lowExp; exp <= highExp; exp++) {
+        for (const m of set.split(" ").map(Number)) {
+          const value = Number((m * safeBase ** exp).toPrecision(12));
+          if (m < safeBase && value >= min && value <= max) target.push(value);
+        }
+      }
+      if (target.length >= 2) break;
+    }
+    if (target.length < 2) {
+      // Very narrow domain: fall back to linear ticks, clipped to the domain.
+      const linear = this.getLinearTickValues(min, max, pixelSize, limit, minPixelSpacing, []);
+      target.length = 0;
+      for (const value of linear) if (value >= min && value <= max) target.push(value);
+      this.lastLinearStep = null;
+    }
+    if (target.length === 0) target.push(min, max);
+    const stride = Math.ceil(target.length / limit);
+    if (stride > 1) {
+      let kept = 0;
+      for (let i = 0; i < target.length; i += stride) target[kept++] = target[i]!;
+      target.length = kept;
+    }
     return target;
   }
 
@@ -418,22 +448,19 @@ export class AxisController {
     const targetTicks = Math.max(2, Math.min(maxTicks, Math.floor(pixelSize / minPixelSpacing)));
     const maxGeneratedTicks = maxTicks + 2;
     let step = this.niceStep(range / (targetTicks - 1));
+    if (!(step > 0 && step < Infinity)) return target;
     let firstIndex = Math.floor(min / step);
     let lastIndex = Math.ceil(max / step);
 
-    while (lastIndex - firstIndex + 1 > maxGeneratedTicks) {
+    for (let guard = 0; lastIndex - firstIndex + 1 > maxGeneratedTicks && guard < 2200; guard++) {
       step = this.nextNiceStep(step);
       firstIndex = Math.floor(min / step);
       lastIndex = Math.ceil(max / step);
     }
 
+    if (!(lastIndex - firstIndex < maxGeneratedTicks)) return target;
     this.lastLinearStep = step;
-    for (let index = firstIndex; index <= lastIndex; index++) {
-      target.push(this.normalizeTick(index * step, step));
-    }
-
-    if (target.length > maxGeneratedTicks) target.length = maxGeneratedTicks;
-
+    for (let index = firstIndex; index <= lastIndex; index++) target.push(this.normalizeTick(index * step, step));
     return target;
   }
 
@@ -506,8 +533,7 @@ export class AxisController {
   }
 
   private normalizeTick(value: number, step: number): number {
-    const decimals = Math.max(0, -Math.floor(Math.log10(step)) + 2);
-    const normalized = Number(value.toFixed(decimals));
+    const normalized = Number(value.toFixed(Math.min(100, Math.max(0, 2 - Math.floor(Math.log10(step))))));
     return Object.is(normalized, -0) ? 0 : normalized;
   }
 }

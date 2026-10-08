@@ -57,6 +57,30 @@ describe("WebGL2Backend context loss", () => {
     expect(gl.validDeletes).toContain("buffer");
   });
 
+  it("ignores context loss while detached, then reports a loss-and-restore that happened meanwhile", () => {
+    const { gl, backend, fireLost, restore } = setupFakeGl();
+    const b = backend();
+    b.detachCanvasListeners();
+    fireLost();
+    restore();
+    // The restored context holds none of this backend's objects, and nothing saw the loss event.
+    expect(b.attachCanvasListeners()).toBe(false);
+    b.destroy();
+    expect(gl.invalidDeletes).toEqual([]);
+  });
+
+  it("listens for context loss again after being re-attached", () => {
+    const { gl, backend, fireLost, restore } = setupFakeGl();
+    const b = backend();
+    b.detachCanvasListeners();
+    expect(b.attachCanvasListeners()).toBe(true);
+    fireLost();
+    restore();
+    b.destroy();
+    expect(gl.invalidDeletes).toEqual([]);
+    expect(gl.validDeletes).toEqual([]);
+  });
+
   it("stops listening for context loss once destroyed", () => {
     const { backend, fireLost, restore } = setupFakeGl();
     const b = backend();

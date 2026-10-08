@@ -4,68 +4,74 @@ import type { Dataset } from "./types.js";
 /**
  * Level-of-detail bookkeeping for one series: the internal `MinMaxPyramid` (only allocated for
  * downsampled custom datasets that cannot answer `rangeMinMaxY` themselves) and the flags that decide
- * how it is refreshed after data changes. Updates incrementally for tail appends and switches to raw
- * scans when a custom ring shifts at fixed capacity.
+ * how it is refreshed after data changes. Tail appends update incrementally. When a custom ring is full
+ * and drops front samples, the shift is derived from `Dataset.ordinalOffset` (exact) or from the number of
+ * appended samples; never from `range.start`, which ties in X leave unchanged. If the shift cannot be
+ * known exactly the pyramid is rebuilt, or (shift without `ordinalOffset`) raw scans replace it.
  */
 export class SeriesLod {
   readonly pyramid: MinMaxPyramid | null;
   /** Data changed since the last `rebuild`. */
   dirty: boolean = false;
-  /** Raw min/max scans replace the pyramid until the next full rebuild (a wrapping ring shifted every index). */
+  /** Raw min/max scans replace the pyramid until the next full rebuild (a shift that cannot be tracked exactly). */
   useRawScan: boolean = false;
-  private forceFullRebuild: boolean = false;
-  private lastBuildLength: number;
-  private lastBuildRangeStart: number;
+  private forceRebuild: boolean = false;
+  private builtLength: number = 0;
+  private lastOrdinal: number | undefined;
+  /** Samples appended since the last rebuild; NaN once any mutation did not report a count. */
+  private appended: number = 0;
 
   constructor(dataset: Dataset, downsampled: boolean, datasetAnswersRangeMinMax: boolean) {
     this.pyramid = downsampled && !datasetAnswersRangeMinMax ? new MinMaxPyramid() : null;
-    if (this.pyramid && dataset.length > 0) this.pyramid.build(dataset);
-    this.lastBuildLength = dataset.length;
-    this.lastBuildRangeStart = dataset.range?.start ?? NaN;
+    this.reset(dataset);
   }
 
-  /** Record a data change; `force` asks for a full pyramid rebuild instead of an incremental one. */
-  markMutated(force: boolean): void {
+  /**
+   * Record a data change; `force` asks for a full pyramid rebuild instead of an incremental one.
+   * `appended` is the number of samples pushed by this change, when known.
+   */
+  markMutated(force: boolean, appended?: number): void {
     this.dirty = true;
-    this.forceFullRebuild ||= force;
-  }
-
-  /** The dataset was replaced wholesale: leave raw-scan mode (the next rebuild is forced by `markMutated`). */
-  resetRawScan(): void {
-    this.useRawScan = false;
+    this.forceRebuild ||= force;
+    this.appended += appended ?? NaN;
   }
 
   /** The dataset was cleared: rebuild immediately and forget pending changes. */
   reset(dataset: Dataset): void {
-    this.useRawScan = false;
-    this.forceFullRebuild = false;
     this.pyramid?.build(dataset);
-    this.lastBuildLength = dataset.length;
-    this.lastBuildRangeStart = dataset.range?.start ?? NaN;
-    this.dirty = false;
+    this.builtLength = dataset.length;
+    this.lastOrdinal = dataset.ordinalOffset;
+    this.useRawScan = this.forceRebuild = this.dirty = false;
+    this.appended = 0;
   }
 
   /** Rebuild or extend LOD state after data changes. Called by the chart before drawing. */
   rebuild(dataset: Dataset): void {
     if (!this.dirty) return;
-    if (this.pyramid) {
+    const pyramid = this.pyramid;
+    if (pyramid) {
       const length = dataset.length;
-      const rangeStart = dataset.range?.start ?? NaN;
-      const shiftedAtCapacity = length === this.lastBuildLength && rangeStart !== this.lastBuildRangeStart;
-      if (this.forceFullRebuild) {
-        this.pyramid.build(dataset);
+      const ordinal = dataset.ordinalOffset;
+      const exact = ordinal !== undefined && this.lastOrdinal !== undefined;
+      // Samples dropped from the front since the last build, or NaN when it cannot be determined.
+      const dropped = this.builtLength + this.appended - length;
+      let shift = exact ? ordinal - this.lastOrdinal! : dropped;
+      // The ordinal advance must agree with the reported append count, else rebuild.
+      if (exact && dropped !== shift && !Number.isNaN(dropped)) shift = NaN;
+
+      if (this.forceRebuild || !(shift >= 0)) {
+        pyramid.build(dataset);
         this.useRawScan = false;
-      } else if (shiftedAtCapacity) {
-        // A wrapping ring buffer shifted every logical index; scan raw ranges instead of rebuilding per frame.
+      } else if (shift > 0 && !exact) {
+        // Cannot tell a real shift from dropped appends; scan raw ranges instead of trusting the pyramid.
         this.useRawScan = true;
-      } else {
-        this.pyramid.incrementalBuild(dataset);
-        this.useRawScan = false;
+      } else if (!this.useRawScan) {
+        pyramid.incrementalBuild(dataset, shift);
       }
-      this.lastBuildLength = length;
-      this.lastBuildRangeStart = rangeStart;
+      this.builtLength = length;
+      this.lastOrdinal = ordinal;
     }
-    this.forceFullRebuild = false;
-    this.dirty = false;
+    this.appended = 0;
+    this.forceRebuild = this.dirty = false;
   }
 }

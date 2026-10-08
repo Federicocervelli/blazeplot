@@ -211,7 +211,7 @@ export class SeriesStore<D extends Dataset = any> {
       throw unsupported("series.append({ x, y })", "an appendable XY dataset such as RingBuffer. Create the series with chart.addLine({ capacity })");
     }
     this.dataset.append(x, y);
-    this.markDataMutated(false);
+    this.markDataMutated(false, y.length);
   }
 
   private appendYArray(y: ArrayLike<number>): void {
@@ -219,7 +219,7 @@ export class SeriesStore<D extends Dataset = any> {
       throw unsupported("series.append({ y })", "an implicit-X dataset such as UniformRingBuffer. Use series.append({ x, y }) or create the series with chart.addLine({ capacity, xStep })");
     }
     this.dataset.appendY(y);
-    this.markDataMutated(false);
+    this.markDataMutated(false, y.length);
   }
 
   private appendOhlcArrays(
@@ -233,7 +233,7 @@ export class SeriesStore<D extends Dataset = any> {
       throw unsupported("series.append({ x, open, high, low, close })", "an appendable OHLC dataset such as OhlcRingBuffer");
     }
     this.dataset.append(x, open, high, low, close);
-    this.markDataMutated(false);
+    this.markDataMutated(false, close.length);
   }
 
   /** Update the latest XY/OHLC sample and schedule a render. */
@@ -276,7 +276,7 @@ export class SeriesStore<D extends Dataset = any> {
       throw unsupported("series.replace(...)", "a dataset with replace(...) support, such as StaticDataset or ServerSampledDataset");
     }
     dataset.replace(data);
-    this.lod.resetRawScan();
+    this.lod.useRawScan = false;
     this.markDataMutated(true);
   }
 
@@ -286,9 +286,9 @@ export class SeriesStore<D extends Dataset = any> {
     this.markDataMutated(true);
   }
 
-  private markDataMutated(forceFullPyramidRebuild: boolean): void {
+  private markDataMutated(forceFullPyramidRebuild: boolean, appended?: number): void {
     this._dataVersion++;
-    this.lod.markMutated(forceFullPyramidRebuild);
+    this.lod.markMutated(forceFullPyramidRebuild, appended);
     this.onChange?.("data");
   }
 

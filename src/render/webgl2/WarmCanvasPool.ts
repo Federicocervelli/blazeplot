@@ -60,7 +60,8 @@ function usable(backend: GpuBackend): boolean {
 export function acquirePlotCanvas(doc: Document): HTMLCanvasElement {
   for (const entry of parked.slice()) {
     if (entry.canvas.ownerDocument !== doc) continue;
-    if (!usable(entry.backend)) {
+    // Listen for context loss again; a loss and restore while parked leaves the backend's objects invalid.
+    if (!usable(entry.backend) || entry.backend.attachCanvasListeners?.() === false) {
       release(entry);
       continue;
     }
@@ -104,6 +105,8 @@ export function parkPlotCanvas(canvas: HTMLCanvasElement, backend: GpuBackend): 
   // mount/destroy cycle, and a parked canvas holds it for at most WARM_IDLE_MS, after which the context
   // (and the buffer with it) is released.
   canvas.remove();
+  // A parked backend must not keep a listener on the canvas; `acquirePlotCanvas` re-attaches it.
+  backend.detachCanvasListeners?.();
   while (parked.length >= MAX_PARKED) release(parked[0]!);
   const entry: Parked = { canvas, backend, cancel: keepWarm(() => release(entry)) };
   parked.push(entry);

@@ -58,6 +58,7 @@ export class FakeGl {
   deleteShader(o: Tagged): void { this.del("shader", o); }
   deleteProgram(o: Tagged): void { this.del("program", o); }
   deleteVertexArray(o: Tagged): void { this.del("vertexArray", o); }
+  isBuffer(o: Tagged): boolean { return !this.lost && o.gen === this.generation; }
   getExtension(): null { return null; }
   getShaderParameter(): boolean { return true; }
   getProgramParameter(): boolean { return true; }

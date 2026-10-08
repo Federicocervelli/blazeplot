@@ -215,14 +215,18 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
   copyMinMaxSegments(viewport: Viewport, target: Float32Array, maxSegments: number, xOrigin: number, yOrigin: number = 0): number {
     const start = this.lowerBoundX(viewport.xMin);
     const end = this.upperBoundX(viewport.xMax);
-    const count = Math.min(maxSegments, Math.max(0, end - start));
-    if (count <= 0 || target.length < count * 3) return 0;
+    const limit = Math.min(Math.floor(maxSegments), Math.floor(target.length / 3));
+    if (end <= start || limit <= 0) return 0;
 
-    const bucketWidth = this.stableBucketWidth(viewport, maxSegments);
+    // Buckets are anchored to multiples of their width, so the first one starts at or before `start` and the
+    // visible range can span one bucket more than the budget. Widen until every overlapping bucket fits,
+    // otherwise the newest (rightmost) bucket would be the one dropped.
+    let bucketWidth = this.stableBucketWidth(viewport, limit);
+    while (Math.ceil(end / bucketWidth) - Math.floor(start / bucketWidth) > limit) bucketWidth++;
     const alignedStart = Math.floor(start / bucketWidth) * bucketWidth;
 
     let written = 0;
-    for (let bucketStart = alignedStart; bucketStart < end && written < count; bucketStart += bucketWidth) {
+    for (let bucketStart = alignedStart; bucketStart < end && written < limit; bucketStart += bucketWidth) {
       const segmentStart = Math.max(0, bucketStart);
       const segmentEnd = Math.min(this.length, bucketStart + bucketWidth);
       if (segmentEnd <= start || segmentStart >= end) continue;
@@ -241,14 +245,13 @@ export class ServerSampledDataset implements Dataset, RangeMinMaxDataset, MinMax
 
   /** Samples per output bucket, anchored to data indexes so panning does not reshuffle buckets. */
   private stableBucketWidth(viewport: Viewport, maxBuckets: number): number {
-    const budget = Math.max(1, maxBuckets);
     const xSpan = viewport.xMax - viewport.xMin;
     const range = this.range;
     if (!range || this.length <= 1 || !(xSpan > 0)) return 1;
     const dataSpan = range.end - range.start;
-    if (!(dataSpan > 0)) return Math.max(1, Math.ceil(this.length / budget));
+    if (!(dataSpan > 0)) return Math.max(1, Math.ceil(this.length / maxBuckets));
     const estimatedVisibleSamples = Math.max(1, (xSpan / dataSpan) * (this.length - 1) + 1);
-    return Math.max(1, Math.ceil(estimatedVisibleSamples / budget));
+    return Math.max(1, Math.ceil(estimatedVisibleSamples / maxBuckets));
   }
 
   private bucketX(start: number, end: number): number {
