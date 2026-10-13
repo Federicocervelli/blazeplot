@@ -1,4 +1,4 @@
-import { describe, expect, it, spyOn } from "bun:test";
+import { describe, expect, it, jest, spyOn } from "bun:test";
 import { WebGL2Renderer } from "../../src/render/webgl2/WebGL2Renderer.ts";
 import { testStyle } from "../helpers.ts";
 import type { DrawCommand, GpuBackend } from "../../src/render/webgl2/types.ts";
@@ -288,6 +288,82 @@ describe("WebGL2Renderer context ownership", () => {
     expect(backends[1]!.destroyCount).toBe(1);
     expect(backends[1]!.contextReleases).toBe(1);
     expect(backends[0]!.destroyCount).toBe(1);
+  });
+
+  it("retries a failed rebuild later with a bounded number of attempts, then recovers", () => {
+    jest.useFakeTimers();
+    try {
+      const backends: MockBackend[] = [];
+      let failures = 2;
+      const canvas = new EventTarget() as unknown as HTMLCanvasElement;
+      const renderer = new WebGL2Renderer(canvas, {
+        createBackend: () => {
+          if (backends.length > 0 && failures > 0) {
+            failures--;
+            throw new Error("no WebGL2");
+          }
+          return backends[backends.push(new MockBackend()) - 1]!;
+        },
+      });
+      const states: string[] = [];
+      renderer.setLossListener((state) => states.push(state));
+      const errors = spyOn(console, "error").mockImplementation(() => {});
+      canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+      canvas.dispatchEvent(new Event("webglcontextrestored"));
+      expect(errors).toHaveBeenCalledTimes(1);
+      expect(renderer.isLost).toBe(true);
+
+      // No retry on frames or before the delay: one error per failure, no spin.
+      jest.advanceTimersByTime(100);
+      expect(errors).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(150);
+      expect(errors).toHaveBeenCalledTimes(2);
+      expect(renderer.isLost).toBe(true);
+      jest.advanceTimersByTime(1000);
+      expect(errors).toHaveBeenCalledTimes(2);
+      expect(renderer.isLost).toBe(false);
+      expect(states).toEqual(["lost", "restored"]);
+      expect(backends[0]!.destroyCount).toBe(1);
+
+      renderer.beginFrame(100, 50, 1);
+      renderer.drawLines(positions, 4, [1, 1, 1, 1], 1, { scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0 });
+      renderer.endFrame();
+      expect(backends[1]!.submits).toHaveLength(1);
+      errors.mockRestore();
+      renderer.dispose();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("gives up after the retry budget and stops retrying when disposed", () => {
+    jest.useFakeTimers();
+    try {
+      let creates = 0;
+      const canvas = new EventTarget() as unknown as HTMLCanvasElement;
+      const renderer = new WebGL2Renderer(canvas, {
+        createBackend: () => {
+          if (creates++ > 0) throw new Error("no WebGL2");
+          return new MockBackend();
+        },
+      });
+      const errors = spyOn(console, "error").mockImplementation(() => {});
+      canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true }));
+      canvas.dispatchEvent(new Event("webglcontextrestored"));
+      jest.advanceTimersByTime(60_000);
+      // One initial attempt plus three retries, one error each.
+      expect(creates).toBe(1 + 4);
+      expect(errors).toHaveBeenCalledTimes(4);
+      expect(renderer.isLost).toBe(true);
+
+      canvas.dispatchEvent(new Event("webglcontextrestored"));
+      renderer.dispose();
+      jest.advanceTimersByTime(60_000);
+      expect(creates).toBe(1 + 4 + 1);
+      errors.mockRestore();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("stays lost and logs once when restoration cannot rebuild the backend", () => {

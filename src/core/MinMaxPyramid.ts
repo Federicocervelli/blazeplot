@@ -6,176 +6,117 @@ function isGap(source: Dataset, index: number, y: number): boolean {
   return !Number.isFinite(y) || source.isGap?.(index) === true;
 }
 
-/** Incremental min/max pyramid used for dense line and bar downsampling. */
+/**
+ * Incremental min/max pyramid used for dense line and bar downsampling.
+ *
+ * Levels are stored as Float64 so large-magnitude Y values keep their exact min/max (Float32 would round
+ * values such as `1e10 + 0.5`); the cost is twice the level memory, about 2 * 8 bytes per source sample
+ * in total.
+ *
+ * Buckets are addressed in a "pyramid space" `p = index + shift`. When a full ring drops `k` samples from
+ * the front the pyramid does not rebuild: `shift` grows by `k`, bucket alignment is untouched, and only the
+ * tail is recomputed. Buckets that straddle the front edge hold stale expired samples, but `rangeMinMax`
+ * only reads buckets fully inside the queried (live) range, so they are never used. A full rebuild resets
+ * `shift` once it exceeds the live length, which keeps the cost amortized O(1) per dropped sample.
+ */
 export class MinMaxPyramid {
-  private levels: Float32Array[] = [];
-  private levelLengths: Uint32Array;
-  private levelSampleWidths: Uint32Array;
+  private levels: Float64Array[] = [];
+  private _shift: number = 0;
+  private lengths: number[] = [];
   private _builtLen: number = 0;
-  private _lastRangeStart: number = NaN;
+  private _rangeStart: number = NaN;
 
   /** Create a min/max pyramid using fixed-size buckets. */
   constructor(readonly bucketSize: number = 2) {
     if (!Number.isInteger(bucketSize) || bucketSize < 2) {
       throw new RangeError("MinMaxPyramid bucketSize must be an integer >= 2.");
     }
-
-    this.levelLengths = new Uint32Array(MAX_LEVELS);
-    this.levelSampleWidths = new Uint32Array(MAX_LEVELS);
   }
 
   /** Rebuild all pyramid levels from the source dataset. */
   build(source: Dataset): void {
     this.levels = [];
-    this.levelLengths.fill(0);
-    this.levelSampleWidths.fill(0);
-
-    let srcLen = source.length;
-    if (srcLen === 0) {
-      this._builtLen = 0;
-      this._lastRangeStart = NaN;
-      return;
-    }
-
-    let prevLevel: Float32Array | null = null;
-    let level = 0;
-
-    while (srcLen > 0 && level < MAX_LEVELS) {
-      const nextLen = Math.ceil(srcLen / this.bucketSize);
-      const levelData = new Float32Array(nextLen * 2);
-
-      for (let i = 0; i < srcLen; i += this.bucketSize) {
-        let minY = Infinity;
-        let maxY = -Infinity;
-        const end = Math.min(i + this.bucketSize, srcLen);
-        for (let j = i; j < end; j++) {
-          if (prevLevel) {
-            const prevMin = prevLevel[j * 2]!;
-            const prevMax = prevLevel[j * 2 + 1]!;
-            if (prevMin < minY) minY = prevMin;
-            if (prevMax > maxY) maxY = prevMax;
-          } else {
-            const y = source.getY(j);
-            if (isGap(source, j, y)) continue;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-          }
-        }
-        const outIdx = Math.floor(i / this.bucketSize);
-        levelData[outIdx * 2] = minY;
-        levelData[outIdx * 2 + 1] = maxY;
-      }
-
-      this.levels[level] = levelData;
-      this.levelLengths[level] = nextLen;
-      this.levelSampleWidths[level] = this.bucketSize ** (level + 1);
-
-      if (nextLen === 1) break;
-
-      prevLevel = levelData;
-      srcLen = nextLen;
-      level++;
-    }
-
+    this.lengths = [];
+    this._shift = 0;
     this._builtLen = source.length;
-    this._lastRangeStart = source.range?.start ?? NaN;
+    this._rangeStart = source.length > 0 ? (source.range?.start ?? NaN) : NaN;
+    if (source.length > 0) this.appendTail(source, 0);
   }
 
-  /** Extend pyramid levels after new samples are appended. */
-  incrementalBuild(source: Dataset): void {
+  /**
+   * Extend pyramid levels after new samples are appended. `shiftBy` is the number of samples a full ring
+   * dropped from the front since the last build (its ordinal advance); the caller must know it exactly.
+   */
+  incrementalBuild(source: Dataset, shiftBy: number = 0): void {
     const newLen = source.length;
     const rangeStart = source.range?.start ?? NaN;
-
-    if (newLen === 0) {
-      this.levels = [];
-      this.levelLengths.fill(0);
-      this.levelSampleWidths.fill(0);
-      this._builtLen = 0;
-      this._lastRangeStart = NaN;
-      return;
-    }
-
-    if (newLen < this._builtLen || rangeStart !== this._lastRangeStart) {
+    const oldTotal = this._shift + this._builtLen;
+    const newShift = this._shift + shiftBy;
+    const newTotal = newShift + newLen;
+    if (
+      newLen === 0 ||
+      shiftBy < 0 ||
+      newTotal < oldTotal ||
+      (shiftBy === 0 && (newLen < this._builtLen || rangeStart !== this._rangeStart)) ||
+      newShift > Math.max(newLen, 64)
+    ) {
       this.build(source);
       return;
     }
 
-    if (newLen === this._builtLen) return;
-
-    this.appendTail(source, newLen - this._builtLen);
-    this._builtLen = newLen;
+    if (newTotal !== oldTotal) {
+      this._shift = newShift;
+      this.appendTail(source, oldTotal);
+      this._builtLen = newLen;
+    }
+    this._rangeStart = rangeStart;
   }
 
-  private appendTail(source: Dataset, appendedCount: number): void {
-    const newLen = source.length;
+  /** Recompute buckets from pyramid-space position `fromP` to the end of the data. */
+  private appendTail(source: Dataset, fromP: number): void {
+    const shift = this._shift;
     const W = this.bucketSize;
-    let changedIdx = newLen - appendedCount;
+    let changedIdx = fromP;
 
     for (let L = 0; L < MAX_LEVELS; L++) {
-      const items: number = L === 0 ? newLen : this.levelLengths[L - 1]!;
+      const items = L === 0 ? shift + source.length : this.lengths[L - 1]!;
       const first = Math.floor(changedIdx / W);
       const last = Math.ceil(items / W) - 1;
-
       if (first > last) break;
 
-      this.levelSampleWidths[L] = W ** (L + 1);
-      this.ensureLevelData(L, last + 1);
+      const needed = (last + 1) * 2;
+      let dst = this.levels[L];
+      if (!dst || dst.length < needed) {
+        const next = new Float64Array(Math.max(needed, Math.ceil((dst?.length ?? 0) * 1.5)));
+        if (dst) next.set(dst);
+        dst = this.levels[L] = next;
+      }
+      const prev = this.levels[L - 1];
 
       for (let b = first; b <= last; b++) {
-        const start = b * W;
-        const end = Math.min((b + 1) * W, items);
-
         let minY = Infinity;
         let maxY = -Infinity;
-
-        if (L === 0) {
-          for (let j = start; j < end; j++) {
-            const y = source.getY(j);
-            if (isGap(source, j, y)) continue;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
+        for (let j = Math.max(b * W, L === 0 ? shift : 0); j < Math.min((b + 1) * W, items); j++) {
+          let lo = NaN;
+          let hi = NaN;
+          if (prev) {
+            lo = prev[j * 2]!;
+            hi = prev[j * 2 + 1]!;
+          } else {
+            lo = hi = source.getY(j - shift);
+            if (isGap(source, j - shift, lo)) continue;
           }
-        } else {
-          const prev = this.levels[L - 1]!;
-          for (let j = start; j < end; j++) {
-            const pMin = prev[j * 2]!;
-            const pMax = prev[j * 2 + 1]!;
-            if (pMin < minY) minY = pMin;
-            if (pMax > maxY) maxY = pMax;
-          }
+          if (lo < minY) minY = lo;
+          if (hi > maxY) maxY = hi;
         }
-
-        const dst = this.levels[L]!;
         dst[b * 2] = minY;
         dst[b * 2 + 1] = maxY;
       }
 
-      this.levelLengths[L] = last + 1;
+      this.lengths[L] = last + 1;
       changedIdx = first;
-
-      if (this.levelLengths[L]! <= 1) break;
+      if (last <= 0) break;
     }
-  }
-
-  private ensureLevelData(level: number, minBuckets: number): void {
-    const needed = minBuckets * 2;
-    const current = this.levels[level];
-    if (current && current.length >= needed) return;
-
-    let nextLength = current?.length ?? 0;
-    if (nextLength <= 0) {
-      nextLength = needed;
-    } else {
-      while (nextLength < needed) {
-        nextLength = Math.max(needed, Math.ceil(nextLength * 1.5));
-      }
-    }
-
-    const next = new Float32Array(nextLength);
-    if (current) {
-      next.set(current);
-    }
-    this.levels[level] = next;
   }
 
   /** Return min/max Y values for a source index range. */
@@ -184,44 +125,31 @@ export class MinMaxPyramid {
     const to = Math.min(source.length, Math.ceil(end));
     if (to <= from) return null;
 
+    const shift = this._shift;
     let minY = Infinity;
     let maxY = -Infinity;
-    let i = from;
+    const stop = to + shift;
 
-    while (i < to) {
-      let level = -1;
+    for (let i = from + shift; i < stop; ) {
       let width = 1;
+      let lo = NaN;
+      let hi = NaN;
       for (let L = this.levels.length - 1; L >= 0; L--) {
-        const sampleWidth = this.levelSampleWidths[L]!;
-        const bucket = Math.floor(i / sampleWidth);
-        if (
-          sampleWidth > 0 &&
-          i % sampleWidth === 0 &&
-          i + sampleWidth <= to &&
-          bucket < this.levelLengths[L]!
-        ) {
-          level = L;
-          width = sampleWidth;
+        const w = this.bucketSize ** (L + 1);
+        if (i % w === 0 && i + w <= stop && i / w < this.lengths[L]!) {
+          width = w;
+          lo = this.levels[L]![(i / w) * 2]!;
+          hi = this.levels[L]![(i / w) * 2 + 1]!;
           break;
         }
       }
-
-      if (level >= 0) {
-        const bucket = Math.floor(i / width);
-        const data = this.levels[level]!;
-        const pMin = data[bucket * 2]!;
-        const pMax = data[bucket * 2 + 1]!;
-        if (pMin < minY) minY = pMin;
-        if (pMax > maxY) maxY = pMax;
-        i += width;
-      } else {
-        const y = source.getY(i);
-        if (!isGap(source, i, y)) {
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
-        }
-        i++;
+      if (width === 1) {
+        lo = hi = source.getY(i - shift);
+        if (isGap(source, i - shift, lo)) lo = hi = NaN;
       }
+      if (lo < minY) minY = lo;
+      if (hi > maxY) maxY = hi;
+      i += width;
     }
 
     return Number.isFinite(minY) && Number.isFinite(maxY) ? { minY, maxY } : null;

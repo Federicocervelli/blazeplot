@@ -237,6 +237,25 @@ describe("navigatorPlugin pointer", () => {
     chart.dispose();
   });
 
+  it("tracks one pointer: other pointers cannot move or end the drag", () => {
+    const { chart } = make();
+    const root = rootOf(chart);
+    fire(root, pointerEvent("pointerdown", 120, 10, { pointerId: 1 }));
+    const second = pointerEvent("pointerdown", 300, 10, { pointerId: 2 });
+    fire(root, second);
+    expect(second.defaultPrevented).toBe(false);
+    fire(root, pointerEvent("pointermove", 360, 10, { pointerId: 2 }));
+    expect(chart.getViewport().xMin).toBe(200);
+    fire(root, pointerEvent("pointerup", 360, 10, { pointerId: 2 }));
+    fire(root, pointerEvent("pointercancel", 360, 10, { pointerId: 2 }));
+    fire(root, pointerEvent("pointermove", 160, 10, { pointerId: 1 }));
+    expect(chart.getViewport().xMin).toBeCloseTo(300, 5);
+    fire(root, pointerEvent("pointerup", 160, 10, { pointerId: 1 }));
+    fire(root, pointerEvent("pointermove", 300, 10, { pointerId: 1 }));
+    expect(chart.getViewport().xMin).toBeCloseTo(300, 5);
+    chart.dispose();
+  });
+
   it("resets to the full domain on double click", () => {
     const { chart } = make();
     fire(rootOf(chart), new window.MouseEvent("dblclick", { bubbles: true }));

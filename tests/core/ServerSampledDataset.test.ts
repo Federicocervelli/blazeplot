@@ -39,6 +39,27 @@ describe("ServerSampledDataset", () => {
     expect(Array.from(target)).toEqual([5, 1, 5, 15, -2, 3, 25, 4, 8]);
   });
 
+  it("keeps the rightmost bucket when aligning the first bucket down would need one more than maxSegments", () => {
+    const count = 20;
+    const dataset = new ServerSampledDataset({
+      kind: "minmax",
+      xStart: Array.from({ length: count }, (_, i) => i * 10),
+      xEnd: Array.from({ length: count }, (_, i) => i * 10 + 10),
+      minY: Array.from({ length: count }, () => 0),
+      maxY: Array.from({ length: count }, (_, i) => i + 1),
+    });
+    // Visible buckets 4..19 (16 samples) at width 6 align down to 0, so 0-6, 6-12, 12-18, 18-24 is four buckets for a budget of three.
+    const maxSegments = 3;
+    const target = new Float32Array(maxSegments * 3);
+    const written = dataset.copyMinMaxSegments({ xMin: 45, xMax: 200, yMin: 0, yMax: 1 }, target, maxSegments, 0);
+
+    expect(written).toBeLessThanOrEqual(maxSegments);
+    const maxes = Array.from({ length: written }, (_, i) => target[i * 3 + 2]!);
+    // The newest bucket (maxY 20) is present, and the output still reaches the first visible one (maxY >= 5).
+    expect(maxes[written - 1]).toBe(20);
+    expect(maxes[0]!).toBeGreaterThanOrEqual(5);
+  });
+
   it("can replace samples in place after a server fetch", () => {
     const dataset = new ServerSampledDataset({ kind: "points", x: [1], y: [2] });
     dataset.replace({ kind: "minmax", xStart: [100], xEnd: [200], minY: [8], maxY: [12] });

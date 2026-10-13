@@ -54,13 +54,34 @@ function fakeChart(blob: Blob): { chart: Chart; options: ChartScreenshotOptions[
 }
 
 describe("downloadBlob", () => {
-  it("clicks a temporary hidden anchor, removes it, and revokes the object URL on the next tick", async () => {
+  it("clicks a temporary hidden anchor, removes it, and revokes the object URL later", async () => {
     const nodes = countNodes(document.body);
     downloadBlob(new Blob(["x"]), "plot.png");
     expect(clicked).toEqual([{ href: "blob:fake", download: "plot.png", connected: true }]);
     expect(countNodes(document.body)).toBe(nodes);
     expect(revoked).toEqual([]);
     await new Promise((resolve) => setTimeout(resolve, 5));
+    // Not yet: the download needs the URL for a while after the click.
+    expect(revoked).toEqual([]);
+  });
+
+  it("keeps the object URL alive for 10 seconds before revoking it", () => {
+    const delays: Array<number | undefined> = [];
+    const callbacks: Array<() => void> = [];
+    const original = globalThis.setTimeout;
+    globalThis.setTimeout = ((fn: () => void, delay?: number) => {
+      delays.push(delay);
+      callbacks.push(fn);
+      return 0;
+    }) as unknown as typeof setTimeout;
+    try {
+      downloadBlob(new Blob(["x"]), "plot.png");
+    } finally {
+      globalThis.setTimeout = original;
+    }
+    expect(delays).toEqual([10_000]);
+    expect(revoked).toEqual([]);
+    callbacks[0]!();
     expect(revoked).toEqual(["blob:fake"]);
   });
 
