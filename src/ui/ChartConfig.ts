@@ -81,8 +81,8 @@ export function paddedDomain(min: number, max: number, padding: number, includeZ
 
 /** Fill every `SeriesStyle` field from caller options, a theme palette fallback color, and defaults. */
 export function resolveSeriesStyle(style: SeriesStyleOptions, fallbackColor: RgbaColor, root: Element): SeriesStyle {
-  const color = resolveThemeColor(style.color, fallbackColor, root);
-  const fillColor = resolveThemeColor(style.fillColor, withAlpha(color, 0.25), root);
+  const color = resolveThemeColor(style.color, fallbackColor, root, "series style color");
+  const fillColor = resolveThemeColor(style.fillColor, withAlpha(color, 0.25), root, "series style fillColor");
   const barWidth = style.barWidth ?? 0.8;
   return {
     color,
@@ -92,9 +92,9 @@ export function resolveSeriesStyle(style: SeriesStyleOptions, fallbackColor: Rgb
     baseline: style.baseline ?? 0,
     fillColor,
     tickWidth: style.tickWidth ?? barWidth,
-    upColor: resolveThemeColor(style.upColor, color, root),
-    downColor: resolveThemeColor(style.downColor, style.fillColor === undefined ? withAlpha(color, 0.45) : fillColor, root),
-    wickColor: resolveThemeColor(style.wickColor, color, root),
+    upColor: resolveThemeColor(style.upColor, color, root, "series style upColor"),
+    downColor: resolveThemeColor(style.downColor, style.fillColor === undefined ? withAlpha(color, 0.45) : fillColor, root, "series style downColor"),
+    wickColor: resolveThemeColor(style.wickColor, color, root, "series style wickColor"),
   };
 }
 
