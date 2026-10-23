@@ -137,9 +137,28 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-firefox-webkit
-      # System dependencies are not part of the cache, so always run the install; it skips downloads that are cached.
+      # `--with-deps` apt-installs about 100 system packages. The Azure Ubuntu mirror sometimes serves them at
+      # tens of KB/s, which hung this job until its timeout, so keep the downloaded .deb files between runs.
+      - name: Cache Playwright system packages
+        uses: actions/cache@v6
+        with:
+          path: ~/playwright-debs
+          key: playwright-debs-ubuntu-24.04-${{ steps.playwright.outputs.version }}-firefox-webkit
+      # Installs always run (system packages are not on the image); apt and Playwright skip what is already cached.
+      # A stalled attempt is killed and retried instead of using up the job timeout.
       - name: Install Firefox and WebKit
-        run: bunx playwright install --with-deps firefox webkit
+        timeout-minutes: 9
+        run: |
+          echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99keep-debs >/dev/null
+          mkdir -p ~/playwright-debs
+          sudo cp ~/playwright-debs/*.deb /var/cache/apt/archives/ 2>/dev/null || true
+          for attempt in 1 2 3; do
+            timeout 180 bunx playwright install --with-deps firefox webkit && break
+            [ "$attempt" = 3 ] && exit 1
+            echo "::warning::Playwright install attempt $attempt failed or stalled; retrying."
+            sudo dpkg --configure -a || true
+          done
+          cp /var/cache/apt/archives/*.deb ~/playwright-debs/ 2>/dev/null || true
       # Headless Firefox on Linux finds no GL driver; headed under Xvfb gets Mesa software WebGL2.
       - run: xvfb-run -a bun run test:cross-browser --headed firefox
       - name: Upload cross-browser screenshots
