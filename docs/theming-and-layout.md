@@ -13,6 +13,27 @@ chart.setTheme({
 
 Theme values are merged with the default theme, so you only need to override the tokens you change. Colors accept CSS color strings, including `var(--accent)` references; `backgroundColor`, `gridColor`, and `seriesColors` (the renderer-facing colors) also accept RGBA arrays in 0-1 range. CSS values are resolved against the chart root when the theme is applied, so call `chart.setTheme(...)` again after your CSS variables or color scheme change. `chart.theme` returns the resolved theme, and a `themechange` event fires after each update.
 
+### CSS colors and design tokens
+
+Any CSS color the browser accepts works for every theme color and series style color: hex, `rgb()`, `hsl()`, named and system colors, `color-mix()`, `oklch()`, `oklab()`, `lab()`, `lch()`, `color(display-p3 …)` and the other predefined `color()` spaces, and `var(--x)` references to any of them. That includes the oklch tokens of shadcn/ui and Tailwind CSS v4 themes:
+
+```ts
+import { Chart } from "blazeplot";
+
+// shadcn/ui tokens, for example --chart-1: oklch(0.646 0.222 41.116) and --border: oklch(0.922 0 0).
+const chart = new Chart(document.body, {
+  theme: {
+    backgroundColor: "var(--background)",
+    gridColor: "var(--border)",
+    axisColor: "var(--muted-foreground)",
+    seriesColors: ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)"],
+  },
+});
+chart.dispose();
+```
+
+The canvas renders in sRGB. Colors outside the sRGB gamut, such as vivid `display-p3` or high-chroma `oklch()` values, are clipped per channel, so they can shift hue slightly; DOM tokens (axis, tooltip, legend, and title colors) are applied as written. A string the browser cannot parse falls back to the default color and logs one console warning per string in development builds, naming the theme key or series style it came from.
+
 ## Theme tokens
 
 | Token group | Options |

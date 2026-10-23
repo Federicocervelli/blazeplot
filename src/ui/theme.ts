@@ -1,4 +1,6 @@
+import { devWarn } from "../core/deprecation.js";
 import type { RgbaColor, ThemeColor } from "../core/types.js";
+import { parseColorSpaceColor } from "./cssColor.js";
 
 /**
  * Partial chart theme supplied by callers. Every `*Color` field takes a CSS color string or an RGBA
@@ -200,12 +202,13 @@ export function forcedColorsTheme(base: ResolvedChartTheme, context?: Element): 
 export function resolveChartTheme(theme: ChartTheme | undefined, context?: Element): ResolvedChartTheme {
   if (!theme) return DEFAULT_CHART_THEME;
 
-  const backgroundColor = resolveThemeColor(theme.backgroundColor, DEFAULT_CHART_THEME.backgroundColor, context);
+  const backgroundColor = resolveThemeColor(theme.backgroundColor, DEFAULT_CHART_THEME.backgroundColor, context, "theme.backgroundColor");
   const seriesColors = theme.seriesColors?.length
     ? theme.seriesColors.map((color, index) => resolveThemeColor(
       color,
       DEFAULT_CHART_THEME.seriesColors[index % DEFAULT_CHART_THEME.seriesColors.length]!,
       context,
+      `theme.seriesColors[${index}]`,
     ))
     : DEFAULT_CHART_THEME.seriesColors;
 
@@ -220,13 +223,20 @@ export function resolveChartTheme(theme: ChartTheme | undefined, context?: Eleme
     ...(merged as unknown as ResolvedChartTheme),
     backgroundColor,
     backgroundCssColor: themeColorToCss(theme.backgroundColor, DEFAULT_CHART_THEME.backgroundCssColor),
-    gridColor: resolveThemeColor(theme.gridColor, DEFAULT_CHART_THEME.gridColor, context),
+    gridColor: resolveThemeColor(theme.gridColor, DEFAULT_CHART_THEME.gridColor, context, "theme.gridColor"),
     seriesColors,
   };
 }
 
-/** Resolve a theme color to an RGBA tuple. */
-export function resolveThemeColor(color: ThemeColor | undefined, fallback: RgbaColor, context?: Element): RgbaColor {
+const warnedColors = new Set<string>();
+
+/**
+ * Resolve a theme color to an RGBA tuple. Any color the browser accepts works: the computed or
+ * canvas-normalized value is parsed (including oklch(), lab(), and color() spaces), and as a last
+ * resort the color is painted into a 1x1 canvas and read back at 8-bit precision. Unparseable
+ * strings fall back to `fallback` with one development warning per string naming `source`.
+ */
+export function resolveThemeColor(color: ThemeColor | undefined, fallback: RgbaColor, context?: Element, source?: string): RgbaColor {
   if (!color) return fallback;
   if (typeof color !== "string") return color;
 
@@ -239,7 +249,13 @@ export function resolveThemeColor(color: ThemeColor | undefined, fallback: RgbaC
     if (direct) return direct;
   }
   const resolved = resolveCssColor(color, context);
-  return parseCssColor(resolved ?? color) ?? parseCssColor(normalizeCanvasColor(resolved ?? color, context) ?? "") ?? fallback;
+  const parsed = parseCssColor(resolved ?? color) ?? canvasColor(resolved ?? color, context);
+  if (parsed) return parsed;
+  if (!warnedColors.has(color)) {
+    warnedColors.add(color);
+    devWarn(`could not parse the color "${color}"${source ? ` (${source})` : ""}; using the default color instead.`);
+  }
+  return fallback;
 }
 
 /** Convert a theme color to a CSS color string. */
@@ -263,32 +279,49 @@ export function resolveCssColor(color: string, context?: Element): string | null
   el.style.position = "absolute";
   el.style.visibility = "hidden";
   el.style.pointerEvents = "none";
+  // An invalid color is ignored and keeps the sentinel, instead of computing to the inherited text color.
+  const sentinel = "rgb(1, 2, 3)";
+  el.style.color = sentinel;
   el.style.color = color;
   parent.appendChild(el);
 
   const resolved = (doc.defaultView ?? globalThis).getComputedStyle(el).color;
   el.remove();
-  return resolved || null;
+  return resolved && resolved !== sentinel ? resolved : null;
 }
 
 function parseCssColor(color: string): RgbaColor | null {
   const trimmed = color.trim();
-  return parseRgbColor(trimmed) ?? parseSrgbColor(trimmed) ?? parseHexColor(trimmed);
+  return parseRgbColor(trimmed) ?? parseSrgbColor(trimmed) ?? parseHexColor(trimmed) ?? parseColorSpaceColor(trimmed);
 }
 
-function normalizeCanvasColor(color: string, context?: Element): string | null {
+/**
+ * Let a 2D canvas normalize the color and parse its serialization; when that is a syntax the
+ * parsers do not know, paint the color into the 1x1 canvas and read the pixel back.
+ */
+function canvasColor(color: string, context?: Element): RgbaColor | null {
   const doc = context?.ownerDocument ?? globalThis.document;
   if (!doc?.createElement) return null;
 
   const canvas = doc.createElement("canvas");
-  const ctx = canvas.getContext("2d");
+  canvas.width = canvas.height = 1;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) return null;
 
   const sentinel = "#010203";
   ctx.fillStyle = sentinel;
   ctx.fillStyle = color;
   const normalized = String(ctx.fillStyle);
-  return normalized === sentinel ? null : normalized;
+  if (normalized === sentinel) return null;
+  const parsed = parseCssColor(normalized);
+  if (parsed) return parsed;
+  try {
+    ctx.fillRect(0, 0, 1, 1);
+    const [r = 0, g = 0, b = 0, a = 0] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r / 255, g / 255, b / 255, a / 255];
+  } catch {
+    return null;
+  }
 }
 
 function parseRgbColor(color: string): RgbaColor | null {
