@@ -50,6 +50,17 @@ export interface GraphEdgeArrays<E = unknown> {
   readonly data?: readonly E[];
 }
 
+/**
+ * Every pair of distinct nodes joined (undirected), except the listed pairs: a complete graph, or nearly one,
+ * kept in memory proportional to the nodes and the exceptions instead of the n·(n-1)/2 edges. Its edges are drawn
+ * with the `edgeStyle` given as an object (a style function is not called for them), without arrows, and cannot
+ * be picked or labeled one by one.
+ */
+export interface GraphEdgeRule {
+  readonly all: true;
+  readonly except?: { readonly source: ArrayLike<number>; readonly target: ArrayLike<number> };
+}
+
 /** What an item is doing right now, passed to style functions and renderers. */
 export interface GraphItemState {
   /** The pointer is over it. */
@@ -237,7 +248,7 @@ export interface GraphMessages {
 /** Options for {@link graphPlugin}. */
 export interface GraphPluginOptions<N = unknown, E = unknown> {
   readonly nodes?: readonly GraphNode<N>[];
-  readonly edges?: readonly GraphEdge<E>[] | GraphEdgeArrays<E>;
+  readonly edges?: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule;
   /** A style for every node, or a function of the node and its state. Merged over the defaults. */
   readonly nodeStyle?: GraphNodeStyle | ((node: GraphNode<N>, state: GraphItemState) => GraphNodeStyle);
   readonly edgeStyle?: GraphEdgeStyle | ((edge: GraphEdge<E>, state: GraphItemState) => GraphEdgeStyle);
@@ -311,7 +322,7 @@ export interface GraphPlugin<N = unknown, E = unknown> extends ChartPlugin {
    * the view, hover, focus, and selection stay on the ids that still exist. Throws a `RangeError` for
    * duplicate or empty node ids, non-finite positions, or more items than `limits` allows.
    */
-  setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E>): GraphSetResult;
+  setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule): GraphSetResult;
   /** Move some nodes, by id, without replacing the graph. Unknown ids are ignored. */
   setPositions(positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>): void;
   /** Apply the style functions again, for example after app state they read changed. */

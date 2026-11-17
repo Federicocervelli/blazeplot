@@ -24,6 +24,13 @@ export interface Aggregate {
   readonly edgeB: Uint32Array;
   readonly edgeWeight: Uint32Array;
   readonly edgeColor: Float32Array;
+  /** Per merged edge: its color with the opacity of its edges drawn over each other, quantized (see `quantize`). */
+  readonly edgeKey: Uint32Array;
+  /** Merged edges heaviest first (ties by index), and in order of `edgeKey` (ties by index): fixed per level, so a frame sorts nothing. */
+  readonly byWeight: Uint32Array;
+  readonly byKey: Uint32Array;
+  /** Per merged edge: its place in `byWeight`. */
+  readonly rank: Uint32Array;
 }
 
 /** What a job reads: positions, endpoints, and the style records with where their colors are. */
@@ -44,53 +51,86 @@ export interface AggregateSource {
   readonly edgeColorAt: number;
 }
 
-/** An open-addressing hash from a non-negative integer key (below 2^53) to a dense index. */
+/**
+ * An open-addressing hash from a non-negative integer key (below 2^53) to a dense index, kept at most half full.
+ * Slots hold key + 1, so a new table is empty as allocated. It can grow in steps (`startGrowth`, `growStep`), so a
+ * job that grows a large one spreads the work over slices; `indexOf` grows it at once when it must.
+ */
 class IndexHash {
   private keys: Float64Array;
   private values: Int32Array;
   private mask: number;
   size = 0;
+  /** While growing: the old table, and how many of its slots have been moved. */
+  private old: Float64Array | null = null;
+  private oldValues: Int32Array | null = null;
+  private moved = 0;
 
   constructor(capacity: number) {
     let size = 16;
     while (size < capacity * 2) size *= 2;
-    this.keys = new Float64Array(size).fill(-1);
+    this.keys = new Float64Array(size);
     this.values = new Int32Array(size);
     this.mask = size - 1;
+  }
+
+  /** Whether adding `extra` keys could fill the table past half. */
+  needsGrowth(extra: number): boolean {
+    return (this.size + extra) * 2 >= this.keys.length;
+  }
+
+  /** Start doubling the table until it holds `extra` more keys at most half full; finish with `growStep`. */
+  startGrowth(extra: number): void {
+    let size = this.keys.length;
+    while ((this.size + extra) * 2 >= size) size *= 2;
+    this.old = this.keys;
+    this.oldValues = this.values;
+    this.moved = 0;
+    this.keys = new Float64Array(size);
+    this.values = new Int32Array(size);
+    this.mask = size - 1;
+  }
+
+  /** Move up to `slots` slots of the old table into the new one; returns true once all are moved. */
+  growStep(slots: number): boolean {
+    const old = this.old;
+    const values = this.oldValues;
+    if (!old || !values) return true;
+    const end = Math.min(old.length, this.moved + slots);
+    for (let i = this.moved; i < end; i++) {
+      const stored = old[i]!;
+      if (stored === 0) continue;
+      let slot = hash(stored - 1) & this.mask;
+      while (this.keys[slot] !== 0) slot = (slot + 1) & this.mask;
+      this.keys[slot] = stored;
+      this.values[slot] = values[i]!;
+    }
+    this.moved = end;
+    if (end < old.length) return false;
+    this.old = null;
+    this.oldValues = null;
+    return true;
   }
 
   /** The index for `key`, made the next free one when the key is new. */
   indexOf(key: number): number {
-    if (this.size * 2 >= this.keys.length) this.rehash();
+    if (this.old) while (!this.growStep(Infinity));
+    if (this.size * 2 >= this.keys.length) {
+      this.startGrowth(1);
+      this.growStep(Infinity);
+    }
     const mask = this.mask;
+    const stored = key + 1;
     let slot = hash(key) & mask;
     for (;;) {
       const at = this.keys[slot]!;
-      if (at === key) return this.values[slot]!;
-      if (at === -1) {
-        this.keys[slot] = key;
+      if (at === stored) return this.values[slot]!;
+      if (at === 0) {
+        this.keys[slot] = stored;
         this.values[slot] = this.size;
         return this.size++;
       }
       slot = (slot + 1) & mask;
-    }
-  }
-
-  /** Double the table: kept at most half full, so probes stay short. */
-  private rehash(): void {
-    const keys = this.keys;
-    const values = this.values;
-    const size = keys.length * 2;
-    this.keys = new Float64Array(size).fill(-1);
-    this.values = new Int32Array(size);
-    this.mask = size - 1;
-    for (let i = 0; i < keys.length; i++) {
-      const key = keys[i]!;
-      if (key === -1) continue;
-      let slot = hash(key) & this.mask;
-      while (this.keys[slot] !== -1) slot = (slot + 1) & this.mask;
-      this.keys[slot] = key;
-      this.values[slot] = values[i]!;
     }
   }
 }
@@ -108,7 +148,12 @@ const CHECK_EVERY = 4096;
 
 /** Builds one level in slices: call `step` until it returns the level. */
 export class AggregateJob {
-  private phase: "nodes" | "edges" | "done" = "nodes";
+  private phase: "nodes" | "edges" | "keys" | "byWeight" | "rank" | "byKey" | "done" = "nodes";
+  /** What the last phases build, a slice each, so no slice of a large level runs long. */
+  private edgeKey: Uint32Array = new Uint32Array(0);
+  private heaviest = 0;
+  private byWeight: Uint32Array = new Uint32Array(0);
+  private rank: Uint32Array = new Uint32Array(0);
   private next = 0;
   private readonly cells: IndexHash;
   private readonly nodeCell: Uint32Array;
@@ -137,28 +182,80 @@ export class AggregateJob {
     const f = this.from;
     while (this.phase === "nodes") {
       const end = Math.min(f.count, this.next + CHECK_EVERY);
+      if (this.grow(this.cells, end - this.next, now, deadline)) return null;
       this.binNodes(this.next, end);
       this.next = end;
       if (end === f.count) {
         this.phase = "edges";
         this.next = 0;
-        this.pairs = new IndexHash(Math.max(16, Math.min(f.edgeCount, 1 << 12)));
+        // Sized for a few merged edges a cell, so a large level grows its table seldom (each growth is one slice).
+        this.pairs = new IndexHash(Math.max(16, Math.min(f.edgeCount, this.cells.size * 4)));
       }
       if (now() > deadline) return null;
     }
     while (this.phase === "edges") {
       const end = Math.min(f.edgeCount, this.next + CHECK_EVERY);
+      if (this.grow(this.pairs!, end - this.next, now, deadline)) return null;
       this.mergeEdges(this.next, end);
       this.next = end;
       if (end === f.edgeCount) {
-        this.finish();
-        this.phase = "done";
-        break;
+        this.phase = "keys";
+        this.next = 0;
+        const merged = this.pairs?.size ?? 0;
+        this.edgeKey = new Uint32Array(merged);
       }
       if (now() > deadline) return null;
     }
+    const merged = this.pairs?.size ?? 0;
+    while (this.phase === "keys") {
+      // Average colors, then each merged edge's color with its opacity, quantized.
+      const end = Math.min(merged, this.next + CHECK_EVERY);
+      for (let k = this.next; k < end; k++) {
+        const w = this.edgeWeight[k]!;
+        for (let c = 0; c < 4; c++) this.edgeColors[k * 4 + c]! /= w;
+        this.edgeKey[k] = quantize(this.edgeColors, k * 4, 1 - (1 - this.edgeColors[k * 4 + 3]!) ** w);
+        if (w > this.heaviest) this.heaviest = w;
+      }
+      this.next = end;
+      if (end === merged) this.phase = "byWeight";
+      if (now() > deadline) return null;
+    }
+    // Weights past this share the last bucket, kept in index order: as heavy as any edge needs to be told apart.
+    const top = Math.min(this.heaviest, 1 << 16);
+    if (this.phase === "byWeight") {
+      const weight = this.edgeWeight;
+      this.byWeight = countingSort(merged, top + 1, (k) => top - Math.min(top, weight[k]!));
+      this.phase = "rank";
+      if (now() > deadline) return null;
+    }
+    if (this.phase === "rank") {
+      this.rank = new Uint32Array(merged);
+      for (let j = 0; j < merged; j++) this.rank[this.byWeight[j]!] = j;
+      this.phase = "byKey";
+      if (now() > deadline) return null;
+    }
+    if (this.phase === "byKey") {
+      this.finish(countingSort(merged, KEYS, (k) => this.edgeKey[k]!));
+      this.phase = "done";
+    }
     return this.result;
   }
+
+  /**
+   * Make room in `table` for `extra` more keys before a chunk adds them, a slice at a time: returns true when the
+   * deadline passed first, to go on next slice.
+   */
+  private grow(table: IndexHash, extra: number, now: () => number, deadline: number): boolean {
+    if (!this.growing) {
+      if (!table.needsGrowth(extra)) return false;
+      table.startGrowth(extra);
+      this.growing = true;
+    }
+    while (!table.growStep(CHECK_EVERY * 8)) if (now() > deadline) return true;
+    this.growing = false;
+    return false;
+  }
+  private growing = false;
 
   private binNodes(start: number, end: number): void {
     const f = this.from;
@@ -218,7 +315,7 @@ export class AggregateJob {
     }
   }
 
-  private finish(): void {
+  private finish(byKey: Uint32Array): void {
     const cellCount = this.cells.size;
     const cellX = new Float64Array(cellCount);
     const cellY = new Float64Array(cellCount);
@@ -230,10 +327,6 @@ export class AggregateJob {
       for (let k = 0; k < 4; k++) cellColor[c * 4 + k] = this.colors[c * 4 + k]! / n;
     }
     const merged = this.pairs?.size ?? 0;
-    for (let k = 0; k < merged; k++) {
-      const w = this.edgeWeight[k]!;
-      for (let c = 0; c < 4; c++) this.edgeColors[k * 4 + c]! /= w;
-    }
     this.result = {
       cell: this.cell,
       cellCount,
@@ -246,8 +339,42 @@ export class AggregateJob {
       edgeB: this.edgeB.subarray(0, merged),
       edgeWeight: this.edgeWeight.subarray(0, merged),
       edgeColor: this.edgeColors.subarray(0, merged * 4),
+      edgeKey: this.edgeKey,
+      byWeight: this.byWeight,
+      byKey,
+      rank: this.rank,
     };
   }
+}
+
+/** A color as 5 bits a channel and 16 opacity steps: an integer below 2^19. */
+export function quantize(colors: Float32Array, at: number, alpha: number): number {
+  const c = (v: number): number => (v > 0 ? (v < 1 ? Math.round(v * 31) : 31) : 0);
+  const a = alpha > 0 ? (alpha < 1 ? Math.max(1, Math.round(alpha * 15)) : 15) : 0;
+  return ((c(colors[at]!) * 32 + c(colors[at + 1]!)) * 32 + c(colors[at + 2]!)) * 16 + a;
+}
+
+/** Write a quantized color as straight rgba at `out[at..at+3]`. */
+export function unquantize(key: number, out: Float32Array, at: number): void {
+  out[at + 3] = (key % 16) / 15;
+  key = Math.floor(key / 16);
+  out[at + 2] = (key % 32) / 31;
+  key = Math.floor(key / 32);
+  out[at + 1] = (key % 32) / 31;
+  out[at] = Math.floor(key / 32) / 31;
+}
+
+/** Quantized colors are below this. */
+const KEYS = 1 << 19;
+
+/** Indices `0..count` stably sorted by an integer `key` below `keys` (a counting sort: linear, no comparisons). */
+function countingSort(count: number, keys: number, key: (k: number) => number): Uint32Array {
+  const start = new Uint32Array(keys + 1);
+  for (let k = 0; k < count; k++) start[key(k) + 1]!++;
+  for (let v = 0; v < keys; v++) start[v + 1]! += start[v]!;
+  const out = new Uint32Array(count);
+  for (let k = 0; k < count; k++) out[start[key(k)]!++] = k;
+  return out;
 }
 
 /** Build a level at once (tests, small graphs). */

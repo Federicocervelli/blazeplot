@@ -107,14 +107,17 @@ describe("graph model", () => {
 });
 
 /** Records what the painter hands the render surface. */
-function recordingSurface(): RenderSurface & { shapes: Float32Array[]; segments: Float32Array[]; triangles: Float32Array[] } {
+function recordingSurface(): RenderSurface & { shapes: Float32Array[]; segments: Float32Array[]; triangles: Float32Array[]; fields: { alpha: Float32Array; cols: number; rows: number; step: number }[] } {
   const shapes: Float32Array[] = [];
   const segments: Float32Array[] = [];
   const triangles: Float32Array[] = [];
+  const fields: { alpha: Float32Array; cols: number; rows: number; step: number }[] = [];
   return {
     shapes,
     segments,
     triangles,
+    fields,
+    fillField: (alpha, cols, rows, _x, _y, step) => void fields.push({ alpha: alpha.slice(0, cols * rows), cols, rows, step }),
     beginFrame() {},
     endFrame() {},
     fillRects() {},
@@ -461,20 +464,31 @@ describe("dense graphs", () => {
     expect(second).toMatchObject({ source: "2", target: "3" });
   });
 
-  it("draws an even, stable sample of a complete graph within its budget, as dense as the whole, without arrows", () => {
-    const { model } = complete(300);
+  it("draws an even, stable sample of a graph with too many edges, but not dense, within its budget, without arrows", () => {
+    // Each node joined to the next 30: 60 edges a node, under the dense degree, and 9 000 edges against a budget of 2 000.
+    const count = 300;
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    const nodes = Array.from({ length: count }, (_, i) => ({ id: String(i), x: Math.cos(i * golden) * 10 * Math.sqrt(i + 0.5), y: Math.sin(i * golden) * 10 * Math.sqrt(i + 0.5) }));
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < count; i++) for (let k = 1; k <= 30; k++) {
+      source.push(i);
+      target.push((i + k) % count);
+    }
+    const model = buildGraphModel(nodes, { source: Uint32Array.from(source), target: Uint32Array.from(target) });
     const colors = new ColorCache(() => undefined);
     const defaults = { nodeFill: [1, 0, 0, 1] as const, edgeColor: [0, 0, 1, 1] as const };
-    const nodeStyles = new Float32Array(300 * NODE_FLOATS);
-    for (let i = 0; i < 300; i++) writeNodeStyle(nodeStyles, i * NODE_FLOATS, { width: 4 }, colors, defaults);
+    const nodeStyles = new Float32Array(count * NODE_FLOATS);
+    for (let i = 0; i < count; i++) writeNodeStyle(nodeStyles, i * NODE_FLOATS, { width: 4 }, colors, defaults);
     // One shared edge style record for every edge.
     const edgeStyles = new Float32Array(EDGE_FLOATS);
     writeEdgeStyle(edgeStyles, 0, { color: [0, 0, 1, 0.05], arrow: "end" }, colors, defaults, false);
     const edgeSlot = new Uint32Array(model.edgeCount);
     const spatial = new GraphIndex();
-    spatial.ensure(model, new Float32Array(300).fill(2), new Float32Array(300).fill(2));
+    spatial.ensure(model, new Float32Array(count).fill(2), new Float32Array(count).fill(2));
+    expect(spatial.dense).toBeNull();
     const input = {
-      model, nodeStyles, edgeStyles, edgeSlot, order: Uint32Array.from({ length: 300 }, (_, i) => i), width: 400, height: 400, pixelRatio: 1,
+      model, nodeStyles, edgeStyles, edgeSlot, order: Uint32Array.from({ length: count }, (_, i) => i), width: 400, height: 400, pixelRatio: 1,
       time: 0, animate: false, minNodePx: 2, background: null, spatial, centerX: 0, centerY: 0, zoom: 1, budget: { nodes: 10_000, edges: 2_000, fill: Infinity },
     };
     const painter = new GraphPainter();
@@ -484,8 +498,9 @@ describe("dense graphs", () => {
     const drawn = segments.length / 12;
     expect(drawn).toBeLessThanOrEqual(2_000);
     expect(drawn).toBeGreaterThan(1_000);
-    // Each stands for about 22 edges: opacity 1 - 0.95^22, about 0.68, held at 0.6.
-    expect(segments[11]).toBeCloseTo(0.6, 5);
+    // Each stands for several edges, so it is more opaque than one, and held under 0.6.
+    expect(segments[11]).toBeGreaterThan(0.05);
+    expect(segments[11]).toBeLessThanOrEqual(0.6);
     expect(surface.triangles).toHaveLength(0);
     // The same sample next frame.
     const again = recordingSurface();

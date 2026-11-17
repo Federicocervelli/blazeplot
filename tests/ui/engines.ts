@@ -30,7 +30,12 @@ export function chartRenderer(sink?: RecordingRenderer[]): ChartOptions["rendere
 
 /** Context-tolerant 2D double: records nothing, accepts anything, measures text as 5px wide. */
 function context2d(): unknown {
-  const base: Record<string, unknown> = { canvas: null, measureText: () => ({ width: 5 }), isContextLost: () => false };
+  const base: Record<string, unknown> = {
+    canvas: null,
+    measureText: () => ({ width: 5 }),
+    isContextLost: () => false,
+    createImageData: (width: number, height: number) => ({ width, height, data: new Uint8ClampedArray(width * height * 4) }),
+  };
   return new Proxy(base, { get: (target, key) => (key in target ? target[key as string] : () => undefined), set: () => true });
 }
 

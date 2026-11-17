@@ -412,3 +412,79 @@ describe("graphPlugin level of detail", () => {
     chart.dispose();
   });
 });
+
+describe("graphPlugin dense graphs", () => {
+  const disk = (count: number) =>
+    Array.from({ length: count }, (_, i) => {
+      const r = 10 * Math.sqrt(i + 0.5);
+      const a = i * Math.PI * (3 - Math.sqrt(5));
+      return { id: String(i), x: Math.cos(a) * r, y: Math.sin(a) * r };
+    });
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  it("draws every pair as a rule with a coarse cut first and a finer one once the view rests, and a dragged node's edges where it is", async () => {
+    const nodes = disk(300);
+    const { chart, plugin } = make({
+      nodes,
+      edges: { all: true, except: { source: Uint32Array.of(0), target: Uint32Array.of(1) } },
+      edgeStyle: { color: "rgba(100,116,139,0.05)", width: 1 },
+      nodeStyle: { width: 4 },
+      draggable: true,
+      levelOfDetail: { nodes: 10_000, edges: 300 },
+    });
+    frame(chart);
+    const draws = (): number => (uiEngine === "fake" ? engineOf().surfaces[0]!.draws.length : 0);
+    const first = draws();
+    // A pointer held down keeps the finer cut waiting; once it is up, the finer cut follows.
+    const [x, y] = at(plugin, "150");
+    fire(plot(chart), pointerEvent("pointerdown", x, y));
+    await wait(200);
+    h.raf.flush();
+    fire(plot(chart), pointerEvent("pointerup", x, y));
+    await wait(200);
+    h.raf.flush();
+    if (uiEngine === "fake") expect(draws()).toBeGreaterThan(first);
+    // Dragging a node lifts it and its edges onto the overlay, drawn as bands and lines from where it is.
+    fire(plot(chart), pointerEvent("pointerdown", x, y));
+    fire(plot(chart), pointerEvent("pointermove", x + 30, y + 10));
+    tick();
+    fire(plot(chart), pointerEvent("pointermove", x + 60, y + 20));
+    tick();
+    fire(plot(chart), pointerEvent("pointerup", x + 60, y + 20));
+    tick();
+    const [nx, ny] = at(plugin, "150");
+    expect(Math.round(nx - x)).toBe(60);
+    expect(Math.round(ny - y)).toBe(20);
+    chart.dispose();
+  });
+
+  it("draws a listed dense graph through the pair hierarchy, and the edges styled apart from the rest one by one, sampled past their budget", async () => {
+    const nodes = disk(150);
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < 150; i++) for (let j = i + 1; j < 150; j++) {
+      source.push(i);
+      target.push(j);
+    }
+    const flowing = { color: "#38bdf8", width: 2, flow: { color: "#38bdf8", width: 2, dash: [4, 6] as [number, number], speed: 0 } };
+    const plain = { color: "rgba(100,116,139,0.05)", width: 1 };
+    const { chart } = make({
+      nodes,
+      edges: { source: Uint32Array.from(source), target: Uint32Array.from(target) },
+      // About every tenth edge is styled apart: over a thousand, past an eighth of the budget.
+      edgeStyle: (edge) => ((Number(edge.source) + Number(edge.target)) % 10 === 0 ? flowing : plain),
+      nodeStyle: { width: 4 },
+      levelOfDetail: { nodes: 10_000, edges: 2_000 },
+    });
+    frame(chart);
+    await wait(200);
+    h.raf.flush();
+    if (uiEngine === "fake") {
+      const segments = surfaceDraws("strokeSegments");
+      expect(segments.length).toBeGreaterThan(0);
+      // Within the cut's own budget plus an eighth of it for the styled edges, though more than a thousand are styled.
+      expect(Math.max(...segments)).toBeLessThanOrEqual(2_000 + 2_000 / 8);
+    }
+    chart.dispose();
+  });
+});

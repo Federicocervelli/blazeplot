@@ -6,10 +6,21 @@
 import { AggregateJob } from "./aggregate.js";
 import type { Aggregate } from "./aggregate.js";
 import { BoxGrid, PointGrid } from "./grid.js";
+import { PairHierarchy, PairTree } from "./pairs.js";
 import type { GraphModel } from "./model.js";
 import { E_COLOR, EDGE_FLOATS, N_FILL, NODE_FLOATS } from "./styles.js";
 
+/** Listed edges per node, on average, from which a graph is drawn through the pair hierarchy. */
+export const DENSE_DEGREE = 64;
+
+/** Whether a graph is drawn through the pair hierarchy: "every pair" input, or many edges per node. */
+export function isDense<N, E>(model: GraphModel<N, E>): boolean {
+  return model.allPairs !== null || (model.nodes.length > 1 && (model.edgeCount * 2) / model.nodes.length >= DENSE_DEGREE);
+}
+
 export class GraphIndex {
+  /** For a dense graph: the k-d tree of nodes and the pair hierarchy with its edge counts. Null otherwise. */
+  dense: PairHierarchy | null = null;
   readonly nodes = new PointGrid();
   readonly edges = new BoxGrid();
   /** The largest node half size, in graph units: what a query for nodes grows its rectangle by. */
@@ -46,8 +57,10 @@ export class GraphIndex {
    * which is put off until many have moved, so a drag never ends with a rebuild over millions of edges. Built
    * aggregate levels are kept for drawing while they are rebuilt between frames.
    */
-  moveNode(node: number, edges: ArrayLike<number>): void {
+  moveNode(node: number, edges: ArrayLike<number>, x?: Float64Array, y?: Float64Array): void {
     if (this.positionsDirty) return;
+    // The pair hierarchy covers node sets, so its counts hold; only the moved node's cells change shape.
+    if (this.dense && x && y) this.dense.tree.refitNode(node, x, y);
     this.nodes.markMoved(node);
     for (let k = 0; k < edges.length; k++) this.edges.markMoved(edges[k]!);
     const edgeCount = this.edgeTotal;
@@ -91,9 +104,22 @@ export class GraphIndex {
       [this.stride, this.inverse] = coprimeNear(model.edgeCount, 0.6180339887);
       this.orderedFor = model.edgeCount;
     }
+    const moved = this.positionsDirty;
     if (this.positionsDirty || this.stylesDirty) {
       this.nodes.build(count, model.x, model.y);
-      this.edges.build(model.edgeCount, model.source, model.target, model.x, model.y, this.maxHalf);
+      const dense = isDense(model);
+      // A dense graph's edges are drawn through the pair hierarchy: no edge grid over millions of edges.
+      this.edges.build(dense ? 0 : model.edgeCount, model.source, model.target, model.x, model.y, this.maxHalf);
+      if (!dense) this.dense = null;
+      else if (moved || !this.dense) {
+        const tree = new PairTree();
+        tree.build(count, model.x, model.y);
+        const pairs = new PairHierarchy(tree);
+        pairs.build();
+        if (model.allPairs) pairs.countAll(model.allPairs.exceptSource, model.allPairs.exceptTarget);
+        else pairs.countListed(model.source, model.target, model.edgeCount);
+        this.dense = pairs;
+      }
     }
     this.positionsDirty = false;
     this.stylesDirty = false;
@@ -115,7 +141,8 @@ export class GraphIndex {
         nodeStyles,
         nodeStride: NODE_FLOATS,
         nodeColorAt: N_FILL,
-        edgeCount: model.edgeCount,
+        // A dense graph's edges are drawn through the pair hierarchy, so its levels hold only nodes.
+        edgeCount: this.dense ? 0 : model.edgeCount,
         source: model.source,
         target: model.target,
         edgeStyles,

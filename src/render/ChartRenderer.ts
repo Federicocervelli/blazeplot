@@ -39,7 +39,7 @@ export interface ChartRendererCapabilities {
  * A drawing surface a plugin owns, drawn with the chart's rendering engine: WebGL2, Canvas 2D, or
  * the shared WebGL2 context. Get one from `ctx.unstable.createRenderSurface(canvas)`.
  *
- * A frame is `beginFrame`, any number of `fillRects`, `fillShapes`, `strokeSegments`, and `fillTriangles`, then `endFrame`. Everything is in device pixels
+ * A frame is `beginFrame`, any number of `fillRects`, `fillShapes`, `strokeSegments`, `fillTriangles`, and `fillField`, then `endFrame`. Everything is in device pixels
  * with the origin at the canvas's top-left corner, so size the canvas in device pixels first.
  *
  * @experimental May change in a minor release. See docs/stability.md.
@@ -58,7 +58,7 @@ export interface ChartRenderSurface {
    * 14 floats per shape: `x`, `y`, `width`, `height` in device pixels, the corner
    * `radius` and `borderWidth` in device pixels, then the straight fill `r`, `g`, `b`, `a` and the
    * straight border `r`, `g`, `b`, `a` from 0 to 1. A radius of at least half the shorter side draws
-   * a pill, and a square with it a circle. The border is drawn inside the shape's bounds. Shapes with a
+   * a pill, and a square with it a circle. The border is drawn inside the shape's bounds, over the fill. Shapes with a
    * non-finite coordinate or a size that is not positive are skipped.
    */
   fillShapes(shapes: Float32Array, count: number): void;
@@ -75,6 +75,13 @@ export interface ChartRenderSurface {
    * with a non-finite vertex are skipped. Edges are not antialiased on every engine.
    */
   fillTriangles(vertices: Float32Array, vertexCount: number): void;
+  /**
+   * Shade a grid of opacities in one color: `alpha` holds `cols * rows` straight opacities from 0 to 1, row by
+   * row, for the grid's vertices at `x + col * step`, `y + row * step` (device pixels), and the color between
+   * them is interpolated bilinearly; `r`, `g`, `b` are straight, from 0 to 1. The half step around the outer
+   * vertices takes their opacity. A density drawn this way costs one pass over the area, however it was summed.
+   */
+  fillField(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void;
   /** Finish the frame and present it. */
   endFrame(): void;
   /** Whether the surface's context is lost; draw calls are skipped until it is restored. */
@@ -157,6 +164,11 @@ export interface ChartRenderer extends ChartRendererHandle {
   /** Per-vertex colored triangles; see {@link ChartRenderSurface.fillTriangles}. */
   fillTriangles(vertices: Float32Array, vertexCount: number): void;
   /**
+   * A grid of opacities shaded in one color; see {@link ChartRenderSurface.fillField}. Optional: without it the
+   * grid is drawn as per-vertex colored triangles.
+   */
+  fillField?(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void;
+  /**
    * Hint that a series of `mode` with `lineWidth` CSS pixel lines is about to be drawn, so a GPU engine
    * can start building the programs it will need before the first frame. Optional and purely advisory.
    */
@@ -200,6 +212,13 @@ export function toRenderSurface(engine: ChartRenderer): ChartRenderSurface {
     fillShapes: (shapes, count) => engine.fillShapes(shapes, count),
     strokeSegments: (segments, count) => engine.strokeSegments(segments, count),
     fillTriangles: (vertices, vertexCount) => engine.fillTriangles(vertices, vertexCount),
+    fillField: (alpha, cols, rows, x, y, step, r, g, b) => {
+      if (engine.fillField) engine.fillField(alpha, cols, rows, x, y, step, r, g, b);
+      else {
+        const vertices = fieldTriangles(alpha, cols, rows, x, y, step, r, g, b);
+        engine.fillTriangles(vertices, vertices.length / TRIANGLE_VERTEX_FLOATS);
+      }
+    },
     endFrame: () => void engine.endFrame(),
     get isLost() {
       return engine.isLost;
@@ -212,3 +231,41 @@ export function toRenderSurface(engine: ChartRenderer): ChartRenderSurface {
     },
   };
 }
+
+/** A grid of opacities as per-vertex colored triangles, two per cell, cells all transparent left out. Shared scratch. */
+function fieldTriangles(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): Float32Array {
+  const cells = Math.max(0, cols - 1) * Math.max(0, rows - 1);
+  const need = cells * 6 * TRIANGLE_VERTEX_FLOATS;
+  if (fieldScratch.length < need) fieldScratch = new Float32Array(need);
+  const out = fieldScratch;
+  let o = 0;
+  const vertex = (vx: number, vy: number, a: number): void => {
+    out[o] = vx;
+    out[o + 1] = vy;
+    out[o + 2] = r;
+    out[o + 3] = g;
+    out[o + 4] = b;
+    out[o + 5] = a;
+    o += TRIANGLE_VERTEX_FLOATS;
+  };
+  for (let row = 0; row + 1 < rows; row++) {
+    for (let col = 0; col + 1 < cols; col++) {
+      const k = row * cols + col;
+      const a0 = alpha[k]!;
+      const a1 = alpha[k + 1]!;
+      const a2 = alpha[k + cols]!;
+      const a3 = alpha[k + cols + 1]!;
+      if (!(a0 > 0 || a1 > 0 || a2 > 0 || a3 > 0)) continue;
+      const x0 = x + col * step;
+      const y0 = y + row * step;
+      vertex(x0, y0, a0);
+      vertex(x0 + step, y0, a1);
+      vertex(x0, y0 + step, a2);
+      vertex(x0 + step, y0, a1);
+      vertex(x0 + step, y0 + step, a3);
+      vertex(x0, y0 + step, a2);
+    }
+  }
+  return out.subarray(0, o);
+}
+let fieldScratch = new Float32Array(0);

@@ -55,6 +55,8 @@ export class Canvas2DRenderer implements ChartRenderer {
   private strokeJoin: string | null = null;
   /** Scratch for the float color of the rect being filled (compared with `fill` before a string is built). */
   private readonly rectColor: [number, number, number, number] = [0, 0, 0, 0];
+  /** The image `fillField` draws through, kept while its size holds. */
+  private field: { readonly canvas: HTMLCanvasElement; readonly ctx: CanvasRenderingContext2D; readonly image: ImageData } | null = null;
   /** One path per dot color, reused by `fillShapes` (a frame is synchronous, so one map serves every call). */
   private dotPaths: Map<number, { fill: string; path: Path2D; used: boolean }> | undefined;
   /** The snapped rectangle `addSnappedRect` has not yet added to the path (it may still absorb the next ones). */
@@ -603,6 +605,39 @@ export class Canvas2DRenderer implements ChartRenderer {
     if (open) ctx.fill();
   }
 
+  /**
+   * A grid of opacities in one color (see `ChartRenderSurface.fillField`): written to an image a pixel per vertex
+   * and drawn scaled up with smoothing, which is bilinear interpolation between pixel centers, so it costs one
+   * image draw instead of a path per cell.
+   */
+  fillField(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void {
+    this.drawCalls++;
+    if (!(cols >= 1 && rows >= 1 && step > 0) || !Number.isFinite(x + y + step) || alpha.length < cols * rows) return;
+    let field = this.field;
+    if (!field || field.canvas.width !== cols || field.canvas.height !== rows) {
+      const canvas = this.canvas.ownerDocument.createElement("canvas");
+      canvas.width = cols;
+      canvas.height = rows;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      field = this.field = { canvas, ctx, image: ctx.createImageData(cols, rows) };
+    }
+    const data = field.image.data;
+    const red = Math.round(clamp01(r) * 255);
+    const green = Math.round(clamp01(g) * 255);
+    const blue = Math.round(clamp01(b) * 255);
+    for (let k = 0; k < cols * rows; k++) {
+      data[k * 4] = red;
+      data[k * 4 + 1] = green;
+      data[k * 4 + 2] = blue;
+      data[k * 4 + 3] = Math.round(clamp01(alpha[k]!) * 255);
+    }
+    field.ctx.putImageData(field.image, 0, 0);
+    const ctx = this.ctx;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(field.canvas, x - step / 2, y - step / 2, cols * step, rows * step);
+  }
+
   createSurface(canvas: HTMLCanvasElement): ChartRenderer {
     return new Canvas2DRenderer(canvas);
   }
@@ -783,4 +818,8 @@ function isRectPair(d: Float32Array, o: number): boolean {
     d[o + 10] === d[o + 2] &&
     d[o + 11] === d[o + 5]
   );
+}
+
+function clamp01(v: number): number {
+  return v > 0 ? (v < 1 ? v : 1) : 0;
 }

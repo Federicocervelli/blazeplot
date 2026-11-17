@@ -693,6 +693,7 @@ interface ChartRenderSurface {
     fillShapes(shapes: Float32Array, count: number): void;
     strokeSegments(segments: Float32Array, count: number): void;
     fillTriangles(vertices: Float32Array, vertexCount: number): void;
+    fillField(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void;
     endFrame(): void;
     readonly isLost: boolean;
     setLossListener(listener: ((state: RendererLossState) => void) | null): void;
@@ -3072,7 +3073,7 @@ function parseFoldedStacks<T = unknown>(input: string, separator?: string): Flam
 
 ### `blazeplot/plugins/graph`
 
-23 exports.
+24 exports.
 
 #### interface GraphBackground
 
@@ -3142,6 +3143,18 @@ interface GraphEdgeLabelStyle {
     readonly paddingY?: number;
     readonly radius?: number;
     readonly offset?: number;
+}
+```
+
+#### interface GraphEdgeRule
+
+```ts
+interface GraphEdgeRule {
+    readonly all: true;
+    readonly except?: {
+        readonly source: ArrayLike<number>;
+        readonly target: ArrayLike<number>;
+    };
 }
 ```
 
@@ -3306,7 +3319,7 @@ interface GraphNodeStyle {
 
 ```ts
 interface GraphPlugin<N = unknown, E = unknown> extends ChartPlugin {
-    setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E>): GraphSetResult;
+    setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule): GraphSetResult;
     setPositions(positions: Readonly<Record<string, {
         readonly x: number;
         readonly y: number;
@@ -3339,7 +3352,7 @@ interface GraphPlugin<N = unknown, E = unknown> extends ChartPlugin {
 ```ts
 interface GraphPluginOptions<N = unknown, E = unknown> {
     readonly nodes?: readonly GraphNode<N>[];
-    readonly edges?: readonly GraphEdge<E>[] | GraphEdgeArrays<E>;
+    readonly edges?: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule;
     readonly nodeStyle?: GraphNodeStyle | ((node: GraphNode<N>, state: GraphItemState) => GraphNodeStyle);
     readonly edgeStyle?: GraphEdgeStyle | ((edge: GraphEdge<E>, state: GraphItemState) => GraphEdgeStyle);
     readonly drawNode?: ((ctx: CanvasRenderingContext2D, node: GraphNode<N>, frame: GraphNodeFrame) => void) | null;

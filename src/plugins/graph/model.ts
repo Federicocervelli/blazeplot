@@ -2,7 +2,7 @@
  * The graph model: validated nodes and edges in flat arrays, edge endpoints by index, and a uniform
  * grid over node boxes for picking. Pure: no DOM, no chart.
  */
-import type { GraphEdge, GraphEdgeArrays, GraphLimits, GraphNode } from "./types.js";
+import type { GraphEdge, GraphEdgeArrays, GraphEdgeRule, GraphLimits, GraphNode } from "./types.js";
 
 export const DEFAULT_MAX_NODES = 100_000;
 export const DEFAULT_MAX_EDGES = 500_000;
@@ -35,15 +35,28 @@ export interface GraphModel<N, E> {
   readonly target: Uint32Array;
   /** The edges at a node, either end: an index built on first use, so later calls cost the node's degree. */
   edgesAt(node: number): Uint32Array;
+  /**
+   * For "every pair" input: the exception pairs (node indices, both orders count), whose edges are not drawn.
+   * The listed edge arrays are then empty and `implicitEdges` counts the pairs drawn.
+   */
+  readonly allPairs: { readonly exceptSource: Uint32Array; readonly exceptTarget: Uint32Array; readonly implicitEdges: number } | null;
+  /** Whether nodes `i` and `j` are joined (either direction). Cheap: a binary search, or a lookup in the exceptions. */
+  joined(i: number, j: number): boolean;
   /** 1 when another edge runs from this edge's target to its source. */
   readonly reversed: Uint8Array;
   readonly skippedEdges: number;
 }
 
 /** Read and check a graph. Throws a `RangeError` before allocating anything large when a limit or rule is broken. */
-export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E>, limits: GraphLimits = {}): GraphModel<N, E> {
+export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], input: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule, limits: GraphLimits = {}): GraphModel<N, E> {
   const maxNodes = limits.maxNodes ?? DEFAULT_MAX_NODES;
   const maxEdges = limits.maxEdges ?? DEFAULT_MAX_EDGES;
+  const rule = !Array.isArray(input) && (input as GraphEdgeRule)?.all === true ? (input as GraphEdgeRule) : null;
+  // "Every pair" keeps only its exceptions; the listed-edge machinery sees none.
+  const edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E> = rule ? { source: new Uint32Array(0), target: new Uint32Array(0) } : (input as readonly GraphEdge<E>[] | GraphEdgeArrays<E>);
+  if (rule?.except && (!isIndexList(rule.except.source) || !isIndexList(rule.except.target) || rule.except.source.length !== rule.except.target.length)) {
+    throw new TypeError("graph: the exceptions of every-pair edges need source and target index lists of the same length.");
+  }
   const arrays = Array.isArray(edges) ? null : (edges as GraphEdgeArrays<E>);
   if (!Array.isArray(nodes) || (!arrays && !Array.isArray(edges))) throw new TypeError("graph: nodes must be an array, and edges an array or { source, target } index arrays.");
   if (arrays && (!isIndexList(arrays.source) || !isIndexList(arrays.target) || arrays.source.length !== arrays.target.length)) {
@@ -186,6 +199,55 @@ export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: rea
     return edgeIndex.get(id) ?? -1;
   };
 
+  // Exceptions of "every pair": valid distinct pairs, sorted by key (smaller * n + larger) for binary search.
+  let allPairs: GraphModel<N, E>["allPairs"] = null;
+  let exceptKeys: Float64Array | null = null;
+  if (rule) {
+    const except = rule.except;
+    const keys: number[] = [];
+    if (except) {
+      for (let k = 0; k < except.source.length; k++) {
+        const a = except.source[k]!;
+        const b = except.target[k]!;
+        if (!(Number.isInteger(a) && Number.isInteger(b) && a >= 0 && b >= 0 && a < nodeCount && b < nodeCount) || a === b) continue;
+        keys.push(Math.min(a, b) * nodeCount + Math.max(a, b));
+      }
+    }
+    exceptKeys = Float64Array.from(new Set(keys)).sort();
+    const exceptSource = new Uint32Array(exceptKeys.length);
+    const exceptTarget = new Uint32Array(exceptKeys.length);
+    for (let k = 0; k < exceptKeys.length; k++) {
+      exceptSource[k] = Math.floor(exceptKeys[k]! / nodeCount);
+      exceptTarget[k] = exceptKeys[k]! % nodeCount;
+    }
+    allPairs = { exceptSource, exceptTarget, implicitEdges: (nodeCount * (nodeCount - 1)) / 2 - exceptKeys.length };
+  }
+  const has = (from: number, to: number): boolean => {
+    let lo = outStart[from]!;
+    let hi = outStart[from + 1]!;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (outTargets[mid]! < to) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < outStart[from + 1]! && outTargets[lo] === to;
+  };
+  const joined = (i: number, j: number): boolean => {
+    if (i === j || i < 0 || j < 0 || i >= nodeCount || j >= nodeCount) return false;
+    if (exceptKeys) {
+      const key = Math.min(i, j) * nodeCount + Math.max(i, j);
+      let lo = 0;
+      let hi = exceptKeys.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (exceptKeys[mid]! < key) lo = mid + 1;
+        else hi = mid;
+      }
+      return !(lo < exceptKeys.length && exceptKeys[lo] === key);
+    }
+    return has(i, j) || has(j, i);
+  };
+
   return {
     nodes,
     nodeIndex,
@@ -197,6 +259,8 @@ export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: rea
     edgeIdOf,
     edgeIndexOf,
     edgesAt,
+    allPairs,
+    joined,
     source: source.subarray(0, count),
     target: target.subarray(0, count),
     reversed,

@@ -59,14 +59,14 @@ Generated from `dist/` after the package build.
 | tooltip plugin | `dist/plugins/tooltip.js` | 4 KiB |
 | crosshair plugin | `dist/plugins/crosshair.js` | 10 KiB |
 | flamegraph plugin | `dist/plugins/flamegraph.js` | 17 KiB |
-| graph plugin | `dist/plugins/graph.js` | 74 KiB |
+| graph plugin | `dist/plugins/graph.js` | 109 KiB |
 | a11y plugin | `dist/plugins/a11y.js` | 11 KiB |
-| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 201 KiB |
+| shared Chart chunk (Chart + every engine) | `dist/Chart-*.js` | 203 KiB |
 | shared theme chunk | `dist/theme-*.js` | 12 KiB |
 | lazy screenshot chunk | `dist/screenshot-*.js` | 6 KiB |
 | shared OverlayUtils chunk | `dist/OverlayUtils-*.js` | 2 KiB |
 | shared PickOverlay chunk | `dist/PickOverlay-*.js` | 6 KiB |
-| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 231 KiB |
+| chart-only import graph (index + Chart + engines + theme) | `dist/index.js` | 233 KiB |
 
 ### All public exports
 
@@ -135,7 +135,7 @@ Generated from `dist/index.d.ts` after the package build.
 | `ChartRendererHandle` | interface | `./render/ChartRenderer` | Opaque renderer instance returned by a renderer factory. Only the built-in renderers implement it. |
 | `ChartRendererInfo` | interface | `./render/ChartRenderer` | Which engine a chart ended up with, what was asked for, and what that engine can do. |
 | `ChartRenderLoop` | type | `./ui/Chart` | — |
-| `ChartRenderSurface` | interface | `./render/ChartRenderer` | A drawing surface a plugin owns, drawn with the chart's rendering engine: WebGL2, Canvas 2D, or the shared WebGL2 context. Get one from `ctx.unstable.createRenderSurface(canvas)`. A frame is `beginFrame`, any number of `fillRects`, `fillShapes`, `strokeSegments`, and `fillTriangles`, then `endFrame`. Everything is in device pixels with the origin at the canvas's top-left corner, so size the canvas in device pixels first. |
+| `ChartRenderSurface` | interface | `./render/ChartRenderer` | A drawing surface a plugin owns, drawn with the chart's rendering engine: WebGL2, Canvas 2D, or the shared WebGL2 context. Get one from `ctx.unstable.createRenderSurface(canvas)`. A frame is `beginFrame`, any number of `fillRects`, `fillShapes`, `strokeSegments`, `fillTriangles`, and `fillField`, then `endFrame`. Everything is in device pixels with the origin at the canvas's top-left corner, so size the canvas in device pixels first. |
 | `ChartScreenshotOptions` | type | `./ui/Chart` | — |
 | `ChartSelectEvent` | type | `./ui/Chart` | — |
 | `ChartSeriesClickEvent` | type | `./ui/Chart` | — |

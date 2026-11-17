@@ -18,6 +18,7 @@ void main() {
   float inner = vShape.y > 0.0 ? clamp(0.5 - (d + vShape.y), 0.0, 1.0) : 1.0;
   // The drawing buffer is premultiplied (see WebGL2Backend), so mix premultiplied colors.
   vec4 fill = vec4(vFill.rgb * vFill.a, vFill.a);
-  vec4 border = vec4(vBorder.rgb * vBorder.a, vBorder.a);
+  // The border lies over the fill (as CSS draws a border over the background), so a translucent border tints it.
+  vec4 border = vec4(vBorder.rgb * vBorder.a, vBorder.a) + fill * (1.0 - vBorder.a);
   gl_FragColor = mix(border, fill, inner) * coverage;
 }

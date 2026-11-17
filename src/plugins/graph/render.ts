@@ -4,10 +4,11 @@
  * screen geometry of the last frame for picking. No chart or plugin lifecycle.
  */
 import type { ChartPluginContext } from "../../ui/PluginTypes.js";
-import type { Aggregate } from "./aggregate.js";
+import { type Aggregate, quantize, unquantize } from "./aggregate.js";
 import type { Rect } from "./grid.js";
 import type { GraphModel } from "./model.js";
 import type { GraphIndex } from "./spatial.js";
+import { type PairTree, RefineScratch, refine, starCut } from "./pairs.js";
 import {
   E_ARROW,
   E_ARROW_SIZE,
@@ -112,7 +113,13 @@ export interface GraphFrameInput<N, E> {
    * Most nodes a still frame draws one by one before it draws the aggregate instead, and most edges, counted
    * and as area (CSS pixels of length times width), before it thins them.
    */
-  readonly budget?: { readonly nodes: number; readonly edges: number; readonly fill?: number };
+  readonly budget?: { readonly nodes: number; readonly edges: number; readonly fill?: number; readonly overdraw?: number; readonly dense?: number };
+  /** A dense graph's common edge style record (bands and single edges are drawn with it). */
+  readonly denseSlot?: number;
+  /** A dense graph's edges styled apart from the common style: drawn one by one, over the bands. */
+  readonly styledEdges?: Uint32Array | null;
+  /** Whether bands may fade from one end to the other (per-vertex color); else each is one color. */
+  readonly gradientBands?: boolean;
 }
 
 /**
@@ -123,33 +130,228 @@ function boosted(alpha: number, boost: number): number {
   return Math.min(Math.max(alpha, 0.6), 1 - (1 - alpha) ** boost);
 }
 
+const SQRT3 = Math.sqrt(3);
+/**
+ * A band at least this many CSS pixels wide at both ends (half-width) shades the view smoothly: it goes to a
+ * density field sampled every `FIELD_STEP` pixels and drawn as one mesh, so a hundred bands crossing the view
+ * cost one layer of pixels instead of a hundred.
+ */
+const FIELD_HALF_WIDTH = 16;
+const FIELD_STEP = 8;
+/** The density field may be added to this many times over per vertex in a frame. */
+const FIELD_PASSES = 64;
+
+function growF64(a: Float64Array, need: number): Float64Array {
+  const b = new Float64Array(Math.max(need, a.length * 2, 64));
+  b.set(a);
+  return b;
+}
+
+function growU32(a: Uint32Array, need: number): Uint32Array {
+  const b = new Uint32Array(Math.max(need, a.length * 2, 64));
+  b.set(a);
+  return b;
+}
+
 /** Merged edge indices fit below this in a sort key. */
 const AGG_INDEX_SPAN = 2 ** 24;
 
-/** A color as 5 bits a channel and 16 opacity steps: an integer below 2^19. */
-function quantize(colors: Float32Array, at: number, alpha: number): number {
-  const c = (v: number): number => (v > 0 ? (v < 1 ? Math.round(v * 31) : 31) : 0);
-  const a = alpha > 0 ? (alpha < 1 ? Math.max(1, Math.round(alpha * 15)) : 15) : 0;
-  return ((c(colors[at]!) * 32 + c(colors[at + 1]!)) * 32 + c(colors[at + 2]!)) * 16 + a;
-}
-
-/** Write a quantized color as straight rgba at `out[at..at+3]`. */
-function unquantize(key: number, out: Float32Array, at: number): void {
-  out[at + 3] = (key % 16) / 15;
-  key = Math.floor(key / 16);
-  out[at + 2] = (key % 32) / 31;
-  key = Math.floor(key / 32);
-  out[at + 1] = (key % 32) / 31;
-  out[at] = Math.floor(key / 32) / 31;
-}
-
 /** On-screen size (CSS pixels) of an aggregate cell: below it nodes are too small to tell apart. */
 const AGGREGATE_CELL_PX = 3;
+
+/** The field step (CSS px) for a band or cell this wide (half-width): at most half of it, a power of two times the finest (four samples across). */
+function fieldStep(half: number): number {
+  let step = FIELD_STEP;
+  while (step * 4 <= half * 2 && step < FIELD_STEP * 2 ** (FIELD_LEVELS - 1)) step *= 2;
+  return step;
+}
+
+/** Levels of the density field: level `l` samples every `FIELD_STEP * 2^l` CSS pixels. */
+const FIELD_LEVELS = 7;
+
+/**
+ * Lines per pixel over the view, at the vertices of grids from fine to coarse (a multigrid): a wide band or cell
+ * is smooth across its width, so it is sampled on the grid whose step is about half that width, and costs the
+ * vertices it covers there; `collapse` then adds each grid into the next finer one by bilinear interpolation, so
+ * all of them cost about one pass over the finest grid, however many wide bands there are.
+ */
+class DensityField {
+  readonly cols: number[] = [];
+  readonly rows: number[] = [];
+  private grids: Float32Array[] = [];
+  private used: boolean[] = [];
+  private readonly quad = new Float64Array(8);
+
+  reset(width: number, height: number): void {
+    for (let l = 0; l < FIELD_LEVELS; l++) {
+      const step = FIELD_STEP * 2 ** l;
+      const cols = Math.ceil(width / step) + 1;
+      const rows = Math.ceil(height / step) + 1;
+      this.cols[l] = cols;
+      this.rows[l] = rows;
+      if ((this.grids[l]?.length ?? 0) < cols * rows) this.grids[l] = new Float32Array(cols * rows);
+      else if (this.used[l] !== false) this.grids[l]!.fill(0, 0, cols * rows);
+      this.used[l] = false;
+    }
+  }
+
+  private level(step: number): number {
+    return Math.round(Math.log2(step / FIELD_STEP));
+  }
+
+  /**
+   * A wide band: at each vertex inside it (row by row, between where the row crosses its outline), its lines per
+   * pixel there, `spread` (edges times line width, halved) over its half-width at that point.
+   */
+  addBand(ax: number, ay: number, bx: number, by: number, nx: number, ny: number, ha: number, hb: number, spread: number): void {
+    const step = fieldStep(Math.min(ha, hb));
+    const l = this.level(step);
+    const grid = this.grids[l]!;
+    const cols = this.cols[l]!;
+    const rows = this.rows[l]!;
+    this.used[l] = true;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const length2 = dx * dx + dy * dy || 1;
+    const q = this.quad;
+    q[0] = ax + nx * ha;
+    q[1] = ay + ny * ha;
+    q[2] = bx + nx * hb;
+    q[3] = by + ny * hb;
+    q[4] = bx - nx * hb;
+    q[5] = by - ny * hb;
+    q[6] = ax - nx * ha;
+    q[7] = ay - ny * ha;
+    const r0 = Math.max(0, Math.ceil(Math.min(q[1]!, q[3]!, q[5]!, q[7]!) / step));
+    const r1 = Math.min(rows - 1, Math.floor(Math.max(q[1]!, q[3]!, q[5]!, q[7]!) / step));
+    for (let row = r0; row <= r1; row++) {
+      const y = row * step;
+      let left = Infinity;
+      let right = -Infinity;
+      for (let e = 0; e < 4; e++) {
+        const x0 = q[e * 2]!;
+        const y0 = q[e * 2 + 1]!;
+        const x1 = q[((e + 1) % 4) * 2]!;
+        const y1 = q[((e + 1) % 4) * 2 + 1]!;
+        if ((y < y0 && y < y1) || (y > y0 && y > y1)) continue;
+        const x = y0 === y1 ? x0 : x0 + ((y - y0) / (y1 - y0)) * (x1 - x0);
+        const x2 = y0 === y1 ? x1 : x;
+        left = Math.min(left, x, x2);
+        right = Math.max(right, x, x2);
+      }
+      const c0 = Math.max(0, Math.ceil(left / step));
+      const c1 = Math.min(cols - 1, Math.floor(right / step));
+      const py = y - ay;
+      for (let col = c0; col <= c1; col++) {
+        const t = Math.min(1, Math.max(0, ((col * step - ax) * dx + py * dy) / length2));
+        grid[row * cols + col]! += spread / (ha + (hb - ha) * t);
+      }
+    }
+  }
+
+  /**
+   * The edges inside a cell, on the finest grid (cells are disjoint, so all of them cost one pass at most): their
+   * ink, edges times line width times their mean length (0.905 of the radius, as in an even disk), spread evenly
+   * over the vertices inside the cell's ellipse (its covariance `sxx`, `syy`, `sxy` in CSS px², out to two
+   * standard deviations, as an even disk reaches) and its bounding box (`x0`..`x1`, `y0`..`y1`), or onto the
+   * nearest vertex when none is inside: the ink drawn is the same, and none falls outside the cell's box.
+   */
+  addCell(cx: number, cy: number, sxx: number, syy: number, sxy: number, x0: number, y0: number, x1: number, y1: number, width: number): void {
+    const step = FIELD_STEP;
+    const grid = this.grids[0]!;
+    const cols = this.cols[0]!;
+    const rows = this.rows[0]!;
+    this.used[0] = true;
+    const ink = width * 0.905 * 2 * Math.sqrt((sxx + syy) / 2);
+    // Inverse covariance, kept invertible for cells along a line.
+    const a = sxx + 0.25;
+    const d = syy + 0.25;
+    const det = a * d - sxy * sxy;
+    const ia = d / det;
+    const id = a / det;
+    const ib = -sxy / det;
+    const c0 = Math.ceil(x0 / step);
+    const c1 = Math.floor(x1 / step);
+    const r0 = Math.ceil(y0 / step);
+    const r1 = Math.floor(y1 / step);
+    // Vertices off the view count too, so the density does not change with the view: counted one by one for a
+    // small cell, or as the ellipse's area (within the box's) for one much larger than the view.
+    const total = Math.max(0, c1 - c0 + 1) * Math.max(0, r1 - r0 + 1);
+    let inside = 0;
+    if (total > 4 * cols * rows) inside = Math.min(total, (4 * Math.PI * Math.sqrt(det)) / (step * step));
+    else
+      for (let row = r0; row <= r1; row++) {
+        const dy = row * step - cy;
+        for (let col = c0; col <= c1; col++) {
+          const dx = col * step - cx;
+          if (ia * dx * dx + 2 * ib * dx * dy + id * dy * dy <= 4) inside++;
+        }
+      }
+    if (inside > 0) {
+      const share = ink / (inside * step * step);
+      for (let row = Math.max(0, r0); row <= Math.min(rows - 1, r1); row++) {
+        const dy = row * step - cy;
+        for (let col = Math.max(0, c0); col <= Math.min(cols - 1, c1); col++) {
+          const dx = col * step - cx;
+          if (ia * dx * dx + 2 * ib * dx * dy + id * dy * dy <= 4) grid[row * cols + col]! += share;
+        }
+      }
+      return;
+    }
+    const col = Math.round(cx / step);
+    const row = Math.round(cy / step);
+    if (col >= 0 && col < cols && row >= 0 && row < rows) grid[row * cols + col]! += ink / (step * step);
+  }
+
+  /** Add every coarser grid into the finest, by bilinear interpolation down the levels; returns the finest. */
+  collapse(): Float32Array {
+    for (let l = FIELD_LEVELS - 1; l > 0; l--) {
+      if (!this.used[l]) continue;
+      const coarse = this.grids[l]!;
+      const fine = this.grids[l - 1]!;
+      const cc = this.cols[l]!;
+      const cr = this.rows[l]!;
+      const fc = this.cols[l - 1]!;
+      const fr = this.rows[l - 1]!;
+      for (let row = 0; row < fr; row++) {
+        const r0 = Math.min(cr - 1, row >> 1);
+        const r1 = Math.min(cr - 1, (row + 1) >> 1);
+        for (let col = 0; col < fc; col++) {
+          const c0 = Math.min(cc - 1, col >> 1);
+          const c1 = Math.min(cc - 1, (col + 1) >> 1);
+          fine[row * fc + col]! += (coarse[r0 * cc + c0]! + coarse[r0 * cc + c1]! + coarse[r1 * cc + c0]! + coarse[r1 * cc + c1]!) / 4;
+        }
+      }
+      this.used[l - 1] = true;
+    }
+    return this.grids[0]!;
+  }
+}
 
 export class GraphPainter {
   private readonly shapes = new Buffer(SHAPE);
   private readonly segments = new Buffer(SEGMENT);
   private readonly triangles = new Buffer(VERTEX);
+  /** Bands of a dense graph (per-vertex colored triangles), drawn under its single edges. */
+  private readonly bands = new Buffer(VERTEX);
+  /** The coarseness of the last dense cut (CSS pixels), where the next one starts its search. */
+  private denseTau = 2;
+  /** Whether the last still frame left detail out for its budget (a coarser dense cut, fewer edges), so a frame with a larger budget would show more. */
+  clipped = false;
+  /** The last dense cut: bands (cell, cell, edges) and pairs of single nodes. */
+  private bandCells: Float64Array = new Float64Array(0);
+  private bandCount = 0;
+  private singleNodes: Uint32Array = new Uint32Array(0);
+  private singleCount = 0;
+  private bandKeys = new Float64Array(0);
+  private bandEnds = new Float64Array(0);
+  /** Cells of the last dense cut whose inside edges are drawn as a density over the cell: (cell, edges). */
+  private cellList: Float64Array = new Float64Array(0);
+  private cellCount = 0;
+  private readonly refineScratch = new RefineScratch();
+  /** Lines per pixel of the wide bands, at the vertices of a grid over the view (see `addToField`). */
+  private readonly field = new DensityField();
+  private levelBuffer = new Float32Array(0);
   /** Round flow dots, drawn over the edges and under the arrowheads. */
   private readonly dots = new Buffer(SHAPE);
   /** Dashed node borders, drawn over the node fills. */
@@ -197,8 +399,6 @@ export class GraphPainter {
   private readonly edgeQuery = { data: new Uint32Array(1024) };
   private readonly rect: Rect = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
   private rank: Uint32Array | null = null;
-  /** Sort keys of the aggregate's edges on screen: quantized color, then index. */
-  private aggKeys = new Float64Array(0);
   private rankOf: Uint32Array | null = null;
 
   /**
@@ -212,11 +412,14 @@ export class GraphPainter {
     this.segments.count = 0;
     this.triangles.count = 0;
     this.borders.count = 0;
+    this.bands.count = 0;
+    this.fieldCols = 0;
     this.flowCount = 0;
     this.liftPass = false;
     this.drawnNodeCount = 0;
     this.drawnEdgeCount = 0;
     this.aggregated = false;
+    this.clipped = false;
     this.startFrame(input);
     const spatial = input.spatial;
 
@@ -250,13 +453,30 @@ export class GraphPainter {
         // A level not built yet is built between frames; meanwhile the nearest built one is drawn, or a sample of
         // the visible nodes when none is.
         const agg = spatial.level(level, model, input.nodeStyles, input.edgeStyles, input.edgeSlot) ?? spatial.nearest(level);
+        if (spatial.dense) this.paintDense(input, rect, budget);
         if (agg) this.paintAggregate(input, agg, budget.edges);
         else this.paintSample(input, nodeRect, budget.nodes);
+        this.submitField(surface, input.pixelRatio);
+        if (this.bands.count > 0) surface.fillTriangles(this.bands.data, this.bands.count);
         if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
       } else {
-        const kept = this.selectEdges(input, rect, budget.edges, budget.fill ?? Infinity);
-        this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
+        if (spatial.dense) {
+          // A dense graph: bands and single edges from the pair hierarchy, then the edges styled apart from the
+          // rest (flows, highlights), one by one: those on the view, or an even sample of them that keeps to an
+          // eighth of the count and a sixteenth of the area, so they stand out from the haze instead of covering it.
+          this.paintDense(input, rect, budget);
+          const styled = input.styledEdges ?? null;
+          if (styled && styled.length > 0) {
+            const kept = this.selectStyled(input, styled, rect, budget.edges / 8, (budget.fill ?? Infinity) / 16);
+            this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
+          }
+        } else {
+          const kept = this.selectEdges(input, rect, budget.edges, budget.fill ?? Infinity);
+          this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
+        }
         this.alphaBoost = 1;
+        this.submitField(surface, input.pixelRatio);
+        if (this.bands.count > 0) surface.fillTriangles(this.bands.data, this.bands.count);
         if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
         if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
         const nodeCount = spatial.nodes.query(nodeRect, this.nodeQuery);
@@ -328,6 +548,7 @@ export class GraphPainter {
         if ((e * spatial.inverse) % total < limit) buffer[kept++] = e;
       }
       this.alphaBoost = kept > 0 ? count / kept : 1;
+      this.clipped = true;
       return kept;
     }
     let kept = 0;
@@ -347,7 +568,380 @@ export class GraphPainter {
     }
     // What was walked is an even share of every edge, so the kept edges stand for total / walked each.
     this.alphaBoost = walked > 0 ? total / walked : 1;
+    if (walked < total) this.clipped = true;
     return kept;
+  }
+
+  /**
+   * The edges of `styled` whose box meets the view, written to the front of `edgeQuery`: all while they fit
+   * `budget` (a count) and `fill` (CSS pixels of length times width), else an even sample (the same permutation as
+   * `selectEdges`) that does.
+   */
+  private selectStyled<N, E>(input: GraphFrameInput<N, E>, styled: Uint32Array, rect: Rect, budget: number, fill: number): number {
+    const { model, edgeStyles, zoom } = input;
+    const slots = input.edgeSlot;
+    const spatial = input.spatial!;
+    if (this.edgeQuery.data.length < styled.length) this.edgeQuery.data = new Uint32Array(styled.length);
+    const buffer = this.edgeQuery.data;
+    let count = 0;
+    let spent = 0;
+    for (let k = 0; k < styled.length; k++) {
+      const e = styled[k]!;
+      const x0 = model.x[model.source[e]!]!;
+      const y0 = model.y[model.source[e]!]!;
+      const x1 = model.x[model.target[e]!]!;
+      const y1 = model.y[model.target[e]!]!;
+      if ((x0 < rect.minX && x1 < rect.minX) || (x0 > rect.maxX && x1 > rect.maxX) || (y0 < rect.minY && y1 < rect.minY) || (y0 > rect.maxY && y1 > rect.maxY)) continue;
+      buffer[count++] = e;
+      spent += Math.hypot(x1 - x0, y1 - y0) * zoom * Math.max(1, edgeStyles[(slots ? slots[e]! : e) * EDGE_FLOATS + E_WIDTH]!);
+    }
+    if (count <= budget && spent <= fill) return count;
+    this.clipped = true;
+    const total = model.edgeCount;
+    const limit = Math.min(budget / count, fill / spent) * total;
+    let kept = 0;
+    for (let k = 0; k < count; k++) if ((buffer[k]! * spatial.inverse) % total < limit) buffer[kept++] = buffer[k]!;
+    return kept;
+  }
+
+  /**
+   * A dense graph's edges through the pair hierarchy, cut by `refine` as finely as the budget allows: each band is
+   * drawn from one cell's centroid to the other's, as wide at each end as that cell's spread across it (sqrt(3)
+   * standard deviations each side), with the opacity of its edges drawn over each other; bands wide at both ends,
+   * and the edges inside cells left whole, go to a density field over the view; single node pairs that are joined
+   * are lines.
+   */
+  private paintDense<N, E>(input: GraphFrameInput<N, E>, rect: Rect, budget: { readonly edges: number; readonly fill?: number; readonly overdraw?: number; readonly dense?: number }): void {
+    const pairs = input.spatial!.dense!;
+    const tree = pairs.tree;
+    const { zoom, width, height, centerX, centerY, pixelRatio: dpr, edgeStyles, model } = input;
+    const slot = (input.denseSlot ?? 0) * EDGE_FLOATS;
+    const lineWidth = Math.max(0.5, edgeStyles[slot + E_WIDTH] ?? 1);
+    const view = { minX: rect.minX, minY: rect.minY, maxX: rect.maxX, maxY: rect.maxY, zoom };
+    const lifted = input.lifted ?? -1;
+    const sx = (x: number): number => width / 2 + (x - centerX) * zoom;
+    const sy = (y: number): number => height / 2 + (y - centerY) * zoom;
+    const diagonal = Math.hypot(width, height);
+    const field = this.field;
+    field.reset(width, height);
+    const cols = field.cols[0]!;
+    const rows = field.rows[0]!;
+    this.bandCount = 0;
+    this.singleCount = 0;
+    this.cellCount = 0;
+    const sink = {
+      band: (a: number, b: number, edges: number): void => {
+        if ((this.bandCount + 1) * 3 > this.bandCells.length) this.bandCells = growF64(this.bandCells, (this.bandCount + 1) * 3);
+        const o = this.bandCount++ * 3;
+        this.bandCells[o] = a;
+        this.bandCells[o + 1] = b;
+        this.bandCells[o + 2] = edges;
+      },
+      nodes: (i: number, j: number): void => {
+        if ((this.singleCount + 1) * 2 > this.singleNodes.length) this.singleNodes = growU32(this.singleNodes, (this.singleCount + 1) * 2);
+        this.singleNodes[this.singleCount * 2] = i;
+        this.singleNodes[this.singleCount * 2 + 1] = j;
+        this.singleCount++;
+      },
+      cell: (c: number, edges: number): void => {
+        if ((this.cellCount + 1) * 2 > this.cellList.length) this.cellList = growF64(this.cellList, (this.cellCount + 1) * 2);
+        this.cellList[this.cellCount * 2] = c;
+        this.cellList[this.cellCount * 2 + 1] = edges;
+        this.cellCount++;
+      },
+    };
+    const r = edgeStyles[slot + E_COLOR]!;
+    const g = edgeStyles[slot + E_COLOR + 1]!;
+    const b = edgeStyles[slot + E_COLOR + 2]!;
+    const alpha = edgeStyles[slot + E_COLOR + 3]!;
+    const costs = {
+      // Narrow bands cost the area they cover (clipped to the view's diagonal both ways); wide ones cost the field
+      // vertices they cover.
+      band: (a: number, b: number, edges: number, out: Float64Array): void => {
+        if (a === b) {
+          // Lines per pixel over the cell: its edges' ink (mean length about 0.9 of its radius) over its area.
+          const z2 = zoom * zoom;
+          const sxx = tree.sxx[a]! * z2;
+          const syy = tree.syy[a]! * z2;
+          const spread = Math.sqrt(Math.max(1, sxx * syy - (tree.sxy[a]! * z2) ** 2));
+          out[2] = (1 - alpha) ** ((edges * lineWidth * 0.905 * 2 * Math.sqrt((sxx + syy) / 2)) / (4 * Math.PI * spread));
+          return;
+        }
+        const dx = tree.mx[b]! - tree.mx[a]!;
+        const dy = tree.my[b]! - tree.my[a]!;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const ha = SQRT3 * tree.spread(a, -dy / len, dx / len) * zoom;
+        const hb = SQRT3 * tree.spread(b, -dy / len, dx / len) * zoom;
+        const along = Math.min(len * zoom, diagonal);
+        // 1 - the band's opacity where it is widest, the least opaque.
+        out[2] = (1 - alpha) ** ((edges * lineWidth) / (2 * Math.max(0.5, ha, hb)));
+        if (Math.min(ha, hb) >= FIELD_HALF_WIDTH) {
+          const step = fieldStep(Math.min(ha, hb));
+          out[0] = 0;
+          out[1] = 1 + (along * Math.min(diagonal, ha + hb)) / (step * step);
+        } else {
+          out[0] = along * Math.min(diagonal, Math.max(lineWidth, ha + hb));
+          out[1] = 0;
+        }
+      },
+      lines: (a: number, b: number): number => {
+        let total = 0;
+        for (let x = tree.lo[a]!; x < tree.hi[a]!; x++) {
+          const i = tree.order[x]!;
+          for (let y = a === b ? x + 1 : tree.lo[b]!; y < tree.hi[b]!; y++) {
+            const j = tree.order[y]!;
+            total += Math.min(diagonal, Math.hypot(model.x[j]! - model.x[i]!, model.y[j]! - model.y[i]!) * zoom) * lineWidth;
+          }
+        }
+        return total;
+      },
+    };
+    // Bands carry density by covering area, so they are bounded by overdraw (how many times they cover the plot
+    // together), the field by a few passes over its vertices, single lines by the line-area budget.
+    this.denseTau = refine(
+      pairs,
+      view,
+      {
+        items: budget.dense ?? Math.min(budget.edges, 16_000),
+        area: (budget.overdraw ?? 48) * width * height,
+        lines: budget.fill ?? Infinity,
+        field: FIELD_PASSES * cols * rows,
+        minSize: 2,
+      },
+      costs,
+      sink,
+      this.refineScratch,
+    );
+    if (this.denseTau > 2) this.clipped = true;
+
+    // Bands, sorted by quantized opacity so an engine that fills per color (Canvas 2D) batches them.
+    const gradient = input.gradientBands !== false;
+    if (this.bandKeys.length < this.bandCount) {
+      this.bandKeys = new Float64Array(this.bandCount);
+      this.bandEnds = new Float64Array(this.bandCount * 2);
+    }
+    const ends = this.bandEnds;
+    for (let k = 0; k < this.bandCount; k++) {
+      const ca = this.bandCells[k * 3]!;
+      const cb = this.bandCells[k * 3 + 1]!;
+      const edges = this.bandCells[k * 3 + 2]!;
+      const dx = tree.mx[cb]! - tree.mx[ca]!;
+      const dy = tree.my[cb]! - tree.my[ca]!;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const ha = Math.max(0.5, SQRT3 * tree.spread(ca, -dy / len, dx / len) * zoom);
+      const hb = Math.max(0.5, SQRT3 * tree.spread(cb, -dy / len, dx / len) * zoom);
+      // Lines per pixel across the band at each end: its edges' width spread over the band's width there.
+      const la = 1 - (1 - alpha) ** ((edges * lineWidth) / (2 * ha));
+      const lb = 1 - (1 - alpha) ** ((edges * lineWidth) / (2 * hb));
+      ends[k * 2] = gradient ? la : (la + lb) / 2;
+      ends[k * 2 + 1] = gradient ? lb : (la + lb) / 2;
+      this.bandKeys[k] = Math.round(ends[k * 2]! * 63) * AGG_INDEX_SPAN + k;
+    }
+    // The density field over the view: wide bands and whole cells add their lines per pixel at the vertices they cover.
+    let fieldUsed = false;
+    for (let k = 0; k < this.cellCount; k++) {
+      const c = this.cellList[k * 2]!;
+      // Only what the nodes' own dots do not already cover.
+      if (tree.radius(c) * 2 * zoom <= 2) continue;
+      const z2 = zoom * zoom;
+      field.addCell(sx(tree.mx[c]!), sy(tree.my[c]!), tree.sxx[c]! * z2, tree.syy[c]! * z2, tree.sxy[c]! * z2, sx(tree.minX[c]!), sy(tree.minY[c]!), sx(tree.maxX[c]!), sy(tree.maxY[c]!), this.cellList[k * 2 + 1]! * lineWidth);
+      fieldUsed = true;
+    }
+    const order = this.bandKeys.subarray(0, this.bandCount).sort();
+    for (let j = 0; j < this.bandCount; j++) {
+      const k = order[j]! % AGG_INDEX_SPAN;
+      const ca = this.bandCells[k * 3]!;
+      const cb = this.bandCells[k * 3 + 1]!;
+      const ax = sx(tree.mx[ca]!);
+      const ay = sy(tree.my[ca]!);
+      const bx = sx(tree.mx[cb]!);
+      const by = sy(tree.my[cb]!);
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const nx = -(by - ay) / len;
+      const ny = (bx - ax) / len;
+      const ha = Math.max(0.5, SQRT3 * tree.spread(ca, nx, ny) * zoom);
+      const hb = Math.max(0.5, SQRT3 * tree.spread(cb, nx, ny) * zoom);
+      if (Math.min(ha, hb) >= FIELD_HALF_WIDTH) {
+        field.addBand(ax, ay, bx, by, nx, ny, ha, hb, (this.bandCells[k * 3 + 2]! * lineWidth) / 2);
+        fieldUsed = true;
+        continue;
+      }
+      const qa = Math.round(ends[k * 2]! * 63) / 63;
+      const qb = Math.round(ends[k * 2 + 1]! * 63) / 63;
+      this.bandQuad(ax, ay, bx, by, nx, ny, ha, hb, r, g, b, qa, qb, dpr);
+    }
+    if (fieldUsed) {
+      const grid = field.collapse();
+      this.maskField(grid, cols, rows, tree, sx, sy);
+      this.drawField(grid, cols, rows, r, g, b, alpha);
+    }
+
+    // Single pairs that are joined: lines between the node outlines, in the common style.
+    const dash = edgeStyles[slot + E_DASH]!;
+    const gap = edgeStyles[slot + E_GAP]!;
+    const endGap = edgeStyles[slot + E_END_GAP]!;
+    for (let k = 0; k < this.singleCount; k++) {
+      const i = this.singleNodes[k * 2]!;
+      const j = this.singleNodes[k * 2 + 1]!;
+      // The dragged node's lines are drawn by the overlay, where it is now.
+      if (i === lifted || j === lifted || !model.joined(i, j)) continue;
+      this.ensureProjected(i, input);
+      this.ensureProjected(j, input);
+      const a = i * NODE_GEOMETRY;
+      const c = j * NODE_GEOMETRY;
+      const dx = this.nodeScreen[c]! - this.nodeScreen[a]!;
+      const dy = this.nodeScreen[c + 1]! - this.nodeScreen[a + 1]!;
+      if (!this.exit(this.nodeScreen, a, dx, dy, endGap)) continue;
+      const x0 = this.exitX;
+      const y0 = this.exitY;
+      if (!this.exit(this.nodeScreen, c, -dx, -dy, endGap)) continue;
+      if ((this.exitX - x0) * dx + (this.exitY - y0) * dy <= 0) continue;
+      const o = this.segments.next();
+      const d = this.segments.data;
+      d[o] = x0 * dpr;
+      d[o + 1] = y0 * dpr;
+      d[o + 2] = this.exitX * dpr;
+      d[o + 3] = this.exitY * dpr;
+      d[o + 4] = lineWidth * dpr;
+      d[o + 5] = dash * dpr;
+      d[o + 6] = gap * dpr;
+      d[o + 7] = 0;
+      d[o + 8] = r;
+      d[o + 9] = g;
+      d[o + 10] = b;
+      d[o + 11] = alpha;
+    }
+  }
+
+  /**
+   * Clear the field outside the convex hull of the nodes, where no edge can be: the coarse grids blur a band past
+   * its outline by up to a step, which would show as a halo around the graph. The tree keeps the hull.
+   */
+  private maskField(grid: Float32Array, cols: number, rows: number, tree: PairTree, sx: (x: number) => number, sy: (y: number) => number): void {
+    const n = tree.hullCount;
+    if (n < 3) return;
+    const h = tree.hull;
+    // Per row, the hull spans one interval (it is convex): clear the vertices outside it.
+    for (let row = 0; row < rows; row++) {
+      const y = row * FIELD_STEP;
+      let left = Infinity;
+      let right = -Infinity;
+      for (let e = 0; e < n; e++) {
+        const f = (e + 1) % n;
+        const y0 = sy(h[e * 2 + 1]!);
+        const y1 = sy(h[f * 2 + 1]!);
+        if ((y < y0 && y < y1) || (y > y0 && y > y1)) continue;
+        const x0 = sx(h[e * 2]!);
+        const x1 = sx(h[f * 2]!);
+        const x = y0 === y1 ? Math.min(x0, x1) : x0 + ((y - y0) / (y1 - y0)) * (x1 - x0);
+        const x2 = y0 === y1 ? Math.max(x0, x1) : x;
+        if (x < left) left = x;
+        if (x2 > right) right = x2;
+      }
+      const from = row * cols;
+      if (left > right) {
+        grid.fill(0, from, from + cols);
+        continue;
+      }
+      const c0 = Math.min(cols, Math.max(0, Math.ceil(left / FIELD_STEP)));
+      const c1 = Math.min(cols - 1, Math.floor(right / FIELD_STEP));
+      if (c0 > 0) grid.fill(0, from, from + c0);
+      if (c1 + 1 < cols) grid.fill(0, from + Math.max(0, c1 + 1), from + cols);
+    }
+  }
+
+  /** The density field's opacities, ready for `fillField` in this frame's pass (`fieldCols` 0: none). */
+  private fieldCols = 0;
+  private fieldRows = 0;
+  private readonly fieldColor = new Float32Array(3);
+
+  /** Turn lines per pixel into opacity at each field vertex, for `submitField`. */
+  private drawField(field: Float32Array, cols: number, rows: number, r: number, g: number, b: number, alpha: number): void {
+    if (this.levelBuffer.length < cols * rows) this.levelBuffer = new Float32Array(cols * rows);
+    const levels = this.levelBuffer;
+    const log = Math.log(1 - Math.min(alpha, 0.999999));
+    for (let k = 0; k < cols * rows; k++) levels[k] = 1 - Math.exp(log * field[k]!);
+    this.fieldCols = cols;
+    this.fieldRows = rows;
+    this.fieldColor[0] = r;
+    this.fieldColor[1] = g;
+    this.fieldColor[2] = b;
+  }
+
+  /** Draw the pending density field, if any, under the bands. */
+  private submitField(surface: RenderSurface, dpr: number): void {
+    if (this.fieldCols === 0) return;
+    const c = this.fieldColor;
+    surface.fillField(this.levelBuffer.subarray(0, this.fieldCols * this.fieldRows), this.fieldCols, this.fieldRows, 0, 0, FIELD_STEP * dpr, c[0]!, c[1]!, c[2]!);
+    this.fieldCols = 0;
+  }
+
+  /** A band as two triangles: half-widths `ha` and `hb` across (`nx`, `ny`) at each end, opacity `qa` to `qb`. */
+  private bandQuad(ax: number, ay: number, bx: number, by: number, nx: number, ny: number, ha: number, hb: number, r: number, g: number, b: number, qa: number, qb: number, dpr: number): void {
+    const corners = [ax + nx * ha, ay + ny * ha, qa, ax - nx * ha, ay - ny * ha, qa, bx + nx * hb, by + ny * hb, qb, ax - nx * ha, ay - ny * ha, qa, bx - nx * hb, by - ny * hb, qb, bx + nx * hb, by + ny * hb, qb];
+    for (let v = 0; v < 6; v++) {
+      const o = this.bands.next();
+      const d = this.bands.data;
+      d[o] = corners[v * 3]! * dpr;
+      d[o + 1] = corners[v * 3 + 1]! * dpr;
+      d[o + 2] = r;
+      d[o + 3] = g;
+      d[o + 4] = b;
+      d[o + 5] = corners[v * 3 + 2]!;
+    }
+  }
+
+  /**
+   * The dragged node's edges in a dense graph, where it is now: bands from it to cells far from it or small on
+   * screen, and lines to the nodes near it (the overlay pass).
+   */
+  private paintStar<N, E>(input: GraphFrameInput<N, E>, node: number): void {
+    const pairs = input.spatial?.dense;
+    if (!pairs) return;
+    const tree = pairs.tree;
+    const { zoom, width, height, centerX, centerY, pixelRatio: dpr, edgeStyles, model } = input;
+    const slot = (input.denseSlot ?? 0) * EDGE_FLOATS;
+    const lineWidth = Math.max(0.5, edgeStyles[slot + E_WIDTH] ?? 1);
+    const [r, g, b, alpha] = [edgeStyles[slot + E_COLOR]!, edgeStyles[slot + E_COLOR + 1]!, edgeStyles[slot + E_COLOR + 2]!, edgeStyles[slot + E_COLOR + 3]!];
+    const sx = (x: number): number => width / 2 + (x - centerX) * zoom;
+    const sy = (y: number): number => height / 2 + (y - centerY) * zoom;
+    const halfW = width / 2 / zoom;
+    const halfH = height / 2 / zoom;
+    const view = { minX: centerX - halfW, minY: centerY - halfH, maxX: centerX + halfW, maxY: centerY + halfH, zoom };
+    this.ensureProjected(node, input);
+    const px = this.nodeScreen[node * NODE_GEOMETRY]!;
+    const py = this.nodeScreen[node * NODE_GEOMETRY + 1]!;
+    starCut(tree, node, model.x[node]!, model.y[node]!, view, Math.max(2, this.denseTau), {
+      band: (cell, edges) => {
+        const bx = sx(tree.mx[cell]!);
+        const by = sy(tree.my[cell]!);
+        const len = Math.hypot(bx - px, by - py) || 1;
+        const nx = -(by - py) / len;
+        const ny = (bx - px) / len;
+        const hb = Math.max(0.5, SQRT3 * tree.spread(cell, nx, ny) * zoom);
+        const qa = 1 - (1 - alpha) ** ((edges * lineWidth) / 1);
+        const qb = 1 - (1 - alpha) ** ((edges * lineWidth) / (2 * hb));
+        this.bandQuad(px, py, bx, by, nx, ny, 0.5, hb, r, g, b, qa, input.gradientBands !== false ? qb : (qa + qb) / 2, dpr);
+      },
+      node: (j) => {
+        if (!model.joined(node, j)) return;
+        this.ensureProjected(j, input);
+        const o = this.segments.next();
+        const d = this.segments.data;
+        d[o] = px * dpr;
+        d[o + 1] = py * dpr;
+        d[o + 2] = this.nodeScreen[j * NODE_GEOMETRY]! * dpr;
+        d[o + 3] = this.nodeScreen[j * NODE_GEOMETRY + 1]! * dpr;
+        d[o + 4] = lineWidth * dpr;
+        d[o + 5] = 0;
+        d[o + 6] = 0;
+        d[o + 7] = 0;
+        d[o + 8] = r;
+        d[o + 9] = g;
+        d[o + 10] = b;
+        d[o + 11] = alpha;
+      },
+    });
   }
 
   /** A new projection frame: every node counts as not yet projected. */
@@ -413,47 +1007,30 @@ export class GraphPainter {
       return !((ax < 0 && bx < 0) || (ax > width && bx > width) || (ay < 0 && by < 0) || (ay > height && by > height));
     };
     const fill = input.budget?.fill ?? Infinity;
-    // The merged edges on screen, heaviest first, are kept until the count or the area budget is spent: the
-    // weight of the last one kept is the cut.
-    let visible = 0;
-    let threshold = 0;
-    if (this.aggKeys.length < agg.edgeCount) this.aggKeys = new Float64Array(agg.edgeCount);
-    const weights = this.aggKeys;
-    for (let k = 0; k < agg.edgeCount; k++) {
+    // The merged edges on screen, heaviest first (an order fixed per level, equal weights by index, so an even
+    // sample of them), are kept until the count or the area budget is spent: those ranked before the first left
+    // out are drawn.
+    let cut = agg.edgeCount;
+    let taken = 0;
+    let spent = 0;
+    for (let j = 0; j < agg.edgeCount; j++) {
+      const k = agg.byWeight[j]!;
       if (!onScreen(k)) continue;
-      // Weight first (descending through the negative), then the index.
-      weights[visible++] = -agg.edgeWeight[k]! * AGG_INDEX_SPAN + k;
-    }
-    if (visible > edgeBudget || fill < Infinity) {
-      const order = weights.subarray(0, visible).sort();
-      let spent = 0;
-      let taken = 0;
-      for (; taken < visible && taken < edgeBudget && spent < fill; taken++) {
-        const key = order[taken]!;
-        const k = key + Math.ceil(-key / AGG_INDEX_SPAN) * AGG_INDEX_SPAN;
-        const ax = agg.cellX[agg.edgeA[k]!]! - agg.cellX[agg.edgeB[k]!]!;
-        const ay = agg.cellY[agg.edgeA[k]!]! - agg.cellY[agg.edgeB[k]!]!;
-        spent += Math.sqrt(ax * ax + ay * ay) * zoom * lineWidth;
+      if (taken >= edgeBudget || spent >= fill) {
+        cut = j;
+        this.clipped = true;
+        break;
       }
-      // Lighter merged edges than the last one kept are left out (equal ones stay: ties are not split).
-      if (taken < visible) threshold = Math.ceil(-order[Math.max(0, taken - 1)]! / AGG_INDEX_SPAN);
+      const ax = agg.cellX[agg.edgeA[k]!]! - agg.cellX[agg.edgeB[k]!]!;
+      const ay = agg.cellY[agg.edgeA[k]!]! - agg.cellY[agg.edgeB[k]!]!;
+      spent += Math.sqrt(ax * ax + ay * ay) * zoom * lineWidth;
+      taken++;
     }
-    // Colors are quantized (5 bits a channel, 16 opacities) and edges sorted by them, so engines that stroke per
+    // In quantized color order (5 bits a channel, 16 opacities, also fixed per level), so engines that stroke per
     // style (Canvas 2D) draw a few dozen paths instead of one per merged edge. At this size the steps cannot be seen.
-    let shown = 0;
-    if (this.aggKeys.length < visible) this.aggKeys = new Float64Array(visible);
-    const keys = this.aggKeys;
-    for (let k = 0; k < agg.edgeCount; k++) {
-      const weight = agg.edgeWeight[k]!;
-      if (weight < threshold || !onScreen(k)) continue;
-      const alpha = 1 - (1 - agg.edgeColor[k * 4 + 3]!) ** weight;
-      const key = quantize(agg.edgeColor, k * 4, alpha);
-      keys[shown++] = key * AGG_INDEX_SPAN + k;
-    }
-    const sorted = keys.subarray(0, shown).sort();
-    for (let j = 0; j < shown; j++) {
-      const key = Math.floor(sorted[j]! / AGG_INDEX_SPAN);
-      const k = sorted[j]! - key * AGG_INDEX_SPAN;
+    for (let j = 0; j < agg.edgeCount; j++) {
+      const k = agg.byKey[j]!;
+      if (agg.rank[k]! >= cut || !onScreen(k)) continue;
       const o = this.segments.next();
       const d = this.segments.data;
       d[o] = sx(agg.cellX[agg.edgeA[k]!]!) * dpr;
@@ -464,7 +1041,7 @@ export class GraphPainter {
       d[o + 5] = 0;
       d[o + 6] = 0;
       d[o + 7] = 0;
-      unquantize(key, d, o + 8);
+      unquantize(agg.edgeKey[k]!, d, o + 8);
     }
     // One dot per cell, as large as its nodes would cover, at least the minimum size and at most the cell.
     const cellPx = agg.cell * zoom;
@@ -548,6 +1125,8 @@ export class GraphPainter {
     if (lifted >= 0) {
       // The lifted node where the drag has it, its edges, their arrows and flows, then the node over them.
       this.projectOne(lifted, input);
+      this.bands.count = 0;
+      if (input.spatial?.dense) this.paintStar(input, lifted);
       this.liftPass = true;
       this.liftFlowCount = 0;
       this.buildEdges(input, input.liftedEdges ?? new Uint32Array(0), false);
@@ -556,6 +1135,7 @@ export class GraphPainter {
       this.buildNodes(input, lifted, null, 0);
     }
     surface.beginFrame(Math.max(1, Math.round(width * dpr)), Math.max(1, Math.round(height * dpr)), dpr);
+    if (lifted >= 0 && this.bands.count > 0) surface.fillTriangles(this.bands.data, this.bands.count);
     if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
     if (this.dots.count > 0) surface.fillShapes(this.dots.data, this.dots.count);
     if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);

@@ -5,7 +5,7 @@ import { singleChartPlugin } from "../common/OverlayUtils.js";
 import { defaultEdgeLabelRenderer, defaultNodeRenderer, drawLabels } from "./labels.js";
 import type { EdgeLabelRenderer, NodeRenderer, ResolvedLabelStyle } from "./labels.js";
 import { buildGraphModel, isCoordinate } from "./model.js";
-import { GraphIndex } from "./spatial.js";
+import { GraphIndex, isDense } from "./spatial.js";
 import type { GraphModel } from "./model.js";
 import { EDGE_GEOMETRY, edgeDistanceSq, GraphPainter } from "./render.js";
 import type { RenderSurface } from "./render.js";
@@ -43,6 +43,12 @@ const OVERSCAN = 0.25;
 const GESTURE_REDRAW_MS = 300;
 /** How long a pan must pause before the moved layers are drawn again, centered. */
 const PAN_SETTLE_MS = 120;
+/**
+ * A still frame that leaves detail out for its budget is drawn with a third of it first, so it is cheap, and in
+ * full this long after, unless something else is drawn first: detail arrives once the view rests, never in the
+ * way of a gesture.
+ */
+const REFINE_MS = 150;
 /** How long one slice of building an aggregate level may run between frames. */
 const BUILD_SLICE_MS = 6;
 
@@ -82,6 +88,9 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   const drawn = { centerX: 0, centerY: 0, zoom: 0, marginX: 0, marginY: 0, ms: 0, scale: 1, shiftX: 0, shiftY: 0, width: 0, height: 0, at: 0 };
   /** Redraws the still layers once a pan has paused, so they are centered again. */
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
+  let refineTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The next still frame draws with its full budget (see `REFINE_MS`). */
+  let fullBudget = false;
   let labelCanvas: HTMLCanvasElement | null = null;
   let labelContext: CanvasRenderingContext2D | null = null;
   let live: HTMLElement | null = null;
@@ -326,6 +335,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       if (frameId !== 0) (chart?.dom.view ?? globalThis).cancelAnimationFrame(frameId);
       frameId = 0;
       clearTimeout(settleTimer);
+      clearTimeout(refineTimer);
       clearTimeout(buildTimer);
       restoreCursor?.();
       restoreCursor = null;
@@ -426,8 +436,41 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     privateSlot = new Map();
     for (let i = 0; i < nodes; i++) writeNode(i);
     for (let i = 0; i < edges; i++) writeEdge(i, false);
+    resolveDenseStyle();
     sortOrder();
     spatial.invalidateStyles();
+  }
+
+  /** A dense graph's common edge style record, and its edges styled apart from it. */
+  let denseSlot = 0;
+  let styledEdges: Uint32Array | null = null;
+
+  /**
+   * For "every pair": the plain `edgeStyle` object (a function is not called for implicit edges). For listed
+   * edges: the most used style record, and the edges with another one, which a dense graph draws one by one.
+   */
+  function resolveDenseStyle(): void {
+    styledEdges = null;
+    if (model.allPairs) {
+      const style = typeof options.edgeStyle === "object" && options.edgeStyle ? options.edgeStyle : NO_STYLE;
+      denseSlot = edgeSlotCount++;
+      if (edgeSlotCount * EDGE_FLOATS > edgeStyles.length) {
+        const grown = new Float32Array(edgeSlotCount * EDGE_FLOATS * 2);
+        grown.set(edgeStyles);
+        edgeStyles = grown;
+      }
+      writeEdgeStyle(edgeStyles, denseSlot * EDGE_FLOATS, style, colors, defaults, false);
+      return;
+    }
+    // A sparse graph draws every edge with its own style: nothing to resolve.
+    if (!isDense(model)) return;
+    const uses = new Uint32Array(Math.max(1, edgeSlotCount));
+    for (let i = 0; i < model.edgeCount; i++) uses[edgeSlot[i]!]!++;
+    denseSlot = 0;
+    for (let k = 1; k < uses.length; k++) if (uses[k]! > uses[denseSlot]!) denseSlot = k;
+    const apart: number[] = [];
+    for (let i = 0; i < model.edgeCount && apart.length < 1_000_000; i++) if (edgeSlot[i] !== denseSlot) apart.push(i);
+    styledEdges = Uint32Array.from(apart);
   }
 
   /** Restyle the nodes whose state changed (an index of -1 is ignored). A layer change re-sorts. */
@@ -606,14 +649,19 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
    * How many nodes and edges a still frame draws one by one before it draws the aggregate level: what each engine
    * draws in a few milliseconds on a phone, unless `levelOfDetail` says otherwise (`false` never aggregates).
    */
-  function detailBudget(): { nodes: number; edges: number; fill: number } {
+  function detailBudget(fine = true): { nodes: number; edges: number; fill: number; overdraw: number; dense: number } {
     const lod = options.levelOfDetail;
-    if (lod === false) return { nodes: Infinity, edges: Infinity, fill: Infinity };
+    if (lod === false) return { nodes: Infinity, edges: Infinity, fill: Infinity, overdraw: Infinity, dense: Infinity };
     const canvas = chart?.renderer.name === "canvas2d";
     return {
       nodes: lod?.nodes ?? (canvas ? 12_000 : 60_000),
-      edges: lod?.edges ?? (canvas ? 25_000 : 150_000),
-      fill: lod?.fill ?? (canvas ? 700_000 : 2_000_000),
+      // A frame during a gesture draws a third of the edges; the rest follow once the view rests (see `REFINE_MS`).
+      edges: (lod?.edges ?? (canvas ? 25_000 : 150_000)) / (fine ? 1 : 3),
+      fill: (lod?.fill ?? (canvas ? 700_000 : 2_000_000)) / (fine ? 1 : 3),
+      // How many times over the bands of a dense graph may cover the plot, together.
+      overdraw: canvas ? 12 : 48,
+      // Items (bands and single lines) of a dense graph's cut: each costs more to find than a listed edge.
+      dense: Math.min(lod?.edges ?? Infinity, fine ? (canvas ? 6_000 : 16_000) : canvas ? 1_200 : 2_500),
     };
   }
 
@@ -621,12 +669,15 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   function lift(index: number): void {
     // Without an overlay (no surface could be made) the node stays in the still layer, drawn again each move.
     // A drag that ends moved one node: the index takes it and its edges as moved, without a rebuild.
-    if (index < 0 && lifted >= 0 && liftedEdges) spatial.moveNode(lifted, liftedEdges);
+    if (index < 0 && lifted >= 0 && liftedEdges) spatial.moveNode(lifted, liftedEdges, model.x, model.y);
     lifted = index >= 0 && ensureFlowSurface() ? index : -1;
     if (lifted < 0) {
       liftedEdges = null;
     } else {
-      liftedEdges = edgesOf(index);
+      // A dense graph draws the dragged node's edges as a star from the pair tree; only its edges styled apart
+      // are lifted one by one.
+      const all = edgesOf(index);
+      liftedEdges = spatial.dense ? all.filter((e) => edgeSlot[e] !== denseSlot) : all;
     }
     scheduleRender();
   }
@@ -721,7 +772,10 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       lifted,
       liftedEdges,
       spatial,
-      budget: detailBudget(),
+      budget: detailBudget(fullBudget),
+      denseSlot,
+      styledEdges,
+      gradientBands: chart.renderer.name !== "canvas2d",
     };
     const full = staticDirty;
     staticDirty = false;
@@ -731,7 +785,11 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       clearTimeout(settleTimer);
       const started = chart.dom.view.performance?.now() ?? Date.now();
       for (const canvas of [shapeCanvas, labelCanvas, flowCanvas]) if (canvas) placeLayer(canvas, marginX, marginY, width, height);
+      clearTimeout(refineTimer);
       painter.paint(surface, input);
+      const coarse = !fullBudget && painter.clipped;
+      fullBudget = false;
+      if (coarse) scheduleRefine();
       Object.assign(drawn, { centerX: view.centerX, centerY: view.centerY, zoom: view.zoom, marginX, marginY, scale: 1, shiftX: 0, shiftY: 0, width, height, at: now });
       // Measured after the labels too, below.
       drawnStart = started;
@@ -773,6 +831,17 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     if (spatial.building) scheduleBuild();
     if (animation) scheduleRender();
     else if (painter.moving) requestFrame();
+  }
+
+  /** Draw with the full budget once the view rests and no pointer is down (see `REFINE_MS`). */
+  function scheduleRefine(): void {
+    clearTimeout(refineTimer);
+    refineTimer = setTimeout(() => {
+      if (disposed) return;
+      if (pointers.size > 0) return scheduleRefine();
+      fullBudget = true;
+      scheduleRender();
+    }, REFINE_MS);
   }
 
   let drawnStart = 0;
@@ -839,6 +908,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     const transform = `translate(${shiftX}px, ${shiftY}px) scale(${scale})`;
     for (const canvas of [shapeCanvas, labelCanvas, flowCanvas]) if (canvas) canvas.style.transform = transform;
     clearTimeout(settleTimer);
+    // The finer cut waits for the view to rest: the frame drawn when it settles schedules it again.
+    clearTimeout(refineTimer);
     settleTimer = setTimeout(scheduleRender, PAN_SETTLE_MS);
     // The flows move with their layer and keep animating at this frame's time.
     if (flowSurface && lastInput && painter.hasFlows && !flowSurface.isLost) painter.paintFlows(flowSurface, { ...lastInput, time: now / 1000 });
@@ -1059,7 +1130,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     } else if (current.kind === "drag") {
       const node = current.node;
       draggingNode = -1;
-      if (lifted < 0) spatial.moveNode(node, edgesOf(node));
+      if (lifted < 0) spatial.moveNode(node, edgesOf(node), model.x, model.y);
       lift(-1);
       restyleNodes(node);
       scheduleRender();
@@ -1074,7 +1145,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     if (gesture?.kind === "drag") {
       const node = gesture.node;
       draggingNode = -1;
-      if (lifted < 0) spatial.moveNode(node, edgesOf(node));
+      if (lifted < 0) spatial.moveNode(node, edgesOf(node), model.x, model.y);
       lift(-1);
       restyleNodes(node);
       if (node < model.nodes.length) options.onNodeDragEnd?.(model.nodes[node]!, model.x[node]!, model.y[node]!);
