@@ -2,7 +2,7 @@
  * The graph model: validated nodes and edges in flat arrays, edge endpoints by index, and a uniform
  * grid over node boxes for picking. Pure: no DOM, no chart.
  */
-import type { GraphEdge, GraphLimits, GraphNode } from "./types.js";
+import type { GraphEdge, GraphEdgeArrays, GraphLimits, GraphNode } from "./types.js";
 
 export const DEFAULT_MAX_NODES = 100_000;
 export const DEFAULT_MAX_EDGES = 500_000;
@@ -15,7 +15,15 @@ export interface GraphModel<N, E> {
   /** Node centers in graph units; `setPositions` and drags change them in place. */
   readonly x: Float64Array;
   readonly y: Float64Array;
-  readonly edges: readonly GraphEdge<E>[];
+  /** How many edges were kept (drawable ones). */
+  readonly edgeCount: number;
+  /** An edge as an object, made on demand for edges given as arrays. Do not change it. */
+  edgeAt(index: number): GraphEdge<E>;
+  /**
+   * An edge in one reused object, for style functions that run for every edge: valid until the next call, so
+   * millions of edges given as arrays make no garbage. Do not keep it.
+   */
+  edgeView(index: number): GraphEdge<E>;
   /** An edge's id: its own, or `"<source>-><target>"`. Made on demand, so a large graph makes no strings. */
   edgeIdOf(index: number): string;
   /**
@@ -25,18 +33,25 @@ export interface GraphModel<N, E> {
   edgeIndexOf(id: string): number;
   readonly source: Uint32Array;
   readonly target: Uint32Array;
+  /** The edges at a node, either end: an index built on first use, so later calls cost the node's degree. */
+  edgesAt(node: number): Uint32Array;
   /** 1 when another edge runs from this edge's target to its source. */
   readonly reversed: Uint8Array;
   readonly skippedEdges: number;
 }
 
 /** Read and check a graph. Throws a `RangeError` before allocating anything large when a limit or rule is broken. */
-export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[], limits: GraphLimits = {}): GraphModel<N, E> {
+export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E>, limits: GraphLimits = {}): GraphModel<N, E> {
   const maxNodes = limits.maxNodes ?? DEFAULT_MAX_NODES;
   const maxEdges = limits.maxEdges ?? DEFAULT_MAX_EDGES;
-  if (!Array.isArray(nodes) || !Array.isArray(edges)) throw new TypeError("graph: nodes and edges must be arrays.");
+  const arrays = Array.isArray(edges) ? null : (edges as GraphEdgeArrays<E>);
+  if (!Array.isArray(nodes) || (!arrays && !Array.isArray(edges))) throw new TypeError("graph: nodes must be an array, and edges an array or { source, target } index arrays.");
+  if (arrays && (!isIndexList(arrays.source) || !isIndexList(arrays.target) || arrays.source.length !== arrays.target.length)) {
+    throw new TypeError("graph: edge arrays need source and target index lists of the same length.");
+  }
+  const given = arrays ? arrays.source.length : (edges as readonly GraphEdge<E>[]).length;
   if (nodes.length > maxNodes) throw new RangeError(`graph: ${nodes.length} nodes is more than the limit of ${maxNodes}.`);
-  if (edges.length > maxEdges) throw new RangeError(`graph: ${edges.length} edges is more than the limit of ${maxEdges}.`);
+  if (given > maxEdges) throw new RangeError(`graph: ${given} edges is more than the limit of ${maxEdges}.`);
 
   const nodeIndex = new Map<string, number>();
   const x = new Float64Array(nodes.length);
@@ -51,50 +66,110 @@ export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: rea
     y[i] = node.y;
   }
 
-  const source = new Uint32Array(edges.length);
-  const target = new Uint32Array(edges.length);
-  // Edges that cannot be drawn (an end that is not a node, or both ends one node) are left out; the array is
-  // only copied when one is.
-  let kept: GraphEdge<E>[] | null = null;
+  const source = new Uint32Array(given);
+  const target = new Uint32Array(given);
+  // Edges that cannot be drawn (an end that is not a node, or both ends one node) are left out. `original` maps a
+  // kept edge to its place in the input, and exists only when one was left out.
+  let original: Uint32Array | null = null;
   let count = 0;
-  for (let e = 0; e < edges.length; e++) {
-    const edge = edges[e]!;
-    const from = nodeIndex.get(edge?.source);
-    const to = nodeIndex.get(edge?.target);
+  const nodeCount = nodes.length;
+  for (let e = 0; e < given; e++) {
+    let from: number | undefined;
+    let to: number | undefined;
+    if (arrays) {
+      from = arrays.source[e]!;
+      to = arrays.target[e]!;
+      if (!(from >= 0 && from < nodeCount && Number.isInteger(from))) from = undefined;
+      if (!(to >= 0 && to < nodeCount && Number.isInteger(to))) to = undefined;
+    } else {
+      const edge = (edges as readonly GraphEdge<E>[])[e]!;
+      from = nodeIndex.get(edge?.source);
+      to = nodeIndex.get(edge?.target);
+    }
     if (from === undefined || to === undefined || from === to) {
-      kept ??= edges.slice(0, e) as GraphEdge<E>[];
+      if (!original) {
+        original = new Uint32Array(given);
+        for (let k = 0; k < count; k++) original[k] = k;
+      }
       continue;
     }
-    kept?.push(edge);
+    if (original) original[count] = e;
     source[count] = from;
     target[count] = to;
     count++;
   }
-  const keptEdges: readonly GraphEdge<E>[] = kept ?? edges;
-  const skippedEdges = edges.length - count;
+  const skippedEdges = given - count;
+  const inputIndex = (index: number): number => (original ? original[index]! : index);
+  const objects = arrays ? null : (edges as readonly GraphEdge<E>[]);
+  const edgeAt = (index: number): GraphEdge<E> => {
+    if (objects) return objects[inputIndex(index)]!;
+    const at = inputIndex(index);
+    const id = arrays!.ids?.[at];
+    const label = arrays!.labels?.[at];
+    const data = arrays!.data?.[at];
+    return { source: nodes[source[index]!]!.id, target: nodes[target[index]!]!.id, ...(id !== undefined ? { id } : {}), ...(label !== undefined ? { label } : {}), ...(data !== undefined ? { data } : {}) };
+  };
+  const view: { id?: string; source: string; target: string; label?: string; data?: E } = { source: "", target: "" };
+  const edgeView = (index: number): GraphEdge<E> => {
+    if (objects) return objects[inputIndex(index)]!;
+    const at = inputIndex(index);
+    view.source = nodes[source[index]!]!.id;
+    view.target = nodes[target[index]!]!.id;
+    view.id = arrays!.ids?.[at];
+    view.label = arrays!.labels?.[at];
+    view.data = arrays!.data?.[at];
+    return view;
+  };
 
-  // Outgoing edges per node (counting sort), to find each edge's reverse twin among its target's few edges.
-  const outStart = new Uint32Array(nodes.length + 1);
+  // Each node's outgoing targets, sorted (counting sort by source, then each run sorted), so an edge's reverse
+  // twin is a binary search among its target's targets: fast for a dense graph too.
+  const outStart = new Uint32Array(nodeCount + 1);
   for (let e = 0; e < count; e++) outStart[source[e]! + 1]!++;
-  for (let i = 0; i < nodes.length; i++) outStart[i + 1]! += outStart[i]!;
-  const outList = new Uint32Array(count);
-  const cursor = outStart.slice(0, nodes.length);
-  for (let e = 0; e < count; e++) outList[cursor[source[e]!]!++] = e;
+  for (let i = 0; i < nodeCount; i++) outStart[i + 1]! += outStart[i]!;
+  const outTargets = new Uint32Array(count);
+  const cursor = outStart.slice(0, nodeCount);
+  for (let e = 0; e < count; e++) outTargets[cursor[source[e]!]!++] = target[e]!;
+  for (let i = 0; i < nodeCount; i++) if (outStart[i + 1]! - outStart[i]! > 1) outTargets.subarray(outStart[i]!, outStart[i + 1]!).sort();
   const reversed = new Uint8Array(count);
   for (let e = 0; e < count; e++) {
     const from = source[e]!;
-    const to = target[e]!;
-    for (let k = outStart[to]!, end = outStart[to + 1]!; k < end; k++) {
-      if (target[outList[k]!] === from) {
-        reversed[e] = 1;
-        break;
-      }
+    let lo = outStart[target[e]!]!;
+    let hi = outStart[target[e]! + 1]!;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (outTargets[mid]! < from) lo = mid + 1;
+      else hi = mid;
     }
+    if (lo < outStart[target[e]! + 1]! && outTargets[lo] === from) reversed[e] = 1;
   }
 
+  let incidentStart: Uint32Array | null = null;
+  let incident: Uint32Array | null = null;
+  const edgesAt = (node: number): Uint32Array => {
+    if (!incidentStart || !incident) {
+      incidentStart = new Uint32Array(nodeCount + 1);
+      for (let e = 0; e < count; e++) {
+        incidentStart[source[e]! + 1]!++;
+        incidentStart[target[e]! + 1]!++;
+      }
+      for (let i = 0; i < nodeCount; i++) incidentStart[i + 1]! += incidentStart[i]!;
+      incident = new Uint32Array(count * 2);
+      const at = incidentStart.slice(0, nodeCount);
+      for (let e = 0; e < count; e++) {
+        incident[at[source[e]!]!++] = e;
+        incident[at[target[e]!]!++] = e;
+      }
+    }
+    if (node < 0 || node >= nodeCount) return new Uint32Array(0);
+    return incident.subarray(incidentStart[node]!, incidentStart[node + 1]!);
+  };
+
   const edgeIdOf = (index: number): string => {
-    const edge = keptEdges[index]!;
-    return edge.id ?? `${edge.source}->${edge.target}`;
+    if (objects) {
+      const edge = objects[inputIndex(index)]!;
+      return edge.id ?? `${edge.source}->${edge.target}`;
+    }
+    return arrays!.ids?.[inputIndex(index)] ?? `${nodes[source[index]!]!.id}->${nodes[target[index]!]!.id}`;
   };
   let edgeIndex: Map<string, number> | null = null;
   const edgeIndexOf = (id: string): number => {
@@ -116,14 +191,21 @@ export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: rea
     nodeIndex,
     x,
     y,
-    edges: keptEdges,
+    edgeCount: count,
+    edgeAt,
+    edgeView,
     edgeIdOf,
     edgeIndexOf,
+    edgesAt,
     source: source.subarray(0, count),
     target: target.subarray(0, count),
     reversed,
     skippedEdges,
   };
+}
+
+function isIndexList(value: unknown): value is ArrayLike<number> {
+  return ArrayBuffer.isView(value) || Array.isArray(value);
 }
 
 export function isCoordinate(value: unknown): value is number {

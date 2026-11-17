@@ -24,6 +24,8 @@ import type {
   GraphView,
 } from "./types.js";
 
+/** The style of an edge whose style function returned nothing: one shared object, so one slot. */
+const NO_STYLE: GraphEdgeStyle = Object.freeze({});
 const IDLE: GraphItemState = Object.freeze({ hovered: false, focused: false, selected: false, dragging: false });
 /** Pointer travel, in CSS pixels, before a press becomes a pan or a drag instead of a click. */
 const DRAG_THRESHOLD = 4;
@@ -89,7 +91,17 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
 
   let model: GraphModel<N, E> = buildGraphModel<N, E>(options.nodes ?? [], options.edges ?? [], options.limits);
   let nodeStyles = new Float32Array(0);
-  let edgeStyles = new Float32Array(0);
+  /**
+   * Edge styles as a table of records, one per distinct style object a style function returned (or one for a
+   * plain style), and each edge's slot in it: millions of edges sharing a few styles cost a few records.
+   */
+  let edgeStyles = new Float32Array(EDGE_FLOATS * 16);
+  let edgeSlotCount = 0;
+  let edgeSlot = new Uint32Array(0);
+  /** Slots by the style object written there, for this styling pass. */
+  let slotOfStyle = new Map<GraphEdgeStyle, number>();
+  /** Edges restyled one by one (hover, selection) whose style is their own: each reuses its private slot. */
+  let privateSlot = new Map<number, number>();
   let order = new Uint32Array(0);
   let halfW = new Float32Array(0);
   let halfH = new Float32Array(0);
@@ -182,6 +194,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       resolveTheme();
       restyleAll();
       fitOnLoad();
+      warmIncidence();
       scheduleRender();
       return {
         dispose: () => plugin.dispose(),
@@ -204,7 +217,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       const next = buildGraphModel<N, E>(nodes, edges, options.limits);
       const keep = (index: number, from: GraphModel<N, E>, kind: "node" | "edge"): number => {
         if (index < 0) return -1;
-        if (kind === "edge") return index < from.edges.length ? next.edgeIndexOf(from.edgeIdOf(index)) : -1;
+        if (kind === "edge") return index < from.edgeCount ? next.edgeIndexOf(from.edgeIdOf(index)) : -1;
         const id = from.nodes[index]?.id;
         const found = id === undefined ? undefined : next.nodeIndex.get(id);
         return found ?? -1;
@@ -228,11 +241,12 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       }
       model = next;
       spatial.invalidatePositions();
+      warmIncidence();
       if (lifted >= 0) lift(draggingNode);
       restyleAll();
       fitOnLoad();
       scheduleRender();
-      return { nodes: next.nodes.length, edges: next.edges.length, skippedEdges: next.skippedEdges } satisfies GraphSetResult;
+      return { nodes: next.nodes.length, edges: next.edgeCount, skippedEdges: next.skippedEdges } satisfies GraphSetResult;
     },
 
     setPositions(positions) {
@@ -358,13 +372,38 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
 
   function edgeStyleOf(index: number): GraphEdgeStyle {
     const style = options.edgeStyle;
-    if (typeof style !== "function") return style ?? {};
+    if (typeof style !== "function") return style ?? NO_STYLE;
     try {
-      return style(model.edges[index]!, stateOfEdge(index)) ?? {};
+      return style(model.edgeView(index), stateOfEdge(index)) ?? NO_STYLE;
     } catch (error) {
       console.error("BlazePlot graph: edgeStyle threw.", error);
-      return {};
+      return NO_STYLE;
     }
+  }
+
+  /**
+   * Give edge `index` its style's slot: the slot already holding that style object, else a new one (for a single
+   * edge restyled on its own, the private slot it had before).
+   */
+  function writeEdge(index: number, single: boolean): void {
+    const style = edgeStyleOf(index);
+    let slot = slotOfStyle.get(style);
+    if (slot === undefined) {
+      slot = single ? privateSlot.get(index) : undefined;
+      if (slot === undefined) {
+        slot = edgeSlotCount++;
+        if (single) privateSlot.set(index, slot);
+        if (edgeSlotCount * EDGE_FLOATS > edgeStyles.length) {
+          const grown = new Float32Array(edgeStyles.length * 2);
+          grown.set(edgeStyles);
+          edgeStyles = grown;
+        }
+      }
+      writeEdgeStyle(edgeStyles, slot * EDGE_FLOATS, style, colors, defaults, edgesPickable);
+      // A private slot is not shared: another edge returning this object gets its own.
+      if (!single) slotOfStyle.set(style, slot);
+    }
+    edgeSlot[index] = slot;
   }
 
   function writeNode(index: number): void {
@@ -375,15 +414,18 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
 
   function restyleAll(): void {
     const nodes = model.nodes.length;
-    const edges = model.edges.length;
+    const edges = model.edgeCount;
     if (nodeStyles.length !== nodes * NODE_FLOATS) {
       nodeStyles = new Float32Array(nodes * NODE_FLOATS);
       halfW = new Float32Array(nodes);
       halfH = new Float32Array(nodes);
     }
-    if (edgeStyles.length !== edges * EDGE_FLOATS) edgeStyles = new Float32Array(edges * EDGE_FLOATS);
+    if (edgeSlot.length !== edges) edgeSlot = new Uint32Array(edges);
+    edgeSlotCount = 0;
+    slotOfStyle = new Map();
+    privateSlot = new Map();
     for (let i = 0; i < nodes; i++) writeNode(i);
-    for (let i = 0; i < edges; i++) writeEdgeStyle(edgeStyles, i * EDGE_FLOATS, edgeStyleOf(i), colors, defaults, edgesPickable);
+    for (let i = 0; i < edges; i++) writeEdge(i, false);
     sortOrder();
     spatial.invalidateStyles();
   }
@@ -405,8 +447,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
 
   function restyleEdges(...indices: number[]): void {
     for (const index of indices) {
-      if (index < 0 || index >= model.edges.length) continue;
-      writeEdgeStyle(edgeStyles, index * EDGE_FLOATS, edgeStyleOf(index), colors, defaults, edgesPickable);
+      if (index < 0 || index >= model.edgeCount) continue;
+      writeEdge(index, true);
     }
   }
 
@@ -564,26 +606,52 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
    * How many nodes and edges a still frame draws one by one before it draws the aggregate level: what each engine
    * draws in a few milliseconds on a phone, unless `levelOfDetail` says otherwise (`false` never aggregates).
    */
-  function detailBudget(): { nodes: number; edges: number } {
+  function detailBudget(): { nodes: number; edges: number; fill: number } {
     const lod = options.levelOfDetail;
-    if (lod === false) return { nodes: Infinity, edges: Infinity };
+    if (lod === false) return { nodes: Infinity, edges: Infinity, fill: Infinity };
     const canvas = chart?.renderer.name === "canvas2d";
-    return { nodes: lod?.nodes ?? (canvas ? 12_000 : 60_000), edges: lod?.edges ?? (canvas ? 25_000 : 150_000) };
+    return {
+      nodes: lod?.nodes ?? (canvas ? 12_000 : 60_000),
+      edges: lod?.edges ?? (canvas ? 25_000 : 150_000),
+      fill: lod?.fill ?? (canvas ? 700_000 : 2_000_000),
+    };
   }
 
   /** Lift a node (its index) onto the overlay with its edges, or put it back with -1; the still layer is drawn again. */
   function lift(index: number): void {
     // Without an overlay (no surface could be made) the node stays in the still layer, drawn again each move.
-    if (index < 0 && lifted >= 0) spatial.invalidatePositions();
+    // A drag that ends moved one node: the index takes it and its edges as moved, without a rebuild.
+    if (index < 0 && lifted >= 0 && liftedEdges) spatial.moveNode(lifted, liftedEdges);
     lifted = index >= 0 && ensureFlowSurface() ? index : -1;
     if (lifted < 0) {
       liftedEdges = null;
     } else {
-      const edges: number[] = [];
-      for (let i = 0; i < model.edges.length; i++) if (model.source[i] === index || model.target[i] === index) edges.push(i);
-      liftedEdges = Uint32Array.from(edges);
+      liftedEdges = edgesOf(index);
     }
     scheduleRender();
+  }
+
+  let warmHandle: number | ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * Build the model's incidence index while the browser is idle, so the first drag finds a node's edges at once
+   * instead of walking every edge.
+   */
+  function warmIncidence(): void {
+    if (!options.draggable) return;
+    const view = chart?.dom.view as (Window & { requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number }) | undefined;
+    const target = model;
+    const run = (): void => {
+      warmHandle = undefined;
+      if (!disposed && target === model) target.edgesAt(0);
+    };
+    if (warmHandle !== undefined) return;
+    warmHandle = view?.requestIdleCallback ? view.requestIdleCallback(run, { timeout: 2000 }) : setTimeout(run, 300);
+  }
+
+  /** The edges of a node (the model's incidence index, built on the first drag). */
+  function edgesOf(index: number): Uint32Array {
+    return model.edgesAt(index);
   }
 
   /** The flow layer, between the shapes and the labels, on the chart's engine. */
@@ -638,6 +706,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       model,
       nodeStyles,
       edgeStyles,
+      edgeSlot,
       order,
       centerX: view.centerX,
       centerY: view.centerY,
@@ -804,7 +873,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     const node = nodeAt(px, py);
     if (node >= 0) return { kind: "node", node: model.nodes[node]! };
     const edge = edgeAt(px, py);
-    return edge >= 0 ? { kind: "edge", edge: model.edges[edge]! } : null;
+    return edge >= 0 ? { kind: "edge", edge: model.edgeAt(edge) } : null;
   }
 
   function nodeAt(px: number, py: number): number {
@@ -859,7 +928,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     // Only edges drawn one by one can be picked: none while the aggregate level is drawn.
     for (let k = painter.drawnEdgeCount - 1; k >= 0; k--) {
       const i = painter.drawnEdges[k]!;
-      if (edgeStyles[i * EDGE_FLOATS + E_PICKABLE] !== 1) continue;
+      if (edgeStyles[edgeSlot[i]! * EDGE_FLOATS + E_PICKABLE] !== 1) continue;
       const g = i * EDGE_GEOMETRY;
       if (geometry[g + 6] !== 1) continue;
       const distance = edgeDistanceSq(geometry, g, px, py);
@@ -990,7 +1059,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     } else if (current.kind === "drag") {
       const node = current.node;
       draggingNode = -1;
-      spatial.invalidatePositions();
+      if (lifted < 0) spatial.moveNode(node, edgesOf(node));
       lift(-1);
       restyleNodes(node);
       scheduleRender();
@@ -1005,7 +1074,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     if (gesture?.kind === "drag") {
       const node = gesture.node;
       draggingNode = -1;
-      spatial.invalidatePositions();
+      if (lifted < 0) spatial.moveNode(node, edgesOf(node));
       lift(-1);
       restyleNodes(node);
       if (node < model.nodes.length) options.onNodeDragEnd?.(model.nodes[node]!, model.x[node]!, model.y[node]!);
@@ -1045,7 +1114,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       const before = hoveredEdge;
       hoveredEdge = edge;
       restyleEdges(before, edge);
-      options.onEdgeHover?.(edge >= 0 ? model.edges[edge]! : null);
+      options.onEdgeHover?.(edge >= 0 ? model.edgeAt(edge) : null);
       scheduleRender();
     }
     setCursorState();

@@ -47,7 +47,7 @@ describe("graph model", () => {
     console.warn = (...args: unknown[]) => void warnings.push(args);
     try {
       const model = buildGraphModel(nodes, [{ source: "a", target: "b" }, { source: "a", target: "b" }]);
-      expect(model.edges).toHaveLength(2);
+      expect(model.edgeCount).toBe(2);
       expect(model.edgeIndexOf("a->b")).toBe(0);
       expect(warnings).toHaveLength(1);
     } finally {
@@ -133,8 +133,8 @@ function frameInput(edgeStyle: GraphEdgeStyle, nodeStyle: GraphNodeStyle = { wid
   const defaults = { nodeFill: [1, 0, 0, 1] as const, edgeColor: [0, 0, 1, 1] as const };
   const nodeStyles = new Float32Array(model.nodes.length * NODE_FLOATS);
   model.nodes.forEach((_, i) => writeNodeStyle(nodeStyles, i * NODE_FLOATS, nodeStyle, colors, defaults));
-  const edgeStyles = new Float32Array(model.edges.length * EDGE_FLOATS);
-  model.edges.forEach((_, i) => writeEdgeStyle(edgeStyles, i * EDGE_FLOATS, edgeStyle, colors, defaults, false));
+  const edgeStyles = new Float32Array(model.edgeCount * EDGE_FLOATS);
+  for (let i = 0; i < model.edgeCount; i++) writeEdgeStyle(edgeStyles, i * EDGE_FLOATS, edgeStyle, colors, defaults, false);
   return {
     model,
     nodeStyles,
@@ -385,8 +385,8 @@ describe("graph level of detail", () => {
     const defaults = { nodeFill: [1, 0, 0, 1] as const, edgeColor: [0, 0, 1, 1] as const };
     const nodeStyles = new Float32Array(n * NODE_FLOATS);
     for (let i = 0; i < n; i++) writeNodeStyle(nodeStyles, i * NODE_FLOATS, { width: 6 }, colors, defaults);
-    const edgeStyles = new Float32Array(model.edges.length * EDGE_FLOATS);
-    for (let i = 0; i < model.edges.length; i++) writeEdgeStyle(edgeStyles, i * EDGE_FLOATS, {}, colors, defaults, false);
+    const edgeStyles = new Float32Array(model.edgeCount * EDGE_FLOATS);
+    for (let i = 0; i < model.edgeCount; i++) writeEdgeStyle(edgeStyles, i * EDGE_FLOATS, {}, colors, defaults, false);
     const spatial = new GraphIndex();
     spatial.ensure(model, new Float32Array(n).fill(3), new Float32Array(n).fill(3));
     const base = { model, nodeStyles, edgeStyles, order: Uint32Array.from({ length: n }, (_, i) => i), width: 200, height: 200, pixelRatio: 1, time: 0, animate: false, minNodePx: 2, background: null, spatial };
@@ -421,5 +421,105 @@ describe("graph level of detail", () => {
     expect(spatial.building).toBe(true);
     expect(spatial.nearest(99)).not.toBeNull();
     expect(farther.shapes[0]!.length / 14).toBeGreaterThan(10);
+  });
+});
+
+describe("graph model incidence", () => {
+  it("lists a node's edges at either end, and nothing for a node out of range", () => {
+    const model = buildGraphModel(nodes, { source: [0, 1, 0, 2], target: [1, 2, 2, 7] });
+    expect(model.edgeCount).toBe(3);
+    expect(model.skippedEdges).toBe(1);
+    expect([...model.edgesAt(2)].sort()).toEqual([1, 2]);
+    expect([...model.edgesAt(0)].sort()).toEqual([0, 2]);
+    expect(model.edgesAt(9)).toHaveLength(0);
+    // Edges given as arrays become objects on demand, with node ids.
+    expect(model.edgeAt(1)).toEqual({ source: "b", target: "c" });
+    expect(model.edgeIdOf(2)).toBe("a->c");
+    expect(() => buildGraphModel(nodes, { source: [0], target: [] })).toThrow(TypeError);
+  });
+});
+
+describe("dense graphs", () => {
+  function complete(count: number) {
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    const nodes = Array.from({ length: count }, (_, i) => ({ id: String(i), x: Math.cos(i * golden) * 10 * Math.sqrt(i + 0.5), y: Math.sin(i * golden) * 10 * Math.sqrt(i + 0.5) }));
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < count; i++) for (let j = i + 1; j < count; j++) {
+      source.push(i);
+      target.push(j);
+    }
+    return { nodes, model: buildGraphModel(nodes, { source: Uint32Array.from(source), target: Uint32Array.from(target) }) };
+  }
+
+  it("hands style functions one reused edge view for edges given as arrays", () => {
+    const { model } = complete(4);
+    const first = model.edgeView(0);
+    expect({ ...first }).toMatchObject({ source: "0", target: "1" });
+    const second = model.edgeView(5);
+    expect(second).toBe(first);
+    expect(second).toMatchObject({ source: "2", target: "3" });
+  });
+
+  it("draws an even, stable sample of a complete graph within its budget, as dense as the whole, without arrows", () => {
+    const { model } = complete(300);
+    const colors = new ColorCache(() => undefined);
+    const defaults = { nodeFill: [1, 0, 0, 1] as const, edgeColor: [0, 0, 1, 1] as const };
+    const nodeStyles = new Float32Array(300 * NODE_FLOATS);
+    for (let i = 0; i < 300; i++) writeNodeStyle(nodeStyles, i * NODE_FLOATS, { width: 4 }, colors, defaults);
+    // One shared edge style record for every edge.
+    const edgeStyles = new Float32Array(EDGE_FLOATS);
+    writeEdgeStyle(edgeStyles, 0, { color: [0, 0, 1, 0.05], arrow: "end" }, colors, defaults, false);
+    const edgeSlot = new Uint32Array(model.edgeCount);
+    const spatial = new GraphIndex();
+    spatial.ensure(model, new Float32Array(300).fill(2), new Float32Array(300).fill(2));
+    const input = {
+      model, nodeStyles, edgeStyles, edgeSlot, order: Uint32Array.from({ length: 300 }, (_, i) => i), width: 400, height: 400, pixelRatio: 1,
+      time: 0, animate: false, minNodePx: 2, background: null, spatial, centerX: 0, centerY: 0, zoom: 1, budget: { nodes: 10_000, edges: 2_000, fill: Infinity },
+    };
+    const painter = new GraphPainter();
+    const surface = recordingSurface();
+    painter.paint(surface, input);
+    const segments = surface.segments[0]!;
+    const drawn = segments.length / 12;
+    expect(drawn).toBeLessThanOrEqual(2_000);
+    expect(drawn).toBeGreaterThan(1_000);
+    // Each stands for about 22 edges: opacity 1 - 0.95^22, about 0.68, held at 0.6.
+    expect(segments[11]).toBeCloseTo(0.6, 5);
+    expect(surface.triangles).toHaveLength(0);
+    // The same sample next frame.
+    const again = recordingSurface();
+    painter.paint(again, input);
+    expect(again.segments[0]!.length).toBe(segments.length);
+    expect([...again.segments[0]!.subarray(0, 24)]).toEqual([...segments.subarray(0, 24)]);
+  });
+
+  it("takes a moved node and its edges without rebuilding the grids", () => {
+    const { model } = complete(50);
+    const spatial = new GraphIndex();
+    const half = new Float32Array(50).fill(2);
+    spatial.ensure(model, half, half);
+    model.x[0] = 5000;
+    model.y[0] = 5000;
+    spatial.moveNode(0, model.edgesAt(0));
+    const out = { data: new Uint32Array(8) };
+    const nodes = spatial.nodes.query({ minX: 4990, minY: 4990, maxX: 5010, maxY: 5010 }, out);
+    expect([...out.data.subarray(0, nodes)]).toContain(0);
+    const edges = spatial.edges.query({ minX: 4990, minY: 4990, maxX: 5010, maxY: 5010 }, out);
+    expect(new Set(out.data.subarray(0, edges)).size).toBe(edges);
+    expect([...out.data.subarray(0, edges)]).toEqual(expect.arrayContaining([...model.edgesAt(0)]));
+  });
+
+  it("grows its hash tables past their first size", () => {
+    const n = 20_000;
+    const x = Float64Array.from({ length: n }, (_, i) => (i % 200) * 3);
+    const y = Float64Array.from({ length: n }, (_, i) => Math.floor(i / 200) * 3);
+    const agg = buildAggregate(1, {
+      count: n, x, y, nodeStyles: new Float32Array(n * 4).fill(1), nodeStride: 4, nodeColorAt: 0,
+      edgeCount: n - 1, source: Uint32Array.from({ length: n - 1 }, (_, i) => i), target: Uint32Array.from({ length: n - 1 }, (_, i) => i + 1),
+      edgeStyles: new Float32Array(4).fill(1), edgeSlot: new Uint32Array(n - 1), edgeStride: 4, edgeColorAt: 0,
+    });
+    expect(agg.cellCount).toBe(n);
+    expect(agg.edgeCount).toBe(n - 1);
   });
 });

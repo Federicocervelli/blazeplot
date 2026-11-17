@@ -80,7 +80,9 @@ class Buffer {
 export interface GraphFrameInput<N, E> {
   readonly model: GraphModel<N, E>;
   readonly nodeStyles: Float32Array;
+  /** Edge style records, and each edge's record (its slot); without slots, edge `i` uses record `i`. */
   readonly edgeStyles: Float32Array;
+  readonly edgeSlot?: Uint32Array;
   /** Node indices in draw order (by layer). */
   readonly order: Uint32Array;
   readonly centerX: number;
@@ -106,8 +108,19 @@ export interface GraphFrameInput<N, E> {
    * the aggregate level when more is visible than `budget` allows. Without it every item is walked.
    */
   readonly spatial?: GraphIndex | null;
-  /** Most nodes and edges a still frame draws one by one before it draws the aggregate instead. */
-  readonly budget?: { readonly nodes: number; readonly edges: number };
+  /**
+   * Most nodes a still frame draws one by one before it draws the aggregate instead, and most edges, counted
+   * and as area (CSS pixels of length times width), before it thins them.
+   */
+  readonly budget?: { readonly nodes: number; readonly edges: number; readonly fill?: number };
+}
+
+/**
+ * The opacity of one edge standing for `boost` edges drawn over each other, 1 - (1 - alpha)^boost, held under
+ * 0.6 so a sample of a dense graph reads as a haze, not as a few hard lines.
+ */
+function boosted(alpha: number, boost: number): number {
+  return Math.min(Math.max(alpha, 0.6), 1 - (1 - alpha) ** boost);
 }
 
 /** Merged edge indices fit below this in a sort key. */
@@ -164,6 +177,8 @@ export class GraphPainter {
   private liftFlowCount = 0;
   /** Whether edges being built now belong to the overlay (their flows go to `liftFlows`). */
   private liftPass = false;
+  /** Edges of a thinned frame are drawn as dense as those they stand for: opacity 1 - (1 - alpha)^boost. */
+  private alphaBoost = 1;
   /** The point `exit` found, kept in fields so the hot loop allocates nothing. */
   private exitX = 0;
   private exitY = 0;
@@ -226,20 +241,22 @@ export class GraphPainter {
       const nodeRect: Rect = { minX: rect.minX - pad, minY: rect.minY - pad, maxX: rect.maxX + pad, maxY: rect.maxY + pad };
       const budget = input.budget ?? { nodes: 60_000, edges: 150_000 };
       const visible = spatial.nodes.countIn(nodeRect);
-      const degree = model.nodes.length > 0 ? model.edges.length / model.nodes.length : 0;
-      if (visible > budget.nodes || visible * degree > budget.edges) {
+      // Only too many visible nodes calls for the aggregate: while nodes can still be told apart, too many edges
+      // are thinned below instead, so a dense graph keeps its nodes.
+      if (visible > budget.nodes) {
         this.aggregated = true;
         const target = AGGREGATE_CELL_PX / zoom;
         const level = Math.max(0, Math.ceil(Math.log2(target / spatial.base)));
         // A level not built yet is built between frames; meanwhile the nearest built one is drawn, or a sample of
         // the visible nodes when none is.
-        const agg = spatial.level(level, model, input.nodeStyles, input.edgeStyles) ?? spatial.nearest(level);
+        const agg = spatial.level(level, model, input.nodeStyles, input.edgeStyles, input.edgeSlot) ?? spatial.nearest(level);
         if (agg) this.paintAggregate(input, agg, budget.edges);
         else this.paintSample(input, nodeRect, budget.nodes);
         if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
       } else {
-        const edgeCount = spatial.edges.query(rect, this.edgeQuery);
-        this.buildEdges(input, this.edgeQuery.data.subarray(0, edgeCount), true);
+        const kept = this.selectEdges(input, rect, budget.edges, budget.fill ?? Infinity);
+        this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
+        this.alphaBoost = 1;
         if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
         if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
         const nodeCount = spatial.nodes.query(nodeRect, this.nodeQuery);
@@ -262,6 +279,75 @@ export class GraphPainter {
       }
       this.drawnNodes[this.drawnNodeCount++] = lifted;
     }
+  }
+
+  /**
+   * The edges to draw one by one, written to the front of `edgeQuery`; sets `alphaBoost`. All edges in view while
+   * they fit `budget` (a count) and `fill` (area: CSS pixels of length times width); otherwise an even sample that
+   * fits, taken in the index's fixed order, each drawn with the opacity of the edges it stands for. The sample is
+   * stable from frame to frame, and a larger share only adds edges to it. When the grid finds few candidates the
+   * grid query is thinned; when it finds many (a dense graph, whose edges all cross the view) the order is walked
+   * from its start, culling as it goes, until the budget is spent, so the cost follows the budget, not the graph.
+   */
+  private selectEdges<N, E>(input: GraphFrameInput<N, E>, rect: Rect, budget: number, fill: number): number {
+    const { model, edgeStyles, zoom } = input;
+    const spatial = input.spatial!;
+    const slots = input.edgeSlot;
+    const total = model.edgeCount;
+    const data = (): Uint32Array => this.edgeQuery.data;
+    const widthOf = (e: number): number => Math.max(1, edgeStyles[(slots ? slots[e]! : e) * EDGE_FLOATS + E_WIDTH]!);
+    // An edge's on-screen area, and whether its box meets the view (both in graph units, scaled by zoom).
+    const area = (e: number): number => {
+      const s = model.source[e]!;
+      const t = model.target[e]!;
+      const dx = model.x[t]! - model.x[s]!;
+      const dy = model.y[t]! - model.y[s]!;
+      return Math.sqrt(dx * dx + dy * dy) * zoom * widthOf(e);
+    };
+    const meets = (e: number): boolean => {
+      const s = model.source[e]!;
+      const t = model.target[e]!;
+      const x0 = model.x[s]!;
+      const x1 = model.x[t]!;
+      const y0 = model.y[s]!;
+      const y1 = model.y[t]!;
+      return !((x0 < rect.minX && x1 < rect.minX) || (x0 > rect.maxX && x1 > rect.maxX) || (y0 < rect.minY && y1 < rect.minY) || (y0 > rect.maxY && y1 > rect.maxY));
+    };
+    this.alphaBoost = 1;
+    if (spatial.edges.countIn(rect) <= budget * 2) {
+      const count = spatial.edges.query(rect, this.edgeQuery);
+      let spent = 0;
+      for (let k = 0; k < count; k++) spent += area(data()[k]!);
+      if (count <= budget && spent <= fill) return count;
+      const share = Math.min(budget / count, fill / spent);
+      const limit = share * total;
+      let kept = 0;
+      const buffer = data();
+      for (let k = 0; k < count; k++) {
+        const e = buffer[k]!;
+        if ((e * spatial.inverse) % total < limit) buffer[kept++] = e;
+      }
+      this.alphaBoost = kept > 0 ? count / kept : 1;
+      return kept;
+    }
+    let kept = 0;
+    let spent = 0;
+    let walked = 0;
+    let buffer = data();
+    for (; walked < total && kept < budget && spent < fill; walked++) {
+      const e = (walked * spatial.stride) % total;
+      if (!meets(e)) continue;
+      if (kept >= buffer.length) {
+        const grown = new Uint32Array(Math.max(1024, buffer.length * 2));
+        grown.set(buffer);
+        buffer = this.edgeQuery.data = grown;
+      }
+      buffer[kept++] = e;
+      spent += area(e);
+    }
+    // What was walked is an even share of every edge, so the kept edges stand for total / walked each.
+    this.alphaBoost = walked > 0 ? total / walked : 1;
+    return kept;
   }
 
   /** A new projection frame: every node counts as not yet projected. */
@@ -318,9 +404,7 @@ export class GraphPainter {
     const sx = (x: number): number => width / 2 + (x - centerX) * zoom;
     const sy = (y: number): number => height / 2 + (y - centerY) * zoom;
     // A merged edge is as wide as the edges are, from the first edge's style.
-    const lineWidth = model.edges.length > 0 ? Math.max(0.5, edgeStyles[E_WIDTH]!) : 1;
-    let visible = 0;
-    let threshold = 0;
+    const lineWidth = model.edgeCount > 0 ? Math.max(0.5, edgeStyles[E_WIDTH]!) : 1;
     const onScreen = (k: number): boolean => {
       const ax = sx(agg.cellX[agg.edgeA[k]!]!);
       const ay = sy(agg.cellY[agg.edgeA[k]!]!);
@@ -328,14 +412,31 @@ export class GraphPainter {
       const by = sy(agg.cellY[agg.edgeB[k]!]!);
       return !((ax < 0 && bx < 0) || (ax > width && bx > width) || (ay < 0 && by < 0) || (ay > height && by > height));
     };
-    for (let k = 0; k < agg.edgeCount; k++) if (onScreen(k)) visible++;
-    if (visible > edgeBudget) {
-      // Keep the heaviest: the weight of the `edgeBudget`-th heaviest edge on screen is the cut.
-      const weights = new Uint32Array(visible);
-      let n = 0;
-      for (let k = 0; k < agg.edgeCount; k++) if (onScreen(k)) weights[n++] = agg.edgeWeight[k]!;
-      weights.sort();
-      threshold = weights[visible - edgeBudget]!;
+    const fill = input.budget?.fill ?? Infinity;
+    // The merged edges on screen, heaviest first, are kept until the count or the area budget is spent: the
+    // weight of the last one kept is the cut.
+    let visible = 0;
+    let threshold = 0;
+    if (this.aggKeys.length < agg.edgeCount) this.aggKeys = new Float64Array(agg.edgeCount);
+    const weights = this.aggKeys;
+    for (let k = 0; k < agg.edgeCount; k++) {
+      if (!onScreen(k)) continue;
+      // Weight first (descending through the negative), then the index.
+      weights[visible++] = -agg.edgeWeight[k]! * AGG_INDEX_SPAN + k;
+    }
+    if (visible > edgeBudget || fill < Infinity) {
+      const order = weights.subarray(0, visible).sort();
+      let spent = 0;
+      let taken = 0;
+      for (; taken < visible && taken < edgeBudget && spent < fill; taken++) {
+        const key = order[taken]!;
+        const k = key + Math.ceil(-key / AGG_INDEX_SPAN) * AGG_INDEX_SPAN;
+        const ax = agg.cellX[agg.edgeA[k]!]! - agg.cellX[agg.edgeB[k]!]!;
+        const ay = agg.cellY[agg.edgeA[k]!]! - agg.cellY[agg.edgeB[k]!]!;
+        spent += Math.sqrt(ax * ax + ay * ay) * zoom * lineWidth;
+      }
+      // Lighter merged edges than the last one kept are left out (equal ones stay: ties are not split).
+      if (taken < visible) threshold = Math.ceil(-order[Math.max(0, taken - 1)]! / AGG_INDEX_SPAN);
     }
     // Colors are quantized (5 bits a channel, 16 opacities) and edges sorted by them, so engines that stroke per
     // style (Canvas 2D) draw a few dozen paths instead of one per merged edge. At this size the steps cannot be seen.
@@ -564,21 +665,22 @@ export class GraphPainter {
   private buildEdges<N, E>(input: GraphFrameInput<N, E>, subset: Uint32Array | null, still: boolean): void {
     const { model, edgeStyles, width, height, pixelRatio: dpr } = input;
     const lifted = still ? (input.lifted ?? -1) : -1;
+    const slots = input.edgeSlot;
     // A visible-only frame projects nodes as edges need them (an edge's far end may be off screen).
     const lazy = subset !== null;
-    if (still && this.drawnEdges.length < (subset ? subset.length : model.edges.length)) this.drawnEdges = new Uint32Array(subset ? subset.length : model.edges.length);
-    const count = subset ? subset.length : model.edges.length;
-    if (this.edgeScreen.length < model.edges.length * EDGE_GEOMETRY) this.edgeScreen = new Float32Array(model.edges.length * EDGE_GEOMETRY);
+    if (still && this.drawnEdges.length < (subset ? subset.length : model.edgeCount)) this.drawnEdges = new Uint32Array(subset ? subset.length : model.edgeCount);
+    const count = subset ? subset.length : model.edgeCount;
+    if (this.edgeScreen.length < model.edgeCount * EDGE_GEOMETRY) this.edgeScreen = new Float32Array(model.edgeCount * EDGE_GEOMETRY);
     const ns = this.nodeScreen;
     const geometry = this.edgeScreen;
     for (let k = 0; k < count; k++) {
       const i = subset ? subset[k]! : k;
-      if (i >= model.edges.length) continue;
+      if (i >= model.edgeCount) continue;
       if (lifted >= 0 && (model.source[i] === lifted || model.target[i] === lifted)) {
         geometry[i * EDGE_GEOMETRY + 6] = 0;
         continue;
       }
-      const s = i * EDGE_FLOATS;
+      const s = (slots ? slots[i]! : i) * EDGE_FLOATS;
       const g = i * EDGE_GEOMETRY;
       geometry[g + 6] = 0;
       if (lazy) {
@@ -631,7 +733,8 @@ export class GraphPainter {
       const visibleLength = Math.sqrt(vx * vx + vy * vy);
       // Under a device pixel an edge is not seen; it stays pickable through its geometry.
       if (visibleLength * dpr < 1) continue;
-      const drawArrows = arrowSize > 0 && visibleLength > arrowSize * 1.5;
+      // A thinned frame draws a sample of the edges: their arrowheads would be noise, not direction.
+      const drawArrows = this.alphaBoost === 1 && arrowSize > 0 && visibleLength > arrowSize * 1.5;
       if (drawArrows && arrows & 1) {
         let tx = ex - cx;
         let ty = ey - cy;
@@ -728,7 +831,7 @@ export class GraphPainter {
       d[o + 8] = styles[colorAt]!;
       d[o + 9] = styles[colorAt + 1]!;
       d[o + 10] = styles[colorAt + 2]!;
-      d[o + 11] = styles[colorAt + 3]!;
+      d[o + 11] = this.alphaBoost === 1 ? styles[colorAt + 3]! : boosted(styles[colorAt + 3]!, this.alphaBoost);
       along += Math.sqrt((qx - px) * (qx - px) + (qy - py) * (qy - py));
       px = qx;
       py = qy;
@@ -791,7 +894,7 @@ export class GraphPainter {
       d[o + 2] = styles[colorAt]!;
       d[o + 3] = styles[colorAt + 1]!;
       d[o + 4] = styles[colorAt + 2]!;
-      d[o + 5] = styles[colorAt + 3]!;
+      d[o + 5] = this.alphaBoost === 1 ? styles[colorAt + 3]! : boosted(styles[colorAt + 3]!, this.alphaBoost);
     }
   }
 

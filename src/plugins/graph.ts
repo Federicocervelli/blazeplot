@@ -5,6 +5,7 @@ export type {
   GraphBackground,
   GraphColor,
   GraphEdge,
+  GraphEdgeArrays,
   GraphEdgeLabelFrame,
   GraphEdgeLabelStyle,
   GraphEdgeStyle,

@@ -52,7 +52,7 @@ const budgets: Budget[] = [
   { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_300 },
   { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 10_800 }, // +1_200 layout-free pointer path (offsetX/Y, cached label and plot size) and skipped equal DOM writes
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 17_700 },
-  { label: "graph plugin", path: "dist/plugins/graph.js", maxBytes: 68_800 }, // +18_500 spatial grids, visible-only frames, the aggregate level of detail and its sliced builder; +2_200 dragged node lifted onto the overlay; +4_500 flow layer, overscan, and CSS-moved layers during pans and zooms; +2_300 dashed node borders and round flow dots; model, styles, painter, labels, icons, and navigation; the GPU programs live in the core graph
+  { label: "graph plugin", path: "dist/plugins/graph.js", maxBytes: 75_800 }, // +6_800 typed-array edges, shared edge style records, fill-budgeted edge sampling, moved-node grid updates, incidence index; +18_500 spatial grids, visible-only frames, the aggregate level of detail and its sliced builder; +2_200 dragged node lifted onto the overlay; +4_500 flow layer, overscan, and CSS-moved layers during pans and zooms; +2_300 dashed node borders and round flow dots; model, styles, painter, labels, icons, and navigation; the GPU programs live in the core graph
   { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 11_900 },
 ];
 

@@ -59,7 +59,7 @@ export function drawLabels<N, E>(input: LabelPassInput<N, E>): void {
       ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, middle.x * dpr, middle.y * dpr);
       ctx.save();
       try {
-        input.drawEdgeLabel(ctx, model.edges[i]!, { screenX: middle.x, screenY: middle.y, angle: middle.angle, normalX: middle.normalX, normalY: middle.normalY, zoom, state: input.edgeState(i) });
+        input.drawEdgeLabel(ctx, model.edgeAt(i), { screenX: middle.x, screenY: middle.y, angle: middle.angle, normalX: middle.normalX, normalY: middle.normalY, zoom, state: input.edgeState(i) });
       } catch (error) {
         failed ??= error;
       }

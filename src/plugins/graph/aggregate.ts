@@ -38,6 +38,8 @@ export interface AggregateSource {
   readonly source: Uint32Array;
   readonly target: Uint32Array;
   readonly edgeStyles: Float32Array;
+  /** Each edge's style record, when records are shared; else edge `e` uses record `e`. */
+  readonly edgeSlot?: Uint32Array;
   readonly edgeStride: number;
   readonly edgeColorAt: number;
 }
@@ -207,7 +209,7 @@ export class AggregateJob {
       this.edgeA[k] = lo;
       this.edgeB[k] = hi;
       this.edgeWeight[k]!++;
-      const o = e * f.edgeStride + f.edgeColorAt;
+      const o = (f.edgeSlot ? f.edgeSlot[e]! : e) * f.edgeStride + f.edgeColorAt;
       const q = k * 4;
       this.edgeColors[q]! += styles[o]!;
       this.edgeColors[q + 1]! += styles[o + 1]!;

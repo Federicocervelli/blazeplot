@@ -60,9 +60,26 @@ export class PointGrid {
   private items = new Uint32Array(0);
   private cellOf = new Uint32Array(0);
   private count = 0;
+  /** Items moved since the build: every query returns them, and their stale cell entries are skipped. */
+  private moved: number[] = [];
+  private isMoved = new Uint8Array(0);
+
+  /** How many items moved since the build. */
+  get movedCount(): number {
+    return this.moved.length;
+  }
+
+  /** Mark an item as moved: it is returned by every query until the next build. */
+  markMoved(i: number): void {
+    if (i >= this.isMoved.length || this.isMoved[i]) return;
+    this.isMoved[i] = 1;
+    this.moved.push(i);
+  }
 
   build(count: number, x: Float64Array, y: Float64Array): void {
     this.count = count;
+    this.moved = [];
+    this.isMoved = new Uint8Array(count);
     if (count === 0) {
       this.starts = new Uint32Array(1);
       return;
@@ -108,13 +125,25 @@ export class PointGrid {
     const r0 = frame.row(rect.minY);
     const r1 = frame.row(rect.maxY);
     let n = 0;
+    const moved = this.moved.length > 0;
     for (let r = r0; r <= r1; r++) {
       const first = this.starts[r * frame.cols + c0]!;
       const last = this.starts[r * frame.cols + c1 + 1]!;
       const size = last - first;
       if (n + size > out.data.length) out.data = grow(out.data, n + size);
-      out.data.set(this.items.subarray(first, last), n);
-      n += size;
+      if (!moved) {
+        out.data.set(this.items.subarray(first, last), n);
+        n += size;
+        continue;
+      }
+      for (let k = first; k < last; k++) {
+        const i = this.items[k]!;
+        if (!this.isMoved[i]) out.data[n++] = i;
+      }
+    }
+    if (moved) {
+      if (n + this.moved.length > out.data.length) out.data = grow(out.data, n + this.moved.length);
+      for (const i of this.moved) out.data[n++] = i;
     }
     return n;
   }
@@ -127,7 +156,7 @@ export class PointGrid {
     const c1 = frame.col(rect.maxX);
     const r0 = frame.row(rect.minY);
     const r1 = frame.row(rect.maxY);
-    let n = 0;
+    let n = this.moved.length;
     for (let r = r0; r <= r1; r++) n += this.starts[r * frame.cols + c1 + 1]! - this.starts[r * frame.cols + c0]!;
     return n;
   }
@@ -144,6 +173,21 @@ export class BoxGrid {
   private seen = new Uint32Array(0);
   private stamp = 0;
   private count = 0;
+  /** Edges moved since the build (their node was dragged): every query returns them, their stale entries skipped. */
+  private moved: number[] = [];
+  private isMoved = new Uint8Array(0);
+
+  /** How many edges moved since the build. */
+  get movedCount(): number {
+    return this.moved.length;
+  }
+
+  /** Mark an edge as moved: it is returned by every query until the next build. */
+  markMoved(e: number): void {
+    if (e >= this.isMoved.length || this.isMoved[e]) return;
+    this.isMoved[e] = 1;
+    this.moved.push(e);
+  }
 
   /**
    * Build over `count` edges between points (`ax[source]`, `ay[source]`) and the target's, positions in graph
@@ -151,6 +195,8 @@ export class BoxGrid {
    */
   build(count: number, source: Uint32Array, target: Uint32Array, x: Float64Array, y: Float64Array, pad: number): void {
     this.count = count;
+    this.moved = [];
+    this.isMoved = new Uint8Array(count);
     if (this.seen.length < count) this.seen = new Uint32Array(count);
     else this.seen.fill(0, 0, count);
     this.stamp = 0;
@@ -228,6 +274,19 @@ export class BoxGrid {
     this.long = long;
   }
 
+  /** An upper bound of what `query(rect)` returns (edges in several cells count once per cell), at a row's cost. */
+  countIn(rect: Rect): number {
+    if (this.count === 0) return 0;
+    const frame = this.frame;
+    const c0 = frame.col(rect.minX);
+    const c1 = frame.col(rect.maxX);
+    const r0 = frame.row(rect.minY);
+    const r1 = frame.row(rect.maxY);
+    let n = this.long.length + this.moved.length;
+    for (let r = r0; r <= r1; r++) n += this.starts[r * frame.cols + c1 + 1]! - this.starts[r * frame.cols + c0]!;
+    return n;
+  }
+
   /** Edges whose box may overlap `rect`, each once, plus every long edge. Returns how many were written. */
   query(rect: Rect, out: { data: Uint32Array }): number {
     if (this.count === 0) return 0;
@@ -253,13 +312,17 @@ export class BoxGrid {
       need(last - first);
       for (let k = first; k < last; k++) {
         const i = this.items[k]!;
-        if (seen[i] === stamp) continue;
+        if (seen[i] === stamp || this.isMoved[i]) continue;
         seen[i] = stamp;
         data[n++] = i;
       }
     }
-    need(this.long.length);
-    for (let k = 0; k < this.long.length; k++) data[n++] = this.long[k]!;
+    need(this.long.length + this.moved.length);
+    for (let k = 0; k < this.long.length; k++) {
+      const i = this.long[k]!;
+      if (!this.isMoved[i]) data[n++] = i;
+    }
+    for (const i of this.moved) data[n++] = i;
     return n;
   }
 }

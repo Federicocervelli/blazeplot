@@ -16,17 +16,46 @@ export class GraphIndex {
   maxHalf = 0;
   /** The aggregation base cell: a level `L` has cells `base * 2^L` graph units across. */
   base = 1;
+  /**
+   * A fixed pseudo-random order of the edges, `perm(k) = k * stride mod count`, and its inverse `rank(e) =
+   * e * inverse mod count`: any prefix of it is an even sample of the graph, with no storage and no sort.
+   */
+  stride = 1;
+  inverse = 1;
+  private orderedFor = -1;
   private positionsDirty = true;
   private stylesDirty = true;
   private readonly levels = new Map<number, Aggregate>();
   /** The level being built between frames, if any. */
   private job: AggregateJob | null = null;
+  /** Built levels whose nodes have moved since: drawn while a fresh one is built. */
+  private staleLevels = new Set<number>();
+  private nodeTotal = 0;
+  private edgeTotal = 0;
 
   /** Positions changed (a new graph, `setPositions`, a finished drag): rebuild everything on next use. */
   invalidatePositions(): void {
     this.positionsDirty = true;
     this.levels.clear();
+    this.staleLevels.clear();
     this.job = null;
+  }
+
+  /**
+   * One node moved (a finished drag), with its edges: the grids return them from every query until a rebuild,
+   * which is put off until many have moved, so a drag never ends with a rebuild over millions of edges. Built
+   * aggregate levels are kept for drawing while they are rebuilt between frames.
+   */
+  moveNode(node: number, edges: ArrayLike<number>): void {
+    if (this.positionsDirty) return;
+    this.nodes.markMoved(node);
+    for (let k = 0; k < edges.length; k++) this.edges.markMoved(edges[k]!);
+    const edgeCount = this.edgeTotal;
+    if (this.edges.movedCount > Math.max(20_000, edgeCount * 0.02) || this.nodes.movedCount > Math.max(2_000, this.nodeTotal * 0.02)) {
+      this.invalidatePositions();
+      return;
+    }
+    this.staleLevels = new Set(this.levels.keys());
   }
 
   /** Styles changed (sizes, colors): sizes pad the queries, and colors are in the aggregates. */
@@ -44,6 +73,8 @@ export class GraphIndex {
   /** Bring the grids up to date. Cheap when nothing changed. */
   ensure<N, E>(model: GraphModel<N, E>, halfW: Float32Array, halfH: Float32Array): void {
     const count = model.nodes.length;
+    this.nodeTotal = count;
+    this.edgeTotal = model.edgeCount;
     if (this.stylesDirty || this.positionsDirty) {
       let maxHalf = 0;
       let sum = 0;
@@ -56,9 +87,13 @@ export class GraphIndex {
       // Level 0 cells are about a node across: aggregation starts where single nodes stop being visible.
       this.base = count > 0 ? Math.max((sum / count) * 2, 1e-6) : 1;
     }
+    if (this.orderedFor !== model.edgeCount) {
+      [this.stride, this.inverse] = coprimeNear(model.edgeCount, 0.6180339887);
+      this.orderedFor = model.edgeCount;
+    }
     if (this.positionsDirty || this.stylesDirty) {
       this.nodes.build(count, model.x, model.y);
-      this.edges.build(model.edges.length, model.source, model.target, model.x, model.y, this.maxHalf);
+      this.edges.build(model.edgeCount, model.source, model.target, model.x, model.y, this.maxHalf);
     }
     this.positionsDirty = false;
     this.stylesDirty = false;
@@ -68,9 +103,10 @@ export class GraphIndex {
    * The aggregate at `level` when it is built. Otherwise starts building it (replacing a job for another level)
    * and returns null: draw `nearest(level)` meanwhile.
    */
-  level<N, E>(level: number, model: GraphModel<N, E>, nodeStyles: Float32Array, edgeStyles: Float32Array): Aggregate | null {
+  level<N, E>(level: number, model: GraphModel<N, E>, nodeStyles: Float32Array, edgeStyles: Float32Array, edgeSlot?: Uint32Array): Aggregate | null {
     const found = this.levels.get(level);
-    if (found) return found;
+    const stale = this.staleLevels.has(level);
+    if (found && !stale) return found;
     if (this.job?.level !== level) {
       this.job = new AggregateJob(level, this.base * 2 ** level, {
         count: model.nodes.length,
@@ -79,15 +115,17 @@ export class GraphIndex {
         nodeStyles,
         nodeStride: NODE_FLOATS,
         nodeColorAt: N_FILL,
-        edgeCount: model.edges.length,
+        edgeCount: model.edgeCount,
         source: model.source,
         target: model.target,
         edgeStyles,
+        ...(edgeSlot ? { edgeSlot } : {}),
         edgeStride: EDGE_FLOATS,
         edgeColorAt: E_COLOR,
       });
     }
-    return null;
+    // A stale level is still drawn until the fresh one is ready.
+    return found ?? null;
   }
 
   /** The built level nearest `level` (a coarser one on a tie), or null when none is built. */
@@ -111,9 +149,31 @@ export class GraphIndex {
     const done = job.step(now, deadline);
     if (!done) return false;
     this.job = null;
+    this.staleLevels.delete(job.level);
     // A few levels are kept: a zoom back and forth reuses them.
     if (this.levels.size >= 5) this.levels.delete(this.levels.keys().next().value!);
     this.levels.set(job.level, done);
     return true;
   }
+}
+
+/** A stride near `fraction * n` coprime with `n`, and its inverse modulo `n` (both 1 for n of 2 or less). */
+function coprimeNear(n: number, fraction: number): [number, number] {
+  if (n <= 2) return [1, 1];
+  let a = Math.max(1, Math.round(n * fraction));
+  while (gcd(a, n) !== 1) a++;
+  // Extended Euclid for the inverse.
+  let [oldR, r] = [a, n];
+  let [oldS, t] = [1, 0];
+  while (r !== 0) {
+    const q = Math.floor(oldR / r);
+    [oldR, r] = [r, oldR - q * r];
+    [oldS, t] = [t, oldS - q * t];
+  }
+  return [a, ((oldS % n) + n) % n];
+}
+
+function gcd(a: number, b: number): number {
+  while (b !== 0) [a, b] = [b, a % b];
+  return a;
 }

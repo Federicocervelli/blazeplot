@@ -3072,7 +3072,7 @@ function parseFoldedStacks<T = unknown>(input: string, separator?: string): Flam
 
 ### `blazeplot/plugins/graph`
 
-22 exports.
+23 exports.
 
 #### interface GraphBackground
 
@@ -3100,6 +3100,18 @@ interface GraphEdge<E = unknown> {
     readonly target: string;
     readonly label?: string;
     readonly data?: E;
+}
+```
+
+#### interface GraphEdgeArrays
+
+```ts
+interface GraphEdgeArrays<E = unknown> {
+    readonly source: Uint32Array | Int32Array | readonly number[];
+    readonly target: Uint32Array | Int32Array | readonly number[];
+    readonly ids?: readonly (string | undefined)[];
+    readonly labels?: readonly (string | undefined)[];
+    readonly data?: readonly E[];
 }
 ```
 
@@ -3294,7 +3306,7 @@ interface GraphNodeStyle {
 
 ```ts
 interface GraphPlugin<N = unknown, E = unknown> extends ChartPlugin {
-    setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[]): GraphSetResult;
+    setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E>): GraphSetResult;
     setPositions(positions: Readonly<Record<string, {
         readonly x: number;
         readonly y: number;
@@ -3327,7 +3339,7 @@ interface GraphPlugin<N = unknown, E = unknown> extends ChartPlugin {
 ```ts
 interface GraphPluginOptions<N = unknown, E = unknown> {
     readonly nodes?: readonly GraphNode<N>[];
-    readonly edges?: readonly GraphEdge<E>[];
+    readonly edges?: readonly GraphEdge<E>[] | GraphEdgeArrays<E>;
     readonly nodeStyle?: GraphNodeStyle | ((node: GraphNode<N>, state: GraphItemState) => GraphNodeStyle);
     readonly edgeStyle?: GraphEdgeStyle | ((edge: GraphEdge<E>, state: GraphItemState) => GraphEdgeStyle);
     readonly drawNode?: ((ctx: CanvasRenderingContext2D, node: GraphNode<N>, frame: GraphNodeFrame) => void) | null;
@@ -3341,6 +3353,7 @@ interface GraphPluginOptions<N = unknown, E = unknown> {
     readonly levelOfDetail?: false | {
         readonly nodes?: number;
         readonly edges?: number;
+        readonly fill?: number;
     };
     readonly minNodePx?: number;
     readonly background?: GraphBackground | null;
