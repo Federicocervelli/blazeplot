@@ -16,8 +16,13 @@ export interface GraphModel<N, E> {
   readonly x: Float64Array;
   readonly y: Float64Array;
   readonly edges: readonly GraphEdge<E>[];
-  readonly edgeIds: readonly string[];
-  readonly edgeIndex: ReadonlyMap<string, number>;
+  /** An edge's id: its own, or `"<source>-><target>"`. Made on demand, so a large graph makes no strings. */
+  edgeIdOf(index: number): string;
+  /**
+   * The edge with an id, or -1. The lookup table is built the first time it is needed; an id used twice keeps
+   * its first edge, with one warning.
+   */
+  edgeIndexOf(id: string): number;
   readonly source: Uint32Array;
   readonly target: Uint32Array;
   /** 1 when another edge runs from this edge's target to its source. */
@@ -46,44 +51,76 @@ export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: rea
     y[i] = node.y;
   }
 
-  const kept: GraphEdge<E>[] = [];
-  const edgeIds: string[] = [];
-  const edgeIndex = new Map<string, number>();
   const source = new Uint32Array(edges.length);
   const target = new Uint32Array(edges.length);
-  // Directed pairs as one number (`from * count + to`), exact while nodes * nodes stays under 2^53.
-  const count = nodes.length;
-  const pairs = new Set<number>();
-  let skippedEdges = 0;
-  for (const edge of edges) {
+  // Edges that cannot be drawn (an end that is not a node, or both ends one node) are left out; the array is
+  // only copied when one is.
+  let kept: GraphEdge<E>[] | null = null;
+  let count = 0;
+  for (let e = 0; e < edges.length; e++) {
+    const edge = edges[e]!;
     const from = nodeIndex.get(edge?.source);
     const to = nodeIndex.get(edge?.target);
     if (from === undefined || to === undefined || from === to) {
-      skippedEdges++;
+      kept ??= edges.slice(0, e) as GraphEdge<E>[];
       continue;
     }
-    const id = edge.id ?? `${edge.source}->${edge.target}`;
-    if (edgeIndex.has(id)) throw new RangeError(`graph: edge id "${id}" is used twice; give parallel edges their own ids.`);
-    edgeIndex.set(id, kept.length);
-    source[kept.length] = from;
-    target[kept.length] = to;
-    edgeIds.push(id);
-    kept.push(edge);
-    pairs.add(from * count + to);
+    kept?.push(edge);
+    source[count] = from;
+    target[count] = to;
+    count++;
   }
-  const reversed = new Uint8Array(kept.length);
-  for (let i = 0; i < kept.length; i++) reversed[i] = pairs.has(target[i]! * count + source[i]!) ? 1 : 0;
+  const keptEdges: readonly GraphEdge<E>[] = kept ?? edges;
+  const skippedEdges = edges.length - count;
+
+  // Outgoing edges per node (counting sort), to find each edge's reverse twin among its target's few edges.
+  const outStart = new Uint32Array(nodes.length + 1);
+  for (let e = 0; e < count; e++) outStart[source[e]! + 1]!++;
+  for (let i = 0; i < nodes.length; i++) outStart[i + 1]! += outStart[i]!;
+  const outList = new Uint32Array(count);
+  const cursor = outStart.slice(0, nodes.length);
+  for (let e = 0; e < count; e++) outList[cursor[source[e]!]!++] = e;
+  const reversed = new Uint8Array(count);
+  for (let e = 0; e < count; e++) {
+    const from = source[e]!;
+    const to = target[e]!;
+    for (let k = outStart[to]!, end = outStart[to + 1]!; k < end; k++) {
+      if (target[outList[k]!] === from) {
+        reversed[e] = 1;
+        break;
+      }
+    }
+  }
+
+  const edgeIdOf = (index: number): string => {
+    const edge = keptEdges[index]!;
+    return edge.id ?? `${edge.source}->${edge.target}`;
+  };
+  let edgeIndex: Map<string, number> | null = null;
+  const edgeIndexOf = (id: string): number => {
+    if (!edgeIndex) {
+      edgeIndex = new Map();
+      let duplicate: string | null = null;
+      for (let e = 0; e < count; e++) {
+        const key = edgeIdOf(e);
+        if (edgeIndex.has(key)) duplicate ??= key;
+        else edgeIndex.set(key, e);
+      }
+      if (duplicate !== null) console.warn(`BlazePlot graph: edge id "${duplicate}" is used more than once; give parallel edges their own ids. The first edge keeps it.`);
+    }
+    return edgeIndex.get(id) ?? -1;
+  };
 
   return {
     nodes,
     nodeIndex,
     x,
     y,
-    edges: kept,
-    edgeIds,
-    edgeIndex,
-    source: source.subarray(0, kept.length),
-    target: target.subarray(0, kept.length),
+    edges: keptEdges,
+    edgeIdOf,
+    edgeIndexOf,
+    source: source.subarray(0, count),
+    target: target.subarray(0, count),
     reversed,
     skippedEdges,
   };
@@ -91,88 +128,4 @@ export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: rea
 
 export function isCoordinate(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && Math.abs(value) <= MAX_COORDINATE;
-}
-
-/** Cells per axis are kept below this, so a cell key stays an exact integer in a double. */
-const CELL_SPAN = 1 << 20;
-
-/**
- * A uniform grid over node boxes in graph units. Each node is listed in every cell its box touches, so
- * a point query reads one cell (or a few, with slop) whatever the graph's size.
- */
-export class NodeGrid {
-  private cells = new Map<number, number[]>();
-  private cellSize = 1;
-  private originX = 0;
-  private originY = 0;
-
-  /** Rebuild from node centers and half sizes (graph units). */
-  build(count: number, x: Float64Array, y: Float64Array, halfW: Float32Array, halfH: Float32Array): void {
-    this.cells.clear();
-    if (count === 0) return;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    let sumExtent = 0;
-    for (let i = 0; i < count; i++) {
-      minX = Math.min(minX, x[i]! - halfW[i]!);
-      maxX = Math.max(maxX, x[i]! + halfW[i]!);
-      minY = Math.min(minY, y[i]! - halfH[i]!);
-      maxY = Math.max(maxY, y[i]! + halfH[i]!);
-      sumExtent += Math.max(halfW[i]!, halfH[i]!) * 2;
-    }
-    const span = Math.max(maxX - minX, maxY - minY, 1);
-    // About two nodes across a cell on average, and about as many cells as nodes for a spread-out graph.
-    const typical = Math.max(sumExtent / count, 1e-9) * 2;
-    this.cellSize = Math.max(typical, span / Math.ceil(Math.sqrt(count)) / 2, span / (CELL_SPAN - 2));
-    this.originX = minX;
-    this.originY = minY;
-    for (let i = 0; i < count; i++) {
-      const c0 = this.cellX(x[i]! - halfW[i]!);
-      const c1 = this.cellX(x[i]! + halfW[i]!);
-      const r0 = this.cellY(y[i]! - halfH[i]!);
-      const r1 = this.cellY(y[i]! + halfH[i]!);
-      for (let c = c0; c <= c1; c++) {
-        for (let r = r0; r <= r1; r++) {
-          const key = c * CELL_SPAN + r;
-          const list = this.cells.get(key);
-          if (list) list.push(i);
-          else this.cells.set(key, [i]);
-        }
-      }
-    }
-  }
-
-  /** Call `visit` for every node listed in a cell within `radius` of (`px`, `py`); a node may come more than once. */
-  query(px: number, py: number, radius: number, visit: (index: number) => void): void {
-    if (this.cells.size === 0) return;
-    const c0 = this.cellX(px - radius);
-    const c1 = this.cellX(px + radius);
-    const r0 = this.cellY(py - radius);
-    const r1 = this.cellY(py + radius);
-    // A huge radius (far zoomed out) would visit more cells than there are nodes; cap the walk.
-    if ((c1 - c0 + 1) * (r1 - r0 + 1) > this.cells.size * 4) {
-      for (const list of this.cells.values()) for (const index of list) visit(index);
-      return;
-    }
-    for (let c = c0; c <= c1; c++) {
-      for (let r = r0; r <= r1; r++) {
-        const list = this.cells.get(c * CELL_SPAN + r);
-        if (list) for (const index of list) visit(index);
-      }
-    }
-  }
-
-  private cellX(value: number): number {
-    return clampCell(Math.floor((value - this.originX) / this.cellSize));
-  }
-
-  private cellY(value: number): number {
-    return clampCell(Math.floor((value - this.originY) / this.cellSize));
-  }
-}
-
-function clampCell(cell: number): number {
-  return cell < -1 ? -1 : cell > CELL_SPAN - 2 ? CELL_SPAN - 2 : cell;
 }

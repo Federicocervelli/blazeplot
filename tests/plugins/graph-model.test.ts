@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { buildGraphModel, NodeGrid } from "../../src/plugins/graph/model.ts";
+import { buildGraphModel } from "../../src/plugins/graph/model.ts";
+import { BoxGrid, PointGrid } from "../../src/plugins/graph/grid.ts";
+import { AggregateJob, buildAggregate } from "../../src/plugins/graph/aggregate.ts";
+import { GraphIndex } from "../../src/plugins/graph/spatial.ts";
 import { AUTO_BOW, edgeDistanceSq, edgeMiddle, exit, GraphPainter } from "../../src/plugins/graph/render.ts";
 import type { GraphFrameInput, RenderSurface } from "../../src/plugins/graph/render.ts";
 import { ColorCache, EDGE_FLOATS, NODE_FLOATS, writeEdgeStyle, writeNodeStyle } from "../../src/plugins/graph/styles.ts";
@@ -21,7 +24,9 @@ describe("graph model", () => {
       { source: "c", target: "c" },
     ]);
     expect(model.nodeIndex.get("c")).toBe(2);
-    expect(model.edgeIds).toEqual(["a->b", "b->a", "a->c"]);
+    expect([0, 1, 2].map((i) => model.edgeIdOf(i))).toEqual(["a->b", "b->a", "a->c"]);
+    expect(model.edgeIndexOf("b->a")).toBe(1);
+    expect(model.edgeIndexOf("nope")).toBe(-1);
     expect([...model.reversed]).toEqual([1, 1, 0]);
     expect(model.skippedEdges).toBe(2);
   });
@@ -31,31 +36,73 @@ describe("graph model", () => {
     expect(() => buildGraphModel([{ id: "", x: 0, y: 0 }], [])).toThrow(RangeError);
     expect(() => buildGraphModel([{ id: "a", x: Number.NaN, y: 0 }], [])).toThrow(RangeError);
     expect(() => buildGraphModel([{ id: "a", x: 1e12, y: 0 }], [])).toThrow(RangeError);
-    expect(() => buildGraphModel(nodes, [{ source: "a", target: "b" }, { source: "a", target: "b" }])).toThrow(/parallel/);
     expect(() => buildGraphModel(nodes, [], { maxNodes: 2 })).toThrow(/limit of 2/);
     expect(() => buildGraphModel(nodes, [{ source: "a", target: "b" }, { source: "b", target: "c" }], { maxEdges: 1 })).toThrow(/limit of 1/);
     expect(() => buildGraphModel("nope" as never, [])).toThrow(TypeError);
   });
 
-  it("finds nodes near a point through the grid, and only those", () => {
+  it("keeps the first edge of an id used twice, with a warning, when ids are first looked up", () => {
+    const warnings: unknown[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => void warnings.push(args);
+    try {
+      const model = buildGraphModel(nodes, [{ source: "a", target: "b" }, { source: "a", target: "b" }]);
+      expect(model.edges).toHaveLength(2);
+      expect(model.edgeIndexOf("a->b")).toBe(0);
+      expect(warnings).toHaveLength(1);
+    } finally {
+      console.warn = original;
+    }
+  });
+
+  it("finds nodes in a rectangle through the point grid, and only nearby ones", () => {
     const count = 2500;
     const x = new Float64Array(count);
     const y = new Float64Array(count);
-    const half = new Float32Array(count).fill(4);
     for (let i = 0; i < count; i++) {
       x[i] = (i % 50) * 20;
       y[i] = Math.floor(i / 50) * 20;
     }
-    const grid = new NodeGrid();
-    grid.build(count, x, y, half, half);
-    const seen = new Set<number>();
-    grid.query(400, 400, 2, (i) => seen.add(i));
-    expect(seen.has(20 * 50 + 20)).toBe(true);
-    // A small query reads a few cells, not the whole graph.
-    expect(seen.size).toBeLessThan(40);
-    const all = new Set<number>();
-    grid.query(500, 500, 1e6, (i) => all.add(i));
-    expect(all.size).toBe(count);
+    const grid = new PointGrid();
+    grid.build(count, x, y);
+    const out = { data: new Uint32Array(4) };
+    const n = grid.query({ minX: 395, minY: 395, maxX: 405, maxY: 405 }, out);
+    expect([...out.data.subarray(0, n)]).toContain(20 * 50 + 20);
+    // A small query reads a few cells, not the whole graph, and the count bounds it.
+    expect(n).toBeLessThan(40);
+    expect(grid.countIn({ minX: 395, minY: 395, maxX: 405, maxY: 405 })).toBe(n);
+    expect(grid.query({ minX: -1e9, minY: -1e9, maxX: 1e9, maxY: 1e9 }, out)).toBe(count);
+  });
+
+  it("finds edges crossing a rectangle through the box grid, each once, with long edges always", () => {
+    // A 40 x 25 lattice of nodes 20 apart, each joined to its right neighbor, and one edge across everything.
+    const count = 1000;
+    const x = new Float64Array(count);
+    const y = new Float64Array(count);
+    for (let i = 0; i < count; i++) {
+      x[i] = (i % 40) * 20;
+      y[i] = Math.floor(i / 40) * 20;
+    }
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < count; i++) {
+      if (i % 40 === 39) continue;
+      source.push(i);
+      target.push(i + 1);
+    }
+    source.push(0);
+    target.push(count - 1);
+    const grid = new BoxGrid();
+    grid.build(source.length, Uint32Array.from(source), Uint32Array.from(target), x, y, 2);
+    const out = { data: new Uint32Array(2) };
+    const n = grid.query({ minX: 395, minY: 195, maxX: 405, maxY: 205 }, out);
+    const found = [...out.data.subarray(0, n)];
+    // The edge from node 10 * 40 + 20 to its right neighbor is there; one far away is not; the long one always is.
+    expect(found).toContain(source.findIndex((s, k) => s === 420 && target[k] === 421));
+    expect(found).not.toContain(0);
+    expect(found).toContain(source.length - 1);
+    expect(new Set(found).size).toBe(found.length);
+    expect(n).toBeLessThan(40);
   });
 });
 
@@ -276,5 +323,103 @@ describe("graph painter lifting", () => {
     painter.paintFlows(overlay, lifted);
     const moved = overlay.shapes[1]!;
     expect(moved[0]! + moved[2]! / 2).toBeCloseTo((100 + 100) * 2, 3);
+  });
+});
+
+describe("graph level of detail", () => {
+  const source = (count: number, x: number[], y: number[], s: number[], t: number[]) => ({
+    count,
+    x: Float64Array.from(x),
+    y: Float64Array.from(y),
+    nodeStyles: Float32Array.from(Array.from({ length: count }, (_, i) => [i % 2, 0, 1 - (i % 2), 1]).flat()),
+    nodeStride: 4,
+    nodeColorAt: 0,
+    edgeCount: s.length,
+    source: Uint32Array.from(s),
+    target: Uint32Array.from(t),
+    edgeStyles: Float32Array.from(s.flatMap(() => [0, 0, 0, 0.5])),
+    edgeStride: 4,
+    edgeColorAt: 0,
+  });
+
+  it("bins nodes into cells and merges edges between cells, both directions together", () => {
+    // Two cells of 10 units: nodes 0, 1 in the first, 2, 3 in the second.
+    const agg = buildAggregate(10, source(4, [1, 2, 11, 12], [1, 2, 1, 2], [0, 1, 2, 0], [2, 3, 0, 1]));
+    expect(agg.cellCount).toBe(2);
+    expect([...agg.cellNodes]).toEqual([2, 2]);
+    expect(agg.cellX[0]).toBeCloseTo(1.5, 6);
+    // Node colors average: one red, one blue in each cell.
+    expect([...agg.cellColor.subarray(0, 4)]).toEqual([0.5, 0, 0.5, 1]);
+    // Edges 0->2, 1->3, 2->0 cross the cells; 0->1 stays inside one and is dropped.
+    expect(agg.edgeCount).toBe(1);
+    expect(agg.edgeWeight[0]).toBe(3);
+  });
+
+  it("builds a level in slices, finishing with the same result", () => {
+    const n = 20_000;
+    const x = Array.from({ length: n }, (_, i) => (i % 200) * 3);
+    const y = Array.from({ length: n }, (_, i) => Math.floor(i / 200) * 3);
+    const s = Array.from({ length: n - 1 }, (_, i) => i);
+    const t = s.map((i) => i + 1);
+    const from = source(n, x, y, s, t);
+    const job = new AggregateJob(2, 12, from);
+    let slices = 0;
+    let done = job.step(() => 1, 0);
+    while (!done) {
+      slices++;
+      done = job.step(() => 1, 0);
+    }
+    expect(slices).toBeGreaterThan(2);
+    const once = buildAggregate(12, from);
+    expect(done.cellCount).toBe(once.cellCount);
+    expect(done.edgeCount).toBe(once.edgeCount);
+  });
+
+  it("draws only what is on screen, and the aggregate level past the budget", () => {
+    const n = 40_000;
+    const side = 200;
+    const nodes = Array.from({ length: n }, (_, i) => ({ id: String(i), x: (i % side) * 10, y: Math.floor(i / side) * 10 }));
+    const edges = Array.from({ length: n - 1 }, (_, i) => ({ source: String(i), target: String(i + 1) }));
+    const model = buildGraphModel(nodes, edges);
+    const colors = new ColorCache(() => undefined);
+    const defaults = { nodeFill: [1, 0, 0, 1] as const, edgeColor: [0, 0, 1, 1] as const };
+    const nodeStyles = new Float32Array(n * NODE_FLOATS);
+    for (let i = 0; i < n; i++) writeNodeStyle(nodeStyles, i * NODE_FLOATS, { width: 6 }, colors, defaults);
+    const edgeStyles = new Float32Array(model.edges.length * EDGE_FLOATS);
+    for (let i = 0; i < model.edges.length; i++) writeEdgeStyle(edgeStyles, i * EDGE_FLOATS, {}, colors, defaults, false);
+    const spatial = new GraphIndex();
+    spatial.ensure(model, new Float32Array(n).fill(3), new Float32Array(n).fill(3));
+    const base = { model, nodeStyles, edgeStyles, order: Uint32Array.from({ length: n }, (_, i) => i), width: 200, height: 200, pixelRatio: 1, time: 0, animate: false, minNodePx: 2, background: null, spatial };
+
+    // Zoomed in on a corner: a few dozen nodes, not 40 000.
+    const painter = new GraphPainter();
+    painter.paint(recordingSurface(), { ...base, centerX: 50, centerY: 50, zoom: 2 });
+    expect(painter.aggregated).toBe(false);
+    expect(painter.drawnNodeCount).toBeGreaterThan(10);
+    expect(painter.drawnNodeCount).toBeLessThan(200);
+
+    // The whole graph with a small budget: a stand-in sample first, then the aggregate once it is built.
+    const far = { ...base, centerX: 1000, centerY: 1000, zoom: 0.1, budget: { nodes: 1000, edges: 2000 } };
+    const sampled = recordingSurface();
+    painter.paint(sampled, far);
+    expect(painter.aggregated).toBe(true);
+    expect(spatial.building).toBe(true);
+    expect(sampled.shapes[0]!.length / 14).toBeLessThanOrEqual(1000);
+    while (!spatial.pump(() => 0, Infinity)) {
+      // A finished level ends the loop.
+    }
+    const aggregated = recordingSurface();
+    painter.paint(aggregated, far);
+    expect(spatial.building).toBe(false);
+    const dots = aggregated.shapes[0]!.length / 14;
+    expect(dots).toBeGreaterThan(50);
+    expect(dots).toBeLessThan(n / 4);
+    expect(painter.drawnEdgeCount).toBe(0);
+    // Zooming further out wants a coarser level: until it is built, the nearest built one stands in.
+    const farther = recordingSurface();
+    painter.paint(farther, { ...far, zoom: 0.02 });
+    expect(spatial.building).toBe(true);
+    expect(spatial.nearest(99)).not.toBeNull();
+    expect(farther.shapes[0]!.length / 14).toBeGreaterThan(10);
   });
 });

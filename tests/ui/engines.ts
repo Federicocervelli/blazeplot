@@ -56,6 +56,9 @@ export function installEngineDoubles(): () => void {
     moveTo(): void {}
     lineTo(): void {}
     closePath(): void {}
+    rect(): void {}
+    arc(): void {}
+    arcTo(): void {}
   };
   return () => {
     proto.getContext = originalGetContext;

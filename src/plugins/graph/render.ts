@@ -4,7 +4,10 @@
  * screen geometry of the last frame for picking. No chart or plugin lifecycle.
  */
 import type { ChartPluginContext } from "../../ui/PluginTypes.js";
+import type { Aggregate } from "./aggregate.js";
+import type { Rect } from "./grid.js";
 import type { GraphModel } from "./model.js";
+import type { GraphIndex } from "./spatial.js";
 import {
   E_ARROW,
   E_ARROW_SIZE,
@@ -98,7 +101,37 @@ export interface GraphFrameInput<N, E> {
    */
   readonly lifted?: number;
   readonly liftedEdges?: Uint32Array | null;
+  /**
+   * The spatial index. With it a still frame queries what is on screen instead of walking the graph, and draws
+   * the aggregate level when more is visible than `budget` allows. Without it every item is walked.
+   */
+  readonly spatial?: GraphIndex | null;
+  /** Most nodes and edges a still frame draws one by one before it draws the aggregate instead. */
+  readonly budget?: { readonly nodes: number; readonly edges: number };
 }
+
+/** Merged edge indices fit below this in a sort key. */
+const AGG_INDEX_SPAN = 2 ** 24;
+
+/** A color as 5 bits a channel and 16 opacity steps: an integer below 2^19. */
+function quantize(colors: Float32Array, at: number, alpha: number): number {
+  const c = (v: number): number => (v > 0 ? (v < 1 ? Math.round(v * 31) : 31) : 0);
+  const a = alpha > 0 ? (alpha < 1 ? Math.max(1, Math.round(alpha * 15)) : 15) : 0;
+  return ((c(colors[at]!) * 32 + c(colors[at + 1]!)) * 32 + c(colors[at + 2]!)) * 16 + a;
+}
+
+/** Write a quantized color as straight rgba at `out[at..at+3]`. */
+function unquantize(key: number, out: Float32Array, at: number): void {
+  out[at + 3] = (key % 16) / 15;
+  key = Math.floor(key / 16);
+  out[at + 2] = (key % 32) / 31;
+  key = Math.floor(key / 32);
+  out[at + 1] = (key % 32) / 31;
+  out[at] = Math.floor(key / 32) / 31;
+}
+
+/** On-screen size (CSS pixels) of an aggregate cell: below it nodes are too small to tell apart. */
+const AGGREGATE_CELL_PX = 3;
 
 export class GraphPainter {
   private readonly shapes = new Buffer(SHAPE);
@@ -134,6 +167,24 @@ export class GraphPainter {
   /** The point `exit` found, kept in fields so the hot loop allocates nothing. */
   private exitX = 0;
   private exitY = 0;
+  /** Per node, the frame it was last projected in: a visible-only frame projects nodes as it needs them. */
+  private projected = new Uint32Array(0);
+  private frameStamp = 0;
+  /** The nodes and edges the last still frame drew one by one, for labels and picking. */
+  drawnNodes = new Uint32Array(0);
+  drawnNodeCount = 0;
+  drawnEdges = new Uint32Array(0);
+  drawnEdgeCount = 0;
+  /** Whether the last still frame drew the aggregate level instead of single items. */
+  aggregated = false;
+  /** Query results, reused. */
+  private readonly nodeQuery = { data: new Uint32Array(1024) };
+  private readonly edgeQuery = { data: new Uint32Array(1024) };
+  private readonly rect: Rect = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  private rank: Uint32Array | null = null;
+  /** Sort keys of the aggregate's edges on screen: quantized color, then index. */
+  private aggKeys = new Float64Array(0);
+  private rankOf: Uint32Array | null = null;
 
   /**
    * Project, cull, and draw everything that does not move on `surface`: background, edges, arrows, and nodes.
@@ -148,17 +199,224 @@ export class GraphPainter {
     this.borders.count = 0;
     this.flowCount = 0;
     this.liftPass = false;
-    this.project(input);
+    this.drawnNodeCount = 0;
+    this.drawnEdgeCount = 0;
+    this.aggregated = false;
+    this.startFrame(input);
+    const spatial = input.spatial;
 
     surface.beginFrame(Math.max(1, Math.round(width * dpr)), Math.max(1, Math.round(height * dpr)), dpr);
     this.paintBackground(surface, input);
-    this.buildEdges(input);
-    if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
-    if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
-    this.buildNodes(input);
+    if (!spatial) {
+      // No index: walk every item.
+      this.project(input);
+      this.buildEdges(input, null, true);
+      if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
+      if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
+      this.buildNodes(input, -1, input.order, input.order.length);
+    } else {
+      const { model, zoom, centerX, centerY } = input;
+      const rect = this.rect;
+      rect.minX = centerX - width / 2 / zoom;
+      rect.maxX = centerX + width / 2 / zoom;
+      rect.minY = centerY - height / 2 / zoom;
+      rect.maxY = centerY + height / 2 / zoom;
+      // Nodes are found by center: grow the view by the largest node and the minimum drawn size.
+      const pad = spatial.maxHalf + input.minNodePx / zoom;
+      const nodeRect: Rect = { minX: rect.minX - pad, minY: rect.minY - pad, maxX: rect.maxX + pad, maxY: rect.maxY + pad };
+      const budget = input.budget ?? { nodes: 60_000, edges: 150_000 };
+      const visible = spatial.nodes.countIn(nodeRect);
+      const degree = model.nodes.length > 0 ? model.edges.length / model.nodes.length : 0;
+      if (visible > budget.nodes || visible * degree > budget.edges) {
+        this.aggregated = true;
+        const target = AGGREGATE_CELL_PX / zoom;
+        const level = Math.max(0, Math.ceil(Math.log2(target / spatial.base)));
+        // A level not built yet is built between frames; meanwhile the nearest built one is drawn, or a sample of
+        // the visible nodes when none is.
+        const agg = spatial.level(level, model, input.nodeStyles, input.edgeStyles) ?? spatial.nearest(level);
+        if (agg) this.paintAggregate(input, agg, budget.edges);
+        else this.paintSample(input, nodeRect, budget.nodes);
+        if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
+      } else {
+        const edgeCount = spatial.edges.query(rect, this.edgeQuery);
+        this.buildEdges(input, this.edgeQuery.data.subarray(0, edgeCount), true);
+        if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
+        if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
+        const nodeCount = spatial.nodes.query(nodeRect, this.nodeQuery);
+        const nodes = this.sortForDrawing(this.nodeQuery.data, nodeCount, input.order);
+        for (let k = 0; k < nodeCount; k++) this.ensureProjected(nodes[k]!, input);
+        this.buildNodes(input, -1, nodes, nodeCount);
+      }
+    }
     if (this.shapes.count > 0) surface.fillShapes(this.shapes.data, this.shapes.count);
     if (this.borders.count > 0) surface.strokeSegments(this.borders.data, this.borders.count);
     surface.endFrame();
+    // A lifted node is drawn by the overlay, but its label is drawn with the others, last, over them.
+    const lifted = input.lifted ?? -1;
+    if (lifted >= 0 && lifted < input.model.nodes.length) {
+      this.ensureProjected(lifted, input);
+      if (this.drawnNodes.length <= this.drawnNodeCount) {
+        const grown = new Uint32Array(this.drawnNodeCount + 1);
+        grown.set(this.drawnNodes);
+        this.drawnNodes = grown;
+      }
+      this.drawnNodes[this.drawnNodeCount++] = lifted;
+    }
+  }
+
+  /** A new projection frame: every node counts as not yet projected. */
+  private startFrame<N, E>(input: GraphFrameInput<N, E>): void {
+    const count = input.model.nodes.length;
+    if (this.nodeScreen.length < count * NODE_GEOMETRY) this.nodeScreen = new Float32Array(count * NODE_GEOMETRY);
+    if (this.projected.length < count) {
+      this.projected = new Uint32Array(count);
+      this.frameStamp = 0;
+    }
+    if (++this.frameStamp === 0xffffffff) {
+      this.projected.fill(0);
+      this.frameStamp = 1;
+    }
+  }
+
+  private ensureProjected<N, E>(i: number, input: GraphFrameInput<N, E>): void {
+    if (this.projected[i] === this.frameStamp) return;
+    this.projectOne(i, input);
+    this.projected[i] = this.frameStamp;
+  }
+
+  /**
+   * Queried nodes in drawing order: input order, or by layer then input order when `order` is not the identity.
+   * Sorts in place and returns the array.
+   */
+  private sortForDrawing(nodes: Uint32Array, count: number, order: Uint32Array): Uint32Array {
+    const view = nodes.subarray(0, count);
+    let identity = true;
+    for (let k = 0; k < order.length; k += Math.max(1, order.length >> 6)) if (order[k] !== k) identity = false;
+    if (identity && order[order.length - 1] === order.length - 1) {
+      view.sort();
+      return nodes;
+    }
+    if (this.rank !== order || !this.rankOf || this.rankOf.length !== order.length) {
+      this.rankOf = new Uint32Array(order.length);
+      for (let k = 0; k < order.length; k++) this.rankOf[order[k]!] = k;
+      this.rank = order;
+    }
+    const rankOf = this.rankOf;
+    // Sort by rank: map to ranks, sort numerically, map back.
+    for (let k = 0; k < count; k++) view[k] = rankOf[view[k]!]!;
+    view.sort();
+    for (let k = 0; k < count; k++) view[k] = order[view[k]!]!;
+    return nodes;
+  }
+
+  /**
+   * The aggregate level: merged edges (the heaviest `edgeBudget` of those on screen) with the opacity of their
+   * edges drawn over each other, then one dot per cell.
+   */
+  private paintAggregate<N, E>(input: GraphFrameInput<N, E>, agg: Aggregate, edgeBudget: number): void {
+    const { width, height, zoom, centerX, centerY, pixelRatio: dpr, edgeStyles, nodeStyles, model } = input;
+    const sx = (x: number): number => width / 2 + (x - centerX) * zoom;
+    const sy = (y: number): number => height / 2 + (y - centerY) * zoom;
+    // A merged edge is as wide as the edges are, from the first edge's style.
+    const lineWidth = model.edges.length > 0 ? Math.max(0.5, edgeStyles[E_WIDTH]!) : 1;
+    let visible = 0;
+    let threshold = 0;
+    const onScreen = (k: number): boolean => {
+      const ax = sx(agg.cellX[agg.edgeA[k]!]!);
+      const ay = sy(agg.cellY[agg.edgeA[k]!]!);
+      const bx = sx(agg.cellX[agg.edgeB[k]!]!);
+      const by = sy(agg.cellY[agg.edgeB[k]!]!);
+      return !((ax < 0 && bx < 0) || (ax > width && bx > width) || (ay < 0 && by < 0) || (ay > height && by > height));
+    };
+    for (let k = 0; k < agg.edgeCount; k++) if (onScreen(k)) visible++;
+    if (visible > edgeBudget) {
+      // Keep the heaviest: the weight of the `edgeBudget`-th heaviest edge on screen is the cut.
+      const weights = new Uint32Array(visible);
+      let n = 0;
+      for (let k = 0; k < agg.edgeCount; k++) if (onScreen(k)) weights[n++] = agg.edgeWeight[k]!;
+      weights.sort();
+      threshold = weights[visible - edgeBudget]!;
+    }
+    // Colors are quantized (5 bits a channel, 16 opacities) and edges sorted by them, so engines that stroke per
+    // style (Canvas 2D) draw a few dozen paths instead of one per merged edge. At this size the steps cannot be seen.
+    let shown = 0;
+    if (this.aggKeys.length < visible) this.aggKeys = new Float64Array(visible);
+    const keys = this.aggKeys;
+    for (let k = 0; k < agg.edgeCount; k++) {
+      const weight = agg.edgeWeight[k]!;
+      if (weight < threshold || !onScreen(k)) continue;
+      const alpha = 1 - (1 - agg.edgeColor[k * 4 + 3]!) ** weight;
+      const key = quantize(agg.edgeColor, k * 4, alpha);
+      keys[shown++] = key * AGG_INDEX_SPAN + k;
+    }
+    const sorted = keys.subarray(0, shown).sort();
+    for (let j = 0; j < shown; j++) {
+      const key = Math.floor(sorted[j]! / AGG_INDEX_SPAN);
+      const k = sorted[j]! - key * AGG_INDEX_SPAN;
+      const o = this.segments.next();
+      const d = this.segments.data;
+      d[o] = sx(agg.cellX[agg.edgeA[k]!]!) * dpr;
+      d[o + 1] = sy(agg.cellY[agg.edgeA[k]!]!) * dpr;
+      d[o + 2] = sx(agg.cellX[agg.edgeB[k]!]!) * dpr;
+      d[o + 3] = sy(agg.cellY[agg.edgeB[k]!]!) * dpr;
+      d[o + 4] = lineWidth * dpr;
+      d[o + 5] = 0;
+      d[o + 6] = 0;
+      d[o + 7] = 0;
+      unquantize(key, d, o + 8);
+    }
+    // One dot per cell, as large as its nodes would cover, at least the minimum size and at most the cell.
+    const cellPx = agg.cell * zoom;
+    // Each node is drawn at least `minNodePx` across, so a cell's nodes cover about n of those squares.
+    const nodePx = Math.max(input.minNodePx, model.nodes.length > 0 ? Math.max(nodeStyles[N_WIDTH]!, nodeStyles[N_HEIGHT]!) * zoom : 1);
+    for (let c = 0; c < agg.cellCount; c++) {
+      const x = sx(agg.cellX[c]!);
+      const y = sy(agg.cellY[c]!);
+      const size = Math.min(cellPx, nodePx * Math.sqrt(agg.cellNodes[c]!));
+      const half = size / 2;
+      if (x + half < 0 || y + half < 0 || x - half > width || y - half > height) continue;
+      const o = this.shapes.next();
+      const d = this.shapes.data;
+      d[o] = (x - half) * dpr;
+      d[o + 1] = (y - half) * dpr;
+      d[o + 2] = size * dpr;
+      d[o + 3] = size * dpr;
+      d[o + 4] = half * dpr;
+      d[o + 5] = 0;
+      unquantize(quantize(agg.cellColor, c * 4, agg.cellColor[c * 4 + 3]!), d, o + 6);
+      d[o + 10] = 0;
+      d[o + 11] = 0;
+      d[o + 12] = 0;
+      d[o + 13] = 0;
+    }
+  }
+
+  /** Up to `limit` of the nodes in `rect`, evenly spaced through them, as minimum-size dots: a stand-in until a level is built. */
+  private paintSample<N, E>(input: GraphFrameInput<N, E>, rect: Rect, limit: number): void {
+    const count = input.spatial!.nodes.query(rect, this.nodeQuery);
+    const stride = Math.max(1, Math.ceil(count / Math.max(1, limit)));
+    const { nodeStyles, pixelRatio: dpr, width, height } = input;
+    const half = input.minNodePx / 2;
+    for (let k = 0; k < count; k += stride) {
+      const i = this.nodeQuery.data[k]!;
+      this.ensureProjected(i, input);
+      const x = this.nodeScreen[i * NODE_GEOMETRY]!;
+      const y = this.nodeScreen[i * NODE_GEOMETRY + 1]!;
+      if (x + half < 0 || y + half < 0 || x - half > width || y - half > height) continue;
+      const o = this.shapes.next();
+      const d = this.shapes.data;
+      d[o] = (x - half) * dpr;
+      d[o + 1] = (y - half) * dpr;
+      d[o + 2] = half * 2 * dpr;
+      d[o + 3] = half * 2 * dpr;
+      d[o + 4] = half * dpr;
+      d[o + 5] = 0;
+      for (let c = 0; c < 4; c++) d[o + 6 + c] = nodeStyles[i * NODE_FLOATS + N_FILL + c]!;
+      d[o + 10] = 0;
+      d[o + 11] = 0;
+      d[o + 12] = 0;
+      d[o + 13] = 0;
+    }
   }
 
   /** Whether the overlay has anything to draw: flows the last still frame found, or a lifted node. */
@@ -191,10 +449,10 @@ export class GraphPainter {
       this.projectOne(lifted, input);
       this.liftPass = true;
       this.liftFlowCount = 0;
-      this.buildEdges(input, input.liftedEdges ?? new Uint32Array(0));
+      this.buildEdges(input, input.liftedEdges ?? new Uint32Array(0), false);
       this.liftPass = false;
       this.drawFlows(this.liftFlows, this.liftFlowCount, input);
-      this.buildNodes(input, lifted);
+      this.buildNodes(input, lifted, null, 0);
     }
     surface.beginFrame(Math.max(1, Math.round(width * dpr)), Math.max(1, Math.round(height * dpr)), dpr);
     if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
@@ -253,6 +511,7 @@ export class GraphPainter {
       this.nodeScreen[o + 2] = Math.max(minHalf, (nodeStyles[s + N_WIDTH]! * zoom) / 2);
       this.nodeScreen[o + 3] = Math.max(minHalf, (nodeStyles[s + N_HEIGHT]! * zoom) / 2);
       this.nodeScreen[o + 4] = nodeStyles[s + N_SHAPE]!;
+      this.projected[i] = this.frameStamp;
     }
   }
 
@@ -302,9 +561,12 @@ export class GraphPainter {
   }
 
   /** Edges into the buffers: every edge but the lifted node's, or only `subset` (the overlay pass). */
-  private buildEdges<N, E>(input: GraphFrameInput<N, E>, subset: Uint32Array | null = null): void {
+  private buildEdges<N, E>(input: GraphFrameInput<N, E>, subset: Uint32Array | null, still: boolean): void {
     const { model, edgeStyles, width, height, pixelRatio: dpr } = input;
-    const lifted = subset ? -1 : (input.lifted ?? -1);
+    const lifted = still ? (input.lifted ?? -1) : -1;
+    // A visible-only frame projects nodes as edges need them (an edge's far end may be off screen).
+    const lazy = subset !== null;
+    if (still && this.drawnEdges.length < (subset ? subset.length : model.edges.length)) this.drawnEdges = new Uint32Array(subset ? subset.length : model.edges.length);
     const count = subset ? subset.length : model.edges.length;
     if (this.edgeScreen.length < model.edges.length * EDGE_GEOMETRY) this.edgeScreen = new Float32Array(model.edges.length * EDGE_GEOMETRY);
     const ns = this.nodeScreen;
@@ -319,6 +581,10 @@ export class GraphPainter {
       const s = i * EDGE_FLOATS;
       const g = i * EDGE_GEOMETRY;
       geometry[g + 6] = 0;
+      if (lazy) {
+        this.ensureProjected(model.source[i]!, input);
+        this.ensureProjected(model.target[i]!, input);
+      }
       const a = model.source[i]! * NODE_GEOMETRY;
       const b = model.target[i]! * NODE_GEOMETRY;
       const ax = ns[a]!;
@@ -356,6 +622,7 @@ export class GraphPainter {
       geometry[g + 4] = ex;
       geometry[g + 5] = ey;
       geometry[g + 6] = 1;
+      if (still) this.drawnEdges[this.drawnEdgeCount++] = i;
 
       const arrows = edgeStyles[s + E_ARROW]!;
       const arrowSize = edgeStyles[s + E_ARROW_SIZE]!;
@@ -529,13 +796,14 @@ export class GraphPainter {
   }
 
   /** Node shapes into the buffers: every node but the lifted one, or `only` that one (the overlay pass). */
-  private buildNodes<N, E>(input: GraphFrameInput<N, E>, only = -1): void {
-    const { nodeStyles, order, width, height, zoom, pixelRatio: dpr } = input;
+  private buildNodes<N, E>(input: GraphFrameInput<N, E>, only: number, list: Uint32Array | null, listCount: number): void {
+    const { nodeStyles, width, height, zoom, pixelRatio: dpr } = input;
     const ns = this.nodeScreen;
     const lifted = input.lifted ?? -1;
-    const count = only >= 0 ? 1 : order.length;
+    const count = only >= 0 ? 1 : listCount;
+    if (only < 0 && this.drawnNodes.length < count) this.drawnNodes = new Uint32Array(count);
     for (let k = 0; k < count; k++) {
-      const i = only >= 0 ? only : order[k]!;
+      const i = only >= 0 ? only : list![k]!;
       if (only < 0 && i === lifted) continue;
       const s = i * NODE_FLOATS;
       const o = i * NODE_GEOMETRY;
@@ -546,6 +814,7 @@ export class GraphPainter {
       const ringWidth = nodeStyles[s + N_RING_WIDTH]!;
       const ring = ringWidth > 0 && nodeStyles[s + N_RING + 3]! > 0 ? ringWidth + nodeStyles[s + N_RING_GAP]! : 0;
       if (x + hw + ring < 0 || x - hw - ring > width || y + hh + ring < 0 || y - hh - ring > height) continue;
+      if (only < 0) this.drawnNodes[this.drawnNodeCount++] = i;
       const circle = nodeStyles[s + N_SHAPE] === 0;
       // A node drawn at its minimum size is a dot: round, whatever its shape.
       const radius = circle ? Math.min(hw, hh) : Math.min(nodeStyles[s + N_RADIUS]! * zoom, hw, hh);

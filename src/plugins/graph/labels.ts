@@ -19,7 +19,11 @@ export interface ResolvedLabelStyle {
 export interface LabelPassInput<N, E> {
   readonly ctx: CanvasRenderingContext2D;
   readonly model: GraphModel<N, E>;
-  readonly order: Uint32Array;
+  /** The nodes and edges the still frame drew, in drawing order: only those can carry labels. */
+  readonly nodes: Uint32Array;
+  readonly nodeCount: number;
+  readonly edges: Uint32Array;
+  readonly edgeCount: number;
   readonly nodeScreen: Float32Array;
   readonly edgeScreen: Float32Array;
   /** Node box sizes in graph units, from the node styles. */
@@ -46,7 +50,8 @@ export function drawLabels<N, E>(input: LabelPassInput<N, E>): void {
 
   if (input.drawEdgeLabel) {
     let drawn = 0;
-    for (let i = 0; i < model.edges.length && drawn < input.maxEdgeLabels; i++) {
+    for (let k = 0; k < input.edgeCount && drawn < input.maxEdgeLabels; k++) {
+      const i = input.edges[k]!;
       const g = i * EDGE_GEOMETRY;
       if (input.edgeScreen[g + 6] !== 1) continue;
       const middle = edgeMiddle(input.edgeScreen, g);
@@ -65,8 +70,8 @@ export function drawLabels<N, E>(input: LabelPassInput<N, E>): void {
 
   if (input.drawNode) {
     let drawn = 0;
-    for (let k = 0; k < input.order.length && drawn < input.maxDetails; k++) {
-      const i = input.order[k]!;
+    for (let k = 0; k < input.nodeCount && drawn < input.maxDetails; k++) {
+      const i = input.nodes[k]!;
       const o = i * NODE_GEOMETRY;
       const hw = input.nodeScreen[o + 2]!;
       const hh = input.nodeScreen[o + 3]!;

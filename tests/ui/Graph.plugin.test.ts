@@ -3,7 +3,7 @@ import { graphPlugin } from "../../src/plugins/graph.ts";
 import type { GraphNode, GraphPluginOptions } from "../../src/plugins/graph.ts";
 import type { Chart } from "../../src/ui/Chart.ts";
 import { chartInternals } from "../../src/ui/ChartInternals.ts";
-import { itRecorded } from "./engines.ts";
+import { itRecorded, uiEngine } from "./engines.ts";
 import type { RecordingRenderer } from "./fakes.ts";
 import { fire, keyEvent, pointerEvent, useChartHarness, wheelEvent } from "./harness.ts";
 
@@ -384,5 +384,31 @@ describe("createGraphIcon", () => {
     } finally {
       globals.Path2D = original;
     }
+  });
+});
+
+describe("graphPlugin level of detail", () => {
+  it("draws the aggregate past its budget, built between frames, and only visible nodes when zoomed in", async () => {
+    const side = 120;
+    const nodes = Array.from({ length: side * side }, (_, i) => ({ id: String(i), x: (i % side) * 10, y: Math.floor(i / side) * 10 }));
+    const edges = nodes.slice(1).map((node, i) => ({ source: String(i), target: node.id }));
+    const { chart, plugin } = make({ nodes, edges, nodeStyle: { width: 4 }, levelOfDetail: { nodes: 500, edges: 1000 } });
+    frame(chart);
+    // The first frame draws a stand-in sample and starts building the level; slices run on timers.
+    for (let i = 0; i < 50; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      h.raf.flush();
+    }
+    if (uiEngine === "fake") {
+      const shapes = surfaceDraws("fillShapes").at(-1)!;
+      expect(shapes).toBeGreaterThan(20);
+      expect(shapes).toBeLessThan(nodes.length);
+    }
+    // Zoomed in, single nodes again, and they can be picked.
+    plugin.setView({ centerX: 50, centerY: 50, zoom: 4 });
+    h.raf.flush();
+    const [x, y] = plugin.nodeToPlot("5")!;
+    expect(plugin.pick(x, y)).toEqual({ kind: "node", node: nodes[5]! });
+    chart.dispose();
   });
 });

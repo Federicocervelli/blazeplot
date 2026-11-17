@@ -348,6 +348,9 @@ export const canvas2dFixture: EngineFixture = {
       moveTo(): void {}
       lineTo(): void {}
       closePath(): void {}
+      rect(): void {}
+      arc(): void {}
+      arcTo(): void {}
     };
     const renderer = new Canvas2DRenderer(canvas);
     return {

@@ -26,7 +26,10 @@ export interface GraphNode<N = unknown> {
 
 /** A directed edge between two nodes, by id. */
 export interface GraphEdge<E = unknown> {
-  /** Unique within the graph. Defaults to `"<source>-><target>"`, so parallel edges need their own ids. */
+  /**
+   * Unique within the graph. Defaults to `"<source>-><target>"`, so parallel edges need their own ids; an id used
+   * twice keeps its first edge, with a warning when ids are first looked up.
+   */
   readonly id?: string;
   readonly source: string;
   readonly target: string;
@@ -248,6 +251,14 @@ export interface GraphPluginOptions<N = unknown, E = unknown> {
   readonly maxDetails?: number;
   /** At most this many edge labels per frame. Defaults to 1000. */
   readonly maxEdgeLabels?: number;
+  /**
+   * Level of detail. When more nodes or edges are on screen than this, a frame draws the aggregate level instead:
+   * nodes binned into cells a few pixels across, one dot per cell in its nodes' average color, and edges merged
+   * per pair of cells with the opacity of their edges drawn over each other. Arrows, flows, labels, and edge
+   * picking are left out at that level, which only shows when single items are too small to tell apart. Defaults
+   * to 60 000 nodes and 150 000 edges on WebGL2, and 12 000 and 25 000 on Canvas 2D; `false` always draws every item.
+   */
+  readonly levelOfDetail?: false | { readonly nodes?: number; readonly edges?: number };
   /** Nodes are never drawn smaller than this, in CSS pixels, so a zoomed-out graph keeps its dots. Defaults to 2. */
   readonly minNodePx?: number;
   readonly background?: GraphBackground | null;

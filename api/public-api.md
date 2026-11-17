@@ -3338,6 +3338,10 @@ interface GraphPluginOptions<N = unknown, E = unknown> {
     readonly detailMinPx?: number;
     readonly maxDetails?: number;
     readonly maxEdgeLabels?: number;
+    readonly levelOfDetail?: false | {
+        readonly nodes?: number;
+        readonly edges?: number;
+    };
     readonly minNodePx?: number;
     readonly background?: GraphBackground | null;
     readonly navigation?: boolean;

@@ -4,7 +4,8 @@ import { rgbaCss } from "../../ui/theme.js";
 import { singleChartPlugin } from "../common/OverlayUtils.js";
 import { defaultEdgeLabelRenderer, defaultNodeRenderer, drawLabels } from "./labels.js";
 import type { EdgeLabelRenderer, NodeRenderer, ResolvedLabelStyle } from "./labels.js";
-import { buildGraphModel, isCoordinate, NodeGrid } from "./model.js";
+import { buildGraphModel, isCoordinate } from "./model.js";
+import { GraphIndex } from "./spatial.js";
 import type { GraphModel } from "./model.js";
 import { EDGE_GEOMETRY, edgeDistanceSq, GraphPainter } from "./render.js";
 import type { RenderSurface } from "./render.js";
@@ -40,6 +41,8 @@ const OVERSCAN = 0.25;
 const GESTURE_REDRAW_MS = 300;
 /** How long a pan must pause before the moved layers are drawn again, centered. */
 const PAN_SETTLE_MS = 120;
+/** How long one slice of building an aggregate level may run between frames. */
+const BUILD_SLICE_MS = 6;
 
 type Gesture =
   | { readonly kind: "press"; readonly pointerId: number; readonly x: number; readonly y: number; readonly node: number; readonly moved: boolean }
@@ -90,8 +93,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   let order = new Uint32Array(0);
   let halfW = new Float32Array(0);
   let halfH = new Float32Array(0);
-  const grid = new NodeGrid();
-  let gridDirty = true;
+  /** Grids for picking and for drawing what is on screen, and the zoomed-out aggregates. */
+  const spatial = new GraphIndex();
   const painter = new GraphPainter();
   // Colors resolve against an element inside the chart root, so `var()` tokens scoped to the chart apply.
   const colors = new ColorCache(() => live ?? undefined);
@@ -201,8 +204,9 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       const next = buildGraphModel<N, E>(nodes, edges, options.limits);
       const keep = (index: number, from: GraphModel<N, E>, kind: "node" | "edge"): number => {
         if (index < 0) return -1;
-        const id = kind === "node" ? from.nodes[index]?.id : from.edgeIds[index];
-        const found = id === undefined ? undefined : kind === "node" ? next.nodeIndex.get(id) : next.edgeIndex.get(id);
+        if (kind === "edge") return index < from.edges.length ? next.edgeIndexOf(from.edgeIdOf(index)) : -1;
+        const id = from.nodes[index]?.id;
+        const found = id === undefined ? undefined : next.nodeIndex.get(id);
         return found ?? -1;
       };
       const previous = model;
@@ -223,6 +227,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
         else if (gesture?.kind === "drag") gesture = { ...gesture, node: kept };
       }
       model = next;
+      spatial.invalidatePositions();
       if (lifted >= 0) lift(draggingNode);
       restyleAll();
       fitOnLoad();
@@ -241,7 +246,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
         changed = true;
       }
       if (!changed) return;
-      gridDirty = true;
+      spatial.invalidatePositions();
       scheduleRender();
     },
 
@@ -275,7 +280,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
 
     select(selection) {
       const node = selection?.node ? (model.nodeIndex.get(selection.node) ?? -1) : -1;
-      const edge = selection?.edge ? (model.edgeIndex.get(selection.edge) ?? -1) : -1;
+      const edge = selection?.edge ? model.edgeIndexOf(selection.edge) : -1;
       const before = [selectedNode, selectedEdge] as const;
       selectedNode = node;
       selectedEdge = edge;
@@ -307,6 +312,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       if (frameId !== 0) (chart?.dom.view ?? globalThis).cancelAnimationFrame(frameId);
       frameId = 0;
       clearTimeout(settleTimer);
+      clearTimeout(buildTimer);
       restoreCursor?.();
       restoreCursor = null;
       for (const dispose of disposers.splice(0).reverse()) dispose();
@@ -379,7 +385,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     for (let i = 0; i < nodes; i++) writeNode(i);
     for (let i = 0; i < edges; i++) writeEdgeStyle(edgeStyles, i * EDGE_FLOATS, edgeStyleOf(i), colors, defaults, edgesPickable);
     sortOrder();
-    gridDirty = true;
+    spatial.invalidateStyles();
   }
 
   /** Restyle the nodes whose state changed (an index of -1 is ignored). A layer change re-sorts. */
@@ -392,7 +398,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       const h = halfH[index];
       writeNode(index);
       if (nodeStyles[index * NODE_FLOATS + N_LAYER] !== layer) resort = true;
-      if (halfW[index] !== w || halfH[index] !== h) gridDirty = true;
+      if (halfW[index] !== w || halfH[index] !== h) spatial.invalidateStyles();
     }
     if (resort) sortOrder();
   }
@@ -554,9 +560,21 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     frameId = chart.dom.view.requestAnimationFrame(render);
   }
 
+  /**
+   * How many nodes and edges a still frame draws one by one before it draws the aggregate level: what each engine
+   * draws in a few milliseconds on a phone, unless `levelOfDetail` says otherwise (`false` never aggregates).
+   */
+  function detailBudget(): { nodes: number; edges: number } {
+    const lod = options.levelOfDetail;
+    if (lod === false) return { nodes: Infinity, edges: Infinity };
+    const canvas = chart?.renderer.name === "canvas2d";
+    return { nodes: lod?.nodes ?? (canvas ? 12_000 : 60_000), edges: lod?.edges ?? (canvas ? 25_000 : 150_000) };
+  }
+
   /** Lift a node (its index) onto the overlay with its edges, or put it back with -1; the still layer is drawn again. */
   function lift(index: number): void {
     // Without an overlay (no surface could be made) the node stays in the still layer, drawn again each move.
+    if (index < 0 && lifted >= 0) spatial.invalidatePositions();
     lifted = index >= 0 && ensureFlowSurface() ? index : -1;
     if (lifted < 0) {
       liftedEdges = null;
@@ -633,11 +651,14 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       background,
       lifted,
       liftedEdges,
+      spatial,
+      budget: detailBudget(),
     };
     const full = staticDirty;
     staticDirty = false;
     lastInput = input;
     if (full) {
+      spatial.ensure(model, halfW, halfH);
       clearTimeout(settleTimer);
       const started = chart.dom.view.performance?.now() ?? Date.now();
       for (const canvas of [shapeCanvas, labelCanvas, flowCanvas]) if (canvas) placeLayer(canvas, marginX, marginY, width, height);
@@ -659,7 +680,10 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       drawLabels({
         ctx: labelContext,
         model,
-        order,
+        nodes: painter.drawnNodes,
+        nodeCount: painter.drawnNodeCount,
+        edges: painter.drawnEdges,
+        edgeCount: painter.drawnEdgeCount,
         nodeScreen: painter.nodeScreen,
         edgeScreen: painter.edgeScreen,
         nodeSize: (i) => [nodeStyles[i * NODE_FLOATS + N_WIDTH]!, nodeStyles[i * NODE_FLOATS + N_HEIGHT]!, nodeStyles[i * NODE_FLOATS + N_SHAPE] === 1],
@@ -677,11 +701,29 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       });
     }
     if (full) drawn.ms = (chart.dom.view.performance?.now() ?? Date.now()) - drawnStart;
+    if (spatial.building) scheduleBuild();
     if (animation) scheduleRender();
     else if (painter.moving) requestFrame();
   }
 
   let drawnStart = 0;
+  let buildTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * Advance the aggregate level being built in slices of a few milliseconds between frames, so frames keep
+   * coming; draw again once it is done.
+   */
+  function scheduleBuild(): void {
+    if (buildTimer !== undefined || disposed) return;
+    buildTimer = setTimeout(() => {
+      buildTimer = undefined;
+      if (disposed || !chart) return;
+      const clock = chart.dom.view.performance ?? Date;
+      const now = (): number => clock.now();
+      if (spatial.pump(now, now() + BUILD_SLICE_MS)) scheduleRender();
+      else if (spatial.building) scheduleBuild();
+    }, 0);
+  }
   let lastInput: Parameters<GraphPainter["paint"]>[1] | null = null;
 
   /** Size and place a layer its margins beyond the plot on each side, untransformed, scaling around the plot's middle. */
@@ -768,10 +810,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   function nodeAt(px: number, py: number): number {
     if (model.nodes.length === 0) return -1;
     const { width, height } = plotSize();
-    if (gridDirty) {
-      grid.build(model.nodes.length, model.x, model.y, halfW, halfH);
-      gridDirty = false;
-    }
+    spatial.ensure(model, halfW, halfH);
     const gx = view.centerX + (px - width / 2) / view.zoom;
     const gy = view.centerY + (py - height / 2) / view.zoom;
     const minHalf = positive(options.minNodePx, 2) / 2;
@@ -780,7 +819,10 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     let best = -1;
     let bestRank = -1;
     const rank = drawRank();
-    grid.query(gx, gy, slop, (i) => {
+    const reach = slop + spatial.maxHalf;
+    const found = spatial.nodes.query({ minX: gx - reach, minY: gy - reach, maxX: gx + reach, maxY: gy + reach }, pickQuery);
+    for (let k = 0; k < found; k++) {
+      const i = pickQuery.data[k]!;
       const hw = Math.max(halfW[i]!, minHalf / view.zoom) + NODE_SLOP / view.zoom;
       const hh = Math.max(halfH[i]!, minHalf / view.zoom) + NODE_SLOP / view.zoom;
       const dx = gx - model.x[i]!;
@@ -790,9 +832,11 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
         best = i;
         bestRank = rank[i]!;
       }
-    });
+    }
     return best;
   }
+
+  const pickQuery = { data: new Uint32Array(64) };
 
   let rankCache: Uint32Array | null = null;
   let rankOrder: Uint32Array | null = null;
@@ -812,7 +856,9 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     const py = drawn.marginY + height / 2 + (plotY - height / 2 - drawn.shiftY) / drawn.scale;
     let best = -1;
     let bestDistance = EDGE_SLOP * EDGE_SLOP;
-    for (let i = model.edges.length - 1; i >= 0; i--) {
+    // Only edges drawn one by one can be picked: none while the aggregate level is drawn.
+    for (let k = painter.drawnEdgeCount - 1; k >= 0; k--) {
+      const i = painter.drawnEdges[k]!;
       if (edgeStyles[i * EDGE_FLOATS + E_PICKABLE] !== 1) continue;
       const g = i * EDGE_GEOMETRY;
       if (geometry[g + 6] !== 1) continue;
@@ -911,7 +957,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       if (isCoordinate(gx) && isCoordinate(gy)) {
         model.x[active.node] = gx;
         model.y[active.node] = gy;
-        gridDirty = true;
+        // The grids are brought up to date when the drag ends (see `lift`): until then only this node moves.
         // Only the lifted node and its edges move: the overlay and labels are drawn again, the still layer is not.
         if (lifted >= 0) requestFrame();
         else scheduleRender();
@@ -944,6 +990,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     } else if (current.kind === "drag") {
       const node = current.node;
       draggingNode = -1;
+      spatial.invalidatePositions();
       lift(-1);
       restyleNodes(node);
       scheduleRender();
@@ -958,6 +1005,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     if (gesture?.kind === "drag") {
       const node = gesture.node;
       draggingNode = -1;
+      spatial.invalidatePositions();
       lift(-1);
       restyleNodes(node);
       if (node < model.nodes.length) options.onNodeDragEnd?.(model.nodes[node]!, model.x[node]!, model.y[node]!);
