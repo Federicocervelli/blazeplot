@@ -53,7 +53,7 @@ For streaming data, pass `capacity` to `addLine` and append samples; see [Live d
 <!-- README_PERFORMANCE_START -->
 ## Performance
 
-The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **221 KiB raw**. Plugins and helpers ship as separate subpath entries.
+The core runtime (`import { Chart } from "blazeplot"`, without optional plugins) is about **230 KiB raw**. Plugins and helpers ship as separate subpath entries.
 
 Panning a 1M-point line runs at 1,090 fps, against 721 for uPlot and 546 for Chart.js (Chrome 153, AMD Ryzen 7 7800X3D, AMD Radeon RX 9070, median of 7 runs).
 
@@ -93,6 +93,7 @@ Guides: [Overview](docs/overview.md), [Docs map](docs/README.md), [Examples](doc
 | `blazeplot/plugins/crosshair` | Built-in crosshair and ruler plugin. |
 | `blazeplot/plugins/navigator` | Built-in overview/navigator plugin. |
 | `blazeplot/plugins/flamegraph` | Built-in flame graph and status-span plugin. |
+| `blazeplot/plugins/graph` | Built-in node-and-edge graph plugin: thousands of nodes and edges on the chart's engine, with custom node and edge renderers. |
 | `blazeplot/plugins/a11y` | Built-in accessibility plugin: hidden data table, keyboard inspection cursor, live summary. |
 
 Every public export (with kind and summary) and the per-chunk bundle sizes are listed in the [API reference](docs/api-reference.md).

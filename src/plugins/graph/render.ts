@@ -1,0 +1,435 @@
+/**
+ * Graph drawing: projecting nodes to the screen, edge geometry (ends on node outlines, bows, arrowheads,
+ * dashes and flow), culling, and the device-pixel buffers handed to the chart's render surface. Keeps the
+ * screen geometry of the last frame for picking. No chart or plugin lifecycle.
+ */
+import type { ChartPluginContext } from "../../ui/PluginTypes.js";
+import type { GraphModel } from "./model.js";
+import {
+  E_ARROW,
+  E_ARROW_SIZE,
+  E_COLOR,
+  E_CURVATURE,
+  E_DASH,
+  E_END_GAP,
+  E_FLOW,
+  E_FLOW_DASH,
+  E_FLOW_GAP,
+  E_FLOW_SPEED,
+  E_FLOW_WIDTH,
+  E_GAP,
+  E_HAS_FLOW,
+  E_WIDTH,
+  EDGE_FLOATS,
+  N_BORDER,
+  N_FILL,
+  N_HEIGHT,
+  N_RADIUS,
+  N_RING,
+  N_RING_GAP,
+  N_RING_WIDTH,
+  N_SHAPE,
+  N_STROKE,
+  N_WIDTH,
+  NODE_FLOATS,
+} from "./styles.js";
+
+/** The chart engine's drawing surface (WebGL2, Canvas 2D, or the shared context). */
+export type RenderSurface = ReturnType<ChartPluginContext["unstable"]["createRenderSurface"]>;
+
+/** How far an `"auto"` edge with a reverse twin bows, as a fraction of its length. */
+export const AUTO_BOW = 0.16;
+/** Screen geometry kept per edge: start, control, end (CSS pixels), and whether it was drawn. */
+export const EDGE_GEOMETRY = 7;
+/** Screen geometry kept per node: center and half size (CSS pixels, at least the minimum size), and shape. */
+export const NODE_GEOMETRY = 5;
+
+const SHAPE = 14;
+const SEGMENT = 12;
+const VERTEX = 6;
+const ARROW_HALF_WIDTH = 0.55;
+
+/** A float buffer that grows by doubling and is reused frame after frame. */
+class Buffer {
+  data: Float32Array;
+  count = 0;
+  constructor(private readonly stride: number) {
+    this.data = new Float32Array(stride * 64);
+  }
+  /** Room for one more record; returns its offset. */
+  next(): number {
+    const o = this.count * this.stride;
+    if (o + this.stride > this.data.length) {
+      const grown = new Float32Array(this.data.length * 2);
+      grown.set(this.data);
+      this.data = grown;
+    }
+    this.count++;
+    return o;
+  }
+}
+
+export interface GraphFrameInput<N, E> {
+  readonly model: GraphModel<N, E>;
+  readonly nodeStyles: Float32Array;
+  readonly edgeStyles: Float32Array;
+  /** Node indices in draw order (by layer). */
+  readonly order: Uint32Array;
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly zoom: number;
+  /** Plot size in CSS pixels, and device pixels per CSS pixel. */
+  readonly width: number;
+  readonly height: number;
+  readonly pixelRatio: number;
+  /** Seconds, for flow animation. */
+  readonly time: number;
+  readonly animate: boolean;
+  readonly minNodePx: number;
+  readonly background: { readonly kind: "dots" | "grid"; readonly gap: number; readonly size: number; readonly color: readonly number[] } | null;
+}
+
+export class GraphPainter {
+  private readonly shapes = new Buffer(SHAPE);
+  private readonly segments = new Buffer(SEGMENT);
+  private readonly triangles = new Buffer(VERTEX);
+  private readonly backgroundShapes = new Buffer(SHAPE);
+  private readonly backgroundSegments = new Buffer(SEGMENT);
+  /** Per node: screen center x, y, half width, half height, shape (0 circle, 1 rect). */
+  nodeScreen = new Float32Array(0);
+  /** Per edge: start x, y, control x, y, end x, y, and 1 when drawn this frame. */
+  edgeScreen = new Float32Array(0);
+  /** Whether the last frame drew a moving flow, so another frame is needed. */
+  moving = false;
+
+  /** Project, cull, and draw one frame on `surface`. */
+  paint<N, E>(surface: RenderSurface, input: GraphFrameInput<N, E>): void {
+    const { width, height, pixelRatio: dpr } = input;
+    this.shapes.count = 0;
+    this.segments.count = 0;
+    this.triangles.count = 0;
+    this.moving = false;
+    this.project(input);
+
+    surface.beginFrame(Math.max(1, Math.round(width * dpr)), Math.max(1, Math.round(height * dpr)), dpr);
+    this.paintBackground(surface, input);
+    this.buildEdges(input);
+    if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
+    if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
+    this.buildNodes(input);
+    if (this.shapes.count > 0) surface.fillShapes(this.shapes.data, this.shapes.count);
+    surface.endFrame();
+  }
+
+  /** Node centers and half sizes on screen, with the minimum size applied. */
+  private project<N, E>(input: GraphFrameInput<N, E>): void {
+    const { model, nodeStyles, zoom, width, height, centerX, centerY, minNodePx } = input;
+    const count = model.nodes.length;
+    if (this.nodeScreen.length < count * NODE_GEOMETRY) this.nodeScreen = new Float32Array(count * NODE_GEOMETRY);
+    const minHalf = minNodePx / 2;
+    for (let i = 0; i < count; i++) {
+      const s = i * NODE_FLOATS;
+      const o = i * NODE_GEOMETRY;
+      this.nodeScreen[o] = width / 2 + (model.x[i]! - centerX) * zoom;
+      this.nodeScreen[o + 1] = height / 2 + (model.y[i]! - centerY) * zoom;
+      this.nodeScreen[o + 2] = Math.max(minHalf, (nodeStyles[s + N_WIDTH]! * zoom) / 2);
+      this.nodeScreen[o + 3] = Math.max(minHalf, (nodeStyles[s + N_HEIGHT]! * zoom) / 2);
+      this.nodeScreen[o + 4] = nodeStyles[s + N_SHAPE]!;
+    }
+  }
+
+  private paintBackground<N, E>(surface: RenderSurface, input: GraphFrameInput<N, E>): void {
+    const background = input.background;
+    if (!background || background.color[3]! <= 0) return;
+    const { zoom, width, height, centerX, centerY, pixelRatio: dpr } = input;
+    // Coarsen by doubling until dots or lines are at least 10 CSS pixels apart: a zoomed-out graph
+    // keeps a calm pattern and the count stays bounded by the plot area.
+    let gap = background.gap;
+    while (gap * zoom < 10) gap *= 2;
+    const step = gap * zoom;
+    const left = centerX - width / 2 / zoom;
+    const top = centerY - height / 2 / zoom;
+    const firstX = Math.ceil(left / gap) * gap;
+    const firstY = Math.ceil(top / gap) * gap;
+    const [r, g, b, a] = background.color as [number, number, number, number];
+    const size = background.size * dpr;
+    if (background.kind === "dots") {
+      const shapes = this.backgroundShapes;
+      shapes.count = 0;
+      for (let sy = (firstY - top) * zoom; sy <= height; sy += step) {
+        for (let sx = (firstX - left) * zoom; sx <= width; sx += step) {
+          const o = shapes.next();
+          const d = shapes.data;
+          d[o] = sx * dpr - size / 2;
+          d[o + 1] = sy * dpr - size / 2;
+          d[o + 2] = size;
+          d[o + 3] = size;
+          d[o + 4] = size / 2;
+          d[o + 5] = 0;
+          d.set([r, g, b, a, 0, 0, 0, 0], o + 6);
+        }
+      }
+      if (shapes.count > 0) surface.fillShapes(shapes.data, shapes.count);
+      return;
+    }
+    const lines = this.backgroundSegments;
+    lines.count = 0;
+    const line = (x0: number, y0: number, x1: number, y1: number): void => {
+      const o = lines.next();
+      lines.data.set([x0 * dpr, y0 * dpr, x1 * dpr, y1 * dpr, size, 0, 0, 0, r, g, b, a], o);
+    };
+    for (let sx = (firstX - left) * zoom; sx <= width; sx += step) line(sx, 0, sx, height);
+    for (let sy = (firstY - top) * zoom; sy <= height; sy += step) line(0, sy, width, sy);
+    if (lines.count > 0) surface.strokeSegments(lines.data, lines.count);
+  }
+
+  private buildEdges<N, E>(input: GraphFrameInput<N, E>): void {
+    const { model, edgeStyles, width, height, pixelRatio: dpr, time, animate } = input;
+    const count = model.edges.length;
+    if (this.edgeScreen.length < count * EDGE_GEOMETRY) this.edgeScreen = new Float32Array(count * EDGE_GEOMETRY);
+    const ns = this.nodeScreen;
+    const geometry = this.edgeScreen;
+    for (let i = 0; i < count; i++) {
+      const s = i * EDGE_FLOATS;
+      const g = i * EDGE_GEOMETRY;
+      geometry[g + 6] = 0;
+      const a = model.source[i]! * NODE_GEOMETRY;
+      const b = model.target[i]! * NODE_GEOMETRY;
+      const ax = ns[a]!;
+      const ay = ns[a + 1]!;
+      const bx = ns[b]!;
+      const by = ns[b + 1]!;
+      const dx = bx - ax;
+      const dy = by - ay;
+      const length = Math.hypot(dx, dy);
+      if (!(length > 0)) continue;
+      const style = edgeStyles[s + E_CURVATURE]!;
+      const curvature = Number.isNaN(style) ? (model.reversed[i] ? AUTO_BOW : 0) : style;
+      const nx = -dy / length;
+      const ny = dx / length;
+      const cx = (ax + bx) / 2 + nx * curvature * length;
+      const cy = (ay + by) / 2 + ny * curvature * length;
+      // Cull on the hull of the two centers and the control point, grown by the stroke and arrows.
+      const margin = edgeStyles[s + E_WIDTH]! + edgeStyles[s + E_ARROW_SIZE]! + 2;
+      if (Math.max(ax, bx, cx) < -margin || Math.min(ax, bx, cx) > width + margin || Math.max(ay, by, cy) < -margin || Math.min(ay, by, cy) > height + margin) continue;
+
+      const gap = edgeStyles[s + E_END_GAP]!;
+      const start = exit(ns, a, cx - ax, cy - ay, gap);
+      const end = exit(ns, b, cx - bx, cy - by, gap);
+      if (!start || !end) continue;
+      let [sx, sy] = start;
+      let [ex, ey] = end;
+      // Nodes that overlap leave no edge to draw.
+      if ((ex - sx) * dx + (ey - sy) * dy <= 0) continue;
+      // Keep the bow when the ends moved onto the outlines: the control point stays where it was.
+      geometry[g] = sx;
+      geometry[g + 1] = sy;
+      geometry[g + 2] = cx;
+      geometry[g + 3] = cy;
+      geometry[g + 4] = ex;
+      geometry[g + 5] = ey;
+      geometry[g + 6] = 1;
+
+      const arrows = edgeStyles[s + E_ARROW]!;
+      const arrowSize = edgeStyles[s + E_ARROW_SIZE]!;
+      const visibleLength = Math.hypot(ex - sx, ey - sy);
+      const drawArrows = arrowSize > 0 && visibleLength > arrowSize * 1.5;
+      if (drawArrows && arrows & 1) {
+        const [tx, ty] = unit(ex - cx, ey - cy);
+        this.arrow(ex, ey, tx, ty, arrowSize, edgeStyles, s + E_COLOR, dpr);
+        // The line stops inside the arrowhead, so its butt end never shows past the tip.
+        ex -= tx * arrowSize * 0.7;
+        ey -= ty * arrowSize * 0.7;
+      }
+      if (drawArrows && arrows & 2) {
+        const [tx, ty] = unit(sx - cx, sy - cy);
+        this.arrow(sx, sy, tx, ty, arrowSize, edgeStyles, s + E_COLOR, dpr);
+        sx -= tx * arrowSize * 0.7;
+        sy -= ty * arrowSize * 0.7;
+      }
+
+      const lineWidth = edgeStyles[s + E_WIDTH]!;
+      if (lineWidth > 0 && edgeStyles[s + E_COLOR + 3]! > 0) {
+        this.curve(sx, sy, cx, cy, ex, ey, curvature !== 0, lineWidth, edgeStyles[s + E_DASH]!, edgeStyles[s + E_GAP]!, 0, edgeStyles, s + E_COLOR, dpr);
+      }
+      if (edgeStyles[s + E_HAS_FLOW]) {
+        const dash = edgeStyles[s + E_FLOW_DASH]!;
+        const period = dash + edgeStyles[s + E_FLOW_GAP]!;
+        const speed = edgeStyles[s + E_FLOW_SPEED]!;
+        // Dashes move toward the target: the pattern's phase falls as time goes on.
+        const phase = animate && speed !== 0 ? -((time * speed) % period) : 0;
+        if (animate && speed !== 0) this.moving = true;
+        this.curve(sx, sy, cx, cy, ex, ey, curvature !== 0, edgeStyles[s + E_FLOW_WIDTH]!, dash, edgeStyles[s + E_FLOW_GAP]!, phase, edgeStyles, s + E_FLOW, dpr);
+      }
+    }
+  }
+
+  /** Emit a straight or quadratic stroke as segments, with the dash pattern continuous along it. */
+  private curve(sx: number, sy: number, cx: number, cy: number, ex: number, ey: number, bowed: boolean, width: number, dash: number, gap: number, phase: number, styles: Float32Array, colorAt: number, dpr: number): void {
+    const pieces = bowed ? Math.min(24, Math.max(6, Math.ceil(Math.hypot(ex - sx, ey - sy) / 14))) : 1;
+    let px = sx;
+    let py = sy;
+    let along = phase;
+    for (let k = 1; k <= pieces; k++) {
+      const t = k / pieces;
+      const u = 1 - t;
+      const qx = bowed ? u * u * sx + 2 * u * t * cx + t * t * ex : ex;
+      const qy = bowed ? u * u * sy + 2 * u * t * cy + t * t * ey : ey;
+      const o = this.segments.next();
+      const d = this.segments.data;
+      d[o] = px * dpr;
+      d[o + 1] = py * dpr;
+      d[o + 2] = qx * dpr;
+      d[o + 3] = qy * dpr;
+      d[o + 4] = width * dpr;
+      d[o + 5] = dash * dpr;
+      d[o + 6] = gap * dpr;
+      d[o + 7] = along * dpr;
+      d[o + 8] = styles[colorAt]!;
+      d[o + 9] = styles[colorAt + 1]!;
+      d[o + 10] = styles[colorAt + 2]!;
+      d[o + 11] = styles[colorAt + 3]!;
+      along += Math.hypot(qx - px, qy - py);
+      px = qx;
+      py = qy;
+    }
+  }
+
+  private arrow(tipX: number, tipY: number, tx: number, ty: number, size: number, styles: Float32Array, colorAt: number, dpr: number): void {
+    const baseX = tipX - tx * size;
+    const baseY = tipY - ty * size;
+    const half = size * ARROW_HALF_WIDTH;
+    const points = [tipX, tipY, baseX - ty * half, baseY + tx * half, baseX + ty * half, baseY - tx * half];
+    for (let p = 0; p < 3; p++) {
+      const o = this.triangles.next();
+      const d = this.triangles.data;
+      d[o] = points[p * 2]! * dpr;
+      d[o + 1] = points[p * 2 + 1]! * dpr;
+      d[o + 2] = styles[colorAt]!;
+      d[o + 3] = styles[colorAt + 1]!;
+      d[o + 4] = styles[colorAt + 2]!;
+      d[o + 5] = styles[colorAt + 3]!;
+    }
+  }
+
+  private buildNodes<N, E>(input: GraphFrameInput<N, E>): void {
+    const { nodeStyles, order, width, height, zoom, pixelRatio: dpr } = input;
+    const ns = this.nodeScreen;
+    for (let k = 0; k < order.length; k++) {
+      const i = order[k]!;
+      const s = i * NODE_FLOATS;
+      const o = i * NODE_GEOMETRY;
+      const x = ns[o]!;
+      const y = ns[o + 1]!;
+      const hw = ns[o + 2]!;
+      const hh = ns[o + 3]!;
+      const ringWidth = nodeStyles[s + N_RING_WIDTH]!;
+      const ring = ringWidth > 0 && nodeStyles[s + N_RING + 3]! > 0 ? ringWidth + nodeStyles[s + N_RING_GAP]! : 0;
+      if (x + hw + ring < 0 || x - hw - ring > width || y + hh + ring < 0 || y - hh - ring > height) continue;
+      const circle = nodeStyles[s + N_SHAPE] === 0;
+      // A node drawn at its minimum size is a dot: round, whatever its shape.
+      const radius = circle ? Math.min(hw, hh) : Math.min(nodeStyles[s + N_RADIUS]! * zoom, hw, hh);
+      if (ring > 0) {
+        this.shape(x, y, hw + ring, hh + ring, circle ? Math.min(hw, hh) + ring : radius + ring, ringWidth, nodeStyles, -1, s + N_RING, dpr);
+      }
+      this.shape(x, y, hw, hh, radius, Math.min(nodeStyles[s + N_BORDER]! * zoom, hw, hh), nodeStyles, s + N_FILL, s + N_STROKE, dpr);
+    }
+  }
+
+  /** One shape record; `fillAt` of -1 means a transparent fill (a ring). */
+  private shape(x: number, y: number, hw: number, hh: number, radius: number, border: number, styles: Float32Array, fillAt: number, borderAt: number, dpr: number): void {
+    const o = this.shapes.next();
+    const d = this.shapes.data;
+    d[o] = (x - hw) * dpr;
+    d[o + 1] = (y - hh) * dpr;
+    d[o + 2] = hw * 2 * dpr;
+    d[o + 3] = hh * 2 * dpr;
+    d[o + 4] = radius * dpr;
+    d[o + 5] = border * dpr;
+    for (let c = 0; c < 4; c++) {
+      d[o + 6 + c] = fillAt < 0 ? 0 : styles[fillAt + c]!;
+      d[o + 10 + c] = styles[borderAt + c]!;
+    }
+  }
+}
+
+function unit(x: number, y: number): [number, number] {
+  const length = Math.hypot(x, y) || 1;
+  return [x / length, y / length];
+}
+
+/**
+ * Where a ray from node `o`'s center in direction (`dx`, `dy`) leaves its outline, `gap` CSS pixels out:
+ * a circle's radius, or a box's edge (corners are treated as square).
+ */
+export function exit(screen: Float32Array, o: number, dx: number, dy: number, gap: number): [number, number] | null {
+  const length = Math.hypot(dx, dy);
+  if (!(length > 0)) return null;
+  const ux = dx / length;
+  const uy = dy / length;
+  const x = screen[o]!;
+  const y = screen[o + 1]!;
+  const hw = screen[o + 2]!;
+  const hh = screen[o + 3]!;
+  if (screen[o + 4] === 0) {
+    const r = Math.min(hw, hh) + gap;
+    return [x + ux * r, y + uy * r];
+  }
+  const tx = ux === 0 ? Infinity : (hw + gap) / Math.abs(ux);
+  const ty = uy === 0 ? Infinity : (hh + gap) / Math.abs(uy);
+  const t = Math.min(tx, ty);
+  return [x + ux * t, y + uy * t];
+}
+
+/** Squared distance from (`px`, `py`) to an edge's last screen geometry, sampled along a bow. */
+export function edgeDistanceSq(geometry: Float32Array, g: number, px: number, py: number): number {
+  const sx = geometry[g]!;
+  const sy = geometry[g + 1]!;
+  const cx = geometry[g + 2]!;
+  const cy = geometry[g + 3]!;
+  const ex = geometry[g + 4]!;
+  const ey = geometry[g + 5]!;
+  const bowed = Math.abs((cx - (sx + ex) / 2) * (ey - sy) - (cy - (sy + ey) / 2) * (ex - sx)) > 1e-6;
+  const pieces = bowed ? 12 : 1;
+  let best = Infinity;
+  let ax = sx;
+  let ay = sy;
+  for (let k = 1; k <= pieces; k++) {
+    const t = k / pieces;
+    const u = 1 - t;
+    const bx = bowed ? u * u * sx + 2 * u * t * cx + t * t * ex : ex;
+    const by = bowed ? u * u * sy + 2 * u * t * cy + t * t * ey : ey;
+    best = Math.min(best, segmentDistanceSq(px, py, ax, ay, bx, by));
+    ax = bx;
+    ay = by;
+  }
+  return best;
+}
+
+export function segmentDistanceSq(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSq = dx * dx + dy * dy;
+  const t = lengthSq > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq)) : 0;
+  const qx = ax + t * dx - px;
+  const qy = ay + t * dy - py;
+  return qx * qx + qy * qy;
+}
+
+/** The middle of an edge's last screen geometry, its direction there, and the side it bows to. */
+export function edgeMiddle(geometry: Float32Array, g: number): { x: number; y: number; angle: number; normalX: number; normalY: number } {
+  const sx = geometry[g]!;
+  const sy = geometry[g + 1]!;
+  const cx = geometry[g + 2]!;
+  const cy = geometry[g + 3]!;
+  const ex = geometry[g + 4]!;
+  const ey = geometry[g + 5]!;
+  const x = 0.25 * sx + 0.5 * cx + 0.25 * ex;
+  const y = 0.25 * sy + 0.5 * cy + 0.25 * ey;
+  const [tx, ty] = unit(ex - sx, ey - sy);
+  // The bow's side: toward the control point, or the left of travel for a straight edge.
+  const ox = cx - (sx + ex) / 2;
+  const oy = cy - (sy + ey) / 2;
+  const [normalX, normalY] = Math.hypot(ox, oy) > 1e-3 ? unit(ox, oy) : [-ty, tx];
+  return { x, y, angle: Math.atan2(ty, tx), normalX, normalY };
+}

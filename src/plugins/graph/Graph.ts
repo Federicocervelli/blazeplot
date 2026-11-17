@@ -1,0 +1,1034 @@
+import type { RgbaColor } from "../../core/types.js";
+import type { ChartPluginContext } from "../../ui/PluginTypes.js";
+import { rgbaCss } from "../../ui/theme.js";
+import { singleChartPlugin } from "../common/OverlayUtils.js";
+import { defaultEdgeLabelRenderer, defaultNodeRenderer, drawLabels } from "./labels.js";
+import type { EdgeLabelRenderer, NodeRenderer, ResolvedLabelStyle } from "./labels.js";
+import { buildGraphModel, isCoordinate, NodeGrid } from "./model.js";
+import type { GraphModel } from "./model.js";
+import { EDGE_GEOMETRY, edgeDistanceSq, GraphPainter } from "./render.js";
+import type { RenderSurface } from "./render.js";
+import { ColorCache, E_PICKABLE, EDGE_FLOATS, N_HEIGHT, N_LAYER, N_SHAPE, N_WIDTH, NODE_FLOATS, writeEdgeStyle, writeNodeStyle } from "./styles.js";
+import type { StyleDefaults } from "./styles.js";
+import type {
+  GraphEdgeStyle,
+  GraphFitOptions,
+  GraphHit,
+  GraphItemState,
+  GraphNode,
+  GraphNodeStyle,
+  GraphPlugin,
+  GraphPluginOptions,
+  GraphSetResult,
+  GraphView,
+} from "./types.js";
+
+const IDLE: GraphItemState = Object.freeze({ hovered: false, focused: false, selected: false, dragging: false });
+/** Pointer travel, in CSS pixels, before a press becomes a pan or a drag instead of a click. */
+const DRAG_THRESHOLD = 4;
+/** How far from a thin target the pointer may be and still hit it, in CSS pixels. */
+const NODE_SLOP = 3;
+const EDGE_SLOP = 6;
+const KEY_PAN = 48;
+const KEY_ZOOM = 1.25;
+const WHEEL_ZOOM_PER_PIXEL = 0.0025;
+
+type Gesture =
+  | { readonly kind: "press"; readonly pointerId: number; readonly x: number; readonly y: number; readonly node: number; readonly moved: boolean }
+  | { readonly kind: "pan"; readonly pointerId: number; lastX: number; lastY: number }
+  | { readonly kind: "drag"; readonly pointerId: number; readonly node: number; readonly offsetX: number; readonly offsetY: number }
+  | { readonly kind: "pinch"; distance: number; midX: number; midY: number };
+
+/**
+ * Create a plugin that draws a graph of nodes and edges with the chart's engine (WebGL2, Canvas 2D, or
+ * the shared context): every node shape in one instanced draw, every edge in another, so thousands of
+ * each stay interactive. Node content and edge labels are drawn by callbacks on a 2D layer, only for
+ * items large enough on screen to read. Stateful: one instance per chart.
+ *
+ * The plugin owns navigation (drag to pan, wheel or pinch to zoom, keyboard) and keeps one zoom for
+ * both axes, so create the chart without axes or grid and without `interactionsPlugin`.
+ *
+ * @experimental May change in a minor release before it is promoted to stable. See docs/stability.md.
+ */
+export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOptions<N, E> = {}): GraphPlugin<N, E> {
+  let chart: ChartPluginContext | null = null;
+  let surface: RenderSurface | null = null;
+  let shapeCanvas: HTMLCanvasElement | null = null;
+  let labelCanvas: HTMLCanvasElement | null = null;
+  let labelContext: CanvasRenderingContext2D | null = null;
+  let live: HTMLElement | null = null;
+  const disposers: Array<() => void> = [];
+  let disposed = false;
+  let frameId = 0;
+
+  let model: GraphModel<N, E> = buildGraphModel<N, E>(options.nodes ?? [], options.edges ?? [], options.limits);
+  let nodeStyles = new Float32Array(0);
+  let edgeStyles = new Float32Array(0);
+  let order = new Uint32Array(0);
+  let halfW = new Float32Array(0);
+  let halfH = new Float32Array(0);
+  const grid = new NodeGrid();
+  let gridDirty = true;
+  const painter = new GraphPainter();
+  // Colors resolve against an element inside the chart root, so `var()` tokens scoped to the chart apply.
+  const colors = new ColorCache(() => live ?? undefined);
+  let defaults: StyleDefaults = { nodeFill: [0.4, 0.6, 1, 1], edgeColor: [0.6, 0.6, 0.6, 0.5] };
+  let labelStyle: ResolvedLabelStyle | null = null;
+  let background: { kind: "dots" | "grid"; gap: number; size: number; color: RgbaColor } | null = null;
+
+  const view = { centerX: 0, centerY: 0, zoom: 1 };
+  const minZoom = positive(options.minZoom, 0.02);
+  const maxZoom = Math.max(minZoom, positive(options.maxZoom, 8));
+  let fitted = false;
+  /** A view change in progress; its clock starts at its first frame's timestamp, so it reads one clock only. */
+  let animation: { from: GraphView; to: GraphView; start: number | null; duration: number } | null = null;
+  let applyingView = false;
+
+  let hoveredNode = -1;
+  let hoveredEdge = -1;
+  let focusedNode = -1;
+  let selectedNode = -1;
+  let selectedEdge = -1;
+  let draggingNode = -1;
+  let gesture: Gesture | null = null;
+  const pointers = new Map<number, { x: number; y: number }>();
+  let cursor = "";
+  let restoreCursor: (() => void) | null = null;
+  let reducedMotion = false;
+
+  const edgesPickable = Boolean(options.onEdgeClick || options.onEdgeHover);
+  const drawNode: NodeRenderer<N> | null = options.drawNode === null ? null : (options.drawNode ?? defaultNodeRenderer<N>(() => labelStyle!));
+  const drawEdgeLabel: EdgeLabelRenderer<E> | null = options.drawEdgeLabel === null ? null : (options.drawEdgeLabel ?? defaultEdgeLabelRenderer<E>(() => labelStyle!));
+
+  const plugin: GraphPlugin<N, E> = {
+    install(ctx) {
+      chart = ctx;
+      disposed = false;
+      const doc = ctx.dom.document;
+      shapeCanvas = overlayCanvas(doc, "blazeplot-graph-shapes", 4);
+      labelCanvas = overlayCanvas(doc, "blazeplot-graph-labels", 5);
+      labelContext = labelCanvas.getContext("2d");
+      surface = ctx.unstable.createRenderSurface(shapeCanvas);
+      surface.setLossListener((state) => {
+        if (state === "restored") scheduleRender();
+      });
+      disposers.push(ctx.dom.mount("plot", shapeCanvas), ctx.dom.mount("plot", labelCanvas));
+
+      live = ctx.dom.create("div");
+      live.className = "blazeplot-visually-hidden";
+      live.setAttribute("aria-live", "polite");
+      live.setAttribute("aria-atomic", "true");
+      disposers.push(ctx.dom.mount("root", live));
+      disposers.push(
+        ctx.dom.decorate("plot", {
+          style: options.navigation === false ? {} : { touchAction: "none" },
+          attributes: { tabindex: "0", role: "application", "aria-roledescription": "graph", "aria-label": options.messages?.label ?? "Graph" },
+        }),
+      );
+
+      const media = ctx.dom.view.matchMedia?.("(prefers-reduced-motion: reduce)");
+      reducedMotion = media?.matches === true;
+      if (media) {
+        const onChange = (event: MediaQueryListEvent): void => {
+          reducedMotion = event.matches;
+          scheduleRender();
+        };
+        media.addEventListener?.("change", onChange);
+        disposers.push(() => media.removeEventListener?.("change", onChange));
+      }
+
+      disposers.push(
+        ctx.dom.listen("plot", "pointerdown", onPointerDown),
+        ctx.dom.listen("plot", "pointermove", onPointerMove),
+        ctx.dom.listen("plot", "pointerup", onPointerUp),
+        ctx.dom.listen("plot", "pointercancel", onPointerCancel),
+        ctx.dom.listen("plot", "pointerleave", onPointerLeave),
+        ctx.dom.listen("plot", "wheel", onWheel, { passive: false }),
+        ctx.dom.listen("plot", "dblclick", onDoubleClick),
+        ctx.dom.listen("plot", "keydown", onKeyDown),
+        ctx.dom.listen("plot", "focus", onFocus),
+        ctx.dom.listen("plot", "blur", () => setCursorState()),
+        ctx.events.subscribe("viewportchange", (event) => {
+          if (!applyingView && event.source !== "fit") adoptChartViewport();
+        }),
+      );
+
+      resolveTheme();
+      restyleAll();
+      fitOnLoad();
+      scheduleRender();
+      return {
+        dispose: () => plugin.dispose(),
+        onResize: () => {
+          pushView("api");
+          scheduleRender();
+          options.onViewChange?.(plugin.getView());
+        },
+        onThemeChange: () => {
+          colors.clear();
+          resolveTheme();
+          restyleAll();
+          scheduleRender();
+        },
+        onContextRestored: scheduleRender,
+      };
+    },
+
+    setGraph(nodes, edges) {
+      const next = buildGraphModel<N, E>(nodes, edges, options.limits);
+      const keep = (index: number, from: GraphModel<N, E>, kind: "node" | "edge"): number => {
+        if (index < 0) return -1;
+        const id = kind === "node" ? from.nodes[index]?.id : from.edgeIds[index];
+        const found = id === undefined ? undefined : kind === "node" ? next.nodeIndex.get(id) : next.edgeIndex.get(id);
+        return found ?? -1;
+      };
+      const previous = model;
+      hoveredNode = keep(hoveredNode, previous, "node");
+      focusedNode = keep(focusedNode, previous, "node");
+      selectedNode = keep(selectedNode, previous, "node");
+      hoveredEdge = keep(hoveredEdge, previous, "edge");
+      selectedEdge = keep(selectedEdge, previous, "edge");
+      // A drag in progress keeps the node under the pointer, wherever the new graph puts it.
+      if (draggingNode >= 0) {
+        const kept = keep(draggingNode, previous, "node");
+        if (kept >= 0) {
+          next.x[kept] = previous.x[draggingNode]!;
+          next.y[kept] = previous.y[draggingNode]!;
+        }
+        draggingNode = kept;
+        if (kept < 0) gesture = null;
+        else if (gesture?.kind === "drag") gesture = { ...gesture, node: kept };
+      }
+      model = next;
+      restyleAll();
+      fitOnLoad();
+      scheduleRender();
+      return { nodes: next.nodes.length, edges: next.edges.length, skippedEdges: next.skippedEdges } satisfies GraphSetResult;
+    },
+
+    setPositions(positions) {
+      let changed = false;
+      for (const [id, point] of Object.entries(positions)) {
+        const index = model.nodeIndex.get(id);
+        if (index === undefined || index === draggingNode) continue;
+        if (!isCoordinate(point?.x) || !isCoordinate(point?.y)) throw new RangeError(`graph: the position of "${id}" is not a finite number.`);
+        model.x[index] = point.x;
+        model.y[index] = point.y;
+        changed = true;
+      }
+      if (!changed) return;
+      gridDirty = true;
+      scheduleRender();
+    },
+
+    restyle() {
+      restyleAll();
+      scheduleRender();
+    },
+
+    fit(fitOptions = {}) {
+      const target = fitView(fitOptions);
+      if (target) setViewTo(target, fitOptions.duration ?? 0, "fit");
+    },
+
+    zoomBy(factor, zoomOptions = {}) {
+      if (!(factor > 0) || !Number.isFinite(factor)) return;
+      setViewTo({ ...plugin.getView(), zoom: clampZoom(view.zoom * factor) }, zoomOptions.duration ?? 0, "user");
+    },
+
+    getView() {
+      return { centerX: view.centerX, centerY: view.centerY, zoom: view.zoom };
+    },
+
+    setView(next, viewOptions = {}) {
+      const target = {
+        centerX: isCoordinate(next.centerX) ? next.centerX : view.centerX,
+        centerY: isCoordinate(next.centerY) ? next.centerY : view.centerY,
+        zoom: next.zoom !== undefined && next.zoom > 0 && Number.isFinite(next.zoom) ? clampZoom(next.zoom) : view.zoom,
+      };
+      setViewTo(target, viewOptions.duration ?? 0, "api");
+    },
+
+    select(selection) {
+      const node = selection?.node ? (model.nodeIndex.get(selection.node) ?? -1) : -1;
+      const edge = selection?.edge ? (model.edgeIndex.get(selection.edge) ?? -1) : -1;
+      const before = [selectedNode, selectedEdge] as const;
+      selectedNode = node;
+      selectedEdge = edge;
+      restyleNodes(before[0], node);
+      restyleEdges(before[1], edge);
+      scheduleRender();
+    },
+
+    focusNode(id) {
+      setFocus(id === null ? -1 : (model.nodeIndex.get(id) ?? -1), true);
+    },
+
+    pick(clientX, clientY) {
+      if (!chart) return null;
+      const [px, py] = chart.coords.clientToPlot(clientX, clientY);
+      return hitAt(px, py);
+    },
+
+    nodeToPlot(id) {
+      const index = model.nodeIndex.get(id);
+      if (index === undefined || !chart) return null;
+      const { width, height } = plotSize();
+      return [width / 2 + (model.x[index]! - view.centerX) * view.zoom, height / 2 + (model.y[index]! - view.centerY) * view.zoom];
+    },
+
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      if (frameId !== 0) (chart?.dom.view ?? globalThis).cancelAnimationFrame(frameId);
+      frameId = 0;
+      restoreCursor?.();
+      restoreCursor = null;
+      for (const dispose of disposers.splice(0).reverse()) dispose();
+      surface?.dispose();
+      surface = null;
+      shapeCanvas = null;
+      labelCanvas = null;
+      labelContext = null;
+      live = null;
+      chart = null;
+    },
+  };
+
+  // --- Styles ----------------------------------------------------------------------------------
+
+  function stateOfNode(index: number): GraphItemState {
+    const hovered = index === hoveredNode;
+    const focused = index === focusedNode;
+    const selected = index === selectedNode;
+    const dragging = index === draggingNode;
+    return hovered || focused || selected || dragging ? { hovered, focused, selected, dragging } : IDLE;
+  }
+
+  function stateOfEdge(index: number): GraphItemState {
+    const hovered = index === hoveredEdge;
+    const selected = index === selectedEdge;
+    return hovered || selected ? { hovered, focused: false, selected, dragging: false } : IDLE;
+  }
+
+  function nodeStyleOf(index: number): GraphNodeStyle {
+    const style = options.nodeStyle;
+    if (typeof style !== "function") return style ?? {};
+    try {
+      return style(model.nodes[index]!, stateOfNode(index)) ?? {};
+    } catch (error) {
+      console.error("BlazePlot graph: nodeStyle threw.", error);
+      return {};
+    }
+  }
+
+  function edgeStyleOf(index: number): GraphEdgeStyle {
+    const style = options.edgeStyle;
+    if (typeof style !== "function") return style ?? {};
+    try {
+      return style(model.edges[index]!, stateOfEdge(index)) ?? {};
+    } catch (error) {
+      console.error("BlazePlot graph: edgeStyle threw.", error);
+      return {};
+    }
+  }
+
+  function writeNode(index: number): void {
+    writeNodeStyle(nodeStyles, index * NODE_FLOATS, nodeStyleOf(index), colors, defaults);
+    halfW[index] = nodeStyles[index * NODE_FLOATS + N_WIDTH]! / 2;
+    halfH[index] = nodeStyles[index * NODE_FLOATS + N_HEIGHT]! / 2;
+  }
+
+  function restyleAll(): void {
+    const nodes = model.nodes.length;
+    const edges = model.edges.length;
+    if (nodeStyles.length !== nodes * NODE_FLOATS) {
+      nodeStyles = new Float32Array(nodes * NODE_FLOATS);
+      halfW = new Float32Array(nodes);
+      halfH = new Float32Array(nodes);
+    }
+    if (edgeStyles.length !== edges * EDGE_FLOATS) edgeStyles = new Float32Array(edges * EDGE_FLOATS);
+    for (let i = 0; i < nodes; i++) writeNode(i);
+    for (let i = 0; i < edges; i++) writeEdgeStyle(edgeStyles, i * EDGE_FLOATS, edgeStyleOf(i), colors, defaults, edgesPickable);
+    sortOrder();
+    gridDirty = true;
+  }
+
+  /** Restyle the nodes whose state changed (an index of -1 is ignored). A layer change re-sorts. */
+  function restyleNodes(...indices: number[]): void {
+    let resort = false;
+    for (const index of indices) {
+      if (index < 0 || index >= model.nodes.length) continue;
+      const layer = nodeStyles[index * NODE_FLOATS + N_LAYER];
+      const w = halfW[index];
+      const h = halfH[index];
+      writeNode(index);
+      if (nodeStyles[index * NODE_FLOATS + N_LAYER] !== layer) resort = true;
+      if (halfW[index] !== w || halfH[index] !== h) gridDirty = true;
+    }
+    if (resort) sortOrder();
+  }
+
+  function restyleEdges(...indices: number[]): void {
+    for (const index of indices) {
+      if (index < 0 || index >= model.edges.length) continue;
+      writeEdgeStyle(edgeStyles, index * EDGE_FLOATS, edgeStyleOf(index), colors, defaults, edgesPickable);
+    }
+  }
+
+  /** Draw order: by layer, then input order. A layer-free graph keeps input order without sorting. */
+  function sortOrder(): void {
+    const count = model.nodes.length;
+    if (order.length !== count) order = new Uint32Array(count);
+    let layered = false;
+    for (let i = 0; i < count; i++) {
+      order[i] = i;
+      if (nodeStyles[i * NODE_FLOATS + N_LAYER] !== 0) layered = true;
+    }
+    if (!layered) return;
+    const sorted = Array.from(order).sort((a, b) => nodeStyles[a * NODE_FLOATS + N_LAYER]! - nodeStyles[b * NODE_FLOATS + N_LAYER]! || a - b);
+    order.set(sorted);
+  }
+
+  function resolveTheme(): void {
+    if (!chart) return;
+    const theme = chart.theme;
+    const axis = colors.resolve(theme.axisColor, [0.6, 0.6, 0.6, 1]);
+    defaults = { nodeFill: theme.seriesColors[0] ?? [0.4, 0.6, 1, 1], edgeColor: [axis[0], axis[1], axis[2], axis[3] * 0.5] };
+    const edge = options.edgeLabelStyle ?? {};
+    const css = (color: string | RgbaColor | undefined, fallback: string): string => (color === undefined ? fallback : typeof color === "string" ? color : rgbaCss(color));
+    labelStyle = {
+      labelFont: options.labelFont ?? theme.axisFont,
+      labelColor: css(options.labelColor, typeof theme.axisColor === "string" ? theme.axisColor : rgbaCss(axis)),
+      edge: {
+        font: edge.font ?? theme.axisFont,
+        color: css(edge.color, theme.tooltipTextColor),
+        background: css(edge.background, theme.tooltipBackgroundColor),
+        borderColor: css(edge.borderColor, "transparent"),
+        borderWidth: positive(edge.borderWidth, 0, true),
+        paddingX: positive(edge.paddingX, 6, true),
+        paddingY: positive(edge.paddingY, 3, true),
+        radius: positive(edge.radius, 4, true),
+        offset: positive(edge.offset, 0, true),
+      },
+    };
+    const bg = options.background;
+    background = bg
+      ? { kind: bg.kind, gap: positive(bg.gap, 24), size: positive(bg.size, 1), color: colors.resolve(bg.color, [axis[0], axis[1], axis[2], axis[3] * 0.35]) }
+      : null;
+  }
+
+  // --- View ------------------------------------------------------------------------------------
+
+  function plotSize(): { width: number; height: number } {
+    const rect = chart?.layout.plotRect();
+    return { width: Math.max(0, rect?.width ?? 0), height: Math.max(0, rect?.height ?? 0) };
+  }
+
+  function clampZoom(zoom: number): number {
+    return Math.min(maxZoom, Math.max(minZoom, zoom));
+  }
+
+  /** Mirror the view into the chart viewport (graph y down is data y up), so other plugins and exports agree. */
+  function pushView(source: "user" | "fit" | "api"): void {
+    if (!chart) return;
+    const { width, height } = plotSize();
+    if (width <= 0 || height <= 0) return;
+    const halfX = width / 2 / view.zoom;
+    const halfY = height / 2 / view.zoom;
+    applyingView = true;
+    try {
+      chart.viewport.set({ xMin: view.centerX - halfX, xMax: view.centerX + halfX, yMin: -(view.centerY + halfY), yMax: -(view.centerY - halfY) }, undefined, { source, pauseFollow: false });
+    } finally {
+      applyingView = false;
+    }
+  }
+
+  /** Someone else moved the chart viewport: take its middle, and the zoom that shows all of it. */
+  function adoptChartViewport(): void {
+    if (!chart) return;
+    const { width, height } = plotSize();
+    const v = chart.viewport.get();
+    const spanX = v.xMax - v.xMin;
+    const spanY = v.yMax - v.yMin;
+    if (!(width > 0 && height > 0 && spanX > 0 && spanY > 0)) return;
+    view.centerX = (v.xMin + v.xMax) / 2;
+    view.centerY = -(v.yMin + v.yMax) / 2;
+    view.zoom = clampZoom(Math.min(width / spanX, height / spanY));
+    scheduleRender();
+  }
+
+  function setViewTo(target: GraphView, duration: number, source: "user" | "fit" | "api"): void {
+    if (duration > 0 && !reducedMotion && chart) {
+      animation = { from: plugin.getView(), to: target, start: null, duration };
+      scheduleRender();
+      return;
+    }
+    animation = null;
+    view.centerX = target.centerX;
+    view.centerY = target.centerY;
+    view.zoom = target.zoom;
+    pushView(source);
+    scheduleRender();
+    options.onViewChange?.(plugin.getView());
+  }
+
+  function fitView(fitOptions: GraphFitOptions): GraphView | null {
+    const { width, height } = plotSize();
+    if (width <= 0 || height <= 0) return null;
+    const ids = fitOptions.nodes;
+    const indices = ids ? ids.map((id) => model.nodeIndex.get(id)).filter((i): i is number => i !== undefined) : null;
+    const count = indices ? indices.length : model.nodes.length;
+    if (count === 0) return null;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (let k = 0; k < count; k++) {
+      const i = indices ? indices[k]! : k;
+      minX = Math.min(minX, model.x[i]! - halfW[i]!);
+      maxX = Math.max(maxX, model.x[i]! + halfW[i]!);
+      minY = Math.min(minY, model.y[i]! - halfH[i]!);
+      maxY = Math.max(maxY, model.y[i]! + halfH[i]!);
+    }
+    const pad = fitOptions.padding ?? 24;
+    const p = typeof pad === "number" ? { top: pad, right: pad, bottom: pad, left: pad } : { top: pad.top ?? 0, right: pad.right ?? 0, bottom: pad.bottom ?? 0, left: pad.left ?? 0 };
+    const availableW = Math.max(1, width - p.left - p.right);
+    const availableH = Math.max(1, height - p.top - p.bottom);
+    const lo = Math.max(minZoom, fitOptions.minZoom ?? minZoom);
+    const hi = Math.min(maxZoom, Math.max(lo, fitOptions.maxZoom ?? maxZoom));
+    const zoom = Math.min(hi, Math.max(lo, Math.min(availableW / Math.max(maxX - minX, 1e-9), availableH / Math.max(maxY - minY, 1e-9))));
+    // Center the boxes in the padded area.
+    const centerX = (minX + maxX) / 2 - (p.left - p.right) / 2 / zoom;
+    const centerY = (minY + maxY) / 2 - (p.top - p.bottom) / 2 / zoom;
+    return { centerX, centerY, zoom };
+  }
+
+  function fitOnLoad(): void {
+    if (fitted || options.fitOnLoad === false || model.nodes.length === 0 || !chart) return;
+    const target = fitView(typeof options.fitOnLoad === "object" ? options.fitOnLoad : {});
+    if (!target) return;
+    fitted = true;
+    setViewTo(target, 0, "fit");
+  }
+
+  // --- Frames ----------------------------------------------------------------------------------
+
+  function scheduleRender(): void {
+    if (disposed || frameId !== 0 || !chart) return;
+    frameId = chart.dom.view.requestAnimationFrame(render);
+  }
+
+  function render(now: number): void {
+    frameId = 0;
+    if (!chart || !surface || !shapeCanvas || !labelCanvas || surface.isLost) return;
+    const { width, height } = plotSize();
+    if (width <= 0 || height <= 0) return;
+    if (!fitted) fitOnLoad();
+    stepAnimation(now);
+    const dpr = Math.max(1, chart.dom.view.devicePixelRatio || 1);
+    const deviceW = Math.max(1, Math.round(width * dpr));
+    const deviceH = Math.max(1, Math.round(height * dpr));
+    for (const canvas of [shapeCanvas, labelCanvas]) {
+      if (canvas.width !== deviceW) canvas.width = deviceW;
+      if (canvas.height !== deviceH) canvas.height = deviceH;
+    }
+    painter.paint(surface, {
+      model,
+      nodeStyles,
+      edgeStyles,
+      order,
+      centerX: view.centerX,
+      centerY: view.centerY,
+      zoom: view.zoom,
+      width,
+      height,
+      pixelRatio: dpr,
+      time: now / 1000,
+      animate: !reducedMotion,
+      minNodePx: positive(options.minNodePx, 2),
+      background,
+    });
+    if (labelContext) {
+      drawLabels({
+        ctx: labelContext,
+        model,
+        order,
+        nodeScreen: painter.nodeScreen,
+        edgeScreen: painter.edgeScreen,
+        nodeSize: (i) => [nodeStyles[i * NODE_FLOATS + N_WIDTH]!, nodeStyles[i * NODE_FLOATS + N_HEIGHT]!, nodeStyles[i * NODE_FLOATS + N_SHAPE] === 1],
+        nodeState: stateOfNode,
+        edgeState: stateOfEdge,
+        drawNode,
+        drawEdgeLabel,
+        zoom: view.zoom,
+        width,
+        height,
+        pixelRatio: dpr,
+        detailMinPx: positive(options.detailMinPx, 10, true),
+        maxDetails: Math.floor(positive(options.maxDetails, 2000, true)),
+        maxEdgeLabels: Math.floor(positive(options.maxEdgeLabels, 1000, true)),
+      });
+    }
+    if (painter.moving || animation) scheduleRender();
+  }
+
+  function stepAnimation(now: number): void {
+    if (!animation) return;
+    animation.start ??= now;
+    const t = Math.min(1, (now - animation.start) / animation.duration);
+    const ease = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+    const { from, to } = animation;
+    // Zoom is interpolated geometrically, so the change feels even at every scale.
+    view.zoom = from.zoom * (to.zoom / from.zoom) ** ease;
+    view.centerX = from.centerX + (to.centerX - from.centerX) * ease;
+    view.centerY = from.centerY + (to.centerY - from.centerY) * ease;
+    if (t >= 1) {
+      animation = null;
+      view.centerX = to.centerX;
+      view.centerY = to.centerY;
+      view.zoom = to.zoom;
+    }
+    pushView("fit");
+    options.onViewChange?.(plugin.getView());
+  }
+
+  // --- Picking ---------------------------------------------------------------------------------
+
+  /** The node or edge at a plot point (CSS pixels), as last drawn. */
+  function hitAt(px: number, py: number): GraphHit<N, E> | null {
+    const node = nodeAt(px, py);
+    if (node >= 0) return { kind: "node", node: model.nodes[node]! };
+    const edge = edgeAt(px, py);
+    return edge >= 0 ? { kind: "edge", edge: model.edges[edge]! } : null;
+  }
+
+  function nodeAt(px: number, py: number): number {
+    if (model.nodes.length === 0) return -1;
+    const { width, height } = plotSize();
+    if (gridDirty) {
+      grid.build(model.nodes.length, model.x, model.y, halfW, halfH);
+      gridDirty = false;
+    }
+    const gx = view.centerX + (px - width / 2) / view.zoom;
+    const gy = view.centerY + (py - height / 2) / view.zoom;
+    const minHalf = positive(options.minNodePx, 2) / 2;
+    const slop = (NODE_SLOP + minHalf) / view.zoom;
+    // Topmost first: the node drawn last wins, so walk candidates and keep the highest draw rank.
+    let best = -1;
+    let bestRank = -1;
+    const rank = drawRank();
+    grid.query(gx, gy, slop, (i) => {
+      const hw = Math.max(halfW[i]!, minHalf / view.zoom) + NODE_SLOP / view.zoom;
+      const hh = Math.max(halfH[i]!, minHalf / view.zoom) + NODE_SLOP / view.zoom;
+      const dx = gx - model.x[i]!;
+      const dy = gy - model.y[i]!;
+      const inside = nodeStyles[i * NODE_FLOATS + N_SHAPE] === 0 ? dx * dx + dy * dy <= hw * hw : Math.abs(dx) <= hw && Math.abs(dy) <= hh;
+      if (inside && rank[i]! > bestRank) {
+        best = i;
+        bestRank = rank[i]!;
+      }
+    });
+    return best;
+  }
+
+  let rankCache: Uint32Array | null = null;
+  let rankOrder: Uint32Array | null = null;
+  function drawRank(): Uint32Array {
+    if (rankOrder === order && rankCache) return rankCache;
+    rankCache = new Uint32Array(order.length);
+    for (let k = 0; k < order.length; k++) rankCache[order[k]!] = k;
+    rankOrder = order;
+    return rankCache;
+  }
+
+  function edgeAt(px: number, py: number): number {
+    const geometry = painter.edgeScreen;
+    let best = -1;
+    let bestDistance = EDGE_SLOP * EDGE_SLOP;
+    for (let i = model.edges.length - 1; i >= 0; i--) {
+      if (edgeStyles[i * EDGE_FLOATS + E_PICKABLE] !== 1) continue;
+      const g = i * EDGE_GEOMETRY;
+      if (geometry[g + 6] !== 1) continue;
+      const distance = edgeDistanceSq(geometry, g, px, py);
+      if (distance < bestDistance) {
+        best = i;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
+  // --- Input -----------------------------------------------------------------------------------
+
+  function plotPoint(event: { clientX: number; clientY: number }): [number, number] {
+    return chart!.coords.clientToPlot(event.clientX, event.clientY);
+  }
+
+  function draggable(index: number): boolean {
+    const option = options.draggable;
+    if (!option || index < 0) return false;
+    if (option === true) return true;
+    try {
+      return option(model.nodes[index]!);
+    } catch {
+      return false;
+    }
+  }
+
+  function onPointerDown(event: PointerEvent): void {
+    if (!chart || (event.pointerType === "mouse" && event.button !== 0)) return;
+    const [px, py] = plotPoint(event);
+    pointers.set(event.pointerId, { x: px, y: py });
+    if (pointers.size === 2 && options.navigation !== false) {
+      const [a, b] = [...pointers.values()] as [{ x: number; y: number }, { x: number; y: number }];
+      gesture = { kind: "pinch", distance: Math.hypot(a.x - b.x, a.y - b.y), midX: (a.x + b.x) / 2, midY: (a.y + b.y) / 2 };
+      return;
+    }
+    if (pointers.size > 1) return;
+    const node = nodeAt(px, py);
+    if ((node >= 0 && draggable(node)) || options.navigation !== false) {
+      if (!chart.dom.claimPointer(event)) return;
+      capture(event);
+    }
+    gesture = { kind: "press", pointerId: event.pointerId, x: px, y: py, node, moved: false };
+  }
+
+  function onPointerMove(event: PointerEvent): void {
+    if (!chart) return;
+    const [px, py] = plotPoint(event);
+    if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: px, y: py });
+    const current = gesture;
+    if (current?.kind === "pinch") {
+      const values = [...pointers.values()];
+      if (values.length < 2) return;
+      const [a, b] = values as [{ x: number; y: number }, { x: number; y: number }];
+      const distance = Math.hypot(a.x - b.x, a.y - b.y);
+      const midX = (a.x + b.x) / 2;
+      const midY = (a.y + b.y) / 2;
+      if (current.distance > 0) zoomAround(midX, midY, distance / current.distance);
+      panBy(midX - current.midX, midY - current.midY);
+      current.distance = distance;
+      current.midX = midX;
+      current.midY = midY;
+      return;
+    }
+    if (current?.kind === "press" && current.pointerId === event.pointerId) {
+      if (Math.hypot(px - current.x, py - current.y) < DRAG_THRESHOLD) return;
+      if (current.node >= 0 && draggable(current.node)) {
+        const { width, height } = plotSize();
+        const gx = view.centerX + (current.x - width / 2) / view.zoom;
+        const gy = view.centerY + (current.y - height / 2) / view.zoom;
+        draggingNode = current.node;
+        gesture = { kind: "drag", pointerId: current.pointerId, node: current.node, offsetX: model.x[current.node]! - gx, offsetY: model.y[current.node]! - gy };
+        restyleNodes(current.node);
+      } else if (options.navigation !== false) {
+        gesture = { kind: "pan", pointerId: current.pointerId, lastX: current.x, lastY: current.y };
+      } else {
+        gesture = { ...current, moved: true };
+        return;
+      }
+    }
+    const active = gesture;
+    if (active?.kind === "pan" && active.pointerId === event.pointerId) {
+      panBy(px - active.lastX, py - active.lastY);
+      active.lastX = px;
+      active.lastY = py;
+      setCursor("grabbing");
+      return;
+    }
+    if (active?.kind === "drag" && active.pointerId === event.pointerId) {
+      const { width, height } = plotSize();
+      const gx = view.centerX + (px - width / 2) / view.zoom + active.offsetX;
+      const gy = view.centerY + (py - height / 2) / view.zoom + active.offsetY;
+      if (isCoordinate(gx) && isCoordinate(gy)) {
+        model.x[active.node] = gx;
+        model.y[active.node] = gy;
+        gridDirty = true;
+        scheduleRender();
+      }
+      setCursor("grabbing");
+      return;
+    }
+    if (!active || active.kind === "press") hover(px, py);
+  }
+
+  function onPointerUp(event: PointerEvent): void {
+    if (!chart) return;
+    pointers.delete(event.pointerId);
+    const current = gesture;
+    if (current?.kind === "pinch") {
+      if (pointers.size === 0) gesture = null;
+      return;
+    }
+    if (!current || !("pointerId" in current) || current.pointerId !== event.pointerId) return;
+    gesture = null;
+    if (current.kind === "press" && !current.moved) {
+      const [px, py] = plotPoint(event);
+      const hit = hitAt(px, py);
+      if (hit?.kind === "node") {
+        const index = model.nodeIndex.get(hit.node.id)!;
+        setFocus(index, false);
+        options.onNodeClick?.(hit.node, event);
+      } else if (hit?.kind === "edge") options.onEdgeClick?.(hit.edge, event);
+      else options.onBackgroundClick?.(event);
+    } else if (current.kind === "drag") {
+      const node = current.node;
+      draggingNode = -1;
+      restyleNodes(node);
+      scheduleRender();
+      if (node < model.nodes.length) options.onNodeDragEnd?.(model.nodes[node]!, model.x[node]!, model.y[node]!);
+    }
+    const [px, py] = plotPoint(event);
+    hover(px, py);
+  }
+
+  function onPointerCancel(event: PointerEvent): void {
+    pointers.delete(event.pointerId);
+    if (gesture?.kind === "drag") {
+      const node = gesture.node;
+      draggingNode = -1;
+      restyleNodes(node);
+      if (node < model.nodes.length) options.onNodeDragEnd?.(model.nodes[node]!, model.x[node]!, model.y[node]!);
+    }
+    gesture = null;
+    scheduleRender();
+  }
+
+  function onPointerLeave(event: PointerEvent): void {
+    if (gesture && "pointerId" in gesture && gesture.pointerId === event.pointerId && gesture.kind !== "press") return;
+    setHover(-1, -1);
+  }
+
+  function capture(event: PointerEvent): void {
+    try {
+      (event.target as Element | null)?.setPointerCapture?.(event.pointerId);
+    } catch {
+      // A pointer that is already gone cannot be captured; the gesture still works without capture.
+    }
+  }
+
+  function hover(px: number, py: number): void {
+    const node = nodeAt(px, py);
+    const edge = node >= 0 ? -1 : edgesPickable ? edgeAt(px, py) : -1;
+    setHover(node, edge);
+  }
+
+  function setHover(node: number, edge: number): void {
+    if (node !== hoveredNode) {
+      const before = hoveredNode;
+      hoveredNode = node;
+      restyleNodes(before, node);
+      options.onNodeHover?.(node >= 0 ? model.nodes[node]! : null);
+      scheduleRender();
+    }
+    if (edge !== hoveredEdge) {
+      const before = hoveredEdge;
+      hoveredEdge = edge;
+      restyleEdges(before, edge);
+      options.onEdgeHover?.(edge >= 0 ? model.edges[edge]! : null);
+      scheduleRender();
+    }
+    setCursorState();
+  }
+
+  function setCursorState(): void {
+    if (gesture?.kind === "pan" || gesture?.kind === "drag") return setCursor("grabbing");
+    if (hoveredNode >= 0) return setCursor(draggable(hoveredNode) ? "grab" : options.onNodeClick ? "pointer" : "");
+    if (hoveredEdge >= 0) return setCursor(options.onEdgeClick ? "pointer" : "");
+    setCursor(options.navigation === false ? "" : "grab");
+  }
+
+  function setCursor(next: string): void {
+    if (next === cursor || !chart) return;
+    cursor = next;
+    restoreCursor?.();
+    restoreCursor = next ? chart.dom.decorate("plot", { style: { cursor: next } }) : null;
+  }
+
+  function panBy(dx: number, dy: number): void {
+    if (dx === 0 && dy === 0) return;
+    animation = null;
+    view.centerX -= dx / view.zoom;
+    view.centerY -= dy / view.zoom;
+    pushView("user");
+    scheduleRender();
+    options.onViewChange?.(plugin.getView());
+  }
+
+  /** Zoom by `factor` keeping the graph point under plot point (`px`, `py`) still. */
+  function zoomAround(px: number, py: number, factor: number): void {
+    const zoom = clampZoom(view.zoom * factor);
+    if (zoom === view.zoom) return;
+    animation = null;
+    const { width, height } = plotSize();
+    const gx = view.centerX + (px - width / 2) / view.zoom;
+    const gy = view.centerY + (py - height / 2) / view.zoom;
+    view.zoom = zoom;
+    view.centerX = gx - (px - width / 2) / zoom;
+    view.centerY = gy - (py - height / 2) / zoom;
+    pushView("user");
+    scheduleRender();
+    options.onViewChange?.(plugin.getView());
+  }
+
+  function onWheel(event: WheelEvent): void {
+    if (options.navigation === false || !chart) return;
+    event.preventDefault();
+    const [px, py] = plotPoint(event);
+    const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1;
+    // Trackpad pinches arrive as ctrl+wheel with small deltas; scroll without ctrl on a trackpad pans.
+    if (!event.ctrlKey && event.deltaMode === 0 && Math.abs(event.deltaX) > 0 && Math.abs(event.deltaX) >= Math.abs(event.deltaY) / 2) {
+      panBy(-event.deltaX, -event.deltaY);
+      return;
+    }
+    const delta = Math.max(-400, Math.min(400, event.deltaY * scale * (event.ctrlKey ? 4 : 1)));
+    zoomAround(px, py, Math.exp(-delta * WHEEL_ZOOM_PER_PIXEL));
+  }
+
+  function onDoubleClick(event: MouseEvent): void {
+    if (options.navigation === false || !chart) return;
+    const [px, py] = plotPoint(event);
+    if (nodeAt(px, py) >= 0) return;
+    zoomAround(px, py, event.shiftKey ? 0.5 : 2);
+  }
+
+  function onFocus(): void {
+    if (focusedNode >= 0) announce(focusedNode);
+    else if (live) live.textContent = options.messages?.instructions ?? "Arrow keys move between nodes, Enter opens one, plus and minus zoom, 0 fits the graph.";
+  }
+
+  function onKeyDown(event: KeyboardEvent): void {
+    if (!chart || event.altKey || event.metaKey || event.ctrlKey) return;
+    const key = event.key;
+    const arrows: Record<string, [number, number]> = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    const direction = arrows[key];
+    if (direction) {
+      event.preventDefault();
+      if (event.shiftKey || model.nodes.length === 0) {
+        panBy(-direction[0] * KEY_PAN, -direction[1] * KEY_PAN);
+        return;
+      }
+      setFocus(focusedNode < 0 ? nearestToCenter() : nextInDirection(focusedNode, direction[0], direction[1]), true);
+      return;
+    }
+    if ((key === "Enter" || key === " ") && focusedNode >= 0) {
+      event.preventDefault();
+      options.onNodeClick?.(model.nodes[focusedNode]!, event);
+      return;
+    }
+    if (key === "Escape" && focusedNode >= 0) {
+      event.preventDefault();
+      setFocus(-1, false);
+      return;
+    }
+    if (options.navigation === false) return;
+    if (key === "+" || key === "=") {
+      event.preventDefault();
+      plugin.zoomBy(KEY_ZOOM, { duration: 120 });
+    } else if (key === "-" || key === "_") {
+      event.preventDefault();
+      plugin.zoomBy(1 / KEY_ZOOM, { duration: 120 });
+    } else if (key === "0" || key === "Home") {
+      event.preventDefault();
+      plugin.fit({ ...(typeof options.fitOnLoad === "object" ? options.fitOnLoad : {}), duration: 200 });
+    }
+  }
+
+  function nearestToCenter(): number {
+    let best = -1;
+    let bestDistance = Infinity;
+    for (let i = 0; i < model.nodes.length; i++) {
+      const d = (model.x[i]! - view.centerX) ** 2 + (model.y[i]! - view.centerY) ** 2;
+      if (d < bestDistance) {
+        best = i;
+        bestDistance = d;
+      }
+    }
+    return best;
+  }
+
+  /** The nearest node within 60 degrees of a direction, weighting distance off that direction twice. */
+  function nextInDirection(from: number, ux: number, uy: number): number {
+    let best = from;
+    let bestScore = Infinity;
+    const x0 = model.x[from]!;
+    const y0 = model.y[from]!;
+    for (let i = 0; i < model.nodes.length; i++) {
+      if (i === from) continue;
+      const dx = model.x[i]! - x0;
+      const dy = model.y[i]! - y0;
+      const along = dx * ux + dy * uy;
+      if (along <= 0) continue;
+      const across = Math.abs(dx * uy - dy * ux);
+      if (across > along * Math.tan(Math.PI / 3)) continue;
+      const score = along + across * 2;
+      if (score < bestScore) {
+        best = i;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  function setFocus(index: number, reveal: boolean): void {
+    if (index === focusedNode) {
+      if (index >= 0 && reveal) announce(index);
+      return;
+    }
+    const before = focusedNode;
+    focusedNode = index;
+    restyleNodes(before, index);
+    scheduleRender();
+    options.onNodeFocus?.(index >= 0 ? model.nodes[index]! : null);
+    if (index < 0) return;
+    if (reveal) {
+      revealNode(index);
+      announce(index);
+    }
+  }
+
+  /** Pan just enough to bring a node fully on screen. */
+  function revealNode(index: number): void {
+    const { width, height } = plotSize();
+    const margin = 24;
+    const sx = width / 2 + (model.x[index]! - view.centerX) * view.zoom;
+    const sy = height / 2 + (model.y[index]! - view.centerY) * view.zoom;
+    const hw = halfW[index]! * view.zoom + margin;
+    const hh = halfH[index]! * view.zoom + margin;
+    const dx = sx - hw < 0 ? sx - hw : sx + hw > width ? sx + hw - width : 0;
+    const dy = sy - hh < 0 ? sy - hh : sy + hh > height ? sy + hh - height : 0;
+    if (dx !== 0 || dy !== 0) setViewTo({ centerX: view.centerX + dx / view.zoom, centerY: view.centerY + dy / view.zoom, zoom: view.zoom }, 150, "user");
+  }
+
+  function announce(index: number): void {
+    if (!live) return;
+    const node = model.nodes[index]!;
+    let text = node.label ?? node.id;
+    try {
+      if (options.messages?.describeNode) text = options.messages.describeNode(node as GraphNode);
+    } catch {
+      // Keep the label.
+    }
+    live.textContent = text;
+  }
+
+  return singleChartPlugin("graph", plugin);
+}
+
+function positive(value: number | undefined, fallback: number, allowZero = false): number {
+  return typeof value === "number" && Number.isFinite(value) && (allowZero ? value >= 0 : value > 0) ? value : fallback;
+}
+
+function overlayCanvas(doc: Document, className: string, zIndex: number): HTMLCanvasElement {
+  const canvas = doc.createElement("canvas");
+  canvas.className = className;
+  canvas.style.position = "absolute";
+  canvas.style.inset = "0";
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+  canvas.style.display = "block";
+  canvas.style.pointerEvents = "none";
+  canvas.style.zIndex = String(zIndex);
+  return canvas;
+}
