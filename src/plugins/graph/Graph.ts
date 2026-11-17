@@ -113,6 +113,9 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   let selectedNode = -1;
   let selectedEdge = -1;
   let draggingNode = -1;
+  /** The dragged node, drawn on the overlay with its edges while the still layer leaves them out, and those edges. */
+  let lifted = -1;
+  let liftedEdges: Uint32Array | null = null;
   let gesture: Gesture | null = null;
   const pointers = new Map<number, { x: number; y: number }>();
   let cursor = "";
@@ -220,6 +223,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
         else if (gesture?.kind === "drag") gesture = { ...gesture, node: kept };
       }
       model = next;
+      if (lifted >= 0) lift(draggingNode);
       restyleAll();
       fitOnLoad();
       scheduleRender();
@@ -550,6 +554,20 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     frameId = chart.dom.view.requestAnimationFrame(render);
   }
 
+  /** Lift a node (its index) onto the overlay with its edges, or put it back with -1; the still layer is drawn again. */
+  function lift(index: number): void {
+    // Without an overlay (no surface could be made) the node stays in the still layer, drawn again each move.
+    lifted = index >= 0 && ensureFlowSurface() ? index : -1;
+    if (lifted < 0) {
+      liftedEdges = null;
+    } else {
+      const edges: number[] = [];
+      for (let i = 0; i < model.edges.length; i++) if (model.source[i] === index || model.target[i] === index) edges.push(i);
+      liftedEdges = Uint32Array.from(edges);
+    }
+    scheduleRender();
+  }
+
   /** The flow layer, between the shapes and the labels, on the chart's engine. */
   function ensureFlowSurface(): RenderSurface | null {
     if (flowSurface || !chart) return flowSurface;
@@ -613,6 +631,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       animate: !reducedMotion,
       minNodePx: positive(options.minNodePx, 2),
       background,
+      lifted,
+      liftedEdges,
     };
     const full = staticDirty;
     staticDirty = false;
@@ -626,15 +646,16 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       // Measured after the labels too, below.
       drawnStart = started;
     }
-    if (painter.hasFlows || flowSurface) {
-      const flows = painter.hasFlows ? ensureFlowSurface() : flowSurface;
+    if (painter.needsOverlay(input) || flowSurface) {
+      const flows = painter.needsOverlay(input) ? ensureFlowSurface() : flowSurface;
       if (flows && flowCanvas && !flows.isLost) {
         if (flowCanvas.width !== deviceW) flowCanvas.width = deviceW;
         if (flowCanvas.height !== deviceH) flowCanvas.height = deviceH;
         painter.paintFlows(flows, input);
       }
     }
-    if (full && labelContext) {
+    // Labels follow a dragged node, so a drag frame draws them again too.
+    if ((full || lifted >= 0) && labelContext) {
       drawLabels({
         ctx: labelContext,
         model,
@@ -867,6 +888,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
         draggingNode = current.node;
         gesture = { kind: "drag", pointerId: current.pointerId, node: current.node, offsetX: model.x[current.node]! - gx, offsetY: model.y[current.node]! - gy };
         restyleNodes(current.node);
+        lift(current.node);
       } else if (options.navigation !== false) {
         gesture = { kind: "pan", pointerId: current.pointerId, lastX: current.x, lastY: current.y };
       } else {
@@ -890,7 +912,9 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
         model.x[active.node] = gx;
         model.y[active.node] = gy;
         gridDirty = true;
-        scheduleRender();
+        // Only the lifted node and its edges move: the overlay and labels are drawn again, the still layer is not.
+        if (lifted >= 0) requestFrame();
+        else scheduleRender();
       }
       setCursor("grabbing");
       return;
@@ -920,6 +944,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     } else if (current.kind === "drag") {
       const node = current.node;
       draggingNode = -1;
+      lift(-1);
       restyleNodes(node);
       scheduleRender();
       if (node < model.nodes.length) options.onNodeDragEnd?.(model.nodes[node]!, model.x[node]!, model.y[node]!);
@@ -933,6 +958,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     if (gesture?.kind === "drag") {
       const node = gesture.node;
       draggingNode = -1;
+      lift(-1);
       restyleNodes(node);
       if (node < model.nodes.length) options.onNodeDragEnd?.(model.nodes[node]!, model.x[node]!, model.y[node]!);
     }

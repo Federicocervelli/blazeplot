@@ -92,6 +92,12 @@ export interface GraphFrameInput<N, E> {
   readonly animate: boolean;
   readonly minNodePx: number;
   readonly background: { readonly kind: "dots" | "grid"; readonly gap: number; readonly size: number; readonly color: readonly number[] } | null;
+  /**
+   * A node being dragged (-1 for none), and its edges: the still pass leaves them out and the overlay pass
+   * draws them, so a drag frame redraws one node and its edges instead of the whole graph.
+   */
+  readonly lifted?: number;
+  readonly liftedEdges?: Uint32Array | null;
 }
 
 export class GraphPainter {
@@ -118,8 +124,13 @@ export class GraphPainter {
    */
   private flows = new Float32Array(0);
   private flowCount = 0;
-  /** Whether the flow surface holds anything, so an empty flow frame clears it once. */
+  /** Whether the overlay surface holds anything, so an empty overlay frame clears it once. */
   private flowsDrawn = false;
+  /** Flows of the lifted node's edges, found by the overlay pass. */
+  private liftFlows = new Float32Array(0);
+  private liftFlowCount = 0;
+  /** Whether edges being built now belong to the overlay (their flows go to `liftFlows`). */
+  private liftPass = false;
   /** The point `exit` found, kept in fields so the hot loop allocates nothing. */
   private exitX = 0;
   private exitY = 0;
@@ -136,6 +147,7 @@ export class GraphPainter {
     this.triangles.count = 0;
     this.borders.count = 0;
     this.flowCount = 0;
+    this.liftPass = false;
     this.project(input);
 
     surface.beginFrame(Math.max(1, Math.round(width * dpr)), Math.max(1, Math.round(height * dpr)), dpr);
@@ -149,7 +161,12 @@ export class GraphPainter {
     surface.endFrame();
   }
 
-  /** Whether the last static frame found flows to draw. */
+  /** Whether the overlay has anything to draw: flows the last still frame found, or a lifted node. */
+  needsOverlay<N, E>(input: GraphFrameInput<N, E>): boolean {
+    return this.flowCount > 0 || (input.lifted ?? -1) >= 0;
+  }
+
+  /** Whether the last still frame found flows to draw. */
   get hasFlows(): boolean {
     return this.flowCount > 0;
   }
@@ -159,13 +176,40 @@ export class GraphPainter {
    * Clears the surface once when there are none left. Sets `moving` when another frame is needed.
    */
   paintFlows<N, E>(surface: RenderSurface, input: GraphFrameInput<N, E>): void {
-    const { width, height, pixelRatio: dpr, time, animate, edgeStyles } = input;
+    const { width, height, pixelRatio: dpr } = input;
+    const lifted = input.lifted ?? -1;
     this.moving = false;
-    if (this.flowCount === 0 && !this.flowsDrawn) return;
+    if (this.flowCount === 0 && lifted < 0 && !this.flowsDrawn) return;
     this.segments.count = 0;
     this.dots.count = 0;
-    const f = this.flows;
-    for (let k = 0; k < this.flowCount; k++) {
+    this.triangles.count = 0;
+    this.shapes.count = 0;
+    this.borders.count = 0;
+    this.drawFlows(this.flows, this.flowCount, input);
+    if (lifted >= 0) {
+      // The lifted node where the drag has it, its edges, their arrows and flows, then the node over them.
+      this.projectOne(lifted, input);
+      this.liftPass = true;
+      this.liftFlowCount = 0;
+      this.buildEdges(input, input.liftedEdges ?? new Uint32Array(0));
+      this.liftPass = false;
+      this.drawFlows(this.liftFlows, this.liftFlowCount, input);
+      this.buildNodes(input, lifted);
+    }
+    surface.beginFrame(Math.max(1, Math.round(width * dpr)), Math.max(1, Math.round(height * dpr)), dpr);
+    if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
+    if (this.dots.count > 0) surface.fillShapes(this.dots.data, this.dots.count);
+    if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
+    if (this.shapes.count > 0) surface.fillShapes(this.shapes.data, this.shapes.count);
+    if (this.borders.count > 0) surface.strokeSegments(this.borders.data, this.borders.count);
+    surface.endFrame();
+    this.flowsDrawn = this.flowCount > 0 || lifted >= 0;
+  }
+
+  /** Flow records drawn at `input.time` into the segment and dot buffers; sets `moving` for animated ones. */
+  private drawFlows<N, E>(f: Float32Array, count: number, input: GraphFrameInput<N, E>): void {
+    const { pixelRatio: dpr, time, animate, edgeStyles } = input;
+    for (let k = 0; k < count; k++) {
       const o = k * FLOW_RECORD;
       const s = f[o]!;
       const dash = edgeStyles[s + E_FLOW_DASH]!;
@@ -179,11 +223,20 @@ export class GraphPainter {
       if (edgeStyles[s + E_FLOW_DOTS]) this.flowDots(f[o + 1]!, f[o + 2]!, f[o + 3]!, f[o + 4]!, f[o + 5]!, f[o + 6]!, bowed, edgeStyles[s + E_FLOW_WIDTH]!, period, phase, edgeStyles, s + E_FLOW, dpr);
       else this.curve(f[o + 1]!, f[o + 2]!, f[o + 3]!, f[o + 4]!, f[o + 5]!, f[o + 6]!, bowed, edgeStyles[s + E_FLOW_WIDTH]!, dash, gap, phase, edgeStyles, s + E_FLOW, dpr);
     }
-    surface.beginFrame(Math.max(1, Math.round(width * dpr)), Math.max(1, Math.round(height * dpr)), dpr);
-    if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
-    if (this.dots.count > 0) surface.fillShapes(this.dots.data, this.dots.count);
-    surface.endFrame();
-    this.flowsDrawn = this.flowCount > 0;
+  }
+
+  /** Project one node again (the lifted one, which moves between still frames). */
+  private projectOne<N, E>(i: number, input: GraphFrameInput<N, E>): void {
+    const { model, nodeStyles, zoom, width, height, centerX, centerY, minNodePx } = input;
+    if (i >= model.nodes.length || this.nodeScreen.length < (i + 1) * NODE_GEOMETRY) return;
+    const s = i * NODE_FLOATS;
+    const o = i * NODE_GEOMETRY;
+    const minHalf = minNodePx / 2;
+    this.nodeScreen[o] = width / 2 + (model.x[i]! - centerX) * zoom;
+    this.nodeScreen[o + 1] = height / 2 + (model.y[i]! - centerY) * zoom;
+    this.nodeScreen[o + 2] = Math.max(minHalf, (nodeStyles[s + N_WIDTH]! * zoom) / 2);
+    this.nodeScreen[o + 3] = Math.max(minHalf, (nodeStyles[s + N_HEIGHT]! * zoom) / 2);
+    this.nodeScreen[o + 4] = nodeStyles[s + N_SHAPE]!;
   }
 
   /** Node centers and half sizes on screen, with the minimum size applied. */
@@ -248,13 +301,21 @@ export class GraphPainter {
     if (lines.count > 0) surface.strokeSegments(lines.data, lines.count);
   }
 
-  private buildEdges<N, E>(input: GraphFrameInput<N, E>): void {
+  /** Edges into the buffers: every edge but the lifted node's, or only `subset` (the overlay pass). */
+  private buildEdges<N, E>(input: GraphFrameInput<N, E>, subset: Uint32Array | null = null): void {
     const { model, edgeStyles, width, height, pixelRatio: dpr } = input;
-    const count = model.edges.length;
-    if (this.edgeScreen.length < count * EDGE_GEOMETRY) this.edgeScreen = new Float32Array(count * EDGE_GEOMETRY);
+    const lifted = subset ? -1 : (input.lifted ?? -1);
+    const count = subset ? subset.length : model.edges.length;
+    if (this.edgeScreen.length < model.edges.length * EDGE_GEOMETRY) this.edgeScreen = new Float32Array(model.edges.length * EDGE_GEOMETRY);
     const ns = this.nodeScreen;
     const geometry = this.edgeScreen;
-    for (let i = 0; i < count; i++) {
+    for (let k = 0; k < count; k++) {
+      const i = subset ? subset[k]! : k;
+      if (i >= model.edges.length) continue;
+      if (lifted >= 0 && (model.source[i] === lifted || model.target[i] === lifted)) {
+        geometry[i * EDGE_GEOMETRY + 6] = 0;
+        continue;
+      }
       const s = i * EDGE_FLOATS;
       const g = i * EDGE_GEOMETRY;
       geometry[g + 6] = 0;
@@ -331,13 +392,19 @@ export class GraphPainter {
         this.curve(sx, sy, cx, cy, ex, ey, curvature !== 0, lineWidth, edgeStyles[s + E_DASH]!, edgeStyles[s + E_GAP]!, 0, edgeStyles, s + E_COLOR, dpr);
       }
       if (edgeStyles[s + E_HAS_FLOW]) {
-        if ((this.flowCount + 1) * FLOW_RECORD > this.flows.length) {
-          const grown = new Float32Array(Math.max(64, this.flows.length * 2));
-          grown.set(this.flows);
-          this.flows = grown;
+        const lift = this.liftPass;
+        let f = lift ? this.liftFlows : this.flows;
+        const at = lift ? this.liftFlowCount : this.flowCount;
+        if ((at + 1) * FLOW_RECORD > f.length) {
+          const grown = new Float32Array(Math.max(64, f.length * 2));
+          grown.set(f);
+          f = grown;
+          if (lift) this.liftFlows = grown;
+          else this.flows = grown;
         }
-        const o = this.flowCount++ * FLOW_RECORD;
-        const f = this.flows;
+        const o = at * FLOW_RECORD;
+        if (lift) this.liftFlowCount++;
+        else this.flowCount++;
         f[o] = s;
         f[o + 1] = sx;
         f[o + 2] = sy;
@@ -461,11 +528,15 @@ export class GraphPainter {
     }
   }
 
-  private buildNodes<N, E>(input: GraphFrameInput<N, E>): void {
+  /** Node shapes into the buffers: every node but the lifted one, or `only` that one (the overlay pass). */
+  private buildNodes<N, E>(input: GraphFrameInput<N, E>, only = -1): void {
     const { nodeStyles, order, width, height, zoom, pixelRatio: dpr } = input;
     const ns = this.nodeScreen;
-    for (let k = 0; k < order.length; k++) {
-      const i = order[k]!;
+    const lifted = input.lifted ?? -1;
+    const count = only >= 0 ? 1 : order.length;
+    for (let k = 0; k < count; k++) {
+      const i = only >= 0 ? only : order[k]!;
+      if (only < 0 && i === lifted) continue;
       const s = i * NODE_FLOATS;
       const o = i * NODE_GEOMETRY;
       const x = ns[o]!;

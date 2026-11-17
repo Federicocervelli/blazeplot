@@ -254,3 +254,27 @@ describe("graph painter extras", () => {
     expect(surface.segments[0]!.length / 12).toBe(32 * 3);
   });
 });
+
+describe("graph painter lifting", () => {
+  it("leaves a lifted node and its edges out of the still pass and draws them on the overlay", () => {
+    const painter = new GraphPainter();
+    const base = frameInput({ arrow: "end" }, { width: 20 }, [{ source: "a", target: "b" }, { source: "b", target: "c" }, { source: "a", target: "c" }]);
+    const lifted = { ...base, lifted: 1, liftedEdges: Uint32Array.from([0, 1]) };
+    const still = recordingSurface();
+    painter.paint(still, lifted);
+    // Node b and its two edges are not in the still pass: two nodes, one edge.
+    expect(still.shapes[0]!.length / 14).toBe(2);
+    expect(still.segments[0]!.length / 12).toBe(1);
+    expect(painter.needsOverlay(lifted)).toBe(true);
+    const overlay = recordingSurface();
+    painter.paintFlows(overlay, lifted);
+    expect(overlay.shapes[0]!.length / 14).toBe(1);
+    expect(overlay.segments[0]!.length / 12).toBe(2);
+    expect(overlay.triangles[0]!.length / 6).toBe(6);
+    // Moved between still frames, the lifted node is drawn where it is now.
+    base.model.x[1] = 150;
+    painter.paintFlows(overlay, lifted);
+    const moved = overlay.shapes[1]!;
+    expect(moved[0]! + moved[2]! / 2).toBeCloseTo((100 + 100) * 2, 3);
+  });
+});
