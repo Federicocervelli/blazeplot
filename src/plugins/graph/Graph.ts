@@ -32,6 +32,14 @@ const EDGE_SLOP = 6;
 const KEY_PAN = 48;
 const KEY_ZOOM = 1.25;
 const WHEEL_ZOOM_PER_PIXEL = 0.0025;
+/** A still frame slower than this (ms) makes pans move the layers instead of drawing them again. */
+const EXPENSIVE_FRAME_MS = 8;
+/** The overscan an expensive graph is drawn with, each side, as a fraction of the plot: 2.25 times its area. */
+const OVERSCAN = 0.25;
+/** During a long gesture, the moved layers are drawn again at least this often (ms), so they stay sharp. */
+const GESTURE_REDRAW_MS = 300;
+/** How long a pan must pause before the moved layers are drawn again, centered. */
+const PAN_SETTLE_MS = 120;
 
 type Gesture =
   | { readonly kind: "press"; readonly pointerId: number; readonly x: number; readonly y: number; readonly node: number; readonly moved: boolean }
@@ -54,6 +62,21 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   let chart: ChartPluginContext | null = null;
   let surface: RenderSurface | null = null;
   let shapeCanvas: HTMLCanvasElement | null = null;
+  /** The moving flows' layer, made the first time a frame has flows: animation frames redraw only it. */
+  let flowSurface: RenderSurface | null = null;
+  let flowCanvas: HTMLCanvasElement | null = null;
+  /** Whether the still layers (shapes, labels) must be drawn again; animation-only frames leave it false. */
+  let staticDirty = true;
+  /** A pan or zoom is waiting: the still layers may only need moving and scaling (see `transformLayers`). */
+  let viewPending = false;
+  /**
+   * The view the still layers were last drawn at (and when), the overscan margins they were drawn with (CSS
+   * pixels each side), how long that frame took, and the CSS transform a pan or zoom has put on them since:
+   * `scale` around the plot's middle, then `shift`.
+   */
+  const drawn = { centerX: 0, centerY: 0, zoom: 0, marginX: 0, marginY: 0, ms: 0, scale: 1, shiftX: 0, shiftY: 0, width: 0, height: 0, at: 0 };
+  /** Redraws the still layers once a pan has paused, so they are centered again. */
+  let settleTimer: ReturnType<typeof setTimeout> | undefined;
   let labelCanvas: HTMLCanvasElement | null = null;
   let labelContext: CanvasRenderingContext2D | null = null;
   let live: HTMLElement | null = null;
@@ -106,7 +129,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       disposed = false;
       const doc = ctx.dom.document;
       shapeCanvas = overlayCanvas(doc, "blazeplot-graph-shapes", 4);
-      labelCanvas = overlayCanvas(doc, "blazeplot-graph-labels", 5);
+      labelCanvas = overlayCanvas(doc, "blazeplot-graph-labels", 6);
       labelContext = labelCanvas.getContext("2d");
       surface = ctx.unstable.createRenderSurface(shapeCanvas);
       surface.setLossListener((state) => {
@@ -279,12 +302,16 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       disposed = true;
       if (frameId !== 0) (chart?.dom.view ?? globalThis).cancelAnimationFrame(frameId);
       frameId = 0;
+      clearTimeout(settleTimer);
       restoreCursor?.();
       restoreCursor = null;
       for (const dispose of disposers.splice(0).reverse()) dispose();
       surface?.dispose();
       surface = null;
       shapeCanvas = null;
+      flowSurface?.dispose();
+      flowSurface = null;
+      flowCanvas = null;
       labelCanvas = null;
       labelContext = null;
       live = null;
@@ -511,9 +538,34 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
 
   // --- Frames ----------------------------------------------------------------------------------
 
+  /** Schedule a frame that draws everything again: something the still layers show changed. */
   function scheduleRender(): void {
+    staticDirty = true;
+    requestFrame();
+  }
+
+  /** Schedule a frame; on its own (flow animation) only the flow layer is drawn again. */
+  function requestFrame(): void {
     if (disposed || frameId !== 0 || !chart) return;
     frameId = chart.dom.view.requestAnimationFrame(render);
+  }
+
+  /** The flow layer, between the shapes and the labels, on the chart's engine. */
+  function ensureFlowSurface(): RenderSurface | null {
+    if (flowSurface || !chart) return flowSurface;
+    flowCanvas = overlayCanvas(chart.dom.document, "blazeplot-graph-flows", 5);
+    try {
+      flowSurface = chart.unstable.createRenderSurface(flowCanvas);
+    } catch (error) {
+      console.error("BlazePlot graph: could not create the flow layer; flows are not drawn.", error);
+      flowCanvas = null;
+      return null;
+    }
+    flowSurface.setLossListener((state) => {
+      if (state === "restored") scheduleRender();
+    });
+    disposers.push(chart.dom.mount("plot", flowCanvas));
+    return flowSurface;
   }
 
   function render(now: number): void {
@@ -522,15 +574,31 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     const { width, height } = plotSize();
     if (width <= 0 || height <= 0) return;
     if (!fitted) fitOnLoad();
+    if (animation) staticDirty = true;
     stepAnimation(now);
+    if (viewPending && !staticDirty) {
+      if (transformLayers(now, width, height)) return;
+      // The view moved past what the layers can follow: draw them again.
+      staticDirty = true;
+    }
+    viewPending = false;
     const dpr = Math.max(1, chart.dom.view.devicePixelRatio || 1);
-    const deviceW = Math.max(1, Math.round(width * dpr));
-    const deviceH = Math.max(1, Math.round(height * dpr));
-    for (const canvas of [shapeCanvas, labelCanvas]) {
+    // The margin only pays when a frame is expensive; a cheap graph is drawn at the plot's size.
+    const expensive = drawn.ms > EXPENSIVE_FRAME_MS;
+    const marginX = staticDirty ? (expensive ? Math.round(width * OVERSCAN) : 0) : drawn.marginX;
+    const marginY = staticDirty ? (expensive ? Math.round(height * OVERSCAN) : 0) : drawn.marginY;
+    const layerW = width + marginX * 2;
+    const layerH = height + marginY * 2;
+    const deviceW = Math.max(1, Math.round(layerW * dpr));
+    const deviceH = Math.max(1, Math.round(layerH * dpr));
+    if (marginX !== drawn.marginX || marginY !== drawn.marginY) staticDirty = true;
+    for (const canvas of [shapeCanvas, labelCanvas, flowCanvas]) {
+      if (!canvas) continue;
+      if (canvas.width !== deviceW || canvas.height !== deviceH) staticDirty = true;
       if (canvas.width !== deviceW) canvas.width = deviceW;
       if (canvas.height !== deviceH) canvas.height = deviceH;
     }
-    painter.paint(surface, {
+    const input = {
       model,
       nodeStyles,
       edgeStyles,
@@ -538,15 +606,35 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       centerX: view.centerX,
       centerY: view.centerY,
       zoom: view.zoom,
-      width,
-      height,
+      width: layerW,
+      height: layerH,
       pixelRatio: dpr,
       time: now / 1000,
       animate: !reducedMotion,
       minNodePx: positive(options.minNodePx, 2),
       background,
-    });
-    if (labelContext) {
+    };
+    const full = staticDirty;
+    staticDirty = false;
+    lastInput = input;
+    if (full) {
+      clearTimeout(settleTimer);
+      const started = chart.dom.view.performance?.now() ?? Date.now();
+      for (const canvas of [shapeCanvas, labelCanvas, flowCanvas]) if (canvas) placeLayer(canvas, marginX, marginY, width, height);
+      painter.paint(surface, input);
+      Object.assign(drawn, { centerX: view.centerX, centerY: view.centerY, zoom: view.zoom, marginX, marginY, scale: 1, shiftX: 0, shiftY: 0, width, height, at: now });
+      // Measured after the labels too, below.
+      drawnStart = started;
+    }
+    if (painter.hasFlows || flowSurface) {
+      const flows = painter.hasFlows ? ensureFlowSurface() : flowSurface;
+      if (flows && flowCanvas && !flows.isLost) {
+        if (flowCanvas.width !== deviceW) flowCanvas.width = deviceW;
+        if (flowCanvas.height !== deviceH) flowCanvas.height = deviceH;
+        painter.paintFlows(flows, input);
+      }
+    }
+    if (full && labelContext) {
       drawLabels({
         ctx: labelContext,
         model,
@@ -559,15 +647,71 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
         drawNode,
         drawEdgeLabel,
         zoom: view.zoom,
-        width,
-        height,
+        width: layerW,
+        height: layerH,
         pixelRatio: dpr,
         detailMinPx: positive(options.detailMinPx, 10, true),
         maxDetails: Math.floor(positive(options.maxDetails, 2000, true)),
         maxEdgeLabels: Math.floor(positive(options.maxEdgeLabels, 1000, true)),
       });
     }
-    if (painter.moving || animation) scheduleRender();
+    if (full) drawn.ms = (chart.dom.view.performance?.now() ?? Date.now()) - drawnStart;
+    if (animation) scheduleRender();
+    else if (painter.moving) requestFrame();
+  }
+
+  let drawnStart = 0;
+  let lastInput: Parameters<GraphPainter["paint"]>[1] | null = null;
+
+  /** Size and place a layer its margins beyond the plot on each side, untransformed, scaling around the plot's middle. */
+  function placeLayer(canvas: HTMLCanvasElement, marginX: number, marginY: number, width: number, height: number): void {
+    const left = `${-marginX}px`;
+    const top = `${-marginY}px`;
+    if (canvas.style.left !== left || canvas.style.top !== top) {
+      canvas.style.inset = "";
+      canvas.style.left = left;
+      canvas.style.top = top;
+      canvas.style.width = `calc(100% + ${marginX * 2}px)`;
+      canvas.style.height = `calc(100% + ${marginY * 2}px)`;
+    }
+    canvas.style.transformOrigin = `${marginX + width / 2}px ${marginY + height / 2}px`;
+    canvas.style.transform = "";
+  }
+
+  /**
+   * Follow a pan or zoom by moving and scaling the still layers with CSS instead of drawing them again, when a
+   * frame is expensive and what was drawn (with its margins) still covers the plot. Redraws are still made
+   * when the gesture pauses, when the last one is older than `GESTURE_REDRAW_MS`, or when the scale has gone
+   * past 2 either way, so text is never blurred for long. Returns false when a full frame is needed.
+   */
+  function transformLayers(now: number, width: number, height: number): boolean {
+    viewPending = false;
+    if (!(drawn.ms > EXPENSIVE_FRAME_MS) || width !== drawn.width || height !== drawn.height || drawn.zoom <= 0) return false;
+    const scale = view.zoom / drawn.zoom;
+    // Only a scaled layer blurs, so only a zoom is redrawn by age; a slow redraw is spaced out further, so a
+    // gesture spends at most about a sixth of its time redrawing. A pan redraws when it runs out of margin.
+    const stale = scale !== 1 && now - drawn.at > Math.max(GESTURE_REDRAW_MS, drawn.ms * 6);
+    if (scale > 2 || scale < 0.5 || stale) return false;
+    const shiftX = (drawn.centerX - view.centerX) * view.zoom;
+    const shiftY = (drawn.centerY - view.centerY) * view.zoom;
+    // The plot's corners on the layer, which must lie inside it: a layer point L shows at
+    // P = W/2 + scale * (L - margin - W/2) + shift.
+    const left = drawn.marginX + width / 2 + (-width / 2 - shiftX) / scale;
+    const right = drawn.marginX + width / 2 + (width / 2 - shiftX) / scale;
+    const top = drawn.marginY + height / 2 + (-height / 2 - shiftY) / scale;
+    const bottom = drawn.marginY + height / 2 + (height / 2 - shiftY) / scale;
+    if (left < 0 || top < 0 || right > width + drawn.marginX * 2 || bottom > height + drawn.marginY * 2) return false;
+    drawn.scale = scale;
+    drawn.shiftX = shiftX;
+    drawn.shiftY = shiftY;
+    const transform = `translate(${shiftX}px, ${shiftY}px) scale(${scale})`;
+    for (const canvas of [shapeCanvas, labelCanvas, flowCanvas]) if (canvas) canvas.style.transform = transform;
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(scheduleRender, PAN_SETTLE_MS);
+    // The flows move with their layer and keep animating at this frame's time.
+    if (flowSurface && lastInput && painter.hasFlows && !flowSurface.isLost) painter.paintFlows(flowSurface, { ...lastInput, time: now / 1000 });
+    if (painter.moving) requestFrame();
+    return true;
   }
 
   function stepAnimation(now: number): void {
@@ -639,8 +783,12 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     return rankCache;
   }
 
-  function edgeAt(px: number, py: number): number {
+  function edgeAt(plotX: number, plotY: number): number {
     const geometry = painter.edgeScreen;
+    // The layers' geometry is in their own pixels: drawn with margins, then perhaps moved and scaled.
+    const { width, height } = plotSize();
+    const px = drawn.marginX + width / 2 + (plotX - width / 2 - drawn.shiftX) / drawn.scale;
+    const py = drawn.marginY + height / 2 + (plotY - height / 2 - drawn.shiftY) / drawn.scale;
     let best = -1;
     let bestDistance = EDGE_SLOP * EDGE_SLOP;
     for (let i = model.edges.length - 1; i >= 0; i--) {
@@ -849,7 +997,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     view.centerX -= dx / view.zoom;
     view.centerY -= dy / view.zoom;
     pushView("user");
-    scheduleRender();
+    viewPending = true;
+    requestFrame();
     options.onViewChange?.(plugin.getView());
   }
 
@@ -865,7 +1014,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     view.centerX = gx - (px - width / 2) / zoom;
     view.centerY = gy - (py - height / 2) / zoom;
     pushView("user");
-    scheduleRender();
+    viewPending = true;
+    requestFrame();
     options.onViewChange?.(plugin.getView());
   }
 

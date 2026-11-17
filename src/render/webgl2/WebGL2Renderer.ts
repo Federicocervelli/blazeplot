@@ -288,9 +288,12 @@ export class WebGL2Renderer implements ChartRenderer {
     const total = records - (records % group);
     // A shape also needs a positive width and height (written so NaN fails too).
     const sized = kind === "shapes";
+    // A float32 is at most about 3.4e38, so a sum of a record's floats overflows only if one is already infinite,
+    // and any NaN makes it NaN: one finiteness check per record instead of one per float.
     const valid = (o: number): boolean => {
-      for (let i = 0; i < groupFloats; i++) if (!Number.isFinite(data[o + i]!)) return false;
-      return !sized || (data[o + 2]! > 0 && data[o + 3]! > 0);
+      let sum = 0;
+      for (let i = 0; i < groupFloats; i++) sum += data[o + i]!;
+      return Number.isFinite(sum) && (!sized || (data[o + 2]! > 0 && data[o + 3]! > 0));
     };
     let clean = true;
     for (let g = 0; g < total && clean; g += group) clean = valid(g * floatsPerRecord);

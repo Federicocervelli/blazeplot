@@ -51,6 +51,8 @@ const SHAPE = 14;
 const SEGMENT = 12;
 const VERTEX = 6;
 const ARROW_HALF_WIDTH = 0.55;
+/** Floats per collected flow: style offset, start, control, end, bowed. */
+const FLOW_RECORD = 8;
 
 /** A float buffer that grows by doubling and is reused frame after frame. */
 class Buffer {
@@ -108,30 +110,80 @@ export class GraphPainter {
   nodeScreen = new Float32Array(0);
   /** Per edge: start x, y, control x, y, end x, y, and 1 when drawn this frame. */
   edgeScreen = new Float32Array(0);
-  /** Whether the last frame drew a moving flow, so another frame is needed. */
+  /** Whether the last flow frame drew a moving flow, so another frame is needed. */
   moving = false;
+  /**
+   * The flows found by the last static frame: per flow, the edge's style offset, its drawn start, control, and end
+   * (CSS pixels, after the arrowheads shortened it), and 1 when it bows. Flow frames redraw only these.
+   */
+  private flows = new Float32Array(0);
+  private flowCount = 0;
+  /** Whether the flow surface holds anything, so an empty flow frame clears it once. */
+  private flowsDrawn = false;
+  /** The point `exit` found, kept in fields so the hot loop allocates nothing. */
+  private exitX = 0;
+  private exitY = 0;
 
-  /** Project, cull, and draw one frame on `surface`. */
+  /**
+   * Project, cull, and draw everything that does not move on `surface`: background, edges, arrows, and nodes.
+   * Flows are only collected; `paintFlows` draws them on their own surface, so an animation frame costs what
+   * the moving flows cost, not the whole graph.
+   */
   paint<N, E>(surface: RenderSurface, input: GraphFrameInput<N, E>): void {
     const { width, height, pixelRatio: dpr } = input;
     this.shapes.count = 0;
     this.segments.count = 0;
     this.triangles.count = 0;
-    this.dots.count = 0;
     this.borders.count = 0;
-    this.moving = false;
+    this.flowCount = 0;
     this.project(input);
 
     surface.beginFrame(Math.max(1, Math.round(width * dpr)), Math.max(1, Math.round(height * dpr)), dpr);
     this.paintBackground(surface, input);
     this.buildEdges(input);
     if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
-    if (this.dots.count > 0) surface.fillShapes(this.dots.data, this.dots.count);
     if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
     this.buildNodes(input);
     if (this.shapes.count > 0) surface.fillShapes(this.shapes.data, this.shapes.count);
     if (this.borders.count > 0) surface.strokeSegments(this.borders.data, this.borders.count);
     surface.endFrame();
+  }
+
+  /** Whether the last static frame found flows to draw. */
+  get hasFlows(): boolean {
+    return this.flowCount > 0;
+  }
+
+  /**
+   * Draw the flows the last static frame collected, at `input.time`, on their own surface (over the static one).
+   * Clears the surface once when there are none left. Sets `moving` when another frame is needed.
+   */
+  paintFlows<N, E>(surface: RenderSurface, input: GraphFrameInput<N, E>): void {
+    const { width, height, pixelRatio: dpr, time, animate, edgeStyles } = input;
+    this.moving = false;
+    if (this.flowCount === 0 && !this.flowsDrawn) return;
+    this.segments.count = 0;
+    this.dots.count = 0;
+    const f = this.flows;
+    for (let k = 0; k < this.flowCount; k++) {
+      const o = k * FLOW_RECORD;
+      const s = f[o]!;
+      const dash = edgeStyles[s + E_FLOW_DASH]!;
+      const gap = edgeStyles[s + E_FLOW_GAP]!;
+      const period = dash + gap;
+      const speed = edgeStyles[s + E_FLOW_SPEED]!;
+      // Dashes move toward the target: the pattern's phase falls as time goes on.
+      const phase = animate && speed !== 0 ? -((time * speed) % period) : 0;
+      if (animate && speed !== 0) this.moving = true;
+      const bowed = f[o + 7] === 1;
+      if (edgeStyles[s + E_FLOW_DOTS]) this.flowDots(f[o + 1]!, f[o + 2]!, f[o + 3]!, f[o + 4]!, f[o + 5]!, f[o + 6]!, bowed, edgeStyles[s + E_FLOW_WIDTH]!, period, phase, edgeStyles, s + E_FLOW, dpr);
+      else this.curve(f[o + 1]!, f[o + 2]!, f[o + 3]!, f[o + 4]!, f[o + 5]!, f[o + 6]!, bowed, edgeStyles[s + E_FLOW_WIDTH]!, dash, gap, phase, edgeStyles, s + E_FLOW, dpr);
+    }
+    surface.beginFrame(Math.max(1, Math.round(width * dpr)), Math.max(1, Math.round(height * dpr)), dpr);
+    if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
+    if (this.dots.count > 0) surface.fillShapes(this.dots.data, this.dots.count);
+    surface.endFrame();
+    this.flowsDrawn = this.flowCount > 0;
   }
 
   /** Node centers and half sizes on screen, with the minimum size applied. */
@@ -197,7 +249,7 @@ export class GraphPainter {
   }
 
   private buildEdges<N, E>(input: GraphFrameInput<N, E>): void {
-    const { model, edgeStyles, width, height, pixelRatio: dpr, time, animate } = input;
+    const { model, edgeStyles, width, height, pixelRatio: dpr } = input;
     const count = model.edges.length;
     if (this.edgeScreen.length < count * EDGE_GEOMETRY) this.edgeScreen = new Float32Array(count * EDGE_GEOMETRY);
     const ns = this.nodeScreen;
@@ -214,7 +266,7 @@ export class GraphPainter {
       const by = ns[b + 1]!;
       const dx = bx - ax;
       const dy = by - ay;
-      const length = Math.hypot(dx, dy);
+      const length = Math.sqrt(dx * dx + dy * dy);
       if (!(length > 0)) continue;
       const style = edgeStyles[s + E_CURVATURE]!;
       const curvature = Number.isNaN(style) ? (model.reversed[i] ? AUTO_BOW : 0) : style;
@@ -227,11 +279,12 @@ export class GraphPainter {
       if (Math.max(ax, bx, cx) < -margin || Math.min(ax, bx, cx) > width + margin || Math.max(ay, by, cy) < -margin || Math.min(ay, by, cy) > height + margin) continue;
 
       const gap = edgeStyles[s + E_END_GAP]!;
-      const start = exit(ns, a, cx - ax, cy - ay, gap);
-      const end = exit(ns, b, cx - bx, cy - by, gap);
-      if (!start || !end) continue;
-      let [sx, sy] = start;
-      let [ex, ey] = end;
+      if (!this.exit(ns, a, cx - ax, cy - ay, gap)) continue;
+      let sx = this.exitX;
+      let sy = this.exitY;
+      if (!this.exit(ns, b, cx - bx, cy - by, gap)) continue;
+      let ex = this.exitX;
+      let ey = this.exitY;
       // Nodes that overlap leave no edge to draw.
       if ((ex - sx) * dx + (ey - sy) * dy <= 0) continue;
       // Keep the bow when the ends moved onto the outlines: the control point stays where it was.
@@ -245,17 +298,29 @@ export class GraphPainter {
 
       const arrows = edgeStyles[s + E_ARROW]!;
       const arrowSize = edgeStyles[s + E_ARROW_SIZE]!;
-      const visibleLength = Math.hypot(ex - sx, ey - sy);
+      const vx = ex - sx;
+      const vy = ey - sy;
+      const visibleLength = Math.sqrt(vx * vx + vy * vy);
+      // Under a device pixel an edge is not seen; it stays pickable through its geometry.
+      if (visibleLength * dpr < 1) continue;
       const drawArrows = arrowSize > 0 && visibleLength > arrowSize * 1.5;
       if (drawArrows && arrows & 1) {
-        const [tx, ty] = unit(ex - cx, ey - cy);
+        let tx = ex - cx;
+        let ty = ey - cy;
+        const tl = Math.sqrt(tx * tx + ty * ty) || 1;
+        tx /= tl;
+        ty /= tl;
         this.arrow(ex, ey, tx, ty, arrowSize, edgeStyles, s + E_COLOR, dpr);
         // The line stops inside the arrowhead, so its butt end never shows past the tip.
         ex -= tx * arrowSize * 0.7;
         ey -= ty * arrowSize * 0.7;
       }
       if (drawArrows && arrows & 2) {
-        const [tx, ty] = unit(sx - cx, sy - cy);
+        let tx = sx - cx;
+        let ty = sy - cy;
+        const tl = Math.sqrt(tx * tx + ty * ty) || 1;
+        tx /= tl;
+        ty /= tl;
         this.arrow(sx, sy, tx, ty, arrowSize, edgeStyles, s + E_COLOR, dpr);
         sx -= tx * arrowSize * 0.7;
         sy -= ty * arrowSize * 0.7;
@@ -266,21 +331,48 @@ export class GraphPainter {
         this.curve(sx, sy, cx, cy, ex, ey, curvature !== 0, lineWidth, edgeStyles[s + E_DASH]!, edgeStyles[s + E_GAP]!, 0, edgeStyles, s + E_COLOR, dpr);
       }
       if (edgeStyles[s + E_HAS_FLOW]) {
-        const dash = edgeStyles[s + E_FLOW_DASH]!;
-        const period = dash + edgeStyles[s + E_FLOW_GAP]!;
-        const speed = edgeStyles[s + E_FLOW_SPEED]!;
-        // Dashes move toward the target: the pattern's phase falls as time goes on.
-        const phase = animate && speed !== 0 ? -((time * speed) % period) : 0;
-        if (animate && speed !== 0) this.moving = true;
-        if (edgeStyles[s + E_FLOW_DOTS]) this.flowDots(sx, sy, cx, cy, ex, ey, curvature !== 0, edgeStyles[s + E_FLOW_WIDTH]!, period, phase, edgeStyles, s + E_FLOW, dpr);
-        else this.curve(sx, sy, cx, cy, ex, ey, curvature !== 0, edgeStyles[s + E_FLOW_WIDTH]!, dash, edgeStyles[s + E_FLOW_GAP]!, phase, edgeStyles, s + E_FLOW, dpr);
+        if ((this.flowCount + 1) * FLOW_RECORD > this.flows.length) {
+          const grown = new Float32Array(Math.max(64, this.flows.length * 2));
+          grown.set(this.flows);
+          this.flows = grown;
+        }
+        const o = this.flowCount++ * FLOW_RECORD;
+        const f = this.flows;
+        f[o] = s;
+        f[o + 1] = sx;
+        f[o + 2] = sy;
+        f[o + 3] = cx;
+        f[o + 4] = cy;
+        f[o + 5] = ex;
+        f[o + 6] = ey;
+        f[o + 7] = curvature !== 0 ? 1 : 0;
       }
     }
   }
 
+  /** `exit` without allocating: the point goes to `exitX`/`exitY`; false for a zero direction. */
+  private exit(screen: Float32Array, o: number, dx: number, dy: number, gap: number): boolean {
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (!(length > 0)) return false;
+    const ux = dx / length;
+    const uy = dy / length;
+    const hw = screen[o + 2]!;
+    const hh = screen[o + 3]!;
+    let t: number;
+    if (screen[o + 4] === 0) t = (hw < hh ? hw : hh) + gap;
+    else {
+      const tx = ux === 0 ? Infinity : (hw + gap) / Math.abs(ux);
+      const ty = uy === 0 ? Infinity : (hh + gap) / Math.abs(uy);
+      t = tx < ty ? tx : ty;
+    }
+    this.exitX = screen[o]! + ux * t;
+    this.exitY = screen[o + 1]! + uy * t;
+    return true;
+  }
+
   /** Emit a straight or quadratic stroke as segments, with the dash pattern continuous along it. */
   private curve(sx: number, sy: number, cx: number, cy: number, ex: number, ey: number, bowed: boolean, width: number, dash: number, gap: number, phase: number, styles: Float32Array, colorAt: number, dpr: number): void {
-    const pieces = bowed ? Math.min(24, Math.max(6, Math.ceil(Math.hypot(ex - sx, ey - sy) / 14))) : 1;
+    const pieces = bowed ? Math.min(24, Math.max(6, Math.ceil(Math.sqrt((ex - sx) ** 2 + (ey - sy) ** 2) / 14))) : 1;
     let px = sx;
     let py = sy;
     let along = phase;
@@ -303,7 +395,7 @@ export class GraphPainter {
       d[o + 9] = styles[colorAt + 1]!;
       d[o + 10] = styles[colorAt + 2]!;
       d[o + 11] = styles[colorAt + 3]!;
-      along += Math.hypot(qx - px, qy - py);
+      along += Math.sqrt((qx - px) * (qx - px) + (qy - py) * (qy - py));
       px = qx;
       py = qy;
     }
@@ -389,7 +481,9 @@ export class GraphPainter {
       if (ring > 0) {
         this.shape(x, y, hw + ring, hh + ring, circle ? Math.min(hw, hh) + ring : radius + ring, ringWidth, nodeStyles, -1, s + N_RING, dpr);
       }
-      const border = Math.min(nodeStyles[s + N_BORDER]! * zoom, hw, hh);
+      // A border under a third of a device pixel is not seen: drop it, so tiny nodes stay one plain shape.
+      const borderPx = Math.min(nodeStyles[s + N_BORDER]! * zoom, hw, hh);
+      const border = borderPx * dpr < 0.35 ? 0 : borderPx;
       const dash = nodeStyles[s + N_DASH]! * zoom;
       const dashed = dash > 0 && border > 0;
       this.shape(x, y, hw, hh, radius, dashed ? 0 : border, nodeStyles, s + N_FILL, s + N_STROKE, dpr);

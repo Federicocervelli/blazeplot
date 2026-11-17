@@ -18,6 +18,11 @@ export class Canvas2DUnavailableError extends Error {
  */
 const THIN_STROKE_PX = 1.5;
 
+/** Borderless shapes at most this many device pixels across are dots: batched by color (see `fillShapes`). */
+const DOT_SHAPE_PX = 8;
+/** Dots at most this many device pixels across (2 CSS pixels on a phone) are filled as plain rectangles: their corners cannot show. */
+const TINY_SHAPE_PX = 5;
+
 /** Typical desktop-browser limit on a canvas's area; browsers do not expose it. */
 const MAX_CANVAS_PIXELS = 16_384 * 16_384;
 
@@ -48,6 +53,8 @@ export class Canvas2DRenderer implements ChartRenderer {
   private strokeJoin: string | null = null;
   /** Scratch for the float color of the rect being filled (compared with `fill` before a string is built). */
   private readonly rectColor: [number, number, number, number] = [0, 0, 0, 0];
+  /** One path per dot color, reused by `fillShapes` (a frame is synchronous, so one map serves every call). */
+  private dotPaths: Map<number, { fill: string; path: Path2D; used: boolean }> | undefined;
   /** The snapped rectangle `addSnappedRect` has not yet added to the path (it may still absorb the next ones). */
   private rectOpen = false;
   private rectLeft = 0;
@@ -394,7 +401,25 @@ export class Canvas2DRenderer implements ChartRenderer {
     const n = Math.min(count, Math.floor(shapes.length / 14));
     const ctx = this.ctx;
     let open = false;
-    let openFill = "";
+    let openKey = -1;
+    // Dots (borderless shapes a few pixels across) go into one path per color and are filled together: a graph's
+    // dots alternate colors, and a fill per dot is what makes tens of thousands slow. Only overlapping dots of
+    // different colors could tell the order apart, at that size. Larger or bordered shapes keep their order,
+    // after every dot before them.
+    const dots = typeof Path2D === "undefined" ? null : (this.dotPaths ??= new Map());
+    let dotted = false;
+    const flushDots = (): void => {
+      if (!dotted || !dots) return;
+      for (const bucket of dots.values()) {
+        if (!bucket.used) continue;
+        if (bucket.fill !== this.fill) ctx.fillStyle = this.fill = bucket.fill;
+        ctx.fill(bucket.path);
+        bucket.path = new Path2D();
+        bucket.used = false;
+      }
+      this.rectColor[3] = NaN;
+      dotted = false;
+    };
     for (let i = 0; i < n; i++) {
       const o = i * 14;
       const x = shapes[o]!;
@@ -406,20 +431,33 @@ export class Canvas2DRenderer implements ChartRenderer {
       const half = Math.min(w, h) / 2;
       const radius = Math.min(Math.max(0, shapes[o + 4]!), half);
       const border = Math.min(Math.max(0, shapes[o + 5]!), half);
-      const fill = rgbaString(shapes[o + 6]!, shapes[o + 7]!, shapes[o + 8]!, shapes[o + 9]!);
       const bordered = border > 0 && shapes[o + 13]! > 0;
-      if (open && (bordered || fill !== openFill)) {
+      const key = colorKey(shapes[o + 6]!, shapes[o + 7]!, shapes[o + 8]!, shapes[o + 9]!);
+      if (dots && !bordered && w <= DOT_SHAPE_PX && h <= DOT_SHAPE_PX) {
+        let bucket = dots.get(key);
+        if (!bucket) {
+          bucket = { fill: rgbaString(shapes[o + 6]!, shapes[o + 7]!, shapes[o + 8]!, shapes[o + 9]!), path: new Path2D(), used: false };
+          dots.set(key, bucket);
+        }
+        traceDot(bucket.path, x, y, w, h, radius);
+        bucket.used = true;
+        dotted = true;
+        continue;
+      }
+      if (open && (bordered || key !== openKey)) {
         ctx.fill();
         open = false;
       }
+      flushDots();
       if (!open) {
+        const fill = rgbaString(shapes[o + 6]!, shapes[o + 7]!, shapes[o + 8]!, shapes[o + 9]!);
         if (fill !== this.fill) ctx.fillStyle = this.fill = fill;
         this.rectColor[3] = NaN;
         ctx.beginPath();
         open = true;
-        openFill = fill;
+        openKey = key;
       }
-      traceRoundRect(ctx, x, y, w, h, radius);
+      traceRoundRect(ctx, x, y, w, h, radius, false);
       if (!bordered) continue;
       ctx.fill();
       open = false;
@@ -429,11 +467,13 @@ export class Canvas2DRenderer implements ChartRenderer {
       if (stroke !== this.strokeColor) ctx.strokeStyle = this.strokeColor = stroke;
       if (border !== this.strokeWidth) ctx.lineWidth = this.strokeWidth = border;
       ctx.beginPath();
-      traceRoundRect(ctx, x + inset, y + inset, w - border, h - border, Math.max(0, radius - inset));
+      traceRoundRect(ctx, x + inset, y + inset, w - border, h - border, Math.max(0, radius - inset), true);
       ctx.stroke();
     }
     if (open) ctx.fill();
+    flushDots();
   }
+
 
   /**
    * Segments with per-segment width, dash, and color (see `ChartRenderSurface.strokeSegments`).
@@ -444,7 +484,20 @@ export class Canvas2DRenderer implements ChartRenderer {
     const n = Math.min(count, Math.floor(segments.length / 12));
     const ctx = this.ctx;
     let open = false;
-    let key = "";
+    // The style of the open stroke, compared as raw floats so no string is built per segment.
+    let r = NaN;
+    let g = NaN;
+    let b = NaN;
+    let a = NaN;
+    let lineWidth = NaN;
+    let dashLength = NaN;
+    let gapLength = NaN;
+    let strokeOffset = 0;
+    // Where the last segment ended, and how far along its dash pattern: a segment that continues it joins
+    // the same subpath, whose dashes Canvas 2D carries on by itself.
+    let lastX = NaN;
+    let lastY = NaN;
+    let along = 0;
     const flush = (): void => {
       if (!open) return;
       ctx.stroke();
@@ -458,32 +511,53 @@ export class Canvas2DRenderer implements ChartRenderer {
       const y1 = segments[o + 3]!;
       const width = segments[o + 4]!;
       if (!Number.isFinite(x0 + y0 + x1 + y1 + width) || !(width > 0)) continue;
-      if (Math.max(x0, x1) + width < 0 || Math.max(y0, y1) + width < 0 || Math.min(x0, x1) - width > this.width || Math.min(y0, y1) - width > this.height) continue;
+      if ((x0 > x1 ? x0 : x1) + width < 0 || (y0 > y1 ? y0 : y1) + width < 0 || (x0 < x1 ? x0 : x1) - width > this.width || (y0 < y1 ? y0 : y1) - width > this.height) continue;
       const dash = segments[o + 5]!;
       const gap = segments[o + 6]!;
       const dashed = dash > 0 && gap > 0 && Number.isFinite(dash + gap);
       const offset = dashed && Number.isFinite(segments[o + 7]!) ? segments[o + 7]! : 0;
-      const color = rgbaString(segments[o + 8]!, segments[o + 9]!, segments[o + 10]!, segments[o + 11]!);
-      const next = dashed ? `${color}|${width}|${dash}|${gap}|${offset}` : `${color}|${width}`;
-      if (!open || next !== key) {
+      const sr = segments[o + 8]!;
+      const sg = segments[o + 9]!;
+      const sb = segments[o + 10]!;
+      const sa = segments[o + 11]!;
+      const sameStyle = open && sr === r && sg === g && sb === b && sa === a && width === lineWidth && (dashed ? dash === dashLength && gap === gapLength : !(dashLength > 0));
+      const connected = sameStyle && x0 === lastX && y0 === lastY && (!dashed || Math.abs(offset - along) < 0.01);
+      if (connected) {
+        ctx.lineTo(x1, y1);
+      } else if (sameStyle && (!dashed || Math.abs(offset - strokeOffset) < 0.01)) {
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+      } else {
         flush();
+        r = sr;
+        g = sg;
+        b = sb;
+        a = sa;
+        lineWidth = width;
+        dashLength = dashed ? dash : 0;
+        gapLength = dashed ? gap : 0;
+        strokeOffset = offset;
+        const color = rgbaString(sr, sg, sb, sa);
         if (color !== this.strokeColor) ctx.strokeStyle = this.strokeColor = color;
         if (width !== this.strokeWidth) ctx.lineWidth = this.strokeWidth = width;
         ctx.lineCap = "butt";
         ctx.setLineDash(dashed ? [dash, gap] : []);
         ctx.lineDashOffset = offset;
         ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
         open = true;
-        key = next;
       }
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
+      lastX = x1;
+      lastY = y1;
+      along = offset + Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
     }
     flush();
     // Later strokes (series, grid) expect solid lines.
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
   }
+
 
   /**
    * Triangles with per-vertex colors (see `ChartRenderSurface.fillTriangles`). Canvas 2D has no
@@ -517,10 +591,11 @@ export class Canvas2DRenderer implements ChartRenderer {
         open = true;
         openFill = fill;
       }
+      // No closePath: a fill closes every subpath itself, and closing each of many subpaths of one long path
+      // is what made 100k arrowheads take seconds in Chromium.
       ctx.moveTo(x0, y0);
       ctx.lineTo(x1, y1);
       ctx.lineTo(x2, y2);
-      ctx.closePath();
     }
     if (open) ctx.fill();
   }
@@ -635,13 +710,43 @@ function css(color: RgbaColor): string {
   return `rgba(${Math.round(color[0] * 255)},${Math.round(color[1] * 255)},${Math.round(color[2] * 255)},${color[3]})`;
 }
 
+/** A color as one integer (8 bits a channel), to compare and bucket colors without building strings. */
+function colorKey(r: number, g: number, b: number, a: number): number {
+  const c = (v: number): number => (v > 0 ? (v < 1 ? Math.round(v * 255) : 255) : 0);
+  return ((c(r) * 256 + c(g)) * 256 + c(b)) * 256 + c(a);
+}
+
+/** Unit octagon corners, cos and sin of k * 45 degrees. */
+const OCTAGON = Array.from({ length: 16 }, (_, i) => (i % 2 === 0 ? Math.cos : Math.sin)(Math.floor(i / 2) * (Math.PI / 4)));
+
+/** A dot into `path`: a rectangle when tiny, an octagon when round, else a rounded rectangle. */
+function traceDot(path: Path2D, x: number, y: number, w: number, h: number, radius: number): void {
+  if ((w <= TINY_SHAPE_PX && h <= TINY_SHAPE_PX) || radius <= 0) {
+    path.rect(x, y, w, h);
+    return;
+  }
+  if (w === h && radius >= w / 2) {
+    // At dot size an octagon cannot be told from a circle, and eight straight edges cost less than an arc.
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const r = w / 2;
+    path.moveTo(cx + r, cy);
+    for (let k = 1; k < 8; k++) path.lineTo(cx + r * OCTAGON[k * 2]!, cy + r * OCTAGON[k * 2 + 1]!);
+    return;
+  }
+  traceRoundRect(path as unknown as CanvasRenderingContext2D, x, y, w, h, radius, false);
+}
+
 function rgbaString(r: number, g: number, b: number, a: number): string {
   const clamp = (value: number): number => (value > 0 ? (value < 1 ? value : 1) : 0);
   return `rgba(${Math.round(clamp(r) * 255)},${Math.round(clamp(g) * 255)},${Math.round(clamp(b) * 255)},${clamp(a)})`;
 }
 
-/** Add a rounded rectangle to the current path (a circle for a square with half-side corners). */
-function traceRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number): void {
+/**
+ * Add a rounded rectangle to the current path (a circle for a square with half-side corners). `close` closes the
+ * subpath, which a stroke needs and a fill does not.
+ */
+function traceRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number, close: boolean): void {
   if (radius <= 0) {
     ctx.rect(x, y, w, h);
     return;
@@ -652,7 +757,7 @@ function traceRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: 
   ctx.arcTo(x + w, y + h, x, y + h, r);
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+  if (close) ctx.closePath();
 }
 
 /** Whether vertices `[o, o + 12)` are `(x0,y0) (x1,y0) (x0,y1) (x0,y1) (x1,y0) (x1,y1)`. */

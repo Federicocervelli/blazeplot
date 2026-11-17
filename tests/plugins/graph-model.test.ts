@@ -145,9 +145,33 @@ describe("graph painter", () => {
     // Each piece's dash offset is where the previous one ended.
     const firstLength = Math.hypot(segments[2]! - segments[0]!, segments[3]! - segments[1]!);
     expect(segments[12 + 7]!).toBeCloseTo(segments[7]! + firstLength, 2);
+    // The flow is collected, not drawn, by the still pass; its own pass draws it and asks for more frames.
+    expect(surface.segments).toHaveLength(1);
+    expect(painter.hasFlows).toBe(true);
+    const flows = recordingSurface();
+    painter.paintFlows(flows, input);
+    expect(flows.segments[0]!.length / 12).toBe(count);
     expect(painter.moving).toBe(true);
-    painter.paint(recordingSurface(), { ...input, animate: false });
+    painter.paintFlows(recordingSurface(), { ...input, animate: false });
     expect(painter.moving).toBe(false);
+  });
+
+  it("redraws only the flows on an animation frame, and clears their layer once when they stop", () => {
+    const painter = new GraphPainter();
+    const input = frameInput({ flow: { speed: 10 } });
+    painter.paint(recordingSurface(), input);
+    const later = recordingSurface();
+    painter.paintFlows(later, { ...input, time: 0.25 });
+    const earlier = recordingSurface();
+    painter.paintFlows(earlier, input);
+    expect(later.segments[0]![7]).not.toBe(earlier.segments[0]![7]);
+    painter.paint(recordingSurface(), frameInput({}));
+    expect(painter.hasFlows).toBe(false);
+    let frames = 0;
+    const clear = { ...recordingSurface(), beginFrame: () => void frames++ };
+    painter.paintFlows(clear, input);
+    painter.paintFlows(clear, input);
+    expect(frames).toBe(1);
   });
 
   it("culls what is off screen and keeps tiny nodes at the minimum size", () => {
@@ -209,19 +233,16 @@ describe("graph painter extras", () => {
         surface.fillTriangles(data, count);
       },
     };
-    painter.paint(
-      spy,
-      frameInput({ arrow: "end", flow: { shape: "dot", width: 4, dash: [0.5, 15], speed: 0 } }, { shape: "rect", width: 40, height: 20, borderWidth: 2, borderColor: "#fff", borderDash: [4, 3] }),
-    );
-    // Edge line, dots, arrowhead, node fills (borderless), then the dashed borders: four sides per box.
-    expect(order[0]).toBe("segments:1");
-    expect(order[1]).toMatch(/^shapes:\d+$/);
-    expect(order[2]).toBe("triangles:3");
-    expect(order[3]).toBe("shapes:3");
-    expect(order[4]).toBe("segments:12");
-    const fills = surface.shapes[1]!;
+    const input = frameInput({ arrow: "end", flow: { shape: "dot", width: 4, dash: [0.5, 15], speed: 0 } }, { shape: "rect", width: 40, height: 20, borderWidth: 2, borderColor: "#fff", borderDash: [4, 3] });
+    painter.paint(spy, input);
+    // Edge line, arrowhead, node fills (borderless), then the dashed borders: four sides per box.
+    expect(order).toEqual(["segments:1", "triangles:3", "shapes:3", "segments:12"]);
+    const fills = surface.shapes[0]!;
     expect(fills[5]).toBe(0);
-    const dots = surface.shapes[0]!;
+    // The flow's dots are drawn by the flow pass, on its own layer.
+    const flowLayer = recordingSurface();
+    painter.paintFlows(flowLayer, input);
+    const dots = flowLayer.shapes[0]!;
     // 4 CSS px dots at pixel ratio 2, fully round.
     expect([dots[2], dots[3], dots[4]]).toEqual([8, 8, 4]);
   });
