@@ -3148,6 +3148,7 @@ interface GraphEdgeStyle {
     readonly curvature?: number | "auto";
     readonly gap?: number;
     readonly flow?: {
+        readonly shape?: "dash" | "dot";
         readonly color?: GraphColor;
         readonly width?: number;
         readonly dash?: readonly [
@@ -3275,6 +3276,10 @@ interface GraphNodeStyle {
     readonly fill?: GraphColor;
     readonly borderColor?: GraphColor;
     readonly borderWidth?: number;
+    readonly borderDash?: readonly [
+        number,
+        number
+    ];
     readonly opacity?: number;
     readonly ring?: {
         readonly color: GraphColor;

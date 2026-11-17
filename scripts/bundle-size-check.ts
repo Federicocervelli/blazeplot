@@ -52,7 +52,7 @@ const budgets: Budget[] = [
   { label: "tooltip plugin", path: "dist/plugins/tooltip.js", maxBytes: 4_300 },
   { label: "crosshair plugin", path: "dist/plugins/crosshair.js", maxBytes: 10_800 }, // +1_200 layout-free pointer path (offsetX/Y, cached label and plot size) and skipped equal DOM writes
   { label: "flamegraph plugin", path: "dist/plugins/flamegraph.js", maxBytes: 17_700 },
-  { label: "graph plugin", path: "dist/plugins/graph.js", maxBytes: 41_000 }, // model, styles, painter, labels, icons, and navigation; the GPU programs live in the core graph
+  { label: "graph plugin", path: "dist/plugins/graph.js", maxBytes: 43_300 }, // +2_300 dashed node borders and round flow dots; model, styles, painter, labels, icons, and navigation; the GPU programs live in the core graph
   { label: "a11y plugin", path: "dist/plugins/a11y.js", maxBytes: 11_900 },
 ];
 
