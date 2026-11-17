@@ -22,6 +22,8 @@ const THIN_STROKE_PX = 1.5;
 const DOT_SHAPE_PX = 8;
 /** Dots at most this many device pixels across (2 CSS pixels on a phone) are filled as plain rectangles: their corners cannot show. */
 const TINY_SHAPE_PX = 5;
+/** The side of a square with a unit-diameter circle's area. */
+const EQUAL_AREA_SQUARE = Math.sqrt(Math.PI) / 2;
 
 /** Typical desktop-browser limit on a canvas's area; browsers do not expose it. */
 const MAX_CANVAS_PIXELS = 16_384 * 16_384;
@@ -444,7 +446,8 @@ export class Canvas2DRenderer implements ChartRenderer {
         dotted = true;
         continue;
       }
-      if (open && (bordered || key !== openKey)) {
+      // An open path is filled before pending dots are, since flushing them changes the fill color.
+      if (open && (bordered || key !== openKey || dotted)) {
         ctx.fill();
         open = false;
       }
@@ -721,8 +724,16 @@ const OCTAGON = Array.from({ length: 16 }, (_, i) => (i % 2 === 0 ? Math.cos : M
 
 /** A dot into `path`: a rectangle when tiny, an octagon when round, else a rounded rectangle. */
 function traceDot(path: Path2D, x: number, y: number, w: number, h: number, radius: number): void {
-  if ((w <= TINY_SHAPE_PX && h <= TINY_SHAPE_PX) || radius <= 0) {
+  if (radius <= 0) {
     path.rect(x, y, w, h);
+    return;
+  }
+  if (w <= TINY_SHAPE_PX && h <= TINY_SHAPE_PX) {
+    // A tiny round dot as a square of the same area (side sqrt(pi)/2 of the diameter), so it carries the same ink.
+    const round = w === h && radius >= w / 2;
+    const side = round ? w * EQUAL_AREA_SQUARE : w;
+    const tall = round ? side : h;
+    path.rect(x + (w - side) / 2, y + (h - tall) / 2, side, tall);
     return;
   }
   if (w === h && radius >= w / 2) {

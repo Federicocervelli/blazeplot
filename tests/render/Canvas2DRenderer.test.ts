@@ -360,3 +360,35 @@ describe("Canvas2DRenderer", () => {
     expect(ctx.calls.at(-1)).toEqual(["fill", "rgba(255,255,255,0.25)", -1]);
   });
 });
+
+describe("Canvas2DRenderer fillShapes dots", () => {
+  it("fills larger shapes in their own color when dots come between them", () => {
+    const fills: string[] = [];
+    const globals = globalThis as { Path2D?: unknown };
+    const original = globals.Path2D;
+    globals.Path2D = class {
+      rect(): void {}
+      moveTo(): void {}
+      lineTo(): void {}
+      arcTo(): void {}
+    };
+    try {
+      const ctx = new Proxy({ fillStyle: "", isContextLost: () => false } as Record<string, unknown>, {
+        get: (target, key) => (key in target ? target[key as string] : key === "fill" ? () => void fills.push(String(target.fillStyle)) : () => {}),
+        set: (target, key, value) => ((target[key as string] = value), true),
+      });
+      const canvas = Object.assign(new EventTarget(), { width: 100, height: 100, getContext: () => ctx }) as unknown as HTMLCanvasElement;
+      const renderer = new Canvas2DRenderer(canvas);
+      renderer.beginFrame(100, 100, 1);
+      // A card, a pink dot, then a second card of the card's color: both cards must fill dark.
+      renderer.fillShapes(new Float32Array([
+        10, 10, 20, 12, 2, 0, 0.1, 0.1, 0.2, 1, 0, 0, 0, 0,
+        40, 10, 4, 4, 2, 0, 0.9, 0.5, 1, 1, 0, 0, 0, 0,
+        50, 10, 20, 12, 2, 0, 0.1, 0.1, 0.2, 1, 0, 0, 0, 0,
+      ]), 3);
+      expect(fills).toEqual(["rgba(26,26,51,1)", "rgba(229,128,255,1)", "rgba(26,26,51,1)"]);
+    } finally {
+      globals.Path2D = original;
+    }
+  });
+});
