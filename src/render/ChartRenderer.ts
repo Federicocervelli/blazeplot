@@ -39,7 +39,7 @@ export interface ChartRendererCapabilities {
  * A drawing surface a plugin owns, drawn with the chart's rendering engine: WebGL2, Canvas 2D, or
  * the shared WebGL2 context. Get one from `ctx.unstable.createRenderSurface(canvas)`.
  *
- * A frame is `beginFrame`, any number of `fillRects`, then `endFrame`. Everything is in device pixels
+ * A frame is `beginFrame`, any number of `fillRects`, `fillShapes`, `strokeSegments`, and `fillTriangles`, then `endFrame`. Everything is in device pixels
  * with the origin at the canvas's top-left corner, so size the canvas in device pixels first.
  *
  * @experimental May change in a minor release. See docs/stability.md.
@@ -53,6 +53,28 @@ export interface ChartRenderSurface {
    * non-finite coordinate are skipped. Edges are not snapped to whole pixels.
    */
   fillRects(rects: Float32Array, count: number): void;
+  /**
+   * Fill `count` rounded rectangles with an optional inner border, antialiased. `shapes` holds
+   * 14 floats per shape: `x`, `y`, `width`, `height` in device pixels, the corner
+   * `radius` and `borderWidth` in device pixels, then the straight fill `r`, `g`, `b`, `a` and the
+   * straight border `r`, `g`, `b`, `a` from 0 to 1. A radius of at least half the shorter side draws
+   * a pill, and a square with it a circle. The border is drawn inside the shape's bounds. Shapes with a
+   * non-finite coordinate or a size that is not positive are skipped.
+   */
+  fillShapes(shapes: Float32Array, count: number): void;
+  /**
+   * Stroke `count` independent line segments with butt caps, antialiased. `segments` holds
+   * 12 floats per segment: `x0`, `y0`, `x1`, `y1` and `width` in device pixels,
+   * then `dash`, `gap`, and `dashOffset` in device pixels along the segment (`dash` of 0 or less is solid),
+   * then the straight `r`, `g`, `b`, `a`. Segments with a non-finite coordinate are skipped.
+   */
+  strokeSegments(segments: Float32Array, count: number): void;
+  /**
+   * Fill `vertexCount / 3` triangles with per-vertex colors. `vertices` holds six
+   * (6) floats per vertex: `x`, `y` in device pixels, then the straight `r`, `g`, `b`, `a`. Triangles
+   * with a non-finite vertex are skipped. Edges are not antialiased on every engine.
+   */
+  fillTriangles(vertices: Float32Array, vertexCount: number): void;
   /** Finish the frame and present it. */
   endFrame(): void;
   /** Whether the surface's context is lost; draw calls are skipped until it is restored. */
@@ -62,6 +84,13 @@ export interface ChartRenderSurface {
   /** Release the surface. Safe to call more than once. */
   dispose(): void;
 }
+
+/** Floats per shape passed to `fillShapes`. @internal */
+export const SHAPE_FLOATS = 14;
+/** Floats per segment passed to `strokeSegments`. @internal */
+export const SEGMENT_FLOATS = 12;
+/** Floats per vertex passed to `fillTriangles`. @internal */
+export const TRIANGLE_VERTEX_FLOATS = 6;
 
 /** A built-in rendering engine: WebGL2, Canvas 2D, or WebGL2 through a context shared with other charts. */
 export type RendererName = "webgl2" | "canvas2d" | "shared";
@@ -121,6 +150,12 @@ export interface ChartRenderer extends ChartRendererHandle {
   setLossListener(listener: ((state: RendererLossState) => void) | null): void;
   /** Filled rectangles with per-rectangle colors; see {@link ChartRenderSurface.fillRects}. */
   fillRects(rects: Float32Array, count: number): void;
+  /** Rounded rectangles, pills, and circles with borders; see {@link ChartRenderSurface.fillShapes}. */
+  fillShapes(shapes: Float32Array, count: number): void;
+  /** Per-segment width, dash, and color; see {@link ChartRenderSurface.strokeSegments}. */
+  strokeSegments(segments: Float32Array, count: number): void;
+  /** Per-vertex colored triangles; see {@link ChartRenderSurface.fillTriangles}. */
+  fillTriangles(vertices: Float32Array, vertexCount: number): void;
   /**
    * Hint that a series of `mode` with `lineWidth` CSS pixel lines is about to be drawn, so a GPU engine
    * can start building the programs it will need before the first frame. Optional and purely advisory.
@@ -162,6 +197,9 @@ export function toRenderSurface(engine: ChartRenderer): ChartRenderSurface {
   return {
     beginFrame: (width, height, pixelRatio) => engine.beginFrame(width, height, pixelRatio),
     fillRects: (rects, count) => engine.fillRects(rects, count),
+    fillShapes: (shapes, count) => engine.fillShapes(shapes, count),
+    strokeSegments: (segments, count) => engine.strokeSegments(segments, count),
+    fillTriangles: (vertices, vertexCount) => engine.fillTriangles(vertices, vertexCount),
     endFrame: () => void engine.endFrame(),
     get isLost() {
       return engine.isLost;

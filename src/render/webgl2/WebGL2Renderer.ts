@@ -190,6 +190,21 @@ export class WebGL2Renderer implements ChartRenderer {
     this.commands.push({ kind: "rects", first: this.stage(rects, count * 4), instances: count, canvasWidth: this.canvasWidth, canvasHeight: this.canvasHeight });
   }
 
+  /** Fill rounded shapes with borders: fourteen floats each, see `ChartRenderSurface.fillShapes`. */
+  fillShapes(shapes: Float32Array, count: number): void {
+    this.interleaved("shapes", shapes, count, 14);
+  }
+
+  /** Stroke segments with per-segment width, dash, and color: twelve floats each, see `ChartRenderSurface.strokeSegments`. */
+  strokeSegments(segments: Float32Array, count: number): void {
+    this.interleaved("segments", segments, count, 12);
+  }
+
+  /** Fill per-vertex colored triangles: six floats per vertex, see `ChartRenderSurface.fillTriangles`. */
+  fillTriangles(vertices: Float32Array, vertexCount: number): void {
+    this.interleaved("colorTriangles", vertices, vertexCount - (vertexCount % 3), 6);
+  }
+
   /** A second WebGL2 surface on `canvas`, with its own context. */
   createSurface(canvas: HTMLCanvasElement): ChartRenderer {
     return new WebGL2Renderer(canvas, { createBackend: this.createBackend });
@@ -258,6 +273,44 @@ export class WebGL2Renderer implements ChartRenderer {
     this.commands.push({ kind: "solid", primitive, first: this.stage(data, vertexCount), count: vertexCount, color, ...projection });
   }
 
+  /**
+   * Record an interleaved draw of `count` records of `floatsPerRecord` floats (an even number, so a record
+   * is a whole number of two-float vertices). Records with a non-finite float, and shapes without a
+   * positive size, are left out on the CPU,
+   * because a NaN in a GPU vertex is undefined behavior rather than a skipped shape; triangles are
+   * dropped three vertices at a time. Clean data, the common case, is staged with one copy.
+   */
+  private interleaved(kind: "shapes" | "segments" | "colorTriangles", data: Float32Array, count: number, floatsPerRecord: number): void {
+    const records = Math.min(count, Math.floor(data.length / floatsPerRecord));
+    if (records <= 0) return;
+    const group = kind === "colorTriangles" ? 3 : 1;
+    const groupFloats = floatsPerRecord * group;
+    const total = records - (records % group);
+    // A shape also needs a positive width and height (written so NaN fails too).
+    const sized = kind === "shapes";
+    const valid = (o: number): boolean => {
+      for (let i = 0; i < groupFloats; i++) if (!Number.isFinite(data[o + i]!)) return false;
+      return !sized || (data[o + 2]! > 0 && data[o + 3]! > 0);
+    };
+    let clean = true;
+    for (let g = 0; g < total && clean; g += group) clean = valid(g * floatsPerRecord);
+    let source = data;
+    let kept = total;
+    if (!clean) {
+      if (filterScratch.length < total * floatsPerRecord) filterScratch = new Float32Array(total * floatsPerRecord);
+      kept = 0;
+      for (let g = 0; g < total; g += group) {
+        const o = g * floatsPerRecord;
+        if (!valid(o)) continue;
+        filterScratch.set(data.subarray(o, o + groupFloats), kept * floatsPerRecord);
+        kept += group;
+      }
+      source = filterScratch;
+    }
+    if (kept <= 0) return;
+    this.commands.push({ kind, first: this.stage(source, (kept * floatsPerRecord) >> 1), count: kept, canvasWidth: this.canvasWidth, canvasHeight: this.canvasHeight });
+  }
+
   /** Append the first `vertexCount` `[x, y]` vertices of `data` to the frame stream; returns their first vertex index. */
   private stage(data: Float32Array, vertexCount: number): number {
     const floats = vertexCount * 2;
@@ -275,3 +328,6 @@ export class WebGL2Renderer implements ChartRenderer {
     return start >> 1;
   }
 }
+
+/** Finite records of an interleaved draw that had a non-finite one; shared by every chart (a draw call copies it at once). */
+let filterScratch = new Float32Array(0);

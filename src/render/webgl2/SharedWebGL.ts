@@ -132,7 +132,7 @@ export class SharedWebGLContext implements ChartRenderContext {
 }
 
 /** The drawing calls a chart makes between `beginFrame` and `endFrame`: the shared context's renderer records them as they are. */
-const FORWARDED_CALLS = ["prepare", "drawLines", "drawClipLines", "drawPoints", "drawBarsInstanced", "drawTriangles", "fillRects"] as const;
+const FORWARDED_CALLS = ["prepare", "drawLines", "drawClipLines", "drawPoints", "drawBarsInstanced", "drawTriangles", "fillRects", "fillShapes", "strokeSegments", "fillTriangles"] as const;
 
 // The forwarding methods are installed below from FORWARDED_CALLS; this merges their types into the class.
 // oxlint-disable-next-line typescript/no-unsafe-declaration-merging

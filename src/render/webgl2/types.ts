@@ -65,8 +65,22 @@ export interface RectsDraw {
   readonly canvasHeight: number;
 }
 
+/**
+ * Instanced draws whose per-instance data is interleaved in the frame stream, in device pixels:
+ * rounded shapes (14 floats each), segments (12 floats each), or per-vertex colored triangles
+ * (6 floats per vertex, not instanced). `first` counts two-float vertices, like every other draw.
+ */
+export interface InterleavedDraw {
+  readonly kind: "shapes" | "segments" | "colorTriangles";
+  readonly first: number;
+  /** Shapes or segments, or vertices for `colorTriangles`. */
+  readonly count: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
 /** One recorded draw call. */
-export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw | RectsDraw;
+export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw | RectsDraw | InterleavedDraw;
 
 /**
  * Minimal GPU surface used by the renderer. A frame is recorded on the CPU and submitted in one

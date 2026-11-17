@@ -384,6 +384,147 @@ export class Canvas2DRenderer implements ChartRenderer {
     }
   }
 
+  /**
+   * Rounded shapes with an inner border (see `ChartRenderSurface.fillShapes`). Consecutive borderless
+   * shapes of one color share a path and one fill; a bordered shape is filled and stroked on its own so
+   * a later shape still covers an earlier one's border, as on the GPU.
+   */
+  fillShapes(shapes: Float32Array, count: number): void {
+    this.drawCalls++;
+    const n = Math.min(count, Math.floor(shapes.length / 14));
+    const ctx = this.ctx;
+    let open = false;
+    let openFill = "";
+    for (let i = 0; i < n; i++) {
+      const o = i * 14;
+      const x = shapes[o]!;
+      const y = shapes[o + 1]!;
+      const w = shapes[o + 2]!;
+      const h = shapes[o + 3]!;
+      if (!Number.isFinite(x + y + w + h + shapes[o + 4]! + shapes[o + 5]!) || !(w > 0) || !(h > 0)) continue;
+      if (x + w < 0 || y + h < 0 || x > this.width || y > this.height) continue;
+      const half = Math.min(w, h) / 2;
+      const radius = Math.min(Math.max(0, shapes[o + 4]!), half);
+      const border = Math.min(Math.max(0, shapes[o + 5]!), half);
+      const fill = rgbaString(shapes[o + 6]!, shapes[o + 7]!, shapes[o + 8]!, shapes[o + 9]!);
+      const bordered = border > 0 && shapes[o + 13]! > 0;
+      if (open && (bordered || fill !== openFill)) {
+        ctx.fill();
+        open = false;
+      }
+      if (!open) {
+        if (fill !== this.fill) ctx.fillStyle = this.fill = fill;
+        this.rectColor[3] = NaN;
+        ctx.beginPath();
+        open = true;
+        openFill = fill;
+      }
+      traceRoundRect(ctx, x, y, w, h, radius);
+      if (!bordered) continue;
+      ctx.fill();
+      open = false;
+      // The border lies inside the shape: stroke the path inset by half its width.
+      const inset = border / 2;
+      const stroke = rgbaString(shapes[o + 10]!, shapes[o + 11]!, shapes[o + 12]!, shapes[o + 13]!);
+      if (stroke !== this.strokeColor) ctx.strokeStyle = this.strokeColor = stroke;
+      if (border !== this.strokeWidth) ctx.lineWidth = this.strokeWidth = border;
+      ctx.beginPath();
+      traceRoundRect(ctx, x + inset, y + inset, w - border, h - border, Math.max(0, radius - inset));
+      ctx.stroke();
+    }
+    if (open) ctx.fill();
+  }
+
+  /**
+   * Segments with per-segment width, dash, and color (see `ChartRenderSurface.strokeSegments`).
+   * Consecutive segments with the same style share one path and one stroke.
+   */
+  strokeSegments(segments: Float32Array, count: number): void {
+    this.drawCalls++;
+    const n = Math.min(count, Math.floor(segments.length / 12));
+    const ctx = this.ctx;
+    let open = false;
+    let key = "";
+    const flush = (): void => {
+      if (!open) return;
+      ctx.stroke();
+      open = false;
+    };
+    for (let i = 0; i < n; i++) {
+      const o = i * 12;
+      const x0 = segments[o]!;
+      const y0 = segments[o + 1]!;
+      const x1 = segments[o + 2]!;
+      const y1 = segments[o + 3]!;
+      const width = segments[o + 4]!;
+      if (!Number.isFinite(x0 + y0 + x1 + y1 + width) || !(width > 0)) continue;
+      if (Math.max(x0, x1) + width < 0 || Math.max(y0, y1) + width < 0 || Math.min(x0, x1) - width > this.width || Math.min(y0, y1) - width > this.height) continue;
+      const dash = segments[o + 5]!;
+      const gap = segments[o + 6]!;
+      const dashed = dash > 0 && gap > 0 && Number.isFinite(dash + gap);
+      const offset = dashed && Number.isFinite(segments[o + 7]!) ? segments[o + 7]! : 0;
+      const color = rgbaString(segments[o + 8]!, segments[o + 9]!, segments[o + 10]!, segments[o + 11]!);
+      const next = dashed ? `${color}|${width}|${dash}|${gap}|${offset}` : `${color}|${width}`;
+      if (!open || next !== key) {
+        flush();
+        if (color !== this.strokeColor) ctx.strokeStyle = this.strokeColor = color;
+        if (width !== this.strokeWidth) ctx.lineWidth = this.strokeWidth = width;
+        ctx.lineCap = "butt";
+        ctx.setLineDash(dashed ? [dash, gap] : []);
+        ctx.lineDashOffset = offset;
+        ctx.beginPath();
+        open = true;
+        key = next;
+      }
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+    }
+    flush();
+    // Later strokes (series, grid) expect solid lines.
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+  }
+
+  /**
+   * Triangles with per-vertex colors (see `ChartRenderSurface.fillTriangles`). Canvas 2D has no
+   * per-vertex color, so each triangle takes its first vertex's color; consecutive triangles of one
+   * color share a path and one fill.
+   */
+  fillTriangles(vertices: Float32Array, vertexCount: number): void {
+    this.drawCalls++;
+    const n = Math.min(vertexCount, Math.floor(vertices.length / 6));
+    const ctx = this.ctx;
+    let open = false;
+    let openFill = "";
+    for (let v = 0; v + 2 < n; v += 3) {
+      const o = v * 6;
+      const x0 = vertices[o]!;
+      const y0 = vertices[o + 1]!;
+      const x1 = vertices[o + 6]!;
+      const y1 = vertices[o + 7]!;
+      const x2 = vertices[o + 12]!;
+      const y2 = vertices[o + 13]!;
+      if (!Number.isFinite(x0 + y0 + x1 + y1 + x2 + y2)) continue;
+      const fill = rgbaString(vertices[o + 2]!, vertices[o + 3]!, vertices[o + 4]!, vertices[o + 5]!);
+      if (open && fill !== openFill) {
+        ctx.fill();
+        open = false;
+      }
+      if (!open) {
+        if (fill !== this.fill) ctx.fillStyle = this.fill = fill;
+        this.rectColor[3] = NaN;
+        ctx.beginPath();
+        open = true;
+        openFill = fill;
+      }
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.closePath();
+    }
+    if (open) ctx.fill();
+  }
+
   createSurface(canvas: HTMLCanvasElement): ChartRenderer {
     return new Canvas2DRenderer(canvas);
   }
@@ -492,6 +633,26 @@ function cssOf(color: RgbaColor): string {
 
 function css(color: RgbaColor): string {
   return `rgba(${Math.round(color[0] * 255)},${Math.round(color[1] * 255)},${Math.round(color[2] * 255)},${color[3]})`;
+}
+
+function rgbaString(r: number, g: number, b: number, a: number): string {
+  const clamp = (value: number): number => (value > 0 ? (value < 1 ? value : 1) : 0);
+  return `rgba(${Math.round(clamp(r) * 255)},${Math.round(clamp(g) * 255)},${Math.round(clamp(b) * 255)},${clamp(a)})`;
+}
+
+/** Add a rounded rectangle to the current path (a circle for a square with half-side corners). */
+function traceRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number): void {
+  if (radius <= 0) {
+    ctx.rect(x, y, w, h);
+    return;
+  }
+  const r = Math.min(radius, w / 2, h / 2);
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 /** Whether vertices `[o, o + 12)` are `(x0,y0) (x1,y0) (x0,y1) (x0,y1) (x1,y0) (x1,y1)`. */

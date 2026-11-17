@@ -7,7 +7,9 @@ import { FakeContext2D, fakeCanvas2d } from "./fake2d.ts";
 
 /** One engine-independent observation of what a draw call put on the frame, in device pixels (y down). */
 export type DrawObs =
-  | { readonly kind: "stroke"; readonly widthPx: number; readonly segments: ReadonlyArray<readonly [number, number, number, number]> }
+  | { readonly kind: "stroke"; readonly widthPx: number; readonly segments: ReadonlyArray<readonly [number, number, number, number]>; readonly dashed?: boolean }
+  /** Rounded shapes (`fillShapes`): each shape's bounding box, plus whether it has a border. */
+  | { readonly kind: "shape"; readonly boxes: ReadonlyArray<readonly [number, number, number, number]>; readonly bordered: boolean }
   | { readonly kind: "marker"; readonly diameterPx: number; readonly centers: ReadonlyArray<readonly [number, number]> }
   | { readonly kind: "rect"; readonly rects: ReadonlyArray<readonly [number, number, number, number]> }
   | { readonly kind: "polygon"; readonly bbox: readonly [number, number, number, number] };
@@ -115,6 +117,31 @@ class GlRecorder {
         }
         return [{ kind: "rect", rects }];
       }
+      case "shapes": {
+        const out: DrawObs[] = [];
+        for (let i = 0; i < command.count; i++) {
+          const o = command.first * 2 + i * 14;
+          const [x, y, w, h] = [stream[o]!, stream[o + 1]!, stream[o + 2]!, stream[o + 3]!];
+          out.push({ kind: "shape", boxes: [[x, y, x + w, y + h]], bordered: stream[o + 5]! > 0 && stream[o + 13]! > 0 });
+        }
+        return out;
+      }
+      case "segments": {
+        const out: DrawObs[] = [];
+        for (let i = 0; i < command.count; i++) {
+          const o = command.first * 2 + i * 12;
+          out.push({ kind: "stroke", widthPx: stream[o + 4]!, segments: [[stream[o]!, stream[o + 1]!, stream[o + 2]!, stream[o + 3]!]], dashed: stream[o + 5]! > 0 && stream[o + 6]! > 0 });
+        }
+        return out;
+      }
+      case "colorTriangles": {
+        const out: DrawObs[] = [];
+        for (let v = 0; v + 2 < command.count; v += 3) {
+          const o = (command.first * 2) + v * 6;
+          out.push({ kind: "polygon", bbox: bbox([[stream[o]!, stream[o + 1]!], [stream[o + 6]!, stream[o + 7]!], [stream[o + 12]!, stream[o + 13]!]]) });
+        }
+        return out;
+      }
       case "solid": {
         if (command.primitive === "lines" || command.primitive === "line_strip") {
           const strip = command.primitive === "line_strip";
@@ -193,6 +220,9 @@ function observe2d(calls: ReadonlyArray<readonly [string, ...unknown[]]>): DrawO
   const out: DrawObs[] = [];
   let ops: Array<{ op: "move" | "line"; x: number; y: number }> = [];
   let arcs: Array<{ x: number; y: number; r: number }> = [];
+  /** Corner points of rounded shapes (`arcTo`), per subpath: a shape path. */
+  let shapePoints: Array<Array<readonly [number, number]>> = [];
+  let roundShape = false;
   /** Rectangles added to the current path with `rect`; one `fill` paints them all. */
   let pathRects: Rect[] = [];
   let rects: Rect[] = [];
@@ -208,7 +238,15 @@ function observe2d(calls: ReadonlyArray<readonly [string, ...unknown[]]>): DrawO
         ops = [];
         arcs = [];
         pathRects = [];
+        shapePoints = [];
+        roundShape = false;
         break;
+      case "arcTo": {
+        roundShape = true;
+        const [x1, y1, x2, y2] = args as [number, number, number, number];
+        shapePoints.at(-1)?.push([x1, y1], [x2, y2]);
+        break;
+      }
       case "rect": {
         const [x, y, w, h] = args as [number, number, number, number];
         pathRects.push([x, y, x + w, y + h]);
@@ -216,6 +254,7 @@ function observe2d(calls: ReadonlyArray<readonly [string, ...unknown[]]>): DrawO
       }
       case "moveTo":
         ops.push({ op: "move", x: args[0] as number, y: args[1] as number });
+        shapePoints.push([[args[0] as number, args[1] as number]]);
         break;
       case "lineTo":
         ops.push({ op: "line", x: args[0] as number, y: args[1] as number });
@@ -230,11 +269,18 @@ function observe2d(calls: ReadonlyArray<readonly [string, ...unknown[]]>): DrawO
           if (o.op === "line" && pen) segments.push([pen.x, pen.y, o.x, o.y]);
           pen = o;
         }
-        out.push({ kind: "stroke", widthPx: args[1] as number, segments });
+        if (roundShape) {
+          // The inset border of the shape filled just before.
+          const previous = out.at(-1);
+          if (previous?.kind === "shape") out[out.length - 1] = { ...previous, bordered: true };
+          break;
+        }
+        out.push({ kind: "stroke", widthPx: args[1] as number, segments, dashed: args[2] === true });
         break;
       }
       case "fill":
-        if (pathRects.length > 0) out.push({ kind: "rect", rects: pathRects });
+        if (roundShape) out.push({ kind: "shape", boxes: shapePoints.filter((p) => p.length > 1).map((p) => bbox(p)), bordered: false });
+        else if (pathRects.length > 0) out.push({ kind: "rect", rects: pathRects });
         else if (arcs.length > 0) out.push({ kind: "marker", diameterPx: arcs[0]!.r * 2, centers: arcs.map((a) => [a.x, a.y] as const) });
         else if (ops.length > 0) {
           // Each moveTo opens a subpath, and each closed subpath is one polygon.

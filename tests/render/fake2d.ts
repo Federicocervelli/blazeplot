@@ -15,6 +15,9 @@ export class FakePath {
   arc(...args: number[]): void {
     this.calls.push(["arc", ...args]);
   }
+  arcTo(...args: number[]): void {
+    this.calls.push(["arcTo", ...args]);
+  }
   closePath(): void {
     this.calls.push(["closePath"]);
   }
@@ -27,7 +30,12 @@ export class FakeContext2D extends FakePath {
   lineWidth = 0;
   lineJoin = "";
   lineCap = "";
+  lineDashOffset = 0;
+  dash: number[] = [];
   lost = false;
+  setLineDash(segments: number[]): void {
+    this.dash = [...segments];
+  }
   setTransform(...args: number[]): void {
     this.calls.push(["setTransform", ...args]);
   }
@@ -38,7 +46,8 @@ export class FakeContext2D extends FakePath {
     this.calls.push(["beginPath"]);
   }
   stroke(): void {
-    this.calls.push(["stroke", this.strokeStyle, this.lineWidth]);
+    // A dashed stroke is marked by a trailing `true`, so solid strokes record as before.
+    this.calls.push(this.dash.length > 0 ? ["stroke", this.strokeStyle, this.lineWidth, true] : ["stroke", this.strokeStyle, this.lineWidth]);
   }
   fill(path?: FakePath): void {
     this.calls.push(["fill", this.fillStyle, path ? path.calls.length : -1]);
