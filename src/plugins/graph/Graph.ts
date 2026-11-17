@@ -119,12 +119,10 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       live.setAttribute("aria-live", "polite");
       live.setAttribute("aria-atomic", "true");
       disposers.push(ctx.dom.mount("root", live));
-      disposers.push(
-        ctx.dom.decorate("plot", {
-          style: options.navigation === false ? {} : { touchAction: "none" },
-          attributes: { tabindex: "0", role: "application", "aria-roledescription": "graph", "aria-label": options.messages?.label ?? "Graph" },
-        }),
-      );
+      // Keyboard input goes to the chart root, which is focusable once a chart has plugins (the plot canvas is
+      // decorative and hidden from assistive technology, so it must not take focus).
+      disposers.push(ctx.dom.decorate("root", { attributes: { tabindex: "0", "aria-roledescription": "graph", "aria-label": options.messages?.label ?? "Graph" } }));
+      if (options.navigation !== false) disposers.push(ctx.dom.decorate("plot", { style: { touchAction: "none" } }));
 
       const media = ctx.dom.view.matchMedia?.("(prefers-reduced-motion: reduce)");
       reducedMotion = media?.matches === true;
@@ -145,9 +143,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
         ctx.dom.listen("plot", "pointerleave", onPointerLeave),
         ctx.dom.listen("plot", "wheel", onWheel, { passive: false }),
         ctx.dom.listen("plot", "dblclick", onDoubleClick),
-        ctx.dom.listen("plot", "keydown", onKeyDown),
-        ctx.dom.listen("plot", "focus", onFocus),
-        ctx.dom.listen("plot", "blur", () => setCursorState()),
+        ctx.dom.listen("root", "keydown", onKeyDown),
+        ctx.dom.listen("root", "focus", onFocus),
         ctx.events.subscribe("viewportchange", (event) => {
           if (!applyingView && event.source !== "fit") adoptChartViewport();
         }),

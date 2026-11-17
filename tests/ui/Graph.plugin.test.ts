@@ -86,8 +86,10 @@ describe("graphPlugin", () => {
     const { chart, plugin } = make();
     expect(layers(chart).querySelector(".blazeplot-graph-shapes")).not.toBeNull();
     expect(layers(chart).querySelector(".blazeplot-graph-labels")).not.toBeNull();
-    expect(plot(chart).getAttribute("tabindex")).toBe("0");
-    expect(plot(chart).getAttribute("aria-roledescription")).toBe("graph");
+    expect(chart.rootElement.getAttribute("tabindex")).toBe("0");
+    expect(chart.rootElement.getAttribute("aria-roledescription")).toBe("graph");
+    // The plot canvas is decorative: never focusable.
+    expect(plot(chart).hasAttribute("tabindex")).toBe(false);
     frame(chart);
     const view = plugin.getView();
     // 240 x 140 graph units (with node boxes) in a 360 x 160 padded area: height decides.
@@ -163,11 +165,11 @@ describe("graphPlugin", () => {
     const { chart, plugin } = make({ onNodeClick: (node) => clicks.push(node.id), messages: { describeNode: (node) => `${node.label} node` } });
     frame(chart);
     const live = h.target().querySelector("[aria-live]")!;
-    fire(plot(chart), keyEvent("ArrowRight"));
+    fire(chart.rootElement, keyEvent("ArrowRight"));
     expect(live.textContent).toBe("Gamma node");
-    fire(plot(chart), keyEvent("ArrowRight"));
+    fire(chart.rootElement, keyEvent("ArrowRight"));
     expect(live.textContent).toBe("Beta node");
-    fire(plot(chart), keyEvent("Enter"));
+    fire(chart.rootElement, keyEvent("Enter"));
     expect(clicks).toEqual(["b"]);
     plugin.focusNode("a");
     expect(live.textContent).toBe("Alpha node");
@@ -312,19 +314,19 @@ describe("graphPlugin view and selection API", () => {
     expect(plugin.getView().zoom).toBeCloseTo(zoom, 5);
 
     const before = plugin.getView();
-    fire(plot(chart), keyEvent("ArrowLeft", { shiftKey: true }));
+    fire(chart.rootElement, keyEvent("ArrowLeft", { shiftKey: true }));
     expect(plugin.getView().centerX).toBeLessThan(before.centerX);
-    fire(plot(chart), keyEvent("+"));
-    fire(plot(chart), keyEvent("-"));
-    fire(plot(chart), keyEvent("0"));
+    fire(chart.rootElement, keyEvent("+"));
+    fire(chart.rootElement, keyEvent("-"));
+    fire(chart.rootElement, keyEvent("0"));
     for (let i = 0; i < 30; i++) tick();
     expect(plugin.getView().zoom).toBeCloseTo(start, 5);
-    fire(plot(chart), keyEvent("ArrowDown"));
-    fire(plot(chart), keyEvent("Escape"));
-    fire(plot(chart), keyEvent("x", { ctrlKey: true }));
+    fire(chart.rootElement, keyEvent("ArrowDown"));
+    fire(chart.rootElement, keyEvent("Escape"));
+    fire(chart.rootElement, keyEvent("x", { ctrlKey: true }));
     expect(focus).toEqual(["c", null]);
     // Focus with nothing focused announces the instructions.
-    fire(plot(chart), new window.FocusEvent("focus"));
+    fire(chart.rootElement, new window.FocusEvent("focus"));
     expect(h.target().querySelector("[aria-live]")!.textContent).toContain("Arrow keys");
     chart.dispose();
   });
