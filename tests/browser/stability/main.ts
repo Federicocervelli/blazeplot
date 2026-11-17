@@ -5,6 +5,7 @@ import type { ChartPlugin, SeriesStore } from "@/index.ts";
 import { a11yPlugin } from "@/plugins/a11y.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import { flameGraphPlugin } from "@/plugins/flamegraph.ts";
+import { graphPlugin } from "@/plugins/graph.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
@@ -379,15 +380,32 @@ function setStatus(text: string): void {
 let mountCounter = 0;
 const FLAME_STACKS = ["main;render;draw 12", "main;render;layout 7", "main;io;read 4"].join("\n");
 
-/** Every fourth mount is a flame graph, which owns a second WebGL context on top of the chart's. */
+/**
+ * A small graph with a moving flow, so the plugin's own animation frames, live region, and label canvas
+ * must all go away with the chart.
+ */
+function stabilityGraph(): ChartPlugin {
+  const nodes = Array.from({ length: 40 }, (_, i) => ({ id: `n${i}`, x: (i % 8) * 60, y: Math.floor(i / 8) * 60, label: `n${i}` }));
+  const edges = nodes.slice(1).map((node, i) => ({ source: `n${i}`, target: node.id }));
+  return graphPlugin({ nodes, edges, draggable: true, edgeStyle: { arrow: "end", flow: { speed: 30 } }, nodeStyle: { shape: "rect", width: 44, height: 24, cornerRadius: 6 } });
+}
+
+/**
+ * Every fourth mount owns a second WebGL context on top of the chart's: a flame graph or, alternately,
+ * a node-and-edge graph.
+ */
 async function mountOnce(): Promise<number> {
-  const flame = ++mountCounter % 4 === 0;
+  const counter = ++mountCounter;
+  const flame = counter % 8 === 0;
+  const graph = counter % 8 === 4;
   const host = createHost(480, 280);
   const chart = flame
     ? new Chart(host, { renderer: pageRenderer, axes: { x: true, y: false }, plugins: [flameGraphPlugin({ foldedStacks: FLAME_STACKS })] })
-    : newChart(host, true);
+    : graph
+      ? new Chart(host, { renderer: pageRenderer, axes: false, grid: false, plugins: [stabilityGraph()] })
+      : newChart(host, true);
   const renders = countRenders(chart);
-  if (!flame) {
+  if (!flame && !graph) {
     addSampleSeries(chart);
     chart.fitToData({ padding: 0.05 });
   }
