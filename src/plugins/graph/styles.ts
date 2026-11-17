@@ -6,8 +6,8 @@ import type { RgbaColor } from "../../core/types.js";
 import { resolveThemeColor } from "../../ui/theme.js";
 import type { GraphColor, GraphEdgeStyle, GraphNodeStyle } from "./types.js";
 
-/** Node record: shape, width, height, cornerRadius, borderWidth, opacity, layer, fill rgba, border rgba, ring rgba, ringWidth, ringGap. */
-export const NODE_FLOATS = 21;
+/** Node record: shape, width, height, cornerRadius, borderWidth, opacity, layer, fill rgba, border rgba, ring rgba, ringWidth, ringGap, border dash, border gap. */
+export const NODE_FLOATS = 23;
 export const N_SHAPE = 0;
 export const N_WIDTH = 1;
 export const N_HEIGHT = 2;
@@ -19,9 +19,11 @@ export const N_STROKE = 11;
 export const N_RING = 15;
 export const N_RING_WIDTH = 19;
 export const N_RING_GAP = 20;
+export const N_DASH = 21;
+export const N_DASH_GAP = 22;
 
-/** Edge record: color rgba, width, dash, gap, arrow (bit 1 end, bit 2 start), arrowSize, curvature (NaN for auto), end gap, flow rgba, flowWidth, flowDash, flowGap, flowSpeed, pickable. */
-export const EDGE_FLOATS = 21;
+/** Edge record: color rgba, width, dash, gap, arrow (bit 1 end, bit 2 start), arrowSize, curvature (NaN for auto), end gap, flow rgba, flowWidth, flowDash, flowGap, flowSpeed, pickable, has flow, flow dots. */
+export const EDGE_FLOATS = 22;
 export const E_COLOR = 0;
 export const E_WIDTH = 4;
 export const E_DASH = 5;
@@ -38,6 +40,8 @@ export const E_FLOW_SPEED = 18;
 export const E_PICKABLE = 19;
 /** 1 when the edge has a flow overlay. */
 export const E_HAS_FLOW = 20;
+/** 1 when the flow is drawn as round dots instead of dashes. */
+export const E_FLOW_DOTS = 21;
 
 const TRANSPARENT: RgbaColor = [0, 0, 0, 0];
 
@@ -98,6 +102,10 @@ export function writeNodeStyle(out: Float32Array, o: number, style: GraphNodeSty
   putColor(out, o + N_RING, ring ? colors.resolve(ring.color, TRANSPARENT) : TRANSPARENT, 1);
   out[o + N_RING_WIDTH] = ring ? finite(ring.width, 2, 0, 1000) : 0;
   out[o + N_RING_GAP] = ring ? finite(ring.gap, 2, 0, 1000) : 0;
+  const dash = style.borderDash;
+  const dashed = dash !== undefined && finite(dash[0], 0, 0, 1e4) > 0 && finite(dash[1], 0, 0, 1e4) > 0;
+  out[o + N_DASH] = dashed ? finite(dash[0], 0, 0, 1e4) : 0;
+  out[o + N_DASH_GAP] = dashed ? finite(dash[1], 0, 0, 1e4) : 0;
 }
 
 /** Write one edge style record at `o`. */
@@ -120,4 +128,5 @@ export function writeEdgeStyle(out: Float32Array, o: number, style: GraphEdgeSty
   out[o + E_FLOW_SPEED] = flow ? finite(flow.speed, 40, -1e4, 1e4) : 0;
   out[o + E_PICKABLE] = (style.pickable ?? pickableByDefault) ? 1 : 0;
   out[o + E_HAS_FLOW] = flow ? 1 : 0;
+  out[o + E_FLOW_DOTS] = flow?.shape === "dot" ? 1 : 0;
 }

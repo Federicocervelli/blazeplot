@@ -14,6 +14,7 @@ import {
   E_END_GAP,
   E_FLOW,
   E_FLOW_DASH,
+  E_FLOW_DOTS,
   E_FLOW_GAP,
   E_FLOW_SPEED,
   E_FLOW_WIDTH,
@@ -22,6 +23,8 @@ import {
   E_WIDTH,
   EDGE_FLOATS,
   N_BORDER,
+  N_DASH,
+  N_DASH_GAP,
   N_FILL,
   N_HEIGHT,
   N_RADIUS,
@@ -93,7 +96,13 @@ export class GraphPainter {
   private readonly shapes = new Buffer(SHAPE);
   private readonly segments = new Buffer(SEGMENT);
   private readonly triangles = new Buffer(VERTEX);
+  /** Round flow dots, drawn over the edges and under the arrowheads. */
+  private readonly dots = new Buffer(SHAPE);
+  /** Dashed node borders, drawn over the node fills. */
+  private readonly borders = new Buffer(SEGMENT);
   private readonly backgroundShapes = new Buffer(SHAPE);
+  /** Points of the curve being walked for dots: x, y pairs. */
+  private path = new Float64Array(64);
   private readonly backgroundSegments = new Buffer(SEGMENT);
   /** Per node: screen center x, y, half width, half height, shape (0 circle, 1 rect). */
   nodeScreen = new Float32Array(0);
@@ -108,6 +117,8 @@ export class GraphPainter {
     this.shapes.count = 0;
     this.segments.count = 0;
     this.triangles.count = 0;
+    this.dots.count = 0;
+    this.borders.count = 0;
     this.moving = false;
     this.project(input);
 
@@ -115,9 +126,11 @@ export class GraphPainter {
     this.paintBackground(surface, input);
     this.buildEdges(input);
     if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
+    if (this.dots.count > 0) surface.fillShapes(this.dots.data, this.dots.count);
     if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
     this.buildNodes(input);
     if (this.shapes.count > 0) surface.fillShapes(this.shapes.data, this.shapes.count);
+    if (this.borders.count > 0) surface.strokeSegments(this.borders.data, this.borders.count);
     surface.endFrame();
   }
 
@@ -259,7 +272,8 @@ export class GraphPainter {
         // Dashes move toward the target: the pattern's phase falls as time goes on.
         const phase = animate && speed !== 0 ? -((time * speed) % period) : 0;
         if (animate && speed !== 0) this.moving = true;
-        this.curve(sx, sy, cx, cy, ex, ey, curvature !== 0, edgeStyles[s + E_FLOW_WIDTH]!, dash, edgeStyles[s + E_FLOW_GAP]!, phase, edgeStyles, s + E_FLOW, dpr);
+        if (edgeStyles[s + E_FLOW_DOTS]) this.flowDots(sx, sy, cx, cy, ex, ey, curvature !== 0, edgeStyles[s + E_FLOW_WIDTH]!, period, phase, edgeStyles, s + E_FLOW, dpr);
+        else this.curve(sx, sy, cx, cy, ex, ey, curvature !== 0, edgeStyles[s + E_FLOW_WIDTH]!, dash, edgeStyles[s + E_FLOW_GAP]!, phase, edgeStyles, s + E_FLOW, dpr);
       }
     }
   }
@@ -292,6 +306,49 @@ export class GraphPainter {
       along += Math.hypot(qx - px, qy - py);
       px = qx;
       py = qy;
+    }
+  }
+
+  /** Round dots `size` across, `period` apart along a straight or quadratic edge, the first at `-phase`. */
+  private flowDots(sx: number, sy: number, cx: number, cy: number, ex: number, ey: number, bowed: boolean, size: number, period: number, phase: number, styles: Float32Array, colorAt: number, dpr: number): void {
+    if (!(size > 0) || !(period > 0)) return;
+    const pieces = bowed ? Math.min(24, Math.max(6, Math.ceil(Math.hypot(ex - sx, ey - sy) / 14))) : 1;
+    if (this.path.length < (pieces + 1) * 2) this.path = new Float64Array((pieces + 1) * 2);
+    const points = this.path;
+    for (let k = 0; k <= pieces; k++) {
+      const t = k / pieces;
+      const u = 1 - t;
+      points[k * 2] = bowed ? u * u * sx + 2 * u * t * cx + t * t * ex : sx + (ex - sx) * t;
+      points[k * 2 + 1] = bowed ? u * u * sy + 2 * u * t * cy + t * t * ey : sy + (ey - sy) * t;
+    }
+    // Walk the polyline, dropping a dot every `period`, the first `-phase` in (phase is zero or negative).
+    let next = (((-phase % period) + period) % period) || 0;
+    let walked = 0;
+    const r = (size / 2) * dpr;
+    for (let k = 0; k < pieces; k++) {
+      const ax = points[k * 2]!;
+      const ay = points[k * 2 + 1]!;
+      const bx = points[k * 2 + 2]!;
+      const by = points[k * 2 + 3]!;
+      const length = Math.hypot(bx - ax, by - ay);
+      while (next <= walked + length) {
+        const t = length > 0 ? (next - walked) / length : 0;
+        const o = this.dots.next();
+        const d = this.dots.data;
+        d[o] = (ax + (bx - ax) * t) * dpr - r;
+        d[o + 1] = (ay + (by - ay) * t) * dpr - r;
+        d[o + 2] = r * 2;
+        d[o + 3] = r * 2;
+        d[o + 4] = r;
+        d[o + 5] = 0;
+        for (let c = 0; c < 4; c++) d[o + 6 + c] = styles[colorAt + c]!;
+        d[o + 10] = 0;
+        d[o + 11] = 0;
+        d[o + 12] = 0;
+        d[o + 13] = 0;
+        next += period;
+      }
+      walked += length;
     }
   }
 
@@ -332,7 +389,53 @@ export class GraphPainter {
       if (ring > 0) {
         this.shape(x, y, hw + ring, hh + ring, circle ? Math.min(hw, hh) + ring : radius + ring, ringWidth, nodeStyles, -1, s + N_RING, dpr);
       }
-      this.shape(x, y, hw, hh, radius, Math.min(nodeStyles[s + N_BORDER]! * zoom, hw, hh), nodeStyles, s + N_FILL, s + N_STROKE, dpr);
+      const border = Math.min(nodeStyles[s + N_BORDER]! * zoom, hw, hh);
+      const dash = nodeStyles[s + N_DASH]! * zoom;
+      const dashed = dash > 0 && border > 0;
+      this.shape(x, y, hw, hh, radius, dashed ? 0 : border, nodeStyles, s + N_FILL, s + N_STROKE, dpr);
+      if (dashed) this.dashedBorder(x, y, hw, hh, circle, border, dash, nodeStyles[s + N_DASH_GAP]! * zoom, nodeStyles, s + N_STROKE, dpr);
+    }
+  }
+
+  /**
+   * A dashed outline inside a node's box, the pattern continuous around it: four sides for a box (its
+   * corners drawn square), or a 32-sided circle.
+   */
+  private dashedBorder(x: number, y: number, hw: number, hh: number, circle: boolean, width: number, dash: number, gap: number, styles: Float32Array, colorAt: number, dpr: number): void {
+    if (styles[colorAt + 3]! <= 0) return;
+    const inset = width / 2;
+    const rx = hw - inset;
+    const ry = hh - inset;
+    // Sides as start and end points. A box's sides run to its outer edge so its butt-capped corners are filled.
+    const sides: number[] = [];
+    if (circle) {
+      const r = Math.min(rx, ry);
+      for (let k = 0; k < 32; k++) {
+        const a0 = (k / 32) * Math.PI * 2;
+        const a1 = ((k + 1) / 32) * Math.PI * 2;
+        sides.push(x + Math.cos(a0) * r, y + Math.sin(a0) * r, x + Math.cos(a1) * r, y + Math.sin(a1) * r);
+      }
+    } else {
+      sides.push(x - hw, y - ry, x + hw, y - ry, x + rx, y - hh, x + rx, y + hh, x + hw, y + ry, x - hw, y + ry, x - rx, y + hh, x - rx, y - hh);
+    }
+    let along = 0;
+    for (let k = 0; k + 3 < sides.length; k += 4) {
+      const ax = sides[k]!;
+      const ay = sides[k + 1]!;
+      const bx = sides[k + 2]!;
+      const by = sides[k + 3]!;
+      const o = this.borders.next();
+      const d = this.borders.data;
+      d[o] = ax * dpr;
+      d[o + 1] = ay * dpr;
+      d[o + 2] = bx * dpr;
+      d[o + 3] = by * dpr;
+      d[o + 4] = width * dpr;
+      d[o + 5] = dash * dpr;
+      d[o + 6] = gap * dpr;
+      d[o + 7] = along * dpr;
+      for (let c = 0; c < 4; c++) d[o + 8 + c] = styles[colorAt + c]!;
+      along += Math.hypot(bx - ax, by - ay);
     }
   }
 

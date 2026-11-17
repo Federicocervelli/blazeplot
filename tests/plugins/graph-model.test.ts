@@ -188,3 +188,48 @@ describe("graph painter", () => {
     expect(exit(screen, 0, 0, 0, 0)).toBeNull();
   });
 });
+
+describe("graph painter extras", () => {
+  it("draws dashed node borders over the fill and round flow dots between edges and arrows", () => {
+    const painter = new GraphPainter();
+    const surface = recordingSurface();
+    const order: string[] = [];
+    const spy: RenderSurface = {
+      ...surface,
+      fillShapes: (data, count) => {
+        order.push(`shapes:${count}`);
+        surface.fillShapes(data, count);
+      },
+      strokeSegments: (data, count) => {
+        order.push(`segments:${count}`);
+        surface.strokeSegments(data, count);
+      },
+      fillTriangles: (data, count) => {
+        order.push(`triangles:${count}`);
+        surface.fillTriangles(data, count);
+      },
+    };
+    painter.paint(
+      spy,
+      frameInput({ arrow: "end", flow: { shape: "dot", width: 4, dash: [0.5, 15], speed: 0 } }, { shape: "rect", width: 40, height: 20, borderWidth: 2, borderColor: "#fff", borderDash: [4, 3] }),
+    );
+    // Edge line, dots, arrowhead, node fills (borderless), then the dashed borders: four sides per box.
+    expect(order[0]).toBe("segments:1");
+    expect(order[1]).toMatch(/^shapes:\d+$/);
+    expect(order[2]).toBe("triangles:3");
+    expect(order[3]).toBe("shapes:3");
+    expect(order[4]).toBe("segments:12");
+    const fills = surface.shapes[1]!;
+    expect(fills[5]).toBe(0);
+    const dots = surface.shapes[0]!;
+    // 4 CSS px dots at pixel ratio 2, fully round.
+    expect([dots[2], dots[3], dots[4]]).toEqual([8, 8, 4]);
+  });
+
+  it("draws a dashed circle border as a 32-sided outline", () => {
+    const painter = new GraphPainter();
+    const surface = recordingSurface();
+    painter.paint(surface, frameInput({}, { width: 30, borderWidth: 2, borderColor: "#fff", borderDash: [2, 2] }, []));
+    expect(surface.segments[0]!.length / 12).toBe(32 * 3);
+  });
+});

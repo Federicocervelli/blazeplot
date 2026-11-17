@@ -63,6 +63,8 @@ export interface GraphNodeStyle {
   readonly borderColor?: GraphColor;
   /** In graph units, so it scales with the node, like a CSS border inside a zoomed layer. Defaults to 0. */
   readonly borderWidth?: number;
+  /** Dash and gap lengths of the border, in graph units, for a dashed or dotted outline. Solid when unset. */
+  readonly borderDash?: readonly [number, number];
   /** Multiplies the fill and border alpha. Defaults to 1. */
   readonly opacity?: number;
   /** A ring drawn outside the node in CSS pixels, for focus and selection. Defaults to none. */
@@ -96,6 +98,8 @@ export interface GraphEdgeStyle {
    * the user prefers reduced motion.
    */
   readonly flow?: {
+    /** `"dash"` (the default) moves a dash pattern; `"dot"` moves round dots `width` across, `dash[0] + dash[1]` apart. */
+    readonly shape?: "dash" | "dot";
     readonly color?: GraphColor;
     readonly width?: number;
     readonly dash?: readonly [number, number];

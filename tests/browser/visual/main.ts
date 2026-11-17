@@ -831,7 +831,7 @@ function visualGraph(): ChartPlugin {
       const index = Number(node.label!.slice(1));
       return index % 3 === 0
         ? { shape: "rect", width: 40, height: 24, cornerRadius: 6, fill: "#1e293b", borderColor: "#38bdf8", borderWidth: 1.5, ring: index === 0 ? { color: "#f59e0b", width: 2 } : undefined }
-        : { width: 18, fill: index % 2 ? "#22c55e" : "#e879f9", borderColor: "#ffffff", borderWidth: 1 };
+        : { width: 18, fill: index % 2 ? "#22c55e" : "#e879f9", borderColor: "#ffffff", borderWidth: 1.5, borderDash: index % 5 === 1 ? [3, 2] : undefined };
     },
     edgeStyle: (edge) => ({
       color: edge.source < edge.target ? "#94a3b8" : "#f97316",
@@ -839,7 +839,7 @@ function visualGraph(): ChartPlugin {
       arrow: "end",
       arrowSize: 7,
       dash: edge.source.endsWith(":3") ? [4, 3] : undefined,
-      flow: edge.source.startsWith("2:") ? { color: "#38bdf8", speed: 0 } : undefined,
+      flow: edge.source.startsWith("2:") ? { color: "#38bdf8", speed: 0 } : edge.source.startsWith("4:") ? { shape: "dot", color: "#38bdf8", width: 4, dash: [0.5, 10], speed: 0 } : undefined,
     }),
     labelFont: "9px sans-serif",
     labelColor: "#e2e8f0",
