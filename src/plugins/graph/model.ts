@@ -51,7 +51,9 @@ export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: rea
   const edgeIndex = new Map<string, number>();
   const source = new Uint32Array(edges.length);
   const target = new Uint32Array(edges.length);
-  const pairs = new Set<string>();
+  // Directed pairs as one number (`from * count + to`), exact while nodes * nodes stays under 2^53.
+  const count = nodes.length;
+  const pairs = new Set<number>();
   let skippedEdges = 0;
   for (const edge of edges) {
     const from = nodeIndex.get(edge?.source);
@@ -67,10 +69,10 @@ export function buildGraphModel<N, E>(nodes: readonly GraphNode<N>[], edges: rea
     target[kept.length] = to;
     edgeIds.push(id);
     kept.push(edge);
-    pairs.add(`${from} ${to}`);
+    pairs.add(from * count + to);
   }
   const reversed = new Uint8Array(kept.length);
-  for (let i = 0; i < kept.length; i++) reversed[i] = pairs.has(`${target[i]} ${source[i]}`) ? 1 : 0;
+  for (let i = 0; i < kept.length; i++) reversed[i] = pairs.has(target[i]! * count + source[i]!) ? 1 : 0;
 
   return {
     nodes,
