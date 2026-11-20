@@ -458,7 +458,7 @@ describe("graphPlugin dense graphs", () => {
     chart.dispose();
   });
 
-  it("draws a listed dense graph through the pair hierarchy, and the edges styled apart from the rest one by one, sampled past their budget", async () => {
+  it("draws a listed dense graph through the pair hierarchy, and every edge styled apart from the rest one by one, never sampled", async () => {
     const nodes = disk(150);
     const source: number[] = [];
     const target: number[] = [];
@@ -471,7 +471,7 @@ describe("graphPlugin dense graphs", () => {
     const { chart } = make({
       nodes,
       edges: { source: Uint32Array.from(source), target: Uint32Array.from(target) },
-      // About every tenth edge is styled apart: over a thousand, past an eighth of the budget.
+      // About every tenth edge is styled apart: over a thousand, all of them drawn.
       edgeStyle: (edge) => ((Number(edge.source) + Number(edge.target)) % 10 === 0 ? flowing : plain),
       nodeStyle: { width: 4 },
       levelOfDetail: { nodes: 10_000, edges: 2_000 },
@@ -482,8 +482,10 @@ describe("graphPlugin dense graphs", () => {
     if (uiEngine === "fake") {
       const segments = surfaceDraws("strokeSegments");
       expect(segments.length).toBeGreaterThan(0);
-      // Within the cut's own budget plus an eighth of it for the styled edges, though more than a thousand are styled.
-      expect(Math.max(...segments)).toBeLessThanOrEqual(2_000 + 2_000 / 8);
+      // The styled edges are never sampled: every one of them is drawn on top of the cut.
+      let styledCount = 0;
+      for (let i = 0; i < 150; i++) for (let j = i + 1; j < 150; j++) if ((i + j) % 10 === 0) styledCount++;
+      expect(Math.max(...segments)).toBeGreaterThanOrEqual(styledCount);
     }
     chart.dispose();
   });

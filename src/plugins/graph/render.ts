@@ -461,13 +461,12 @@ export class GraphPainter {
         if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
       } else {
         if (spatial.dense) {
-          // A dense graph: bands and single edges from the pair hierarchy, then the edges styled apart from the
-          // rest (flows, highlights), one by one: those on the view, or an even sample of them that keeps to an
-          // eighth of the count and a sixteenth of the area, so they stand out from the haze instead of covering it.
+          // A dense graph: bands and single edges from the pair hierarchy, then every edge styled apart from the
+          // rest (flows, highlights) on the view, one by one: those are never sampled.
           this.paintDense(input, rect, budget);
           const styled = input.styledEdges ?? null;
           if (styled && styled.length > 0) {
-            const kept = this.selectStyled(input, styled, rect, budget.edges / 8, (budget.fill ?? Infinity) / 16);
+            const kept = this.selectStyled(input, styled, rect);
             this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
           }
         } else {
@@ -573,35 +572,21 @@ export class GraphPainter {
   }
 
   /**
-   * The edges of `styled` whose box meets the view, written to the front of `edgeQuery`: all while they fit
-   * `budget` (a count) and `fill` (CSS pixels of length times width), else an even sample (the same permutation as
-   * `selectEdges`) that does.
+   * The edges of `styled` that cross the view, written to the front of `edgeQuery`: all of them, never a sample,
+   * since an edge styled apart is one the reader is meant to see.
    */
-  private selectStyled<N, E>(input: GraphFrameInput<N, E>, styled: Uint32Array, rect: Rect, budget: number, fill: number): number {
-    const { model, edgeStyles, zoom } = input;
-    const slots = input.edgeSlot;
-    const spatial = input.spatial!;
+  private selectStyled<N, E>(input: GraphFrameInput<N, E>, styled: Uint32Array, rect: Rect): number {
+    const { model } = input;
     if (this.edgeQuery.data.length < styled.length) this.edgeQuery.data = new Uint32Array(styled.length);
     const buffer = this.edgeQuery.data;
     let count = 0;
-    let spent = 0;
     for (let k = 0; k < styled.length; k++) {
       const e = styled[k]!;
-      const x0 = model.x[model.source[e]!]!;
-      const y0 = model.y[model.source[e]!]!;
-      const x1 = model.x[model.target[e]!]!;
-      const y1 = model.y[model.target[e]!]!;
-      if ((x0 < rect.minX && x1 < rect.minX) || (x0 > rect.maxX && x1 > rect.maxX) || (y0 < rect.minY && y1 < rect.minY) || (y0 > rect.maxY && y1 > rect.maxY)) continue;
-      buffer[count++] = e;
-      spent += Math.hypot(x1 - x0, y1 - y0) * zoom * Math.max(1, edgeStyles[(slots ? slots[e]! : e) * EDGE_FLOATS + E_WIDTH]!);
+      const s = model.source[e]!;
+      const t = model.target[e]!;
+      if (segmentCrosses(model.x[s]!, model.y[s]!, model.x[t]!, model.y[t]!, rect)) buffer[count++] = e;
     }
-    if (count <= budget && spent <= fill) return count;
-    this.clipped = true;
-    const total = model.edgeCount;
-    const limit = Math.min(budget / count, fill / spent) * total;
-    let kept = 0;
-    for (let k = 0; k < count; k++) if ((buffer[k]! * spatial.inverse) % total < limit) buffer[kept++] = buffer[k]!;
-    return kept;
+    return count;
   }
 
   /**
@@ -1652,4 +1637,28 @@ export function edgeMiddle(geometry: Float32Array, g: number): { x: number; y: n
   const oy = cy - (sy + ey) / 2;
   const [normalX, normalY] = Math.hypot(ox, oy) > 1e-3 ? unit(ox, oy) : [-ty, tx];
   return { x, y, angle: Math.atan2(ty, tx), normalX, normalY };
+}
+
+/**
+ * Whether the segment from (`x0`, `y0`) to (`x1`, `y1`) crosses `rect` (Liang-Barsky clipping), so a long edge
+ * whose box covers the view but whose line misses it is left out.
+ */
+export function segmentCrosses(x0: number, y0: number, x1: number, y1: number, rect: Rect): boolean {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  let lo = 0;
+  let hi = 1;
+  const clip = (p: number, q: number): boolean => {
+    if (p === 0) return q >= 0;
+    const r = q / p;
+    if (p < 0) {
+      if (r > hi) return false;
+      if (r > lo) lo = r;
+    } else {
+      if (r < lo) return false;
+      if (r < hi) hi = r;
+    }
+    return true;
+  };
+  return clip(-dx, x0 - rect.minX) && clip(dx, rect.maxX - x0) && clip(-dy, y0 - rect.minY) && clip(dy, rect.maxY - y0);
 }

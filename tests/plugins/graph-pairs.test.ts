@@ -1,3 +1,4 @@
+import { segmentCrosses } from "../../src/plugins/graph/render.ts";
 import { describe, expect, it } from "bun:test";
 import { PairHierarchy, PairTree, RefineScratch, refine, starCut } from "../../src/plugins/graph/pairs.ts";
 import type { RefineBudget } from "../../src/plugins/graph/pairs.ts";
@@ -375,5 +376,18 @@ describe("dense graph painter", () => {
     const fine = recording();
     painter.paint(fine, { ...input, zoom: 0.4, budget: { ...input.budget, dense: 50_000 } });
     expect(fine.triangles.length + fine.fields.length).toBeGreaterThan(0);
+  });
+});
+
+describe("segmentCrosses", () => {
+  const rect = { minX: 0, minY: 0, maxX: 10, maxY: 10 };
+  it("keeps segments that cross the view and leaves out those whose box alone covers it", () => {
+    expect(segmentCrosses(-5, 5, 15, 5, rect)).toBe(true);
+    expect(segmentCrosses(2, 2, 3, 3, rect)).toBe(true);
+    expect(segmentCrosses(-5, 12, 12, -5, rect)).toBe(true);
+    // The box around it covers the view, the line passes beside a corner.
+    expect(segmentCrosses(-10, 8, 8, 30, rect)).toBe(false);
+    expect(segmentCrosses(-5, -1, 15, -1, rect)).toBe(false);
+    expect(segmentCrosses(11, 2, 11, 8, rect)).toBe(false);
   });
 });
