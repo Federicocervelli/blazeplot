@@ -58,6 +58,12 @@ export class FakeContext2D extends FakePath {
   drawImage(...args: unknown[]): void {
     this.calls.push(["drawImage", ...args]);
   }
+  createImageData(width: number, height: number): ImageData {
+    return { width, height, data: new Uint8ClampedArray(width * height * 4) } as unknown as ImageData;
+  }
+  putImageData(...args: unknown[]): void {
+    this.calls.push(["putImageData", ...args]);
+  }
   isContextLost(): boolean {
     return this.lost;
   }
@@ -65,5 +71,7 @@ export class FakeContext2D extends FakePath {
 
 /** A canvas double that hands out `ctx` for "2d" and supports events. */
 export function fakeCanvas2d(ctx: FakeContext2D): HTMLCanvasElement {
-  return Object.assign(new EventTarget(), { width: 100, height: 50, getContext: (kind: string) => (kind === "2d" ? ctx : null) }) as unknown as HTMLCanvasElement;
+  // Offscreen canvases the engine makes (the field image) get their own context, so they do not show up in `ctx.calls`.
+  const ownerDocument = { createElement: () => fakeCanvas2d(new FakeContext2D()) };
+  return Object.assign(new EventTarget(), { width: 100, height: 50, ownerDocument, getContext: (kind: string) => (kind === "2d" ? ctx : null) }) as unknown as HTMLCanvasElement;
 }

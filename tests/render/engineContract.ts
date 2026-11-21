@@ -213,6 +213,23 @@ export function defineEngineContract(fixture: EngineFixture): void {
       close(boxes[1]!, [50, 30, 60, 40], 0.01);
     });
 
+    it("shades a field as one image over its grid plus a half step around it, and skips a bad one", () => {
+      const h = frame();
+      const alpha = new Float32Array([0, 0.5, 1, 0.25, 0.75, 0]);
+      h.renderer.fillField!(alpha, 3, 2, 10, 20, 8, 1, 0, 0);
+      // Skipped: no step, a non-finite origin, and too few opacities.
+      h.renderer.fillField!(alpha, 3, 2, 10, 20, 0, 1, 0, 0);
+      h.renderer.fillField!(alpha, 3, 2, Number.NaN, 20, 8, 1, 0, 0);
+      h.renderer.fillField!(alpha, 4, 2, 10, 20, 8, 1, 0, 0);
+      h.renderer.endFrame();
+      // One image, never per-cell triangles (an engine without fillField would fall back to those).
+      expect(only(h.draws(), "polygon")).toHaveLength(0);
+      const fields = only(h.draws(), "field");
+      expect(fields).toHaveLength(1);
+      close(fields[0]!.box, [6, 16, 30, 32], 0.01);
+      expect([fields[0]!.cols, fields[0]!.rows]).toEqual([3, 2]);
+    });
+
     it("draws a surface on another canvas with the same engine, independent of the chart's frame", () => {
       const h = frame();
       const { surface, draws } = h.createSurface();

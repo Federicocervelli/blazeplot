@@ -12,7 +12,9 @@ export type DrawObs =
   | { readonly kind: "shape"; readonly boxes: ReadonlyArray<readonly [number, number, number, number]>; readonly bordered: boolean }
   | { readonly kind: "marker"; readonly diameterPx: number; readonly centers: ReadonlyArray<readonly [number, number]> }
   | { readonly kind: "rect"; readonly rects: ReadonlyArray<readonly [number, number, number, number]> }
-  | { readonly kind: "polygon"; readonly bbox: readonly [number, number, number, number] };
+  | { readonly kind: "polygon"; readonly bbox: readonly [number, number, number, number] }
+  /** A density grid (`fillField`) drawn as one image: the device-pixel box it covers, and its grid size. */
+  | { readonly kind: "field"; readonly box: readonly [number, number, number, number]; readonly cols: number; readonly rows: number };
 
 /** A built engine plus the probes the contract suite uses to observe it without knowing how it draws. */
 export interface EngineHarness {
@@ -134,9 +136,12 @@ class GlRecorder {
         }
         return out;
       }
-      case "field":
-        // A texture: what it shades is checked through the renderer's own tests.
-        return [];
+      case "field": {
+        // A texture over one rectangle: what it shades is checked through the renderer's own tests.
+        const o = command.first * 2;
+        const [x, y, w, h] = [stream[o]!, stream[o + 1]!, stream[o + 2]!, stream[o + 3]!];
+        return [{ kind: "field", box: [x, y, x + w, y + h], cols: command.cols, rows: command.rows }];
+      }
       case "colorTriangles": {
         const out: DrawObs[] = [];
         for (let v = 0; v + 2 < command.count; v += 3) {
@@ -299,6 +304,11 @@ function observe2d(calls: ReadonlyArray<readonly [string, ...unknown[]]>): DrawO
         } else if (args[1] !== -1) out.push({ kind: "polygon", bbox: bbox([]) });
         pathRects = [];
         break;
+      case "drawImage": {
+        const [image, x, y, w, h] = args as [HTMLCanvasElement, number, number, number, number];
+        out.push({ kind: "field", box: [x, y, x + w, y + h], cols: image.width, rows: image.height });
+        break;
+      }
       case "fillRect": {
         const [, x, y, w, h] = args as [string, number, number, number, number];
         rects.push([x, y, x + w, y + h]);
