@@ -34,6 +34,10 @@ function programsForSeries(mode: SeriesMode, lineWidthPx: number): ProgramName[]
 export class WebGL2Renderer implements ChartRenderer {
   readonly kind = "webgl2" as const;
   private stream = new Float32Array(INITIAL_STREAM_FLOATS);
+  /** `fillField` opacities for the current frame, as bytes; reset by `beginFrame`. */
+  private fieldBytes = new Uint8Array(0);
+  private fieldBytesUsed = 0;
+  private readonly fieldRect = new Float32Array(4);
   private streamFloats = 0;
   /** Reused every frame: `submit` consumes it synchronously and keeps no reference. */
   private readonly commands: DrawCommand[] = [];
@@ -84,6 +88,7 @@ export class WebGL2Renderer implements ChartRenderer {
     this.canvasHeight = Math.max(1, height);
     this.pixelRatio = Math.max(1, pixelRatio);
     this.streamFloats = 0;
+    this.fieldBytesUsed = 0;
     this.commands.length = 0;
     this.backend.viewport(0, 0, width, height);
     this.backend.clear(0, 0, 0, 0);
@@ -211,12 +216,25 @@ export class WebGL2Renderer implements ChartRenderer {
    */
   fillField(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void {
     if (cols <= 0 || rows <= 0 || alpha.length < cols * rows || !(step > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return;
-    const bytes = new Uint8Array(cols * rows);
-    for (let k = 0; k < cols * rows; k++) {
+    const count = cols * rows;
+    // The opacities go into one byte stream reused frame to frame; a buffer outgrown mid-frame stays alive in the
+    // commands that point into it until `endFrame`.
+    if (this.fieldBytesUsed + count > this.fieldBytes.length) {
+      this.fieldBytes = new Uint8Array(Math.max(count, this.fieldBytes.length * 2));
+      this.fieldBytesUsed = 0;
+    }
+    const bytes = this.fieldBytes.subarray(this.fieldBytesUsed, this.fieldBytesUsed + count);
+    this.fieldBytesUsed += count;
+    for (let k = 0; k < count; k++) {
       const a = alpha[k]!;
       bytes[k] = a >= 1 ? 255 : a > 0 ? Math.round(a * 255) : 0;
     }
-    const first = this.stage(Float32Array.of(x - step / 2, y - step / 2, cols * step, rows * step), 2);
+    const rect = this.fieldRect;
+    rect[0] = x - step / 2;
+    rect[1] = y - step / 2;
+    rect[2] = cols * step;
+    rect[3] = rows * step;
+    const first = this.stage(rect, 2);
     this.commands.push({ kind: "field", first, alpha: bytes, cols, rows, color: [r, g, b], canvasWidth: this.canvasWidth, canvasHeight: this.canvasHeight });
   }
 

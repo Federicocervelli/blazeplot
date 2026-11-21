@@ -661,6 +661,10 @@ export class Canvas2DRenderer implements ChartRenderer {
     this.canvas.removeEventListener("contextrestored", this.handleContextRestored);
     this.lossListener = null;
     this.beginFrame(this.width, this.height, this.pixelRatio);
+    // The field's offscreen image can be the plot's size: drop it with the dot paths rather than keep it until GC.
+    if (this.field) this.field.canvas.width = this.field.canvas.height = 1;
+    this.field = null;
+    this.dotPaths = undefined;
   }
 
   private readonly handleContextLost = (event: Event): void => {
