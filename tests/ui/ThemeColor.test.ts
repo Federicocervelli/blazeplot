@@ -69,6 +69,17 @@ describe("modern CSS theme colors", () => {
     }
   });
 
+  it("keeps a literal color's full alpha precision, which computed styles round to 8 bits", () => {
+    // Chromium serializes a computed rgba() alpha of 0.0007 as 0.
+    computeColorsLike({ "rgba(56, 189, 248, 0.0007)": "rgba(56, 189, 248, 0)", "oklch(0.7 0.1 200 / 0.002)": "oklch(0.7 0.1 200 / 0)", "var(--faint)": "rgba(0, 0, 0, 0.5)" });
+    const [r, g, b, a] = resolveThemeColor("rgba(56, 189, 248, 0.0007)", FALLBACK, document.body);
+    expect([r, g, b].map((c) => Math.round(c * 255))).toEqual([56, 189, 248]);
+    expect(a).toBeCloseTo(0.0007, 6);
+    expect(resolveThemeColor("oklch(0.7 0.1 200 / 0.002)", FALLBACK, document.body)[3]).toBeCloseTo(0.002, 6);
+    // Anything the browser must resolve still goes through it.
+    expect(resolveThemeColor("var(--faint)", FALLBACK, document.body)).toEqual([0, 0, 0, 0.5]);
+  });
+
   it("does not take the inherited text color for a string the browser rejects", () => {
     computeColorsLike({ red: "rgb(255, 0, 0)" });
     const warn = spyOn(console, "warn").mockImplementation(() => {});
