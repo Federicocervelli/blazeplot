@@ -44,6 +44,7 @@ const expectedExports: Record<string, readonly string[]> = {
   "./plugins/crosshair": ["crosshairPlugin"],
   "./plugins/navigator": ["navigatorPlugin"],
   "./plugins/flamegraph": ["buildStatusChartModel", "flameGraphPlugin", "parseFoldedStacks"],
+  "./plugins/graph": ["createGraphIcon", "graphPlugin"],
   "./plugins/a11y": ["a11yPlugin"],
 };
 

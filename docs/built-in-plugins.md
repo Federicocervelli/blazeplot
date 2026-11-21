@@ -1,6 +1,6 @@
 # Built-in plugins
 
-Built-in plugins are optional. Import them from subpaths to keep unused plugin code out of your bundle. Every built-in plugin except `blazeplot/plugins/flamegraph` is stable; flamegraph is experimental (see [API stability](./stability.md)). Keyboard and screen-reader behavior of each plugin is listed in [Accessibility](./accessibility.md#built-in-plugins).
+Built-in plugins are optional. Import them from subpaths to keep unused plugin code out of your bundle. Every built-in plugin except `blazeplot/plugins/flamegraph` and `blazeplot/plugins/graph` is stable; those two are experimental (see [API stability](./stability.md)). Keyboard and screen-reader behavior of each plugin is listed in [Accessibility](./accessibility.md#built-in-plugins).
 
 ```ts
 import { Chart } from "blazeplot";
@@ -13,7 +13,7 @@ const chart = new Chart(element, {
 });
 ```
 
-**One instance per chart.** The annotations, crosshair, selection, navigator, a11y, and flame graph plugins keep their state in the factory closure, so installing the same instance on a second chart throws (`... plugin instance is already installed on a chart. Create one plugin instance per chart.`). Call the factory once per chart, or use `createLinkedCharts({ panelPlugins })`, which is a factory that runs once per panel. The legend, tooltip, and interactions plugins keep their state inside `install`, so one instance can be shared. Disposing the chart (or the plugin) frees an instance for reuse.
+**One instance per chart.** The annotations, crosshair, selection, navigator, a11y, flame graph, and graph plugins keep their state in the factory closure, so installing the same instance on a second chart throws (`... plugin instance is already installed on a chart. Create one plugin instance per chart.`). Call the factory once per chart, or use `createLinkedCharts({ panelPlugins })`, which is a factory that runs once per panel. The legend, tooltip, and interactions plugins keep their state inside `install`, so one instance can be shared. Disposing the chart (or the plugin) frees an instance for reuse.
 
 **Plugin styles.** Plugins that need CSS (forced-colors rules for the legend, tooltip, selection, navigator, and the shared pick markers) inject one `<style data-blazeplot-plugin-style>` per plugin into the chart's document (or its shadow root). Every chart using the plugin shares it, and it is removed when the last one is disposed. Chart-only bundles ship none of it.
 
@@ -232,6 +232,75 @@ const chart = new Chart(element, {
 ```
 
 `foldedStacks` also accepts Brendan Gregg folded-stack text (`parseFoldedStacks(text)` returns the parsed samples if you need them). Pass `build: { flameChart: true }` for chronological unmerged stacks, or `statusSpans` (or `buildStatusChartModel(spans)` for the `model` option) for explicit `{ start, end, depth }` intervals. To replace the data later, call `flame.setFoldedStacks(stacks, buildOptions)`, `flame.setStatusSpans(spans)`, or `flame.setModel(model)`; `flame.pick(clientX, clientY)` returns the frame under a point. `chart.screenshot()` includes both overlay canvases.
+
+## Graphs of nodes and edges
+
+`graphPlugin` draws a graph: nodes with edges between them, such as a network map or a dependency graph. Every node shape is one instanced draw and every edge another, on the chart's own engine (WebGL2, Canvas 2D, or the shared context), so thousands of each stay interactive. Node content and edge labels are drawn by callbacks on a 2D layer, only for items large enough on screen to read.
+
+> **Experimental.** `blazeplot/plugins/graph` and its exports (`graphPlugin`, `createGraphIcon`, and their types) are tagged `@experimental` and may change in a minor release. See [API stability](./stability.md#experimental).
+
+```ts
+import { Chart } from "blazeplot";
+import { createGraphIcon, graphPlugin } from "blazeplot/plugins/graph";
+
+const element = document.getElementById("graph")!;
+const server = createGraphIcon(["M4 4h16v6H4z", "M4 14h16v6H4z"]);
+
+const graph = graphPlugin({
+  nodes: [
+    { id: "hub", x: 0, y: 0, label: "Hub" },
+    { id: "edge-1", x: 240, y: -80, label: "Edge 1" },
+    { id: "edge-2", x: 240, y: 80, label: "Edge 2" },
+  ],
+  edges: [
+    { source: "hub", target: "edge-1", label: "12 MB/s" },
+    { source: "edge-1", target: "hub" },
+    { source: "hub", target: "edge-2" },
+  ],
+  background: { kind: "dots", gap: 24 },
+  draggable: true,
+  // Sizes are graph units (CSS pixels at zoom 1); colors take any CSS color, including var(--token).
+  nodeStyle: (_node, state) => ({
+    shape: "rect",
+    width: 150,
+    height: 52,
+    cornerRadius: 8,
+    fill: "#0f172a",
+    borderColor: state.hovered ? "#38bdf8" : "#334155",
+    borderWidth: 1,
+    ring: state.focused ? { color: "#38bdf8", width: 2 } : undefined,
+  }),
+  edgeStyle: (edge) => ({ arrow: "end", width: 1.5, dash: edge.target === "hub" ? [5, 4] : undefined }),
+  // Content in the node's own graph units, origin at its top-left: it zooms with the box.
+  drawNode: (ctx, node, frame) => {
+    server(ctx, 12, 14, 24, "#94a3b8");
+    if (frame.zoom < 0.5) return;
+    ctx.font = "600 14px sans-serif";
+    ctx.fillStyle = "#e2e8f0";
+    ctx.textBaseline = "middle";
+    ctx.fillText(node.label ?? node.id, 46, frame.height / 2);
+  },
+  onNodeClick: (node) => console.log("open", node.id),
+  onNodeDragEnd: (node, x, y) => console.log("moved", node.id, x, y),
+});
+
+const chart = new Chart(element, { axes: false, grid: false, plugins: [graph] });
+
+// Later: graph.setGraph(nodes, edges), graph.fit({ duration: 200 }), graph.zoomBy(1.2), graph.focusNode("hub").
+// When the view goes away:
+chart.dispose();
+```
+
+- **Create the chart without axes, grid, or `interactionsPlugin`.** The graph plugin owns navigation (drag the background to pan, the wheel or a pinch to zoom, a double-click to zoom in) and keeps one zoom for both axes, so circles stay round. `navigation: false` turns it off.
+- **Positions are the app's.** Nodes are placed by their `x` and `y` in graph units, y down. `setGraph` replaces the graph (hover, focus, and selection stay on ids that still exist), `setPositions` moves some nodes, and `restyle` applies the style functions again after app state they read changed.
+- **Styles are resolved once per state change**, not per frame: a hover restyles the one node it enters and the one it leaves. Edges between the same two nodes in both directions bow apart (`curvature: "auto"`); `flow` draws moving dashes, or round dots with `shape: "dot"`, over an edge (paused under reduced motion). `borderDash` gives a node a dashed or dotted outline.
+- **Safety.** `setGraph` throws a `RangeError` for duplicate or empty node ids, non-finite positions, or more than `limits` (100 000 nodes, 500 000 edges by default) before it allocates, and reports edges it skipped (unknown or equal ends). An edge id used twice keeps its first edge, with a warning. A style function or renderer that throws is logged and does not stop the frame.
+- **Detail is budgeted.** Nodes under `detailMinPx` (10) on screen get no content, at most `maxDetails` (2000) node renderer calls and `maxEdgeLabels` (1000) edge labels run per frame, and nodes are never drawn smaller than `minNodePx` (2), so a zoomed-out graph stays a field of dots.
+- **Large graphs.** A frame draws only what is on screen, found through spatial grids, and never a sample of the edges. Past `levelOfDetail.nodes` visible nodes it draws the aggregate level (nodes binned into cells a few pixels across, edges merged per pair of cells), built in slices between frames. Every edge whose line crosses the view is drawn on its own while they fit a count and a fill budget (on-screen length times width); a sparse graph of more than 20 000 edges also gets a pair hierarchy (see dense graphs), and a view its edges overflow draws those in the common style through it, and every other edge on its own. While the view moves, a frame draws with a third of the budget; the full frame follows once it rests. For millions of edges pass them as index arrays, `setGraph(nodes, { source, target, data? })` (`GraphEdgeArrays`), and return shared style objects from `edgeStyle`: edges keep one style record per distinct object, and style functions get one reused edge object.
+- **Dense graphs.** A graph with 64 or more edges a node on average, or one given as a rule, `{ all: true, except? }` (`GraphEdgeRule`: every pair of nodes joined, less the `except` index pairs, so memory follows the nodes, not the n·(n-1)/2 edges), is drawn from a pair decomposition instead of edge by edge: a k-d tree of the nodes and pairs of its cells that cover every pair of nodes exactly once, each knowing how many edges join its cells (long lists of listed edges are split once, when the graph is set). What a frame shows is how many lines cover each pixel: `n` lines of opacity `a` leave `(1 - a)^n` of the background, so the frame builds that count, a field sampled every CSS pixel at rest, and shades it once. Each pair adds the lines between its cells as a bundle: across it, the sum of the two cells' spreads (an even spread with each cell's standard deviation); along it, lines starting over one cell and ending over the other. A frame splits first the pairs whose bundle could differ most from their lines drawn one by one, in pixels times levels, as seen through the haze the other edges leave (a coarse first cut measures it): so detail goes where it can be seen, and pairs split down to single edges, drawn as lines. Lines too faint to tell apart one by one (opacity 1/32 or less) add up in the field instead, in floating point, where an engine's 8 bits would round each one. The field is clipped to the nodes' convex hull, where every edge lies. Its edges are drawn in one style, the rule's `edgeStyle` object or the most used one; edges styled apart from it (flows, highlights) are all drawn one by one, never sampled. A dragged node's edges follow it. Checked against every edge drawn in floating point (the complete graph on 3 000 nodes, 4.5 million edges; a 200 000-node mesh with 1.4 million edges), at rest, on pixels not under a node and blurred over 2 CSS px: within 3 levels (of 255) for 99% of pixels at most zooms, and off by more where it cannot be matched short of drawing every line: the grain of hundreds of thousands of faint lines crossing at the deepest zooms (the average is within 1 to 2 levels), and the few pixels at the hull's rim. Measured in headless Chromium on a desktop (412 x 915 CSS pixels at a pixel ratio of 2.6, CPU slowed 4 times; not on a phone): panning and zooming run at 48 to 60 frames a second with WebGL2 and 42 to 55 with Canvas 2D on complete graphs of 3 000 to 100 000 nodes (up to 5 billion edges), and the full frame at rest takes 80 to 300 ms.
+- **Keyboard.** The chart root is focusable: arrow keys move focus to the nearest node in that direction and announce it (`messages.describeNode`), Enter or Space calls `onNodeClick`, Escape clears focus, Shift with an arrow pans, `+` and `-` zoom, and `0` fits.
+
+Measured on an AMD Ryzen 5 5600H (Bun, CPU side of a frame with every item on screen, the worst case; the GPU side is one instanced draw per primitive): 10 000 nodes and 19 800 edges take a median 3.0 ms per frame, 100 000 nodes and 199 000 edges 15.4 ms. `setGraph` takes 11 ms and 123 ms for those sizes.
 
 ## Linked charts
 

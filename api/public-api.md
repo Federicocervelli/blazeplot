@@ -690,6 +690,10 @@ type ChartRenderLoop = "auto" | "continuous";
 interface ChartRenderSurface {
     beginFrame(width: number, height: number, pixelRatio: number): void;
     fillRects(rects: Float32Array, count: number): void;
+    fillShapes(shapes: Float32Array, count: number): void;
+    strokeSegments(segments: Float32Array, count: number): void;
+    fillTriangles(vertices: Float32Array, vertexCount: number): void;
+    fillField(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void;
     endFrame(): void;
     readonly isLost: boolean;
     setLossListener(listener: ((state: RendererLossState) => void) | null): void;
@@ -3065,6 +3069,355 @@ function flameGraphPlugin<T = unknown>(options?: FlameGraphPluginOptions<T>): Fl
 
 ```ts
 function parseFoldedStacks<T = unknown>(input: string, separator?: string): FlameGraphFoldedStack<T>[];
+```
+
+### `blazeplot/plugins/graph`
+
+24 exports.
+
+#### interface GraphBackground
+
+```ts
+interface GraphBackground {
+    readonly kind: "dots" | "grid";
+    readonly gap?: number;
+    readonly size?: number;
+    readonly color?: GraphColor;
+}
+```
+
+#### type GraphColor
+
+```ts
+type GraphColor = string | RgbaColor;
+```
+
+#### interface GraphEdge
+
+```ts
+interface GraphEdge<E = unknown> {
+    readonly id?: string;
+    readonly source: string;
+    readonly target: string;
+    readonly label?: string;
+    readonly data?: E;
+}
+```
+
+#### interface GraphEdgeArrays
+
+```ts
+interface GraphEdgeArrays<E = unknown> {
+    readonly source: Uint32Array | Int32Array | readonly number[];
+    readonly target: Uint32Array | Int32Array | readonly number[];
+    readonly ids?: readonly (string | undefined)[];
+    readonly labels?: readonly (string | undefined)[];
+    readonly data?: readonly E[];
+}
+```
+
+#### interface GraphEdgeLabelFrame
+
+```ts
+interface GraphEdgeLabelFrame {
+    readonly screenX: number;
+    readonly screenY: number;
+    readonly angle: number;
+    readonly normalX: number;
+    readonly normalY: number;
+    readonly zoom: number;
+    readonly state: GraphItemState;
+}
+```
+
+#### interface GraphEdgeLabelStyle
+
+```ts
+interface GraphEdgeLabelStyle {
+    readonly font?: string;
+    readonly color?: GraphColor;
+    readonly background?: GraphColor;
+    readonly borderColor?: GraphColor;
+    readonly borderWidth?: number;
+    readonly paddingX?: number;
+    readonly paddingY?: number;
+    readonly radius?: number;
+    readonly offset?: number;
+}
+```
+
+#### interface GraphEdgeRule
+
+```ts
+interface GraphEdgeRule {
+    readonly all: true;
+    readonly except?: {
+        readonly source: ArrayLike<number>;
+        readonly target: ArrayLike<number>;
+    };
+}
+```
+
+#### interface GraphEdgeStyle
+
+```ts
+interface GraphEdgeStyle {
+    readonly color?: GraphColor;
+    readonly width?: number;
+    readonly dash?: readonly [
+        number,
+        number
+    ];
+    readonly arrow?: "none" | "end" | "start" | "both";
+    readonly arrowSize?: number;
+    readonly curvature?: number | "auto";
+    readonly gap?: number;
+    readonly flow?: {
+        readonly shape?: "dash" | "dot";
+        readonly color?: GraphColor;
+        readonly width?: number;
+        readonly dash?: readonly [
+            number,
+            number
+        ];
+        readonly speed?: number;
+    };
+    readonly opacity?: number;
+    readonly pickable?: boolean;
+}
+```
+
+#### interface GraphFitOptions
+
+```ts
+interface GraphFitOptions {
+    readonly padding?: number | {
+        readonly top?: number;
+        readonly right?: number;
+        readonly bottom?: number;
+        readonly left?: number;
+    };
+    readonly nodes?: readonly string[];
+    readonly minZoom?: number;
+    readonly maxZoom?: number;
+    readonly duration?: number;
+}
+```
+
+#### type GraphHit
+
+```ts
+type GraphHit<N, E> = {
+    readonly kind: "node";
+    readonly node: GraphNode<N>;
+} | {
+    readonly kind: "edge";
+    readonly edge: GraphEdge<E>;
+};
+```
+
+#### type GraphIcon
+
+```ts
+type GraphIcon = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string) => void;
+```
+
+#### interface GraphIconOptions
+
+```ts
+interface GraphIconOptions {
+    readonly viewBox?: number;
+    readonly mode?: "stroke" | "fill";
+    readonly strokeWidth?: number;
+}
+```
+
+#### interface GraphItemState
+
+```ts
+interface GraphItemState {
+    readonly hovered: boolean;
+    readonly focused: boolean;
+    readonly selected: boolean;
+    readonly dragging: boolean;
+}
+```
+
+#### interface GraphLimits
+
+```ts
+interface GraphLimits {
+    readonly maxNodes?: number;
+    readonly maxEdges?: number;
+}
+```
+
+#### interface GraphMessages
+
+```ts
+interface GraphMessages {
+    readonly label?: string;
+    readonly describeNode?: (node: GraphNode) => string;
+    readonly instructions?: string;
+}
+```
+
+#### interface GraphNode
+
+```ts
+interface GraphNode<N = unknown> {
+    readonly id: string;
+    readonly x: number;
+    readonly y: number;
+    readonly label?: string;
+    readonly data?: N;
+}
+```
+
+#### interface GraphNodeFrame
+
+```ts
+interface GraphNodeFrame {
+    readonly screenX: number;
+    readonly screenY: number;
+    readonly screenWidth: number;
+    readonly screenHeight: number;
+    readonly width: number;
+    readonly height: number;
+    readonly zoom: number;
+    readonly shape: "circle" | "rect";
+    readonly state: GraphItemState;
+}
+```
+
+#### interface GraphNodeStyle
+
+```ts
+interface GraphNodeStyle {
+    readonly shape?: "circle" | "rect";
+    readonly width?: number;
+    readonly height?: number;
+    readonly cornerRadius?: number;
+    readonly fill?: GraphColor;
+    readonly borderColor?: GraphColor;
+    readonly borderWidth?: number;
+    readonly borderDash?: readonly [
+        number,
+        number
+    ];
+    readonly opacity?: number;
+    readonly ring?: {
+        readonly color: GraphColor;
+        readonly width?: number;
+        readonly gap?: number;
+    };
+    readonly layer?: number;
+}
+```
+
+#### interface GraphPlugin
+
+```ts
+interface GraphPlugin<N = unknown, E = unknown> extends ChartPlugin {
+    setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule): GraphSetResult;
+    setPositions(positions: Readonly<Record<string, {
+        readonly x: number;
+        readonly y: number;
+    }>>): void;
+    restyle(): void;
+    fit(options?: GraphFitOptions): void;
+    zoomBy(factor: number, options?: {
+        readonly duration?: number;
+    }): void;
+    getView(): GraphView;
+    setView(view: Partial<GraphView>, options?: {
+        readonly duration?: number;
+    }): void;
+    select(selection: {
+        readonly node?: string | null;
+        readonly edge?: string | null;
+    } | null): void;
+    focusNode(id: string | null): void;
+    pick(clientX: number, clientY: number): GraphHit<N, E> | null;
+    nodeToPlot(id: string): [
+        number,
+        number
+    ] | null;
+    dispose(): void;
+}
+```
+
+#### interface GraphPluginOptions
+
+```ts
+interface GraphPluginOptions<N = unknown, E = unknown> {
+    readonly nodes?: readonly GraphNode<N>[];
+    readonly edges?: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule;
+    readonly nodeStyle?: GraphNodeStyle | ((node: GraphNode<N>, state: GraphItemState) => GraphNodeStyle);
+    readonly edgeStyle?: GraphEdgeStyle | ((edge: GraphEdge<E>, state: GraphItemState) => GraphEdgeStyle);
+    readonly drawNode?: ((ctx: CanvasRenderingContext2D, node: GraphNode<N>, frame: GraphNodeFrame) => void) | null;
+    readonly drawEdgeLabel?: ((ctx: CanvasRenderingContext2D, edge: GraphEdge<E>, frame: GraphEdgeLabelFrame) => void) | null;
+    readonly edgeLabelStyle?: GraphEdgeLabelStyle;
+    readonly labelFont?: string;
+    readonly labelColor?: GraphColor;
+    readonly detailMinPx?: number;
+    readonly maxDetails?: number;
+    readonly maxEdgeLabels?: number;
+    readonly levelOfDetail?: false | {
+        readonly nodes?: number;
+        readonly edges?: number;
+        readonly fill?: number;
+    };
+    readonly minNodePx?: number;
+    readonly background?: GraphBackground | null;
+    readonly navigation?: boolean;
+    readonly minZoom?: number;
+    readonly maxZoom?: number;
+    readonly fitOnLoad?: boolean | GraphFitOptions;
+    readonly draggable?: boolean | ((node: GraphNode<N>) => boolean);
+    readonly limits?: GraphLimits;
+    readonly messages?: GraphMessages;
+    readonly onNodeClick?: (node: GraphNode<N>, event: MouseEvent | KeyboardEvent) => void;
+    readonly onEdgeClick?: (edge: GraphEdge<E>, event: MouseEvent) => void;
+    readonly onBackgroundClick?: (event: MouseEvent) => void;
+    readonly onNodeHover?: (node: GraphNode<N> | null) => void;
+    readonly onEdgeHover?: (edge: GraphEdge<E> | null) => void;
+    readonly onNodeDragEnd?: (node: GraphNode<N>, x: number, y: number) => void;
+    readonly onViewChange?: (view: GraphView) => void;
+    readonly onNodeFocus?: (node: GraphNode<N> | null) => void;
+}
+```
+
+#### interface GraphSetResult
+
+```ts
+interface GraphSetResult {
+    readonly nodes: number;
+    readonly edges: number;
+    readonly skippedEdges: number;
+}
+```
+
+#### interface GraphView
+
+```ts
+interface GraphView {
+    readonly centerX: number;
+    readonly centerY: number;
+    readonly zoom: number;
+}
+```
+
+#### function createGraphIcon
+
+```ts
+function createGraphIcon(paths: readonly string[], options?: GraphIconOptions): GraphIcon;
+```
+
+#### function graphPlugin
+
+```ts
+function graphPlugin<N = unknown, E = unknown>(options?: GraphPluginOptions<N, E>): GraphPlugin<N, E>;
 ```
 
 ### `blazeplot/plugins/a11y`

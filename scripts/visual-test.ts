@@ -66,6 +66,7 @@ interface VisualRects {
   root: VisualRect;
   plot: VisualRect;
   flamegraph: VisualRect | null;
+  graph: VisualRect | null;
 }
 
 interface CaseCheck {
@@ -75,7 +76,7 @@ interface CaseCheck {
    */
   minInkRatio: number;
   /** Where to measure ink: the WebGL plot canvas (default) or the flamegraph canvas. */
-  probe?: "plot" | "flamegraph";
+  probe?: "plot" | "flamegraph" | "graph";
   /** Present when the case has a committed pixel baseline. */
   baseline?: { region: "plot" | "chart"; maxDiffRatio?: number };
 }
@@ -125,6 +126,7 @@ const DEFAULT_CASES = [
   "selection",
   "navigator",
   "flamegraph",
+  "graph",
   "scale-options",
   "overlay-layering",
   "context-restore",
@@ -164,6 +166,8 @@ const CASE_CHECKS: Readonly<Record<string, CaseCheck>> = {
   selection: { minInkRatio: 0.004 },
   navigator: { minInkRatio: 0.004 },
   flamegraph: { minInkRatio: 0.25, probe: "flamegraph", baseline: { region: "chart", maxDiffRatio: 0.01 } },
+  // Nodes, edges, arrows, and dots on the graph plugin's own engine surface.
+  graph: { minInkRatio: 0.05, probe: "graph" },
   "scale-options": { minInkRatio: 0.0025, baseline: { region: "plot" } },
   "overlay-layering": { minInkRatio: 0.003 },
   "context-restore": { minInkRatio: 0.004 },
@@ -355,7 +359,7 @@ async function runMode(mode: RendererMode, index: number, base: Options, serverU
         // grid hidden so grid lines alone cannot satisfy the check.
         await evaluate(cdp, "window.__blazeplotVisualTest.setGridVisible(false)", false);
         await sleep(RENDER_SETTLE_MS);
-        const probeRect = check.probe === "flamegraph" ? rects.flamegraph : rects.plot;
+        const probeRect = check.probe === "flamegraph" ? rects.flamegraph : check.probe === "graph" ? rects.graph : rects.plot;
         if (!probeRect) throw new Error(`No probe region for ${caseName}`);
         const probeImage = await captureRegion(cdp, probeRect);
         await evaluate(cdp, "window.__blazeplotVisualTest.setGridVisible(true)", false);
@@ -557,6 +561,8 @@ async function waitForVisualReady(cdp: CdpClient, timeoutMs: number): Promise<Vi
 function assertVisualSnapshot(snapshot: VisualSnapshot, caseName: string): void {
   if (snapshot.caseName !== caseName) throw new Error(`Expected case ${caseName}, got ${snapshot.caseName ?? "unknown"}`);
   if (!snapshot.stats) throw new Error(`Missing frame stats for ${caseName}`);
+  // The graph case has no series: its draws go to the plugin's own surface, so the ink probe checks it instead.
+  if (caseName === "graph") return;
   if ((snapshot.stats.drawCalls ?? 0) <= 0) throw new Error(`No draw calls for ${caseName}`);
   if ((snapshot.stats.pointsRendered ?? 0) <= 0) throw new Error(`No rendered points for ${caseName}`);
   if (snapshot.stats.renderMode === "none") throw new Error(`No render mode for ${caseName}`);

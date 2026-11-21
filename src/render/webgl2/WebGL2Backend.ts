@@ -1,4 +1,4 @@
-import type { BarDraw, DrawCommand, GpuBackend, PointDraw, RectsDraw, SolidDraw, SolidPrimitive, ThickLineDraw } from "./types.js";
+import type { BarDraw, DrawCommand, FieldDraw, GpuBackend, InterleavedDraw, PointDraw, RectsDraw, SolidDraw, SolidPrimitive, ThickLineDraw } from "./types.js";
 import { ShaderPrograms } from "./ShaderPrograms.js";
 import type { ProgramName } from "./ShaderPrograms.js";
 import { WebGL2UnavailableError } from "./availability.js";
@@ -12,17 +12,66 @@ const BAR_CORNERS = [-0.5, 0, 0.5, 0, -0.5, 1, 0.5, 1];
 const RECT_CORNERS = [0, 0, 1, 0, 0, 1, 1, 1];
 const BYTES_PER_RECT = 8 * Float32Array.BYTES_PER_ELEMENT;
 
-/** Vertex streams of each built-in program: attribute names, and the static unit-quad corners of instanced ones. */
-const PROGRAM_LAYOUTS: Readonly<Record<ProgramName, { readonly start: string; readonly end: string | null; readonly corners: readonly number[] | null }>> = {
+/** One attribute of an interleaved stream: its name, float count, and float offset within a record. */
+interface InterleavedAttribute {
+  readonly name: string;
+  readonly size: number;
+  readonly offset: number;
+}
+
+/** A record layout of interleaved per-instance (or per-vertex) data in the frame stream. */
+interface InterleavedLayout {
+  readonly strideFloats: number;
+  readonly attributes: readonly InterleavedAttribute[];
+}
+
+/**
+ * Vertex streams of each built-in program: attribute names, the static unit-quad corners of instanced
+ * ones, and for interleaved programs the record layout (`start`/`end` are then unused).
+ */
+const PROGRAM_LAYOUTS: Readonly<Record<ProgramName, { readonly start: string; readonly end: string | null; readonly corners: readonly number[] | null; readonly interleaved?: InterleavedLayout }>> = {
   line: { start: "position", end: null, corners: null },
   thickLine: { start: "aStart", end: "aEnd", corners: SEGMENT_CORNERS },
   point: { start: "aPosition", end: null, corners: POINT_CORNERS },
   bar: { start: "aPosition", end: null, corners: BAR_CORNERS },
   rect: { start: "aRect", end: "aColor", corners: RECT_CORNERS },
+  shape: {
+    start: "aRect",
+    end: null,
+    corners: RECT_CORNERS,
+    interleaved: { strideFloats: 14, attributes: [{ name: "aRect", size: 4, offset: 0 }, { name: "aShape", size: 2, offset: 4 }, { name: "aFill", size: 4, offset: 6 }, { name: "aBorder", size: 4, offset: 10 }] },
+  },
+  segment: {
+    start: "aEnds",
+    end: null,
+    corners: SEGMENT_CORNERS,
+    interleaved: { strideFloats: 12, attributes: [{ name: "aEnds", size: 4, offset: 0 }, { name: "aStroke", size: 4, offset: 4 }, { name: "aColor", size: 4, offset: 8 }] },
+  },
+  color: {
+    start: "aPosition",
+    end: null,
+    corners: null,
+    interleaved: { strideFloats: 6, attributes: [{ name: "aPosition", size: 2, offset: 0 }, { name: "aColor", size: 4, offset: 2 }] },
+  },
+  field: { start: "aRect", end: null, corners: RECT_CORNERS },
 };
 
 /** The program each recorded draw kind runs. */
-const PROGRAM_OF_COMMAND: Readonly<Record<DrawCommand["kind"], ProgramName>> = { solid: "line", thickLine: "thickLine", point: "point", bar: "bar", rects: "rect" };
+const PROGRAM_OF_COMMAND: Readonly<Record<DrawCommand["kind"], ProgramName>> = {
+  solid: "line",
+  thickLine: "thickLine",
+  point: "point",
+  bar: "bar",
+  rects: "rect",
+  shapes: "shape",
+  segments: "segment",
+  colorTriangles: "color",
+  field: "field",
+};
+
+function isInterleaved(command: DrawCommand): command is InterleavedDraw {
+  return command.kind === "shapes" || command.kind === "segments" || command.kind === "colorTriangles";
+}
 
 /** A GPU object the context handed back, or the error browsers give when it cannot allocate one (typically a lost context). */
 function allocated<T>(object: T | null, what: string): T {
@@ -47,6 +96,8 @@ interface ProgramState extends Readonly<Record<(typeof UNIFORM_NAMES)[number], W
   /** Attribute locations of the per-instance streams (`aStart`/`aEnd` or `aPosition`). */
   readonly aStart: number;
   readonly aEnd: number;
+  /** Locations of an interleaved program's attributes, in its layout's order (empty otherwise). */
+  readonly attributes: readonly number[];
 }
 
 /**
@@ -64,6 +115,8 @@ export class WebGL2Backend implements GpuBackend {
   private programs: Partial<Record<ProgramName, ProgramState>> = {};
   private pending: Partial<Record<ProgramName, PendingProgram>> = {};
   private scissorBox: { x: number; y: number; w: number; h: number } | null = null;
+  /** The texture field draws upload into, made on first use. */
+  private fieldTexture: WebGLTexture | null = null;
   /**
    * True once the context this backend's objects belong to has been lost. A restored context is a
    * new generation: every object created before the loss is invalid and deleting it logs
@@ -135,6 +188,14 @@ export class WebGL2Backend implements GpuBackend {
         gl.bindVertexArray(state.vao);
         active = state;
       }
+      if (isInterleaved(command)) {
+        this.drawInterleaved(state, command);
+        continue;
+      }
+      if (command.kind === "field") {
+        this.drawField(state, command);
+        continue;
+      }
       if (command.kind !== "rects") {
         gl.uniform2f(state.uScale, command.scaleX, command.scaleY);
         gl.uniform2f(state.uOffset, command.offsetX, command.offsetY);
@@ -197,6 +258,8 @@ export class WebGL2Backend implements GpuBackend {
       this.gl.deleteProgram(program);
       for (const shader of shaders) this.gl.deleteShader(shader);
     }
+    if (this.fieldTexture) this.gl.deleteTexture(this.fieldTexture);
+    this.fieldTexture = null;
     for (const state of programs) {
       this.gl.deleteProgram(state.program);
       this.gl.deleteVertexArray(state.vao);
@@ -242,6 +305,42 @@ export class WebGL2Backend implements GpuBackend {
     this.aimAttribute(state.aStart, BYTES_PER_RECT, command.first * BYTES_PER_VERTEX, 4);
     this.aimAttribute(state.aEnd, BYTES_PER_RECT, command.first * BYTES_PER_VERTEX + 4 * Float32Array.BYTES_PER_ELEMENT, 4);
     this.drawQuads(command.instances);
+  }
+
+  /** Upload a field's opacities to the field texture and draw its rectangle through it, filtered linearly. */
+  private drawField(state: ProgramState, command: FieldDraw): void {
+    const gl = this.gl;
+    if (!this.fieldTexture) {
+      this.fieldTexture = allocated(gl.createTexture(), "texture");
+      gl.bindTexture(gl.TEXTURE_2D, this.fieldTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.fieldTexture);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, command.cols, command.rows, 0, gl.RED, gl.UNSIGNED_BYTE, command.alpha);
+    gl.uniform2f(state.uCanvasSize, command.canvasWidth, command.canvasHeight);
+    gl.uniform4f(state.uColor, command.color[0], command.color[1], command.color[2], 1);
+    this.aimAttribute(state.aStart, 0, command.first * BYTES_PER_VERTEX, 4);
+    this.drawQuads(1);
+  }
+
+  /** Aim every attribute of an interleaved program at its record in the frame stream, then draw. */
+  private drawInterleaved(state: ProgramState, command: InterleavedDraw): void {
+    const gl = this.gl;
+    gl.uniform2f(state.uCanvasSize, command.canvasWidth, command.canvasHeight);
+    const layout = PROGRAM_LAYOUTS[PROGRAM_OF_COMMAND[command.kind]].interleaved!;
+    const stride = layout.strideFloats * Float32Array.BYTES_PER_ELEMENT;
+    const base = command.first * BYTES_PER_VERTEX;
+    layout.attributes.forEach((attribute, index) => {
+      const location = state.attributes[index]!;
+      if (location >= 0) this.aimAttribute(location, stride, base + attribute.offset * Float32Array.BYTES_PER_ELEMENT, attribute.size);
+    });
+    if (command.kind === "colorTriangles") gl.drawArrays(gl.TRIANGLES, 0, command.count);
+    else this.drawQuads(command.count);
   }
 
   private drawQuads(instances: number): void {
@@ -300,21 +399,30 @@ export class WebGL2Backend implements GpuBackend {
       throw new Error(`Failed to build WebGL program "${name}": ${log || "unknown error"}`);
     }
 
-    const { start: startName, end: endName, corners } = PROGRAM_LAYOUTS[name];
+    const { start: startName, end: endName, corners, interleaved } = PROGRAM_LAYOUTS[name];
     const vao = allocated(gl.createVertexArray(), "vertex array");
     const aStart = gl.getAttribLocation(program, startName);
     const aEnd = endName ? gl.getAttribLocation(program, endName) : -1;
+    const attributes = interleaved ? interleaved.attributes.map((attribute) => gl.getAttribLocation(program, attribute.name)) : [];
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.stream);
-    gl.enableVertexAttribArray(aStart);
-    if (corners) {
+    if (interleaved) {
+      // Every attribute is aimed at the frame stream on each draw (`drawInterleaved`); instanced ones advance per instance.
+      for (const location of attributes) {
+        if (location < 0) continue;
+        gl.enableVertexAttribArray(location);
+        if (corners) gl.vertexAttribDivisor(location, 1);
+      }
+    } else if (corners) {
       // Instanced streams are re-aimed at the frame stream offset on every draw.
+      gl.enableVertexAttribArray(aStart);
       gl.vertexAttribDivisor(aStart, 1);
       if (aEnd >= 0) {
         gl.enableVertexAttribArray(aEnd);
         gl.vertexAttribDivisor(aEnd, 1);
       }
     } else {
+      gl.enableVertexAttribArray(aStart);
       gl.vertexAttribPointer(aStart, 2, gl.FLOAT, false, 0, 0);
     }
 
@@ -337,6 +445,7 @@ export class WebGL2Backend implements GpuBackend {
       ...(Object.fromEntries(UNIFORM_NAMES.map((uniform) => [uniform, gl.getUniformLocation(program, uniform)])) as Record<(typeof UNIFORM_NAMES)[number], WebGLUniformLocation | null>),
       aStart,
       aEnd,
+      attributes,
     };
   }
 

@@ -32,6 +32,7 @@ export default defineConfig(({ command }) => {
           "plugins/crosshair": resolve(__dirname, "src/plugins/crosshair.ts"),
           "plugins/navigator": resolve(__dirname, "src/plugins/navigator.ts"),
           "plugins/flamegraph": resolve(__dirname, "src/plugins/flamegraph.ts"),
+          "plugins/graph": resolve(__dirname, "src/plugins/graph.ts"),
           "plugins/a11y": resolve(__dirname, "src/plugins/a11y.ts"),
         },
         formats: ["es"],

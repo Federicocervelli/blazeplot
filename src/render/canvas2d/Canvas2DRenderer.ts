@@ -18,6 +18,13 @@ export class Canvas2DUnavailableError extends Error {
  */
 const THIN_STROKE_PX = 1.5;
 
+/** Borderless shapes at most this many device pixels across are dots: batched by color (see `fillShapes`). */
+const DOT_SHAPE_PX = 8;
+/** Dots at most this many device pixels across (2 CSS pixels on a phone) are filled as plain rectangles: their corners cannot show. */
+const TINY_SHAPE_PX = 5;
+/** The side of a square with a unit-diameter circle's area. */
+const EQUAL_AREA_SQUARE = Math.sqrt(Math.PI) / 2;
+
 /** Typical desktop-browser limit on a canvas's area; browsers do not expose it. */
 const MAX_CANVAS_PIXELS = 16_384 * 16_384;
 
@@ -48,6 +55,10 @@ export class Canvas2DRenderer implements ChartRenderer {
   private strokeJoin: string | null = null;
   /** Scratch for the float color of the rect being filled (compared with `fill` before a string is built). */
   private readonly rectColor: [number, number, number, number] = [0, 0, 0, 0];
+  /** The image `fillField` draws through, kept while its size holds. */
+  private field: { readonly canvas: HTMLCanvasElement; readonly ctx: CanvasRenderingContext2D; readonly image: ImageData } | null = null;
+  /** One path per dot color, reused by `fillShapes` (a frame is synchronous, so one map serves every call). */
+  private dotPaths: Map<number, { fill: string; path: Path2D; used: boolean }> | undefined;
   /** The snapped rectangle `addSnappedRect` has not yet added to the path (it may still absorb the next ones). */
   private rectOpen = false;
   private rectLeft = 0;
@@ -384,6 +395,263 @@ export class Canvas2DRenderer implements ChartRenderer {
     }
   }
 
+  /**
+   * Rounded shapes with an inner border (see `ChartRenderSurface.fillShapes`). Consecutive borderless
+   * shapes of one color share a path and one fill; a bordered shape is filled and stroked on its own so
+   * a later shape still covers an earlier one's border, as on the GPU.
+   */
+  fillShapes(shapes: Float32Array, count: number): void {
+    this.drawCalls++;
+    const n = Math.min(count, Math.floor(shapes.length / 14));
+    const ctx = this.ctx;
+    let open = false;
+    let openKey = -1;
+    // Dots (borderless shapes a few pixels across) go into one path per color and are filled together: a graph's
+    // dots alternate colors, and a fill per dot is what makes tens of thousands slow. Only overlapping dots of
+    // different colors could tell the order apart, at that size. Larger or bordered shapes keep their order,
+    // after every dot before them.
+    const dots = typeof Path2D === "undefined" ? null : (this.dotPaths ??= new Map());
+    let dotted = false;
+    const flushDots = (): void => {
+      if (!dotted || !dots) return;
+      for (const bucket of dots.values()) {
+        if (!bucket.used) continue;
+        if (bucket.fill !== this.fill) ctx.fillStyle = this.fill = bucket.fill;
+        ctx.fill(bucket.path);
+        bucket.path = new Path2D();
+        bucket.used = false;
+      }
+      this.rectColor[3] = NaN;
+      dotted = false;
+    };
+    for (let i = 0; i < n; i++) {
+      const o = i * 14;
+      const x = shapes[o]!;
+      const y = shapes[o + 1]!;
+      const w = shapes[o + 2]!;
+      const h = shapes[o + 3]!;
+      if (!Number.isFinite(x + y + w + h + shapes[o + 4]! + shapes[o + 5]!) || !(w > 0) || !(h > 0)) continue;
+      if (x + w < 0 || y + h < 0 || x > this.width || y > this.height) continue;
+      const half = Math.min(w, h) / 2;
+      const radius = Math.min(Math.max(0, shapes[o + 4]!), half);
+      const border = Math.min(Math.max(0, shapes[o + 5]!), half);
+      const bordered = border > 0 && shapes[o + 13]! > 0;
+      const key = colorKey(shapes[o + 6]!, shapes[o + 7]!, shapes[o + 8]!, shapes[o + 9]!);
+      if (dots && !bordered && w <= DOT_SHAPE_PX && h <= DOT_SHAPE_PX) {
+        let bucket = dots.get(key);
+        if (!bucket) {
+          bucket = { fill: rgbaString(shapes[o + 6]!, shapes[o + 7]!, shapes[o + 8]!, shapes[o + 9]!), path: new Path2D(), used: false };
+          dots.set(key, bucket);
+        }
+        traceDot(bucket.path, x, y, w, h, radius);
+        bucket.used = true;
+        dotted = true;
+        continue;
+      }
+      // An open path is filled before pending dots are, since flushing them changes the fill color.
+      if (open && (bordered || key !== openKey || dotted)) {
+        ctx.fill();
+        open = false;
+      }
+      flushDots();
+      if (!open) {
+        const fill = rgbaString(shapes[o + 6]!, shapes[o + 7]!, shapes[o + 8]!, shapes[o + 9]!);
+        if (fill !== this.fill) ctx.fillStyle = this.fill = fill;
+        this.rectColor[3] = NaN;
+        ctx.beginPath();
+        open = true;
+        openKey = key;
+      }
+      traceRoundRect(ctx, x, y, w, h, radius, false);
+      if (!bordered) continue;
+      ctx.fill();
+      open = false;
+      // The border lies inside the shape: stroke the path inset by half its width.
+      const inset = border / 2;
+      const stroke = rgbaString(shapes[o + 10]!, shapes[o + 11]!, shapes[o + 12]!, shapes[o + 13]!);
+      if (stroke !== this.strokeColor) ctx.strokeStyle = this.strokeColor = stroke;
+      if (border !== this.strokeWidth) ctx.lineWidth = this.strokeWidth = border;
+      ctx.beginPath();
+      traceRoundRect(ctx, x + inset, y + inset, w - border, h - border, Math.max(0, radius - inset), true);
+      ctx.stroke();
+    }
+    if (open) ctx.fill();
+    flushDots();
+  }
+
+
+  /**
+   * Segments with per-segment width, dash, and color (see `ChartRenderSurface.strokeSegments`).
+   * Consecutive segments with the same style share one path and one stroke.
+   */
+  strokeSegments(segments: Float32Array, count: number): void {
+    this.drawCalls++;
+    const n = Math.min(count, Math.floor(segments.length / 12));
+    const ctx = this.ctx;
+    let open = false;
+    // The style of the open stroke, compared as raw floats so no string is built per segment.
+    let r = NaN;
+    let g = NaN;
+    let b = NaN;
+    let a = NaN;
+    let lineWidth = NaN;
+    let dashLength = NaN;
+    let gapLength = NaN;
+    let strokeOffset = 0;
+    // Where the last segment ended, and how far along its dash pattern: a segment that continues it joins
+    // the same subpath, whose dashes Canvas 2D carries on by itself.
+    let lastX = NaN;
+    let lastY = NaN;
+    let along = 0;
+    const flush = (): void => {
+      if (!open) return;
+      ctx.stroke();
+      open = false;
+    };
+    for (let i = 0; i < n; i++) {
+      const o = i * 12;
+      const x0 = segments[o]!;
+      const y0 = segments[o + 1]!;
+      const x1 = segments[o + 2]!;
+      const y1 = segments[o + 3]!;
+      const width = segments[o + 4]!;
+      if (!Number.isFinite(x0 + y0 + x1 + y1 + width) || !(width > 0)) continue;
+      if ((x0 > x1 ? x0 : x1) + width < 0 || (y0 > y1 ? y0 : y1) + width < 0 || (x0 < x1 ? x0 : x1) - width > this.width || (y0 < y1 ? y0 : y1) - width > this.height) continue;
+      const dash = segments[o + 5]!;
+      const gap = segments[o + 6]!;
+      const dashed = dash > 0 && gap > 0 && Number.isFinite(dash + gap);
+      const offset = dashed && Number.isFinite(segments[o + 7]!) ? segments[o + 7]! : 0;
+      const sr = segments[o + 8]!;
+      const sg = segments[o + 9]!;
+      const sb = segments[o + 10]!;
+      const sa = segments[o + 11]!;
+      // Translucent segments are stroked one by one: in one path, where they cross they would be painted once
+      // instead of over each other. A segment continuing the last one (a polyline) still joins it.
+      const sameStyle = open && sr === r && sg === g && sb === b && sa === a && width === lineWidth && (dashed ? dash === dashLength && gap === gapLength : !(dashLength > 0));
+      if (sameStyle && sa < 1 && !(x0 === lastX && y0 === lastY)) {
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        lastX = x1;
+        lastY = y1;
+        along = offset + Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+        strokeOffset = offset;
+        if (dashed) ctx.lineDashOffset = offset;
+        continue;
+      }
+      const connected = sameStyle && x0 === lastX && y0 === lastY && (!dashed || Math.abs(offset - along) < 0.01);
+      if (connected) {
+        ctx.lineTo(x1, y1);
+      } else if (sameStyle && (!dashed || Math.abs(offset - strokeOffset) < 0.01)) {
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+      } else {
+        flush();
+        r = sr;
+        g = sg;
+        b = sb;
+        a = sa;
+        lineWidth = width;
+        dashLength = dashed ? dash : 0;
+        gapLength = dashed ? gap : 0;
+        strokeOffset = offset;
+        const color = rgbaString(sr, sg, sb, sa);
+        if (color !== this.strokeColor) ctx.strokeStyle = this.strokeColor = color;
+        if (width !== this.strokeWidth) ctx.lineWidth = this.strokeWidth = width;
+        ctx.lineCap = "butt";
+        ctx.setLineDash(dashed ? [dash, gap] : []);
+        ctx.lineDashOffset = offset;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        open = true;
+      }
+      lastX = x1;
+      lastY = y1;
+      along = offset + Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+    }
+    flush();
+    // Later strokes (series, grid) expect solid lines.
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+  }
+
+
+  /**
+   * Triangles with per-vertex colors (see `ChartRenderSurface.fillTriangles`). Canvas 2D has no
+   * per-vertex color, so each triangle takes its first vertex's color; consecutive triangles of one
+   * color share a path and one fill.
+   */
+  fillTriangles(vertices: Float32Array, vertexCount: number): void {
+    this.drawCalls++;
+    const n = Math.min(vertexCount, Math.floor(vertices.length / 6));
+    const ctx = this.ctx;
+    let open = false;
+    let openFill = "";
+    for (let v = 0; v + 2 < n; v += 3) {
+      const o = v * 6;
+      const x0 = vertices[o]!;
+      const y0 = vertices[o + 1]!;
+      const x1 = vertices[o + 6]!;
+      const y1 = vertices[o + 7]!;
+      const x2 = vertices[o + 12]!;
+      const y2 = vertices[o + 13]!;
+      if (!Number.isFinite(x0 + y0 + x1 + y1 + x2 + y2)) continue;
+      const fill = rgbaString(vertices[o + 2]!, vertices[o + 3]!, vertices[o + 4]!, vertices[o + 5]!);
+      if (open && fill !== openFill) {
+        ctx.fill();
+        open = false;
+      }
+      if (!open) {
+        if (fill !== this.fill) ctx.fillStyle = this.fill = fill;
+        this.rectColor[3] = NaN;
+        ctx.beginPath();
+        open = true;
+        openFill = fill;
+      }
+      // No closePath: a fill closes every subpath itself, and closing each of many subpaths of one long path
+      // is what made 100k arrowheads take seconds in Chromium.
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.lineTo(x2, y2);
+    }
+    if (open) ctx.fill();
+  }
+
+  /**
+   * A grid of opacities in one color (see `ChartRenderSurface.fillField`): written to an image a pixel per vertex
+   * and drawn scaled up with smoothing, which is bilinear interpolation between pixel centers, so it costs one
+   * image draw instead of a path per cell.
+   */
+  fillField(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void {
+    this.drawCalls++;
+    if (!(cols >= 1 && rows >= 1 && step > 0) || !Number.isFinite(x + y + step) || alpha.length < cols * rows) return;
+    let field = this.field;
+    if (!field || field.canvas.width !== cols || field.canvas.height !== rows) {
+      const canvas = this.canvas.ownerDocument.createElement("canvas");
+      canvas.width = cols;
+      canvas.height = rows;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      field = this.field = { canvas, ctx, image: ctx.createImageData(cols, rows) };
+    }
+    const data = field.image.data;
+    const red = Math.round(clamp01(r) * 255);
+    const green = Math.round(clamp01(g) * 255);
+    const blue = Math.round(clamp01(b) * 255);
+    for (let k = 0; k < cols * rows; k++) {
+      data[k * 4] = red;
+      data[k * 4 + 1] = green;
+      data[k * 4 + 2] = blue;
+      data[k * 4 + 3] = Math.round(clamp01(alpha[k]!) * 255);
+    }
+    field.ctx.putImageData(field.image, 0, 0);
+    const ctx = this.ctx;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(field.canvas, x - step / 2, y - step / 2, cols * step, rows * step);
+  }
+
   createSurface(canvas: HTMLCanvasElement): ChartRenderer {
     return new Canvas2DRenderer(canvas);
   }
@@ -393,6 +661,10 @@ export class Canvas2DRenderer implements ChartRenderer {
     this.canvas.removeEventListener("contextrestored", this.handleContextRestored);
     this.lossListener = null;
     this.beginFrame(this.width, this.height, this.pixelRatio);
+    // The field's offscreen image can be the plot's size: drop it with the dot paths rather than keep it until GC.
+    if (this.field) this.field.canvas.width = this.field.canvas.height = 1;
+    this.field = null;
+    this.dotPaths = undefined;
   }
 
   private readonly handleContextLost = (event: Event): void => {
@@ -494,6 +766,64 @@ function css(color: RgbaColor): string {
   return `rgba(${Math.round(color[0] * 255)},${Math.round(color[1] * 255)},${Math.round(color[2] * 255)},${color[3]})`;
 }
 
+/** A color as one integer (8 bits a channel), to compare and bucket colors without building strings. */
+function colorKey(r: number, g: number, b: number, a: number): number {
+  const c = (v: number): number => (v > 0 ? (v < 1 ? Math.round(v * 255) : 255) : 0);
+  return ((c(r) * 256 + c(g)) * 256 + c(b)) * 256 + c(a);
+}
+
+/** Unit octagon corners, cos and sin of k * 45 degrees. */
+const OCTAGON = Array.from({ length: 16 }, (_, i) => (i % 2 === 0 ? Math.cos : Math.sin)(Math.floor(i / 2) * (Math.PI / 4)));
+
+/** A dot into `path`: a rectangle when tiny, an octagon when round, else a rounded rectangle. */
+function traceDot(path: Path2D, x: number, y: number, w: number, h: number, radius: number): void {
+  if (radius <= 0) {
+    path.rect(x, y, w, h);
+    return;
+  }
+  if (w <= TINY_SHAPE_PX && h <= TINY_SHAPE_PX) {
+    // A tiny round dot as a square of the same area (side sqrt(pi)/2 of the diameter), so it carries the same ink.
+    const round = w === h && radius >= w / 2;
+    const side = round ? w * EQUAL_AREA_SQUARE : w;
+    const tall = round ? side : h;
+    path.rect(x + (w - side) / 2, y + (h - tall) / 2, side, tall);
+    return;
+  }
+  if (w === h && radius >= w / 2) {
+    // At dot size an octagon cannot be told from a circle, and eight straight edges cost less than an arc.
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const r = w / 2;
+    path.moveTo(cx + r, cy);
+    for (let k = 1; k < 8; k++) path.lineTo(cx + r * OCTAGON[k * 2]!, cy + r * OCTAGON[k * 2 + 1]!);
+    return;
+  }
+  traceRoundRect(path as unknown as CanvasRenderingContext2D, x, y, w, h, radius, false);
+}
+
+function rgbaString(r: number, g: number, b: number, a: number): string {
+  const clamp = (value: number): number => (value > 0 ? (value < 1 ? value : 1) : 0);
+  return `rgba(${Math.round(clamp(r) * 255)},${Math.round(clamp(g) * 255)},${Math.round(clamp(b) * 255)},${clamp(a)})`;
+}
+
+/**
+ * Add a rounded rectangle to the current path (a circle for a square with half-side corners). `close` closes the
+ * subpath, which a stroke needs and a fill does not.
+ */
+function traceRoundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, radius: number, close: boolean): void {
+  if (radius <= 0) {
+    ctx.rect(x, y, w, h);
+    return;
+  }
+  const r = Math.min(radius, w / 2, h / 2);
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  if (close) ctx.closePath();
+}
+
 /** Whether vertices `[o, o + 12)` are `(x0,y0) (x1,y0) (x0,y1) (x0,y1) (x1,y0) (x1,y1)`. */
 function isRectPair(d: Float32Array, o: number): boolean {
   return (
@@ -506,4 +836,8 @@ function isRectPair(d: Float32Array, o: number): boolean {
     d[o + 10] === d[o + 2] &&
     d[o + 11] === d[o + 5]
   );
+}
+
+function clamp01(v: number): number {
+  return v > 0 ? (v < 1 ? v : 1) : 0;
 }

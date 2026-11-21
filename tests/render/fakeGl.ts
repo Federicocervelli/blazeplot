@@ -29,6 +29,18 @@ export class FakeGl {
   readonly BLEND = 19;
   readonly ONE = 20;
   readonly ONE_MINUS_SRC_ALPHA = 21;
+  readonly TEXTURE_2D = 22;
+  readonly TEXTURE0 = 23;
+  readonly R8 = 24;
+  readonly RED = 25;
+  readonly UNSIGNED_BYTE = 26;
+  readonly LINEAR = 27;
+  readonly CLAMP_TO_EDGE = 28;
+  readonly TEXTURE_MIN_FILTER = 29;
+  readonly TEXTURE_MAG_FILTER = 30;
+  readonly TEXTURE_WRAP_S = 31;
+  readonly TEXTURE_WRAP_T = 32;
+  readonly UNPACK_ALIGNMENT = 33;
   /** Capabilities currently enabled; a context restore resets them. */
   readonly enabled = new Set<number>();
   blendFunc: number[] | null = null;
@@ -54,10 +66,12 @@ export class FakeGl {
   createShader(): object { return this.make(); }
   createProgram(): object { return this.make(); }
   createVertexArray(): object { return this.make(); }
+  createTexture(): object { return this.make(); }
   deleteBuffer(o: Tagged): void { this.del("buffer", o); }
   deleteShader(o: Tagged): void { this.del("shader", o); }
   deleteProgram(o: Tagged): void { this.del("program", o); }
   deleteVertexArray(o: Tagged): void { this.del("vertexArray", o); }
+  deleteTexture(o: Tagged): void { this.del("texture", o); }
   isBuffer(o: Tagged): boolean { return !this.lost && o.gen === this.generation; }
   getExtension(): null { return null; }
   getShaderParameter(): boolean { return true; }
@@ -88,6 +102,11 @@ export class FakeGl {
   uniform1f(): void {}
   uniform2f(): void {}
   uniform4f(): void {}
+  bindTexture(): void {}
+  activeTexture(): void {}
+  texParameteri(): void {}
+  pixelStorei(): void {}
+  texImage2D(): void { this.hit("texImage2D"); }
 }
 
 /** Build a backend over a `FakeGl`, plus helpers to fire context loss and restore. */

@@ -248,6 +248,12 @@ export function resolveThemeColor(color: ThemeColor | undefined, fallback: RgbaC
     const direct = parseHexColor(hex);
     if (direct) return direct;
   }
+  // A literal color function (rgba(), oklch(), ...) is parsed as written: computed styles round alpha to
+  // 8 bits, so rgba(0, 0, 0, 0.001), a line meant to add up over thousands of others, would come back as 0.
+  if (!/var\(|calc\(|env\(|attr\(|\bfrom\b/i.test(hex)) {
+    const literal = parseCssColor(hex);
+    if (literal) return literal;
+  }
   const resolved = resolveCssColor(color, context);
   const parsed = parseCssColor(resolved ?? color) ?? canvasColor(resolved ?? color, context);
   if (parsed) return parsed;
