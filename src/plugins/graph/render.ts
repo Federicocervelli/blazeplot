@@ -6,9 +6,10 @@
 import type { ChartPluginContext } from "../../ui/PluginTypes.js";
 import { type Aggregate, quantize, unquantize } from "./aggregate.js";
 import type { Rect } from "./grid.js";
+import { LineField } from "./field.js";
 import type { GraphModel } from "./model.js";
 import type { GraphIndex } from "./spatial.js";
-import { type PairTree, RefineScratch, refine, starCut } from "./pairs.js";
+import { type CutView, type PairHierarchy, type PairTree, type RefineCosts, type RefineSink, RefineScratch, refine, starCut } from "./pairs.js";
 import {
   E_ARROW,
   E_ARROW_SIZE,
@@ -113,7 +114,7 @@ export interface GraphFrameInput<N, E> {
    * Most nodes a still frame draws one by one before it draws the aggregate instead, and most edges, counted
    * and as area (CSS pixels of length times width), before it thins them.
    */
-  readonly budget?: { readonly nodes: number; readonly edges: number; readonly fill?: number; readonly overdraw?: number; readonly dense?: number };
+  readonly budget?: { readonly nodes: number; readonly edges: number; readonly fill?: number; readonly overdraw?: number; readonly dense?: number; readonly fieldStep?: number };
   /** A dense graph's common edge style record (bands and single edges are drawn with it). */
   readonly denseSlot?: number;
   /** A dense graph's edges styled apart from the common style: drawn one by one, over the bands. */
@@ -131,16 +132,12 @@ function boosted(alpha: number, boost: number): number {
 }
 
 const SQRT3 = Math.sqrt(3);
-/**
- * A band at least this many CSS pixels wide at both ends (half-width) shades the view smoothly: it goes to a
- * density field sampled every `FIELD_STEP` pixels and drawn as one mesh, so a hundred bands crossing the view
- * cost one layer of pixels instead of a hundred.
- */
-const FIELD_HALF_WIDTH = 16;
-const FIELD_STEP = 8;
-/** The density field may be added to this many times over per vertex in a frame. */
-const FIELD_PASSES = 64;
-
+/** A dense graph's lines at most this opaque add up in its field instead of being drawn one by one. */
+const FAINT_LINE = 1 / 32;
+/** Candidate edges `crossingEdges` tests one by one at least, before it calls a view overflowing. */
+const CANDIDATES = 500_000;
+/** No edge index: a single node pair of "every pair". */
+const NO_EDGE = 0xffffffff;
 function growF64(a: Float64Array, need: number): Float64Array {
   const b = new Float64Array(Math.max(need, a.length * 2, 64));
   b.set(a);
@@ -153,180 +150,9 @@ function growU32(a: Uint32Array, need: number): Uint32Array {
   return b;
 }
 
-/** Merged edge indices fit below this in a sort key. */
-const AGG_INDEX_SPAN = 2 ** 24;
 
 /** On-screen size (CSS pixels) of an aggregate cell: below it nodes are too small to tell apart. */
 const AGGREGATE_CELL_PX = 3;
-
-/** The field step (CSS px) for a band or cell this wide (half-width): at most half of it, a power of two times the finest (four samples across). */
-function fieldStep(half: number): number {
-  let step = FIELD_STEP;
-  while (step * 4 <= half * 2 && step < FIELD_STEP * 2 ** (FIELD_LEVELS - 1)) step *= 2;
-  return step;
-}
-
-/** Levels of the density field: level `l` samples every `FIELD_STEP * 2^l` CSS pixels. */
-const FIELD_LEVELS = 7;
-
-/**
- * Lines per pixel over the view, at the vertices of grids from fine to coarse (a multigrid): a wide band or cell
- * is smooth across its width, so it is sampled on the grid whose step is about half that width, and costs the
- * vertices it covers there; `collapse` then adds each grid into the next finer one by bilinear interpolation, so
- * all of them cost about one pass over the finest grid, however many wide bands there are.
- */
-class DensityField {
-  readonly cols: number[] = [];
-  readonly rows: number[] = [];
-  private grids: Float32Array[] = [];
-  private used: boolean[] = [];
-  private readonly quad = new Float64Array(8);
-
-  reset(width: number, height: number): void {
-    for (let l = 0; l < FIELD_LEVELS; l++) {
-      const step = FIELD_STEP * 2 ** l;
-      const cols = Math.ceil(width / step) + 1;
-      const rows = Math.ceil(height / step) + 1;
-      this.cols[l] = cols;
-      this.rows[l] = rows;
-      if ((this.grids[l]?.length ?? 0) < cols * rows) this.grids[l] = new Float32Array(cols * rows);
-      else if (this.used[l] !== false) this.grids[l]!.fill(0, 0, cols * rows);
-      this.used[l] = false;
-    }
-  }
-
-  private level(step: number): number {
-    return Math.round(Math.log2(step / FIELD_STEP));
-  }
-
-  /**
-   * A wide band: at each vertex inside it (row by row, between where the row crosses its outline), its lines per
-   * pixel there, `spread` (edges times line width, halved) over its half-width at that point.
-   */
-  addBand(ax: number, ay: number, bx: number, by: number, nx: number, ny: number, ha: number, hb: number, spread: number): void {
-    const step = fieldStep(Math.min(ha, hb));
-    const l = this.level(step);
-    const grid = this.grids[l]!;
-    const cols = this.cols[l]!;
-    const rows = this.rows[l]!;
-    this.used[l] = true;
-    const dx = bx - ax;
-    const dy = by - ay;
-    const length2 = dx * dx + dy * dy || 1;
-    const q = this.quad;
-    q[0] = ax + nx * ha;
-    q[1] = ay + ny * ha;
-    q[2] = bx + nx * hb;
-    q[3] = by + ny * hb;
-    q[4] = bx - nx * hb;
-    q[5] = by - ny * hb;
-    q[6] = ax - nx * ha;
-    q[7] = ay - ny * ha;
-    const r0 = Math.max(0, Math.ceil(Math.min(q[1]!, q[3]!, q[5]!, q[7]!) / step));
-    const r1 = Math.min(rows - 1, Math.floor(Math.max(q[1]!, q[3]!, q[5]!, q[7]!) / step));
-    for (let row = r0; row <= r1; row++) {
-      const y = row * step;
-      let left = Infinity;
-      let right = -Infinity;
-      for (let e = 0; e < 4; e++) {
-        const x0 = q[e * 2]!;
-        const y0 = q[e * 2 + 1]!;
-        const x1 = q[((e + 1) % 4) * 2]!;
-        const y1 = q[((e + 1) % 4) * 2 + 1]!;
-        if ((y < y0 && y < y1) || (y > y0 && y > y1)) continue;
-        const x = y0 === y1 ? x0 : x0 + ((y - y0) / (y1 - y0)) * (x1 - x0);
-        const x2 = y0 === y1 ? x1 : x;
-        left = Math.min(left, x, x2);
-        right = Math.max(right, x, x2);
-      }
-      const c0 = Math.max(0, Math.ceil(left / step));
-      const c1 = Math.min(cols - 1, Math.floor(right / step));
-      const py = y - ay;
-      for (let col = c0; col <= c1; col++) {
-        const t = Math.min(1, Math.max(0, ((col * step - ax) * dx + py * dy) / length2));
-        grid[row * cols + col]! += spread / (ha + (hb - ha) * t);
-      }
-    }
-  }
-
-  /**
-   * The edges inside a cell, on the finest grid (cells are disjoint, so all of them cost one pass at most): their
-   * ink, edges times line width times their mean length (0.905 of the radius, as in an even disk), spread evenly
-   * over the vertices inside the cell's ellipse (its covariance `sxx`, `syy`, `sxy` in CSS px², out to two
-   * standard deviations, as an even disk reaches) and its bounding box (`x0`..`x1`, `y0`..`y1`), or onto the
-   * nearest vertex when none is inside: the ink drawn is the same, and none falls outside the cell's box.
-   */
-  addCell(cx: number, cy: number, sxx: number, syy: number, sxy: number, x0: number, y0: number, x1: number, y1: number, width: number): void {
-    const step = FIELD_STEP;
-    const grid = this.grids[0]!;
-    const cols = this.cols[0]!;
-    const rows = this.rows[0]!;
-    this.used[0] = true;
-    const ink = width * 0.905 * 2 * Math.sqrt((sxx + syy) / 2);
-    // Inverse covariance, kept invertible for cells along a line.
-    const a = sxx + 0.25;
-    const d = syy + 0.25;
-    const det = a * d - sxy * sxy;
-    const ia = d / det;
-    const id = a / det;
-    const ib = -sxy / det;
-    const c0 = Math.ceil(x0 / step);
-    const c1 = Math.floor(x1 / step);
-    const r0 = Math.ceil(y0 / step);
-    const r1 = Math.floor(y1 / step);
-    // Vertices off the view count too, so the density does not change with the view: counted one by one for a
-    // small cell, or as the ellipse's area (within the box's) for one much larger than the view.
-    const total = Math.max(0, c1 - c0 + 1) * Math.max(0, r1 - r0 + 1);
-    let inside = 0;
-    if (total > 4 * cols * rows) inside = Math.min(total, (4 * Math.PI * Math.sqrt(det)) / (step * step));
-    else
-      for (let row = r0; row <= r1; row++) {
-        const dy = row * step - cy;
-        for (let col = c0; col <= c1; col++) {
-          const dx = col * step - cx;
-          if (ia * dx * dx + 2 * ib * dx * dy + id * dy * dy <= 4) inside++;
-        }
-      }
-    if (inside > 0) {
-      const share = ink / (inside * step * step);
-      for (let row = Math.max(0, r0); row <= Math.min(rows - 1, r1); row++) {
-        const dy = row * step - cy;
-        for (let col = Math.max(0, c0); col <= Math.min(cols - 1, c1); col++) {
-          const dx = col * step - cx;
-          if (ia * dx * dx + 2 * ib * dx * dy + id * dy * dy <= 4) grid[row * cols + col]! += share;
-        }
-      }
-      return;
-    }
-    const col = Math.round(cx / step);
-    const row = Math.round(cy / step);
-    if (col >= 0 && col < cols && row >= 0 && row < rows) grid[row * cols + col]! += ink / (step * step);
-  }
-
-  /** Add every coarser grid into the finest, by bilinear interpolation down the levels; returns the finest. */
-  collapse(): Float32Array {
-    for (let l = FIELD_LEVELS - 1; l > 0; l--) {
-      if (!this.used[l]) continue;
-      const coarse = this.grids[l]!;
-      const fine = this.grids[l - 1]!;
-      const cc = this.cols[l]!;
-      const cr = this.rows[l]!;
-      const fc = this.cols[l - 1]!;
-      const fr = this.rows[l - 1]!;
-      for (let row = 0; row < fr; row++) {
-        const r0 = Math.min(cr - 1, row >> 1);
-        const r1 = Math.min(cr - 1, (row + 1) >> 1);
-        for (let col = 0; col < fc; col++) {
-          const c0 = Math.min(cc - 1, col >> 1);
-          const c1 = Math.min(cc - 1, (col + 1) >> 1);
-          fine[row * fc + col]! += (coarse[r0 * cc + c0]! + coarse[r0 * cc + c1]! + coarse[r1 * cc + c0]! + coarse[r1 * cc + c1]!) / 4;
-        }
-      }
-      this.used[l - 1] = true;
-    }
-    return this.grids[0]!;
-  }
-}
 
 export class GraphPainter {
   private readonly shapes = new Buffer(SHAPE);
@@ -343,14 +169,15 @@ export class GraphPainter {
   private bandCount = 0;
   private singleNodes: Uint32Array = new Uint32Array(0);
   private singleCount = 0;
-  private bandKeys = new Float64Array(0);
-  private bandEnds = new Float64Array(0);
   /** Cells of the last dense cut whose inside edges are drawn as a density over the cell: (cell, edges). */
   private cellList: Float64Array = new Float64Array(0);
   private cellCount = 0;
   private readonly refineScratch = new RefineScratch();
-  /** Lines per pixel of the wide bands, at the vertices of a grid over the view (see `addToField`). */
-  private readonly field = new DensityField();
+  /** Lines per pixel of a dense graph's edges over the view. */
+  private readonly lineField = new LineField();
+  private hullScreen = new Float64Array(0);
+  /** The coarse cut's lines per pixel, which the full cut weighs its detail by. */
+  private throughCache = new Float32Array(0);
   private levelBuffer = new Float32Array(0);
   /** Round flow dots, drawn over the edges and under the arrowheads. */
   private readonly dots = new Buffer(SHAPE);
@@ -469,8 +296,24 @@ export class GraphPainter {
             const kept = this.selectStyled(input, styled, rect);
             this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
           }
+        } else if (spatial.overflow && this.crossingEdges(input, rect, budget.edges, budget.fill ?? Infinity) < 0) {
+          // More edges cross the view than a frame draws one by one: those in the common style through the pair
+          // hierarchy, as a dense graph's are, and every other one on its own.
+          this.paintDense(input, rect, budget, spatial.overflow);
+          const styled = input.styledEdges ?? null;
+          if (styled && styled.length > 0) {
+            const kept = this.selectStyled(input, styled, rect);
+            this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
+          }
+        } else if (spatial.overflow) {
+          // They fit: `crossingEdges` left them in the query buffer.
+          this.alphaBoost = 1;
+          const kept = this.crossingEdges(input, rect, budget.edges, budget.fill ?? Infinity);
+          this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
         } else {
-          const kept = this.selectEdges(input, rect, budget.edges, budget.fill ?? Infinity);
+          // A graph too small for a pair hierarchy: every edge that crosses the view, however many.
+          this.alphaBoost = 1;
+          const kept = this.crossingEdges(input, rect, Infinity, Infinity);
           this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
         }
         this.alphaBoost = 1;
@@ -501,73 +344,31 @@ export class GraphPainter {
   }
 
   /**
-   * The edges to draw one by one, written to the front of `edgeQuery`; sets `alphaBoost`. All edges in view while
-   * they fit `budget` (a count) and `fill` (area: CSS pixels of length times width); otherwise an even sample that
-   * fits, taken in the index's fixed order, each drawn with the opacity of the edges it stands for. The sample is
-   * stable from frame to frame, and a larger share only adds edges to it. When the grid finds few candidates the
-   * grid query is thinned; when it finds many (a dense graph, whose edges all cross the view) the order is walked
-   * from its start, culling as it goes, until the budget is spent, so the cost follows the budget, not the graph.
+   * The edges whose line crosses the view, written to the front of `edgeQuery`, while they fit `budget` (a count)
+   * and `fill` (CSS pixels of on-screen length times width); -1 when they do not. Only the part of a line on the
+   * view counts: a long edge that crosses a corner costs what it covers.
    */
-  private selectEdges<N, E>(input: GraphFrameInput<N, E>, rect: Rect, budget: number, fill: number): number {
-    const { model, edgeStyles, zoom } = input;
+  private crossingEdges<N, E>(input: GraphFrameInput<N, E>, rect: Rect, budget: number, fill: number): number {
     const spatial = input.spatial!;
+    // Boxes meet the view more often than lines cross it (long edges, much more often), so candidates are tested
+    // one by one up to a fixed floor, a few milliseconds of work, however small the budget.
+    if (spatial.edges.countIn(rect) > Math.max(budget * 8, CANDIDATES)) return -1;
+    const count = spatial.edges.query(rect, this.edgeQuery);
+    const { model, edgeStyles, zoom } = input;
     const slots = input.edgeSlot;
-    const total = model.edgeCount;
-    const data = (): Uint32Array => this.edgeQuery.data;
-    const widthOf = (e: number): number => Math.max(1, edgeStyles[(slots ? slots[e]! : e) * EDGE_FLOATS + E_WIDTH]!);
-    // An edge's on-screen area, and whether its box meets the view (both in graph units, scaled by zoom).
-    const area = (e: number): number => {
-      const s = model.source[e]!;
-      const t = model.target[e]!;
-      const dx = model.x[t]! - model.x[s]!;
-      const dy = model.y[t]! - model.y[s]!;
-      return Math.sqrt(dx * dx + dy * dy) * zoom * widthOf(e);
-    };
-    const meets = (e: number): boolean => {
-      const s = model.source[e]!;
-      const t = model.target[e]!;
-      const x0 = model.x[s]!;
-      const x1 = model.x[t]!;
-      const y0 = model.y[s]!;
-      const y1 = model.y[t]!;
-      return !((x0 < rect.minX && x1 < rect.minX) || (x0 > rect.maxX && x1 > rect.maxX) || (y0 < rect.minY && y1 < rect.minY) || (y0 > rect.maxY && y1 > rect.maxY));
-    };
-    this.alphaBoost = 1;
-    if (spatial.edges.countIn(rect) <= budget * 2) {
-      const count = spatial.edges.query(rect, this.edgeQuery);
-      let spent = 0;
-      for (let k = 0; k < count; k++) spent += area(data()[k]!);
-      if (count <= budget && spent <= fill) return count;
-      const share = Math.min(budget / count, fill / spent);
-      const limit = share * total;
-      let kept = 0;
-      const buffer = data();
-      for (let k = 0; k < count; k++) {
-        const e = buffer[k]!;
-        if ((e * spatial.inverse) % total < limit) buffer[kept++] = e;
-      }
-      this.alphaBoost = kept > 0 ? count / kept : 1;
-      this.clipped = true;
-      return kept;
-    }
+    const data = this.edgeQuery.data;
     let kept = 0;
     let spent = 0;
-    let walked = 0;
-    let buffer = data();
-    for (; walked < total && kept < budget && spent < fill; walked++) {
-      const e = (walked * spatial.stride) % total;
-      if (!meets(e)) continue;
-      if (kept >= buffer.length) {
-        const grown = new Uint32Array(Math.max(1024, buffer.length * 2));
-        grown.set(buffer);
-        buffer = this.edgeQuery.data = grown;
-      }
-      buffer[kept++] = e;
-      spent += area(e);
+    for (let k = 0; k < count; k++) {
+      const e = data[k]!;
+      const s = model.source[e]!;
+      const t = model.target[e]!;
+      const length = clippedLength(model.x[s]!, model.y[s]!, model.x[t]!, model.y[t]!, rect);
+      if (length < 0) continue;
+      data[kept++] = e;
+      spent += length * zoom * Math.max(1, edgeStyles[(slots ? slots[e]! : e) * EDGE_FLOATS + E_WIDTH]!);
+      if (kept > budget || spent > fill) return -1;
     }
-    // What was walked is an even share of every edge, so the kept edges stand for total / walked each.
-    this.alphaBoost = walked > 0 ? total / walked : 1;
-    if (walked < total) this.clipped = true;
     return kept;
   }
 
@@ -596,8 +397,7 @@ export class GraphPainter {
    * and the edges inside cells left whole, go to a density field over the view; single node pairs that are joined
    * are lines.
    */
-  private paintDense<N, E>(input: GraphFrameInput<N, E>, rect: Rect, budget: { readonly edges: number; readonly fill?: number; readonly overdraw?: number; readonly dense?: number }): void {
-    const pairs = input.spatial!.dense!;
+  private paintDense<N, E>(input: GraphFrameInput<N, E>, rect: Rect, budget: { readonly edges: number; readonly fill?: number; readonly overdraw?: number; readonly dense?: number; readonly fieldStep?: number }, pairs: PairHierarchy = input.spatial!.dense!): void {
     const tree = pairs.tree;
     const { zoom, width, height, centerX, centerY, pixelRatio: dpr, edgeStyles, model } = input;
     const slot = (input.denseSlot ?? 0) * EDGE_FLOATS;
@@ -607,10 +407,9 @@ export class GraphPainter {
     const sx = (x: number): number => width / 2 + (x - centerX) * zoom;
     const sy = (y: number): number => height / 2 + (y - centerY) * zoom;
     const diagonal = Math.hypot(width, height);
-    const field = this.field;
-    field.reset(width, height);
-    const cols = field.cols[0]!;
-    const rows = field.rows[0]!;
+    const step = budget.fieldStep ?? 1;
+    const field = this.lineField;
+    field.reset(width, height, step);
     this.bandCount = 0;
     this.singleCount = 0;
     this.cellCount = 0;
@@ -623,9 +422,17 @@ export class GraphPainter {
         this.bandCells[o + 2] = edges;
       },
       nodes: (i: number, j: number): void => {
-        if ((this.singleCount + 1) * 2 > this.singleNodes.length) this.singleNodes = growU32(this.singleNodes, (this.singleCount + 1) * 2);
-        this.singleNodes[this.singleCount * 2] = i;
-        this.singleNodes[this.singleCount * 2 + 1] = j;
+        if ((this.singleCount + 1) * 3 > this.singleNodes.length) this.singleNodes = growU32(this.singleNodes, (this.singleCount + 1) * 3);
+        this.singleNodes[this.singleCount * 3] = i;
+        this.singleNodes[this.singleCount * 3 + 1] = j;
+        this.singleNodes[this.singleCount * 3 + 2] = NO_EDGE;
+        this.singleCount++;
+      },
+      edge: (e: number): void => {
+        if ((this.singleCount + 1) * 3 > this.singleNodes.length) this.singleNodes = growU32(this.singleNodes, (this.singleCount + 1) * 3);
+        this.singleNodes[this.singleCount * 3] = model.source[e]!;
+        this.singleNodes[this.singleCount * 3 + 1] = model.target[e]!;
+        this.singleNodes[this.singleCount * 3 + 2] = e;
         this.singleCount++;
       },
       cell: (c: number, edges: number): void => {
@@ -640,16 +447,15 @@ export class GraphPainter {
     const b = edgeStyles[slot + E_COLOR + 2]!;
     const alpha = edgeStyles[slot + E_COLOR + 3]!;
     const costs = {
-      // Narrow bands cost the area they cover (clipped to the view's diagonal both ways); wide ones cost the field
-      // vertices they cover.
+      // A bundle costs the field lines it crosses; what splitting it shows is 1 - its opacity where it is widest.
       band: (a: number, b: number, edges: number, out: Float64Array): void => {
+        out[0] = 0;
         if (a === b) {
-          // Lines per pixel over the cell: its edges' ink (mean length about 0.9 of its radius) over its area.
-          const z2 = zoom * zoom;
-          const sxx = tree.sxx[a]! * z2;
-          const syy = tree.syy[a]! * z2;
-          const spread = Math.sqrt(Math.max(1, sxx * syy - (tree.sxy[a]! * z2) ** 2));
-          out[2] = (1 - alpha) ** ((edges * lineWidth * 0.905 * 2 * Math.sqrt((sxx + syy) / 2)) / (4 * Math.PI * spread));
+          out[1] = 0;
+          const w = (tree.maxX[a]! - tree.minX[a]!) * zoom;
+          const h = (tree.maxY[a]! - tree.minY[a]!) * zoom;
+          const peak = (edges * lineWidth * 0.5214 * Math.sqrt((w * w + h * h) / 2) * 2.25) / Math.max(1, w * h);
+          out[2] = (1 - alpha) ** peak;
           return;
         }
         const dx = tree.mx[b]! - tree.mx[a]!;
@@ -657,17 +463,8 @@ export class GraphPainter {
         const len = Math.sqrt(dx * dx + dy * dy) || 1;
         const ha = SQRT3 * tree.spread(a, -dy / len, dx / len) * zoom;
         const hb = SQRT3 * tree.spread(b, -dy / len, dx / len) * zoom;
-        const along = Math.min(len * zoom, diagonal);
-        // 1 - the band's opacity where it is widest, the least opaque.
+        out[1] = Math.min(len * zoom, diagonal) / step;
         out[2] = (1 - alpha) ** ((edges * lineWidth) / (2 * Math.max(0.5, ha, hb)));
-        if (Math.min(ha, hb) >= FIELD_HALF_WIDTH) {
-          const step = fieldStep(Math.min(ha, hb));
-          out[0] = 0;
-          out[1] = 1 + (along * Math.min(diagonal, ha + hb)) / (step * step);
-        } else {
-          out[0] = along * Math.min(diagonal, Math.max(lineWidth, ha + hb));
-          out[1] = 0;
-        }
       },
       lines: (a: number, b: number): number => {
         let total = 0;
@@ -681,95 +478,119 @@ export class GraphPainter {
         return total;
       },
     };
-    // Bands carry density by covering area, so they are bounded by overdraw (how many times they cover the plot
-    // together), the field by a few passes over its vertices, single lines by the line-area budget.
-    this.denseTau = refine(
-      pairs,
-      view,
-      {
-        items: budget.dense ?? Math.min(budget.edges, 16_000),
-        area: (budget.overdraw ?? 48) * width * height,
-        lines: budget.fill ?? Infinity,
-        field: FIELD_PASSES * cols * rows,
-        minSize: 2,
-      },
-      costs,
-      sink,
-      this.refineScratch,
-    );
+    const items = budget.dense ?? Math.min(budget.edges, 16_000);
+    // What drawing a bundle as one smooth band could get wrong, in pixels times levels: over the area it covers on
+    // the view, its lines one by one differ from their average by about one line's opacity times the square root
+    // of the lines per pixel (fewer than one: some pixels have a line, most none), and as they pile up the haze
+    // saturates and differences fade; a band's shape is a model too, so a tenth of its own opacity is counted as
+    // well. All of it is seen only through what the other edges leave of the background (`through`), and a band
+    // under a pixel wide is a line already.
+    const opacityOf = (rho: number): number => 1 - (1 - alpha) ** rho;
+    const errorOf = (area: number, width: number, rho: number, through: number, shape: number): number => {
+      if (!(area > 0) || width <= 1) return 0;
+      const grain = alpha * Math.min(1, Math.sqrt(rho)) * (1 - alpha) ** rho;
+      return area * 255 * through * Math.max(grain, shape * opacityOf(rho));
+    };
+    const makeError =
+      (through: (x: number, y: number) => number) =>
+      (a: number, b: number, edges: number): number => {
+        if (a === b) {
+          const x0 = Math.max(0, sx(tree.minX[a]!));
+          const x1 = Math.min(width, sx(tree.maxX[a]!));
+          const y0 = Math.max(0, sy(tree.minY[a]!));
+          const y1 = Math.min(height, sy(tree.maxY[a]!));
+          if (x0 >= x1 || y0 >= y1) return 0;
+          const w = (tree.maxX[a]! - tree.minX[a]!) * zoom;
+          const h = (tree.maxY[a]! - tree.minY[a]!) * zoom;
+          const rho = (edges * lineWidth * 0.5214 * Math.sqrt((w * w + h * h) / 2)) / Math.max(1, w * h);
+          const t = Math.max(through((x0 + x1) / 2, (y0 + y1) / 2), through(x0, y0), through(x1, y1), through(x0, y1), through(x1, y0));
+          // The inside of a cell is a rough model: a third of its opacity may be off.
+          return errorOf((x1 - x0) * (y1 - y0), Math.max(w, h), rho, t, 0.3);
+        }
+        const ax = sx(tree.mx[a]!);
+        const ay = sy(tree.my[a]!);
+        const bx = sx(tree.mx[b]!);
+        const by = sy(tree.my[b]!);
+        const len = Math.hypot(bx - ax, by - ay) || 1;
+        const ux = (bx - ax) / len;
+        const uy = (by - ay) / len;
+        const ha = SQRT3 * tree.spread(a, -uy, ux) * zoom;
+        const hb = SQRT3 * tree.spread(b, -uy, ux) * zoom;
+        const ea = SQRT3 * tree.spread(a, ux, uy) * zoom;
+        const eb = SQRT3 * tree.spread(b, ux, uy) * zoom;
+        // The axis, out to where its lines start and end, over the view grown by the band's reach.
+        const reach = Math.max(ha, hb);
+        const grown = { minX: -reach, minY: -reach, maxX: width + reach, maxY: height + reach };
+        const x0 = ax - ux * ea;
+        const y0 = ay - uy * ea;
+        const x1 = bx + ux * eb;
+        const y1 = by + uy * eb;
+        const total = len + ea + eb;
+        const along = clippedLength(x0, y0, x1, y1, grown);
+        if (along <= 0) return 0;
+        // The middle of the part on the view, as a fraction of the axis.
+        const mid = clipMiddle(x0, y0, x1, y1, grown);
+        const t = Math.min(1, Math.max(0, (mid * total - ea) / len));
+        const across = 2 * (ha * (1 - t) + hb * t) + lineWidth;
+        const rho = (edges * lineWidth) / across;
+        // Where it is seen: the middle of the axis's part on the view itself, else the nearest point of the view.
+        const onView = clipMiddle(x0, y0, x1, y1, { minX: 0, minY: 0, maxX: width, maxY: height });
+        const mx = Math.min(width, Math.max(0, x0 + (x1 - x0) * onView));
+        const my = Math.min(height, Math.max(0, y0 + (y1 - y0) * onView));
+        const seen = through(mx, my);
+        // A band's model is exact for cells small against how far apart they are, off by their ratio otherwise.
+        const shape = Math.min(1, (ha + hb + ea + eb) / (2 * len));
+        return errorOf(along * Math.min(across, diagonal), across, rho, seen, shape);
+      };
+    // At rest, two cuts: a coarse one shows how saturated the haze is where, then the full cut spends its detail
+    // where the background still shows through, since that is where detail can be seen.
+    if (step <= 1 && items >= 64) {
+      this.cutDense(pairs, view, items / 4, alpha, budget, { ...costs, error: makeError(() => 1) }, sink);
+      // The haze is smooth where it matters here: a coarse grid measures it.
+      field.reset(width, height, 4 * step);
+      this.fieldInto(field, tree, zoom, lineWidth, sx, sy);
+      this.singlesIntoField(field, model, lifted, sx, sy, lineWidth);
+      const counts = field.resolve();
+      const cols = field.cols;
+      const rows = field.rows;
+      const log = Math.log(1 - Math.min(alpha, 0.999999));
+      if (this.throughCache.length < cols * rows) this.throughCache = new Float32Array(cols * rows);
+      this.throughCache.set(counts.subarray(0, cols * rows));
+      const cache = this.throughCache;
+      const coarse = field.step;
+      const sample = (x: number, y: number): number => {
+        const col = Math.min(cols - 1, Math.max(0, Math.round(x / coarse)));
+        const row = Math.min(rows - 1, Math.max(0, Math.round(y / coarse)));
+        return Math.exp(log * cache[row * cols + col]!);
+      };
+      field.reset(width, height, step);
+      this.bandCount = 0;
+      this.singleCount = 0;
+      this.cellCount = 0;
+      this.denseTau = this.cutDense(pairs, view, items, alpha, budget, { ...costs, error: makeError(sample) }, sink);
+    } else this.denseTau = this.cutDense(pairs, view, items, alpha, budget, { ...costs, error: makeError(() => 1) }, sink);
     if (this.denseTau > 2) this.clipped = true;
+    this.fieldInto(field, tree, zoom, lineWidth, sx, sy);
 
-    // Bands, sorted by quantized opacity so an engine that fills per color (Canvas 2D) batches them.
-    const gradient = input.gradientBands !== false;
-    if (this.bandKeys.length < this.bandCount) {
-      this.bandKeys = new Float64Array(this.bandCount);
-      this.bandEnds = new Float64Array(this.bandCount * 2);
-    }
-    const ends = this.bandEnds;
-    for (let k = 0; k < this.bandCount; k++) {
-      const ca = this.bandCells[k * 3]!;
-      const cb = this.bandCells[k * 3 + 1]!;
-      const edges = this.bandCells[k * 3 + 2]!;
-      const dx = tree.mx[cb]! - tree.mx[ca]!;
-      const dy = tree.my[cb]! - tree.my[ca]!;
-      const len = Math.sqrt(dx * dx + dy * dy) || 1;
-      const ha = Math.max(0.5, SQRT3 * tree.spread(ca, -dy / len, dx / len) * zoom);
-      const hb = Math.max(0.5, SQRT3 * tree.spread(cb, -dy / len, dx / len) * zoom);
-      // Lines per pixel across the band at each end: its edges' width spread over the band's width there.
-      const la = 1 - (1 - alpha) ** ((edges * lineWidth) / (2 * ha));
-      const lb = 1 - (1 - alpha) ** ((edges * lineWidth) / (2 * hb));
-      ends[k * 2] = gradient ? la : (la + lb) / 2;
-      ends[k * 2 + 1] = gradient ? lb : (la + lb) / 2;
-      this.bandKeys[k] = Math.round(ends[k * 2]! * 63) * AGG_INDEX_SPAN + k;
-    }
-    // The density field over the view: wide bands and whole cells add their lines per pixel at the vertices they cover.
-    let fieldUsed = false;
-    for (let k = 0; k < this.cellCount; k++) {
-      const c = this.cellList[k * 2]!;
-      // Only what the nodes' own dots do not already cover.
-      if (tree.radius(c) * 2 * zoom <= 2) continue;
-      const z2 = zoom * zoom;
-      field.addCell(sx(tree.mx[c]!), sy(tree.my[c]!), tree.sxx[c]! * z2, tree.syy[c]! * z2, tree.sxy[c]! * z2, sx(tree.minX[c]!), sy(tree.minY[c]!), sx(tree.maxX[c]!), sy(tree.maxY[c]!), this.cellList[k * 2 + 1]! * lineWidth);
-      fieldUsed = true;
-    }
-    const order = this.bandKeys.subarray(0, this.bandCount).sort();
-    for (let j = 0; j < this.bandCount; j++) {
-      const k = order[j]! % AGG_INDEX_SPAN;
-      const ca = this.bandCells[k * 3]!;
-      const cb = this.bandCells[k * 3 + 1]!;
-      const ax = sx(tree.mx[ca]!);
-      const ay = sy(tree.my[ca]!);
-      const bx = sx(tree.mx[cb]!);
-      const by = sy(tree.my[cb]!);
-      const len = Math.hypot(bx - ax, by - ay) || 1;
-      const nx = -(by - ay) / len;
-      const ny = (bx - ax) / len;
-      const ha = Math.max(0.5, SQRT3 * tree.spread(ca, nx, ny) * zoom);
-      const hb = Math.max(0.5, SQRT3 * tree.spread(cb, nx, ny) * zoom);
-      if (Math.min(ha, hb) >= FIELD_HALF_WIDTH) {
-        field.addBand(ax, ay, bx, by, nx, ny, ha, hb, (this.bandCells[k * 3 + 2]! * lineWidth) / 2);
-        fieldUsed = true;
-        continue;
-      }
-      const qa = Math.round(ends[k * 2]! * 63) / 63;
-      const qb = Math.round(ends[k * 2 + 1]! * 63) / 63;
-      this.bandQuad(ax, ay, bx, by, nx, ny, ha, hb, r, g, b, qa, qb, dpr);
-    }
-    if (fieldUsed) {
-      const grid = field.collapse();
-      this.maskField(grid, cols, rows, tree, sx, sy);
-      this.drawField(grid, cols, rows, r, g, b, alpha);
-    }
-
-    // Single pairs that are joined: lines between the node outlines, in the common style.
+    // Single pairs that are joined, in the common style: a line too faint to tell apart from its neighbours (an
+    // eighth of the way to its color or less) goes into the field, where lines add up exactly; an engine draws
+    // each line in 8 bits, so a thousand faint lines drawn one by one would round a thousand times.
+    const faint = alpha <= FAINT_LINE;
     const dash = edgeStyles[slot + E_DASH]!;
     const gap = edgeStyles[slot + E_GAP]!;
     const endGap = edgeStyles[slot + E_END_GAP]!;
     for (let k = 0; k < this.singleCount; k++) {
-      const i = this.singleNodes[k * 2]!;
-      const j = this.singleNodes[k * 2 + 1]!;
+      const i = this.singleNodes[k * 3]!;
+      const j = this.singleNodes[k * 3 + 1]!;
+      // A listed edge is known to exist; a node pair of "every pair" is looked up.
+      const known = this.singleNodes[k * 3 + 2]! !== NO_EDGE;
       // The dragged node's lines are drawn by the overlay, where it is now.
-      if (i === lifted || j === lifted || !model.joined(i, j)) continue;
+      if (i === lifted || j === lifted || (!known && !model.joined(i, j))) continue;
+      if (faint && dash <= 0) {
+        // Too faint to see on its own: its width is drawn on the grid two pixels apart; what adds up is kept.
+        field.addBundle(sx(model.x[i]!), sy(model.y[i]!), sx(model.x[j]!), sy(model.y[j]!), 0, 0, 0, 0, 1, lineWidth, 4);
+        continue;
+      }
       this.ensureProjected(i, input);
       this.ensureProjected(j, input);
       const a = i * NODE_GEOMETRY;
@@ -796,58 +617,86 @@ export class GraphPainter {
       d[o + 10] = b;
       d[o + 11] = alpha;
     }
+    if (field.used) {
+      const counts = field.resolve();
+      if (this.hullScreen.length < tree.hullCount * 2) this.hullScreen = new Float64Array(tree.hullCount * 2);
+      for (let k = 0; k < tree.hullCount; k++) {
+        this.hullScreen[k * 2] = sx(tree.hull[k * 2]!);
+        this.hullScreen[k * 2 + 1] = sy(tree.hull[k * 2 + 1]!);
+      }
+      field.clip(this.hullScreen, tree.hullCount);
+      this.drawField(counts, field.cols, field.rows, step, r, g, b, alpha);
+    }
   }
 
-  /**
-   * Clear the field outside the convex hull of the nodes, where no edge can be: the coarse grids blur a band past
-   * its outline by up to a step, which would show as a halo around the graph. The tree keeps the hull.
-   */
-  private maskField(grid: Float32Array, cols: number, rows: number, tree: PairTree, sx: (x: number) => number, sy: (y: number) => number): void {
-    const n = tree.hullCount;
-    if (n < 3) return;
-    const h = tree.hull;
-    // Per row, the hull spans one interval (it is convex): clear the vertices outside it.
-    for (let row = 0; row < rows; row++) {
-      const y = row * FIELD_STEP;
-      let left = Infinity;
-      let right = -Infinity;
-      for (let e = 0; e < n; e++) {
-        const f = (e + 1) % n;
-        const y0 = sy(h[e * 2 + 1]!);
-        const y1 = sy(h[f * 2 + 1]!);
-        if ((y < y0 && y < y1) || (y > y0 && y > y1)) continue;
-        const x0 = sx(h[e * 2]!);
-        const x1 = sx(h[f * 2]!);
-        const x = y0 === y1 ? Math.min(x0, x1) : x0 + ((y - y0) / (y1 - y0)) * (x1 - x0);
-        const x2 = y0 === y1 ? Math.max(x0, x1) : x;
-        if (x < left) left = x;
-        if (x2 > right) right = x2;
-      }
-      const from = row * cols;
-      if (left > right) {
-        grid.fill(0, from, from + cols);
-        continue;
-      }
-      const c0 = Math.min(cols, Math.max(0, Math.ceil(left / FIELD_STEP)));
-      const c1 = Math.min(cols - 1, Math.floor(right / FIELD_STEP));
-      if (c0 > 0) grid.fill(0, from, from + c0);
-      if (c1 + 1 < cols) grid.fill(0, from + Math.max(0, c1 + 1), from + cols);
+  /** The last cut's single edges into `field`, all of them: for the coarse cut, which only measures the haze. */
+  private singlesIntoField<N, E>(field: LineField, model: GraphModel<N, E>, lifted: number, sx: (x: number) => number, sy: (y: number) => number, lineWidth: number): void {
+    for (let k = 0; k < this.singleCount; k++) {
+      const i = this.singleNodes[k * 3]!;
+      const j = this.singleNodes[k * 3 + 1]!;
+      if (i === lifted || j === lifted || (this.singleNodes[k * 3 + 2]! === NO_EDGE && !model.joined(i, j))) continue;
+      field.addBundle(sx(model.x[i]!), sy(model.y[i]!), sx(model.x[j]!), sy(model.y[j]!), 0, 0, 0, 0, 1, lineWidth, 4);
+    }
+  }
+
+  /** One cut of a dense graph's pair hierarchy into `sink`; returns where it stopped (see `refine`). */
+  private cutDense(pairs: PairHierarchy, view: CutView, items: number, alpha: number, budget: { readonly fill?: number }, costs: RefineCosts, sink: RefineSink): number {
+    return refine(
+      pairs,
+      view,
+      {
+        items,
+        area: Infinity,
+        // Faint single lines go to the field, where they cost what bundles cost.
+        lines: alpha <= FAINT_LINE ? Infinity : (budget.fill ?? Infinity),
+        field: Infinity,
+        minSize: 2,
+      },
+      costs,
+      sink,
+      this.refineScratch,
+    );
+  }
+
+  /** The last cut's bundles and cell insides into `field`. */
+  private fieldInto(field: LineField, tree: PairTree, zoom: number, lineWidth: number, sx: (x: number) => number, sy: (y: number) => number): void {
+    for (let k = 0; k < this.bandCount; k++) {
+      const ca = this.bandCells[k * 3]!;
+      const cb = this.bandCells[k * 3 + 1]!;
+      const ax = sx(tree.mx[ca]!);
+      const ay = sy(tree.my[ca]!);
+      const bx = sx(tree.mx[cb]!);
+      const by = sy(tree.my[cb]!);
+      const len = Math.hypot(bx - ax, by - ay) || 1;
+      const ux = (bx - ax) / len;
+      const uy = (by - ay) / len;
+      const ha = SQRT3 * tree.spread(ca, -uy, ux) * zoom;
+      const hb = SQRT3 * tree.spread(cb, -uy, ux) * zoom;
+      const ea = SQRT3 * tree.spread(ca, ux, uy) * zoom;
+      const eb = SQRT3 * tree.spread(cb, ux, uy) * zoom;
+      field.addBundle(ax, ay, bx, by, ha, hb, ea, eb, this.bandCells[k * 3 + 2]!, lineWidth);
+    }
+    for (let k = 0; k < this.cellCount; k++) {
+      const c = this.cellList[k * 2]!;
+      field.addCell(sx(tree.minX[c]!), sy(tree.minY[c]!), sx(tree.maxX[c]!), sy(tree.maxY[c]!), this.cellList[k * 2 + 1]!, lineWidth);
     }
   }
 
   /** The density field's opacities, ready for `fillField` in this frame's pass (`fieldCols` 0: none). */
   private fieldCols = 0;
   private fieldRows = 0;
+  private fieldStep = 1;
   private readonly fieldColor = new Float32Array(3);
 
   /** Turn lines per pixel into opacity at each field vertex, for `submitField`. */
-  private drawField(field: Float32Array, cols: number, rows: number, r: number, g: number, b: number, alpha: number): void {
+  private drawField(field: Float32Array, cols: number, rows: number, step: number, r: number, g: number, b: number, alpha: number): void {
     if (this.levelBuffer.length < cols * rows) this.levelBuffer = new Float32Array(cols * rows);
     const levels = this.levelBuffer;
     const log = Math.log(1 - Math.min(alpha, 0.999999));
     for (let k = 0; k < cols * rows; k++) levels[k] = 1 - Math.exp(log * field[k]!);
     this.fieldCols = cols;
     this.fieldRows = rows;
+    this.fieldStep = step;
     this.fieldColor[0] = r;
     this.fieldColor[1] = g;
     this.fieldColor[2] = b;
@@ -857,7 +706,7 @@ export class GraphPainter {
   private submitField(surface: RenderSurface, dpr: number): void {
     if (this.fieldCols === 0) return;
     const c = this.fieldColor;
-    surface.fillField(this.levelBuffer.subarray(0, this.fieldCols * this.fieldRows), this.fieldCols, this.fieldRows, 0, 0, FIELD_STEP * dpr, c[0]!, c[1]!, c[2]!);
+    surface.fillField(this.levelBuffer.subarray(0, this.fieldCols * this.fieldRows), this.fieldCols, this.fieldRows, 0, 0, this.fieldStep * dpr, c[0]!, c[1]!, c[2]!);
     this.fieldCols = 0;
   }
 
@@ -1661,4 +1510,54 @@ export function segmentCrosses(x0: number, y0: number, x1: number, y1: number, r
     return true;
   };
   return clip(-dx, x0 - rect.minX) && clip(dx, rect.maxX - x0) && clip(-dy, y0 - rect.minY) && clip(dy, rect.maxY - y0);
+}
+
+/** The length of the part of the segment from (`x0`, `y0`) to (`x1`, `y1`) inside `rect`, or -1 when it misses it (Liang-Barsky). */
+export function clippedLength(x0: number, y0: number, x1: number, y1: number, rect: Rect): number {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  let lo = 0;
+  let hi = 1;
+  for (let k = 0; k < 4; k++) {
+    const p = k === 0 ? -dx : k === 1 ? dx : k === 2 ? -dy : dy;
+    const q = k === 0 ? x0 - rect.minX : k === 1 ? rect.maxX - x0 : k === 2 ? y0 - rect.minY : rect.maxY - y0;
+    if (p === 0) {
+      if (q < 0) return -1;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) {
+      if (r > hi) return -1;
+      if (r > lo) lo = r;
+    } else {
+      if (r < lo) return -1;
+      if (r < hi) hi = r;
+    }
+  }
+  return (hi - lo) * Math.sqrt(dx * dx + dy * dy);
+}
+
+/** The middle of the part of the segment from (`x0`, `y0`) to (`x1`, `y1`) inside `rect`, as a fraction of it (0.5 when it misses). */
+export function clipMiddle(x0: number, y0: number, x1: number, y1: number, rect: Rect): number {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  let lo = 0;
+  let hi = 1;
+  for (let k = 0; k < 4; k++) {
+    const p = k === 0 ? -dx : k === 1 ? dx : k === 2 ? -dy : dy;
+    const q = k === 0 ? x0 - rect.minX : k === 1 ? rect.maxX - x0 : k === 2 ? y0 - rect.minY : rect.maxY - y0;
+    if (p === 0) {
+      if (q < 0) return 0.5;
+      continue;
+    }
+    const r = q / p;
+    if (p < 0) {
+      if (r > hi) return 0.5;
+      if (r > lo) lo = r;
+    } else {
+      if (r < lo) return 0.5;
+      if (r < hi) hi = r;
+    }
+  }
+  return (lo + hi) / 2;
 }

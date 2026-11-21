@@ -134,6 +134,9 @@ class GlRecorder {
         }
         return out;
       }
+      case "field":
+        // A texture: what it shades is checked through the renderer's own tests.
+        return [];
       case "colorTriangles": {
         const out: DrawObs[] = [];
         for (let v = 0; v + 2 < command.count; v += 3) {

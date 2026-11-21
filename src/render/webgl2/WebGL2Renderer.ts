@@ -205,6 +205,21 @@ export class WebGL2Renderer implements ChartRenderer {
     this.interleaved("colorTriangles", vertices, vertexCount - (vertexCount % 3), 6);
   }
 
+  /**
+   * A grid of opacities in one color (see `ChartRenderSurface.fillField`), drawn as one texture with linear
+   * filtering, its texel centers on the grid's vertices.
+   */
+  fillField(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void {
+    if (cols <= 0 || rows <= 0 || alpha.length < cols * rows || !(step > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const bytes = new Uint8Array(cols * rows);
+    for (let k = 0; k < cols * rows; k++) {
+      const a = alpha[k]!;
+      bytes[k] = a >= 1 ? 255 : a > 0 ? Math.round(a * 255) : 0;
+    }
+    const first = this.stage(Float32Array.of(x - step / 2, y - step / 2, cols * step, rows * step), 2);
+    this.commands.push({ kind: "field", first, alpha: bytes, cols, rows, color: [r, g, b], canvasWidth: this.canvasWidth, canvasHeight: this.canvasHeight });
+  }
+
   /** A second WebGL2 surface on `canvas`, with its own context. */
   createSurface(canvas: HTMLCanvasElement): ChartRenderer {
     return new WebGL2Renderer(canvas, { createBackend: this.createBackend });

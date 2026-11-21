@@ -472,15 +472,22 @@ export class PairHierarchy {
 
   /**
    * Per leaf pair, the entries that fall in it, kept so a frame can split a leaf pair further (see `refine`): for
-   * "every pair", the exceptions; for listed edges, the edges. `list[listStart[p] .. listStart[p + 1])` are
-   * indices into `listSource` and `listTarget`; `refine` reorders them within that range as it splits.
+   * "every pair", the exceptions; for listed edges, the edges. `list[listStart[p] .. listEnd[p])` are indices
+   * into `listSource` and `listTarget` (an empty range for a pair split further); `refine` reorders them within
+   * that range as it splits.
    */
   listStart: Int32Array = new Int32Array(1);
+  listEnd: Int32Array = new Int32Array(1);
   list: Uint32Array = new Uint32Array(0);
   listSource: ArrayLike<number> = [];
   listTarget: ArrayLike<number> = [];
   /** Whether the lists are exceptions to "every pair" (counts are |A|·|B| less them) or the edges themselves. */
   listIsExceptions = false;
+  /**
+   * For listed edges: which of them the counts cover (null: all). Edges styled apart from the common style are
+   * drawn one by one, so they are left out here and counted once.
+   */
+  keep: Uint8Array | null = null;
 
   /**
    * Counts for "every pair of distinct nodes": |A|·|B| per pair (n·(n-1)/2 inside a cell), less the exception
@@ -495,16 +502,32 @@ export class PairHierarchy {
       const a = this.cellA[p]!;
       const b = this.cellB[p]!;
       const full = a === b ? (t.size(a) * (t.size(a) - 1)) / 2 : t.size(a) * t.size(b);
-      this.edges[p] = full - (this.listStart[p + 1]! - this.listStart[p]!);
+      this.edges[p] = full - (this.listEnd[p]! - this.listStart[p]!);
     }
     this.sumUp();
   }
 
   /** Counts for listed edges: each assigned to its leaf pair. */
-  countListed(source: Uint32Array, target: Uint32Array, edgeCount: number): void {
+  countListed(source: Uint32Array, target: Uint32Array, edgeCount: number, keep: Uint8Array | null = null): void {
     this.listIsExceptions = false;
     this.assign(source, target, edgeCount);
-    for (let p = 0; p < this.count; p++) this.edges[p] = this.listStart[p + 1]! - this.listStart[p]!;
+    this.deepen();
+    this.recount(keep);
+  }
+
+  /** Count listed edges again, those `keep` marks with 1 (all for null): after a restyle moved edges in or out. */
+  recount(keep: Uint8Array | null): void {
+    if (this.listIsExceptions) return;
+    this.keep = keep;
+    for (let p = 0; p < this.count; p++) {
+      if (!keep) {
+        this.edges[p] = this.listEnd[p]! - this.listStart[p]!;
+        continue;
+      }
+      let n = 0;
+      for (let k = this.listStart[p]!; k < this.listEnd[p]!; k++) n += keep[this.list[k]!]!;
+      this.edges[p] = n;
+    }
     this.sumUp();
   }
 
@@ -523,10 +546,106 @@ export class PairHierarchy {
     const list = new Uint32Array(start[this.count]!);
     const fill = start.slice(0, this.count);
     for (let k = 0; k < count; k++) if (leaves[k]! >= 0) list[fill[leaves[k]!]!++] = k;
-    this.listStart = start;
+    this.listStart = start.subarray(0, this.count);
+    this.listEnd = start.slice(1);
     this.list = list;
     this.listSource = source;
     this.listTarget = target;
+  }
+
+  /**
+   * Split stored leaf pairs further while they list more than `LEAF_LIST` edges, partitioning each list once here
+   * instead of in every frame that splits it: the larger cell is halved (a pair inside one cell becomes its
+   * halves' insides and the pair between them), as `refine` would. Children are appended, after their parent.
+   */
+  private deepen(): void {
+    const t = this.tree;
+    const list = this.list;
+    const src = this.listSource;
+    const dst = this.listTarget;
+    let capacity = this.count;
+    const grow = (need: number): void => {
+      if (need <= capacity) return;
+      capacity = Math.max(need, capacity * 2);
+      const I = (a: Int32Array, fill: number): Int32Array => {
+        const b = new Int32Array(capacity).fill(fill);
+        b.set(a.subarray(0, this.count));
+        return b;
+      };
+      this.cellA = I(this.cellA, 0);
+      this.cellB = I(this.cellB, 0);
+      this.first = I(this.first, -1);
+      this.listStart = I(this.listStart, 0);
+      this.listEnd = I(this.listEnd, 0);
+      const kids = new Uint8Array(capacity);
+      kids.set(this.children.subarray(0, this.count));
+      this.children = kids;
+    };
+    grow(this.count + 1);
+    const inCell = (k: number, c: number): number => {
+      const lo = t.lo[c]!;
+      const hi = t.hi[c]!;
+      const i = t.pos[src[k]!]!;
+      const j = t.pos[dst[k]!]!;
+      return (i >= lo && i < hi ? 1 : 0) + (j >= lo && j < hi ? 1 : 0);
+    };
+    /** Move the entries of `list[lo..hi)` that `test` accepts to the front; returns where the rest start. */
+    const partition = (lo: number, hi: number, test: (k: number) => boolean): number => {
+      let i = lo;
+      let j = hi - 1;
+      while (i <= j) {
+        if (test(list[i]!)) i++;
+        else {
+          const x = list[i]!;
+          list[i] = list[j]!;
+          list[j] = x;
+          j--;
+        }
+      }
+      return i;
+    };
+    for (let p = 0; p < this.count; p++) {
+      if (this.first[p]! >= 0 || this.listEnd[p]! - this.listStart[p]! <= LEAF_LIST) continue;
+      const a = this.cellA[p]!;
+      const b = this.cellB[p]!;
+      const lo = this.listStart[p]!;
+      const hi = this.listEnd[p]!;
+      const kids: number[] = [];
+      if (a === b) {
+        if (t.left[a]! < 0) continue;
+        const l = t.left[a]!;
+        const r = t.right[a]!;
+        const m1 = partition(lo, hi, (k) => inCell(k, l) === 2);
+        const m2 = partition(m1, hi, (k) => inCell(k, r) === 2);
+        kids.push(l, l, lo, m1, r, r, m1, m2, l, r, m2, hi);
+      } else {
+        if (t.left[a]! < 0 && t.left[b]! < 0) continue;
+        const splitA = t.left[b]! < 0 || (t.left[a]! >= 0 && t.radius(a) >= t.radius(b));
+        const cell = splitA ? a : b;
+        const other = splitA ? b : a;
+        const l = t.left[cell]!;
+        const r = t.right[cell]!;
+        const mid = partition(lo, hi, (k) => inCell(k, l) > 0);
+        if (splitA) kids.push(l, other, lo, mid, r, other, mid, hi);
+        else kids.push(other, l, lo, mid, other, r, mid, hi);
+      }
+      const n = kids.length / 4;
+      grow(this.count + n);
+      this.first[p] = this.count;
+      this.children[p] = n;
+      this.listStart[p] = 0;
+      this.listEnd[p] = 0;
+      for (let k = 0; k < n; k++) {
+        const c = this.count++;
+        this.cellA[c] = kids[k * 4]!;
+        this.cellB[c] = kids[k * 4 + 1]!;
+        this.first[c] = -1;
+        this.children[c] = 0;
+        this.listStart[c] = kids[k * 4 + 2]!;
+        this.listEnd[c] = kids[k * 4 + 3]!;
+      }
+    }
+    if (this.edges.length < this.count) this.edges = new Float64Array(this.count);
   }
 
   /** Internal pairs total their children; children come after their parent, so a backward walk suffices. */
@@ -550,6 +669,8 @@ export interface CutSink {
   band(a: number, b: number, edges: number): void;
   /** Edges between two single nodes, to be drawn one by one (the caller tests which exist). */
   nodes(i: number, j: number): void;
+  /** For listed edges: one edge (its index), to be drawn on its own. */
+  edge?(e: number): void;
 }
 
 /** The view a cut is for: graph-unit rectangle, zoom, line width (CSS px). */
@@ -559,6 +680,21 @@ export interface CutView {
   readonly maxX: number;
   readonly maxY: number;
   readonly zoom: number;
+}
+
+/** The listed edges `list[lo..hi)` that the counts cover and whose segment's box meets the view: emitted, and counted. */
+function emitEdges(pairs: PairHierarchy, lo: number, hi: number, sink: CutSink | null, view: CutView): number {
+  const t = pairs.tree;
+  const keep = pairs.keep;
+  let items = 0;
+  for (let k = lo; k < hi; k++) {
+    const edge = pairs.list[k]!;
+    if (keep && keep[edge] === 0) continue;
+    if (!t.segmentMeets(pairs.listSource[edge]!, pairs.listTarget[edge]!, view)) continue;
+    sink?.edge?.(edge);
+    items++;
+  }
+  return items;
 }
 
 /** The node pairs of two tree leaves (or inside one) whose segment's box meets the view: emitted, and counted. */
@@ -629,12 +765,21 @@ export interface RefineCosts {
   band(a: number, b: number, edges: number, out: Float64Array): void;
   /** The line area of the edges between the nodes of leaf cells `a` and `b` (the same cell for its inside). */
   lines(a: number, b: number): number;
+  /**
+   * How much drawing `edges` edges between cells `a` and `b` (or inside `a` when `b` is `a`) as one bundle could
+   * differ from drawing them one by one, in pixels times levels on the view: the entry with the most is split
+   * first. Optional: without it, an entry ranks by its size on the view times `out[2]` of `band`.
+   */
+  error?(a: number, b: number, edges: number): number;
 }
 
 export interface RefineSink extends CutSink {
   /** The edges inside cell `c`, not split further: drawn as the density they spread over the cell. */
   cell(c: number, edges: number): void;
 }
+
+/** A stored leaf pair of listed edges lists at most this many, unless its cells cannot be split (see `deepen`). */
+const LEAF_LIST = 64;
 
 /** Size classes of `refine`'s queue: a quarter octave each, from 1 CSS px up. */
 const CLASSES = 128;
@@ -734,7 +879,7 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
     costs.band(a, b, edges, out);
     scratch.area[e] = a === b ? 0 : out[0]!;
     scratch.field[e] = a === b ? 0 : out[1]!;
-    scratch.key[e] = Math.max(onView(a), onView(b)) * Math.min(1, Math.max(0.05, out[2]!));
+    scratch.key[e] = costs.error ? costs.error(a, b, edges) : Math.max(onView(a), onView(b)) * Math.min(1, Math.max(0.05, out[2]!));
     return e;
   };
   const onView = (c: number): number => {
@@ -761,7 +906,7 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
   /** Entries for the stored pair `p`, when it has edges and lies on the view; returns the entry or -1. */
   const stored = (p: number): number => {
     if (pairs.edges[p]! <= 0 || !visible(pairs.cellA[p]!, pairs.cellB[p]!)) return -1;
-    return make(p, pairs.cellA[p]!, pairs.cellB[p]!, pairs.listStart[p]!, pairs.listStart[p + 1]!, pairs.edges[p]!);
+    return make(p, pairs.cellA[p]!, pairs.cellB[p]!, pairs.listStart[p]!, pairs.listEnd[p]!, pairs.edges[p]!);
   };
   // The parts an entry splits into, made but not yet queued: `parts[0..partCount)`.
   const parts = [0, 0, 0];
@@ -795,23 +940,30 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
       const j = t.pos[dst[k]!]!;
       return (i >= leftLo && i < leftHi) || (j >= leftLo && j < leftHi);
     };
+    // Counting the kept entries of each half on the way (listed edges in the common style only).
+    const keep = pairs.listIsExceptions ? null : pairs.keep;
+    let keptLeft = 0;
+    let keptRight = 0;
     let i = scratch.lo[e]!;
     let j = scratch.hi[e]! - 1;
     while (i <= j) {
-      if (inLeft(list[i]!)) i++;
-      else {
-        const x = list[i]!;
+      const x = list[i]!;
+      if (inLeft(x)) {
+        if (keep) keptLeft += keep[x]!;
+        i++;
+      } else {
+        if (keep) keptRight += keep[x]!;
         list[i] = list[j]!;
         list[j] = x;
         j--;
       }
     }
     const mid = i;
-    for (const [half, lo, hi] of [
-      [left, scratch.lo[e]!, mid],
-      [right, mid, scratch.hi[e]!],
+    for (const [half, lo, hi, kept] of [
+      [left, scratch.lo[e]!, mid, keptLeft],
+      [right, mid, scratch.hi[e]!, keptRight],
     ] as const) {
-      const listed = hi - lo;
+      const listed = keep ? kept : hi - lo;
       const edges = pairs.listIsExceptions ? t.size(half) * t.size(other) - listed : listed;
       if (edges <= 0 || !visible(half, other)) continue;
       parts[partCount++] = splitA ? make(-1, half, other, lo, hi, edges) : make(-1, other, half, lo, hi, edges);
@@ -853,10 +1005,11 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
       }
       continue;
     }
-    // Two tree leaves (or the inside of one): their node pairs, one by one.
+    // Two tree leaves (or the inside of one): their edges (listed) or node pairs (every pair), one by one.
     const a = scratch.cellA[e]!;
     const b = scratch.cellB[e]!;
-    const count = emitNodes(t, a, b, null, view);
+    const listed = !pairs.listIsExceptions && sink.edge !== undefined;
+    const count = listed ? emitEdges(pairs, scratch.lo[e]!, scratch.hi[e]!, null, view) : emitNodes(t, a, b, null, view);
     const cost = costs.lines(a, b);
     if (items - own + count > budget.items || lines + cost > budget.lines) {
       stopped = 2 ** (top / CLASSES_PER_OCTAVE);
@@ -867,7 +1020,8 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
     lines += cost;
     area -= scratch.area[e]!;
     field -= scratch.field[e]!;
-    emitNodes(t, a, b, sink, view);
+    if (listed) emitEdges(pairs, scratch.lo[e]!, scratch.hi[e]!, sink, view);
+    else emitNodes(t, a, b, sink, view);
   }
   for (let c = CLASSES - 1; c >= 0; c--) for (let e = head[c]!; e >= 0; e = scratch.next[e]!) emit(e);
   return stopped;

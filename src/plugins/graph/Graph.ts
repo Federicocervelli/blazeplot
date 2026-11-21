@@ -5,7 +5,7 @@ import { singleChartPlugin } from "../common/OverlayUtils.js";
 import { defaultEdgeLabelRenderer, defaultNodeRenderer, drawLabels } from "./labels.js";
 import type { EdgeLabelRenderer, NodeRenderer, ResolvedLabelStyle } from "./labels.js";
 import { buildGraphModel, isCoordinate } from "./model.js";
-import { GraphIndex, isDense } from "./spatial.js";
+import { GraphIndex, OVERFLOW_EDGES, isDense } from "./spatial.js";
 import type { GraphModel } from "./model.js";
 import { EDGE_GEOMETRY, edgeDistanceSq, GraphPainter } from "./render.js";
 import type { RenderSurface } from "./render.js";
@@ -462,8 +462,10 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       writeEdgeStyle(edgeStyles, denseSlot * EDGE_FLOATS, style, colors, defaults, false);
       return;
     }
-    // A sparse graph draws every edge with its own style: nothing to resolve.
-    if (!isDense(model)) return;
+    // A small sparse graph draws every edge with its own style: nothing to resolve. A large one draws views its
+    // edges overflow through the pair hierarchy, which counts the common style's edges only.
+    spatial.keep = null;
+    if (!isDense(model) && model.edgeCount <= OVERFLOW_EDGES) return;
     const uses = new Uint32Array(Math.max(1, edgeSlotCount));
     for (let i = 0; i < model.edgeCount; i++) uses[edgeSlot[i]!]!++;
     denseSlot = 0;
@@ -471,6 +473,12 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     const apart: number[] = [];
     for (let i = 0; i < model.edgeCount && apart.length < 1_000_000; i++) if (edgeSlot[i] !== denseSlot) apart.push(i);
     styledEdges = Uint32Array.from(apart);
+    let keep: Uint8Array | null = null;
+    if (apart.length > 0 && apart.length < 1_000_000) {
+      keep = new Uint8Array(model.edgeCount).fill(1);
+      for (const e of apart) keep[e] = 0;
+    }
+    spatial.keep = keep;
   }
 
   /** Restyle the nodes whose state changed (an index of -1 is ignored). A layer change re-sorts. */
@@ -649,19 +657,21 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
    * How many nodes and edges a still frame draws one by one before it draws the aggregate level: what each engine
    * draws in a few milliseconds on a phone, unless `levelOfDetail` says otherwise (`false` never aggregates).
    */
-  function detailBudget(fine = true): { nodes: number; edges: number; fill: number; overdraw: number; dense: number } {
+  function detailBudget(fine = true): { nodes: number; edges: number; fill: number; overdraw: number; dense: number; fieldStep: number } {
     const lod = options.levelOfDetail;
-    if (lod === false) return { nodes: Infinity, edges: Infinity, fill: Infinity, overdraw: Infinity, dense: Infinity };
+    if (lod === false) return { nodes: Infinity, edges: Infinity, fill: Infinity, overdraw: Infinity, dense: Infinity, fieldStep: 1 };
     const canvas = chart?.renderer.name === "canvas2d";
     return {
       nodes: lod?.nodes ?? (canvas ? 12_000 : 60_000),
       // A frame during a gesture draws a third of the edges; the rest follow once the view rests (see `REFINE_MS`).
-      edges: (lod?.edges ?? (canvas ? 25_000 : 150_000)) / (fine ? 1 : 3),
-      fill: (lod?.fill ?? (canvas ? 700_000 : 2_000_000)) / (fine ? 1 : 3),
+      edges: fine ? (lod?.edges ?? (canvas ? 80_000 : 150_000)) : (lod?.edges ?? (canvas ? 25_000 : 150_000)) / 3,
+      fill: fine ? (lod?.fill ?? 16_000_000) : (lod?.fill ?? (canvas ? 700_000 : 2_000_000)) / 3,
       // How many times over the bands of a dense graph may cover the plot, together.
       overdraw: canvas ? 12 : 48,
       // Items (bands and single lines) of a dense graph's cut: each costs more to find than a listed edge.
       dense: Math.min(lod?.edges ?? Infinity, fine ? (canvas ? 6_000 : 16_000) : canvas ? 1_200 : 2_500),
+      // A dense graph's lines per pixel are sampled every CSS pixel at rest, every other one while the view moves.
+      fieldStep: fine ? 1 : 2,
     };
   }
 

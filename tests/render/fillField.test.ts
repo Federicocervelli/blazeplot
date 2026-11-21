@@ -91,3 +91,22 @@ describe("fillField", () => {
     expect(ctx.calls.filter((c) => c[0] === "drawImage").length).toBe(before);
   });
 });
+
+describe("Canvas 2D strokeSegments", () => {
+  it("strokes crossing translucent segments one by one, so they add up where they cross, and joins a polyline", () => {
+    const ctx = new FakeContext2D();
+    const renderer = new Canvas2DRenderer(fakeCanvas2d(ctx));
+    renderer.beginFrame(100, 100, 1);
+    const seg = (x0: number, y0: number, x1: number, y1: number, a: number) => [x0, y0, x1, y1, 1, 0, 0, 0, 1, 1, 1, a];
+    const strokes = () => ctx.calls.filter((c) => c[0] === "stroke").length;
+    // Two crossing translucent lines: two strokes.
+    renderer.strokeSegments(Float32Array.from([...seg(0, 0, 100, 100, 0.5), ...seg(0, 100, 100, 0, 0.5)]), 2);
+    expect(strokes()).toBe(2);
+    // A translucent polyline (each segment starts where the last ended): one stroke, no overlap at the joints.
+    renderer.strokeSegments(Float32Array.from([...seg(0, 0, 50, 50, 0.5), ...seg(50, 50, 100, 0, 0.5)]), 2);
+    expect(strokes()).toBe(3);
+    // Opaque lines share one stroke: painting a crossing twice looks the same.
+    renderer.strokeSegments(Float32Array.from([...seg(0, 0, 100, 100, 1), ...seg(0, 100, 100, 0, 1)]), 2);
+    expect(strokes()).toBe(4);
+  });
+});

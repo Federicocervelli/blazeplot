@@ -18,9 +18,19 @@ export function isDense<N, E>(model: GraphModel<N, E>): boolean {
   return model.allPairs !== null || (model.nodes.length > 1 && (model.edgeCount * 2) / model.nodes.length >= DENSE_DEGREE);
 }
 
+/**
+ * A sparse graph with more edges than this also gets a pair hierarchy: a view crossed by more edges than a frame
+ * draws one by one draws them through it, as a dense graph's, instead of leaving any out.
+ */
+export const OVERFLOW_EDGES = 20_000;
+
 export class GraphIndex {
   /** For a dense graph: the k-d tree of nodes and the pair hierarchy with its edge counts. Null otherwise. */
   dense: PairHierarchy | null = null;
+  /** For a sparse graph of more than `OVERFLOW_EDGES` edges: its pair hierarchy, for views its edges overflow. */
+  overflow: PairHierarchy | null = null;
+  /** Which listed edges the hierarchy counts: those in the common style (null: all). Set before `ensure`. */
+  keep: Uint8Array | null = null;
   readonly nodes = new PointGrid();
   readonly edges = new BoxGrid();
   /** The largest node half size, in graph units: what a query for nodes grows its rectangle by. */
@@ -61,6 +71,7 @@ export class GraphIndex {
     if (this.positionsDirty) return;
     // The pair hierarchy covers node sets, so its counts hold; only the moved node's cells change shape.
     if (this.dense && x && y) this.dense.tree.refitNode(node, x, y);
+    if (this.overflow && x && y) this.overflow.tree.refitNode(node, x, y);
     this.nodes.markMoved(node);
     for (let k = 0; k < edges.length; k++) this.edges.markMoved(edges[k]!);
     const edgeCount = this.edgeTotal;
@@ -110,16 +121,23 @@ export class GraphIndex {
       const dense = isDense(model);
       // A dense graph's edges are drawn through the pair hierarchy: no edge grid over millions of edges.
       this.edges.build(dense ? 0 : model.edgeCount, model.source, model.target, model.x, model.y, this.maxHalf);
-      if (!dense) this.dense = null;
-      else if (moved || !this.dense) {
+      const wanted = dense || model.edgeCount > OVERFLOW_EDGES;
+      const current = this.dense ?? this.overflow;
+      let pairs: PairHierarchy | null = null;
+      if (wanted && (moved || !current)) {
         const tree = new PairTree();
         tree.build(count, model.x, model.y);
-        const pairs = new PairHierarchy(tree);
+        pairs = new PairHierarchy(tree);
         pairs.build();
         if (model.allPairs) pairs.countAll(model.allPairs.exceptSource, model.allPairs.exceptTarget);
-        else pairs.countListed(model.source, model.target, model.edgeCount);
-        this.dense = pairs;
+        else pairs.countListed(model.source, model.target, model.edgeCount, this.keep);
+      } else if (wanted && current) {
+        // Restyled: the edges in the common style may have changed.
+        pairs = current;
+        pairs.recount(this.keep);
       }
+      this.dense = dense ? pairs : null;
+      this.overflow = dense ? null : pairs;
     }
     this.positionsDirty = false;
     this.stylesDirty = false;

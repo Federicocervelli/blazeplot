@@ -312,7 +312,7 @@ describe("dense graph painter", () => {
     };
   }
 
-  function scene(count: number, except: [number, number][] = []) {
+  function scene(count: number, except: [number, number][] = [], alpha = 0.01) {
     const { x, y } = disk(count);
     const nodes = Array.from({ length: count }, (_, i) => ({ id: String(i), x: x[i]!, y: y[i]! }));
     const model = buildGraphModel(nodes, { all: true, except: { source: Uint32Array.from(except.map((e) => e[0])), target: Uint32Array.from(except.map((e) => e[1])) } });
@@ -321,7 +321,7 @@ describe("dense graph painter", () => {
     const nodeStyles = new Float32Array(count * NODE_FLOATS);
     for (let i = 0; i < count; i++) writeNodeStyle(nodeStyles, i * NODE_FLOATS, { width: 4 }, colors, defaults);
     const edgeStyles = new Float32Array(EDGE_FLOATS);
-    writeEdgeStyle(edgeStyles, 0, { color: [0, 0, 1, 0.01], width: 1 }, colors, defaults, false);
+    writeEdgeStyle(edgeStyles, 0, { color: [0, 0, 1, alpha], width: 1 }, colors, defaults, false);
     const spatial = new GraphIndex();
     spatial.ensure(model, new Float32Array(count).fill(2), new Float32Array(count).fill(2));
     const input = {
@@ -340,22 +340,23 @@ describe("dense graph painter", () => {
     painter.paint(surface, { ...input, zoom: 0.8 });
     expect(surface.fields).toHaveLength(1);
     const { alpha, cols, rows } = surface.fields[0]!;
-    const at = (px: number, py: number) => alpha[Math.round(py / 8) * cols + Math.round(px / 8)]!;
+    // Sampled every CSS pixel at rest.
+    const at = (px: number, py: number) => alpha[Math.round(py) * cols + Math.round(px)]!;
     // The disk has a radius of 200 graph units, 160 px at this zoom: the corners of the view lie outside it.
     expect(at(200, 200)).toBeGreaterThan(0.2);
     expect(at(200, 200)).toBeGreaterThan(at(200, 200 + 140));
     expect(at(0, 0)).toBe(0);
-    expect(at((cols - 1) * 8, (rows - 1) * 8)).toBe(0);
+    expect(at(cols - 1, rows - 1)).toBe(0);
   });
 
   it("refines to single lines when zoomed in, and draws only the pairs that are joined", () => {
-    // Nodes 0 and 1 sit next to each other at the middle of the disk; their pair is an exception.
-    const { model, input } = scene(400, [[0, 1]]);
+    // Nodes 0 and 1 sit next to each other at the middle of the disk; their pair is an exception. Lines opaque
+    // enough to see one by one, few enough not to saturate the view, are drawn as lines.
+    const { model, input } = scene(150, [[0, 1]], 0.2);
     const painter = new GraphPainter();
     const surface = recording();
     const zoom = 8;
     painter.paint(surface, { ...input, zoom, centerX: (model.x[0]! + model.x[1]!) / 2, centerY: (model.y[0]! + model.y[1]!) / 2 });
-    // Each node on the view is joined to all 399 others, more lines than the budget: what is left are bands.
     const lines = surface.segments.flatMap((s) => Array.from({ length: s.length / 12 }, (_, k) => [...s.subarray(k * 12, k * 12 + 4)]));
     expect(lines.length).toBeGreaterThan(0);
     const screen = (i: number) => [200 + (model.x[i]! - (model.x[0]! + model.x[1]!) / 2) * zoom, 200 + (model.y[i]! - (model.y[0]! + model.y[1]!) / 2) * zoom];
@@ -389,5 +390,56 @@ describe("segmentCrosses", () => {
     expect(segmentCrosses(-10, 8, 8, 30, rect)).toBe(false);
     expect(segmentCrosses(-5, -1, 15, -1, rect)).toBe(false);
     expect(segmentCrosses(11, 2, 11, 8, rect)).toBe(false);
+  });
+});
+
+describe("listed pair hierarchy", () => {
+  it("splits long leaf lists once when built, keeping every edge counted once, and counts only the kept ones", () => {
+    const n = 600;
+    const { x, y } = disk(n);
+    const tree = new PairTree();
+    tree.build(n, x, y);
+    const pairs = new PairHierarchy(tree);
+    pairs.build();
+    // Every pair of nodes, listed: leaf pairs start with lists of thousands.
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      source.push(i);
+      target.push(j);
+    }
+    const edges = source.length;
+    pairs.countListed(Uint32Array.from(source), Uint32Array.from(target), edges);
+    expect(pairs.edges[0]).toBe(edges);
+    let listed = 0;
+    for (let p = 0; p < pairs.count; p++) {
+      if (!pairs.isLeaf(p)) {
+        expect(pairs.listEnd[p]! - pairs.listStart[p]!).toBe(0);
+        continue;
+      }
+      const length = pairs.listEnd[p]! - pairs.listStart[p]!;
+      listed += length;
+      const a = pairs.cellA[p]!;
+      const b = pairs.cellB[p]!;
+      // Long only where neither cell can be halved.
+      if (length > 64) expect(tree.left[a]! < 0 && tree.left[b]! < 0).toBe(true);
+      // Each entry joins the pair's two cells.
+      for (let k = pairs.listStart[p]!; k < pairs.listEnd[p]!; k++) {
+        const e = pairs.list[k]!;
+        const i = source[e]!;
+        const j = target[e]!;
+        expect((tree.contains(a, i) && tree.contains(b, j)) || (tree.contains(a, j) && tree.contains(b, i))).toBe(true);
+      }
+    }
+    expect(listed).toBe(edges);
+    // Leaving every tenth edge out of the counts.
+    const keep = new Uint8Array(edges).fill(1);
+    let kept = edges;
+    for (let e = 0; e < edges; e += 10) {
+      keep[e] = 0;
+      kept--;
+    }
+    pairs.recount(keep);
+    expect(pairs.edges[0]).toBe(kept);
   });
 });

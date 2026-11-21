@@ -1,4 +1,4 @@
-import type { BarDraw, DrawCommand, GpuBackend, InterleavedDraw, PointDraw, RectsDraw, SolidDraw, SolidPrimitive, ThickLineDraw } from "./types.js";
+import type { BarDraw, DrawCommand, FieldDraw, GpuBackend, InterleavedDraw, PointDraw, RectsDraw, SolidDraw, SolidPrimitive, ThickLineDraw } from "./types.js";
 import { ShaderPrograms } from "./ShaderPrograms.js";
 import type { ProgramName } from "./ShaderPrograms.js";
 import { WebGL2UnavailableError } from "./availability.js";
@@ -53,6 +53,7 @@ const PROGRAM_LAYOUTS: Readonly<Record<ProgramName, { readonly start: string; re
     corners: null,
     interleaved: { strideFloats: 6, attributes: [{ name: "aPosition", size: 2, offset: 0 }, { name: "aColor", size: 4, offset: 2 }] },
   },
+  field: { start: "aRect", end: null, corners: RECT_CORNERS },
 };
 
 /** The program each recorded draw kind runs. */
@@ -65,6 +66,7 @@ const PROGRAM_OF_COMMAND: Readonly<Record<DrawCommand["kind"], ProgramName>> = {
   shapes: "shape",
   segments: "segment",
   colorTriangles: "color",
+  field: "field",
 };
 
 function isInterleaved(command: DrawCommand): command is InterleavedDraw {
@@ -113,6 +115,8 @@ export class WebGL2Backend implements GpuBackend {
   private programs: Partial<Record<ProgramName, ProgramState>> = {};
   private pending: Partial<Record<ProgramName, PendingProgram>> = {};
   private scissorBox: { x: number; y: number; w: number; h: number } | null = null;
+  /** The texture field draws upload into, made on first use. */
+  private fieldTexture: WebGLTexture | null = null;
   /**
    * True once the context this backend's objects belong to has been lost. A restored context is a
    * new generation: every object created before the loss is invalid and deleting it logs
@@ -188,6 +192,10 @@ export class WebGL2Backend implements GpuBackend {
         this.drawInterleaved(state, command);
         continue;
       }
+      if (command.kind === "field") {
+        this.drawField(state, command);
+        continue;
+      }
       if (command.kind !== "rects") {
         gl.uniform2f(state.uScale, command.scaleX, command.scaleY);
         gl.uniform2f(state.uOffset, command.offsetX, command.offsetY);
@@ -250,6 +258,8 @@ export class WebGL2Backend implements GpuBackend {
       this.gl.deleteProgram(program);
       for (const shader of shaders) this.gl.deleteShader(shader);
     }
+    if (this.fieldTexture) this.gl.deleteTexture(this.fieldTexture);
+    this.fieldTexture = null;
     for (const state of programs) {
       this.gl.deleteProgram(state.program);
       this.gl.deleteVertexArray(state.vao);
@@ -295,6 +305,27 @@ export class WebGL2Backend implements GpuBackend {
     this.aimAttribute(state.aStart, BYTES_PER_RECT, command.first * BYTES_PER_VERTEX, 4);
     this.aimAttribute(state.aEnd, BYTES_PER_RECT, command.first * BYTES_PER_VERTEX + 4 * Float32Array.BYTES_PER_ELEMENT, 4);
     this.drawQuads(command.instances);
+  }
+
+  /** Upload a field's opacities to the field texture and draw its rectangle through it, filtered linearly. */
+  private drawField(state: ProgramState, command: FieldDraw): void {
+    const gl = this.gl;
+    if (!this.fieldTexture) {
+      this.fieldTexture = allocated(gl.createTexture(), "texture");
+      gl.bindTexture(gl.TEXTURE_2D, this.fieldTexture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.fieldTexture);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, command.cols, command.rows, 0, gl.RED, gl.UNSIGNED_BYTE, command.alpha);
+    gl.uniform2f(state.uCanvasSize, command.canvasWidth, command.canvasHeight);
+    gl.uniform4f(state.uColor, command.color[0], command.color[1], command.color[2], 1);
+    this.aimAttribute(state.aStart, 0, command.first * BYTES_PER_VERTEX, 4);
+    this.drawQuads(1);
   }
 
   /** Aim every attribute of an interleaved program at its record in the frame stream, then draw. */

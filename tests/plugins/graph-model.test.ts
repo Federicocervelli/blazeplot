@@ -3,7 +3,7 @@ import { buildGraphModel } from "../../src/plugins/graph/model.ts";
 import { BoxGrid, PointGrid } from "../../src/plugins/graph/grid.ts";
 import { AggregateJob, buildAggregate } from "../../src/plugins/graph/aggregate.ts";
 import { GraphIndex } from "../../src/plugins/graph/spatial.ts";
-import { AUTO_BOW, edgeDistanceSq, edgeMiddle, exit, GraphPainter } from "../../src/plugins/graph/render.ts";
+import { AUTO_BOW, clippedLength, edgeDistanceSq, edgeMiddle, exit, GraphPainter } from "../../src/plugins/graph/render.ts";
 import type { GraphFrameInput, RenderSurface } from "../../src/plugins/graph/render.ts";
 import { ColorCache, EDGE_FLOATS, NODE_FLOATS, writeEdgeStyle, writeNodeStyle } from "../../src/plugins/graph/styles.ts";
 import type { GraphEdgeStyle, GraphNodeStyle } from "../../src/plugins/graph/types.ts";
@@ -464,7 +464,7 @@ describe("dense graphs", () => {
     expect(second).toMatchObject({ source: "2", target: "3" });
   });
 
-  it("draws an even, stable sample of a graph with too many edges, but not dense, within its budget, without arrows", () => {
+  it("draws every edge of a graph with too many edges for its budget, but too few for a pair hierarchy, none sampled", () => {
     // Each node joined to the next 30: 60 edges a node, under the dense degree, and 9 000 edges against a budget of 2 000.
     const count = 300;
     const golden = Math.PI * (3 - Math.sqrt(5));
@@ -496,17 +496,15 @@ describe("dense graphs", () => {
     painter.paint(surface, input);
     const segments = surface.segments[0]!;
     const drawn = segments.length / 12;
-    expect(drawn).toBeLessThanOrEqual(2_000);
-    expect(drawn).toBeGreaterThan(1_000);
-    // Each stands for several edges, so it is more opaque than one, and held under 0.6.
-    expect(segments[11]).toBeGreaterThan(0.05);
-    expect(segments[11]).toBeLessThanOrEqual(0.6);
-    expect(surface.triangles).toHaveLength(0);
-    // The same sample next frame.
-    const again = recordingSurface();
-    painter.paint(again, input);
-    expect(again.segments[0]!.length).toBe(segments.length);
-    expect([...again.segments[0]!.subarray(0, 24)]).toEqual([...segments.subarray(0, 24)]);
+    // A graph too small for a pair hierarchy: every edge whose line crosses the view, past the budget, none sampled,
+    // each at its own opacity.
+    const rect = { minX: -200, minY: -200, maxX: 200, maxY: 200 };
+    let crossing = 0;
+    for (let e = 0; e < model.edgeCount; e++) if (clippedLength(model.x[model.source[e]!]!, model.y[model.source[e]!]!, model.x[model.target[e]!]!, model.y[model.target[e]!]!, rect) >= 0) crossing++;
+    expect(crossing).toBeGreaterThan(2_000);
+    expect(drawn).toBe(crossing);
+    expect(segments[11]).toBeCloseTo(0.05, 5);
+    expect(painter.clipped).toBe(false);
   });
 
   it("takes a moved node and its edges without rebuilding the grids", () => {

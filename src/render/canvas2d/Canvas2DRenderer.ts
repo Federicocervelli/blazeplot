@@ -525,7 +525,21 @@ export class Canvas2DRenderer implements ChartRenderer {
       const sg = segments[o + 9]!;
       const sb = segments[o + 10]!;
       const sa = segments[o + 11]!;
+      // Translucent segments are stroked one by one: in one path, where they cross they would be painted once
+      // instead of over each other. A segment continuing the last one (a polyline) still joins it.
       const sameStyle = open && sr === r && sg === g && sb === b && sa === a && width === lineWidth && (dashed ? dash === dashLength && gap === gapLength : !(dashLength > 0));
+      if (sameStyle && sa < 1 && !(x0 === lastX && y0 === lastY)) {
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        lastX = x1;
+        lastY = y1;
+        along = offset + Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+        strokeOffset = offset;
+        if (dashed) ctx.lineDashOffset = offset;
+        continue;
+      }
       const connected = sameStyle && x0 === lastX && y0 === lastY && (!dashed || Math.abs(offset - along) < 0.01);
       if (connected) {
         ctx.lineTo(x1, y1);

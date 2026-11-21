@@ -11,6 +11,8 @@ import shapeFrag from "./shaders/shape.frag?raw";
 import segmentVert from "./shaders/segment.vert?raw";
 import segmentFrag from "./shaders/segment.frag?raw";
 import colorVert from "./shaders/color.vert?raw";
+import fieldVert from "./shaders/field.vert?raw";
+import fieldFrag from "./shaders/field.frag?raw";
 
 /** GLSL sources for the built-in renderer programs. */
 export const ShaderPrograms = {
@@ -23,6 +25,7 @@ export const ShaderPrograms = {
   segment: { vert: segmentVert, frag: segmentFrag },
   // Per-vertex color, so the rectangle program's fragment shader (which reads vColor) fits.
   color: { vert: colorVert, frag: rectFrag },
+  field: { vert: fieldVert, frag: fieldFrag },
 } as const;
 
 /** A built-in program: the key into {@link ShaderPrograms}. */

@@ -79,8 +79,23 @@ export interface InterleavedDraw {
   readonly canvasHeight: number;
 }
 
+/**
+ * A grid of opacities (`cols` x `rows`, row by row, 0 to 255) shaded in one color, as one texture filtered
+ * between its texels: the rectangle (`x, y, width, height` in device pixels, four floats) is at `first`.
+ */
+export interface FieldDraw {
+  readonly kind: "field";
+  readonly first: number;
+  readonly alpha: Uint8Array;
+  readonly cols: number;
+  readonly rows: number;
+  readonly color: readonly [number, number, number];
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
 /** One recorded draw call. */
-export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw | RectsDraw | InterleavedDraw;
+export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw | RectsDraw | InterleavedDraw | FieldDraw;
 
 /**
  * Minimal GPU surface used by the renderer. A frame is recorded on the CPU and submitted in one
