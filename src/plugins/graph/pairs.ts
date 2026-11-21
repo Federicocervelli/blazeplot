@@ -46,6 +46,12 @@ export class PairTree {
   order: Uint32Array = new Uint32Array(0);
   pos: Uint32Array = new Uint32Array(0);
   leafOf: Int32Array = new Int32Array(0);
+  /**
+   * Nodes taken out of their cells (moved away from where the tree was built, see `exclude`): per node 1 or 0,
+   * and per cell how many of its nodes are out. Cells fit, count, and hull only the nodes still in.
+   */
+  excluded: Uint8Array = new Uint8Array(0);
+  gone: Int32Array = new Int32Array(0);
   /** The convex hull of the nodes, counterclockwise: x, y pairs (graph units), `hullCount` of them. */
   hull: Float64Array = new Float64Array(0);
   hullCount = 0;
@@ -76,6 +82,8 @@ export class PairTree {
     this.order = Uint32Array.from({ length: n }, (_, i) => i);
     this.pos = new Uint32Array(n);
     this.leafOf = new Int32Array(n);
+    this.excluded = new Uint8Array(n);
+    this.gone = I();
     this.count = 0;
     if (n === 0) return;
     // Iterative, so a deep tree cannot overflow the stack: [cell, lo, hi] entries.
@@ -112,8 +120,10 @@ export class PairTree {
     let minY = Infinity;
     let maxX = -Infinity;
     let maxY = -Infinity;
+    const out = this.excluded;
     for (let k = this.lo[cell]!; k < this.hi[cell]!; k++) {
       const i = this.order[k]!;
+      if (out[i] === 1) continue;
       if (x[i]! < minX) minX = x[i]!;
       if (x[i]! > maxX) maxX = x[i]!;
       if (y[i]! < minY) minY = y[i]!;
@@ -132,7 +142,7 @@ export class PairTree {
     // Children are allocated after their parent, so walking backwards visits children first.
     for (let c = this.count - 1; c >= 0; c--) {
       this.fit(c, x, y);
-      this.rad[c] = Math.hypot(this.maxX[c]! - this.minX[c]!, this.maxY[c]! - this.minY[c]!) / 2;
+      this.rad[c] = this.size(c) > 0 ? Math.hypot(this.maxX[c]! - this.minX[c]!, this.maxY[c]! - this.minY[c]!) / 2 : 0;
     }
     this.findHull();
   }
@@ -143,7 +153,7 @@ export class PairTree {
     this.y = y;
     for (let c = this.leafOf[node]!; c >= 0; c = this.parent[c]!) {
       this.fit(c, x, y);
-      this.rad[c] = Math.hypot(this.maxX[c]! - this.minX[c]!, this.maxY[c]! - this.minY[c]!) / 2;
+      this.rad[c] = this.size(c) > 0 ? Math.hypot(this.maxX[c]! - this.minX[c]!, this.maxY[c]! - this.minY[c]!) / 2 : 0;
     }
     this.findHull();
   }
@@ -154,12 +164,23 @@ export class PairTree {
       this.boundsOf(c, x, y);
       let mx = 0;
       let my = 0;
-      const n = this.hi[c]! - this.lo[c]!;
+      const out = this.excluded;
+      const n = this.size(c);
       for (let k = this.lo[c]!; k < this.hi[c]!; k++) {
         const i = this.order[k]!;
         this.leafOf[i] = c;
+        if (out[i] === 1) continue;
         mx += x[i]!;
         my += y[i]!;
+      }
+      if (n === 0) {
+        // Every node out: an empty cell, which nothing is drawn for.
+        this.mx[c] = 0;
+        this.my[c] = 0;
+        this.sxx[c] = 0;
+        this.syy[c] = 0;
+        this.sxy[c] = 0;
+        return;
       }
       mx /= n;
       my /= n;
@@ -168,6 +189,7 @@ export class PairTree {
       let sxy = 0;
       for (let k = this.lo[c]!; k < this.hi[c]!; k++) {
         const i = this.order[k]!;
+        if (out[i] === 1) continue;
         sxx += (x[i]! - mx) ** 2;
         syy += (y[i]! - my) ** 2;
         sxy += (x[i]! - mx) * (y[i]! - my);
@@ -180,9 +202,21 @@ export class PairTree {
       return;
     }
     const r = this.right[c]!;
-    const na = this.hi[l]! - this.lo[l]!;
-    const nb = this.hi[r]! - this.lo[r]!;
+    const na = this.size(l);
+    const nb = this.size(r);
     const n = na + nb;
+    if (n === 0) {
+      this.mx[c] = 0;
+      this.my[c] = 0;
+      this.sxx[c] = 0;
+      this.syy[c] = 0;
+      this.sxy[c] = 0;
+      this.minX[c] = Infinity;
+      this.minY[c] = Infinity;
+      this.maxX[c] = -Infinity;
+      this.maxY[c] = -Infinity;
+      return;
+    }
     const mx = (na * this.mx[l]! + nb * this.mx[r]!) / n;
     const my = (na * this.my[l]! + nb * this.my[r]!) / n;
     // Covariances merge with the spread between the two means.
@@ -202,8 +236,21 @@ export class PairTree {
     this.maxY[c] = Math.max(this.maxY[l]!, this.maxY[r]!);
   }
 
+  /** Nodes in cell `c`, less those taken out. */
   size(c: number): number {
-    return this.hi[c]! - this.lo[c]!;
+    return this.hi[c]! - this.lo[c]! - this.gone[c]!;
+  }
+
+  /**
+   * Take `node` out of its cells (`out` true) or put it back, and fit them again at (`x`, `y`): a node moved far
+   * from where the tree was built would stretch its cells over the gap, so its edges are drawn on their own
+   * instead (see the painter's star).
+   */
+  exclude(node: number, out: boolean, x: Float64Array, y: Float64Array): void {
+    if (node < 0 || node >= this.excluded.length || (this.excluded[node] === 1) === out) return;
+    this.excluded[node] = out ? 1 : 0;
+    for (let c = this.leafOf[node]!; c >= 0; c = this.parent[c]!) this.gone[c]! += out ? 1 : -1;
+    this.refitNode(node, x, y);
   }
 
   radius(c: number): number {
@@ -229,7 +276,13 @@ export class PairTree {
     // The extremes along x, y, x + y, and x - y, each way: the octagon, counterclockwise.
     const ext = [0, 0, 0, 0, 0, 0, 0, 0];
     const best = [-Infinity, -Infinity, -Infinity, -Infinity, -Infinity, -Infinity, -Infinity, -Infinity];
-    for (let i = 0; i < n; i++) {
+    const out = this.excluded;
+    let first = 0;
+    while (first < n && out[first] === 1) first++;
+    if (first === n) return;
+    ext.fill(first);
+    for (let i = first; i < n; i++) {
+      if (out[i] === 1) continue;
       const px = x[i]!;
       const py = y[i]!;
       // Counterclockwise from the lowest: -y, x - y, x, x + y, y, y - x, -x, -x - y.
@@ -288,7 +341,7 @@ export class PairTree {
         stack.push(this.left[c]!, this.right[c]!);
         continue;
       }
-      for (let k = this.lo[c]!; k < this.hi[c]!; k++) candidates.push(this.order[k]!);
+      for (let k = this.lo[c]!; k < this.hi[c]!; k++) if (out[this.order[k]!] !== 1) candidates.push(this.order[k]!);
     }
     for (const e of ext) candidates.push(e);
     candidates.sort((a, b) => x[a]! - x[b]! || y[a]! - y[b]!);
@@ -488,23 +541,20 @@ export class PairHierarchy {
    * drawn one by one, so they are left out here and counted once.
    */
   keep: Uint8Array | null = null;
+  /**
+   * Per list entry (edge, or exception), 1 when the counts cover it: kept (listed edges), and with neither end
+   * taken out of the tree (see `PairTree.exclude`). Set by `recount`.
+   */
+  counted: Uint8Array = new Uint8Array(0);
 
   /**
    * Counts for "every pair of distinct nodes": |A|·|B| per pair (n·(n-1)/2 inside a cell), less the exception
    * pairs (`source[k]`, `target[k]`) that fall in it.
    */
   countAll(exceptSource: ArrayLike<number> | null, exceptTarget: ArrayLike<number> | null): void {
-    const t = this.tree;
     this.listIsExceptions = true;
     this.assign(exceptSource ?? [], exceptTarget ?? [], exceptSource && exceptTarget ? Math.min(exceptSource.length, exceptTarget.length) : 0);
-    for (let p = this.count - 1; p >= 0; p--) {
-      if (this.first[p]! >= 0) continue;
-      const a = this.cellA[p]!;
-      const b = this.cellB[p]!;
-      const full = a === b ? (t.size(a) * (t.size(a) - 1)) / 2 : t.size(a) * t.size(b);
-      this.edges[p] = full - (this.listEnd[p]! - this.listStart[p]!);
-    }
-    this.sumUp();
+    this.recount(null);
   }
 
   /** Counts for listed edges: each assigned to its leaf pair. */
@@ -515,18 +565,33 @@ export class PairHierarchy {
     this.recount(keep);
   }
 
-  /** Count listed edges again, those `keep` marks with 1 (all for null): after a restyle moved edges in or out. */
+  /**
+   * Count again: after a restyle moved listed edges in or out of `keep` (1 kept, null all), or nodes were taken
+   * out of the tree or put back. For "every pair", a leaf pair has |A|·|B| edges (n·(n-1)/2 inside a cell) of
+   * the nodes still in, less its exceptions between nodes still in.
+   */
   recount(keep: Uint8Array | null): void {
-    if (this.listIsExceptions) return;
-    this.keep = keep;
+    const t = this.tree;
+    if (!this.listIsExceptions) this.keep = keep;
+    const entries = Math.min(this.listSource.length, this.listTarget.length);
+    if (this.counted.length !== entries) this.counted = new Uint8Array(entries);
+    const out = t.excluded;
+    const src = this.listSource;
+    const dst = this.listTarget;
+    const kept = this.listIsExceptions ? null : this.keep;
+    for (let k = 0; k < entries; k++) this.counted[k] = (kept ? kept[k]! : 1) && out[src[k]!] !== 1 && out[dst[k]!] !== 1 ? 1 : 0;
     for (let p = 0; p < this.count; p++) {
-      if (!keep) {
-        this.edges[p] = this.listEnd[p]! - this.listStart[p]!;
+      if (this.first[p]! >= 0) continue;
+      let n = 0;
+      for (let k = this.listStart[p]!; k < this.listEnd[p]!; k++) n += this.counted[this.list[k]!]!;
+      if (!this.listIsExceptions) {
+        this.edges[p] = n;
         continue;
       }
-      let n = 0;
-      for (let k = this.listStart[p]!; k < this.listEnd[p]!; k++) n += keep[this.list[k]!]!;
-      this.edges[p] = n;
+      const a = this.cellA[p]!;
+      const b = this.cellB[p]!;
+      const full = a === b ? (t.size(a) * (t.size(a) - 1)) / 2 : t.size(a) * t.size(b);
+      this.edges[p] = full - n;
     }
     this.sumUp();
   }
@@ -685,11 +750,11 @@ export interface CutView {
 /** The listed edges `list[lo..hi)` that the counts cover and whose segment's box meets the view: emitted, and counted. */
 function emitEdges(pairs: PairHierarchy, lo: number, hi: number, sink: CutSink | null, view: CutView): number {
   const t = pairs.tree;
-  const keep = pairs.keep;
+  const counted = pairs.counted;
   let items = 0;
   for (let k = lo; k < hi; k++) {
     const edge = pairs.list[k]!;
-    if (keep && keep[edge] === 0) continue;
+    if (counted[edge] === 0) continue;
     if (!t.segmentMeets(pairs.listSource[edge]!, pairs.listTarget[edge]!, view)) continue;
     sink?.edge?.(edge);
     items++;
@@ -700,11 +765,13 @@ function emitEdges(pairs: PairHierarchy, lo: number, hi: number, sink: CutSink |
 /** The node pairs of two tree leaves (or inside one) whose segment's box meets the view: emitted, and counted. */
 function emitNodes(t: PairTree, a: number, b: number, sink: CutSink | null, view: CutView): number {
   let items = 0;
+  const out = t.excluded;
   for (let u = t.lo[a]!; u < t.hi[a]!; u++) {
     const i = t.order[u]!;
+    if (out[i] === 1) continue;
     for (let v = a === b ? u + 1 : t.lo[b]!; v < t.hi[b]!; v++) {
       const j = t.order[v]!;
-      if (!t.segmentMeets(i, j, view)) continue;
+      if (out[j] === 1 || !t.segmentMeets(i, j, view)) continue;
       sink?.nodes(i, j);
       items++;
     }
@@ -940,8 +1007,8 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
       const j = t.pos[dst[k]!]!;
       return (i >= leftLo && i < leftHi) || (j >= leftLo && j < leftHi);
     };
-    // Counting the kept entries of each half on the way (listed edges in the common style only).
-    const keep = pairs.listIsExceptions ? null : pairs.keep;
+    // Counting the entries the counts cover in each half on the way.
+    const keep = pairs.counted;
     let keptLeft = 0;
     let keptRight = 0;
     let i = scratch.lo[e]!;
@@ -949,10 +1016,10 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
     while (i <= j) {
       const x = list[i]!;
       if (inLeft(x)) {
-        if (keep) keptLeft += keep[x]!;
+        keptLeft += keep[x]!;
         i++;
       } else {
-        if (keep) keptRight += keep[x]!;
+        keptRight += keep[x]!;
         list[i] = list[j]!;
         list[j] = x;
         j--;
@@ -963,8 +1030,7 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
       [left, scratch.lo[e]!, mid, keptLeft],
       [right, mid, scratch.hi[e]!, keptRight],
     ] as const) {
-      const listed = keep ? kept : hi - lo;
-      const edges = pairs.listIsExceptions ? t.size(half) * t.size(other) - listed : listed;
+      const edges = pairs.listIsExceptions ? t.size(half) * t.size(other) - kept : kept;
       if (edges <= 0 || !visible(half, other)) continue;
       parts[partCount++] = splitA ? make(-1, half, other, lo, hi, edges) : make(-1, other, half, lo, hi, edges);
     }

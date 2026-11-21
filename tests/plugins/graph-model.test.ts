@@ -285,8 +285,10 @@ describe("graph painter extras", () => {
     };
     const input = frameInput({ arrow: "end", flow: { shape: "dot", width: 4, dash: [0.5, 15], speed: 0 } }, { shape: "rect", width: 40, height: 20, borderWidth: 2, borderColor: "#fff", borderDash: [4, 3] });
     painter.paint(spy, input);
-    // Edge line, arrowhead, node fills (borderless), then the dashed borders: four sides per box.
-    expect(order).toEqual(["segments:1", "triangles:3", "shapes:3", "segments:12"]);
+    // Edge line, arrowhead, node fills (borderless), then the dashed borders: four sides per box. The node the flow
+    // starts on is drawn over it by the flow pass (the flow stops short of the target, at its arrowhead), so the
+    // still frame draws the other two.
+    expect(order).toEqual(["segments:1", "triangles:3", "shapes:2", "segments:8"]);
     const fills = surface.shapes[0]!;
     expect(fills[5]).toBe(0);
     // The flow's dots are drawn by the flow pass, on its own layer.
@@ -295,6 +297,12 @@ describe("graph painter extras", () => {
     const dots = flowLayer.shapes[0]!;
     // 4 CSS px dots at pixel ratio 2, fully round.
     expect([dots[2], dots[3], dots[4]]).toEqual([8, 8, 4]);
+    // Then the node under the flow: the last shape the flow pass draws is its 40 x 20 box.
+    const nodes = flowLayer.shapes.at(-1)!;
+    expect(nodes.length / 14).toBe(1);
+    expect([nodes[2], nodes[3]]).toEqual([80, 40]);
+    // They still count as drawn, for labels and picking.
+    expect(painter.drawnNodeCount).toBe(3);
   });
 
   it("draws a dashed circle border as a 32-sided outline", () => {

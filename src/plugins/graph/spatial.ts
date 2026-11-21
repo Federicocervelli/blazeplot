@@ -24,6 +24,9 @@ export function isDense<N, E>(model: GraphModel<N, E>): boolean {
  */
 export const OVERFLOW_EDGES = 20_000;
 
+/** Nodes the pair hierarchy may have taken out before it is built again (see `GraphIndex.detach`). */
+export const MAX_DETACHED = 64;
+
 export class GraphIndex {
   /** For a dense graph: the k-d tree of nodes and the pair hierarchy with its edge counts. Null otherwise. */
   dense: PairHierarchy | null = null;
@@ -31,6 +34,12 @@ export class GraphIndex {
   overflow: PairHierarchy | null = null;
   /** Which listed edges the hierarchy counts: those in the common style (null: all). Set before `ensure`. */
   keep: Uint8Array | null = null;
+  /**
+   * Nodes taken out of the pair hierarchy since it was built (dragged, or moved by a drag): their edges are drawn
+   * on their own from where they are now, and the hierarchy counts the rest. Past `MAX_DETACHED` the next frame
+   * builds everything again instead.
+   */
+  readonly detached: number[] = [];
   readonly nodes = new PointGrid();
   readonly edges = new BoxGrid();
   /** The largest node half size, in graph units: what a query for nodes grows its rectangle by. */
@@ -54,9 +63,29 @@ export class GraphIndex {
   private nodeTotal = 0;
   private edgeTotal = 0;
 
+  /**
+   * Take `node` out of the pair hierarchy (a drag starting, or a node moved), so its edges are drawn from where it
+   * is: cells fit and count the other nodes only. Returns false when there is no hierarchy, or too many nodes are
+   * out already (everything is built again on the next frame instead).
+   */
+  detach(node: number, x: Float64Array, y: Float64Array): boolean {
+    const pairs = this.dense ?? this.overflow;
+    if (!pairs || this.positionsDirty) return false;
+    if (pairs.tree.excluded[node] === 1) return true;
+    if (this.detached.length >= MAX_DETACHED) {
+      this.invalidatePositions();
+      return false;
+    }
+    this.detached.push(node);
+    pairs.tree.exclude(node, true, x, y);
+    pairs.recount(this.keep);
+    return true;
+  }
+
   /** Positions changed (a new graph, `setPositions`, a finished drag): rebuild everything on next use. */
   invalidatePositions(): void {
     this.positionsDirty = true;
+    this.detached.length = 0;
     this.levels.clear();
     this.staleLevels.clear();
     this.job = null;
@@ -70,8 +99,8 @@ export class GraphIndex {
   moveNode(node: number, edges: ArrayLike<number>, x?: Float64Array, y?: Float64Array): void {
     if (this.positionsDirty) return;
     // The pair hierarchy covers node sets, so its counts hold; only the moved node's cells change shape.
-    if (this.dense && x && y) this.dense.tree.refitNode(node, x, y);
-    if (this.overflow && x && y) this.overflow.tree.refitNode(node, x, y);
+    // Its edges are drawn on their own from where it is now; cells keep fitting the nodes that stayed.
+    if (x && y) this.detach(node, x, y);
     this.nodes.markMoved(node);
     for (let k = 0; k < edges.length; k++) this.edges.markMoved(edges[k]!);
     const edgeCount = this.edgeTotal;

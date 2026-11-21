@@ -369,6 +369,23 @@ describe("dense graph painter", () => {
     expect(lines.some((l) => joins(l, ax!, ay!))).toBe(true);
   });
 
+  it("draws a moved node's edges from where it is, and none from where it was", () => {
+    const { model, spatial, input } = scene(400);
+    // The disk has a radius of 200 graph units; node 0 sits at its middle and goes 300 units to the right.
+    const from = [model.x[0]!, model.y[0]!];
+    model.x[0] = from[0]! + 300;
+    expect(spatial.detach(0, model.x, model.y)).toBe(true);
+    const painter = new GraphPainter();
+    const surface = recording();
+    painter.paint(surface, { ...input, zoom: 0.5 });
+    const { alpha, cols } = surface.fields[0]!;
+    // Screen: 200 + graph * 0.5. Its fan reaches back to the disk: ink between it (350) and the rim (300).
+    const at = (gx: number, gy: number) => alpha[Math.round(200 + gy * 0.5) * cols + Math.round(200 + gx * 0.5)]!;
+    expect(at(from[0]! + 250, from[1]!)).toBeGreaterThan(0);
+    // Above the fan, outside the disk: nothing.
+    expect(at(from[0]! + 250, from[1]! - 180)).toBe(0);
+  });
+
   it("stops at its budget when zoomed out, and says so, so a finer cut can follow", () => {
     const { input } = scene(2000);
     const painter = new GraphPainter();
@@ -441,5 +458,39 @@ describe("listed pair hierarchy", () => {
     }
     pairs.recount(keep);
     expect(pairs.edges[0]).toBe(kept);
+  });
+});
+
+describe("detached nodes", () => {
+  it("takes a node out of its cells and counts, for every pair and for listed edges, and puts it back", () => {
+    const n = 300;
+    const { x, y } = disk(n);
+    for (const listed of [false, true]) {
+      const tree = new PairTree();
+      tree.build(n, x, y);
+      const pairs = new PairHierarchy(tree);
+      pairs.build();
+      const source: number[] = [];
+      const target: number[] = [];
+      if (listed) for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+        source.push(i);
+        target.push(j);
+      }
+      if (listed) pairs.countListed(Uint32Array.from(source), Uint32Array.from(target), source.length);
+      else pairs.countAll(Uint32Array.of(0), Uint32Array.of(1));
+      const total = pairs.edges[0]!;
+      // Node 5 moves far away and is taken out: its n - 1 edges (one fewer for every pair, whose exception is 0-1).
+      const moved = Float64Array.from(x);
+      moved[5] = x[5]! + 5000;
+      tree.exclude(5, true, moved, y);
+      pairs.recount(null);
+      expect(pairs.edges[0]).toBe(total - (n - 1));
+      // Its cells no longer reach where it went.
+      for (let c = tree.leafOf[5]!; c >= 0; c = tree.parent[c]!) expect(tree.maxX[c]!).toBeLessThan(moved[5]!);
+      expect(tree.size(0)).toBe(n - 1);
+      tree.exclude(5, false, moved, y);
+      pairs.recount(null);
+      expect(pairs.edges[0]).toBe(total);
+    }
   });
 });

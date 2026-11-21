@@ -135,10 +135,11 @@ export class LineField {
     // The part of the axis (from -ea to length + eb) over the view, as distances along it.
     let lo = -ea;
     let hi = length + eb;
+    // Across a row or column the band is up to sqrt(2) times as wide as across itself (and a step for averaging).
+    const reach = (Math.max(ha, hb) + half) * Math.SQRT2 + this.levels[LEVELS - 1]!.step;
     for (let k = 0; k < 4; k++) {
       const p = k === 0 ? -ux : k === 1 ? ux : k === 2 ? -uy : uy;
       const q = k === 0 ? ax : k === 1 ? width - ax : k === 2 ? ay : height - ay;
-      const reach = Math.max(ha, hb) + half;
       if (p === 0) {
         if (q < -reach) return;
         continue;

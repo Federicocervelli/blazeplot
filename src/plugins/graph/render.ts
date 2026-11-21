@@ -9,7 +9,7 @@ import type { Rect } from "./grid.js";
 import { LineField } from "./field.js";
 import type { GraphModel } from "./model.js";
 import type { GraphIndex } from "./spatial.js";
-import { type CutView, type PairHierarchy, type PairTree, type RefineCosts, type RefineSink, RefineScratch, refine, starCut } from "./pairs.js";
+import { type CutView, type PairHierarchy, type PairTree, type RefineCosts, type RefineSink, RefineScratch, refine } from "./pairs.js";
 import {
   E_ARROW,
   E_ARROW_SIZE,
@@ -136,6 +136,8 @@ const SQRT3 = Math.sqrt(3);
 const FAINT_LINE = 1 / 32;
 /** Candidate edges `crossingEdges` tests one by one at least, before it calls a view overflowing. */
 const CANDIDATES = 500_000;
+/** Cells a detached node's star splits into bundles, at most, before it stops splitting. */
+const STAR_ITEMS = 6_000;
 /** No edge index: a single node pair of "every pair". */
 const NO_EDGE = 0xffffffff;
 function growF64(a: Float64Array, need: number): Float64Array {
@@ -176,6 +178,13 @@ export class GraphPainter {
   /** Lines per pixel of a dense graph's edges over the view. */
   private readonly lineField = new LineField();
   private hullScreen = new Float64Array(0);
+  /** The dragged node's star in a dense graph, for the overlay. */
+  private readonly overlayField = new LineField();
+  /** The still layer's stars of detached nodes. */
+  private readonly starField = new LineField();
+  private overlayLevels = new Float32Array(0);
+  private overlayFieldUsed = false;
+  private overlayColor: readonly [number, number, number] = [0, 0, 0];
   /** The coarse cut's lines per pixel, which the full cut weighs its detail by. */
   private throughCache = new Float32Array(0);
   private levelBuffer = new Float32Array(0);
@@ -242,6 +251,7 @@ export class GraphPainter {
     this.bands.count = 0;
     this.fieldCols = 0;
     this.flowCount = 0;
+    this.flowNodeCount = 0;
     this.liftPass = false;
     this.drawnNodeCount = 0;
     this.drawnEdgeCount = 0;
@@ -258,7 +268,7 @@ export class GraphPainter {
       this.buildEdges(input, null, true);
       if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
       if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
-      this.buildNodes(input, -1, input.order, input.order.length);
+      this.buildNodesUnderFlows(input, input.order, input.order.length);
     } else {
       const { model, zoom, centerX, centerY } = input;
       const rect = this.rect;
@@ -324,7 +334,7 @@ export class GraphPainter {
         const nodeCount = spatial.nodes.query(nodeRect, this.nodeQuery);
         const nodes = this.sortForDrawing(this.nodeQuery.data, nodeCount, input.order);
         for (let k = 0; k < nodeCount; k++) this.ensureProjected(nodes[k]!, input);
-        this.buildNodes(input, -1, nodes, nodeCount);
+        this.buildNodesUnderFlows(input, nodes, nodeCount);
       }
     }
     if (this.shapes.count > 0) surface.fillShapes(this.shapes.data, this.shapes.count);
@@ -491,6 +501,9 @@ export class GraphPainter {
       const grain = alpha * Math.min(1, Math.sqrt(rho)) * (1 - alpha) ** rho;
       return area * 255 * through * Math.max(grain, shape * opacityOf(rho));
     };
+    // What the other edges leave of the background, from what all of them leave (`total`, measured) and an entry's
+    // own lines to the pixel: a piece's own haze is not a reason to leave it unsplit.
+    const others = (total: number, own: number): number => Math.min(1, total / (1 - alpha) ** own);
     const makeError =
       (through: (x: number, y: number) => number) =>
       (a: number, b: number, edges: number): number => {
@@ -504,8 +517,9 @@ export class GraphPainter {
           const h = (tree.maxY[a]! - tree.minY[a]!) * zoom;
           const rho = (edges * lineWidth * 0.5214 * Math.sqrt((w * w + h * h) / 2)) / Math.max(1, w * h);
           const t = Math.max(through((x0 + x1) / 2, (y0 + y1) / 2), through(x0, y0), through(x1, y1), through(x0, y1), through(x1, y0));
-          // The inside of a cell is a rough model: a third of its opacity may be off.
-          return errorOf((x1 - x0) * (y1 - y0), Math.max(w, h), rho, t, 0.3);
+          // The inside of a cell is a rough model: a third of its opacity may be off. What shows through is what
+          // the other edges leave: its own share of the measured haze (at its peak, 2.25 times its mean) is taken out.
+          return errorOf((x1 - x0) * (y1 - y0), Math.max(w, h), rho, others(t, rho * 2.25), 0.3);
         }
         const ax = sx(tree.mx[a]!);
         const ay = sy(tree.my[a]!);
@@ -537,7 +551,15 @@ export class GraphPainter {
         const onView = clipMiddle(x0, y0, x1, y1, { minX: 0, minY: 0, maxX: width, maxY: height });
         const mx = Math.min(width, Math.max(0, x0 + (x1 - x0) * onView));
         const my = Math.min(height, Math.max(0, y0 + (y1 - y0) * onView));
-        const seen = through(mx, my);
+        // And at its ends, where the cells' spreads stand for where the nodes are: what shows there, if on the view.
+        let seen = others(through(mx, my), rho);
+        for (const [ex, ey, half] of [
+          [ax, ay, ha],
+          [bx, by, hb],
+        ] as const) {
+          if (ex < 0 || ey < 0 || ex > width || ey > height) continue;
+          seen = Math.max(seen, others(through(ex, ey), (edges * lineWidth) / (2 * Math.max(half, 0.5) + lineWidth)));
+        }
         // A band's model is exact for cells small against how far apart they are, off by their ratio otherwise.
         const shape = Math.min(1, (ha + hb + ea + eb) / (2 * len));
         return errorOf(along * Math.min(across, diagonal), across, rho, seen, shape);
@@ -617,14 +639,20 @@ export class GraphPainter {
       d[o + 10] = b;
       d[o + 11] = alpha;
     }
-    if (field.used) {
+    // The edges of nodes taken out of the hierarchy (moved by a drag), from where they are, in a field of their
+    // own: the rest is clipped to the hull of the nodes still in it, these to the hull of every node (the dragged
+    // node's own are the overlay's).
+    const stars = this.starField;
+    stars.reset(width, height, step);
+    for (const d of input.spatial?.detached ?? []) if (d !== lifted) this.starInto(stars, d, input, pairs, lifted, lineWidth, alpha, [r, g, b]);
+    if (field.used || stars.used) {
       const counts = field.resolve();
-      if (this.hullScreen.length < tree.hullCount * 2) this.hullScreen = new Float64Array(tree.hullCount * 2);
-      for (let k = 0; k < tree.hullCount; k++) {
-        this.hullScreen[k * 2] = sx(tree.hull[k * 2]!);
-        this.hullScreen[k * 2 + 1] = sy(tree.hull[k * 2 + 1]!);
+      this.clipField(field, tree, input, -1, false);
+      if (stars.used) {
+        const more = stars.resolve();
+        this.clipField(stars, tree, input, -1, true);
+        for (let k = 0; k < field.cols * field.rows; k++) counts[k]! += more[k]!;
       }
-      field.clip(this.hullScreen, tree.hullCount);
       this.drawField(counts, field.cols, field.rows, step, r, g, b, alpha);
     }
   }
@@ -710,72 +738,176 @@ export class GraphPainter {
     this.fieldCols = 0;
   }
 
-  /** A band as two triangles: half-widths `ha` and `hb` across (`nx`, `ny`) at each end, opacity `qa` to `qb`. */
-  private bandQuad(ax: number, ay: number, bx: number, by: number, nx: number, ny: number, ha: number, hb: number, r: number, g: number, b: number, qa: number, qb: number, dpr: number): void {
-    const corners = [ax + nx * ha, ay + ny * ha, qa, ax - nx * ha, ay - ny * ha, qa, bx + nx * hb, by + ny * hb, qb, ax - nx * ha, ay - ny * ha, qa, bx - nx * hb, by - ny * hb, qb, bx + nx * hb, by + ny * hb, qb];
-    for (let v = 0; v < 6; v++) {
-      const o = this.bands.next();
-      const d = this.bands.data;
-      d[o] = corners[v * 3]! * dpr;
-      d[o + 1] = corners[v * 3 + 1]! * dpr;
-      d[o + 2] = r;
-      d[o + 3] = g;
-      d[o + 4] = b;
-      d[o + 5] = corners[v * 3 + 2]!;
-    }
-  }
-
   /**
    * The dragged node's edges in a dense graph, where it is now: bands from it to cells far from it or small on
    * screen, and lines to the nodes near it (the overlay pass).
    */
-  private paintStar<N, E>(input: GraphFrameInput<N, E>, node: number): void {
-    const pairs = input.spatial?.dense;
-    if (!pairs) return;
+  /**
+   * The edges of `node`, a node taken out of the pair hierarchy (dragged, or moved), drawn from where it is now
+   * into `field`, or as lines: its partners (the other ends of its kept edges, or for "every pair" the nodes it is
+   * not joined to) sorted in tree order, so a cell's share of its edges is two binary searches. Cells are walked
+   * from the root; a cell is one bundle from the node's point to the cell where its lines cannot be told apart
+   * (faint, or many to the pixel) and the cell looks small from the node, and is split otherwise, down to single
+   * lines. Edges to other detached nodes are drawn once: by the star of the smaller index, or by the lifted node's
+   * (`skip`, whose star the overlay draws, is left out here).
+   */
+  private starInto<N, E>(field: LineField, node: number, input: GraphFrameInput<N, E>, pairs: PairHierarchy, skip: number, lineWidth: number, alpha: number, color: readonly [number, number, number]): void {
     const tree = pairs.tree;
-    const { zoom, width, height, centerX, centerY, pixelRatio: dpr, edgeStyles, model } = input;
-    const slot = (input.denseSlot ?? 0) * EDGE_FLOATS;
-    const lineWidth = Math.max(0.5, edgeStyles[slot + E_WIDTH] ?? 1);
-    const [r, g, b, alpha] = [edgeStyles[slot + E_COLOR]!, edgeStyles[slot + E_COLOR + 1]!, edgeStyles[slot + E_COLOR + 2]!, edgeStyles[slot + E_COLOR + 3]!];
+    const { model, zoom, width, height, centerX, centerY, pixelRatio: dpr } = input;
+    if (node < 0 || node >= model.nodes.length) return;
     const sx = (x: number): number => width / 2 + (x - centerX) * zoom;
     const sy = (y: number): number => height / 2 + (y - centerY) * zoom;
-    const halfW = width / 2 / zoom;
-    const halfH = height / 2 / zoom;
-    const view = { minX: centerX - halfW, minY: centerY - halfH, maxX: centerX + halfW, maxY: centerY + halfH, zoom };
-    this.ensureProjected(node, input);
-    const px = this.nodeScreen[node * NODE_GEOMETRY]!;
-    const py = this.nodeScreen[node * NODE_GEOMETRY + 1]!;
-    starCut(tree, node, model.x[node]!, model.y[node]!, view, Math.max(2, this.denseTau), {
-      band: (cell, edges) => {
-        const bx = sx(tree.mx[cell]!);
-        const by = sy(tree.my[cell]!);
-        const len = Math.hypot(bx - px, by - py) || 1;
-        const nx = -(by - py) / len;
-        const ny = (bx - px) / len;
-        const hb = Math.max(0.5, SQRT3 * tree.spread(cell, nx, ny) * zoom);
-        const qa = 1 - (1 - alpha) ** ((edges * lineWidth) / 1);
-        const qb = 1 - (1 - alpha) ** ((edges * lineWidth) / (2 * hb));
-        this.bandQuad(px, py, bx, by, nx, ny, 0.5, hb, r, g, b, qa, input.gradientBands !== false ? qb : (qa + qb) / 2, dpr);
-      },
-      node: (j) => {
-        if (!model.joined(node, j)) return;
-        this.ensureProjected(j, input);
-        const o = this.segments.next();
-        const d = this.segments.data;
-        d[o] = px * dpr;
-        d[o + 1] = py * dpr;
-        d[o + 2] = this.nodeScreen[j * NODE_GEOMETRY]! * dpr;
-        d[o + 3] = this.nodeScreen[j * NODE_GEOMETRY + 1]! * dpr;
-        d[o + 4] = lineWidth * dpr;
-        d[o + 5] = 0;
-        d[o + 6] = 0;
-        d[o + 7] = 0;
-        d[o + 8] = r;
-        d[o + 9] = g;
-        d[o + 10] = b;
-        d[o + 11] = alpha;
-      },
-    });
+    const out = tree.excluded;
+    const detached = input.spatial?.detached ?? [];
+    const px = sx(model.x[node]!);
+    const py = sy(model.y[node]!);
+    const faint = alpha <= FAINT_LINE;
+    const line = (j: number): void => {
+      const qx = sx(model.x[j]!);
+      const qy = sy(model.y[j]!);
+      if (faint) {
+        field.addBundle(px, py, qx, qy, 0, 0, 0, 0, 1, lineWidth, 4);
+        return;
+      }
+      if (clippedLength(px, py, qx, qy, { minX: 0, minY: 0, maxX: width, maxY: height }) < 0) return;
+      const o = this.segments.next();
+      const d = this.segments.data;
+      d[o] = px * dpr;
+      d[o + 1] = py * dpr;
+      d[o + 2] = qx * dpr;
+      d[o + 3] = qy * dpr;
+      d[o + 4] = lineWidth * dpr;
+      d[o + 5] = 0;
+      d[o + 6] = 0;
+      d[o + 7] = 0;
+      d[o + 8] = color[0];
+      d[o + 9] = color[1];
+      d[o + 10] = color[2];
+      d[o + 11] = alpha;
+    };
+    // Whether this star draws its edge to detached node `j`.
+    const ownsPair = (j: number): boolean => j !== node && j !== skip && (skip >= 0 ? node < j : true);
+    let partners = this.starPartners;
+    let n = 0;
+    const listed = !pairs.listIsExceptions;
+    if (listed) {
+      const edges = model.edgesAt(node);
+      if (partners.length < edges.length) partners = this.starPartners = new Int32Array(edges.length * 2);
+      const keep = pairs.keep;
+      for (let k = 0; k < edges.length; k++) {
+        const e = edges[k]!;
+        if (keep && keep[e] === 0) continue;
+        const j = model.source[e] === node ? model.target[e]! : model.source[e]!;
+        if (j === node) continue;
+        if (out[j] === 1) {
+          if (ownsPair(j)) line(j);
+          continue;
+        }
+        partners[n++] = tree.pos[j]!;
+      }
+    } else {
+      const rule = model.allPairs;
+      const es = rule?.exceptSource ?? new Uint32Array(0);
+      const et = rule?.exceptTarget ?? new Uint32Array(0);
+      for (let k = 0; k < es.length; k++) {
+        const j = es[k] === node ? et[k]! : et[k] === node ? es[k]! : -1;
+        if (j < 0 || out[j] === 1) continue;
+        if (partners.length <= n) {
+          const grown = new Int32Array(Math.max(64, partners.length * 2));
+          grown.set(partners);
+          partners = this.starPartners = grown;
+        }
+        partners[n++] = tree.pos[j]!;
+      }
+      for (const j of detached) if (ownsPair(j) && model.joined(node, j)) line(j);
+    }
+    const sorted = partners.subarray(0, n).sort();
+    const below = (p: number): number => {
+      let lo = 0;
+      let hi = n;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (sorted[mid]! < p) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo;
+    };
+    // Edges from the node into cell `c`.
+    const into = (c: number): number => {
+      const inRange = below(tree.hi[c]!) - below(tree.lo[c]!);
+      return listed ? inRange : tree.size(c) - inRange;
+    };
+    const view = { minX: -2, minY: -2, maxX: width + 2, maxY: height + 2 };
+    const stack = this.starStack;
+    stack.length = 0;
+    if (tree.count > 0) stack.push(0);
+    let items = 0;
+    while (stack.length > 0) {
+      const c = stack.pop()!;
+      const count = into(c);
+      if (count <= 0) continue;
+      // Nothing of a cell's edges from the node meets the view: skip it (the box around node and cell misses).
+      const bx0 = Math.min(px, sx(tree.minX[c]!));
+      const bx1 = Math.max(px, sx(tree.maxX[c]!));
+      const by0 = Math.min(py, sy(tree.minY[c]!));
+      const by1 = Math.max(py, sy(tree.maxY[c]!));
+      if (bx1 < view.minX || bx0 > view.maxX || by1 < view.minY || by0 > view.maxY) continue;
+      if (tree.left[c]! < 0) {
+        // A leaf: its edges one by one.
+        if (listed) {
+          for (let k = below(tree.lo[c]!); k < n && sorted[k]! < tree.hi[c]!; k++) line(tree.order[sorted[k]!]!);
+        } else {
+          let k = below(tree.lo[c]!);
+          for (let q = tree.lo[c]!; q < tree.hi[c]!; q++) {
+            while (k < n && sorted[k]! < q) k++;
+            if (k < n && sorted[k] === q) continue;
+            const j = tree.order[q]!;
+            if (out[j] !== 1 && j !== node) line(j);
+          }
+        }
+        continue;
+      }
+      const cx = sx(tree.mx[c]!);
+      const cy = sy(tree.my[c]!);
+      const dist = Math.hypot(cx - px, cy - py) || 1;
+      const ux = (cx - px) / dist;
+      const uy = (cy - py) / dist;
+      const hb = SQRT3 * tree.spread(c, -uy, ux) * zoom;
+      const eb = SQRT3 * tree.spread(c, ux, uy) * zoom;
+      const radius = tree.radius(c) * zoom;
+      // Lines to the pixel across the cell's end: too many to tell apart, or too faint, and the cell small from
+      // the node: one bundle is what its lines look like.
+      const crowded = faint || (count * lineWidth) / (2 * Math.max(hb, 0.5)) >= 4;
+      const split = radius > 1 && items < STAR_ITEMS && (radius / dist > 0.25 || !crowded);
+      if (split) {
+        stack.push(tree.left[c]!, tree.right[c]!);
+        continue;
+      }
+      field.addBundle(px, py, cx, cy, 0, hb, 0, eb, count, lineWidth);
+      items++;
+    }
+  }
+
+  /** Scratch for `starInto`: partners in tree order, and the walk's stack. */
+  private starPartners = new Int32Array(64);
+  private readonly starStack: number[] = [];
+
+  /**
+   * Clear `field` outside the convex hull of the nodes: the tree's hull (nodes still in their cells), with the
+   * detached nodes where they are now (`withDetached`), and `extra`.
+   */
+  private clipField<N, E>(field: LineField, tree: PairTree, input: GraphFrameInput<N, E>, extra: number, withDetached = true): void {
+    const { model, zoom, width, height, centerX, centerY } = input;
+    const sx = (x: number): number => width / 2 + (x - centerX) * zoom;
+    const sy = (y: number): number => height / 2 + (y - centerY) * zoom;
+    const points: number[] = [];
+    for (let k = 0; k < tree.hullCount; k++) points.push(sx(tree.hull[k * 2]!), sy(tree.hull[k * 2 + 1]!));
+    if (withDetached) for (const j of input.spatial?.detached ?? []) points.push(sx(model.x[j]!), sy(model.y[j]!));
+    if (extra >= 0 && extra < model.nodes.length) points.push(sx(model.x[extra]!), sy(model.y[extra]!));
+    const hull = convexHull(points);
+    if (this.hullScreen.length < hull.length) this.hullScreen = new Float64Array(hull.length);
+    this.hullScreen.set(hull);
+    field.clip(this.hullScreen, hull.length / 2);
   }
 
   /** A new projection frame: every node counts as not yet projected. */
@@ -956,11 +1088,35 @@ export class GraphPainter {
     this.shapes.count = 0;
     this.borders.count = 0;
     this.drawFlows(this.flows, this.flowCount, input);
+    // Flows run under the nodes: the nodes a flow passes over are drawn here, over it, and not by the still frame.
+    if (this.flowNodeCount > 0) this.buildNodes(input, -1, this.flowNodes, this.flowNodeCount, false);
     if (lifted >= 0) {
       // The lifted node where the drag has it, its edges, their arrows and flows, then the node over them.
       this.projectOne(lifted, input);
       this.bands.count = 0;
-      if (input.spatial?.dense) this.paintStar(input, lifted);
+      this.overlayFieldUsed = false;
+      const pairs = input.spatial?.dense;
+      if (pairs) {
+        // A dense graph's dragged node: its edges as a star from where it is, in its own field.
+        const slot = (input.denseSlot ?? 0) * EDGE_FLOATS;
+        const lineWidth = Math.max(0.5, input.edgeStyles[slot + E_WIDTH] ?? 1);
+        const alpha = input.edgeStyles[slot + E_COLOR + 3]!;
+        const color = [input.edgeStyles[slot + E_COLOR]!, input.edgeStyles[slot + E_COLOR + 1]!, input.edgeStyles[slot + E_COLOR + 2]!] as const;
+        const field = this.overlayField;
+        // Every other pixel while it moves; the still frame after the drop draws it in full.
+        field.reset(width, height, 2);
+        this.starInto(field, lifted, input, pairs, -1, lineWidth, alpha, color);
+        if (field.used) {
+          const counts = field.resolve();
+          this.clipField(field, pairs.tree, input, lifted);
+          const cells = field.cols * field.rows;
+          if (this.overlayLevels.length < cells) this.overlayLevels = new Float32Array(cells);
+          const log = Math.log(1 - Math.min(alpha, 0.999999));
+          for (let k = 0; k < cells; k++) this.overlayLevels[k] = 1 - Math.exp(log * counts[k]!);
+          this.overlayFieldUsed = true;
+          this.overlayColor = color;
+        }
+      }
       this.liftPass = true;
       this.liftFlowCount = 0;
       this.buildEdges(input, input.liftedEdges ?? new Uint32Array(0), false);
@@ -969,6 +1125,10 @@ export class GraphPainter {
       this.buildNodes(input, lifted, null, 0);
     }
     surface.beginFrame(Math.max(1, Math.round(width * dpr)), Math.max(1, Math.round(height * dpr)), dpr);
+    if (lifted >= 0 && this.overlayFieldUsed) {
+      const f = this.overlayField;
+      surface.fillField(this.overlayLevels.subarray(0, f.cols * f.rows), f.cols, f.rows, 0, 0, f.step * dpr, this.overlayColor[0], this.overlayColor[1], this.overlayColor[2]);
+    }
     if (lifted >= 0 && this.bands.count > 0) surface.fillTriangles(this.bands.data, this.bands.count);
     if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
     if (this.dots.count > 0) surface.fillShapes(this.dots.data, this.dots.count);
@@ -1312,13 +1472,80 @@ export class GraphPainter {
     }
   }
 
-  /** Node shapes into the buffers: every node but the lifted one, or `only` that one (the overlay pass). */
-  private buildNodes<N, E>(input: GraphFrameInput<N, E>, only: number, list: Uint32Array | null, listCount: number): void {
+  /**
+   * Build the nodes of a still frame (`list`, in drawing order), but those a flow passes over: they go to
+   * `flowNodes`, for the overlay to draw over the flows, so flows run under the nodes and nothing is drawn twice.
+   * They still count as drawn (labels, picking).
+   */
+  private buildNodesUnderFlows<N, E>(input: GraphFrameInput<N, E>, list: Uint32Array, count: number): void {
+    this.flowNodeCount = 0;
+    if (this.flowCount === 0) {
+      this.buildNodes(input, -1, list, count);
+      return;
+    }
+    // Each flow's box (CSS px): its start, control, and end points, grown by its width.
+    const f = this.flows;
+    const boxes = this.flowBoxes.length >= this.flowCount * 4 ? this.flowBoxes : (this.flowBoxes = new Float64Array(this.flowCount * 4));
+    for (let k = 0; k < this.flowCount; k++) {
+      const o = k * FLOW_RECORD;
+      const grow = input.edgeStyles[f[o]! + E_FLOW_WIDTH]! + 2;
+      boxes[k * 4] = Math.min(f[o + 1]!, f[o + 3]!, f[o + 5]!) - grow;
+      boxes[k * 4 + 1] = Math.min(f[o + 2]!, f[o + 4]!, f[o + 6]!) - grow;
+      boxes[k * 4 + 2] = Math.max(f[o + 1]!, f[o + 3]!, f[o + 5]!) + grow;
+      boxes[k * 4 + 3] = Math.max(f[o + 2]!, f[o + 4]!, f[o + 6]!) + grow;
+    }
+    if (this.stillNodes.length < count) this.stillNodes = new Uint32Array(count);
+    if (this.flowNodes.length < count) this.flowNodes = new Uint32Array(count);
+    let still = 0;
+    const ns = this.nodeScreen;
+    const margin = 4;
+    for (let k = 0; k < count; k++) {
+      const i = list[k]!;
+      const o = i * NODE_GEOMETRY;
+      // The node's box with room for a border or a ring.
+      const x0 = ns[o]! - ns[o + 2]! - margin;
+      const x1 = ns[o]! + ns[o + 2]! + margin;
+      const y0 = ns[o + 1]! - ns[o + 3]! - margin;
+      const y1 = ns[o + 1]! + ns[o + 3]! + margin;
+      let under = false;
+      for (let b = 0; b < this.flowCount && !under; b++) {
+        if (!(x1 >= boxes[b * 4]! && x0 <= boxes[b * 4 + 2]! && y1 >= boxes[b * 4 + 1]! && y0 <= boxes[b * 4 + 3]!)) continue;
+        // Near its path: start to the curve's middle to its end (a bowed flow's curve stays close to that).
+        const q = b * FLOW_RECORD;
+        const mx = 0.25 * f[q + 1]! + 0.5 * f[q + 3]! + 0.25 * f[q + 5]!;
+        const my = 0.25 * f[q + 2]! + 0.5 * f[q + 4]! + 0.25 * f[q + 6]!;
+        // What can overlap: the node's half size and its border or ring, and half the flow's width.
+        const reach = Math.max(ns[o + 2]!, ns[o + 3]!) + margin + input.edgeStyles[f[q]! + E_FLOW_WIDTH]! / 2;
+        under = pointSegment(ns[o]!, ns[o + 1]!, f[q + 1]!, f[q + 2]!, mx, my) <= reach || pointSegment(ns[o]!, ns[o + 1]!, mx, my, f[q + 5]!, f[q + 6]!) <= reach;
+      }
+      if (under) this.flowNodes[this.flowNodeCount++] = i;
+      else this.stillNodes[still++] = i;
+    }
+    this.buildNodes(input, -1, this.stillNodes, still);
+    if (this.drawnNodes.length < this.drawnNodeCount + this.flowNodeCount) {
+      const grown = new Uint32Array(this.drawnNodeCount + this.flowNodeCount);
+      grown.set(this.drawnNodes.subarray(0, this.drawnNodeCount));
+      this.drawnNodes = grown;
+    }
+    for (let k = 0; k < this.flowNodeCount; k++) this.drawnNodes[this.drawnNodeCount++] = this.flowNodes[k]!;
+  }
+
+  /** Nodes a flow passes over, drawn by the overlay; the rest, drawn by the still frame; flows' boxes. */
+  private flowNodes = new Uint32Array(0);
+  private flowNodeCount = 0;
+  private stillNodes = new Uint32Array(0);
+  private flowBoxes = new Float64Array(0);
+
+  /**
+   * Node shapes into the buffers: every node but the lifted one, or `only` that one (the overlay pass). `record`
+   * keeps them as the frame's drawn nodes (for labels and picking); the overlay drawing them again over flows does not.
+   */
+  private buildNodes<N, E>(input: GraphFrameInput<N, E>, only: number, list: Uint32Array | null, listCount: number, record = true): void {
     const { nodeStyles, width, height, zoom, pixelRatio: dpr } = input;
     const ns = this.nodeScreen;
     const lifted = input.lifted ?? -1;
     const count = only >= 0 ? 1 : listCount;
-    if (only < 0 && this.drawnNodes.length < count) this.drawnNodes = new Uint32Array(count);
+    if (record && only < 0 && this.drawnNodes.length < count) this.drawnNodes = new Uint32Array(count);
     for (let k = 0; k < count; k++) {
       const i = only >= 0 ? only : list![k]!;
       if (only < 0 && i === lifted) continue;
@@ -1331,7 +1558,7 @@ export class GraphPainter {
       const ringWidth = nodeStyles[s + N_RING_WIDTH]!;
       const ring = ringWidth > 0 && nodeStyles[s + N_RING + 3]! > 0 ? ringWidth + nodeStyles[s + N_RING_GAP]! : 0;
       if (x + hw + ring < 0 || x - hw - ring > width || y + hh + ring < 0 || y - hh - ring > height) continue;
-      if (only < 0) this.drawnNodes[this.drawnNodeCount++] = i;
+      if (record && only < 0) this.drawnNodes[this.drawnNodeCount++] = i;
       const circle = nodeStyles[s + N_SHAPE] === 0;
       // A node drawn at its minimum size is a dot: round, whatever its shape.
       const radius = circle ? Math.min(hw, hh) : Math.min(nodeStyles[s + N_RADIUS]! * zoom, hw, hh);
@@ -1560,4 +1787,34 @@ export function clipMiddle(x0: number, y0: number, x1: number, y1: number, rect:
     }
   }
   return (lo + hi) / 2;
+}
+
+/** The convex hull of points (x, y pairs), counterclockwise as x, y pairs (Andrew's monotone chain). */
+export function convexHull(points: readonly number[]): number[] {
+  const n = points.length / 2;
+  if (n < 3) return points.slice();
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => points[a * 2]! - points[b * 2]! || points[a * 2 + 1]! - points[b * 2 + 1]!);
+  const cross = (o: number, a: number, b: number): number => (points[a * 2]! - points[o * 2]!) * (points[b * 2 + 1]! - points[o * 2 + 1]!) - (points[a * 2 + 1]! - points[o * 2 + 1]!) * (points[b * 2]! - points[o * 2]!);
+  const hull: number[] = [];
+  for (const p of order) {
+    while (hull.length >= 2 && cross(hull[hull.length - 2]!, hull[hull.length - 1]!, p) <= 0) hull.pop();
+    hull.push(p);
+  }
+  const lower = hull.length + 1;
+  for (let k = n - 2; k >= 0; k--) {
+    const p = order[k]!;
+    while (hull.length >= lower && cross(hull[hull.length - 2]!, hull[hull.length - 1]!, p) <= 0) hull.pop();
+    hull.push(p);
+  }
+  hull.pop();
+  return hull.flatMap((i) => [points[i * 2]!, points[i * 2 + 1]!]);
+}
+
+/** The distance from (`px`, `py`) to the segment from (`ax`, `ay`) to (`bx`, `by`). */
+function pointSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const length2 = dx * dx + dy * dy;
+  const t = length2 > 0 ? Math.min(1, Math.max(0, ((px - ax) * dx + (py - ay) * dy) / length2)) : 0;
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy);
 }

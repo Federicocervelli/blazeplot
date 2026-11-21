@@ -684,8 +684,10 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     if (lifted < 0) {
       liftedEdges = null;
     } else {
-      // A dense graph draws the dragged node's edges as a star from the pair tree; only its edges styled apart
-      // are lifted one by one.
+      // The node leaves the pair hierarchy, so the still layer stops drawing its edges where it was. A dense
+      // graph draws them as a star from where it is (its edges styled apart one by one); any other graph lifts
+      // every edge of it, one by one.
+      spatial.detach(index, model.x, model.y);
       const all = edgesOf(index);
       liftedEdges = spatial.dense ? all.filter((e) => edgeSlot[e] !== denseSlot) : all;
     }
