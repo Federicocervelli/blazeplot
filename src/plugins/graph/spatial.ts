@@ -47,12 +47,10 @@ export class GraphIndex {
   /** The aggregation base cell: a level `L` has cells `base * 2^L` graph units across. */
   base = 1;
   /**
-   * A fixed pseudo-random order of the edges, `perm(k) = k * stride mod count`, and its inverse `rank(e) =
-   * e * inverse mod count`: any prefix of it is an even sample of the graph, with no storage and no sort.
+   * The node being dragged, or -1: it stays out of the pair hierarchy through every rebuild (a new graph,
+   * `setPositions`, too many detached nodes) until the drag ends, so its edges are never also drawn where it was.
    */
-  stride = 1;
-  inverse = 1;
-  private orderedFor = -1;
+  held = -1;
   private positionsDirty = true;
   private stylesDirty = true;
   private readonly levels = new Map<number, Aggregate>();
@@ -140,10 +138,6 @@ export class GraphIndex {
       // Level 0 cells are about a node across: aggregation starts where single nodes stop being visible.
       this.base = count > 0 ? Math.max((sum / count) * 2, 1e-6) : 1;
     }
-    if (this.orderedFor !== model.edgeCount) {
-      [this.stride, this.inverse] = coprimeNear(model.edgeCount, 0.6180339887);
-      this.orderedFor = model.edgeCount;
-    }
     const moved = this.positionsDirty;
     if (this.positionsDirty || this.stylesDirty) {
       this.nodes.build(count, model.x, model.y);
@@ -170,6 +164,7 @@ export class GraphIndex {
     }
     this.positionsDirty = false;
     this.stylesDirty = false;
+    if (moved && this.held >= 0 && this.held < count) this.detach(this.held, model.x, model.y);
   }
 
   /**
@@ -229,25 +224,4 @@ export class GraphIndex {
     this.levels.set(job.level, done);
     return true;
   }
-}
-
-/** A stride near `fraction * n` coprime with `n`, and its inverse modulo `n` (both 1 for n of 2 or less). */
-function coprimeNear(n: number, fraction: number): [number, number] {
-  if (n <= 2) return [1, 1];
-  let a = Math.max(1, Math.round(n * fraction));
-  while (gcd(a, n) !== 1) a++;
-  // Extended Euclid for the inverse.
-  let [oldR, r] = [a, n];
-  let [oldS, t] = [1, 0];
-  while (r !== 0) {
-    const q = Math.floor(oldR / r);
-    [oldR, r] = [r, oldR - q * r];
-    [oldS, t] = [t, oldS - q * t];
-  }
-  return [a, ((oldS % n) + n) % n];
-}
-
-function gcd(a: number, b: number): number {
-  while (b !== 0) [a, b] = [b, a % b];
-  return a;
 }

@@ -72,7 +72,8 @@ export interface ChartRenderSurface {
   /**
    * Fill `vertexCount / 3` triangles with per-vertex colors. `vertices` holds six
    * (6) floats per vertex: `x`, `y` in device pixels, then the straight `r`, `g`, `b`, `a`. Triangles
-   * with a non-finite vertex are skipped. Edges are not antialiased on every engine.
+   * with a non-finite vertex are skipped. Edges are not antialiased on every engine. Engines without
+   * `capabilities.gpu` (Canvas 2D) cannot interpolate: they fill each triangle in its first vertex's color.
    */
   fillTriangles(vertices: Float32Array, vertexCount: number): void;
   /**

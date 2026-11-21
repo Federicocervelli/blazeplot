@@ -462,6 +462,32 @@ describe("listed pair hierarchy", () => {
 });
 
 describe("detached nodes", () => {
+  it("keeps the held (dragged) node out of the hierarchy through a rebuild, and past the detach limit", () => {
+    const n = 200;
+    const { x, y } = disk(n);
+    const nodes = Array.from({ length: n }, (_, i) => ({ id: String(i), x: x[i]!, y: y[i]! }));
+    const model = buildGraphModel(nodes, { all: true });
+    const half = new Float32Array(n).fill(2);
+    const spatial = new GraphIndex();
+    spatial.ensure(model, half, half);
+    spatial.held = 7;
+    expect(spatial.detach(7, model.x, model.y)).toBe(true);
+    // New positions mid-drag: everything is built again, and the held node is taken out of the new hierarchy.
+    spatial.invalidatePositions();
+    spatial.ensure(model, half, half);
+    expect(spatial.dense!.tree.excluded[7]).toBe(1);
+    expect(spatial.detached).toEqual([7]);
+    // Too many other nodes detached: the next rebuild still leaves the held one out.
+    for (let i = 20; spatial.detach(i, model.x, model.y); i++);
+    spatial.ensure(model, half, half);
+    expect(spatial.dense!.tree.excluded[7]).toBe(1);
+    // Released: a rebuild puts it back.
+    spatial.held = -1;
+    spatial.invalidatePositions();
+    spatial.ensure(model, half, half);
+    expect(spatial.dense!.tree.excluded[7]).toBe(0);
+  });
+
   it("takes a node out of its cells and counts, for every pair and for listed edges, and puts it back", () => {
     const n = 300;
     const { x, y } = disk(n);

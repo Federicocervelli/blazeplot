@@ -332,11 +332,12 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     dispose() {
       if (disposed) return;
       disposed = true;
-      if (frameId !== 0) (chart?.dom.view ?? globalThis).cancelAnimationFrame(frameId);
+      if (frameId !== 0) chart?.dom.view.cancelAnimationFrame(frameId);
       frameId = 0;
       clearTimeout(settleTimer);
       clearTimeout(refineTimer);
       clearTimeout(buildTimer);
+      cancelWarm();
       restoreCursor?.();
       restoreCursor = null;
       for (const dispose of disposers.splice(0).reverse()) dispose();
@@ -660,16 +661,17 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   function detailBudget(fine = true): { nodes: number; edges: number; fill: number; overdraw: number; dense: number; fieldStep: number } {
     const lod = options.levelOfDetail;
     if (lod === false) return { nodes: Infinity, edges: Infinity, fill: Infinity, overdraw: Infinity, dense: Infinity, fieldStep: 1 };
-    const canvas = chart?.renderer.name === "canvas2d";
+    // An engine that draws on the CPU (Canvas 2D) gets the smaller budgets.
+    const cpu = chart ? !chart.renderer.capabilities.gpu : false;
     return {
-      nodes: lod?.nodes ?? (canvas ? 12_000 : 60_000),
+      nodes: lod?.nodes ?? (cpu ? 12_000 : 60_000),
       // A frame during a gesture draws a third of the edges; the rest follow once the view rests (see `REFINE_MS`).
-      edges: fine ? (lod?.edges ?? (canvas ? 80_000 : 150_000)) : (lod?.edges ?? (canvas ? 25_000 : 150_000)) / 3,
-      fill: fine ? (lod?.fill ?? 16_000_000) : (lod?.fill ?? (canvas ? 700_000 : 2_000_000)) / 3,
+      edges: fine ? (lod?.edges ?? (cpu ? 80_000 : 150_000)) : (lod?.edges ?? (cpu ? 25_000 : 150_000)) / 3,
+      fill: fine ? (lod?.fill ?? 16_000_000) : (lod?.fill ?? (cpu ? 700_000 : 2_000_000)) / 3,
       // How many times over the bands of a dense graph may cover the plot, together.
-      overdraw: canvas ? 12 : 48,
+      overdraw: cpu ? 12 : 48,
       // Items (bands and single lines) of a dense graph's cut: each costs more to find than a listed edge.
-      dense: Math.min(lod?.edges ?? Infinity, fine ? (canvas ? 6_000 : 16_000) : canvas ? 1_200 : 2_500),
+      dense: Math.min(lod?.edges ?? Infinity, fine ? (cpu ? 6_000 : 16_000) : cpu ? 1_200 : 2_500),
       // A dense graph's lines per pixel are sampled every CSS pixel at rest, every other one while the view moves.
       fieldStep: fine ? 1 : 2,
     };
@@ -681,6 +683,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     // A drag that ends moved one node: the index takes it and its edges as moved, without a rebuild.
     if (index < 0 && lifted >= 0 && liftedEdges) spatial.moveNode(lifted, liftedEdges, model.x, model.y);
     lifted = index >= 0 && ensureFlowSurface() ? index : -1;
+    // Kept out of the pair hierarchy across rebuilds too, which `detach` alone does not survive.
+    spatial.held = lifted;
     if (lifted < 0) {
       liftedEdges = null;
     } else {
@@ -694,7 +698,16 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     scheduleRender();
   }
 
-  let warmHandle: number | ReturnType<typeof setTimeout> | undefined;
+  type IdleView = Window & { requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number; cancelIdleCallback?: (handle: number) => void };
+  let warmHandle: { idle: number } | { timer: ReturnType<typeof setTimeout> } | undefined;
+
+  /** Cancel a pending `warmIncidence`, so a disposed graph is not kept alive by it. */
+  function cancelWarm(): void {
+    if (!warmHandle) return;
+    if ("idle" in warmHandle) (chart?.dom.view as IdleView | undefined)?.cancelIdleCallback?.(warmHandle.idle);
+    else clearTimeout(warmHandle.timer);
+    warmHandle = undefined;
+  }
 
   /**
    * Build the model's incidence index while the browser is idle, so the first drag finds a node's edges at once
@@ -702,14 +715,14 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
    */
   function warmIncidence(): void {
     if (!options.draggable) return;
-    const view = chart?.dom.view as (Window & { requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number }) | undefined;
+    const view = chart?.dom.view as IdleView | undefined;
     const target = model;
     const run = (): void => {
       warmHandle = undefined;
       if (!disposed && target === model) target.edgesAt(0);
     };
     if (warmHandle !== undefined) return;
-    warmHandle = view?.requestIdleCallback ? view.requestIdleCallback(run, { timeout: 2000 }) : setTimeout(run, 300);
+    warmHandle = view?.requestIdleCallback ? { idle: view.requestIdleCallback(run, { timeout: 2000 }) } : { timer: setTimeout(run, 300) };
   }
 
   /** The edges of a node (the model's incidence index, built on the first drag). */
@@ -787,7 +800,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       budget: detailBudget(fullBudget),
       denseSlot,
       styledEdges,
-      gradientBands: chart.renderer.name !== "canvas2d",
+      // Only a GPU engine interpolates `fillTriangles` colors across a triangle (see its docs).
+      gradientBands: chart.renderer.capabilities.gpu,
     };
     const full = staticDirty;
     staticDirty = false;
