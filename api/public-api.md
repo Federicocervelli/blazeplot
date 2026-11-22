@@ -3103,7 +3103,7 @@ function parseFoldedStacks<T = unknown>(input: string, separator?: string): Flam
 
 ### `blazeplot/plugins/graph`
 
-24 exports.
+23 exports.
 
 #### interface GraphBackground
 
@@ -3173,18 +3173,6 @@ interface GraphEdgeLabelStyle {
     readonly paddingY?: number;
     readonly radius?: number;
     readonly offset?: number;
-}
-```
-
-#### interface GraphEdgeRule
-
-```ts
-interface GraphEdgeRule {
-    readonly all: true;
-    readonly except?: {
-        readonly source: ArrayLike<number>;
-        readonly target: ArrayLike<number>;
-    };
 }
 ```
 
@@ -3349,7 +3337,7 @@ interface GraphNodeStyle {
 
 ```ts
 interface GraphPlugin<N = unknown, E = unknown> extends ChartPlugin {
-    setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule): GraphSetResult;
+    setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E>): GraphSetResult;
     setPositions(positions: Readonly<Record<string, {
         readonly x: number;
         readonly y: number;
@@ -3382,7 +3370,7 @@ interface GraphPlugin<N = unknown, E = unknown> extends ChartPlugin {
 ```ts
 interface GraphPluginOptions<N = unknown, E = unknown> {
     readonly nodes?: readonly GraphNode<N>[];
-    readonly edges?: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule;
+    readonly edges?: readonly GraphEdge<E>[] | GraphEdgeArrays<E>;
     readonly nodeStyle?: GraphNodeStyle | ((node: GraphNode<N>, state: GraphItemState) => GraphNodeStyle);
     readonly edgeStyle?: GraphEdgeStyle | ((edge: GraphEdge<E>, state: GraphItemState) => GraphEdgeStyle);
     readonly drawNode?: ((ctx: CanvasRenderingContext2D, node: GraphNode<N>, frame: GraphNodeFrame) => void) | null;

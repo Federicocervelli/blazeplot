@@ -527,7 +527,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     retainedStale = false;
     dropRetained();
     retainedSlot = -1;
-    if (model.allPairs || model.edgeCount < RETAINED_EDGES) return;
+    if (model.edgeCount < RETAINED_EDGES) return;
     const uses = new Uint32Array(Math.max(1, edgeSlotCount));
     for (let i = 0; i < model.edgeCount; i++) uses[edgeSlot[i]!]!++;
     let slot = 0;
@@ -613,23 +613,9 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   let denseSlot = 0;
   let styledEdges: Uint32Array | null = null;
 
-  /**
-   * For "every pair": the plain `edgeStyle` object (a function is not called for implicit edges). For listed
-   * edges: the most used style record, and the edges with another one, which a dense graph draws one by one.
-   */
+  /** The most used edge style record, and the edges with another one, which a dense graph draws one by one. */
   function resolveDenseStyle(): void {
     styledEdges = null;
-    if (model.allPairs) {
-      const style = typeof options.edgeStyle === "object" && options.edgeStyle ? options.edgeStyle : NO_STYLE;
-      denseSlot = edgeSlotCount++;
-      if (edgeSlotCount * EDGE_FLOATS > edgeStyles.length) {
-        const grown = new Float32Array(edgeSlotCount * EDGE_FLOATS * 2);
-        grown.set(edgeStyles);
-        edgeStyles = grown;
-      }
-      writeEdgeStyle(edgeStyles, denseSlot * EDGE_FLOATS, style, colors, defaults, false);
-      return;
-    }
     // A small sparse graph draws every edge with its own style: nothing to resolve. A large one draws views its
     // edges overflow through the pair hierarchy, which counts the common style's edges only.
     spatial.keep = null;

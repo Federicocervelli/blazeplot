@@ -522,12 +522,20 @@ describe("graphPlugin dense graphs", () => {
     });
   const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  it("draws every pair as a rule with a coarse cut first and a finer one once the view rests, and a dragged node's edges where it is", async () => {
+  it("draws a dense graph with a coarse cut first and a finer one once the view rests, and a dragged node's edges where it is", async () => {
     const nodes = disk(300);
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < 300; i++) for (let j = i + 1; j < 300; j++) {
+      if (i === 0 && j === 1) continue;
+      source.push(i);
+      target.push(j);
+    }
     const { chart, plugin } = make({
       nodes,
-      edges: { all: true, except: { source: Uint32Array.of(0), target: Uint32Array.of(1) } },
-      edgeStyle: { color: "rgba(100,116,139,0.05)", width: 1 },
+      edges: { source: Uint32Array.from(source), target: Uint32Array.from(target) },
+      // Arrows keep the common style out of a kept set (see `ensureRetained`): this graph takes the pair hierarchy.
+      edgeStyle: { color: "rgba(100,116,139,0.05)", width: 1, arrow: "end" },
       nodeStyle: { width: 4 },
       draggable: true,
       levelOfDetail: { nodes: 10_000, edges: 300 },

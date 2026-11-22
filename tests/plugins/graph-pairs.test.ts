@@ -31,6 +31,26 @@ function hierarchy(count: number): { tree: PairTree; pairs: PairHierarchy; x: Fl
   return { tree, pairs, x, y };
 }
 
+/** Every pair of distinct nodes, less `except` (index pairs, either order), as edge lists: a complete graph. */
+function completeEdges(n: number, except: ReadonlyArray<readonly [number, number]> = []): { source: Uint32Array; target: Uint32Array } {
+  const skip = new Set(except.map(([i, j]) => Math.min(i, j) * n + Math.max(i, j)));
+  const source = new Uint32Array((n * (n - 1)) / 2 - skip.size);
+  const target = new Uint32Array(source.length);
+  let k = 0;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    if (skip.has(i * n + j)) continue;
+    source[k] = i;
+    target[k++] = j;
+  }
+  return { source, target };
+}
+
+/** Count a complete graph (less `except`) into `pairs`, as listed edges. */
+function countComplete(pairs: PairHierarchy, n: number, except: ReadonlyArray<readonly [number, number]> = []): void {
+  const { source, target } = completeEdges(n, except);
+  pairs.countListed(source, target, source.length);
+}
+
 /** Every unordered pair of nodes that the leaf pairs cover, counted. */
 function covered(pairs: PairHierarchy): Map<number, number> {
   const t = pairs.tree;
@@ -58,14 +78,14 @@ const flatCosts = { band: (_a: number, _b: number, _edges: number, out: Float64A
 
 /** What a refine emitted, and the edges it accounts for. */
 function collect() {
-  const out = { bands: [] as number[][], nodes: [] as number[][], cells: [] as number[][], edges: 0 };
+  const out = { bands: [] as number[][], singles: [] as number[], cells: [] as number[][], edges: 0 };
   const sink = {
     band: (a: number, b: number, edges: number) => {
       out.bands.push([a, b, edges]);
       out.edges += edges;
     },
-    nodes: (i: number, j: number) => {
-      out.nodes.push([i, j]);
+    edge: (e: number) => {
+      out.singles.push(e);
       out.edges += 1;
     },
     cell: (c: number, edges: number) => {
@@ -135,36 +155,36 @@ describe("pair hierarchy", () => {
     expect(pairs.count / 300).toBeLessThan(20);
   });
 
-  it("counts every pair less the exceptions, or the listed edges, into the leaf holding each pair", () => {
+  it("counts the listed edges into the leaf holding each pair, skipping loops and missing nodes", () => {
     const { pairs } = hierarchy(200);
-    pairs.countAll(Uint32Array.of(0, 5, 9, 9), Uint32Array.of(1, 4, 9, 300));
-    // (9, 9) is no pair; (9, 300) holds a node that is not there.
+    countComplete(pairs, 200, [[0, 1], [5, 4]]);
     expect(pairs.edges[0]).toBe((200 * 199) / 2 - 2);
-    pairs.countAll(null, null);
+    countComplete(pairs, 200);
     expect(pairs.edges[0]).toBe((200 * 199) / 2);
     const leaf = pairs.leafOf(3, 150);
     expect(leaf).toBeGreaterThanOrEqual(0);
     expect(pairs.isLeaf(leaf)).toBe(true);
-    pairs.countListed(Uint32Array.of(3, 150, 7), Uint32Array.of(150, 3, 8), 3);
+    // (9, 9) is no pair; (9, 300) names a node that is not there.
+    pairs.countListed(Uint32Array.of(3, 150, 7, 9, 9), Uint32Array.of(150, 3, 8, 9, 300), 5);
     expect(pairs.edges[0]).toBe(3);
     expect(pairs.edges[leaf]).toBe(2);
   });
 });
 
 describe("refine", () => {
-  it("accounts for every edge on the view once, as bands, single node pairs, and whole cells", () => {
+  it("accounts for every edge on the view once, as bands, single edges, and whole cells", () => {
     const { pairs } = hierarchy(300);
-    pairs.countAll(null, null);
+    countComplete(pairs, 300);
     const { sink, out } = collect();
     refine(pairs, everything, { ...free, items: 400, minSize: 2 }, flatCosts, sink, new RefineScratch());
     expect(out.edges).toBe((300 * 299) / 2);
-    expect(out.bands.length + out.nodes.length).toBeLessThanOrEqual(400);
+    expect(out.bands.length + out.singles.length).toBeLessThanOrEqual(400);
     expect(out.bands.length).toBeGreaterThan(0);
   });
 
   it("is as fine as its budget allows: a larger budget stops at a smaller size, and the same input gives the same cut", () => {
     const { pairs } = hierarchy(1000);
-    pairs.countAll(null, null);
+    countComplete(pairs, 1000);
     const view = { ...everything, zoom: 0.5 };
     const small = collect();
     const large = collect();
@@ -180,7 +200,7 @@ describe("refine", () => {
 
   it("stops at the area, line, and field budgets too", () => {
     const { pairs } = hierarchy(500);
-    pairs.countAll(null, null);
+    countComplete(pairs, 500);
     const costs = { band: (_a: number, _b: number, _edges: number, out: Float64Array) => out.set([10, 5, 1]), lines: () => 100 };
     for (const budget of [{ area: 100 }, { field: 50 }]) {
       const { sink, out } = collect();
@@ -188,16 +208,16 @@ describe("refine", () => {
       expect(stopped).toBeGreaterThan(2);
       expect(out.bands.length).toBeLessThanOrEqual(10);
     }
-    // Lines: no leaf pair becomes its node pairs when they cost more than allowed.
+    // Lines: no leaf pair becomes its edges when they cost more than allowed.
     const { sink, out } = collect();
     refine(pairs, everything, { ...free, lines: 50, minSize: 0 }, costs, sink, new RefineScratch());
-    expect(out.nodes).toHaveLength(0);
+    expect(out.singles).toHaveLength(0);
     expect(out.edges).toBe((500 * 499) / 2);
   });
 
   it("splits nothing past its smallest size, and leaves out what lies off the view", () => {
     const { pairs } = hierarchy(300);
-    pairs.countAll(null, null);
+    countComplete(pairs, 300);
     const whole = collect();
     refine(pairs, everything, { ...free, minSize: 1e12 }, flatCosts, whole.sink, new RefineScratch());
     expect(whole.out.cells).toEqual([[0, (300 * 299) / 2]]);
@@ -211,7 +231,7 @@ describe("refine", () => {
     expect(half.out.edges).toBeGreaterThan((300 * 299) / 8);
   });
 
-  it("splits leaf pairs further with exact counts from their lists, for listed edges and for exceptions", () => {
+  it("splits leaf pairs further with exact counts from their lists", () => {
     const n = 600;
     const { pairs } = hierarchy(n);
     // Listed: a few thousand distinct pseudo-random edges.
@@ -225,8 +245,7 @@ describe("refine", () => {
     }
     const keys = [...listed];
     pairs.countListed(Uint32Array.from(keys, (k) => Math.floor(k / n)), Uint32Array.from(keys, (k) => k % n), keys.length);
-    const isListed = ([i, j]: number[]) => listed.has(Math.min(i!, j!) * n + Math.max(i!, j!));
-    const total = (out: ReturnType<typeof collect>["out"]) => out.bands.reduce((s, x) => s + x[2]!, 0) + out.cells.reduce((s, x) => s + x[1]!, 0) + out.nodes.filter(isListed).length;
+    const total = (out: ReturnType<typeof collect>["out"]) => out.bands.reduce((s, x) => s + x[2]!, 0) + out.cells.reduce((s, x) => s + x[1]!, 0) + out.singles.length;
     // Over the whole graph, a budget's cut and one split down to single pairs both count every edge once.
     for (const items of [3000, Infinity]) {
       const { sink, out } = collect();
@@ -239,36 +258,25 @@ describe("refine", () => {
     expect(total(near.out)).toBeGreaterThan(0);
     expect(total(near.out)).toBeLessThan(listed.size);
 
-    // Exceptions: every pair less them, split down the same way.
-    const except = [[3, 400], [10, 20], [5, 599]] as const;
-    pairs.countAll(Uint32Array.from(except.map((e) => e[0])), Uint32Array.from(except.map((e) => e[1])));
-    const c = collect();
-    refine(pairs, everything, { ...free, items: 5000, minSize: 0 }, flatCosts, c.sink, new RefineScratch());
-    const skip = new Set(except.map(([i, j]) => Math.min(i, j) * n + Math.max(i, j)));
-    const joined = c.out.nodes.filter(([i, j]) => !skip.has(Math.min(i!, j!) * n + Math.max(i!, j!))).length;
-    expect(c.out.bands.reduce((s, x) => s + x[2]!, 0) + c.out.cells.reduce((s, x) => s + x[1]!, 0) + joined).toBe((n * (n - 1)) / 2 - except.length);
   });
 
   it("grows its queue past its first size", () => {
     const { pairs } = hierarchy(3000);
-    pairs.countAll(null, null);
+    countComplete(pairs, 3000);
     const { sink, out } = collect();
     refine(pairs, everything, { ...free, minSize: 0 }, flatCosts, sink, new RefineScratch());
     expect(out.edges).toBe((3000 * 2999) / 2);
-    // Nothing is left whole: what is not a separated band is single node pairs.
+    // Nothing is left whole: what is not a separated band is single edges.
     expect(out.cells).toHaveLength(0);
-    expect(out.nodes.length).toBeGreaterThan(50_000);
+    expect(out.singles.length).toBeGreaterThan(50_000);
   });
 });
 
 describe("graph model joins", () => {
-  it("tells joined pairs either way for listed edges, and every pair but the exceptions for a rule", () => {
+  it("tells joined pairs either way", () => {
     const nodes = ["a", "b", "c", "d"].map((id) => ({ id, x: 0, y: 0 }));
     const listed = buildGraphModel(nodes, { source: Uint32Array.of(0, 2), target: Uint32Array.of(1, 3) });
     expect([listed.joined(0, 1), listed.joined(1, 0), listed.joined(3, 2), listed.joined(0, 2), listed.joined(0, 0), listed.joined(0, 9)]).toEqual([true, true, true, false, false, false]);
-    const rule = buildGraphModel(nodes, { all: true, except: { source: Uint32Array.of(1, 2, 2, 9), target: Uint32Array.of(0, 2, 3, 0) } });
-    expect(rule.allPairs!.implicitEdges).toBe(6 - 2);
-    expect([rule.joined(0, 1), rule.joined(1, 0), rule.joined(2, 3), rule.joined(0, 3), rule.joined(1, 1)]).toEqual([false, false, false, true, false]);
   });
 });
 
@@ -315,10 +323,11 @@ describe("dense graph painter", () => {
     };
   }
 
+  /** A complete graph on a disk (less `except`), listed, with its index and a frame input. */
   function scene(count: number, except: [number, number][] = [], alpha = 0.01) {
     const { x, y } = disk(count);
     const nodes = Array.from({ length: count }, (_, i) => ({ id: String(i), x: x[i]!, y: y[i]! }));
-    const model = buildGraphModel(nodes, { all: true, except: { source: Uint32Array.from(except.map((e) => e[0])), target: Uint32Array.from(except.map((e) => e[1])) } });
+    const model = buildGraphModel(nodes, completeEdges(count, except), { maxEdges: 2_000_000 });
     const colors = new ColorCache(() => undefined);
     const defaults = { nodeFill: [1, 0, 0, 1] as const, edgeColor: [0, 0, 1, 1] as const };
     const nodeStyles = new Float32Array(count * NODE_FLOATS);
@@ -353,7 +362,7 @@ describe("dense graph painter", () => {
   });
 
   it("refines to single lines when zoomed in, and draws only the pairs that are joined", () => {
-    // Nodes 0 and 1 sit next to each other at the middle of the disk; their pair is an exception. Lines opaque
+    // Nodes 0 and 1 sit next to each other at the middle of the disk, and are not joined. Lines opaque
     // enough to see one by one, few enough not to saturate the view, are drawn as lines.
     const { model, input } = scene(150, [[0, 1]], 0.2);
     const painter = new GraphPainter();
@@ -390,7 +399,7 @@ describe("dense graph painter", () => {
   });
 
   it("stops at its budget when zoomed out, and says so, so a finer cut can follow", () => {
-    const { input } = scene(2000);
+    const { input } = scene(800);
     const painter = new GraphPainter();
     painter.paint(recording(), { ...input, zoom: 0.4, budget: { ...input.budget, dense: 200 } });
     expect(painter.clipped).toBe(true);
@@ -469,7 +478,7 @@ describe("detached nodes", () => {
     const n = 200;
     const { x, y } = disk(n);
     const nodes = Array.from({ length: n }, (_, i) => ({ id: String(i), x: x[i]!, y: y[i]! }));
-    const model = buildGraphModel(nodes, { all: true });
+    const model = buildGraphModel(nodes, completeEdges(n));
     const half = new Float32Array(n).fill(2);
     const spatial = new GraphIndex();
     spatial.ensure(model, half, half);
@@ -491,24 +500,17 @@ describe("detached nodes", () => {
     expect(spatial.dense!.tree.excluded[7]).toBe(0);
   });
 
-  it("takes a node out of its cells and counts, for every pair and for listed edges, and puts it back", () => {
+  it("takes a node out of its cells and counts, and puts it back", () => {
     const n = 300;
     const { x, y } = disk(n);
-    for (const listed of [false, true]) {
+    {
       const tree = new PairTree();
       tree.build(n, x, y);
       const pairs = new PairHierarchy(tree);
       pairs.build();
-      const source: number[] = [];
-      const target: number[] = [];
-      if (listed) for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
-        source.push(i);
-        target.push(j);
-      }
-      if (listed) pairs.countListed(Uint32Array.from(source), Uint32Array.from(target), source.length);
-      else pairs.countAll(Uint32Array.of(0), Uint32Array.of(1));
+      countComplete(pairs, n);
       const total = pairs.edges[0]!;
-      // Node 5 moves far away and is taken out: its n - 1 edges (one fewer for every pair, whose exception is 0-1).
+      // Node 5 moves far away and is taken out: its n - 1 edges.
       const moved = Float64Array.from(x);
       moved[5] = x[5]! + 5000;
       tree.exclude(5, true, moved, y);

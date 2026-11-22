@@ -382,7 +382,7 @@ const FLAME_STACKS = ["main;render;draw 12", "main;render;layout 7", "main;io;re
 
 /**
  * A small graph with a moving flow, so the plugin's own animation frames, live region, and label canvas
- * must all go away with the chart. In turn with it: a complete graph, drawn through the pair hierarchy as a density
+ * must all go away with the chart. In turn with it: a complete graph (listed), drawn through the pair hierarchy as a density
  * (`fillField`), so the field texture or image and the warm-up idle callback go away too; and a grid large enough for
  * a kept segment set, whose GPU copy must go too.
  */
@@ -408,7 +408,16 @@ function stabilityGraph(kind: "small" | "dense" | "kept"): ChartPlugin {
   if (kind === "dense") {
     const golden = Math.PI * (3 - Math.sqrt(5));
     const nodes = Array.from({ length: 600 }, (_, i) => ({ id: `d${i}`, x: Math.cos(i * golden) * 12 * Math.sqrt(i + 0.5), y: Math.sin(i * golden) * 12 * Math.sqrt(i + 0.5) }));
-    return graphPlugin({ nodes, edges: { all: true }, draggable: true, edgeStyle: { color: "rgba(80, 120, 220, 0.02)" }, nodeStyle: { width: 4 } });
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        source.push(i);
+        target.push(j);
+      }
+    }
+    // Arrows keep it on the pair hierarchy (a kept set takes plain straight edges).
+    return graphPlugin({ nodes, edges: { source: Uint32Array.from(source), target: Uint32Array.from(target) }, draggable: true, edgeStyle: { color: "rgba(80, 120, 220, 0.02)", arrow: "end" }, nodeStyle: { width: 4 } });
   }
   const nodes = Array.from({ length: 40 }, (_, i) => ({ id: `n${i}`, x: (i % 8) * 60, y: Math.floor(i / 8) * 60, label: `n${i}` }));
   const edges = nodes.slice(1).map((node, i) => ({ source: `n${i}`, target: node.id }));

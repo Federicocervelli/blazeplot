@@ -167,8 +167,6 @@ const FAINT_LINE = 1 / 32;
 const CANDIDATES = 500_000;
 /** Cells a detached node's star splits into bundles, at most, before it stops splitting. */
 const STAR_ITEMS = 6_000;
-/** No edge index: a single node pair of "every pair". */
-const NO_EDGE = 0xffffffff;
 function growF64(a: Float64Array, need: number): Float64Array {
   const b = new Float64Array(Math.max(need, a.length * 2, 64));
   b.set(a);
@@ -589,13 +587,6 @@ export class GraphPainter {
         this.bandCells[o + 1] = b;
         this.bandCells[o + 2] = edges;
       },
-      nodes: (i: number, j: number): void => {
-        if ((this.singleCount + 1) * 3 > this.singleNodes.length) this.singleNodes = growU32(this.singleNodes, (this.singleCount + 1) * 3);
-        this.singleNodes[this.singleCount * 3] = i;
-        this.singleNodes[this.singleCount * 3 + 1] = j;
-        this.singleNodes[this.singleCount * 3 + 2] = NO_EDGE;
-        this.singleCount++;
-      },
       edge: (e: number): void => {
         if ((this.singleCount + 1) * 3 > this.singleNodes.length) this.singleNodes = growU32(this.singleNodes, (this.singleCount + 1) * 3);
         this.singleNodes[this.singleCount * 3] = model.source[e]!;
@@ -762,10 +753,8 @@ export class GraphPainter {
     for (let k = 0; k < this.singleCount; k++) {
       const i = this.singleNodes[k * 3]!;
       const j = this.singleNodes[k * 3 + 1]!;
-      // A listed edge is known to exist; a node pair of "every pair" is looked up.
-      const known = this.singleNodes[k * 3 + 2]! !== NO_EDGE;
       // The dragged node's lines are drawn by the overlay, where it is now.
-      if (i === lifted || j === lifted || (!known && !model.joined(i, j))) continue;
+      if (i === lifted || j === lifted) continue;
       if (faint && dash <= 0) {
         // Too faint to see on its own: its width is drawn on the grid two pixels apart; what adds up is kept.
         field.addBundle(sx(model.x[i]!), sy(model.y[i]!), sx(model.x[j]!), sy(model.y[j]!), 0, 0, 0, 0, 1, lineWidth, 4);
@@ -820,7 +809,7 @@ export class GraphPainter {
     for (let k = 0; k < this.singleCount; k++) {
       const i = this.singleNodes[k * 3]!;
       const j = this.singleNodes[k * 3 + 1]!;
-      if (i === lifted || j === lifted || (this.singleNodes[k * 3 + 2]! === NO_EDGE && !model.joined(i, j))) continue;
+      if (i === lifted || j === lifted) continue;
       field.addBundle(sx(model.x[i]!), sy(model.y[i]!), sx(model.x[j]!), sy(model.y[j]!), 0, 0, 0, 0, 1, lineWidth, 4);
     }
   }
@@ -902,8 +891,7 @@ export class GraphPainter {
    */
   /**
    * The edges of `node`, a node taken out of the pair hierarchy (dragged, or moved), drawn from where it is now
-   * into `field`, or as lines: its partners (the other ends of its kept edges, or for "every pair" the nodes it is
-   * not joined to) sorted in tree order, so a cell's share of its edges is two binary searches. Cells are walked
+   * into `field`, or as lines: its partners (the other ends of its kept edges) sorted in tree order, so a cell's share of its edges is two binary searches. Cells are walked
    * from the root; a cell is one bundle from the node's point to the cell where its lines cannot be told apart
    * (faint, or many to the pixel) and the cell looks small from the node, and is split otherwise, down to single
    * lines. Edges to other detached nodes are drawn once: by the star of the smaller index, or by the lifted node's
@@ -916,7 +904,6 @@ export class GraphPainter {
     const sx = (x: number): number => width / 2 + (x - centerX) * zoom;
     const sy = (y: number): number => height / 2 + (y - centerY) * zoom;
     const out = tree.excluded;
-    const detached = input.spatial?.detached ?? [];
     const px = sx(model.x[node]!);
     const py = sy(model.y[node]!);
     const faint = alpha <= FAINT_LINE;
@@ -947,37 +934,19 @@ export class GraphPainter {
     const ownsPair = (j: number): boolean => j !== node && j !== skip && (skip >= 0 ? node < j : true);
     let partners = this.starPartners;
     let n = 0;
-    const listed = !pairs.listIsExceptions;
-    if (listed) {
-      const edges = model.edgesAt(node);
-      if (partners.length < edges.length) partners = this.starPartners = new Int32Array(edges.length * 2);
-      const keep = pairs.keep;
-      for (let k = 0; k < edges.length; k++) {
-        const e = edges[k]!;
-        if (keep && keep[e] === 0) continue;
-        const j = model.source[e] === node ? model.target[e]! : model.source[e]!;
-        if (j === node) continue;
-        if (out[j] === 1) {
-          if (ownsPair(j)) line(j);
-          continue;
-        }
-        partners[n++] = tree.pos[j]!;
+    const edges = model.edgesAt(node);
+    if (partners.length < edges.length) partners = this.starPartners = new Int32Array(edges.length * 2);
+    const keep = pairs.keep;
+    for (let k = 0; k < edges.length; k++) {
+      const e = edges[k]!;
+      if (keep && keep[e] === 0) continue;
+      const j = model.source[e] === node ? model.target[e]! : model.source[e]!;
+      if (j === node) continue;
+      if (out[j] === 1) {
+        if (ownsPair(j)) line(j);
+        continue;
       }
-    } else {
-      const rule = model.allPairs;
-      const es = rule?.exceptSource ?? new Uint32Array(0);
-      const et = rule?.exceptTarget ?? new Uint32Array(0);
-      for (let k = 0; k < es.length; k++) {
-        const j = es[k] === node ? et[k]! : et[k] === node ? es[k]! : -1;
-        if (j < 0 || out[j] === 1) continue;
-        if (partners.length <= n) {
-          const grown = new Int32Array(Math.max(64, partners.length * 2));
-          grown.set(partners);
-          partners = this.starPartners = grown;
-        }
-        partners[n++] = tree.pos[j]!;
-      }
-      for (const j of detached) if (ownsPair(j) && model.joined(node, j)) line(j);
+      partners[n++] = tree.pos[j]!;
     }
     const sorted = partners.subarray(0, n).sort();
     const below = (p: number): number => {
@@ -992,8 +961,7 @@ export class GraphPainter {
     };
     // Edges from the node into cell `c`.
     const into = (c: number): number => {
-      const inRange = below(tree.hi[c]!) - below(tree.lo[c]!);
-      return listed ? inRange : tree.size(c) - inRange;
+      return below(tree.hi[c]!) - below(tree.lo[c]!);
     };
     const view = { minX: -2, minY: -2, maxX: width + 2, maxY: height + 2 };
     const stack = this.starStack;
@@ -1012,17 +980,7 @@ export class GraphPainter {
       if (bx1 < view.minX || bx0 > view.maxX || by1 < view.minY || by0 > view.maxY) continue;
       if (tree.left[c]! < 0) {
         // A leaf: its edges one by one.
-        if (listed) {
-          for (let k = below(tree.lo[c]!); k < n && sorted[k]! < tree.hi[c]!; k++) line(tree.order[sorted[k]!]!);
-        } else {
-          let k = below(tree.lo[c]!);
-          for (let q = tree.lo[c]!; q < tree.hi[c]!; q++) {
-            while (k < n && sorted[k]! < q) k++;
-            if (k < n && sorted[k] === q) continue;
-            const j = tree.order[q]!;
-            if (out[j] !== 1 && j !== node) line(j);
-          }
-        }
+        for (let k = below(tree.lo[c]!); k < n && sorted[k]! < tree.hi[c]!; k++) line(tree.order[sorted[k]!]!);
         continue;
       }
       const cx = sx(tree.mx[c]!);

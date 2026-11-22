@@ -13,9 +13,9 @@ import { E_COLOR, EDGE_FLOATS, N_FILL, NODE_FLOATS } from "./styles.js";
 /** Listed edges per node, on average, from which a graph is drawn through the pair hierarchy. */
 export const DENSE_DEGREE = 64;
 
-/** Whether a graph is drawn through the pair hierarchy: "every pair" input, or many edges per node. */
+/** Whether a graph is drawn through the pair hierarchy: many edges per node. */
 export function isDense<N, E>(model: GraphModel<N, E>): boolean {
-  return model.allPairs !== null || (model.nodes.length > 1 && (model.edgeCount * 2) / model.nodes.length >= DENSE_DEGREE);
+  return model.nodes.length > 1 && (model.edgeCount * 2) / model.nodes.length >= DENSE_DEGREE;
 }
 
 /**
@@ -152,8 +152,7 @@ export class GraphIndex {
         tree.build(count, model.x, model.y);
         pairs = new PairHierarchy(tree);
         pairs.build();
-        if (model.allPairs) pairs.countAll(model.allPairs.exceptSource, model.allPairs.exceptTarget);
-        else pairs.countListed(model.source, model.target, model.edgeCount, this.keep);
+        pairs.countListed(model.source, model.target, model.edgeCount, this.keep);
       } else if (wanted && current) {
         // Restyled: the edges in the common style may have changed.
         pairs = current;

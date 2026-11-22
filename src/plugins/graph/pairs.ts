@@ -4,13 +4,12 @@
  * A k-d tree splits the nodes into cells; a pair hierarchy then covers every pair of distinct nodes exactly once
  * with pairs of cells (a well-separated pair decomposition: two cells are separated when the gap between them is
  * at least `SEPARATION` times the larger one's radius). It has O(n) pairs, a few per node, where the graph may
- * have O(n²) edges. Each pair knows how many edges join its two cells: |A|·|B| for "every pair" minus the
- * exceptions that fall in it, or the listed edges assigned to it. A frame walks the hierarchy from the top and
+ * have O(n²) edges. Each pair knows how many of the listed edges join its two cells. A frame walks the hierarchy from the top and
  * stops where a pair is small on screen, or separated: such a pair is drawn as one band from one cell's centroid
  * to the other's, as wide as each cell's spread across the band, with the opacity of its edges drawn over each
  * other. Where both cells are single leaves and large on screen, its edges are drawn one by one.
  *
- * Measured against rasterizing every edge (1 000 nodes, complete graph): bands fitted this way are within about
+ * Measured against rasterizing every edge (1 000 nodes, every pair joined): bands fitted this way are within about
  * 4.5% per pixel of the truth with 2 700 items, where an even random sample of 4 000 edges is 6.8% off; the
  * hierarchy covers all pairs exactly, with 4 to 9 pairs per node from 1 000 to 100 000 nodes. Pure: no DOM.
  */
@@ -524,8 +523,7 @@ export class PairHierarchy {
   }
 
   /**
-   * Per leaf pair, the entries that fall in it, kept so a frame can split a leaf pair further (see `refine`): for
-   * "every pair", the exceptions; for listed edges, the edges. `list[listStart[p] .. listEnd[p])` are indices
+   * Per leaf pair, the edges that fall in it, kept so a frame can split a leaf pair further (see `refine`). `list[listStart[p] .. listEnd[p])` are indices
    * into `listSource` and `listTarget` (an empty range for a pair split further); `refine` reorders them within
    * that range as it splits.
    */
@@ -534,32 +532,19 @@ export class PairHierarchy {
   list: Uint32Array = new Uint32Array(0);
   listSource: ArrayLike<number> = [];
   listTarget: ArrayLike<number> = [];
-  /** Whether the lists are exceptions to "every pair" (counts are |A|·|B| less them) or the edges themselves. */
-  listIsExceptions = false;
   /**
-   * For listed edges: which of them the counts cover (null: all). Edges styled apart from the common style are
+   * Which edges the counts cover (null: all). Edges styled apart from the common style are
    * drawn one by one, so they are left out here and counted once.
    */
   keep: Uint8Array | null = null;
   /**
-   * Per list entry (edge, or exception), 1 when the counts cover it: kept (listed edges), and with neither end
+   * Per edge, 1 when the counts cover it: kept, and with neither end
    * taken out of the tree (see `PairTree.exclude`). Set by `recount`.
    */
   counted: Uint8Array = new Uint8Array(0);
 
-  /**
-   * Counts for "every pair of distinct nodes": |A|·|B| per pair (n·(n-1)/2 inside a cell), less the exception
-   * pairs (`source[k]`, `target[k]`) that fall in it.
-   */
-  countAll(exceptSource: ArrayLike<number> | null, exceptTarget: ArrayLike<number> | null): void {
-    this.listIsExceptions = true;
-    this.assign(exceptSource ?? [], exceptTarget ?? [], exceptSource && exceptTarget ? Math.min(exceptSource.length, exceptTarget.length) : 0);
-    this.recount(null);
-  }
-
   /** Counts for listed edges: each assigned to its leaf pair. */
   countListed(source: Uint32Array, target: Uint32Array, edgeCount: number, keep: Uint8Array | null = null): void {
-    this.listIsExceptions = false;
     this.assign(source, target, edgeCount);
     this.deepen();
     this.recount(keep);
@@ -567,31 +552,23 @@ export class PairHierarchy {
 
   /**
    * Count again: after a restyle moved listed edges in or out of `keep` (1 kept, null all), or nodes were taken
-   * out of the tree or put back. For "every pair", a leaf pair has |A|·|B| edges (n·(n-1)/2 inside a cell) of
-   * the nodes still in, less its exceptions between nodes still in.
+   * out of the tree or put back.
    */
   recount(keep: Uint8Array | null): void {
     const t = this.tree;
-    if (!this.listIsExceptions) this.keep = keep;
+    this.keep = keep;
     const entries = Math.min(this.listSource.length, this.listTarget.length);
     if (this.counted.length !== entries) this.counted = new Uint8Array(entries);
     const out = t.excluded;
     const src = this.listSource;
     const dst = this.listTarget;
-    const kept = this.listIsExceptions ? null : this.keep;
+    const kept = this.keep;
     for (let k = 0; k < entries; k++) this.counted[k] = (kept ? kept[k]! : 1) && out[src[k]!] !== 1 && out[dst[k]!] !== 1 ? 1 : 0;
     for (let p = 0; p < this.count; p++) {
       if (this.first[p]! >= 0) continue;
       let n = 0;
       for (let k = this.listStart[p]!; k < this.listEnd[p]!; k++) n += this.counted[this.list[k]!]!;
-      if (!this.listIsExceptions) {
-        this.edges[p] = n;
-        continue;
-      }
-      const a = this.cellA[p]!;
-      const b = this.cellB[p]!;
-      const full = a === b ? (t.size(a) * (t.size(a) - 1)) / 2 : t.size(a) * t.size(b);
-      this.edges[p] = full - n;
+      this.edges[p] = n;
     }
     this.sumUp();
   }
@@ -729,13 +706,11 @@ export class PairHierarchy {
   }
 }
 
-/** What a cut draws: bands (pairs of cells) and pairs of single nodes, with their area for the budget. */
+/** What a cut draws: bands (pairs of cells) and single edges, with their area for the budget. */
 export interface CutSink {
   band(a: number, b: number, edges: number): void;
-  /** Edges between two single nodes, to be drawn one by one (the caller tests which exist). */
-  nodes(i: number, j: number): void;
-  /** For listed edges: one edge (its index), to be drawn on its own. */
-  edge?(e: number): void;
+  /** One edge (its index), to be drawn on its own. */
+  edge(e: number): void;
 }
 
 /** The view a cut is for: graph-unit rectangle, zoom, line width (CSS px). */
@@ -758,23 +733,6 @@ function emitEdges(pairs: PairHierarchy, lo: number, hi: number, sink: CutSink |
     if (!t.segmentMeets(pairs.listSource[edge]!, pairs.listTarget[edge]!, view)) continue;
     sink?.edge?.(edge);
     items++;
-  }
-  return items;
-}
-
-/** The node pairs of two tree leaves (or inside one) whose segment's box meets the view: emitted, and counted. */
-function emitNodes(t: PairTree, a: number, b: number, sink: CutSink | null, view: CutView): number {
-  let items = 0;
-  const out = t.excluded;
-  for (let u = t.lo[a]!; u < t.hi[a]!; u++) {
-    const i = t.order[u]!;
-    if (out[i] === 1) continue;
-    for (let v = a === b ? u + 1 : t.lo[b]!; v < t.hi[b]!; v++) {
-      const j = t.order[v]!;
-      if (out[j] === 1 || !t.segmentMeets(i, j, view)) continue;
-      sink?.nodes(i, j);
-      items++;
-    }
   }
   return items;
 }
@@ -911,8 +869,8 @@ export class RefineScratch {
  *
  * A stored pair splits into its stored children. A leaf pair, whose cells are separated, splits too while it is
  * large on screen, so a node's edges to far cells become lines when zoomed in: its larger cell is halved, and its
- * list (exceptions, or edges) is partitioned between the halves, which gives each half its exact count. Pairs of
- * two tree leaves become their node pairs when those fit. Entries off the view are dropped. Returns the size
+ * edge list is partitioned between the halves, which gives each half its exact count. Pairs of
+ * two tree leaves become their edges when those fit. Entries off the view are dropped. Returns the size
  * (CSS px) at which refinement stopped.
  */
 export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget, costs: RefineCosts, sink: RefineSink, scratch: RefineScratch): number {
@@ -1030,7 +988,7 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
       [left, scratch.lo[e]!, mid, keptLeft],
       [right, mid, scratch.hi[e]!, keptRight],
     ] as const) {
-      const edges = pairs.listIsExceptions ? t.size(half) * t.size(other) - kept : kept;
+      const edges = kept;
       if (edges <= 0 || !visible(half, other)) continue;
       parts[partCount++] = splitA ? make(-1, half, other, lo, hi, edges) : make(-1, other, half, lo, hi, edges);
     }
@@ -1071,11 +1029,10 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
       }
       continue;
     }
-    // Two tree leaves (or the inside of one): their edges (listed) or node pairs (every pair), one by one.
+    // Two tree leaves (or the inside of one): their edges, one by one.
     const a = scratch.cellA[e]!;
     const b = scratch.cellB[e]!;
-    const listed = !pairs.listIsExceptions && sink.edge !== undefined;
-    const count = listed ? emitEdges(pairs, scratch.lo[e]!, scratch.hi[e]!, null, view) : emitNodes(t, a, b, null, view);
+    const count = emitEdges(pairs, scratch.lo[e]!, scratch.hi[e]!, null, view);
     const cost = costs.lines(a, b);
     if (items - own + count > budget.items || lines + cost > budget.lines) {
       stopped = 2 ** (top / CLASSES_PER_OCTAVE);
@@ -1086,8 +1043,7 @@ export function refine(pairs: PairHierarchy, view: CutView, budget: RefineBudget
     lines += cost;
     area -= scratch.area[e]!;
     field -= scratch.field[e]!;
-    if (listed) emitEdges(pairs, scratch.lo[e]!, scratch.hi[e]!, sink, view);
-    else emitNodes(t, a, b, sink, view);
+    emitEdges(pairs, scratch.lo[e]!, scratch.hi[e]!, sink, view);
   }
   for (let c = CLASSES - 1; c >= 0; c--) for (let e = head[c]!; e >= 0; e = scratch.next[e]!) emit(e);
   return stopped;

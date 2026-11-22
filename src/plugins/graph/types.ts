@@ -50,17 +50,6 @@ export interface GraphEdgeArrays<E = unknown> {
   readonly data?: readonly E[];
 }
 
-/**
- * Every pair of distinct nodes joined (undirected), except the listed pairs: a complete graph, or nearly one,
- * kept in memory proportional to the nodes and the exceptions instead of the n·(n-1)/2 edges. Its edges are drawn
- * with the `edgeStyle` given as an object (a style function is not called for them), without arrows, and cannot
- * be picked or labeled one by one.
- */
-export interface GraphEdgeRule {
-  readonly all: true;
-  readonly except?: { readonly source: ArrayLike<number>; readonly target: ArrayLike<number> };
-}
-
 /** What an item is doing right now, passed to style functions and renderers. */
 export interface GraphItemState {
   /** The pointer is over it. */
@@ -248,7 +237,7 @@ export interface GraphMessages {
 /** Options for {@link graphPlugin}. */
 export interface GraphPluginOptions<N = unknown, E = unknown> {
   readonly nodes?: readonly GraphNode<N>[];
-  readonly edges?: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule;
+  readonly edges?: readonly GraphEdge<E>[] | GraphEdgeArrays<E>;
   /** A style for every node, or a function of the node and its state. Merged over the defaults. */
   readonly nodeStyle?: GraphNodeStyle | ((node: GraphNode<N>, state: GraphItemState) => GraphNodeStyle);
   readonly edgeStyle?: GraphEdgeStyle | ((edge: GraphEdge<E>, state: GraphItemState) => GraphEdgeStyle);
@@ -276,14 +265,16 @@ export interface GraphPluginOptions<N = unknown, E = unknown> {
   readonly maxEdgeLabels?: number;
   /**
    * Level of detail. When more nodes than `nodes` are on screen, a frame draws the aggregate level instead: nodes
-   * binned into cells a few pixels across, one dot per cell in its nodes' average color, and edges merged per pair
-   * of cells with the opacity of their edges drawn over each other. Arrows, flows, labels, and edge picking are left
-   * out at that level, which only shows when single nodes are too small to tell apart. When the nodes fit but more
-   * than `edges` edges are on screen (a dense graph), a stable share of them is drawn, each with the opacity of
-   * those it stands for, so the density reads the same. `fill` bounds the same way the area edges cover, in CSS
-   * pixels of length times width, which is what a dense graph's long edges cost to draw. Defaults to 60 000 nodes,
-   * 150 000 edges, and 2 000 000 px² on WebGL2, and 12 000, 25 000, and 700 000 px² on Canvas 2D; `false` always
-   * draws every item.
+   * binned into cells a few pixels across, one dot per cell in its nodes' average color. Labels and picking are left
+   * out at that level, which only shows when single nodes are too small to tell apart.
+   *
+   * A large graph's plain edges (4 000 or more in one straight style without arrows or flows) are kept by the engine
+   * and drawn by level: `fill` is the line area (CSS pixels of on-screen length times width) a frame draws as lines,
+   * the rest shown as their density; on Canvas 2D, `edges` also caps how many lines a frame draws. Other large or
+   * dense graphs draw through a pair decomposition, within `edges` items and `fill`.
+   *
+   * Defaults to 60 000 nodes and 8 000 000 px² of kept lines on GPU engines, and 12 000 nodes, 600 000 px², and
+   * 30 000 lines on Canvas 2D; `false` always draws every item.
    */
   readonly levelOfDetail?: false | { readonly nodes?: number; readonly edges?: number; readonly fill?: number };
   /** Nodes are never drawn smaller than this, in CSS pixels, so a zoomed-out graph keeps its dots. Defaults to 2. */
@@ -322,7 +313,7 @@ export interface GraphPlugin<N = unknown, E = unknown> extends ChartPlugin {
    * the view, hover, focus, and selection stay on the ids that still exist. Throws a `RangeError` for
    * duplicate or empty node ids, non-finite positions, or more items than `limits` allows.
    */
-  setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E> | GraphEdgeRule): GraphSetResult;
+  setGraph(nodes: readonly GraphNode<N>[], edges: readonly GraphEdge<E>[] | GraphEdgeArrays<E>): GraphSetResult;
   /** Move some nodes, by id, without replacing the graph. Unknown ids are ignored. */
   setPositions(positions: Readonly<Record<string, { readonly x: number; readonly y: number }>>): void;
   /** Apply the style functions again, for example after app state they read changed. */
