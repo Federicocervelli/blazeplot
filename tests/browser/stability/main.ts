@@ -382,11 +382,24 @@ const FLAME_STACKS = ["main;render;draw 12", "main;render;layout 7", "main;io;re
 
 /**
  * A small graph with a moving flow, so the plugin's own animation frames, live region, and label canvas
- * must all go away with the chart. Every other one is instead a complete graph, drawn through the pair hierarchy
- * as a density (`fillField`), so the field texture or image and the warm-up idle callback go away too.
+ * must all go away with the chart. In turn with it: a complete graph, drawn through the pair hierarchy as a density
+ * (`fillField`), so the field texture or image and the warm-up idle callback go away too; and a grid large enough for
+ * a kept segment set, whose GPU copy must go too.
  */
-function stabilityGraph(dense: boolean): ChartPlugin {
-  if (dense) {
+function stabilityGraph(kind: "small" | "dense" | "kept"): ChartPlugin {
+  if (kind === "kept") {
+    // Enough plain edges for a kept segment set: its points texture, index buffer, and vertex array go with the chart.
+    const side = 50;
+    const nodes = Array.from({ length: side * side }, (_, i) => ({ id: `k${i}`, x: (i % side) * 10, y: Math.floor(i / side) * 10 }));
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < side * side; i++) {
+      if ((i + 1) % side !== 0) source.push(i), target.push(i + 1);
+      if (i + side < side * side) source.push(i), target.push(i + side);
+    }
+    return graphPlugin({ nodes, edges: { source: Uint32Array.from(source), target: Uint32Array.from(target) }, draggable: true, edgeStyle: { color: "rgba(80, 120, 220, 0.5)" }, nodeStyle: { width: 3 } });
+  }
+  if (kind === "dense") {
     const golden = Math.PI * (3 - Math.sqrt(5));
     const nodes = Array.from({ length: 600 }, (_, i) => ({ id: `d${i}`, x: Math.cos(i * golden) * 12 * Math.sqrt(i + 0.5), y: Math.sin(i * golden) * 12 * Math.sqrt(i + 0.5) }));
     return graphPlugin({ nodes, edges: { all: true }, draggable: true, edgeStyle: { color: "rgba(80, 120, 220, 0.02)" }, nodeStyle: { width: 4 } });
@@ -408,7 +421,7 @@ async function mountOnce(): Promise<number> {
   const chart = flame
     ? new Chart(host, { renderer: pageRenderer, axes: { x: true, y: false }, plugins: [flameGraphPlugin({ foldedStacks: FLAME_STACKS })] })
     : graph
-      ? new Chart(host, { renderer: pageRenderer, axes: false, grid: false, plugins: [stabilityGraph(counter % 16 === 12)] })
+      ? new Chart(host, { renderer: pageRenderer, axes: false, grid: false, plugins: [stabilityGraph((["small", "dense", "kept"] as const)[((counter - 4) / 8) % 3]!)] })
       : newChart(host, true);
   const renders = countRenders(chart);
   if (!flame && !graph) {

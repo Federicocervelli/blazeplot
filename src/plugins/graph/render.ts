@@ -9,6 +9,7 @@ import type { Rect } from "./grid.js";
 import { LineField } from "./field.js";
 import type { GraphModel } from "./model.js";
 import type { GraphIndex } from "./spatial.js";
+import { type EdgeLevels, edgesForView } from "./edgeLevels.js";
 import { type CutView, type PairHierarchy, type PairTree, type RefineCosts, type RefineSink, RefineScratch, refine } from "./pairs.js";
 import {
   E_ARROW,
@@ -44,6 +45,8 @@ import {
 
 /** The chart engine's drawing surface (WebGL2, Canvas 2D, or the shared context). */
 export type RenderSurface = ReturnType<ChartPluginContext["unstable"]["createRenderSurface"]>;
+/** Segments the engine keeps between frames (`RenderSurface.createSegmentSet`). */
+export type SegmentSetHandle = ReturnType<RenderSurface["createSegmentSet"]>;
 
 /** How far an `"auto"` edge with a reverse twin bows, as a fraction of its length. */
 export const AUTO_BOW = 0.16;
@@ -121,6 +124,32 @@ export interface GraphFrameInput<N, E> {
   readonly styledEdges?: Uint32Array | null;
   /** Whether bands may fade from one end to the other (per-vertex color); else each is one color. */
   readonly gradientBands?: boolean;
+  /**
+   * A large graph's plain edges (one common style, straight, no arrows or flows), kept by the engine and ranked by
+   * level (see `edgeLevels.ts`): drawn from the set, with what does not fit `fill` as a density, instead of being
+   * collected each frame. `apart` lists the edges drawn one by one over them (any other style, or restyled since).
+   */
+  readonly retained?: RetainedEdges | null;
+}
+
+/** A large graph's plain edges kept between frames; see `GraphFrameInput.retained`. */
+export interface RetainedEdges {
+  readonly set: SegmentSetHandle;
+  readonly levels: EdgeLevels;
+  /** Straight color and CSS pixel width and dash of the common style. */
+  readonly color: readonly [number, number, number, number];
+  readonly width: number;
+  readonly dash: number;
+  readonly gap: number;
+  /** CSS pixels of line area a frame draws from the set before the rest is density (see `edgesForView`). */
+  readonly fill: number;
+  /** Most segments a frame draws from the set (a CPU engine's per-line cost). */
+  readonly maxSegments: number;
+  readonly apart: Uint32Array;
+  /** 1 for an edge in the set (by edge index), 0 for one drawn apart. */
+  readonly member: Uint8Array;
+  /** Whether drawn edges' screen geometry is needed (picking, labels), found while few enough cross the view. */
+  readonly geometry: boolean;
 }
 
 /**
@@ -155,6 +184,8 @@ function growU32(a: Uint32Array, need: number): Uint32Array {
 
 /** On-screen size (CSS pixels) of an aggregate cell: below it nodes are too small to tell apart. */
 const AGGREGATE_CELL_PX = 3;
+/** Most edges crossing the view whose geometry a frame finds for picking and labels when drawing from a kept set. */
+const GEOMETRY_EDGES = 20_000;
 
 export class GraphPainter {
   private readonly shapes = new Buffer(SHAPE);
@@ -177,6 +208,10 @@ export class GraphPainter {
   private readonly refineScratch = new RefineScratch();
   /** Lines per pixel of a dense graph's edges over the view. */
   private readonly lineField = new LineField();
+  /** While set, `buildEdges` records geometry for picking and labels but draws nothing. */
+  private geometryOnly = false;
+  /** What the last frame drew from a kept set (see `edgesForView`), for tests and the refine decision. */
+  retainedDrawn = { full: 0, end: 0, fade: 1, level: 0 };
   private hullScreen = new Float64Array(0);
   /** The dragged node's star in a dense graph, for the overlay. */
   private readonly overlayField = new LineField();
@@ -188,6 +223,8 @@ export class GraphPainter {
   /** The coarse cut's lines per pixel, which the full cut weighs its detail by. */
   private throughCache = new Float32Array(0);
   private levelBuffer = new Float32Array(0);
+  /** Lines per pixel of a kept set's density, over the view (`hazeInto`). */
+  private hazeCounts = new Float32Array(0);
   /** Round flow dots, drawn over the edges and under the arrowheads. */
   private readonly dots = new Buffer(SHAPE);
   /** Dashed node borders, drawn over the node fills. */
@@ -281,9 +318,26 @@ export class GraphPainter {
       const nodeRect: Rect = { minX: rect.minX - pad, minY: rect.minY - pad, maxX: rect.maxX + pad, maxY: rect.maxY + pad };
       const budget = input.budget ?? { nodes: 60_000, edges: 150_000 };
       const visible = spatial.nodes.countIn(nodeRect);
-      // Only too many visible nodes calls for the aggregate: while nodes can still be told apart, too many edges
-      // are thinned below instead, so a dense graph keeps its nodes.
-      if (visible > budget.nodes) {
+      if (input.retained) {
+        // Edges from the kept set, never collected or resampled per frame; nodes as below.
+        this.paintRetained(surface, input, rect, input.retained);
+        if (visible > budget.nodes) {
+          this.aggregated = true;
+          const level = Math.max(0, Math.ceil(Math.log2(AGGREGATE_CELL_PX / zoom / spatial.base)));
+          const agg = spatial.level(level, model, input.nodeStyles, input.edgeStyles, input.edgeSlot) ?? spatial.nearest(level);
+          // Only its dots: no merged edges.
+          if (agg) this.paintAggregate(input, agg, 0);
+          else this.paintSample(input, nodeRect, budget.nodes);
+          this.clipped = !agg;
+        } else {
+          const nodeCount = spatial.nodes.query(nodeRect, this.nodeQuery);
+          const nodes = this.sortForDrawing(this.nodeQuery.data, nodeCount, input.order);
+          for (let k = 0; k < nodeCount; k++) this.ensureProjected(nodes[k]!, input);
+          this.buildNodesUnderFlows(input, nodes, nodeCount);
+        }
+      } else if (visible > budget.nodes) {
+        // Only too many visible nodes calls for the aggregate: while nodes can still be told apart, too many edges
+        // are thinned below instead, so a dense graph keeps its nodes.
         this.aggregated = true;
         const target = AGGREGATE_CELL_PX / zoom;
         const level = Math.max(0, Math.ceil(Math.log2(target / spatial.base)));
@@ -351,6 +405,110 @@ export class GraphPainter {
       }
       this.drawnNodes[this.drawnNodeCount++] = lifted;
     }
+  }
+
+  /**
+   * A large graph's plain edges from the kept set: the density of those the view's budget leaves out (from the
+   * world-space grid, so it holds still while the view moves), then the ranked levels that fit and the next one
+   * faded in, then every edge styled apart, one by one, on top.
+   */
+  private paintRetained<N, E>(surface: RenderSurface, input: GraphFrameInput<N, E>, rect: Rect, retained: RetainedEdges): void {
+    const { width, height, zoom, centerX, centerY, pixelRatio: dpr } = input;
+    const { levels, set, color } = retained;
+    const drawn = edgesForView(levels, rect.minX, rect.minY, rect.maxX, rect.maxY, zoom, retained.width, retained.fill);
+    // A CPU engine pays per line too: stop at its limit, fading nothing.
+    if (drawn.end > retained.maxSegments) {
+      drawn.end = Math.max(drawn.full, Math.min(drawn.end, retained.maxSegments));
+      if (drawn.full > retained.maxSegments) {
+        drawn.full = drawn.end = retained.maxSegments;
+        drawn.fade = 1;
+      }
+    }
+    this.retainedDrawn = drawn;
+    if (drawn.level < levels.levels) this.hazeInto(input, retained, drawn.level, drawn.fade);
+    this.submitField(surface, dpr);
+    // Points are stored relative to the grid's corner (see `Graph.ts`).
+    const scale = zoom * dpr;
+    const offsetX = (width / 2 + (levels.minX - centerX) * zoom) * dpr;
+    const offsetY = (height / 2 + (levels.minY - centerY) * zoom) * dpr;
+    const style = { scaleX: scale, scaleY: scale, offsetX, offsetY, width: retained.width * dpr, dash: retained.dash * dpr, gap: retained.gap * dpr };
+    if (drawn.full > 0) surface.drawSegmentSet(set, { ...style, color, first: 0, count: drawn.full });
+    if (drawn.end > drawn.full && drawn.fade > 0.004) surface.drawSegmentSet(set, { ...style, color: [color[0], color[1], color[2], color[3] * drawn.fade], first: drawn.full, count: drawn.end - drawn.full });
+
+    // Picking and labels need the screen geometry of drawn edges: found while few enough cross the view.
+    if (retained.geometry) {
+      this.alphaBoost = 1;
+      let kept = this.crossingEdges(input, rect, GEOMETRY_EDGES, Infinity);
+      // Edges drawn apart are found below, with their drawing.
+      const query = this.edgeQuery.data;
+      let members = 0;
+      for (let k = 0; k < kept; k++) if (retained.member[query[k]!] === 1) query[members++] = query[k]!;
+      kept = members;
+      if (kept > 0) {
+        this.geometryOnly = true;
+        try {
+          this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
+        } finally {
+          this.geometryOnly = false;
+        }
+      }
+    }
+    // Edges styled apart from the set, all of those on the view.
+    if (retained.apart.length > 0) {
+      const kept = this.selectStyled(input, retained.apart, rect);
+      this.buildEdges(input, this.edgeQuery.data.subarray(0, kept), true);
+    }
+    if (this.segments.count > 0) surface.strokeSegments(this.segments.data, this.segments.count);
+    if (this.triangles.count > 0) surface.fillTriangles(this.triangles.data, this.triangles.count);
+  }
+
+  /**
+   * The density of a kept set's edges in levels past `level`, plus `1 - fade` of level `level`'s: lines per pixel
+   * at each vertex of a grid over the view, read bilinearly from the world-space grid of edge length per cell.
+   */
+  private hazeInto<N, E>(input: GraphFrameInput<N, E>, retained: RetainedEdges, level: number, fade: number): void {
+    const { width, height, zoom, centerX, centerY } = input;
+    const { levels } = retained;
+    const after = levels.lengthFrom[level + 1]!;
+    const at = levels.lengthFrom[level]!;
+    const cellPx = levels.cell * zoom;
+    // About two samples per grid cell, at most one per two CSS pixels and at least one per sixteen.
+    const step = Math.min(16, Math.max(2, cellPx / 2));
+    const cols = Math.ceil(width / step) + 1;
+    const rows = Math.ceil(height / step) + 1;
+    if (this.hazeCounts.length < cols * rows) this.hazeCounts = new Float32Array(cols * rows);
+    const counts = this.hazeCounts;
+    // Lines per pixel from world length per cell: length * zoom pixels of line, `width` wide, over cellPx² pixels.
+    const toLines = Math.max(retained.width, 0) / (levels.cell * levels.cell * zoom);
+    const gc = levels.cols;
+    const gr = levels.rows;
+    let any = false;
+    for (let r = 0; r < rows; r++) {
+      // Grid coordinates of cell centers: cell (c, r) is centered at c + 0.5.
+      const gy = (centerY + (r * step - height / 2) / zoom - levels.minY) / levels.cell - 0.5;
+      const y0 = Math.floor(gy);
+      const fy = gy - y0;
+      for (let c = 0; c < cols; c++) {
+        const gx = (centerX + (c * step - width / 2) / zoom - levels.minX) / levels.cell - 0.5;
+        const x0 = Math.floor(gx);
+        const fx = gx - x0;
+        let sum = 0;
+        for (let k = 0; k < 4; k++) {
+          const cx = x0 + (k & 1);
+          const cy = y0 + (k >> 1);
+          if (cx < 0 || cy < 0 || cx >= gc || cy >= gr) continue;
+          const i = cy * gc + cx;
+          const v = after[i]! + (1 - fade) * (at[i]! - after[i]!);
+          sum += v * (k & 1 ? fx : 1 - fx) * (k >> 1 ? fy : 1 - fy);
+        }
+        const n = sum * toLines;
+        counts[r * cols + c] = n;
+        if (n > 0) any = true;
+      }
+    }
+    if (!any) return;
+    const color = retained.color;
+    this.drawField(counts, cols, rows, step, color[0], color[1], color[2], color[3]);
   }
 
   /**
@@ -1242,7 +1400,13 @@ export class GraphPainter {
     const slots = input.edgeSlot;
     // A visible-only frame projects nodes as edges need them (an edge's far end may be off screen).
     const lazy = subset !== null;
-    if (still && this.drawnEdges.length < (subset ? subset.length : model.edgeCount)) this.drawnEdges = new Uint32Array(subset ? subset.length : model.edgeCount);
+    // Room for these after any a pass earlier in the frame recorded (a kept set's geometry, then edges drawn apart).
+    const room = this.drawnEdgeCount + (subset ? subset.length : model.edgeCount);
+    if (still && this.drawnEdges.length < room) {
+      const grown = new Uint32Array(room);
+      grown.set(this.drawnEdges.subarray(0, this.drawnEdgeCount));
+      this.drawnEdges = grown;
+    }
     const count = subset ? subset.length : model.edgeCount;
     if (this.edgeScreen.length < model.edgeCount * EDGE_GEOMETRY) this.edgeScreen = new Float32Array(model.edgeCount * EDGE_GEOMETRY);
     const ns = this.nodeScreen;
@@ -1299,6 +1463,8 @@ export class GraphPainter {
       geometry[g + 5] = ey;
       geometry[g + 6] = 1;
       if (still) this.drawnEdges[this.drawnEdgeCount++] = i;
+      // Drawn elsewhere (a kept set): only picking and labels need it here.
+      if (this.geometryOnly) continue;
 
       const arrows = edgeStyles[s + E_ARROW]!;
       const arrowSize = edgeStyles[s + E_ARROW_SIZE]!;

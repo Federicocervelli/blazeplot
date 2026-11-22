@@ -413,6 +413,106 @@ describe("graphPlugin level of detail", () => {
   });
 });
 
+describe("graphPlugin kept edges", () => {
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  itRecorded("draws a large graph's plain edges from a kept set by level, cuts a dragged node out of it, and frees it on dispose", async () => {
+    const side = 80;
+    const nodes = Array.from({ length: side * side }, (_, i) => ({ id: String(i), x: (i % side) * 20, y: Math.floor(i / side) * 20 }));
+    const edges: Array<{ source: string; target: string }> = [];
+    for (let i = 0; i < side * side; i++) {
+      if ((i + 1) % side !== 0) edges.push({ source: String(i), target: String(i + 1) });
+      if (i + side < side * side) edges.push({ source: String(i), target: String(i + side) });
+    }
+    // One edge styled apart: drawn one by one over the set.
+    const { chart, plugin } = make({
+      nodes,
+      edges,
+      nodeStyle: { width: 6 },
+      edgeStyle: (edge) => (edge.source === "0" && edge.target === "1" ? { color: "#f00", width: 3 } : { color: "rgba(100,116,139,0.5)", width: 1 }),
+      draggable: true,
+    });
+    frame(chart);
+    const surface = engineOf().surfaces[0]!;
+    expect(surface.segmentSetDraws.length).toBeGreaterThan(0);
+    const { set, style } = surface.segmentSetDraws[0]!;
+    expect(set.segmentCount).toBe(edges.length - 1);
+    expect(style.first).toBe(0);
+    expect(style.color[3]).toBeCloseTo(0.5, 5);
+    // A frame of the same view draws the same ranges again: nothing is resampled.
+    const before = surface.segmentSetDraws.length;
+    plugin.setView({ zoom: plugin.getView().zoom * 1.0001 });
+    h.raf.flush();
+    expect(surface.segmentSetDraws.length).toBeGreaterThan(before);
+
+    // Zoom in on a node and drag it: while dragged its point is a hole; dropped, it is where it was left.
+    plugin.setView({ centerX: 10, centerY: 0, zoom: 2 });
+    h.raf.flush();
+    // The edge styled apart is stroked on its own, over the set.
+    expect(surfaceDraws("strokeSegments").at(-1)).toBeGreaterThanOrEqual(1);
+    plugin.setView({ centerX: 400, centerY: 400, zoom: 2 });
+    h.raf.flush();
+    await wait(400);
+    h.raf.flush();
+    const internal = set as unknown as { points: Float32Array; disposed: boolean };
+    const index = nodes.findIndex((n) => n.id === String(20 * side + 20));
+    const [x, y] = at(plugin, nodes[index]!.id);
+    fire(plot(chart), pointerEvent("pointerdown", x, y));
+    fire(plot(chart), pointerEvent("pointermove", x + 30, y + 10));
+    tick();
+    expect(Math.abs(internal.points[index * 2]!)).toBeGreaterThan(1e38);
+    fire(plot(chart), pointerEvent("pointermove", x + 40, y + 20));
+    tick();
+    fire(plot(chart), pointerEvent("pointerup", x + 40, y + 20));
+    tick();
+    const [nx] = at(plugin, nodes[index]!.id);
+    expect(Math.abs(internal.points[index * 2]!)).toBeLessThan(1e38);
+    expect(Math.round(nx - x)).toBe(40);
+    chart.dispose();
+    expect(internal.disposed).toBe(true);
+  });
+});
+
+describe("graphPlugin kept edges past the budget", () => {
+  itRecorded("draws what the budget leaves out as a density, and an edge of the set hovered on its own over it", () => {
+    const side = 80;
+    const nodes = Array.from({ length: side * side }, (_, i) => ({ id: String(i), x: (i % side) * 20, y: Math.floor(i / side) * 20 }));
+    const edges: Array<{ source: string; target: string }> = [];
+    for (let i = 0; i < side * side; i++) {
+      if ((i + 1) % side !== 0) edges.push({ source: String(i), target: String(i + 1) });
+      if (i + side < side * side) edges.push({ source: String(i), target: String(i + side) });
+    }
+    const hovered: { edge: string | null } = { edge: null };
+    const { chart, plugin } = make({
+      nodes,
+      edges,
+      nodeStyle: { width: 6 },
+      edgeStyle: (_edge, state) => (state.hovered ? { color: "#f00", width: 4 } : { color: "rgba(100,116,139,0.5)", width: 1 }),
+      onEdgeHover: (edge) => void (hovered.edge = edge ? `${edge.source}->${edge.target}` : null),
+      levelOfDetail: { fill: 3_000 },
+    });
+    frame(chart);
+    const surface = engineOf().surfaces[0]!;
+    const drawn = surface.segmentSetDraws.reduce((sum, d) => sum + (d.style.count ?? 0), 0);
+    expect(drawn).toBeGreaterThan(0);
+    expect(drawn).toBeLessThan(edges.length);
+    // The rest as a density: a field, drawn as triangles by an engine without fillField.
+    expect(surfaceDraws("fillTriangles").length).toBeGreaterThan(0);
+
+    // Zoomed in, hover the middle of an edge: it is restyled on its own and stroked over the set.
+    plugin.setView({ centerX: 10, centerY: 0, zoom: 4 });
+    h.raf.flush();
+    const [ax, ay] = at(plugin, "0");
+    const [bx, by] = at(plugin, "1");
+    const strokesBefore = surfaceDraws("strokeSegments").length;
+    fire(plot(chart), pointerEvent("pointermove", (ax + bx) / 2, (ay + by) / 2));
+    h.raf.flush();
+    expect(hovered.edge).toBe("0->1");
+    expect(surfaceDraws("strokeSegments").length).toBeGreaterThan(strokesBefore);
+    chart.dispose();
+  });
+});
+
 describe("graphPlugin dense graphs", () => {
   const disk = (count: number) =>
     Array.from({ length: count }, (_, i) => {
@@ -479,8 +579,8 @@ describe("graphPlugin dense graphs", () => {
     await wait(200);
     h.raf.flush();
     const restedEnd = draws().length;
-    const rested = draws().slice(coarseEnd, restedEnd);
-    expect(rested).not.toEqual(draws().slice(0, coarseEnd));
+    // A graph drawn by levels has no coarse first frame to refine: the rested frame is then the first.
+    const rested = restedEnd > coarseEnd ? draws().slice(coarseEnd, restedEnd) : draws().slice(0, coarseEnd);
     // The pointer moves onto a node: the still layer is drawn again, with the same detail as the rested frame.
     const [x, y] = at(plugin, "40");
     fire(plot(chart), pointerEvent("pointermove", x, y));
@@ -496,7 +596,7 @@ describe("graphPlugin dense graphs", () => {
     chart.dispose();
   });
 
-  it("draws a listed dense graph through the pair hierarchy, and every edge styled apart from the rest one by one, never sampled", async () => {
+  it("draws a listed dense graph whose common style has arrows through the pair hierarchy, and every edge styled apart one by one, never sampled", async () => {
     const nodes = disk(150);
     const source: number[] = [];
     const target: number[] = [];
@@ -505,7 +605,8 @@ describe("graphPlugin dense graphs", () => {
       target.push(j);
     }
     const flowing = { color: "#38bdf8", width: 2, flow: { color: "#38bdf8", width: 2, dash: [4, 6] as [number, number], speed: 0 } };
-    const plain = { color: "rgba(100,116,139,0.05)", width: 1 };
+    // Arrows keep the common style out of a kept set (see `ensureRetained`): this graph takes the pair hierarchy.
+    const plain = { color: "rgba(100,116,139,0.05)", width: 1, arrow: "end" as const };
     const { chart } = make({
       nodes,
       edges: { source: Uint32Array.from(source), target: Uint32Array.from(target) },

@@ -8,8 +8,9 @@ import { buildGraphModel, isCoordinate } from "./model.js";
 import { GraphIndex, OVERFLOW_EDGES, isDense } from "./spatial.js";
 import type { GraphModel } from "./model.js";
 import { EDGE_GEOMETRY, edgeDistanceSq, GraphPainter } from "./render.js";
-import type { RenderSurface } from "./render.js";
-import { ColorCache, E_PICKABLE, EDGE_FLOATS, N_HEIGHT, N_LAYER, N_SHAPE, N_WIDTH, NODE_FLOATS, writeEdgeStyle, writeNodeStyle } from "./styles.js";
+import type { RenderSurface, RetainedEdges } from "./render.js";
+import { buildEdgeLevels } from "./edgeLevels.js";
+import { ColorCache, E_ARROW, E_COLOR, E_CURVATURE, E_DASH, E_GAP, E_HAS_FLOW, E_PICKABLE, E_WIDTH, EDGE_FLOATS, N_HEIGHT, N_LAYER, N_SHAPE, N_WIDTH, NODE_FLOATS, writeEdgeStyle, writeNodeStyle } from "./styles.js";
 import type { StyleDefaults } from "./styles.js";
 import type {
   GraphEdgeStyle,
@@ -49,6 +50,8 @@ const PAN_SETTLE_MS = 120;
  * way of a gesture.
  */
 const REFINE_MS = 150;
+/** Plain edges a graph needs before they are kept by the engine and drawn by level (see `edgeLevels.ts`). */
+const RETAINED_EDGES = 4000;
 /** How long one slice of building an aggregate level may run between frames. */
 const BUILD_SLICE_MS = 6;
 
@@ -91,6 +94,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   let refineTimer: ReturnType<typeof setTimeout> | undefined;
   /** The next still frame draws with its full budget (see `REFINE_MS`). */
   let fullBudget = false;
+  /** Whether still frames cost enough to draw the layers with a margin and follow pans by moving them (see `render`). */
+  let expensiveLayers = false;
   /**
    * The view and layer size of the last still frame that left nothing out for its budget. A frame of the same view
    * (a hover, a selection, a restyle) draws with the full budget too, so it shows the same detail instead of
@@ -115,6 +120,9 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   let edgeSlot = new Uint32Array(0);
   /** Slots by the style object written there, for this styling pass. */
   let slotOfStyle = new Map<GraphEdgeStyle, number>();
+  /** Shared slots by a hash of their style record, so equal styles from different objects share one. */
+  let slotsByHash = new Map<number, number[]>();
+  const styleScratch = new Float32Array(EDGE_FLOATS);
   /** Edges restyled one by one (hover, selection) whose style is their own: each reuses its private slot. */
   let privateSlot = new Map<number, number>();
   let order = new Uint32Array(0);
@@ -276,6 +284,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       }
       if (!changed) return;
       spatial.invalidatePositions();
+      // The levels are measured where edges are: built again.
+      retainedStale = true;
       scheduleRender();
     },
 
@@ -347,6 +357,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       restoreCursor?.();
       restoreCursor = null;
       for (const dispose of disposers.splice(0).reverse()) dispose();
+      dropRetained();
+      retainedStale = true;
       surface?.dispose();
       surface = null;
       shapeCanvas = null;
@@ -406,21 +418,63 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     const style = edgeStyleOf(index);
     let slot = slotOfStyle.get(style);
     if (slot === undefined) {
-      slot = single ? privateSlot.get(index) : undefined;
+      if (!single) {
+        // A style function that returns a new object per edge: equal styles still share one slot, so a large graph
+        // finds its common style (see `ensureRetained`).
+        writeEdgeStyle(styleScratch, 0, style, colors, defaults, edgesPickable);
+        slot = slotOfContent(styleScratch);
+        slotOfStyle.set(style, slot);
+        edgeSlot[index] = slot;
+        return;
+      }
+      slot = privateSlot.get(index);
       if (slot === undefined) {
-        slot = edgeSlotCount++;
-        if (single) privateSlot.set(index, slot);
-        if (edgeSlotCount * EDGE_FLOATS > edgeStyles.length) {
-          const grown = new Float32Array(edgeStyles.length * 2);
-          grown.set(edgeStyles);
-          edgeStyles = grown;
-        }
+        slot = growSlots();
+        privateSlot.set(index, slot);
       }
       writeEdgeStyle(edgeStyles, slot * EDGE_FLOATS, style, colors, defaults, edgesPickable);
       // A private slot is not shared: another edge returning this object gets its own.
-      if (!single) slotOfStyle.set(style, slot);
     }
     edgeSlot[index] = slot;
+  }
+
+  /** A new slot at the end of `edgeStyles`, grown as needed. */
+  function growSlots(): number {
+    const slot = edgeSlotCount++;
+    if (edgeSlotCount * EDGE_FLOATS > edgeStyles.length) {
+      const grown = new Float32Array(edgeStyles.length * 2);
+      grown.set(edgeStyles);
+      edgeStyles = grown;
+    }
+    return slot;
+  }
+
+  /** The shared slot holding exactly the style record `record`, made when there is none (a hash, then an exact compare). */
+  function slotOfContent(record: Float32Array): number {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < EDGE_FLOATS; i++) {
+      // Every NaN (an "auto" curvature) hashes alike.
+      const v = record[i]!;
+      hash = Math.imul(hash ^ (Number.isNaN(v) ? 0x7fc00000 : Math.round(v * 65536) | 0), 0x01000193);
+    }
+    const bucket = slotsByHash.get(hash);
+    if (bucket) {
+      for (const slot of bucket) {
+        const o = slot * EDGE_FLOATS;
+        let same = true;
+        for (let i = 0; i < EDGE_FLOATS && same; i++) {
+          const a = edgeStyles[o + i]!;
+          const b = record[i]!;
+          same = a === b || (Number.isNaN(a) && Number.isNaN(b));
+        }
+        if (same) return slot;
+      }
+    }
+    const slot = growSlots();
+    edgeStyles.set(record, slot * EDGE_FLOATS);
+    if (bucket) bucket.push(slot);
+    else slotsByHash.set(hash, [slot]);
+    return slot;
   }
 
   function writeNode(index: number): void {
@@ -440,12 +494,119 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     if (edgeSlot.length !== edges) edgeSlot = new Uint32Array(edges);
     edgeSlotCount = 0;
     slotOfStyle = new Map();
+    slotsByHash = new Map();
     privateSlot = new Map();
     for (let i = 0; i < nodes; i++) writeNode(i);
     for (let i = 0; i < edges; i++) writeEdge(i, false);
     resolveDenseStyle();
     sortOrder();
     spatial.invalidateStyles();
+    retainedStale = true;
+  }
+
+  /**
+   * A large graph's plain edges kept by the engine (see `edgeLevels.ts`), built for the current graph, styles, and
+   * positions on the next frame after any of them changes; `null` when the graph is drawn without one.
+   */
+  let retained: RetainedEdges | null = null;
+  let retainedStale = true;
+  /** The slot of the edges in `retained`, and the edges restyled one by one since it was built, drawn over it. */
+  let retainedSlot = -1;
+
+  function dropRetained(): void {
+    retained?.set.dispose();
+    retained = null;
+  }
+
+  /**
+   * Build the kept set when stale: the most used edge style, if it is straight and plain (no arrows, flows, or
+   * bowed reverse pairs) and enough edges use it, else no set. Every other edge is drawn apart, one by one.
+   */
+  function ensureRetained(): void {
+    if (!retainedStale || !surface || !chart) return;
+    retainedStale = false;
+    dropRetained();
+    retainedSlot = -1;
+    if (model.allPairs || model.edgeCount < RETAINED_EDGES) return;
+    const uses = new Uint32Array(Math.max(1, edgeSlotCount));
+    for (let i = 0; i < model.edgeCount; i++) uses[edgeSlot[i]!]!++;
+    let slot = 0;
+    for (let k = 1; k < uses.length; k++) if (uses[k]! > uses[slot]!) slot = k;
+    const o = slot * EDGE_FLOATS;
+    if (edgeStyles[o + E_ARROW] !== 0 || edgeStyles[o + E_HAS_FLOW] === 1) return;
+    const curvature = edgeStyles[o + E_CURVATURE]!;
+    if (!Number.isNaN(curvature) && curvature !== 0) return;
+    const member = new Uint8Array(model.edgeCount);
+    let members = 0;
+    for (let e = 0; e < model.edgeCount; e++) {
+      // "auto" bows an edge that also runs the other way: drawn apart, with its bow.
+      if (edgeSlot[e] !== slot || (Number.isNaN(curvature) && model.reversed[e] === 1)) continue;
+      member[e] = 1;
+      members++;
+    }
+    if (members < RETAINED_EDGES) return;
+    const edges = new Uint32Array(members);
+    const apart = new Uint32Array(model.edgeCount - members);
+    for (let e = 0, m = 0, a = 0; e < model.edgeCount; e++) {
+      if (member[e] === 1) edges[m++] = e;
+      else apart[a++] = e;
+    }
+    const degree = new Uint32Array(model.nodes.length);
+    for (let e = 0; e < model.edgeCount; e++) {
+      degree[model.source[e]!]!++;
+      degree[model.target[e]!]!++;
+    }
+    const levels = buildEdgeLevels(edges, model.source, model.target, model.x, model.y, degree);
+    const ends = new Uint32Array(members * 2);
+    for (let k = 0; k < members; k++) {
+      const e = levels.order[k]!;
+      ends[k * 2] = model.source[e]!;
+      ends[k * 2 + 1] = model.target[e]!;
+    }
+    const points = new Float32Array(model.nodes.length * 2);
+    for (let i = 0; i < model.nodes.length; i++) {
+      points[i * 2] = model.x[i]! - levels.minX;
+      points[i * 2 + 1] = model.y[i]! - levels.minY;
+    }
+    // A dragged node's edges are drawn by the overlay, from where it is now.
+    if (lifted >= 0 && lifted < model.nodes.length) points[lifted * 2] = Number.NaN;
+    const set = surface.createSegmentSet(points, model.nodes.length, ends, members);
+    const lod = options.levelOfDetail;
+    const gpu = chart.renderer.capabilities.gpu;
+    const unlimited = lod === false;
+    retainedSlot = slot;
+    retained = {
+      set,
+      levels,
+      color: [edgeStyles[o + E_COLOR]!, edgeStyles[o + E_COLOR + 1]!, edgeStyles[o + E_COLOR + 2]!, edgeStyles[o + E_COLOR + 3]!],
+      width: edgeStyles[o + E_WIDTH]!,
+      dash: edgeStyles[o + E_DASH]!,
+      gap: edgeStyles[o + E_GAP]!,
+      fill: unlimited ? Infinity : (lod?.fill ?? (gpu ? 8_000_000 : 600_000)),
+      maxSegments: unlimited ? Infinity : gpu ? Infinity : (lod?.edges ?? 30_000),
+      apart,
+      member,
+      geometry: edgesPickable || (drawEdgeLabel !== null && model.edgeCount > 0),
+    };
+  }
+
+  /** Where node `index` is in the kept set: a hole while it is lifted (its edges are the overlay's), else its position. */
+  function syncRetainedPoint(index: number): void {
+    if (!retained || index < 0 || index >= model.nodes.length) return;
+    const point = index === lifted ? [Number.NaN, Number.NaN] : [model.x[index]! - retained.levels.minX, model.y[index]! - retained.levels.minY];
+    retained.set.setPoints(Float32Array.from(point), index);
+  }
+
+  /** The edges drawn over the kept set this frame: those never in it, and members restyled one by one since. */
+  function retainedApart(): Uint32Array {
+    if (!retained) return new Uint32Array(0);
+    const extra: number[] = [];
+    for (const e of privateSlot.keys()) if (e < model.edgeCount && retained.member[e] === 1 && edgeSlot[e] !== retainedSlot) extra.push(e);
+    if (extra.length === 0) return retained.apart;
+    const out = new Uint32Array(retained.apart.length + extra.length);
+    out.set(retained.apart);
+    out.set(extra, retained.apart.length);
+    return out;
   }
 
   /** A dense graph's common edge style record, and its edges styled apart from it. */
@@ -688,9 +849,12 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     // Without an overlay (no surface could be made) the node stays in the still layer, drawn again each move.
     // A drag that ends moved one node: the index takes it and its edges as moved, without a rebuild.
     if (index < 0 && lifted >= 0 && liftedEdges) spatial.moveNode(lifted, liftedEdges, model.x, model.y);
+    const previous = lifted;
     lifted = index >= 0 && ensureFlowSurface() ? index : -1;
     // Kept out of the pair hierarchy across rebuilds too, which `detach` alone does not survive.
     spatial.held = lifted;
+    syncRetainedPoint(previous);
+    syncRetainedPoint(lifted);
     if (lifted < 0) {
       liftedEdges = null;
     } else {
@@ -716,8 +880,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   }
 
   /**
-   * Build the model's incidence index while the browser is idle, so the first drag finds a node's edges at once
-   * instead of walking every edge.
+   * Build the model's incidence index and the drag overlay while the browser is idle, so the first drag finds a
+   * node's edges at once instead of walking every edge, and does not wait for a new context.
    */
   function warmIncidence(): void {
     if (!options.draggable) return;
@@ -725,7 +889,10 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     const target = model;
     const run = (): void => {
       warmHandle = undefined;
-      if (!disposed && target === model) target.edgesAt(0);
+      if (disposed || target !== model) return;
+      target.edgesAt(0);
+      // The overlay a drag draws on: a new context is slow to make, so not on the first drag.
+      ensureFlowSurface();
     };
     if (warmHandle !== undefined) return;
     warmHandle = view?.requestIdleCallback ? { idle: view.requestIdleCallback(run, { timeout: 2000 }) } : { timer: setTimeout(run, 300) };
@@ -770,7 +937,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     viewPending = false;
     const dpr = Math.max(1, chart.dom.view.devicePixelRatio || 1);
     // The margin only pays when a frame is expensive; a cheap graph is drawn at the plot's size.
-    const expensive = drawn.ms > EXPENSIVE_FRAME_MS;
+    const expensive = expensiveLayers;
     const marginX = staticDirty ? (expensive ? Math.round(width * OVERSCAN) : 0) : drawn.marginX;
     const marginY = staticDirty ? (expensive ? Math.round(height * OVERSCAN) : 0) : drawn.marginY;
     const layerW = width + marginX * 2;
@@ -784,6 +951,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       if (canvas.width !== deviceW) canvas.width = deviceW;
       if (canvas.height !== deviceH) canvas.height = deviceH;
     }
+    ensureRetained();
     const still = view.centerX === fine.centerX && view.centerY === fine.centerY && view.zoom === fine.zoom && layerW === fine.width && layerH === fine.height;
     const useFull = fullBudget || still;
     const input = {
@@ -810,6 +978,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       styledEdges,
       // Only a GPU engine interpolates `fillTriangles` colors across a triangle (see its docs).
       gradientBands: chart.renderer.capabilities.gpu,
+      retained: retained ? { ...retained, apart: retainedApart() } : null,
     };
     const full = staticDirty;
     staticDirty = false;
@@ -862,7 +1031,12 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
         maxEdgeLabels: Math.floor(positive(options.maxEdgeLabels, 1000, true)),
       });
     }
-    if (full) drawn.ms = (chart.dom.view.performance?.now() ?? Date.now()) - drawnStart;
+    if (full) {
+      drawn.ms = (chart.dom.view.performance?.now() ?? Date.now()) - drawnStart;
+      // With hysteresis: a frame time hovering around the threshold would add and drop the margin every frame,
+      // and each change reallocates every layer's drawing buffer.
+      expensiveLayers = drawn.ms > EXPENSIVE_FRAME_MS ? true : drawn.ms < EXPENSIVE_FRAME_MS / 4 ? false : expensiveLayers;
+    }
     if (spatial.building) scheduleBuild();
     if (animation) scheduleRender();
     else if (painter.moving) requestFrame();
@@ -922,7 +1096,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
    */
   function transformLayers(now: number, width: number, height: number): boolean {
     viewPending = false;
-    if (!(drawn.ms > EXPENSIVE_FRAME_MS) || width !== drawn.width || height !== drawn.height || drawn.zoom <= 0) return false;
+    if (!expensiveLayers || width !== drawn.width || height !== drawn.height || drawn.zoom <= 0) return false;
     const scale = view.zoom / drawn.zoom;
     // Only a scaled layer blurs, so only a zoom is redrawn by age; a slow redraw is spaced out further, so a
     // gesture spends at most about a sixth of its time redrawing. A pan redraws when it runs out of margin.
@@ -1135,7 +1309,10 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
         // The grids are brought up to date when the drag ends (see `lift`): until then only this node moves.
         // Only the lifted node and its edges move: the overlay and labels are drawn again, the still layer is not.
         if (lifted >= 0) requestFrame();
-        else scheduleRender();
+        else {
+          syncRetainedPoint(active.node);
+          scheduleRender();
+        }
       }
       setCursor("grabbing");
       return;
