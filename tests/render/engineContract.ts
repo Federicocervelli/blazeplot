@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { RenderProjection, RendererLossState } from "../../src/render/ChartRenderer.ts";
+import { SegmentSet } from "../../src/render/SegmentSet.ts";
 import { testStyle } from "../helpers.ts";
 import type { DrawObs, EngineFixture } from "./engineHarness.ts";
 
@@ -157,6 +158,120 @@ export function defineEngineContract(fixture: EngineFixture): void {
       expect(drawn).toHaveLength(2);
       close(drawn[0]!, [10, 5, 30, 15], 0.01);
       close(drawn[1]!, [0, 0, 100, 50], 0.01);
+    });
+
+    it("fills rounded shapes in their device-pixel boxes, with borders, and skips bad ones", () => {
+      const h = frame();
+      const shapes = new Float32Array([
+        // A circle: a square with half-side corners, and a border.
+        10, 10, 20, 20, 10, 2, 1, 0, 0, 1, 1, 1, 1, 1,
+        // A card: rounded corners, no border.
+        40, 5, 50, 20, 4, 0, 0, 1, 0, 1, 0, 0, 0, 0,
+        // Skipped: a non-finite coordinate, and a zero width.
+        Number.NaN, 0, 5, 5, 2, 0, 1, 1, 1, 1, 0, 0, 0, 0,
+        0, 0, 0, 5, 2, 0, 1, 1, 1, 1, 0, 0, 0, 0,
+      ]);
+      h.renderer.fillShapes(shapes, 4);
+      h.renderer.endFrame();
+      const drawn = only(h.draws(), "shape");
+      const boxes = drawn.flatMap((d) => d.boxes.map((box) => ({ box, bordered: d.bordered })));
+      expect(boxes).toHaveLength(2);
+      close(boxes[0]!.box, [10, 10, 30, 30], 0.01);
+      expect(boxes[0]!.bordered).toBe(true);
+      close(boxes[1]!.box, [40, 5, 90, 25], 0.01);
+      expect(boxes[1]!.bordered).toBe(false);
+    });
+
+    it("strokes segments with their own width and dash, and skips non-finite ones", () => {
+      const h = frame();
+      const segments = new Float32Array([
+        0, 10, 100, 10, 2, 0, 0, 0, 1, 0, 0, 1,
+        10, 0, 10, Number.NaN, 2, 0, 0, 0, 1, 0, 0, 1,
+        0, 40, 50, 40, 3, 6, 4, 0, 0, 0, 1, 1,
+      ]);
+      h.renderer.strokeSegments(segments, 3);
+      h.renderer.endFrame();
+      const drawn = only(h.draws(), "stroke").flatMap((d) => d.segments.map((segment) => ({ segment, width: d.widthPx, dashed: d.dashed === true })));
+      expect(drawn).toHaveLength(2);
+      close(drawn[0]!.segment, [0, 10, 100, 10], 0.01);
+      expect([drawn[0]!.width, drawn[0]!.dashed]).toEqual([2, false]);
+      close(drawn[1]!.segment, [0, 40, 50, 40], 0.01);
+      expect([drawn[1]!.width, drawn[1]!.dashed]).toEqual([3, true]);
+    });
+
+    it("fills per-vertex colored triangles, dropping one with a non-finite vertex", () => {
+      const h = frame();
+      const vertices = new Float32Array([
+        10, 10, 1, 0, 0, 1, 20, 10, 1, 0, 0, 1, 15, 20, 1, 0, 0, 1,
+        0, 0, 1, 0, 0, 1, Number.NaN, 0, 1, 0, 0, 1, 5, 5, 1, 0, 0, 1,
+        50, 30, 0, 1, 0, 1, 60, 30, 0, 1, 0, 1, 55, 40, 0, 1, 0, 1,
+      ]);
+      h.renderer.fillTriangles(vertices, 9);
+      h.renderer.endFrame();
+      const boxes = only(h.draws(), "polygon").map((p) => p.bbox);
+      expect(boxes).toHaveLength(2);
+      close(boxes[0]!, [10, 10, 20, 20], 0.01);
+      close(boxes[1]!, [50, 30, 60, 40], 0.01);
+    });
+
+    it("shades a field as one image over its grid plus a half step around it, and skips a bad one", () => {
+      const h = frame();
+      const alpha = new Float32Array([0, 0.5, 1, 0.25, 0.75, 0]);
+      h.renderer.fillField!(alpha, 3, 2, 10, 20, 8, 1, 0, 0);
+      // Skipped: no step, a non-finite origin, and too few opacities.
+      h.renderer.fillField!(alpha, 3, 2, 10, 20, 0, 1, 0, 0);
+      h.renderer.fillField!(alpha, 3, 2, Number.NaN, 20, 8, 1, 0, 0);
+      h.renderer.fillField!(alpha, 4, 2, 10, 20, 8, 1, 0, 0);
+      h.renderer.endFrame();
+      // One image, never per-cell triangles (an engine without fillField would fall back to those).
+      expect(only(h.draws(), "polygon")).toHaveLength(0);
+      const fields = only(h.draws(), "field");
+      expect(fields).toHaveLength(1);
+      close(fields[0]!.box, [6, 16, 30, 32], 0.01);
+      expect([fields[0]!.cols, fields[0]!.rows]).toEqual([3, 2]);
+    });
+
+    it("draws a kept segment set through a transform, a range of it, its moved points, and nothing once disposed", () => {
+      const strokes = (draws: readonly DrawObs[]) => only(draws, "stroke").flatMap((s) => s.segments.map((g) => ({ g: [...g], width: s.widthPx, dashed: s.dashed === true })));
+      // Point 3 is a hole; the third segment names a point that does not exist.
+      const set = new SegmentSet(new Float32Array([0, 0, 10, 0, 10, 5, Number.NaN, 1]), 4, new Uint32Array([0, 1, 1, 2, 2, 9, 0, 3]), 4);
+      const style = { scaleX: 2, scaleY: 2, offsetX: 5, offsetY: 3, width: 1.5, color: white };
+      let h = frame();
+      h.renderer.drawSegmentSet(set, style);
+      // Skipped: a non-finite transform and no width.
+      h.renderer.drawSegmentSet(set, { ...style, offsetX: Number.NaN });
+      h.renderer.drawSegmentSet(set, { ...style, width: 0 });
+      h.renderer.endFrame();
+      const all = strokes(h.draws());
+      expect(all).toHaveLength(2);
+      close(all[0]!.g, [5, 3, 25, 3], 0.01);
+      close(all[1]!.g, [25, 3, 25, 13], 0.01);
+      expect(all[0]!.width).toBeCloseTo(1.5, 5);
+
+      // A range, translucent and dashed; then a moved point, drawn on the next frame from the same set.
+      h.renderer.beginFrame(WIDTH, HEIGHT, 1);
+      h.resetDraws();
+      h.renderer.drawSegmentSet(set, { ...style, color: [1, 1, 1, 0.5], dash: 4, gap: 2, first: 1, count: 1 });
+      h.renderer.endFrame();
+      const ranged = strokes(h.draws());
+      expect(ranged).toHaveLength(1);
+      close(ranged[0]!.g, [25, 3, 25, 13], 0.01);
+      expect(ranged[0]!.dashed).toBe(true);
+      set.setPoints(new Float32Array([20, 5]), 2);
+      h.renderer.beginFrame(WIDTH, HEIGHT, 1);
+      h.resetDraws();
+      h.renderer.drawSegmentSet(set, { ...style, first: 1 });
+      h.renderer.endFrame();
+      const moved = strokes(h.draws());
+      expect(moved).toHaveLength(1);
+      close(moved[0]!.g, [25, 3, 45, 13], 0.01);
+
+      set.dispose();
+      expect(() => set.dispose()).not.toThrow();
+      h = frame();
+      h.renderer.drawSegmentSet(set, style);
+      h.renderer.endFrame();
+      expect(strokes(h.draws())).toHaveLength(0);
     });
 
     it("draws a surface on another canvas with the same engine, independent of the chart's frame", () => {

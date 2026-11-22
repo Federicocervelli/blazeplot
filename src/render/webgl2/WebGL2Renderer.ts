@@ -1,5 +1,6 @@
 import { describeRenderer } from "../ChartRenderer.js";
-import type { ChartRenderer, ChartRendererInfo, FrameReport, RenderProjection, RendererLossState, RendererOrigin } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererInfo, ChartSegmentSet, FrameReport, RenderProjection, RendererLossState, RendererOrigin, SegmentSetStyle } from "../ChartRenderer.js";
+import { SegmentSet, segmentSetRange } from "../SegmentSet.js";
 import type { DrawCommand, GpuBackend, SolidPrimitive } from "./types.js";
 import type { RgbaColor, SeriesMode, SeriesStyle } from "../../core/types.js";
 import { WebGL2Backend } from "./WebGL2Backend.js";
@@ -34,6 +35,10 @@ function programsForSeries(mode: SeriesMode, lineWidthPx: number): ProgramName[]
 export class WebGL2Renderer implements ChartRenderer {
   readonly kind = "webgl2" as const;
   private stream = new Float32Array(INITIAL_STREAM_FLOATS);
+  /** `fillField` opacities for the current frame, as bytes; reset by `beginFrame`. */
+  private fieldBytes = new Uint8Array(0);
+  private fieldBytesUsed = 0;
+  private readonly fieldRect = new Float32Array(4);
   private streamFloats = 0;
   /** Reused every frame: `submit` consumes it synchronously and keeps no reference. */
   private readonly commands: DrawCommand[] = [];
@@ -84,6 +89,7 @@ export class WebGL2Renderer implements ChartRenderer {
     this.canvasHeight = Math.max(1, height);
     this.pixelRatio = Math.max(1, pixelRatio);
     this.streamFloats = 0;
+    this.fieldBytesUsed = 0;
     this.commands.length = 0;
     this.backend.viewport(0, 0, width, height);
     this.backend.clear(0, 0, 0, 0);
@@ -190,6 +196,73 @@ export class WebGL2Renderer implements ChartRenderer {
     this.commands.push({ kind: "rects", first: this.stage(rects, count * 4), instances: count, canvasWidth: this.canvasWidth, canvasHeight: this.canvasHeight });
   }
 
+  /** Fill rounded shapes with borders: fourteen floats each, see `ChartRenderSurface.fillShapes`. */
+  fillShapes(shapes: Float32Array, count: number): void {
+    this.interleaved("shapes", shapes, count, 14);
+  }
+
+  /** Stroke segments with per-segment width, dash, and color: twelve floats each, see `ChartRenderSurface.strokeSegments`. */
+  strokeSegments(segments: Float32Array, count: number): void {
+    this.interleaved("segments", segments, count, 12);
+  }
+
+  /** Fill per-vertex colored triangles: six floats per vertex, see `ChartRenderSurface.fillTriangles`. */
+  fillTriangles(vertices: Float32Array, vertexCount: number): void {
+    this.interleaved("colorTriangles", vertices, vertexCount - (vertexCount % 3), 6);
+  }
+
+  /**
+   * A grid of opacities in one color (see `ChartRenderSurface.fillField`), drawn as one texture with linear
+   * filtering, its texel centers on the grid's vertices.
+   */
+  fillField(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void {
+    if (cols <= 0 || rows <= 0 || alpha.length < cols * rows || !(step > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const count = cols * rows;
+    // The opacities go into one byte stream reused frame to frame; a buffer outgrown mid-frame stays alive in the
+    // commands that point into it until `endFrame`.
+    if (this.fieldBytesUsed + count > this.fieldBytes.length) {
+      this.fieldBytes = new Uint8Array(Math.max(count, this.fieldBytes.length * 2));
+      this.fieldBytesUsed = 0;
+    }
+    const bytes = this.fieldBytes.subarray(this.fieldBytesUsed, this.fieldBytesUsed + count);
+    this.fieldBytesUsed += count;
+    for (let k = 0; k < count; k++) {
+      const a = alpha[k]!;
+      bytes[k] = a >= 1 ? 255 : a > 0 ? Math.round(a * 255) : 0;
+    }
+    const rect = this.fieldRect;
+    rect[0] = x - step / 2;
+    rect[1] = y - step / 2;
+    rect[2] = cols * step;
+    rect[3] = rows * step;
+    const first = this.stage(rect, 2);
+    this.commands.push({ kind: "field", first, alpha: bytes, cols, rows, color: [r, g, b], canvasWidth: this.canvasWidth, canvasHeight: this.canvasHeight });
+  }
+
+  /** Segments of a set kept between frames (see `ChartRenderSurface.drawSegmentSet`): drawn from its GPU copy. */
+  drawSegmentSet(set: ChartSegmentSet, style: SegmentSetStyle): void {
+    if (!(set instanceof SegmentSet)) return;
+    const [first, end] = segmentSetRange(set, style);
+    if (end <= first) return;
+    const color = style.color;
+    if (!(color[3] > 0)) return;
+    const dashed = (style.dash ?? 0) > 0 && (style.gap ?? 0) > 0 && Number.isFinite((style.dash ?? 0) + (style.gap ?? 0));
+    this.commands.push({
+      kind: "segmentSet",
+      set,
+      first,
+      count: end - first,
+      scaleX: style.scaleX,
+      scaleY: style.scaleY,
+      offsetX: style.offsetX,
+      offsetY: style.offsetY,
+      stroke: [style.width, dashed ? style.dash! : 0, dashed ? style.gap! : 0],
+      color: [color[0], color[1], color[2], Math.min(1, color[3])],
+      canvasWidth: this.canvasWidth,
+      canvasHeight: this.canvasHeight,
+    });
+  }
+
   /** A second WebGL2 surface on `canvas`, with its own context. */
   createSurface(canvas: HTMLCanvasElement): ChartRenderer {
     return new WebGL2Renderer(canvas, { createBackend: this.createBackend });
@@ -258,6 +331,47 @@ export class WebGL2Renderer implements ChartRenderer {
     this.commands.push({ kind: "solid", primitive, first: this.stage(data, vertexCount), count: vertexCount, color, ...projection });
   }
 
+  /**
+   * Record an interleaved draw of `count` records of `floatsPerRecord` floats (an even number, so a record
+   * is a whole number of two-float vertices). Records with a non-finite float, and shapes without a
+   * positive size, are left out on the CPU,
+   * because a NaN in a GPU vertex is undefined behavior rather than a skipped shape; triangles are
+   * dropped three vertices at a time. Clean data, the common case, is staged with one copy.
+   */
+  private interleaved(kind: "shapes" | "segments" | "colorTriangles", data: Float32Array, count: number, floatsPerRecord: number): void {
+    const records = Math.min(count, Math.floor(data.length / floatsPerRecord));
+    if (records <= 0) return;
+    const group = kind === "colorTriangles" ? 3 : 1;
+    const groupFloats = floatsPerRecord * group;
+    const total = records - (records % group);
+    // A shape also needs a positive width and height (written so NaN fails too).
+    const sized = kind === "shapes";
+    // A float32 is at most about 3.4e38, so a sum of a record's floats overflows only if one is already infinite,
+    // and any NaN makes it NaN: one finiteness check per record instead of one per float.
+    const valid = (o: number): boolean => {
+      let sum = 0;
+      for (let i = 0; i < groupFloats; i++) sum += data[o + i]!;
+      return Number.isFinite(sum) && (!sized || (data[o + 2]! > 0 && data[o + 3]! > 0));
+    };
+    let clean = true;
+    for (let g = 0; g < total && clean; g += group) clean = valid(g * floatsPerRecord);
+    let source = data;
+    let kept = total;
+    if (!clean) {
+      if (filterScratch.length < total * floatsPerRecord) filterScratch = new Float32Array(total * floatsPerRecord);
+      kept = 0;
+      for (let g = 0; g < total; g += group) {
+        const o = g * floatsPerRecord;
+        if (!valid(o)) continue;
+        filterScratch.set(data.subarray(o, o + groupFloats), kept * floatsPerRecord);
+        kept += group;
+      }
+      source = filterScratch;
+    }
+    if (kept <= 0) return;
+    this.commands.push({ kind, first: this.stage(source, (kept * floatsPerRecord) >> 1), count: kept, canvasWidth: this.canvasWidth, canvasHeight: this.canvasHeight });
+  }
+
   /** Append the first `vertexCount` `[x, y]` vertices of `data` to the frame stream; returns their first vertex index. */
   private stage(data: Float32Array, vertexCount: number): number {
     const floats = vertexCount * 2;
@@ -275,3 +389,6 @@ export class WebGL2Renderer implements ChartRenderer {
     return start >> 1;
   }
 }
+
+/** Finite records of an interleaved draw that had a non-finite one; shared by every chart (a draw call copies it at once). */
+let filterScratch = new Float32Array(0);

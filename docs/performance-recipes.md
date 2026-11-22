@@ -12,6 +12,7 @@ Keep X sorted, batch writes, create each chart once, and let LOD handle dense vi
 | Rendering a small exact viewport | `downsample: "none"` | Skips sampler overhead when visible points are already bounded. |
 | Backend already has min/max buckets | `ServerSampledDataset` + `downsample: "server"` | Avoids sampling twice on the client. |
 | Chart is hidden but still mounted | `chart.stop()` | Stops scheduled work; call `chart.start()` when visible again. |
+| Node-and-edge graph with tens of thousands of edges | `graphPlugin` with `GraphEdgeArrays` and one shared plain `edgeStyle` | Edges are kept on the GPU and drawn by level, so panning and zooming upload nothing. See [Large graphs](./built-in-plugins.md#large-graphs). |
 
 ## Streaming data
 

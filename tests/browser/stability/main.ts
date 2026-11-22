@@ -5,6 +5,7 @@ import type { ChartPlugin, SeriesStore } from "@/index.ts";
 import { a11yPlugin } from "@/plugins/a11y.ts";
 import { annotationsPlugin } from "@/plugins/annotations.ts";
 import { flameGraphPlugin } from "@/plugins/flamegraph.ts";
+import { graphPlugin } from "@/plugins/graph.ts";
 import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
@@ -379,15 +380,66 @@ function setStatus(text: string): void {
 let mountCounter = 0;
 const FLAME_STACKS = ["main;render;draw 12", "main;render;layout 7", "main;io;read 4"].join("\n");
 
-/** Every fourth mount is a flame graph, which owns a second WebGL context on top of the chart's. */
+/**
+ * A small graph with a moving flow, so the plugin's own animation frames, live region, and label canvas
+ * must all go away with the chart. In turn with it: a complete graph (listed), drawn through the pair hierarchy as a density
+ * (`fillField`), so the field texture or image and the warm-up idle callback go away too; and a grid large enough for
+ * a kept segment set, whose GPU copy must go too.
+ */
+function stabilityGraph(kind: "small" | "dense" | "kept"): ChartPlugin {
+  if (kind === "kept") {
+    // Enough plain edges for a kept segment set: its points texture, index buffer, and vertex array go with the chart.
+    const side = 50;
+    const nodes = Array.from({ length: side * side }, (_, i) => ({ id: `k${i}`, x: (i % side) * 10, y: Math.floor(i / side) * 10 }));
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < side * side; i++) {
+      if ((i + 1) % side !== 0) {
+        source.push(i);
+        target.push(i + 1);
+      }
+      if (i + side < side * side) {
+        source.push(i);
+        target.push(i + side);
+      }
+    }
+    return graphPlugin({ nodes, edges: { source: Uint32Array.from(source), target: Uint32Array.from(target) }, draggable: true, edgeStyle: { color: "rgba(80, 120, 220, 0.5)" }, nodeStyle: { width: 3 } });
+  }
+  if (kind === "dense") {
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    const nodes = Array.from({ length: 600 }, (_, i) => ({ id: `d${i}`, x: Math.cos(i * golden) * 12 * Math.sqrt(i + 0.5), y: Math.sin(i * golden) * 12 * Math.sqrt(i + 0.5) }));
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        source.push(i);
+        target.push(j);
+      }
+    }
+    // Arrows keep it on the pair hierarchy (a kept set takes plain straight edges).
+    return graphPlugin({ nodes, edges: { source: Uint32Array.from(source), target: Uint32Array.from(target) }, draggable: true, edgeStyle: { color: "rgba(80, 120, 220, 0.02)", arrow: "end" }, nodeStyle: { width: 4 } });
+  }
+  const nodes = Array.from({ length: 40 }, (_, i) => ({ id: `n${i}`, x: (i % 8) * 60, y: Math.floor(i / 8) * 60, label: `n${i}` }));
+  const edges = nodes.slice(1).map((node, i) => ({ source: `n${i}`, target: node.id }));
+  return graphPlugin({ nodes, edges, draggable: true, edgeStyle: { arrow: "end", flow: { speed: 30 } }, nodeStyle: { shape: "rect", width: 44, height: 24, cornerRadius: 6 } });
+}
+
+/**
+ * Every fourth mount owns a second WebGL context on top of the chart's: a flame graph or, alternately,
+ * a node-and-edge graph.
+ */
 async function mountOnce(): Promise<number> {
-  const flame = ++mountCounter % 4 === 0;
+  const counter = ++mountCounter;
+  const flame = counter % 8 === 0;
+  const graph = counter % 8 === 4;
   const host = createHost(480, 280);
   const chart = flame
     ? new Chart(host, { renderer: pageRenderer, axes: { x: true, y: false }, plugins: [flameGraphPlugin({ foldedStacks: FLAME_STACKS })] })
-    : newChart(host, true);
+    : graph
+      ? new Chart(host, { renderer: pageRenderer, axes: false, grid: false, plugins: [stabilityGraph((["small", "dense", "kept"] as const)[((counter - 4) / 8) % 3]!)] })
+      : newChart(host, true);
   const renders = countRenders(chart);
-  if (!flame) {
+  if (!flame && !graph) {
     addSampleSeries(chart);
     chart.fitToData({ padding: 0.05 });
   }

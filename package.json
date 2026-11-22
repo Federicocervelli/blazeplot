@@ -95,6 +95,11 @@
       "import": "./dist/plugins/flamegraph.js",
       "default": "./dist/plugins/flamegraph.js"
     },
+    "./plugins/graph": {
+      "types": "./dist/plugins/graph.d.ts",
+      "import": "./dist/plugins/graph.js",
+      "default": "./dist/plugins/graph.js"
+    },
     "./plugins/a11y": {
       "types": "./dist/plugins/a11y.d.ts",
       "import": "./dist/plugins/a11y.js",
@@ -217,6 +222,9 @@
       ],
       "plugins/flamegraph": [
         "./dist/plugins/flamegraph.d.ts"
+      ],
+      "plugins/graph": [
+        "./dist/plugins/graph.d.ts"
       ],
       "plugins/a11y": [
         "./dist/plugins/a11y.d.ts"

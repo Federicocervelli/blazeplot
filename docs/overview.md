@@ -67,7 +67,7 @@ Maintainers: see the [Documentation map](./README.md) and the [documentation con
 | Chart types | Line, area, scatter, bar, OHLC, and candlestick series; histograms are bars over a `HistogramDataset`. |
 | Interaction | Optional `interactionsPlugin` for wheel zoom, shift-drag/axis pan, box zoom, touch pan, pinch zoom, and keyboard pan/zoom. On touch screens one finger scrolls the page and two fingers pan and pinch by default (`touchPan: true` opts into one-finger pan); `wheelZoom: "modifier"` also keeps the plain wheel for page scrolling. |
 | Live viewport helpers | `followX` for rolling windows and `autoFitY` for visible-range Y fitting. |
-| Plugins | Interactions, legend, tooltip, crosshair, annotations, selection, navigator, accessibility, and flame graph plugins. See [Built-in plugins](./built-in-plugins.md). |
+| Plugins | Interactions, legend, tooltip, crosshair, annotations, selection, navigator, accessibility, flame graph, and node-and-edge graph plugins. See [Built-in plugins](./built-in-plugins.md). |
 | Layout and themes | Theme tokens, inside/outside axes with optional auto-sized gutters, titles, and plugin layout reservations. See [Theming and layout](./theming-and-layout.md). |
 | Renderers | `"auto"` by default (WebGL2, with a Canvas 2D fallback), plus a shared WebGL context for many charts. See [Browser support](./browser-support.md). |
 | Frameworks | The same `Chart` API, created and disposed in an effect, `onMounted`, or an action. See [Framework integration](./framework-integration.md). |
@@ -78,6 +78,6 @@ Maintainers: see the [Documentation map](./README.md) and the [documentation con
 - The default renderer is `"auto"`: WebGL2 where available, Canvas 2D otherwise. Canvas 2D is slower for very large visible point counts; pass `renderer: "webgl2"` to require the GPU engine and fail loudly without it.
 - X values must be finite and non-decreasing: static datasets throw on unsorted input, and streaming buffers skip out-of-order samples.
 - Datasets passed as parallel arrays must have equal lengths; a mismatch throws a `RangeError`.
-- Plugins are opt-in so the base chart stays small. Create a new plugin instance for each chart: the stateful built-ins (a11y, annotations, crosshair, flame graph, navigator, selection) throw if one instance is installed on a second chart.
+- Plugins are opt-in so the base chart stays small. Create a new plugin instance for each chart: the stateful built-ins (a11y, annotations, crosshair, flame graph, graph, navigator, selection) throw if one instance is installed on a second chart.
 - Dense line and bar views use level-of-detail extraction by default; use `downsample: "none"` only when the visible point count is bounded.
 - `fitToData()` is an explicit fit/reset operation. For live charts, use `followX` and `autoFitY` instead of fitting on every sample.

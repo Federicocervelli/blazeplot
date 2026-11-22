@@ -147,6 +147,7 @@ Keyboard pan and zoom pass through `ViewportPolicy.beforePan` and `beforeZoom`, 
 | `annotationsPlugin` | The SVG stays `aria-hidden`; each visible annotation gets a focus target with `role="button"`, `aria-roledescription="annotation"`, and an accessible name from `ariaLabel`, the label text, or a generated description ("Vertical line at x 50"). Opt out with `focusable: false` (per plugin or per annotation). Removal by keyboard needs `removable: true` and calls `onRemove`. |
 | `interactionsPlugin` | Pointer, wheel, and touch, plus keyboard pan, zoom, and fit from the focused chart root (`keyboard: { panFraction, zoomFactor }`, `keyboard: false` turns it off). Inspection keys from `a11yPlugin` take priority while inspecting. |
 | `flameGraphPlugin` | Its tooltip uses the same `role="tooltip"` / `aria-hidden` toggling. Frames are not keyboard focusable. |
+| `graphPlugin` | The chart root takes focus (`aria-roledescription="graph"`, named by `messages.label`); the plot canvas stays hidden from assistive technology. Arrow keys move focus between nodes, which a polite live region announces (`messages.describeNode`); Enter or Space activates the focused node, Escape clears focus, Shift with an arrow pans, `+`/`-` zoom, `0` fits. Give focused nodes a visible `ring` in `nodeStyle`. |
 
 ## Localization
 

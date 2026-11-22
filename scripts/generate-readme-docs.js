@@ -46,6 +46,7 @@ const exportDescriptions = new Map([
   ["./plugins/crosshair", "Built-in crosshair and ruler plugin."],
   ["./plugins/navigator", "Built-in overview/navigator plugin."],
   ["./plugins/flamegraph", "Built-in flame graph and status-span plugin."],
+  ["./plugins/graph", "Built-in node-and-edge graph plugin: thousands of nodes and edges on the chart's engine, with custom node and edge renderers."],
   ["./plugins/a11y", "Built-in accessibility plugin: hidden data table, keyboard inspection cursor, live summary."],
 ]);
 

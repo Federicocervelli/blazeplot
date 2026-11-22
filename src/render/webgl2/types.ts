@@ -1,5 +1,6 @@
 import type { RgbaColor } from "../../core/types.js";
 import type { ProgramName } from "./ShaderPrograms.js";
+import type { SegmentSet } from "../SegmentSet.js";
 
 /** Primitive topology for solid-color draws. */
 export type SolidPrimitive = "lines" | "line_strip" | "triangles" | "triangle_strip";
@@ -65,8 +66,56 @@ export interface RectsDraw {
   readonly canvasHeight: number;
 }
 
+/**
+ * Instanced draws whose per-instance data is interleaved in the frame stream, in device pixels:
+ * rounded shapes (14 floats each), segments (12 floats each), or per-vertex colored triangles
+ * (6 floats per vertex, not instanced). `first` counts two-float vertices, like every other draw.
+ */
+export interface InterleavedDraw {
+  readonly kind: "shapes" | "segments" | "colorTriangles";
+  readonly first: number;
+  /** Shapes or segments, or vertices for `colorTriangles`. */
+  readonly count: number;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
+/**
+ * A grid of opacities (`cols` x `rows`, row by row, 0 to 255) shaded in one color, as one texture filtered
+ * between its texels: the rectangle (`x, y, width, height` in device pixels, four floats) is at `first`.
+ */
+export interface FieldDraw {
+  readonly kind: "field";
+  readonly first: number;
+  readonly alpha: Uint8Array;
+  readonly cols: number;
+  readonly rows: number;
+  readonly color: readonly [number, number, number];
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
+/**
+ * Segments `first` to `first + count - 1` of a set kept between frames, mapped by the scale and offset and stroked
+ * in one style (`stroke` is width, dash, gap in device pixels). Reads nothing from the frame stream.
+ */
+export interface SegmentSetDraw {
+  readonly kind: "segmentSet";
+  readonly set: SegmentSet;
+  readonly first: number;
+  readonly count: number;
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+  readonly stroke: readonly [number, number, number];
+  readonly color: RgbaColor;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
 /** One recorded draw call. */
-export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw | RectsDraw;
+export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw | RectsDraw | InterleavedDraw | FieldDraw | SegmentSetDraw;
 
 /**
  * Minimal GPU surface used by the renderer. A frame is recorded on the CPU and submitted in one

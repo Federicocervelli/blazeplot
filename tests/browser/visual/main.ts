@@ -7,6 +7,8 @@ import { crosshairPlugin } from "@/plugins/crosshair.ts";
 import { interactionsPlugin } from "@/plugins/interactions.ts";
 import { flameGraphPlugin } from "@/plugins/flamegraph.ts";
 import { buildFlameGraphModel } from "@/plugins/flamegraph/model.ts";
+import { graphPlugin } from "@/plugins/graph.ts";
+import type { GraphEdge, GraphNode } from "@/plugins/graph.ts";
 import { legendPlugin } from "@/plugins/legend.ts";
 import { navigatorPlugin } from "@/plugins/navigator.ts";
 import { selectionPlugin } from "@/plugins/selection.ts";
@@ -33,7 +35,7 @@ interface VisualTestController {
   /** Toggle grid lines so pixel probes can measure series ink without grid. */
   setGridVisible(visible: boolean): void;
   /** Page-space (CSS px) rectangles used to crop browser screenshots. */
-  rects(): { readonly root: VisualRect; readonly plot: VisualRect; readonly flamegraph: VisualRect | null };
+  rects(): { readonly root: VisualRect; readonly plot: VisualRect; readonly flamegraph: VisualRect | null; readonly graph: VisualRect | null };
 }
 
 declare global {
@@ -60,6 +62,7 @@ const CASES = [
   "selection",
   "navigator",
   "flamegraph",
+  "graph",
   "scale-options",
   "overlay-layering",
   "context-restore",
@@ -132,6 +135,7 @@ window.__blazeplotVisualTest = {
     root: toRect(chart.rootElement),
     plot: toRect(chartInternals(chart).canvas),
     flamegraph: toRectOrNull(chart.rootElement.querySelector(".blazeplot-flamegraph-canvas")),
+    graph: toRectOrNull(chart.rootElement.querySelector(".blazeplot-graph-shapes")),
   }),
 };
 
@@ -205,6 +209,7 @@ function optionsForCase(name: VisualCase): ConstructorParameters<typeof Chart>[1
     ]),
     search: "render",
   }));
+  if (name === "graph") return { axes: false, grid: false, plugins: [visualGraph()] };
   if (name === "screenshot-overlays") {
     return {
       title: "Screenshot overlays",
@@ -671,9 +676,12 @@ async function finalizeCase(): Promise<void> {
     stats = chart.getFrameStats();
     // Checked without recording a label: the status line width feeds the page layout, which the pixel baselines depend on.
     if (expectedRenderer && chart.renderer !== expectedRenderer) throw new Error(`Expected renderer ${expectedRenderer}, got ${chart.renderer}`);
-    assert(stats.drawCalls > 0, "drawCalls > 0");
-    assert(stats.pointsRendered > 0, "pointsRendered > 0");
-    assert(stats.renderMode !== "none", `renderMode=${stats.renderMode}`);
+    // The graph case has no series: it draws on its own engine surface, checked by its DOM and ink probe instead.
+    if (caseName !== "graph") {
+      assert(stats.drawCalls > 0, "drawCalls > 0");
+      assert(stats.pointsRendered > 0, "pointsRendered > 0");
+      assert(stats.renderMode !== "none", `renderMode=${stats.renderMode}`);
+    }
     assertCaseDom(caseName, chart);
     assertPixelCase(caseName);
     await assertAsyncCase(caseName);
@@ -795,6 +803,49 @@ function addOhlc(chart: Chart, mode: "ohlc" | "candlestick"): void {
   chart.setViewport({ xMin: -1, xMax: count, yMin: 6, yMax: 14 });
 }
 
+/**
+ * A deterministic graph on every primitive the graph plugin uses: 1000 nodes (cards with labels and
+ * circles) on a grid, edges right and down with arrows, dashes, reverse pairs that bow, a ring, and
+ * a dotted background. The flow overlay has speed 0 so frames do not move.
+ */
+function visualGraph(): ChartPlugin {
+  const columns = 40;
+  const rows = 25;
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < columns; c++) nodes.push({ id: `${c}:${r}`, x: c * 60, y: r * 60, label: `n${r * columns + c}` });
+  }
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < columns; c++) {
+      if (c + 1 < columns) edges.push({ source: `${c}:${r}`, target: `${c + 1}:${r}` });
+      if (r + 1 < rows) edges.push({ source: `${c}:${r}`, target: `${c}:${r + 1}` });
+      if ((c + r) % 7 === 0 && c + 1 < columns) edges.push({ source: `${c + 1}:${r}`, target: `${c}:${r}` });
+    }
+  }
+  return graphPlugin({
+    nodes,
+    edges,
+    background: { kind: "dots", gap: 30, color: "rgba(128, 128, 128, 0.5)" },
+    nodeStyle: (node) => {
+      const index = Number(node.label!.slice(1));
+      return index % 3 === 0
+        ? { shape: "rect", width: 40, height: 24, cornerRadius: 6, fill: "#1e293b", borderColor: "#38bdf8", borderWidth: 1.5, ring: index === 0 ? { color: "#f59e0b", width: 2 } : undefined }
+        : { width: 18, fill: index % 2 ? "#22c55e" : "#e879f9", borderColor: "#ffffff", borderWidth: 1.5, borderDash: index % 5 === 1 ? [3, 2] : undefined };
+    },
+    edgeStyle: (edge) => ({
+      color: edge.source < edge.target ? "#94a3b8" : "#f97316",
+      width: 1.5,
+      arrow: "end",
+      arrowSize: 7,
+      dash: edge.source.endsWith(":3") ? [4, 3] : undefined,
+      flow: edge.source.startsWith("2:") ? { color: "#38bdf8", speed: 0 } : edge.source.startsWith("4:") ? { shape: "dot", color: "#38bdf8", width: 4, dash: [0.5, 10], speed: 0 } : undefined,
+    }),
+    labelFont: "9px sans-serif",
+    labelColor: "#e2e8f0",
+  });
+}
+
 function addFlameGraphBaseline(chart: Chart): void {
   const x = Float64Array.from({ length: 2 }, (_, i) => i * 96);
   const y = new Float32Array([0, 0]);
@@ -836,6 +887,11 @@ function assertCaseDom(name: VisualCase, chart: Chart): void {
   if (name === "flamegraph") {
     assert(!!root.querySelector(".blazeplot-flamegraph-canvas"), "flamegraph webgl canvas exists");
     assert(!!root.querySelector(".blazeplot-flamegraph-labels"), "flamegraph label canvas exists");
+  }
+  if (name === "graph") {
+    const shapes = root.querySelector<HTMLCanvasElement>(".blazeplot-graph-shapes");
+    assert(!!shapes && shapes.width > 1, "graph shape canvas sized");
+    assert(!!root.querySelector(".blazeplot-graph-labels"), "graph label canvas exists");
   }
   if (name === "overlay-layering") {
     const legend = root.querySelector<HTMLElement>(".blazeplot-legend");

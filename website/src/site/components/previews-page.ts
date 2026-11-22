@@ -92,6 +92,8 @@ export class BlazeplotPreviewsPage extends LitElement {
     if (id === "flamechart") return this.renderChartOnly("flamechart");
     if (id === "render-loop") return this.renderRenderLoopPreview();
     if (id === "mobile") return this.renderChartOnly("mobile");
+    if (id === "service-map") return this.renderChartOnly("service-map");
+    if (id === "social-network") return this.renderChartOnly("social-network");
     return this.renderLivePreview();
   }
 

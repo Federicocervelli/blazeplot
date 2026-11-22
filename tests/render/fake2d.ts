@@ -15,6 +15,9 @@ export class FakePath {
   arc(...args: number[]): void {
     this.calls.push(["arc", ...args]);
   }
+  arcTo(...args: number[]): void {
+    this.calls.push(["arcTo", ...args]);
+  }
   closePath(): void {
     this.calls.push(["closePath"]);
   }
@@ -27,7 +30,12 @@ export class FakeContext2D extends FakePath {
   lineWidth = 0;
   lineJoin = "";
   lineCap = "";
+  lineDashOffset = 0;
+  dash: number[] = [];
   lost = false;
+  setLineDash(segments: number[]): void {
+    this.dash = [...segments];
+  }
   setTransform(...args: number[]): void {
     this.calls.push(["setTransform", ...args]);
   }
@@ -38,7 +46,8 @@ export class FakeContext2D extends FakePath {
     this.calls.push(["beginPath"]);
   }
   stroke(): void {
-    this.calls.push(["stroke", this.strokeStyle, this.lineWidth]);
+    // A dashed stroke is marked by a trailing `true`, so solid strokes record as before.
+    this.calls.push(this.dash.length > 0 ? ["stroke", this.strokeStyle, this.lineWidth, true] : ["stroke", this.strokeStyle, this.lineWidth]);
   }
   fill(path?: FakePath): void {
     this.calls.push(["fill", this.fillStyle, path ? path.calls.length : -1]);
@@ -49,6 +58,12 @@ export class FakeContext2D extends FakePath {
   drawImage(...args: unknown[]): void {
     this.calls.push(["drawImage", ...args]);
   }
+  createImageData(width: number, height: number): ImageData {
+    return { width, height, data: new Uint8ClampedArray(width * height * 4) } as unknown as ImageData;
+  }
+  putImageData(...args: unknown[]): void {
+    this.calls.push(["putImageData", ...args]);
+  }
   isContextLost(): boolean {
     return this.lost;
   }
@@ -56,5 +71,7 @@ export class FakeContext2D extends FakePath {
 
 /** A canvas double that hands out `ctx` for "2d" and supports events. */
 export function fakeCanvas2d(ctx: FakeContext2D): HTMLCanvasElement {
-  return Object.assign(new EventTarget(), { width: 100, height: 50, getContext: (kind: string) => (kind === "2d" ? ctx : null) }) as unknown as HTMLCanvasElement;
+  // Offscreen canvases the engine makes (the field image) get their own context, so they do not show up in `ctx.calls`.
+  const ownerDocument = { createElement: () => fakeCanvas2d(new FakeContext2D()) };
+  return Object.assign(new EventTarget(), { width: 100, height: 50, ownerDocument, getContext: (kind: string) => (kind === "2d" ? ctx : null) }) as unknown as HTMLCanvasElement;
 }

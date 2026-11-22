@@ -1,10 +1,10 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { describeRenderer } from "../../src/render/ChartRenderer.ts";
-import type { ChartRenderer, ChartRendererInfo, FrameReport, RendererLossState } from "../../src/render/ChartRenderer.ts";
+import type { ChartRenderer, ChartRendererInfo, ChartSegmentSet, FrameReport, RendererLossState, SegmentSetStyle } from "../../src/render/ChartRenderer.ts";
 
 /** One draw call a chart made on a {@link RecordingRenderer}. */
 export interface RecordedDraw {
-  readonly method: "drawLines" | "drawClipLines" | "drawPoints" | "drawBarsInstanced" | "drawTriangles" | "fillRects";
+  readonly method: "drawLines" | "drawClipLines" | "drawPoints" | "drawBarsInstanced" | "drawTriangles" | "fillRects" | "fillShapes" | "strokeSegments" | "fillTriangles" | "drawSegmentSet";
   readonly count: number;
 }
 
@@ -65,6 +65,30 @@ export class RecordingRenderer implements ChartRenderer {
   fillRects(rects: Float32Array, count: number): void {
     this.rectFills.push(rects.slice(0, count * 8));
     this.record("fillRects", count);
+  }
+  /** Copies of the data of every `fillShapes` call: fourteen floats per shape. */
+  shapeFills: Float32Array[] = [];
+  fillShapes(shapes: Float32Array, count: number): void {
+    this.shapeFills.push(shapes.slice(0, count * 14));
+    this.record("fillShapes", count);
+  }
+  /** Copies of the data of every `strokeSegments` call: twelve floats per segment. */
+  segmentStrokes: Float32Array[] = [];
+  strokeSegments(segments: Float32Array, count: number): void {
+    this.segmentStrokes.push(segments.slice(0, count * 12));
+    this.record("strokeSegments", count);
+  }
+  /** Copies of the data of every `fillTriangles` call: six floats per vertex. */
+  triangleFills: Float32Array[] = [];
+  fillTriangles(vertices: Float32Array, vertexCount: number): void {
+    this.triangleFills.push(vertices.slice(0, vertexCount * 6));
+    this.record("fillTriangles", vertexCount);
+  }
+  /** Every `drawSegmentSet` call: the set and the style it was drawn with. */
+  segmentSetDraws: Array<{ set: ChartSegmentSet; style: SegmentSetStyle }> = [];
+  drawSegmentSet(set: ChartSegmentSet, style: SegmentSetStyle): void {
+    this.segmentSetDraws.push({ set, style });
+    this.record("drawSegmentSet", style.count ?? set.segmentCount - (style.first ?? 0));
   }
   /** Surfaces created by plugins through this engine, in creation order. */
   surfaces: RecordingRenderer[] = [];

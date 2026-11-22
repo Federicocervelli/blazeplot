@@ -80,7 +80,7 @@ export const DOC_PAGES: readonly DocPage[] = [
   {
     slug: "built-in-plugins",
     title: "Plugins",
-    description: "Use the optional interaction, tooltip, legend, annotation, selection, crosshair, navigator, accessibility, and flame graph plugins.",
+    description: "Use the optional interaction, tooltip, legend, annotation, selection, crosshair, navigator, accessibility, flame graph, and node-and-edge graph plugins.",
     sourcePath: "docs/built-in-plugins.md",
     loadMarkdown: () => import("../../docs/built-in-plugins.md?raw").then((module) => module.default),
   },

@@ -22,12 +22,13 @@ const src = resolve(root, "src");
 
 /** Pure, chart-independent helpers a plugin may import at runtime. Third parties can copy them. */
 const runtimeHelpers: Record<string, readonly string[]> = {
-  "src/ui/theme.ts": ["rgbaCss"],
+  "src/ui/theme.ts": ["rgbaCss", "resolveThemeColor"],
 };
 
 /** `ctx.unstable` members a built-in plugin may use; everything else must stay on the stable context. */
 const unstableAllowance: Record<string, readonly string[]> = {
   "src/plugins/flamegraph/FlameGraph.ts": ["createRenderSurface"],
+  "src/plugins/graph/Graph.ts": ["createRenderSurface"],
 };
 
 /** Leaf type modules every plugin may import types from (public plugin and chart-state types). */

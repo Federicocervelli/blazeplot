@@ -19,6 +19,7 @@ const expectedExports = {
   "blazeplot/plugins/crosshair": ["crosshairPlugin"],
   "blazeplot/plugins/navigator": ["navigatorPlugin"],
   "blazeplot/plugins/flamegraph": ["flameGraphPlugin", "buildStatusChartModel", "parseFoldedStacks"],
+  "blazeplot/plugins/graph": ["graphPlugin", "createGraphIcon"],
   "blazeplot/plugins/a11y": ["a11yPlugin"],
 } as const;
 

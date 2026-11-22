@@ -128,3 +128,18 @@ describe("WebGL2Renderer and the warm canvas pool", () => {
     expect(acquirePlotCanvas(doc)).not.toBe(canvas);
   });
 });
+
+describe("WebGL2Renderer fillField", () => {
+  it("uploads the grid as one texture and draws its rectangle, skipping a grid it cannot draw", () => {
+    const gl = new FakeGl();
+    const canvas = Object.assign(new EventTarget(), { width: 100, height: 100, getContext: () => gl }) as unknown as HTMLCanvasElement;
+    const renderer = new WebGL2Renderer(canvas);
+    renderer.beginFrame(100, 100, 1);
+    renderer.fillField(Float32Array.of(0, 0.5, 1, 2), 2, 2, 10, 10, 8, 1, 0, 0);
+    renderer.fillField(Float32Array.of(1), 2, 2, 0, 0, 8, 1, 0, 0);
+    renderer.fillField(Float32Array.of(1), 1, 1, Number.NaN, 0, 8, 1, 0, 0);
+    expect(renderer.endFrame().drawCalls).toBe(1);
+    expect(gl.count("texImage2D")).toBe(1);
+    renderer.dispose();
+  });
+});
