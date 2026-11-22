@@ -1,5 +1,6 @@
 import { describeRenderer } from "../ChartRenderer.js";
-import type { ChartRenderer, ChartRendererInfo, FrameReport, RenderProjection, RendererLossState, RendererOrigin } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererInfo, ChartSegmentSet, FrameReport, RenderProjection, RendererLossState, RendererOrigin, SegmentSetStyle } from "../ChartRenderer.js";
+import { SegmentSet, segmentSetRange } from "../SegmentSet.js";
 import type { DrawCommand, GpuBackend, SolidPrimitive } from "./types.js";
 import type { RgbaColor, SeriesMode, SeriesStyle } from "../../core/types.js";
 import { WebGL2Backend } from "./WebGL2Backend.js";
@@ -236,6 +237,30 @@ export class WebGL2Renderer implements ChartRenderer {
     rect[3] = rows * step;
     const first = this.stage(rect, 2);
     this.commands.push({ kind: "field", first, alpha: bytes, cols, rows, color: [r, g, b], canvasWidth: this.canvasWidth, canvasHeight: this.canvasHeight });
+  }
+
+  /** Segments of a set kept between frames (see `ChartRenderSurface.drawSegmentSet`): drawn from its GPU copy. */
+  drawSegmentSet(set: ChartSegmentSet, style: SegmentSetStyle): void {
+    if (!(set instanceof SegmentSet)) return;
+    const [first, end] = segmentSetRange(set, style);
+    if (end <= first) return;
+    const color = style.color;
+    if (!(color[3] > 0)) return;
+    const dashed = (style.dash ?? 0) > 0 && (style.gap ?? 0) > 0 && Number.isFinite((style.dash ?? 0) + (style.gap ?? 0));
+    this.commands.push({
+      kind: "segmentSet",
+      set,
+      first,
+      count: end - first,
+      scaleX: style.scaleX,
+      scaleY: style.scaleY,
+      offsetX: style.offsetX,
+      offsetY: style.offsetY,
+      stroke: [style.width, dashed ? style.dash! : 0, dashed ? style.gap! : 0],
+      color: [color[0], color[1], color[2], Math.min(1, color[3])],
+      canvasWidth: this.canvasWidth,
+      canvasHeight: this.canvasHeight,
+    });
   }
 
   /** A second WebGL2 surface on `canvas`, with its own context. */

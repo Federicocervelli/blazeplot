@@ -1,5 +1,6 @@
 import type { RgbaColor } from "../../core/types.js";
 import type { ProgramName } from "./ShaderPrograms.js";
+import type { SegmentSet } from "../SegmentSet.js";
 
 /** Primitive topology for solid-color draws. */
 export type SolidPrimitive = "lines" | "line_strip" | "triangles" | "triangle_strip";
@@ -94,8 +95,27 @@ export interface FieldDraw {
   readonly canvasHeight: number;
 }
 
+/**
+ * Segments `first` to `first + count - 1` of a set kept between frames, mapped by the scale and offset and stroked
+ * in one style (`stroke` is width, dash, gap in device pixels). Reads nothing from the frame stream.
+ */
+export interface SegmentSetDraw {
+  readonly kind: "segmentSet";
+  readonly set: SegmentSet;
+  readonly first: number;
+  readonly count: number;
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+  readonly stroke: readonly [number, number, number];
+  readonly color: RgbaColor;
+  readonly canvasWidth: number;
+  readonly canvasHeight: number;
+}
+
 /** One recorded draw call. */
-export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw | RectsDraw | InterleavedDraw | FieldDraw;
+export type DrawCommand = SolidDraw | ThickLineDraw | PointDraw | BarDraw | RectsDraw | InterleavedDraw | FieldDraw | SegmentSetDraw;
 
 /**
  * Minimal GPU surface used by the renderer. A frame is recorded on the CPU and submitted in one

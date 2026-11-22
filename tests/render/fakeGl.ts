@@ -107,6 +107,10 @@ export class FakeGl {
   texParameteri(): void {}
   pixelStorei(): void {}
   texImage2D(): void { this.hit("texImage2D"); }
+  texSubImage2D(): void { this.hit("texSubImage2D"); }
+  vertexAttribIPointer(): void {}
+  uniform1i(): void {}
+  uniform1ui(): void {}
 }
 
 /** Build a backend over a `FakeGl`, plus helpers to fire context loss and restore. */

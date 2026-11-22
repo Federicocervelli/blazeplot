@@ -7,6 +7,7 @@ import { GraphIndex } from "../../src/plugins/graph/spatial.ts";
 import { GraphPainter } from "../../src/plugins/graph/render.ts";
 import type { RenderSurface } from "../../src/plugins/graph/render.ts";
 import { ColorCache, EDGE_FLOATS, NODE_FLOATS, writeEdgeStyle, writeNodeStyle } from "../../src/plugins/graph/styles.ts";
+import { SegmentSet } from "../../src/render/SegmentSet.ts";
 
 /** Nodes on a sunflower disk: even, and the same every run. */
 function disk(count: number, spacing = 10): { x: Float64Array; y: Float64Array } {
@@ -300,6 +301,8 @@ describe("dense graph painter", () => {
       triangles,
       segments,
       beginFrame() {},
+      createSegmentSet: (points, pointCount, ends, segmentCount) => new SegmentSet(points, pointCount, ends, segmentCount),
+      drawSegmentSet() {},
       endFrame() {},
       fillRects() {},
       fillShapes() {},

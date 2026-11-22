@@ -1,4 +1,6 @@
-import type { BarDraw, DrawCommand, FieldDraw, GpuBackend, InterleavedDraw, PointDraw, RectsDraw, SolidDraw, SolidPrimitive, ThickLineDraw } from "./types.js";
+import type { BarDraw, DrawCommand, FieldDraw, GpuBackend, InterleavedDraw, PointDraw, RectsDraw, SegmentSetDraw, SolidDraw, SolidPrimitive, ThickLineDraw } from "./types.js";
+import { SEGMENT_SET_ROW } from "../SegmentSet.js";
+import type { SegmentSet } from "../SegmentSet.js";
 import { ShaderPrograms } from "./ShaderPrograms.js";
 import type { ProgramName } from "./ShaderPrograms.js";
 import { WebGL2UnavailableError } from "./availability.js";
@@ -54,6 +56,8 @@ const PROGRAM_LAYOUTS: Readonly<Record<ProgramName, { readonly start: string; re
     interleaved: { strideFloats: 6, attributes: [{ name: "aPosition", size: 2, offset: 0 }, { name: "aColor", size: 4, offset: 2 }] },
   },
   field: { start: "aRect", end: null, corners: RECT_CORNERS },
+  // Each set has its own vertex array (see `segmentSetResources`); the program's own is never drawn from.
+  segmentSet: { start: "aIndex", end: null, corners: SEGMENT_CORNERS },
 };
 
 /** The program each recorded draw kind runs. */
@@ -67,6 +71,7 @@ const PROGRAM_OF_COMMAND: Readonly<Record<DrawCommand["kind"], ProgramName>> = {
   segments: "segment",
   colorTriangles: "color",
   field: "field",
+  segmentSet: "segmentSet",
 };
 
 function isInterleaved(command: DrawCommand): command is InterleavedDraw {
@@ -86,7 +91,20 @@ interface PendingProgram {
 }
 
 /** Every uniform a built-in program may declare; a program that lacks one gets `null`, which GL ignores. */
-const UNIFORM_NAMES = ["uScale", "uOffset", "uColor", "uCanvasSize", "uLineWidth", "uPointSize", "uBarWidth", "uBaseline"] as const;
+const UNIFORM_NAMES = ["uScale", "uOffset", "uColor", "uCanvasSize", "uLineWidth", "uPointSize", "uBarWidth", "uBaseline", "uPoints", "uPointsWidth", "uPointCount", "uStroke"] as const;
+
+/** The texture unit segment sets read their points from (unit 0 is the field's). */
+const POINTS_UNIT = 1;
+
+/** A segment set's GPU copy on one backend: its points as a texture, its index pairs, and a vertex array over them. */
+interface SegmentSetResources {
+  readonly texture: WebGLTexture;
+  readonly ends: WebGLBuffer;
+  readonly vao: WebGLVertexArrayObject;
+  /** The set's `version` the texture holds. */
+  version: number;
+  readonly unregister: () => void;
+}
 
 /** A linked program with its fixed vertex array object and uniform locations. */
 interface ProgramState extends Readonly<Record<(typeof UNIFORM_NAMES)[number], WebGLUniformLocation | null>> {
@@ -112,11 +130,15 @@ export class WebGL2Backend implements GpuBackend {
   private readonly stream: WebGLBuffer;
   /** Pixels in the largest viewport the context reports (a conservative default when it cannot say). */
   readonly maxDrawingBufferPixels: number;
+  /** The largest texture side the context reports (2048, the WebGL2 minimum, when it cannot say). */
+  private readonly maxTextureSize: number;
   private programs: Partial<Record<ProgramName, ProgramState>> = {};
   private pending: Partial<Record<ProgramName, PendingProgram>> = {};
   private scissorBox: { x: number; y: number; w: number; h: number } | null = null;
   /** The texture field draws upload into, made on first use. */
   private fieldTexture: WebGLTexture | null = null;
+  /** GPU copies of the segment sets this backend drew, until a set or the backend is disposed. */
+  private readonly segmentSets = new Map<SegmentSet, SegmentSetResources>();
   /**
    * True once the context this backend's objects belong to has been lost. A restored context is a
    * new generation: every object created before the loss is invalid and deleting it logs
@@ -149,6 +171,7 @@ export class WebGL2Backend implements GpuBackend {
     // Lets the browser compile and link programs on worker threads (see `prepare`). Harmless when absent.
     gl.getExtension("KHR_parallel_shader_compile");
     this.maxDrawingBufferPixels = maxViewportPixels(gl);
+    this.maxTextureSize = maxTextureSize(gl);
     this.stream = allocated(gl.createBuffer(), "buffer");
     canvas.addEventListener("webglcontextlost", this.handleContextLost);
     // Depth and stencil tests are off by default and the context has neither buffer.
@@ -174,11 +197,13 @@ export class WebGL2Backend implements GpuBackend {
 
   /** Upload the frame stream with one call, then draw every command from it. */
   submit(stream: Float32Array, floatCount: number, commands: readonly DrawCommand[]): void {
-    if (floatCount <= 0 || commands.length === 0) return;
+    // Nothing staged and nothing drawn from kept sets: every draw would read an empty stream.
+    if (commands.length === 0 || (floatCount <= 0 && !commands.some((command) => command.kind === "segmentSet"))) return;
     const gl = this.gl;
     this.applyScissor();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.stream);
-    gl.bufferData(gl.ARRAY_BUFFER, floatCount === stream.length ? stream : stream.subarray(0, floatCount), gl.STREAM_DRAW);
+    // A frame of segment sets alone stages nothing.
+    if (floatCount > 0) gl.bufferData(gl.ARRAY_BUFFER, floatCount === stream.length ? stream : stream.subarray(0, floatCount), gl.STREAM_DRAW);
 
     let active: ProgramState | null = null;
     for (const command of commands) {
@@ -194,6 +219,12 @@ export class WebGL2Backend implements GpuBackend {
       }
       if (command.kind === "field") {
         this.drawField(state, command);
+        continue;
+      }
+      if (command.kind === "segmentSet") {
+        this.drawSegmentSet(state, command);
+        // The set's own vertex array is bound now: the next draw of any program binds its own again.
+        active = null;
         continue;
       }
       if (command.kind !== "rects") {
@@ -253,13 +284,19 @@ export class WebGL2Backend implements GpuBackend {
     const pending = Object.values(this.pending);
     this.programs = {};
     this.pending = {};
-    if (this.isContextInvalid()) return;
+    if (this.isContextInvalid()) {
+      for (const resources of this.segmentSets.values()) resources.unregister();
+      this.segmentSets.clear();
+      return;
+    }
     for (const { program, shaders } of pending) {
       this.gl.deleteProgram(program);
       for (const shader of shaders) this.gl.deleteShader(shader);
     }
     if (this.fieldTexture) this.gl.deleteTexture(this.fieldTexture);
     this.fieldTexture = null;
+    // Deleting the entry being visited is safe while iterating a Map.
+    for (const set of this.segmentSets.keys()) this.releaseSegmentSet(set);
     for (const state of programs) {
       this.gl.deleteProgram(state.program);
       this.gl.deleteVertexArray(state.vao);
@@ -326,6 +363,93 @@ export class WebGL2Backend implements GpuBackend {
     gl.uniform4f(state.uColor, command.color[0], command.color[1], command.color[2], 1);
     this.aimAttribute(state.aStart, 0, command.first * BYTES_PER_VERTEX, 4);
     this.drawQuads(1);
+  }
+
+  /** Draw some segments of a set from its GPU copy, uploading the set first or its changed points when needed. */
+  private drawSegmentSet(state: ProgramState, command: SegmentSetDraw): void {
+    const gl = this.gl;
+    const resources = this.segmentSetResources(state, command.set);
+    if (!resources) return;
+    gl.bindVertexArray(resources.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, resources.ends);
+    // WebGL2 has no base instance: aim the index pairs at the first segment drawn.
+    gl.vertexAttribIPointer(state.aStart, 2, gl.UNSIGNED_INT, 0, command.first * 2 * Uint32Array.BYTES_PER_ELEMENT);
+    gl.activeTexture(gl.TEXTURE0 + POINTS_UNIT);
+    gl.bindTexture(gl.TEXTURE_2D, resources.texture);
+    gl.uniform1i(state.uPoints, POINTS_UNIT);
+    gl.uniform1i(state.uPointsWidth, SEGMENT_SET_ROW);
+    gl.uniform1ui(state.uPointCount, command.set.pointCount);
+    gl.uniform2f(state.uScale, command.scaleX, command.scaleY);
+    gl.uniform2f(state.uOffset, command.offsetX, command.offsetY);
+    gl.uniform2f(state.uCanvasSize, command.canvasWidth, command.canvasHeight);
+    gl.uniform4f(state.uStroke, command.stroke[0], command.stroke[1], command.stroke[2], 0);
+    gl.uniform4f(state.uColor, command.color[0], command.color[1], command.color[2], command.color[3]);
+    this.drawQuads(command.count);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.stream);
+  }
+
+  /** The GPU copy of `set`, made on its first draw here; points changed since are uploaded first. */
+  private segmentSetResources(state: ProgramState, set: SegmentSet): SegmentSetResources | null {
+    const gl = this.gl;
+    const rows = set.points.length / (SEGMENT_SET_ROW * 2);
+    let resources = this.segmentSets.get(set);
+    if (!resources) {
+      if (rows > this.maxTextureSize) {
+        console.error(`BlazePlot: a segment set of ${set.pointCount} points is larger than this GPU's textures hold; it is not drawn.`);
+        return null;
+      }
+      const texture = allocated(gl.createTexture(), "texture");
+      gl.activeTexture(gl.TEXTURE0 + POINTS_UNIT);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RG32F, SEGMENT_SET_ROW, rows, 0, gl.RG, gl.FLOAT, set.points);
+      const ends = allocated(gl.createBuffer(), "buffer");
+      const vao = allocated(gl.createVertexArray(), "vertex array");
+      gl.bindVertexArray(vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, ends);
+      gl.bufferData(gl.ARRAY_BUFFER, set.ends, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(state.aStart);
+      gl.vertexAttribIPointer(state.aStart, 2, gl.UNSIGNED_INT, 0, 0);
+      gl.vertexAttribDivisor(state.aStart, 1);
+      const aCorner = gl.getAttribLocation(state.program, "aCorner");
+      gl.bindBuffer(gl.ARRAY_BUFFER, state.corners);
+      gl.enableVertexAttribArray(aCorner);
+      gl.vertexAttribPointer(aCorner, 2, gl.FLOAT, false, BYTES_PER_VERTEX, 0);
+      gl.bindVertexArray(null);
+      gl.activeTexture(gl.TEXTURE0);
+      resources = { texture, ends, vao, version: set.version, unregister: set.onRelease(() => this.releaseSegmentSet(set)) };
+      this.segmentSets.set(set, resources);
+      return resources;
+    }
+    if (resources.version !== set.version) {
+      gl.activeTexture(gl.TEXTURE0 + POINTS_UNIT);
+      gl.bindTexture(gl.TEXTURE_2D, resources.texture);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      // One version behind: only the rows the last change touched; further behind: every row.
+      const from = resources.version === set.version - 1 ? Math.floor(set.changedFrom / SEGMENT_SET_ROW) : 0;
+      const to = resources.version === set.version - 1 ? Math.ceil(set.changedTo / SEGMENT_SET_ROW) : rows;
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, from, SEGMENT_SET_ROW, to - from, gl.RG, gl.FLOAT, set.points.subarray(from * SEGMENT_SET_ROW * 2, to * SEGMENT_SET_ROW * 2));
+      gl.activeTexture(gl.TEXTURE0);
+      resources.version = set.version;
+    }
+    return resources;
+  }
+
+  /** Free the GPU copy of `set` (disposed, or this backend is). */
+  private releaseSegmentSet(set: SegmentSet): void {
+    const resources = this.segmentSets.get(set);
+    if (!resources) return;
+    this.segmentSets.delete(set);
+    resources.unregister();
+    if (this.isContextInvalid()) return;
+    this.gl.deleteTexture(resources.texture);
+    this.gl.deleteBuffer(resources.ends);
+    this.gl.deleteVertexArray(resources.vao);
   }
 
   /** Aim every attribute of an interleaved program at its record in the frame stream, then draw. */
@@ -490,6 +614,16 @@ export class WebGL2Backend implements GpuBackend {
 }
 
 const DEFAULT_MAX_VIEWPORT_PIXELS = 16_384 * 16_384;
+
+function maxTextureSize(gl: WebGL2RenderingContext): number {
+  try {
+    const size = gl.getParameter(gl.MAX_TEXTURE_SIZE) as number | null;
+    if (typeof size === "number" && size >= 2048) return size;
+  } catch {
+    // As for the viewport: assume the minimum WebGL2 guarantees.
+  }
+  return 2048;
+}
 
 function maxViewportPixels(gl: WebGL2RenderingContext): number {
   try {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { RenderProjection, RendererLossState } from "../../src/render/ChartRenderer.ts";
+import { SegmentSet } from "../../src/render/SegmentSet.ts";
 import { testStyle } from "../helpers.ts";
 import type { DrawObs, EngineFixture } from "./engineHarness.ts";
 
@@ -228,6 +229,49 @@ export function defineEngineContract(fixture: EngineFixture): void {
       expect(fields).toHaveLength(1);
       close(fields[0]!.box, [6, 16, 30, 32], 0.01);
       expect([fields[0]!.cols, fields[0]!.rows]).toEqual([3, 2]);
+    });
+
+    it("draws a kept segment set through a transform, a range of it, its moved points, and nothing once disposed", () => {
+      const strokes = (draws: readonly DrawObs[]) => only(draws, "stroke").flatMap((s) => s.segments.map((g) => ({ g: [...g], width: s.widthPx, dashed: s.dashed === true })));
+      // Point 3 is a hole; the third segment names a point that does not exist.
+      const set = new SegmentSet(new Float32Array([0, 0, 10, 0, 10, 5, Number.NaN, 1]), 4, new Uint32Array([0, 1, 1, 2, 2, 9, 0, 3]), 4);
+      const style = { scaleX: 2, scaleY: 2, offsetX: 5, offsetY: 3, width: 1.5, color: white };
+      let h = frame();
+      h.renderer.drawSegmentSet(set, style);
+      // Skipped: a non-finite transform and no width.
+      h.renderer.drawSegmentSet(set, { ...style, offsetX: Number.NaN });
+      h.renderer.drawSegmentSet(set, { ...style, width: 0 });
+      h.renderer.endFrame();
+      const all = strokes(h.draws());
+      expect(all).toHaveLength(2);
+      close(all[0]!.g, [5, 3, 25, 3], 0.01);
+      close(all[1]!.g, [25, 3, 25, 13], 0.01);
+      expect(all[0]!.width).toBeCloseTo(1.5, 5);
+
+      // A range, translucent and dashed; then a moved point, drawn on the next frame from the same set.
+      h.renderer.beginFrame(WIDTH, HEIGHT, 1);
+      h.resetDraws();
+      h.renderer.drawSegmentSet(set, { ...style, color: [1, 1, 1, 0.5], dash: 4, gap: 2, first: 1, count: 1 });
+      h.renderer.endFrame();
+      const ranged = strokes(h.draws());
+      expect(ranged).toHaveLength(1);
+      close(ranged[0]!.g, [25, 3, 25, 13], 0.01);
+      expect(ranged[0]!.dashed).toBe(true);
+      set.setPoints(new Float32Array([20, 5]), 2);
+      h.renderer.beginFrame(WIDTH, HEIGHT, 1);
+      h.resetDraws();
+      h.renderer.drawSegmentSet(set, { ...style, first: 1 });
+      h.renderer.endFrame();
+      const moved = strokes(h.draws());
+      expect(moved).toHaveLength(1);
+      close(moved[0]!.g, [25, 3, 45, 13], 0.01);
+
+      set.dispose();
+      expect(() => set.dispose()).not.toThrow();
+      h = frame();
+      h.renderer.drawSegmentSet(set, style);
+      h.renderer.endFrame();
+      expect(strokes(h.draws())).toHaveLength(0);
     });
 
     it("draws a surface on another canvas with the same engine, independent of the chart's frame", () => {

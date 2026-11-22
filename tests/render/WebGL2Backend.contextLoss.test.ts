@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { DrawCommand } from "../../src/render/webgl2/types.ts";
+import { SegmentSet } from "../../src/render/SegmentSet.ts";
 import { setupFakeGl } from "./fakeGl.ts";
 
 const base = { first: 0, scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0, color: [1, 1, 1, 1] } as const;
@@ -150,6 +151,56 @@ describe("WebGL2Backend program building", () => {
     b.prepare(["thickLine", "bar"]);
     b.destroy();
     expect(gl.validDeletes.filter((kind) => kind === "program")).toHaveLength(2);
+    expect(gl.invalidDeletes).toEqual([]);
+  });
+});
+
+describe("WebGL2Backend segment sets", () => {
+  const draw = (set: SegmentSet): DrawCommand => ({ kind: "segmentSet", set, first: 0, count: set.segmentCount, scaleX: 1, scaleY: 1, offsetX: 0, offsetY: 0, stroke: [1, 0, 0], color: [1, 1, 1, 1], canvasWidth: 100, canvasHeight: 100 });
+  const makeSet = () => new SegmentSet(new Float32Array([0, 0, 10, 0, 10, 10]), 3, new Uint32Array([0, 1, 1, 2]), 2);
+
+  it("uploads a set once, then only the rows of moved points, and draws without staging a stream", () => {
+    const { gl, backend } = setupFakeGl();
+    const b = backend();
+    const set = makeSet();
+    b.submit(stream, 0, [draw(set)]);
+    b.submit(stream, 0, [draw(set)]);
+    expect(gl.count("texImage2D")).toBe(1);
+    expect(gl.count("drawArraysInstanced")).toBe(2);
+    // Only the set's own buffer is filled; no frame stream upload.
+    expect(gl.count("bufferData")).toBe(2);
+    set.setPoints(new Float32Array([5, 5]), 1);
+    b.submit(stream, 0, [draw(set)]);
+    expect(gl.count("texSubImage2D")).toBe(1);
+    expect(gl.count("texImage2D")).toBe(1);
+  });
+
+  it("frees a set's GPU copy when the set is disposed, and draws nothing from it after", () => {
+    const { gl, backend } = setupFakeGl();
+    const b = backend();
+    const set = makeSet();
+    b.submit(stream, 0, [draw(set)]);
+    set.dispose();
+    expect(gl.validDeletes.filter((kind) => kind === "texture")).toHaveLength(1);
+    expect(gl.validDeletes).toContain("vertexArray");
+    b.destroy();
+    expect(gl.invalidDeletes).toEqual([]);
+  });
+
+  it("drops a set's copy without deleting it after a context loss, and uploads it again on the next backend", () => {
+    const { gl, backend, fireLost, restore } = setupFakeGl();
+    const first = backend();
+    const set = makeSet();
+    first.submit(stream, 0, [draw(set)]);
+    fireLost();
+    first.destroy();
+    restore();
+    expect(gl.invalidDeletes).toEqual([]);
+    const second = backend();
+    second.submit(stream, 0, [draw(set)]);
+    expect(gl.count("texImage2D")).toBe(2);
+    // The first backend no longer listens for the set's disposal.
+    set.dispose();
     expect(gl.invalidDeletes).toEqual([]);
   });
 });

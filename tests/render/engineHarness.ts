@@ -136,6 +136,20 @@ class GlRecorder {
         }
         return out;
       }
+      case "segmentSet": {
+        // The set's CPU copy, mapped as the shader maps it; one stroke for the draw, like an opaque Canvas 2D path.
+        const { set } = command;
+        const segments: Array<[number, number, number, number]> = [];
+        for (let k = command.first; k < command.first + command.count; k++) {
+          const i = set.ends[k * 2]!;
+          const j = set.ends[k * 2 + 1]!;
+          if (i >= set.pointCount || j >= set.pointCount) continue;
+          const p = [set.points[i * 2]!, set.points[i * 2 + 1]!, set.points[j * 2]!, set.points[j * 2 + 1]!];
+          if (p.some((v) => Math.abs(v) > 1e38)) continue;
+          segments.push([p[0]! * command.scaleX + command.offsetX, p[1]! * command.scaleY + command.offsetY, p[2]! * command.scaleX + command.offsetX, p[3]! * command.scaleY + command.offsetY]);
+        }
+        return [{ kind: "stroke", widthPx: command.stroke[0], segments, dashed: command.stroke[1] > 0 }];
+      }
       case "field": {
         // A texture over one rectangle: what it shades is checked through the renderer's own tests.
         const o = command.first * 2;

@@ -7,6 +7,7 @@ import { AUTO_BOW, clippedLength, edgeDistanceSq, edgeMiddle, exit, GraphPainter
 import type { GraphFrameInput, RenderSurface } from "../../src/plugins/graph/render.ts";
 import { ColorCache, EDGE_FLOATS, NODE_FLOATS, writeEdgeStyle, writeNodeStyle } from "../../src/plugins/graph/styles.ts";
 import type { GraphEdgeStyle, GraphNodeStyle } from "../../src/plugins/graph/types.ts";
+import { SegmentSet } from "../../src/render/SegmentSet.ts";
 
 const nodes = [
   { id: "a", x: 0, y: 0 },
@@ -119,6 +120,8 @@ function recordingSurface(): RenderSurface & { shapes: Float32Array[]; segments:
     fields,
     fillField: (alpha, cols, rows, _x, _y, step) => void fields.push({ alpha: alpha.slice(0, cols * rows), cols, rows, step }),
     beginFrame() {},
+    createSegmentSet: (points, pointCount, ends, segmentCount) => new SegmentSet(points, pointCount, ends, segmentCount),
+    drawSegmentSet() {},
     endFrame() {},
     fillRects() {},
     fillShapes: (data, count) => void shapes.push(data.slice(0, count * 14)),

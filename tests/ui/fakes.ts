@@ -1,10 +1,10 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { describeRenderer } from "../../src/render/ChartRenderer.ts";
-import type { ChartRenderer, ChartRendererInfo, FrameReport, RendererLossState } from "../../src/render/ChartRenderer.ts";
+import type { ChartRenderer, ChartRendererInfo, ChartSegmentSet, FrameReport, RendererLossState, SegmentSetStyle } from "../../src/render/ChartRenderer.ts";
 
 /** One draw call a chart made on a {@link RecordingRenderer}. */
 export interface RecordedDraw {
-  readonly method: "drawLines" | "drawClipLines" | "drawPoints" | "drawBarsInstanced" | "drawTriangles" | "fillRects" | "fillShapes" | "strokeSegments" | "fillTriangles";
+  readonly method: "drawLines" | "drawClipLines" | "drawPoints" | "drawBarsInstanced" | "drawTriangles" | "fillRects" | "fillShapes" | "strokeSegments" | "fillTriangles" | "drawSegmentSet";
   readonly count: number;
 }
 
@@ -83,6 +83,12 @@ export class RecordingRenderer implements ChartRenderer {
   fillTriangles(vertices: Float32Array, vertexCount: number): void {
     this.triangleFills.push(vertices.slice(0, vertexCount * 6));
     this.record("fillTriangles", vertexCount);
+  }
+  /** Every `drawSegmentSet` call: the set and the style it was drawn with. */
+  segmentSetDraws: Array<{ set: ChartSegmentSet; style: SegmentSetStyle }> = [];
+  drawSegmentSet(set: ChartSegmentSet, style: SegmentSetStyle): void {
+    this.segmentSetDraws.push({ set, style });
+    this.record("drawSegmentSet", style.count ?? set.segmentCount - (style.first ?? 0));
   }
   /** Surfaces created by plugins through this engine, in creation order. */
   surfaces: RecordingRenderer[] = [];

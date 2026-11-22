@@ -1,4 +1,5 @@
 import type { RgbaColor, SeriesMode, SeriesStyle } from "../core/types.js";
+import { SegmentSet } from "./SegmentSet.js";
 
 /** Linear projection uniforms used by renderer draw calls. */
 export interface RenderProjection {
@@ -36,10 +37,54 @@ export interface ChartRendererCapabilities {
 }
 
 /**
+ * Segments kept by the engine between frames: a list of points and pairs of point indices, drawn by
+ * {@link ChartRenderSurface.drawSegmentSet} with a transform and one style. A GPU engine keeps the points and
+ * indices in GPU memory, so a frame that only pans or zooms them uploads nothing; points can be moved in place
+ * with `setPoints` without touching the indices. Make one with {@link ChartRenderSurface.createSegmentSet}.
+ *
+ * @experimental May change in a minor release. See docs/stability.md.
+ */
+export interface ChartSegmentSet {
+  readonly pointCount: number;
+  readonly segmentCount: number;
+  /**
+   * Overwrite points from point `first` on with `points` (`x, y` pairs, in the set's own units). Points past the
+   * end are ignored. A point with a non-finite coordinate leaves its segments undrawn until it is finite again.
+   */
+  setPoints(points: Float32Array, first?: number): void;
+  /** Release the set's memory on every engine that drew it. Drawing it afterwards draws nothing. Safe to call more than once. */
+  dispose(): void;
+}
+
+/**
+ * How {@link ChartRenderSurface.drawSegmentSet} draws segments `first` to `first + count - 1` of a set: points
+ * are mapped to device pixels as `x * scaleX + offsetX`, `y * scaleY + offsetY`, then stroked with butt caps,
+ * antialiased, `width` device pixels wide (thinner than a pixel draws a pixel wide at proportionally lower
+ * opacity), in the straight `color`, dashed when `dash` and `gap` (device pixels) are both positive. Translucent
+ * segments are composited one over another, so where many cross the color builds up.
+ *
+ * @experimental May change in a minor release. See docs/stability.md.
+ */
+export interface SegmentSetStyle {
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly offsetX: number;
+  readonly offsetY: number;
+  readonly width: number;
+  readonly color: RgbaColor;
+  readonly dash?: number;
+  readonly gap?: number;
+  /** The first segment drawn. Defaults to 0. */
+  readonly first?: number;
+  /** How many segments are drawn. Defaults to every one from `first` on. */
+  readonly count?: number;
+}
+
+/**
  * A drawing surface a plugin owns, drawn with the chart's rendering engine: WebGL2, Canvas 2D, or
  * the shared WebGL2 context. Get one from `ctx.unstable.createRenderSurface(canvas)`.
  *
- * A frame is `beginFrame`, any number of `fillRects`, `fillShapes`, `strokeSegments`, `fillTriangles`, and `fillField`, then `endFrame`. Everything is in device pixels
+ * A frame is `beginFrame`, any number of `fillRects`, `fillShapes`, `strokeSegments`, `fillTriangles`, `fillField`, and `drawSegmentSet`, then `endFrame`. Everything is in device pixels
  * with the origin at the canvas's top-left corner, so size the canvas in device pixels first.
  *
  * @experimental May change in a minor release. See docs/stability.md.
@@ -83,6 +128,15 @@ export interface ChartRenderSurface {
    * vertices takes their opacity. A density drawn this way costs one pass over the area, however it was summed.
    */
   fillField(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void;
+  /**
+   * Keep `segmentCount` segments for drawing in later frames: `points` holds `pointCount` `x, y` pairs in units of
+   * the caller's choosing (offset them near zero: they are stored as 32-bit floats), and `ends` two point indices
+   * per segment. Both are copied. A segment with an index past the last point is never drawn. The set can be drawn
+   * on any surface, between `beginFrame` and `endFrame` or not; dispose it when done.
+   */
+  createSegmentSet(points: Float32Array, pointCount: number, ends: Uint32Array, segmentCount: number): ChartSegmentSet;
+  /** Draw some segments of a set made by `createSegmentSet`, mapped and styled by `style`. */
+  drawSegmentSet(set: ChartSegmentSet, style: SegmentSetStyle): void;
   /** Finish the frame and present it. */
   endFrame(): void;
   /** Whether the surface's context is lost; draw calls are skipped until it is restored. */
@@ -169,6 +223,8 @@ export interface ChartRenderer extends ChartRendererHandle {
    * grid is drawn as per-vertex colored triangles.
    */
   fillField?(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void;
+  /** Segments of a set kept between frames; see {@link ChartRenderSurface.drawSegmentSet}. The set is a `SegmentSet`. */
+  drawSegmentSet(set: ChartSegmentSet, style: SegmentSetStyle): void;
   /**
    * Hint that a series of `mode` with `lineWidth` CSS pixel lines is about to be drawn, so a GPU engine
    * can start building the programs it will need before the first frame. Optional and purely advisory.
@@ -220,6 +276,8 @@ export function toRenderSurface(engine: ChartRenderer): ChartRenderSurface {
         engine.fillTriangles(vertices, vertices.length / TRIANGLE_VERTEX_FLOATS);
       }
     },
+    createSegmentSet: (points, pointCount, ends, segmentCount) => new SegmentSet(points, pointCount, ends, segmentCount),
+    drawSegmentSet: (set, style) => engine.drawSegmentSet(set, style),
     endFrame: () => void engine.endFrame(),
     get isLost() {
       return engine.isLost;

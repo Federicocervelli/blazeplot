@@ -8,7 +8,7 @@ A change here is a public API change: review it against `docs/versioning-and-mig
 
 ### `blazeplot`
 
-177 exports.
+179 exports.
 
 #### interface AcceleratedDataset
 
@@ -694,6 +694,8 @@ interface ChartRenderSurface {
     strokeSegments(segments: Float32Array, count: number): void;
     fillTriangles(vertices: Float32Array, vertexCount: number): void;
     fillField(alpha: Float32Array, cols: number, rows: number, x: number, y: number, step: number, r: number, g: number, b: number): void;
+    createSegmentSet(points: Float32Array, pointCount: number, ends: Uint32Array, segmentCount: number): ChartSegmentSet;
+    drawSegmentSet(set: ChartSegmentSet, style: SegmentSetStyle): void;
     endFrame(): void;
     readonly isLost: boolean;
     setLossListener(listener: ((state: RendererLossState) => void) | null): void;
@@ -755,6 +757,17 @@ interface ChartScreenshotOptions {
     readonly pixelRatio?: number;
     readonly width?: number;
     readonly height?: number;
+}
+```
+
+#### interface ChartSegmentSet
+
+```ts
+interface ChartSegmentSet {
+    readonly pointCount: number;
+    readonly segmentCount: number;
+    setPoints(points: Float32Array, first?: number): void;
+    dispose(): void;
 }
 ```
 
@@ -1314,6 +1327,23 @@ interface RingSeriesConfig extends SeriesIdentityConfig {
 
 ```ts
 type SampleCopyLayout = "points" | "area";
+```
+
+#### interface SegmentSetStyle
+
+```ts
+interface SegmentSetStyle {
+    readonly scaleX: number;
+    readonly scaleY: number;
+    readonly offsetX: number;
+    readonly offsetY: number;
+    readonly width: number;
+    readonly color: RgbaColor;
+    readonly dash?: number;
+    readonly gap?: number;
+    readonly first?: number;
+    readonly count?: number;
+}
 ```
 
 #### type SeriesAppendData

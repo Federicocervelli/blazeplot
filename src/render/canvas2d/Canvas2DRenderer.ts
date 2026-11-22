@@ -1,5 +1,6 @@
 import { describeRenderer } from "../ChartRenderer.js";
-import type { ChartRenderer, ChartRendererInfo, FrameReport, RenderProjection, RendererLossState, RendererOrigin } from "../ChartRenderer.js";
+import type { ChartRenderer, ChartRendererInfo, ChartSegmentSet, FrameReport, RenderProjection, RendererLossState, RendererOrigin, SegmentSetStyle } from "../ChartRenderer.js";
+import { SEGMENT_SET_HOLE_LIMIT, SegmentSet, segmentSetRange } from "../SegmentSet.js";
 import type { RgbaColor, SeriesStyle } from "../../core/types.js";
 
 /** Error thrown when a Canvas 2D renderer cannot be created. */
@@ -575,6 +576,59 @@ export class Canvas2DRenderer implements ChartRenderer {
     // Later strokes (series, grid) expect solid lines.
     ctx.setLineDash([]);
     ctx.lineDashOffset = 0;
+  }
+
+  /**
+   * Segments of a set kept between frames (see `ChartRenderSurface.drawSegmentSet`), mapped on the CPU from its
+   * point copy. Opaque segments share one path; translucent ones are stroked one by one, so where they cross they
+   * build up as on a GPU engine instead of being painted once.
+   */
+  drawSegmentSet(set: ChartSegmentSet, style: SegmentSetStyle): void {
+    if (!(set instanceof SegmentSet)) return;
+    const [first, end] = segmentSetRange(set, style);
+    const [r, g, b, alpha] = style.color;
+    if (end <= first || !(alpha > 0)) return;
+    this.drawCalls++;
+    const ctx = this.ctx;
+    const { scaleX, scaleY, offsetX, offsetY, width } = style;
+    const dash = style.dash ?? 0;
+    const gap = style.gap ?? 0;
+    const dashed = dash > 0 && gap > 0 && Number.isFinite(dash + gap);
+    const color = rgbaString(r, g, b, Math.min(1, alpha));
+    if (color !== this.strokeColor) ctx.strokeStyle = this.strokeColor = color;
+    if (width !== this.strokeWidth) ctx.lineWidth = this.strokeWidth = width;
+    ctx.lineCap = "butt";
+    ctx.setLineDash(dashed ? [dash, gap] : []);
+    ctx.lineDashOffset = 0;
+    const one = alpha < 1;
+    const points = set.points;
+    const ends = set.ends;
+    const count = set.pointCount;
+    const right = this.width + width;
+    const bottom = this.height + width;
+    if (!one) ctx.beginPath();
+    for (let k = first; k < end; k++) {
+      const i = ends[k * 2]!;
+      const j = ends[k * 2 + 1]!;
+      if (i >= count || j >= count) continue;
+      const ax = points[i * 2]!;
+      const ay = points[i * 2 + 1]!;
+      const bx = points[j * 2]!;
+      const by = points[j * 2 + 1]!;
+      // Holes (non-finite points) are stored as huge values; written so a NaN would fail too.
+      if (!(Math.abs(ax) <= SEGMENT_SET_HOLE_LIMIT && Math.abs(ay) <= SEGMENT_SET_HOLE_LIMIT && Math.abs(bx) <= SEGMENT_SET_HOLE_LIMIT && Math.abs(by) <= SEGMENT_SET_HOLE_LIMIT)) continue;
+      const x0 = ax * scaleX + offsetX;
+      const y0 = ay * scaleY + offsetY;
+      const x1 = bx * scaleX + offsetX;
+      const y1 = by * scaleY + offsetY;
+      if ((x0 > x1 ? x0 : x1) < -width || (y0 > y1 ? y0 : y1) < -width || (x0 < x1 ? x0 : x1) > right || (y0 < y1 ? y0 : y1) > bottom) continue;
+      if (one) ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      if (one) ctx.stroke();
+    }
+    if (!one) ctx.stroke();
+    ctx.setLineDash([]);
   }
 
 
