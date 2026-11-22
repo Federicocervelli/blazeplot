@@ -29,7 +29,7 @@ try {
   await run("responsive", async () => {
     for (const width of [390, 1280]) {
       await resize(width);
-      for (const route of ["live", "sensor", "features", "histogram", "linked", "server-sampled", "flamechart", "render-loop", "mobile"]) {
+      for (const route of ["live", "sensor", "features", "histogram", "linked", "server-sampled", "flamechart", "render-loop", "mobile", "service-map", "social-network"]) {
         console.log(`  checking ${route} at ${width}px`);
         await goto(`/previews/${route}`, "blazeplot-previews");
         await check(`document.documentElement.scrollWidth <= innerWidth && [...page.querySelectorAll('[data-preview-chart]')].every(el => { const r = el.getBoundingClientRect(); return r.width === 0 || (r.left >= 0 && r.right <= innerWidth + 1); })`, `${route} fits ${width}px viewport`);

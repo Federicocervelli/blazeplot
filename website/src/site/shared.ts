@@ -1,7 +1,7 @@
 export type Section = "home" | "docs" | "previews";
 export type HomeDataMode = "static" | "streaming";
 export type HomeChartMode = "line" | "ohlc" | "multi";
-export type PreviewId = "live" | "sensor" | "features" | "histogram" | "linked" | "server-sampled" | "flamechart" | "render-loop" | "mobile";
+export type PreviewId = "live" | "sensor" | "features" | "histogram" | "linked" | "server-sampled" | "flamechart" | "render-loop" | "mobile" | "service-map" | "social-network";
 
 export interface PreviewLink {
   title: string;
@@ -22,6 +22,8 @@ export const PREVIEWS: readonly PreviewLink[] = [
   { title: "Mobile", id: "mobile", group: "Interaction", description: "Drag to pan, pinch to zoom, and double-tap to reset. On desktop, scroll to zoom or Shift-drag to pan.", docs: "theming-and-layout", source: "mobile.ts" },
   { title: "Histogram", id: "histogram", group: "Chart types", description: "Binned values drawn as bars. Hover a bar to inspect its bucket range and frequency; scroll to zoom.", docs: "examples#histogram", source: "histogram.ts" },
   { title: "Flame chart", id: "flamechart", group: "Chart types", description: "A synthetic execution trace rendered with the flamegraph plugin. Hover a frame for details and scroll to zoom.", docs: "built-in-plugins", source: "flamechart.ts" },
+  { title: "Service map", id: "service-map", group: "Graphs", description: "Services as cards with icons, arrows, and moving traffic on the busy links, drawn with the graph plugin. Drag a card, scroll to zoom, or drag the background to pan.", docs: "built-in-plugins#graphs-of-nodes-and-edges", source: "service-map.ts" },
+  { title: "Social network", id: "social-network", group: "Graphs", description: "20,000 people and 100,000 friendships in communities, with hubs and bridges between them. Edges are drawn by level of detail: zoom in and the haze resolves into single lines.", docs: "built-in-plugins#large-graphs", source: "social-network.ts" },
   { title: "Render loop", id: "render-loop", group: "Rendering", description: "On-demand and continuous rendering side by side. Append a sample or move the viewport and compare the render counters.", docs: "performance-recipes", source: "render-loop.ts" },
 ] as const;
 
@@ -64,5 +66,7 @@ export function appRouteFromPath(pathname: string): string | null {
   if (relative === "server-sampled") return "previews/server-sampled";
   if (relative === "flamechart") return "previews/flamechart";
   if (relative === "mobile") return "previews/mobile";
+  if (relative === "service-map") return "previews/service-map";
+  if (relative === "social-network") return "previews/social-network";
   return null;
 }

@@ -17,6 +17,8 @@ const loaders = {
   flamechart: () => import("./previews/flamechart.ts"),
   "render-loop": () => import("./previews/render-loop.ts"),
   mobile: () => import("./previews/mobile.ts"),
+  "service-map": () => import("./previews/service-map.ts"),
+  "social-network": () => import("./previews/social-network.ts"),
 } satisfies Record<PreviewId, () => Promise<{ default: new (host: PreviewHost) => PreviewResources }>>;
 
 export class PreviewChartsController implements ReactiveController {
