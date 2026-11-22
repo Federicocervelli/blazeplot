@@ -394,8 +394,14 @@ function stabilityGraph(kind: "small" | "dense" | "kept"): ChartPlugin {
     const source: number[] = [];
     const target: number[] = [];
     for (let i = 0; i < side * side; i++) {
-      if ((i + 1) % side !== 0) source.push(i), target.push(i + 1);
-      if (i + side < side * side) source.push(i), target.push(i + side);
+      if ((i + 1) % side !== 0) {
+        source.push(i);
+        target.push(i + 1);
+      }
+      if (i + side < side * side) {
+        source.push(i);
+        target.push(i + side);
+      }
     }
     return graphPlugin({ nodes, edges: { source: Uint32Array.from(source), target: Uint32Array.from(target) }, draggable: true, edgeStyle: { color: "rgba(80, 120, 220, 0.5)" }, nodeStyle: { width: 3 } });
   }
