@@ -458,6 +458,44 @@ describe("graphPlugin dense graphs", () => {
     chart.dispose();
   });
 
+  itRecorded("redraws a rested view at its full detail when only a hover changes, so nothing blinks", async () => {
+    const nodes = disk(150);
+    const source: number[] = [];
+    const target: number[] = [];
+    for (let i = 0; i < 150; i++) for (let j = i + 1; j < 150; j++) {
+      source.push(i);
+      target.push(j);
+    }
+    const { chart, plugin } = make({
+      nodes,
+      edges: { source: Uint32Array.from(source), target: Uint32Array.from(target) },
+      edgeStyle: { color: "rgba(100,116,139,0.05)", width: 1 },
+      nodeStyle: { width: 4 },
+      levelOfDetail: { nodes: 10_000, edges: 300 },
+    });
+    frame(chart);
+    const draws = (): Array<{ method: string; count: number }> => engineOf().surfaces[0]!.draws;
+    const coarseEnd = draws().length;
+    await wait(200);
+    h.raf.flush();
+    const restedEnd = draws().length;
+    const rested = draws().slice(coarseEnd, restedEnd);
+    expect(rested).not.toEqual(draws().slice(0, coarseEnd));
+    // The pointer moves onto a node: the still layer is drawn again, with the same detail as the rested frame.
+    const [x, y] = at(plugin, "40");
+    fire(plot(chart), pointerEvent("pointermove", x, y));
+    h.raf.flush();
+    const hoverEnd = draws().length;
+    expect(hoverEnd).toBeGreaterThan(restedEnd);
+    const shape = (list: Array<{ method: string; count: number }>) => list.filter((d) => d.method !== "fillShapes");
+    expect(shape(draws().slice(restedEnd, hoverEnd))).toEqual(shape(rested));
+    // And no coarser-then-finer pair of frames follows.
+    await wait(200);
+    h.raf.flush();
+    expect(draws().length).toBe(hoverEnd);
+    chart.dispose();
+  });
+
   it("draws a listed dense graph through the pair hierarchy, and every edge styled apart from the rest one by one, never sampled", async () => {
     const nodes = disk(150);
     const source: number[] = [];

@@ -91,6 +91,12 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
   let refineTimer: ReturnType<typeof setTimeout> | undefined;
   /** The next still frame draws with its full budget (see `REFINE_MS`). */
   let fullBudget = false;
+  /**
+   * The view and layer size of the last still frame that left nothing out for its budget. A frame of the same view
+   * (a hover, a selection, a restyle) draws with the full budget too, so it shows the same detail instead of
+   * dropping to the coarse budget of a moving view and refining again: that would blink.
+   */
+  const fine = { centerX: NaN, centerY: NaN, zoom: NaN, width: 0, height: 0 };
   let labelCanvas: HTMLCanvasElement | null = null;
   let labelContext: CanvasRenderingContext2D | null = null;
   let live: HTMLElement | null = null;
@@ -658,7 +664,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
    * How many nodes and edges a still frame draws one by one before it draws the aggregate level: what each engine
    * draws in a few milliseconds on a phone, unless `levelOfDetail` says otherwise (`false` never aggregates).
    */
-  function detailBudget(fine = true): { nodes: number; edges: number; fill: number; overdraw: number; dense: number; fieldStep: number } {
+  function detailBudget(full = true): { nodes: number; edges: number; fill: number; overdraw: number; dense: number; fieldStep: number } {
     const lod = options.levelOfDetail;
     if (lod === false) return { nodes: Infinity, edges: Infinity, fill: Infinity, overdraw: Infinity, dense: Infinity, fieldStep: 1 };
     // An engine that draws on the CPU (Canvas 2D) gets the smaller budgets.
@@ -666,14 +672,14 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
     return {
       nodes: lod?.nodes ?? (cpu ? 12_000 : 60_000),
       // A frame during a gesture draws a third of the edges; the rest follow once the view rests (see `REFINE_MS`).
-      edges: fine ? (lod?.edges ?? (cpu ? 80_000 : 150_000)) : (lod?.edges ?? (cpu ? 25_000 : 150_000)) / 3,
-      fill: fine ? (lod?.fill ?? 16_000_000) : (lod?.fill ?? (cpu ? 700_000 : 2_000_000)) / 3,
+      edges: full ? (lod?.edges ?? (cpu ? 80_000 : 150_000)) : (lod?.edges ?? (cpu ? 25_000 : 150_000)) / 3,
+      fill: full ? (lod?.fill ?? 16_000_000) : (lod?.fill ?? (cpu ? 700_000 : 2_000_000)) / 3,
       // How many times over the bands of a dense graph may cover the plot, together.
       overdraw: cpu ? 12 : 48,
       // Items (bands and single lines) of a dense graph's cut: each costs more to find than a listed edge.
-      dense: Math.min(lod?.edges ?? Infinity, fine ? (cpu ? 6_000 : 16_000) : cpu ? 1_200 : 2_500),
+      dense: Math.min(lod?.edges ?? Infinity, full ? (cpu ? 6_000 : 16_000) : cpu ? 1_200 : 2_500),
       // A dense graph's lines per pixel are sampled every CSS pixel at rest, every other one while the view moves.
-      fieldStep: fine ? 1 : 2,
+      fieldStep: full ? 1 : 2,
     };
   }
 
@@ -778,6 +784,8 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       if (canvas.width !== deviceW) canvas.width = deviceW;
       if (canvas.height !== deviceH) canvas.height = deviceH;
     }
+    const still = view.centerX === fine.centerX && view.centerY === fine.centerY && view.zoom === fine.zoom && layerW === fine.width && layerH === fine.height;
+    const useFull = fullBudget || still;
     const input = {
       model,
       nodeStyles,
@@ -797,7 +805,7 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       lifted,
       liftedEdges,
       spatial,
-      budget: detailBudget(fullBudget),
+      budget: detailBudget(useFull),
       denseSlot,
       styledEdges,
       // Only a GPU engine interpolates `fillTriangles` colors across a triangle (see its docs).
@@ -813,9 +821,10 @@ export function graphPlugin<N = unknown, E = unknown>(options: GraphPluginOption
       for (const canvas of [shapeCanvas, labelCanvas, flowCanvas]) if (canvas) placeLayer(canvas, marginX, marginY, width, height);
       clearTimeout(refineTimer);
       painter.paint(surface, input);
-      const coarse = !fullBudget && painter.clipped;
+      const coarse = !useFull && painter.clipped;
       fullBudget = false;
       if (coarse) scheduleRefine();
+      else Object.assign(fine, { centerX: view.centerX, centerY: view.centerY, zoom: view.zoom, width: layerW, height: layerH });
       Object.assign(drawn, { centerX: view.centerX, centerY: view.centerY, zoom: view.zoom, marginX, marginY, scale: 1, shiftX: 0, shiftY: 0, width, height, at: now });
       // Measured after the labels too, below.
       drawnStart = started;
